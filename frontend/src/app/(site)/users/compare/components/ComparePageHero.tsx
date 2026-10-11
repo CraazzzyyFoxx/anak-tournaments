@@ -128,9 +128,9 @@ const ComparePageHero = ({
               <span className="mt-1 block max-w-full truncate font-onest text-[clamp(1.35rem,2vw,1.9rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
                 {stat.value}
               </span>
-              <span className="mt-1 flex max-w-full items-center gap-1 truncate text-label text-[color:var(--aqt-fg-dim)]">
-                {stat.refreshing ? <Spinner className="size-3 shrink-0" /> : null}
-                <span className="truncate">{stat.sub}</span>
+              <span className="mt-1 flex max-w-full items-start gap-1 text-label text-[color:var(--aqt-fg-dim)] lg:justify-end">
+                {stat.refreshing ? <Spinner className="mt-px size-3 shrink-0" /> : null}
+                <span className="line-clamp-2" title={stat.sub}>{stat.sub}</span>
               </span>
             </div>
           ))}

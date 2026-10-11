@@ -13,6 +13,8 @@ interface CompareFilters {
   divMin?: number;
   divMax?: number;
   tournamentId?: number;
+  /** A community id scopes grid and population to it; "all" or absent is global. */
+  workspaceId?: number | "all";
 }
 
 interface OverallCompareRequest extends CompareFilters {
@@ -67,9 +69,10 @@ export const buildOverallCompareQueryOptions = <TData>({
   divMin,
   divMax,
   tournamentId,
+  workspaceId,
   fetchCompare
 }: OverallOptions<TData>) => ({
-  queryKey: userQueryKeys.compare(subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId),
+  queryKey: userQueryKeys.compare(subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, workspaceId),
   enabled: !isHeroScope && subjectUserId !== undefined,
   placeholderData: keepPreviousCompareData<TData>,
   queryFn: ({ signal }: QueryContext) =>
@@ -80,6 +83,7 @@ export const buildOverallCompareQueryOptions = <TData>({
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       signal
     })
 });
@@ -93,13 +97,14 @@ export const buildHeroCompareQueryOptions = <TData>({
   divMin,
   divMax,
   tournamentId,
+  workspaceId,
   leftHeroId,
   rightHeroId,
   mapId,
   stats,
   fetchCompare
 }: HeroOptions<TData>) => ({
-  queryKey: userQueryKeys.heroCompare(subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, leftHeroId, rightHeroId, mapId),
+  queryKey: userQueryKeys.heroCompare(subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, leftHeroId, rightHeroId, mapId, workspaceId),
   enabled: isHeroScope && subjectUserId !== undefined,
   placeholderData: keepPreviousCompareData<TData>,
   queryFn: ({ signal }: QueryContext) =>
@@ -113,6 +118,7 @@ export const buildHeroCompareQueryOptions = <TData>({
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       stats,
       signal
     })

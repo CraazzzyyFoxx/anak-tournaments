@@ -18,7 +18,13 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
 from src import schemas
 from src.core import db, enums, pagination
-from src.core.workspace import get_division_grid, require_workspace_scope, resolve_workspace_context
+from src.core.workspace import (
+    ALL_WORKSPACES,
+    WorkspaceScope,
+    get_division_grid,
+    require_workspace_scope,
+    resolve_workspace_context,
+)
 from src.rpc import _common as c
 from src.services.map.service import maps as map_service
 from src.services.user.service import users as user_service
@@ -42,6 +48,18 @@ def _ws_id(data: dict[str, Any]) -> int | None:
     the only way this helper returns one.
     """
     return require_workspace_scope(c.q_workspace_scope(data))
+
+
+def _compare_scope(data: dict[str, Any]) -> WorkspaceScope:
+    """Workspace scope for the two compare reads.
+
+    Unlike the rest of ``/users/*`` these keep their historical default: a
+    missing ``workspace_id`` is the cross-workspace read (global grid, every
+    workspace's tournaments), not a 400. A concrete id scopes the grid AND the
+    population to that workspace's tournaments.
+    """
+    scope = c.q_workspace_scope(data)
+    return ALL_WORKSPACES if scope is None else scope
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -106,10 +124,14 @@ def register(broker: Any, logger: Any) -> None:
     async def _compare(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            grid = await get_division_grid(session, None)
+            ws = await resolve_workspace_context(session, _compare_scope(data))
             qp = build_query_model(schemas.UserCompareQueryParams, data.get("query"))
             return await user_service.get_compare_cached(
-                session, c.require_id(data), schemas.UserCompareParams.from_query_params(qp), grid=grid
+                session,
+                c.require_id(data),
+                schemas.UserCompareParams.from_query_params(qp),
+                grid=ws.grid,
+                workspace_id=ws.id,
             )
 
         return await c.envelope(logger, "users.compare", op, session_factory=_SF)
@@ -118,10 +140,14 @@ def register(broker: Any, logger: Any) -> None:
     async def _compare_heroes(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            grid = await get_division_grid(session, None)
+            ws = await resolve_workspace_context(session, _compare_scope(data))
             qp = build_query_model(schemas.UserHeroCompareQueryParams, data.get("query"))
             return await user_service.get_hero_compare_cached(
-                session, c.require_id(data), schemas.UserHeroCompareParams.from_query_params(qp), grid=grid
+                session,
+                c.require_id(data),
+                schemas.UserHeroCompareParams.from_query_params(qp),
+                grid=ws.grid,
+                workspace_id=ws.id,
             )
 
         return await c.envelope(logger, "users.compare_heroes", op, session_factory=_SF)

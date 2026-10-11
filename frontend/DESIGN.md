@@ -114,6 +114,7 @@ before writing markup:
 | Data table                  | `components/data-table/DataTable.tsx` — header scope, scroll region, skeletons, keyboard rows                                                                        |
 | Placement medal             | `components/ui/place-badge.tsx` — `--aqt-medal-*` tokens                                                                                                                 |
 | Role / division marker      | `components/PlayerRoleIcon.tsx`, `components/DivisionIcon.tsx` — icon+label only in a Role split; icon-only (name in `title`/`aria-label`) elsewhere on display surfaces |
+| Division picker             | `components/DivisionCombobox.tsx` — searchable single-division combobox over a grid (workspace by default, pass `grid` for a tournament or the reference grid); tiers best-first by `rank_min` |
 | MVP pill                    | `components/match/MvpMatchPill.tsx`                                                                                                                                      |
 | Status dot                  | `components/ui/status-dot.tsx` — `<StatusDot tone pulse>`; always `aria-hidden`, fill is `currentColor`, so a hue with no `Tone` is set with `className`/`style`, not a new tone      |
 | Lifecycle status pill       | `components/tournaments/StatusPill.tsx` — `<TournamentStatusPill status>` for tournaments, encounters and streams; `live` carries the pulsing dot on its own, the label is always the caller's copy |

@@ -63,9 +63,11 @@ def _compile_bigint_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN2
 
 TOURNAMENT = 84
 OTHER_TOURNAMENT = 85
+OTHER_WORKSPACE_TOURNAMENT = 86
 UNFINISHED = 90
 LEAGUE = 91
 WORKSPACE = 1
+OTHER_WORKSPACE = 2
 ROLE = enums.HeroClass.damage
 OTHER_ROLE = enums.HeroClass.support
 
@@ -77,6 +79,7 @@ IN_UNFINISHED = 13
 IN_LEAGUE = 14
 OTHER_TOURNAMENT_ONLY = 15
 NEVER_PLAYED = 16
+OTHER_WORKSPACE_ONLY = 17
 
 _ROSTER = (
     (QUALIFIES, TOURNAMENT, ROLE, False),
@@ -85,6 +88,7 @@ _ROSTER = (
     (IN_UNFINISHED, UNFINISHED, ROLE, False),
     (IN_LEAGUE, LEAGUE, ROLE, False),
     (OTHER_TOURNAMENT_ONLY, OTHER_TOURNAMENT, ROLE, False),
+    (OTHER_WORKSPACE_ONLY, OTHER_WORKSPACE_TOURNAMENT, OTHER_ROLE, False),
 )
 
 _FILTER_SETS = (
@@ -92,6 +96,7 @@ _FILTER_SETS = (
     {"role": None, "div_min": None, "div_max": None, "tournament_id": TOURNAMENT},
     {"role": ROLE, "div_min": None, "div_max": None, "tournament_id": None},
     {"role": None, "div_min": None, "div_max": None, "tournament_id": None},
+    {"role": None, "div_min": None, "div_max": None, "tournament_id": None, "workspace_id": WORKSPACE},
 )
 
 
@@ -116,16 +121,17 @@ class HeroCompareBaselineScopeTests(TestCase):
         self.session = Session(self.engine)
         self.addCleanup(self.session.close)
 
-        for tournament_id, finished, league in (
-            (TOURNAMENT, True, False),
-            (OTHER_TOURNAMENT, True, False),
-            (UNFINISHED, False, False),
-            (LEAGUE, True, True),
+        for tournament_id, workspace_id, finished, league in (
+            (TOURNAMENT, WORKSPACE, True, False),
+            (OTHER_TOURNAMENT, WORKSPACE, True, False),
+            (UNFINISHED, WORKSPACE, False, False),
+            (LEAGUE, WORKSPACE, True, True),
+            (OTHER_WORKSPACE_TOURNAMENT, OTHER_WORKSPACE, True, False),
         ):
             self.session.execute(
                 sa.insert(models.Tournament.__table__).values(
                     id=tournament_id,
-                    workspace_id=WORKSPACE,
+                    workspace_id=workspace_id,
                     name=f"T{tournament_id}",
                     slug=f"t{tournament_id}",
                     is_finished=finished,
@@ -136,7 +142,9 @@ class HeroCompareBaselineScopeTests(TestCase):
             self.session.execute(sa.insert(models.User.__table__).values(id=user_id, name=f"user{user_id}"))
             self.session.execute(
                 sa.insert(models.WorkspaceMember.__table__).values(
-                    id=user_id, workspace_id=WORKSPACE, player_id=user_id
+                    id=user_id,
+                    workspace_id=OTHER_WORKSPACE if user_id == OTHER_WORKSPACE_ONLY else WORKSPACE,
+                    player_id=user_id,
                 )
             )
         for user_id, tournament_id, role, substitution in _ROSTER:
@@ -181,6 +189,24 @@ class HeroCompareBaselineScopeTests(TestCase):
     def test_no_filters_means_every_user_including_one_who_never_played(self) -> None:
         expected = {row[0] for row in _ROSTER} | {NEVER_PLAYED}
         self.assertEqual(expected, self._candidates(**_FILTER_SETS[3]))
+
+    def test_a_workspace_scope_drops_another_workspaces_roster(self) -> None:
+        """``workspace_id`` must restrict the baseline to that workspace's
+        tournaments — otherwise div_min/div_max are read against one workspace's
+        grid while the cohort spans everybody's."""
+        self.assertEqual(
+            {QUALIFIES, WRONG_ROLE, OTHER_TOURNAMENT_ONLY},
+            self._candidates(**_FILTER_SETS[4]),
+        )
+        self.assertEqual(
+            {OTHER_WORKSPACE_ONLY},
+            self._candidates(role=None, div_min=None, div_max=None, tournament_id=None, workspace_id=OTHER_WORKSPACE),
+        )
+        self.assertIn(
+            OTHER_WORKSPACE_ONLY,
+            self._candidates(**_FILTER_SETS[3]),
+            msg="workspace_id=None (the all-workspaces read) must stay unfiltered",
+        )
 
     def test_the_subquery_selects_exactly_the_population_it_replaced(self) -> None:
         for filters in _FILTER_SETS:

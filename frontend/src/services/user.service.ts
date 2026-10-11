@@ -423,6 +423,7 @@ export default class userService {
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       signal
     }: {
       baseline?: UserCompareBaselineMode;
@@ -431,6 +432,7 @@ export default class userService {
       divMin?: number;
       divMax?: number;
       tournamentId?: number;
+      workspaceId?: number | "all";
       signal?: AbortSignal;
     } = {}
   ): Promise<UserCompareResponse> {
@@ -442,7 +444,8 @@ export default class userService {
         role,
         div_min: divMin,
         div_max: divMax,
-        tournament_id: tournamentId
+        tournament_id: tournamentId,
+        workspace_id: workspaceId
       }
     }).then((res) => res.json());
   }
@@ -459,6 +462,7 @@ export default class userService {
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       stats,
       signal
     }: {
@@ -471,6 +475,7 @@ export default class userService {
       divMin?: number;
       divMax?: number;
       tournamentId?: number;
+      workspaceId?: number | "all";
       stats?: LogStatsName[];
       signal?: AbortSignal;
     }
@@ -487,6 +492,7 @@ export default class userService {
         div_min: divMin,
         div_max: divMax,
         tournament_id: tournamentId,
+        workspace_id: workspaceId,
         stats
       }
     }).then((res) => res.json());

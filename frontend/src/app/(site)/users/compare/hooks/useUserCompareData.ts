@@ -20,7 +20,8 @@ import {
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
 import { useMapsCatalog } from "@/hooks/useMapsCatalog";
-import { useWorkspaceStore } from "@/stores/workspace.store";
+import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { getDefaultDivisionGrid, getDivisionLabel } from "@/lib/divisions/grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
 
 interface UseUserCompareDataParams {
@@ -54,6 +55,14 @@ export const useUserCompareData = ({
 }: UseUserCompareDataParams) => {
   const t = useTranslations();
 
+  // One workspace for everything the page asks: the backend resolves both the
+  // division grid and the population from it, so the picker's tiers must come
+  // from the same place. All communities read the reference grid.
+  const currentWorkspaceId = useCurrentWorkspaceId();
+  const workspaceGrid = useDivisionGrid();
+  const workspaceId = scope === "all" ? "all" : (currentWorkspaceId ?? undefined);
+  const divisionGrid = scope === "all" ? getDefaultDivisionGrid() : workspaceGrid;
+
   const compareQuery = useQuery(
     buildOverallCompareQueryOptions({
       isHeroScope,
@@ -64,6 +73,7 @@ export const useUserCompareData = ({
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       fetchCompare: userService.getUserCompare
     })
   );
@@ -71,11 +81,9 @@ export const useUserCompareData = ({
   const heroesQuery = useHeroesCatalog({ enabled: shouldLoadHeroCatalogs(isHeroScope) });
   const mapsQuery = useMapsCatalog({ enabled: shouldLoadHeroCatalogs(isHeroScope) });
 
-  const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
-  const pickerWorkspaceId = scope === "all" ? "all" : currentWorkspaceId;
   const tournamentsQuery = useQuery({
-    queryKey: tournamentQueryKeys.selectOptions(pickerWorkspaceId),
-    queryFn: () => tournamentService.getAll(null, pickerWorkspaceId),
+    queryKey: tournamentQueryKeys.selectOptions(workspaceId ?? null),
+    queryFn: () => tournamentService.getAll(null, workspaceId ?? null),
     staleTime: 5 * 60 * 1000
   });
 
@@ -89,6 +97,7 @@ export const useUserCompareData = ({
       divMin,
       divMax,
       tournamentId,
+      workspaceId,
       leftHeroId,
       rightHeroId,
       mapId,
@@ -122,12 +131,14 @@ export const useUserCompareData = ({
 
     if (effectiveBaseline === "cohort") {
       const roleText = role ? t(roleLabelKey(role)) : t("users.compare.allRoles");
-      const rangeText = `${divMin ?? t("common.any")} - ${divMax ?? t("common.any")}`;
+      const rangeText = `${getDivisionLabel(divisionGrid, divMin) ?? t("common.any")} - ${
+        getDivisionLabel(divisionGrid, divMax) ?? t("common.any")
+      }`;
       return t("users.compare.comparingAgainstCohort", { role: roleText, range: rangeText });
     }
 
     return t("users.compare.comparingAgainstGlobal");
-  }, [effectiveBaseline, selectedTargetName, role, divMin, divMax, t]);
+  }, [effectiveBaseline, selectedTargetName, role, divMin, divMax, divisionGrid, t]);
 
   const rows = useMemo<CompareRow[]>(() => {
     if (isHeroScope) {
@@ -204,6 +215,7 @@ export const useUserCompareData = ({
     activeRefreshing,
     activeError,
     activeErrorMessage,
-    compareDisplayName
+    compareDisplayName,
+    divisionGrid
   };
 };

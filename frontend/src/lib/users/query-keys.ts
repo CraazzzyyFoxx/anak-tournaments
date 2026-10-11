@@ -37,8 +37,8 @@ export const userQueryKeys = {
   overview: (workspaceId: KeyPart, page: KeyPart, perPage: KeyPart, query: KeyPart, sort: KeyPart, order: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart) =>
     ["users-overview", workspaceId, page, perPage, query, sort, order, role, divMin, divMax] as const,
   searchMinimized: (query: KeyPart) => ["users-search-minimized", query] as const,
-  compare: (subjectUserId: KeyPart, baseline: KeyPart, targetUserId: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart, tournamentId: KeyPart) =>
-    ["user-compare", subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId] as const,
-  heroCompare: (subjectUserId: KeyPart, baseline: KeyPart, targetUserId: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart, tournamentId: KeyPart, leftHeroId: KeyPart, rightHeroId: KeyPart, mapId: KeyPart) =>
-    ["user-hero-compare", subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, leftHeroId, rightHeroId, mapId] as const,
+  compare: (subjectUserId: KeyPart, baseline: KeyPart, targetUserId: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart, tournamentId: KeyPart, workspaceId: KeyPart) =>
+    ["user-compare", subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, workspaceId] as const,
+  heroCompare: (subjectUserId: KeyPart, baseline: KeyPart, targetUserId: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart, tournamentId: KeyPart, leftHeroId: KeyPart, rightHeroId: KeyPart, mapId: KeyPart, workspaceId: KeyPart) =>
+    ["user-hero-compare", subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, leftHeroId, rightHeroId, mapId, workspaceId] as const,
 };

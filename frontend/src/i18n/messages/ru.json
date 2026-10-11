@@ -166,6 +166,7 @@
       "all": "Все воркспейсы"
     },
     "divisionWithId": "Дивизион {id}",
+    "searchDivision": "Поиск дивизиона…",
     "stageWithId": "Этап {id}",
     "showingRange": "Показано {start}–{end} из {total}",
     "smurfBattleTags": "Смурф BattleTags",
@@ -5063,6 +5064,7 @@
       "noMetrics": "Нет метрик для текущих фильтров.",
       "colMetric": "Показатель",
       "colDelta": "Δ",
+      "colDeltaTitle": "Разница с базой сравнения",
       "selectSubjectUser": "Выберите игрока",
       "filters": {
         "title": "Фильтры",
@@ -5072,8 +5074,9 @@
         "heroMapPerformance": "Игра по герою / карте",
         "roleFilter": "Фильтр по роли",
         "roleIconAlt": "Иконка {role}",
-        "divisionMin": "Дивизион мин.",
-        "divisionMax": "Дивизион макс.",
+        "divisionMin": "Дивизион от",
+        "divisionMax": "Дивизион до",
+        "cohortLockedHint": "Роль и дивизион сужают среднее по всем игрокам. Уберите второго игрока, чтобы их использовать.",
         "heroAndMap": "Герой и карта",
         "primaryHero": "Основной герой",
         "compareHero": "Герой для сравнения",

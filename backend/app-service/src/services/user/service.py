@@ -624,6 +624,7 @@ class UserService:
         params: schemas.UserCompareParams,
         *,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
     ) -> schemas.UserCompareResponse:
         if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
             raise errors.ApiHTTPException(
@@ -657,6 +658,7 @@ class UserService:
                 session,
                 user_ids=requested_ids,
                 tournament_id=params.tournament_id,
+                workspace_id=workspace_id,
                 grid=grid,
             )
             pair_by_id = {int(row["id"]): row for row in pair_rows}
@@ -685,6 +687,7 @@ class UserService:
                 div_min=compare_div_min,
                 div_max=compare_div_max,
                 tournament_id=params.tournament_id,
+                workspace_id=workspace_id,
                 grid=grid,
             )
             if not population_rows:
@@ -701,6 +704,7 @@ class UserService:
                     div_min=compare_div_min,
                     div_max=compare_div_max,
                     tournament_id=params.tournament_id,
+                    workspace_id=workspace_id,
                     grid=grid,
                 )
                 if not subject_rows:
@@ -769,7 +773,7 @@ class UserService:
         ttl=config.settings.users_cache_ttl,
         key=(
             "backend:user_compare:v2:{id}:{baseline}:{target_user_id}:{role}:{div_min}:{div_max}:"
-            "{tournament_id}:{grid_version}"
+            "{tournament_id}:{workspace_id}:{grid_version}"
         ),
         lock=True,
     )
@@ -783,12 +787,15 @@ class UserService:
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
+        workspace_id: int | None,
         grid_version: int | None,
         *,
         grid: DivisionGrid,
     ) -> schemas.UserCompareResponse:
         # ``session`` and the runtime grid object deliberately stay out of the key.
-        # The immutable grid version is enough to prevent cross-version reuse.
+        # The immutable grid version is enough to prevent cross-version reuse, but
+        # not cross-workspace reuse: two workspaces can share a grid version, so
+        # ``workspace_id`` is keyed on its own.
         del grid_version
         return await self.get_compare(
             session,
@@ -802,6 +809,7 @@ class UserService:
                 tournament_id=tournament_id,
             ),
             grid=grid,
+            workspace_id=workspace_id,
         )
 
     async def get_compare_cached(
@@ -811,6 +819,7 @@ class UserService:
         params: schemas.UserCompareParams,
         *,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
     ) -> schemas.UserCompareResponse:
         is_cohort = params.baseline == "cohort"
         return await self._get_compare_cached(
@@ -822,6 +831,7 @@ class UserService:
             params.div_min if is_cohort else None,
             params.div_max if is_cohort else None,
             params.tournament_id,
+            workspace_id,
             grid.version_id,
             grid=grid,
         )
@@ -833,6 +843,7 @@ class UserService:
         params: schemas.UserHeroCompareParams,
         *,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
     ) -> schemas.UserHeroCompareResponse:
         if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
             raise errors.ApiHTTPException(
@@ -875,6 +886,7 @@ class UserService:
             div_min=compare_div_min,
             div_max=compare_div_max,
             tournament_id=params.tournament_id,
+            workspace_id=workspace_id,
             grid=grid,
         )
         if left_playtime < 600:
@@ -889,6 +901,7 @@ class UserService:
                 map_id=params.map_id,
                 stats=requested_stats,
                 tournament_id=params.tournament_id,
+                workspace_id=workspace_id,
                 grid=grid,
             )
             if right_playtime < 600:
@@ -910,6 +923,7 @@ class UserService:
                 div_min=compare_div_min,
                 div_max=compare_div_max,
                 tournament_id=params.tournament_id,
+                workspace_id=workspace_id,
                 grid=grid,
             )
 
@@ -921,6 +935,7 @@ class UserService:
                     div_min=compare_div_min,
                     div_max=compare_div_max,
                     tournament_id=params.tournament_id,
+                    workspace_id=workspace_id,
                     grid=grid,
                 ):
                     raise errors.ApiHTTPException(
@@ -1015,7 +1030,7 @@ class UserService:
         ttl=config.settings.users_cache_ttl,
         key=(
             "backend:user_hero_compare:v2:{id}:{baseline}:{target_user_id}:{left_hero_id}:"
-            "{right_hero_id}:{map_id}:{role}:{div_min}:{div_max}:{tournament_id}:"
+            "{right_hero_id}:{map_id}:{role}:{div_min}:{div_max}:{tournament_id}:{workspace_id}:"
             "{stats_key}:{grid_version}"
         ),
         lock=True,
@@ -1033,6 +1048,7 @@ class UserService:
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
+        workspace_id: int | None,
         stats_key: str,
         grid_version: int | None,
         *,
@@ -1055,6 +1071,7 @@ class UserService:
                 stats=[enums.LogStatsName(value) for value in stats_key.split(",") if value],
             ),
             grid=grid,
+            workspace_id=workspace_id,
         )
 
     async def get_hero_compare_cached(
@@ -1064,6 +1081,7 @@ class UserService:
         params: schemas.UserHeroCompareParams,
         *,
         grid: DivisionGrid,
+        workspace_id: int | None = None,
     ) -> schemas.UserHeroCompareResponse:
         requested_stats = {stat for stat in params.stats if stat != enums.LogStatsName.HeroTimePlayed}
         if not requested_stats:
@@ -1082,6 +1100,7 @@ class UserService:
             params.div_min if is_cohort else None,
             params.div_max if is_cohort else None,
             params.tournament_id,
+            workspace_id,
             stats_key,
             grid.version_id,
             grid=grid,

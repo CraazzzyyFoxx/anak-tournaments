@@ -166,6 +166,7 @@
       "all": "All workspaces"
     },
     "divisionWithId": "Division {id}",
+    "searchDivision": "Search division...",
     "stageWithId": "Stage {id}",
     "showingRange": "Showing {start}–{end} of {total}",
     "smurfBattleTags": "Smurf BattleTags",
@@ -5063,6 +5064,7 @@
       "noMetrics": "No metrics available for current filters.",
       "colMetric": "Metric",
       "colDelta": "Δ",
+      "colDeltaTitle": "Difference from the baseline",
       "selectSubjectUser": "Select subject user",
       "filters": {
         "title": "Filters",
@@ -5072,8 +5074,9 @@
         "heroMapPerformance": "Hero / map performance",
         "roleFilter": "Role filter",
         "roleIconAlt": "{role} icon",
-        "divisionMin": "Division min",
-        "divisionMax": "Division max",
+        "divisionMin": "Division from",
+        "divisionMax": "Division to",
+        "cohortLockedHint": "Role and division narrow the all-players baseline. Clear the second player to use them.",
         "heroAndMap": "Hero & Map",
         "primaryHero": "Primary hero",
         "compareHero": "Compare hero",

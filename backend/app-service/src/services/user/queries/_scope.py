@@ -321,6 +321,7 @@ def _compare_user_scope_exists(
     div_min: int | None,
     div_max: int | None,
     tournament_id: int | None = None,
+    workspace_id: int | None = None,
     grid: DivisionGrid,
 ) -> sa.ColumnElement[bool]:
     scoped_player = aliased(models.Player)
@@ -341,6 +342,8 @@ def _compare_user_scope_exists(
             scoped_tournament.is_league.is_(False),
         ]
     )
+    if workspace_id is not None:
+        filters.append(scoped_tournament.workspace_id == workspace_id)
     return sa.exists(sa.select(1).select_from(scoped_player).select_from(scoped_tournament).where(*filters))
 
 
