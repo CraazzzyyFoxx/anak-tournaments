@@ -160,12 +160,30 @@ export function UsersIndexFilters({
           </span>
         </div>
 
+        {showFoundLine ? (
+          <span className="flex shrink-0 items-center gap-3 px-1 text-label text-[color:var(--aqt-fg-faint)] md:ml-auto">
+            {foundCount == null ? null : (
+              <span className="tabular-nums">
+                {t("users.list.filters.found", { count: format.number(foundCount) })}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={controls.resetFilters}
+              className="rounded text-[color:var(--aqt-teal)] underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+            >
+              {t("users.list.filters.resetAll")}
+            </button>
+          </span>
+        ) : null}
+
         <SearchField
           value={controls.searchInput}
           onValueChange={controls.setSearchInput}
           label={t("users.list.filters.searchByName")}
           placeholder={t("users.list.filters.searchPlaceholder")}
-          containerClassName="w-full md:ml-auto md:w-auto md:min-w-[12rem] md:max-w-xs md:flex-1"
+          // The found/reset group, when shown, takes the push-right margin.
+          containerClassName={`w-full md:w-auto md:min-w-[12rem] md:max-w-xs md:flex-1 ${showFoundLine ? "" : "md:ml-auto"}`}
           className="max-md:h-10"
         />
 
@@ -188,23 +206,6 @@ export function UsersIndexFilters({
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-
-      {showFoundLine ? (
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-[color:var(--aqt-fg-faint)]">
-          {foundCount == null ? null : (
-            <span className="tabular-nums">
-              {t("users.list.filters.found", { count: format.number(foundCount) })}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={controls.resetFilters}
-            className="rounded text-[color:var(--aqt-teal)] underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-          >
-            {t("users.list.filters.resetAll")}
-          </button>
-        </p>
-      ) : null}
     </div>
   );
 }
