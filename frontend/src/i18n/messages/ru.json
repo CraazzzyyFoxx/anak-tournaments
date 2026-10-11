@@ -166,6 +166,7 @@
       "all": "Все воркспейсы"
     },
     "divisionWithId": "Дивизион {id}",
+    "anyDivision": "Любой дивизион",
     "searchDivision": "Поиск дивизиона…",
     "stageWithId": "Этап {id}",
     "showingRange": "Показано {start}–{end} из {total}",
@@ -5133,109 +5134,100 @@
         "description": "Просмотр игроков на {siteName}."
       },
       "hero": {
-        "eyebrowRoster": "Состав",
+        "eyebrowRoster": "Реестр",
         "eyebrowCurrent": "Игроки",
-        "title": "Игроки, что стоят за никами",
-        "lede": "Каждый участник каждого турнира — фильтруйте по роли, дивизиону и пулу героев. Переключайтесь между глубокой аналитикой и быстрым каталогом.",
-        "playtimeFormat": "{h}ч {m}м {s}с"
+        "title": "Игроки",
+        "lede": "Дивизионы по ролям, результаты турниров и герои каждого, кто сыграл хотя бы один турнир."
       },
       "stats": {
         "totalPlayers": "Всего игроков",
-        "roleBreakdown": "Танк {tank} · Дамаг {damage} · Саппорт {support}",
-        "withLogs": "С логами",
-        "withParsedGames": "{count} с обработанными играми",
-        "avgTournamentsPerPlayer": "Ср. турниров на игрока",
-        "median": "медиана {value}",
         "activeLast30d": "Активны за 30 дней",
-        "ofRoster": "{pct}% состава"
+        "ofRoster": "{pct}% состава",
+        "withLogs": "С логами",
+        "avgTournamentsPerPlayer": "Турниров на игрока",
+        "median": "медиана {value}"
       },
       "view": {
-        "analytics": "Аналитика",
-        "analyticsBadge": "глубокий разбор",
-        "catalog": "Каталог",
-        "catalogBadge": "быстрый просмотр",
-        "rosterLive": "Состав · онлайн"
+        "table": "Таблица",
+        "catalog": "Каталог"
       },
       "filters": {
-        "divMin": "Див. мин: {value}",
-        "divMax": "Див. макс: {value}",
-        "minDivision": "Минимальный дивизион",
-        "maxDivision": "Максимальный дивизион",
-        "allDivisions": "Все дивизионы",
-        "allRoles": "Все роли",
-        "searchPlaceholder": "Поиск по нику или BattleTag…",
-        "searchByName": "Поиск по нику",
-        "sortValue": "Сортировка: {value}",
-        "reset": "Сбросить фильтры",
-        "heading": "Обзор игроков",
-        "subheading": "Основная информация в таблице. Разверните строку для подробных метрик по героям и средних показателей по турнирам."
-      },
-      "sort": {
-        "name": "Имя",
-        "tournaments": "Турниры",
-        "achievements": "Достижения",
-        "avgPlacement": "Ср. место"
-      },
-      "heroMetrics": {
-        "elims": "Уб.",
-        "fb": "Доб.",
-        "dmg": "Урон",
-        "heal": "Исцел."
+        "roleGroup": "Роль",
+        "divisions": "Дивизион",
+        "minEncounters": "Мин. встреч",
+        "minEncountersValue": "Мин. встреч: {value}",
+        "minEncountersHint": "Винрейт остаётся серым, пока игрок не сыграет указанное число встреч.",
+        "withLogs": "С логами",
+        "searchByName": "Поиск игроков",
+        "searchPlaceholder": "Никнейм или BattleTag",
+        "found": "Найдено {count}",
+        "resetAll": "Сбросить всё"
       },
       "table": {
-        "allPlayers": "Все игроки",
-        "pageMeta": "Стр. {page} из {maxPage} · сортировка по {x}",
-        "pageCount": "Стр. {page} из {maxPage} ({total, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}})",
         "player": "Игрок",
-        "user": "Игрок",
-        "divisions": "Дивизионы",
-        "achievements": "Достижения",
+        "roles": "Роли",
+        "tournaments": "Турниры",
+        "winrate": "Винрейт",
         "avgPlacement": "Ср. место",
-        "topHeroes": "Топ героев",
-        "details": "Детали"
+        "bestPlacement": "Лучшее",
+        "achievements": "Ачивки",
+        "topHeroes": "Герои",
+        "details": "Детали",
+        "encounters": "{count, plural, one {# встреча} few {# встречи} many {# встреч} other {# встречи}}",
+        "noLogs": "нет логов",
+        "neverPlayed": "нет турниров"
       },
       "division": {
         "badgeTitle": "{role} • {tier}",
         "noRoles": "Нет ролей"
       },
       "expanded": {
-        "avgPlacement": "Ср. место",
-        "avgPlayoff": "Ср. плей-офф",
-        "avgGroup": "Ср. группа",
-        "avgCloseness": "Ср. напряжённость",
-        "topHeroesDetails": "Подробнее о топ героях",
-        "metricsNote": "Все метрики героев — средние за 10 минут.",
-        "noHeroData": "Нет данных о героях.",
-        "noMetrics": "Нет метрик",
-        "playtime": "Время в игре: {value}"
+        "roles": "Роли",
+        "noRoleData": "Нет данных по ролям.",
+        "maps": "{count, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
+        "mapsLabel": "Карты",
+        "tournamentsWon": "Побед",
+        "recentTournaments": "Последние турниры",
+        "noTournaments": "Турниров нет.",
+        "outOf": "из {count}",
+        "heroes": "Герои",
+        "noHeroData": "Нет данных по героям.",
+        "openProfile": "Профиль игрока"
       },
-      "roleLabel": {
-        "unranked": "Без ранга"
+      "compare": {
+        "column": "Сравнение",
+        "toggle": "Добавить {name} к сравнению",
+        "limit": "Сравнить можно двух игроков",
+        "barLabel": "Сравнение игроков",
+        "title": "Сравнение",
+        "remove": "Убрать {name}",
+        "clear": "Очистить",
+        "open": "Сравнить",
+        "needTwo": "Выберите двух игроков",
+        "addShort": "Добавить к сравнению",
+        "removeShort": "Убрать из сравнения"
       },
       "catalog": {
-        "jumpTo": "Перейти к",
-        "showing": "Показано {count} из {total, plural, one {# игрока} few {# игроков} many {# игроков} other {# игроков}}",
-        "tournaments": "Турн.",
-        "achievements": "Дост.",
-        "avgPlacement": "Ср. место"
+        "jumpTo": "Переход по букве",
+        "showMore": "Ещё {count}",
+        "showing": "Показано {count} из {total, plural, one {# игрока} few {# игроков} many {# игроков} other {# игроков}}"
       },
-      "empty": "Игроки по текущим фильтрам не найдены.",
+      "empty": "Ни один игрок не подходит под текущие фильтры.",
       "errors": {
-        "overview": "Не удалось загрузить обзор игроков.",
-        "catalog": "Не удалось загрузить каталог."
+        "overview": "Не удалось загрузить список игроков.",
+        "catalog": "Не удалось загрузить каталог.",
+        "details": "Не удалось загрузить карточку игрока."
       },
       "pagination": {
-        "showingPlayers": "Показано {start}–{end} из {total, plural, one {# игрока} few {# игроков} many {# игроков} other {# игроков}}",
-        "refreshing": "обновление…"
+        "showingPlayers": "Показано {start}-{end} из {total, plural, one {# игрока} few {# игроков} many {# игроков} other {# игроков}}",
+        "refreshing": "обновление…",
+        "perPage": "Строк на странице"
       },
       "a11y": {
         "viewMode": "Режим просмотра",
-        "searchPlayers": "Поиск игроков",
         "collapseDetails": "Свернуть детали игрока",
         "expandDetails": "Развернуть детали игрока",
-        "roleAlt": "Роль {role}",
-        "roleIconAlt": "Значок роли {role}",
-        "roleIcon": "Значок {role}"
+        "roleAlt": "Роль {role}"
       }
     },
     "compare": {

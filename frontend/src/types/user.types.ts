@@ -349,15 +349,9 @@ export interface UserOverviewRoleDivision {
   division_grid_version_id: number | null;
 }
 
-interface UserOverviewHeroMetric {
-  name: LogStatsName;
-  avg_10: number;
-}
-
 export interface UserOverviewHero {
   hero: Hero;
   playtime_seconds: number;
-  metrics: UserOverviewHeroMetric[];
 }
 
 interface UserOverviewAverages {
@@ -367,14 +361,31 @@ interface UserOverviewAverages {
   avg_group_placement: number | null;
 }
 
-export interface UserOverviewRow {
+/** The career aggregates every index surface (table row, catalog card) needs. */
+interface UserOverviewBase {
   id: number;
   name: string;
+  avatar_url: string | null;
   roles: UserOverviewRoleDivision[];
   top_heroes: UserOverviewHero[];
   tournaments_count: number;
   achievements_count: number;
+  maps_won: number;
+  maps_lost: number;
+  /** Distinct encounters with a result — the sample size behind the map winrate. */
+  encounters_played: number;
+  best_placement: number | null;
+  /** ISO date of the last tournament the player appeared in, scope-filtered. */
+  last_active_at: string | null;
+}
+
+export interface UserOverviewRow extends UserOverviewBase {
   averages: UserOverviewAverages;
+}
+
+export interface UserOverviewDivisionCount {
+  division: number;
+  count: number;
 }
 
 export interface UserOverviewStats {
@@ -388,16 +399,15 @@ export interface UserOverviewStats {
   tank_count: number;
   damage_count: number;
   support_count: number;
+  /** "Plays anything": multi-role or explicit flex — wider than the chip below. */
   flex_count: number;
+  /** Users the `role=Flex` chip itself matches, under the other filters. */
+  flex_declared_count: number;
+  /** Per division, ignoring the `divisions` filter so the facet stays usable. */
+  division_counts: UserOverviewDivisionCount[];
 }
 
-export interface UserCatalogEntry {
-  id: number;
-  name: string;
-  roles: UserOverviewRoleDivision[];
-  top_heroes: UserOverviewHero[];
-  tournaments_count: number;
-  achievements_count: number;
+export interface UserCatalogEntry extends UserOverviewBase {
   avg_placement: number | null;
 }
 

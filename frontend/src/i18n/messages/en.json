@@ -166,6 +166,7 @@
       "all": "All workspaces"
     },
     "divisionWithId": "Division {id}",
+    "anyDivision": "Any division",
     "searchDivision": "Search division...",
     "stageWithId": "Stage {id}",
     "showingRange": "Showing {start}–{end} of {total}",
@@ -5129,113 +5130,104 @@
     },
     "list": {
       "meta": {
-        "title": "Users",
-        "description": "View users on {siteName}."
+        "title": "Players",
+        "description": "Browse players on {siteName}."
       },
       "hero": {
         "eyebrowRoster": "Roster",
-        "eyebrowCurrent": "Users",
-        "title": "The players behind the tags",
-        "lede": "Every competitor across every tournament — sliceable by role, division and hero pool. Switch between deep analytics and a fast browsing catalog.",
-        "playtimeFormat": "{h}h {m}m {s}s"
+        "eyebrowCurrent": "Players",
+        "title": "Players",
+        "lede": "Role divisions, tournament results and the hero pool of everyone who has played at least one tournament."
       },
       "stats": {
         "totalPlayers": "Total players",
-        "roleBreakdown": "Tank {tank} · Dmg {damage} · Sup {support}",
+        "activeLast30d": "Active in 30 days",
+        "ofRoster": "{pct}% of roster",
         "withLogs": "With logs",
-        "withParsedGames": "{count} with parsed games",
-        "avgTournamentsPerPlayer": "Avg tournaments / player",
-        "median": "median {value}",
-        "activeLast30d": "Active last 30d",
-        "ofRoster": "{pct}% of roster"
+        "avgTournamentsPerPlayer": "Tournaments per player",
+        "median": "median {value}"
       },
       "view": {
-        "analytics": "Analytics",
-        "analyticsBadge": "deep dive",
-        "catalog": "Catalog",
-        "catalogBadge": "fast browse",
-        "rosterLive": "Roster · live"
+        "table": "Table",
+        "catalog": "Catalog"
       },
       "filters": {
-        "divMin": "Div min: {value}",
-        "divMax": "Div max: {value}",
-        "minDivision": "Minimum division",
-        "maxDivision": "Maximum division",
-        "allDivisions": "All divisions",
-        "allRoles": "All roles",
-        "searchPlaceholder": "Search by name or BattleTag…",
-        "searchByName": "Search by name",
-        "sortValue": "Sort: {value}",
-        "reset": "Reset filters",
-        "heading": "Users Overview",
-        "subheading": "Main info in table view. Expand a row for detailed hero metrics and tournament averages."
-      },
-      "sort": {
-        "name": "Name",
-        "tournaments": "Tournaments",
-        "achievements": "Achievements",
-        "avgPlacement": "Avg placement"
-      },
-      "heroMetrics": {
-        "elims": "Elims",
-        "fb": "FB",
-        "dmg": "Dmg",
-        "heal": "Heal"
+        "roleGroup": "Role",
+        "divisions": "Division",
+        "minEncounters": "Min. encounters",
+        "minEncountersValue": "Min. encounters: {value}",
+        "minEncountersHint": "Winrate stays grey until a player has played at least this many encounters.",
+        "withLogs": "With logs",
+        "searchByName": "Search players",
+        "searchPlaceholder": "Nickname or BattleTag",
+        "found": "Found {count}",
+        "resetAll": "Reset all"
       },
       "table": {
-        "allPlayers": "All players",
-        "pageMeta": "Page {page} of {maxPage} · sorted by {x}",
-        "pageCount": "Page {page} of {maxPage} ({total, plural, one {# user} other {# users}})",
         "player": "Player",
-        "user": "User",
-        "divisions": "Divisions",
+        "roles": "Roles",
+        "tournaments": "Tournaments",
+        "winrate": "Winrate",
+        "avgPlacement": "Avg place",
+        "bestPlacement": "Best",
         "achievements": "Achievements",
-        "avgPlacement": "Avg placement",
-        "topHeroes": "Top heroes",
-        "details": "Details"
+        "topHeroes": "Heroes",
+        "details": "Details",
+        "encounters": "{count, plural, one {# encounter} other {# encounters}}",
+        "noLogs": "no logs",
+        "neverPlayed": "no tournaments"
       },
       "division": {
         "badgeTitle": "{role} • {tier}",
         "noRoles": "No roles"
       },
       "expanded": {
-        "avgPlacement": "Avg placement",
-        "avgPlayoff": "Avg playoff",
-        "avgGroup": "Avg group",
-        "avgCloseness": "Avg closeness",
-        "topHeroesDetails": "Top heroes details",
-        "metricsNote": "All hero metrics are averages per 10 minutes.",
+        "roles": "Roles",
+        "noRoleData": "No role data.",
+        "maps": "{count, plural, one {# map} other {# maps}}",
+        "mapsLabel": "Maps",
+        "tournamentsWon": "Wins",
+        "recentTournaments": "Recent tournaments",
+        "noTournaments": "No tournaments.",
+        "outOf": "of {count}",
+        "heroes": "Heroes",
         "noHeroData": "No hero data.",
-        "noMetrics": "No metrics",
-        "playtime": "Playtime: {value}"
+        "openProfile": "Player profile"
       },
-      "roleLabel": {
-        "unranked": "Unranked"
+      "compare": {
+        "column": "Compare",
+        "toggle": "Add {name} to the comparison",
+        "limit": "You can compare two players",
+        "barLabel": "Player comparison",
+        "title": "Comparison",
+        "remove": "Remove {name}",
+        "clear": "Clear",
+        "open": "Compare",
+        "needTwo": "Pick two players",
+        "addShort": "Add to compare",
+        "removeShort": "Remove from compare"
       },
       "catalog": {
         "jumpTo": "Jump to",
-        "showing": "Showing {count} of {total, plural, one {# player} other {# players}}",
-        "tournaments": "Tourn.",
-        "achievements": "Ach.",
-        "avgPlacement": "Avg pl."
+        "showMore": "Show {count} more",
+        "showing": "Showing {count} of {total, plural, one {# player} other {# players}}"
       },
-      "empty": "No users found for the current filters.",
+      "empty": "No player matches the current filters.",
       "errors": {
-        "overview": "Failed to load users overview.",
-        "catalog": "Failed to load catalog."
+        "overview": "Failed to load the player list.",
+        "catalog": "Failed to load the catalog.",
+        "details": "Failed to load the player card."
       },
       "pagination": {
-        "showingPlayers": "Showing {start}–{end} of {total, plural, one {# player} other {# players}}",
-        "refreshing": "refreshing…"
+        "showingPlayers": "Showing {start}-{end} of {total, plural, one {# player} other {# players}}",
+        "refreshing": "refreshing…",
+        "perPage": "Rows per page"
       },
       "a11y": {
         "viewMode": "View mode",
-        "searchPlayers": "Search players",
-        "collapseDetails": "Collapse user details",
-        "expandDetails": "Expand user details",
-        "roleAlt": "{role} role",
-        "roleIconAlt": "{role} role icon",
-        "roleIcon": "{role} icon"
+        "collapseDetails": "Collapse player details",
+        "expandDetails": "Expand player details",
+        "roleAlt": "{role} role"
       }
     },
     "compare": {

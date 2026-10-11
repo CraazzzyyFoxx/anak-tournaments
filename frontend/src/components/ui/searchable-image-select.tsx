@@ -22,17 +22,17 @@ export interface SearchableImageOption {
   value: string;
   label: string;
   imageSrc?: string | null;
+  /** Optional trailing facet count ("how many rows this option matches"). */
+  count?: number;
 }
 
-interface SearchableImageSelectProps {
-  /** Currently selected value, or undefined when "all" / cleared. */
-  value?: string;
-  /** Called with the new value, or undefined when cleared. */
-  onValueChange: (nextValue: string | undefined) => void;
+interface SearchableImageSelectBaseProps {
   /** Full list of selectable items. */
   options: SearchableImageOption[];
-  /** Placeholder text shown when nothing is selected. Also used as the clear-option label. */
+  /** Placeholder text shown when nothing is selected. */
   placeholder: string;
+  /** Clear row's label; defaults to `placeholder`. */
+  clearLabel?: string;
   /** Placeholder for the search input inside the popover. */
   searchPlaceholder?: string;
   /** `false` drops the clear row, for pickers that always hold a selection. */
@@ -47,28 +47,76 @@ interface SearchableImageSelectProps {
   triggerClassName?: string;
 }
 
-const SearchableImageSelect = ({
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  searchPlaceholder,
-  clearable = true,
-  ariaLabel,
-  isLoading = false,
-  disabled = false,
-  triggerClassName,
-}: SearchableImageSelectProps) => {
+/**
+ * Single- or multi-select, discriminated by `multiple` so a call site cannot
+ * mix the two value shapes. Multi keeps the popover open while toggling —
+ * closing after every pick makes a three-item selection a nine-click job.
+ */
+type SearchableImageSelectProps = SearchableImageSelectBaseProps &
+  (
+    | {
+        multiple?: false;
+        /** Currently selected value, or undefined when "all" / cleared. */
+        value?: string;
+        /** Called with the new value, or undefined when cleared. */
+        onValueChange: (nextValue: string | undefined) => void;
+      }
+    | {
+        multiple: true;
+        /** Currently selected values; empty means "all" / no filter. */
+        values: string[];
+        onValuesChange: (nextValues: string[]) => void;
+      }
+  );
+
+const SearchableImageSelect = (props: SearchableImageSelectProps) => {
+  const {
+    options,
+    placeholder,
+    clearLabel,
+    searchPlaceholder,
+    clearable = true,
+    ariaLabel,
+    isLoading = false,
+    disabled = false,
+    triggerClassName
+  } = props;
   const t = useTranslations();
   const [open, setOpen] = useState(false);
 
   const resolvedSearchPlaceholder = searchPlaceholder ?? t("common.search");
-  const selected = options.find((o) => o.value === value);
+  const selectedValues = props.multiple
+    ? props.values
+    : props.value === undefined
+      ? []
+      : [props.value];
+  const selectedOptions = options.filter((option) => selectedValues.includes(option.value));
 
   const handleSelect = (nextValue: string | undefined) => {
-    onValueChange(nextValue);
+    if (props.multiple) {
+      if (nextValue === undefined) {
+        props.onValuesChange([]);
+        setOpen(false);
+        return;
+      }
+      props.onValuesChange(
+        selectedValues.includes(nextValue)
+          ? selectedValues.filter((value) => value !== nextValue)
+          : [...selectedValues, nextValue]
+      );
+      return;
+    }
+    props.onValueChange(nextValue);
     setOpen(false);
   };
+
+  const triggerLabel = isLoading ? (
+    <Skeleton className="h-4 w-28" />
+  ) : (
+    <span className="truncate">
+      {props.multiple || selectedOptions.length !== 1 ? placeholder : selectedOptions[0].label}
+    </span>
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -87,20 +135,28 @@ const SearchableImageSelect = ({
           )}
         >
           <div className="flex items-center gap-2 overflow-hidden">
-            {selected?.imageSrc ? (
-              <Image
-                src={selected.imageSrc}
-                alt=""
-                width={22}
-                height={22}
-                className="h-5.5 w-5.5 shrink-0 select-none object-contain"
-              />
+            {/* Single-select renames itself to the pick, so its crest leads the
+                label. Multi keeps the facet's own name ("Division") and lets
+                the crests trail it. */}
+            {props.multiple ? triggerLabel : null}
+            <span className={cn("flex items-center", props.multiple ? "-space-x-1.5" : "gap-2")}>
+              {selectedOptions.slice(0, 3).map((option) =>
+                option.imageSrc ? (
+                  <Image
+                    key={option.value}
+                    src={option.imageSrc}
+                    alt=""
+                    width={22}
+                    height={22}
+                    className="h-5.5 w-5.5 shrink-0 select-none object-contain"
+                  />
+                ) : null
+              )}
+            </span>
+            {props.multiple ? null : triggerLabel}
+            {selectedOptions.length > 3 ? (
+              <span className="shrink-0 tabular-nums">+{selectedOptions.length - 3}</span>
             ) : null}
-            {isLoading ? (
-              <Skeleton className="h-4 w-28" />
-            ) : (
-              <span className="truncate">{selected ? selected.label : placeholder}</span>
-            )}
           </div>
           <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -118,13 +174,13 @@ const SearchableImageSelect = ({
             <CommandGroup>
               {clearable ? (
                 <CommandItem
-                  value={`__clear__ ${placeholder}`}
+                  value={`__clear__ ${clearLabel ?? placeholder}`}
                   onSelect={() => handleSelect(undefined)}
                 >
-                  <span>{placeholder}</span>
+                  <span>{clearLabel ?? placeholder}</span>
                   <Check
                     aria-hidden
-                    className={`ml-auto h-4 w-4 ${value === undefined ? "opacity-100" : "opacity-0"}`}
+                    className={`ml-auto h-4 w-4 ${selectedValues.length === 0 ? "opacity-100" : "opacity-0"}`}
                   />
                 </CommandItem>
               ) : null}
@@ -146,9 +202,18 @@ const SearchableImageSelect = ({
                     ) : null}
                     <span>{option.label}</span>
                   </div>
+                  {option.count !== undefined ? (
+                    <span className="ml-auto text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
+                      {option.count}
+                    </span>
+                  ) : null}
                   <Check
                     aria-hidden
-                    className={`ml-auto h-4 w-4 ${value === option.value ? "opacity-100" : "opacity-0"}`}
+                    className={cn(
+                      "h-4 w-4",
+                      option.count === undefined && "ml-auto",
+                      selectedValues.includes(option.value) ? "opacity-100" : "opacity-0"
+                    )}
                   />
                 </CommandItem>
               ))}

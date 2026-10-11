@@ -30,12 +30,15 @@ export const userQueryKeys = {
     ["user-tournaments", userId, workspaceId] as const,
   /** Prefix over every workspace dimension — for invalidation, not for a read. */
   tournamentsAll: (userId: KeyPart) => ["user-tournaments", userId] as const,
-  overviewCatalog: (workspaceId: KeyPart, query: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart, letter: KeyPart) =>
-    ["users-overview-catalog", workspaceId, query, role, divMin, divMax, letter] as const,
-  overviewStats: (workspaceId: KeyPart, query: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart) =>
-    ["users-overview-stats", workspaceId, query, role, divMin, divMax] as const,
-  overview: (workspaceId: KeyPart, page: KeyPart, perPage: KeyPart, query: KeyPart, sort: KeyPart, order: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart) =>
-    ["users-overview", workspaceId, page, perPage, query, sort, order, role, divMin, divMax] as const,
+  overviewCatalog: (workspaceId: KeyPart, query: KeyPart, role: KeyPart, divisions: KeyPart, hasLogs: KeyPart, letter: KeyPart) =>
+    ["users-overview-catalog", workspaceId, query, role, divisions, hasLogs, letter] as const,
+  overviewStats: (workspaceId: KeyPart, query: KeyPart, role: KeyPart, divisions: KeyPart, hasLogs: KeyPart) =>
+    ["users-overview-stats", workspaceId, query, role, divisions, hasLogs] as const,
+  overview: (workspaceId: KeyPart, page: KeyPart, perPage: KeyPart, query: KeyPart, sort: KeyPart, order: KeyPart, role: KeyPart, divisions: KeyPart, hasLogs: KeyPart, minEncounters: KeyPart) =>
+    ["users-overview", workspaceId, page, perPage, query, sort, order, role, divisions, hasLogs, minEncounters] as const,
+  /** The index drawer's per-player career read; `workspaceId` is its scope. */
+  draftCard: (userId: KeyPart, workspaceId: KeyPart) =>
+    ["user-draft-card", userId, workspaceId] as const,
   searchMinimized: (query: KeyPart) => ["users-search-minimized", query] as const,
   compare: (subjectUserId: KeyPart, baseline: KeyPart, targetUserId: KeyPart, role: KeyPart, divMin: KeyPart, divMax: KeyPart, tournamentId: KeyPart, workspaceId: KeyPart) =>
     ["user-compare", subjectUserId, baseline, targetUserId, role, divMin, divMax, tournamentId, workspaceId] as const,

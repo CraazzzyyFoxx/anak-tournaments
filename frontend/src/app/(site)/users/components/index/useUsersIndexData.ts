@@ -18,6 +18,8 @@ export interface UsersIndexData {
   /** 1-based index of the first and last row on screen, or null when empty. */
   range: { start: number; end: number } | null;
   availableLetters: Set<string>;
+  /** `workspace_id` every read on this page is pinned to. */
+  workspaceId: number | "all" | null;
 }
 
 /**
@@ -26,13 +28,27 @@ export interface UsersIndexData {
  */
 export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
   const currentWorkspaceId = useCurrentWorkspaceId();
-  const { page, perPage, query, sort, order, role, divMin, divMax, letter, view, scope } = params;
+  const { page, perPage, query, sort, order, role, divisions, hasLogs, minEncounters, letter, view, scope } =
+    params;
   // One value carries the workspace dimension of every read and every key:
   // a workspace id, or the backend's cross-workspace sentinel.
   const workspaceId = scope === "all" ? "all" : currentWorkspaceId;
+  // Query keys take scalars only, and the array identity changes every render.
+  const divisionsKey = divisions.join(",");
 
   const overviewQuery = useQuery({
-    queryKey: userQueryKeys.overview(workspaceId, page, perPage, query, sort, order, role, divMin, divMax),
+    queryKey: userQueryKeys.overview(
+      workspaceId,
+      page,
+      perPage,
+      query,
+      sort,
+      order,
+      role,
+      divisionsKey,
+      hasLogs,
+      minEncounters
+    ),
     queryFn: () =>
       userService.getUsersOverview({
         page,
@@ -41,23 +57,24 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
         order,
         query: query || undefined,
         role,
-        divMin,
-        divMax,
+        divisions,
+        hasLogs,
+        minEncounters,
         workspaceId
       }),
     placeholderData: (previousData) => previousData,
     staleTime: 30_000,
-    enabled: view === "analytics"
+    enabled: view === "table"
   });
 
   const statsQuery = useQuery({
-    queryKey: userQueryKeys.overviewStats(workspaceId, query, role, divMin, divMax),
+    queryKey: userQueryKeys.overviewStats(workspaceId, query, role, divisionsKey, hasLogs),
     queryFn: () =>
       userService.getUsersOverviewStats({
         query: query || undefined,
         role,
-        divMin,
-        divMax,
+        divisions,
+        hasLogs,
         workspaceId
       }),
     placeholderData: (previousData) => previousData,
@@ -65,15 +82,15 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
   });
 
   const catalogQuery = useQuery({
-    queryKey: userQueryKeys.overviewCatalog(workspaceId, query, role, divMin, divMax, letter),
+    queryKey: userQueryKeys.overviewCatalog(workspaceId, query, role, divisionsKey, hasLogs, letter),
     queryFn: () =>
       userService.getUsersCatalog({
         query: query || undefined,
         role,
-        divMin,
-        divMax,
+        // A pinned letter is the "show more" affordance: one bucket, deeper.
+        perLetter: letter ? 48 : 12,
+        hasLogs,
         letter,
-        perLetter: 12,
         maxLetters: 27,
         workspaceId
       }),
@@ -99,5 +116,5 @@ export function useUsersIndexData(params: UsersIndexParams): UsersIndexData {
     [catalogQuery.data]
   );
 
-  return { overviewQuery, statsQuery, catalogQuery, maxPage, range, availableLetters };
+  return { overviewQuery, statsQuery, catalogQuery, maxPage, range, availableLetters, workspaceId };
 }

@@ -7,10 +7,23 @@ import { useQueryParams } from "@/hooks/useQueryParams";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { clampDivisionToGrid, getDefaultDivisionGrid } from "@/lib/divisions/grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
-import { parseOptionalInt, parsePositiveInt } from "@/app/(site)/users/components/shared/list-utils";
+import { parsePositiveInt } from "@/app/(site)/users/components/shared/list-utils";
 import type { UserRoleType } from "@/types/user.types";
 
-import { parseOrder, parseSort, parseView, type OrderValue, type SortValue, type ViewMode } from "./users-index.model";
+import {
+  DEFAULT_MIN_ENCOUNTERS,
+  PER_PAGE_OPTIONS,
+  defaultOrderFor,
+  parseDivisions,
+  parseMinEncounters,
+  parseOrder,
+  parsePerPage,
+  parseSort,
+  parseView,
+  type OrderValue,
+  type SortValue,
+  type ViewMode
+} from "./users-index.model";
 
 export interface UsersIndexParams {
   page: number;
@@ -20,8 +33,12 @@ export interface UsersIndexParams {
   order: OrderValue;
   view: ViewMode;
   role: UserRoleType | undefined;
-  divMin: number | undefined;
-  divMax: number | undefined;
+  /** Division numbers from `?div=3,5,7`; empty means no division filter. */
+  divisions: number[];
+  /** `?logs=1`: only players with parsed match logs. */
+  hasLogs: boolean;
+  /** Winrate sample floor; below it a player sorts last and its WR reads faint. */
+  minEncounters: number;
   letter: string | undefined;
   /** Resolved server-side: `all` reads every workspace (platform apex only). */
   scope: StatsScope;
@@ -33,13 +50,18 @@ export interface UsersIndexParamControls {
   searchInput: string;
   setSearchInput: (value: string) => void;
   setRole: (value: "all" | UserRoleType) => void;
-  setDivMin: (value: string) => void;
-  setDivMax: (value: string) => void;
-  setSort: (value: SortValue) => void;
-  setOrder: (value: OrderValue) => void;
+  setDivisions: (value: number[]) => void;
+  setHasLogs: (value: boolean) => void;
+  setMinEncounters: (value: number) => void;
+  /** Applies a column sort: same column flips the direction, a new one starts at its default. */
+  toggleSort: (value: SortValue) => void;
   setView: (value: ViewMode) => void;
   setLetter: (value: string | null) => void;
   setPage: (value: number) => void;
+  setPerPage: (value: number) => void;
+  /** Any filter narrowing the list (not sort, paging or the view). */
+  hasActiveFilters: boolean;
+  resetFilters: () => void;
 }
 
 /**
@@ -55,16 +77,21 @@ export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls 
   const divisionGrid = scope === "all" ? getDefaultDivisionGrid() : workspaceGrid;
 
   const query = searchParams?.get("query") ?? "";
+  const sort = parseSort(searchParams?.get("sort") ?? null);
+  const divisions = parseDivisions(searchParams?.get("div") ?? null).filter(
+    (division) => clampDivisionToGrid(divisionGrid, division) === division
+  );
   const params: UsersIndexParams = {
     page: parsePositiveInt(searchParams?.get("page") ?? null, 1),
-    perPage: parsePositiveInt(searchParams?.get("per_page") ?? null, 20),
+    perPage: parsePerPage(searchParams?.get("per_page") ?? null),
     query,
-    sort: parseSort(searchParams?.get("sort") ?? null),
-    order: parseOrder(searchParams?.get("order") ?? null),
+    sort,
+    order: parseOrder(searchParams?.get("order") ?? null, sort),
     view: parseView(searchParams?.get("view") ?? null),
     role: (searchParams?.get("role") as UserRoleType | null) ?? undefined,
-    divMin: clampDivisionToGrid(divisionGrid, parseOptionalInt(searchParams?.get("div_min") ?? null)),
-    divMax: clampDivisionToGrid(divisionGrid, parseOptionalInt(searchParams?.get("div_max") ?? null)),
+    divisions,
+    hasLogs: searchParams?.get("logs") === "1",
+    minEncounters: parseMinEncounters(searchParams?.get("min_encounters") ?? null),
     letter: searchParams?.get("letter") ?? undefined,
     scope
   };
@@ -83,27 +110,46 @@ export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls 
     setParams({ query: normalizedInput || undefined });
   }, [debouncedSearch, query, setParams]);
 
-  const setDivision = useCallback(
-    (key: "div_min" | "div_max", value: string) => {
-      setParams({
-        [key]:
-          value === "all" ? undefined : clampDivisionToGrid(divisionGrid, parseOptionalInt(value))
-      });
-    },
-    [divisionGrid, setParams]
-  );
+  const resetFilters = useCallback(() => {
+    setParams({
+      query: undefined,
+      role: undefined,
+      div: undefined,
+      logs: undefined,
+      letter: undefined,
+      min_encounters: undefined
+    });
+  }, [setParams]);
 
   return {
     params,
     searchInput,
     setSearchInput,
     setRole: (value) => setParams({ role: value === "all" ? undefined : value }),
-    setDivMin: (value) => setDivision("div_min", value),
-    setDivMax: (value) => setDivision("div_max", value),
-    setSort: (value) => setParams({ sort: value }),
-    setOrder: (value) => setParams({ order: value }),
-    setView: (value) => setParams({ view: value === "analytics" ? undefined : value }),
+    setDivisions: (value) =>
+      setParams({ div: value.length === 0 ? undefined : [...value].sort((a, b) => a - b).join(",") }),
+    setHasLogs: (value) => setParams({ logs: value ? "1" : undefined }),
+    // The default is implied, never written: a shared link should not carry a
+    // param the user never touched.
+    setMinEncounters: (value) =>
+      setParams({ min_encounters: value === DEFAULT_MIN_ENCOUNTERS ? undefined : value }),
+    toggleSort: (value) =>
+      setParams(
+        value === params.sort
+          ? { order: params.order === "asc" ? "desc" : "asc" }
+          : { sort: value, order: defaultOrderFor(value) }
+      ),
+    setView: (value) => setParams({ view: value === "table" ? undefined : value }),
     setLetter: (value) => setParams({ letter: value === null ? undefined : value }),
-    setPage: (value) => setParams({ page: value })
+    setPage: (value) => setParams({ page: value }),
+    setPerPage: (value) =>
+      setParams({ per_page: value === PER_PAGE_OPTIONS[0] ? undefined : value }),
+    hasActiveFilters:
+      query.trim().length > 0 ||
+      params.role !== undefined ||
+      divisions.length > 0 ||
+      params.hasLogs ||
+      params.letter !== undefined,
+    resetFilters
   };
 }

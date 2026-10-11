@@ -57,12 +57,6 @@ export const toFraction = (value: number | null | undefined): number | null => {
   return value <= 1 ? value : value / 100;
 };
 
-// ≥60 good · 50–59 mid · <50 bad (design-book §1 winrate thresholds).
-export const winrateColor = (pct: number): string => {
-  if (pct >= 60) return "var(--aqt-emerald)";
-  if (pct >= 50) return "var(--aqt-amber)";
-  return "var(--aqt-rose)";
-};
 
 export const statAvg10 = (stats: HeroWithUserStats["stats"], name: LogStatsName): number | null => {
   const stat = stats.find((s) => s.name === name);

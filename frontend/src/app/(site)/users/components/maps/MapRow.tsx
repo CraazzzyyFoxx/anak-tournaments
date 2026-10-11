@@ -5,7 +5,7 @@ import { UserMapRead } from "@/types/user.types";
 import HeroImage from "@/components/hero/HeroImage";
 import HeroUserStatsPopover from "@/components/hero/HeroUserStatsPopover";
 import { AvatarStack } from "@/components/ui/avatar";
-import { winrateColor } from "@/app/(site)/users/components/heroes/utils";
+import { winrateColor } from "@/lib/colors";
 
 const MapRow = ({ row }: { row: UserMapRead }) => {
   const wr = row.win_rate * 100;
