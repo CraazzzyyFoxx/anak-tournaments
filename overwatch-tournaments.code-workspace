@@ -49,18 +49,18 @@
         "ty.interpreter": "${workspaceFolder:anak-tournaments}/backend/.venv/Scripts/python.exe",
         "ty.configuration": {
             "environment": {
-                "python": "${workspaceFolder:anak-tournaments}/backend/.venv",
+                "python": "backend/.venv",
                 "python-version": "3.14",
                 "root": [
-                    "${workspaceFolder:anak-tournaments}/backend",
-                    "${workspaceFolder:anak-tournaments}/backend/app-service",
-                    "${workspaceFolder:anak-tournaments}/backend/identity-service",
-                    "${workspaceFolder:anak-tournaments}/backend/parser-service",
-                    "${workspaceFolder:anak-tournaments}/backend/tournament-service",
-                    "${workspaceFolder:anak-tournaments}/backend/balancer-service",
-                    "${workspaceFolder:anak-tournaments}/backend/discord-service",
-                    "${workspaceFolder:anak-tournaments}/backend/analytics-service",
-                    "${workspaceFolder:anak-tournaments}/backend/stream-service"
+                    "backend",
+                    "backend/app-service",
+                    "backend/identity-service",
+                    "backend/parser-service",
+                    "backend/tournament-service",
+                    "backend/balancer-service",
+                    "backend/discord-service",
+                    "backend/analytics-service",
+                    "backend/stream-service"
                 ]
             }
         }
