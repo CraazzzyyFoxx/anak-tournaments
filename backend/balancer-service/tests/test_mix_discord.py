@@ -15,7 +15,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from PIL import Image  # noqa: E402
 
-from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from shared.domain.discord_ui import SHORTCODE  # noqa: E402
 from src.domain.mix_discord import SignupPlayer, lineup_card, lineup_picture, signup_card  # noqa: E402
 from src.domain.mix_lineup_image import render_png  # noqa: E402
@@ -253,7 +252,6 @@ def _picture(document: dict, **overrides):
         "map_image": None,
         "points_per_win": None,
         "board_url": BOARD_URL,
-        "grid": DEFAULT_GRID,
     }
     kwargs.update(overrides)
     return lineup_picture(**kwargs)

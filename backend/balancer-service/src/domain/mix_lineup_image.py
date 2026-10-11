@@ -5,9 +5,9 @@ it out in the site's own look -- the mix board's matchup card (one panel, two
 team columns around a VS seam, a tile per seat with role, rank badge, name and
 rating) over the next map's art.
 
-Pictures come by URL, the ones the database holds: the map's ``image_path``
-and the rank badge of the division grid tier (the production bucket in
-practice). :func:`load_images` fetches them before drawing and keeps them for an
+Pictures come by URL: the map's art as the database holds it (``image_path``)
+and the OW2 ladder's rank badge, served by the site (``mix_discord``).
+:func:`load_images` fetches them before drawing and keeps them for an
 hour; one that fails to load is simply left out of the picture, the post still
 goes. Fonts (Onest for headings, Inter for the rest -- the site's two faces) and
 the role glyphs are local copies in ``assets/lineup``.

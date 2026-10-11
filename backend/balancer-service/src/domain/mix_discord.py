@@ -28,7 +28,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin
 
-from shared.division_grid import DEFAULT_GRID, DivisionGrid
+from shared.division_grid import DEFAULT_GRID
 from shared.domain.discord_ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division_emoji, emoji
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.schemas.events import DiscordActionButton, DiscordCard, DiscordLinkButton
@@ -216,26 +216,23 @@ def signup_card(
     )
 
 
-def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any], grid: DivisionGrid, board_url: str) -> LineupSeat:
+def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any], board_url: str) -> LineupSeat:
     rating = int(seat_rating(player, bucket))
-    icon = grid.resolve_division(rating).icon_url
+    icon = DEFAULT_GRID.resolve_division(rating).icon_url
     return LineupSeat(
         role=role_slot_code(bucket),
         name=str(player.get("name") or f"#{uuid}"),
         rating=rating,
-        # A stored grid holds absolute (bucket) URLs; the in-code ladder a
-        # site-relative ``/divisions/...`` the site itself serves.
+        # The ladder's badges are site-relative (``/divisions/<slug>.png``), served by the site itself.
         division_icon=urljoin(board_url, icon) if icon else None,
         captain=player.get("is_captain") is True,
     )
 
 
-def _picture_team(
-    name: str, team: Mapping[str, Any], players: Mapping[str, Any], grid: DivisionGrid, board_url: str
-) -> LineupTeam:
+def _picture_team(name: str, team: Mapping[str, Any], players: Mapping[str, Any], board_url: str) -> LineupTeam:
     roster = team.get("roster")
     seats = tuple(
-        _picture_seat(bucket, str(uuid), players.get(str(uuid)) or {}, grid, board_url)
+        _picture_seat(bucket, str(uuid), players.get(str(uuid)) or {}, board_url)
         for bucket, uuids in (roster.items() if isinstance(roster, Mapping) else ())
         if isinstance(uuids, list)
         for uuid in uuids
@@ -263,20 +260,20 @@ def lineup_picture(
     map_image: str | None,
     points_per_win: int | None,
     board_url: str,
-    grid: DivisionGrid,
     lobby_label: str | None = None,
 ) -> LineupPicture:
     """What the matchup picture of one lobby shows.
 
     ``variant`` is one option of a stored ``lobby_document`` and ``players``
     that document's player map, which its seat uuids resolve against. A rank
-    badge is the ``grid`` tier the seat's rating lands in -- the grid the mix
-    balances on -- and ``map_image`` the next map's art, both as the database
-    stores their URLs.
+    badge is the Overwatch 2 ladder tier the seat's rating lands in, the one
+    the mix board badges with (``OW_REFERENCE_GRID``) -- not a workspace's
+    tournament grid. ``map_image`` is the next map's art as the database
+    stores its URL.
     """
     raw_teams = variant.get("teams")
     teams = tuple(
-        _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players, grid, board_url)
+        _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players, board_url)
         for index, team in enumerate(raw_teams if isinstance(raw_teams, list) else [])
         if isinstance(team, Mapping)
     )

@@ -140,9 +140,10 @@ the roster last writes and queues last, so a burst of Join clicks converges on t
 **Lineup picture.** The lineup card shows the matchup as a 1200×630 PNG drawn here with Pillow
 (`src/domain/mix_lineup_image.py`) from the stored balance, in the mix board's own look: the next
 map's art behind one card with both teams around a VS seam, a tile per seat (role, rank badge, name,
-rating), team averages and the gap between them. The map art and the rank badges are fetched by the
-URLs the database holds (`map.image_path`, the division grid tier's `icon_url`; a site-relative one
-is resolved against `PUBLIC_SITE_URL`), with a 3 s timeout and an hour's in-memory cache; one that
+rating), team averages and the gap between them. The map art comes by the URL the database holds
+(`map.image_path`); the rank badge is the Overwatch 2 ladder tier the seat's rating lands in — the
+board's own `OW_REFERENCE_GRID`, never a workspace's tournament grid — served by the site at
+`PUBLIC_SITE_URL/divisions/<slug>.png`. Both are fetched with a 3 s timeout and an hour's in-memory cache; one that
 fails to load is left out and the post still goes. Fonts (Onest, Inter — the site's faces) and the
 role glyphs are copies in `assets/lineup`. The file name hashes everything drawn, so a card that
 would look the same is skipped without drawing, and a card whose text changed but whose picture did

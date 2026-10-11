@@ -2259,8 +2259,6 @@ class CustomGameService:
             map_image=map_image,
             points_per_win=points_per_win,
             board_url=board_url,
-            # The grid the mix balances on (``balance``), so a badge is the rank it was seated at.
-            grid=await get_effective_division_grid(session, game.workspace_id),
             lobby_label=lobby_label,
         )
         card = lineup_card(
