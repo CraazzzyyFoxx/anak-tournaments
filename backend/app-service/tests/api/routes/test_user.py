@@ -521,15 +521,17 @@ def test_search_user(
         "order",
         "query",
         "role",
-        "div_min",
-        "div_max",
+        "divisions",
+        "has_logs",
     ),
     [
-        (1, 10, "name", "asc", "", None, None, None),
-        (1, 10, "tournaments_count", "desc", "", None, None, None),
-        (1, 10, "achievements_count", "desc", "", None, None, None),
-        (1, 10, "avg_placement", "asc", "cra", None, None, None),
-        (1, 10, "name", "asc", "", "Damage", 8, 20),
+        (1, 10, "name", "asc", "", None, None, False),
+        (1, 10, "tournaments_count", "desc", "", None, None, False),
+        (1, 10, "achievements_count", "desc", "", None, None, False),
+        (1, 10, "avg_placement", "asc", "cra", None, None, False),
+        (1, 10, "winrate", "desc", "", None, None, True),
+        (1, 10, "best_placement", "asc", "", None, None, False),
+        (1, 10, "name", "asc", "", "Damage", [8, 9, 10], False),
     ],
 )
 def test_get_users_overview(
@@ -540,8 +542,8 @@ def test_get_users_overview(
     order: str,
     query: str,
     role: str | None,
-    div_min: int | None,
-    div_max: int | None,
+    divisions: list[int] | None,
+    has_logs: bool,
 ) -> None:
     params: dict[str, object] = {
         "page": page,
@@ -549,13 +551,12 @@ def test_get_users_overview(
         "sort": sort,
         "order": order,
         "query": query,
+        "has_logs": has_logs,
     }
     if role is not None:
         params["role"] = role
-    if div_min is not None:
-        params["div_min"] = div_min
-    if div_max is not None:
-        params["div_max"] = div_max
+    if divisions is not None:
+        params["divisions"] = divisions
 
     env = rpc.call_sync("rpc.app.users.overview", {"query": build_query(params)})
     assert env["ok"] is True
@@ -569,12 +570,20 @@ def test_get_users_overview(
         first = content["results"][0]
         assert "id" in first
         assert "name" in first
+        assert "avatar_url" in first
         assert "roles" in first
         assert "top_heroes" in first
         assert "tournaments_count" in first
         assert "achievements_count" in first
+        assert "maps_won" in first
+        assert "maps_lost" in first
+        assert "encounters_played" in first
+        assert "best_placement" in first
+        assert "last_active_at" in first
         assert "averages" in first
         assert len(first["top_heroes"]) <= 5
+        # top_heroes carries playtime only — the per-10 metrics are gone.
+        assert all(set(hero) == {"hero", "playtime_seconds"} for hero in first["top_heroes"])
 
         if query:
             assert query.lower() in first["name"].lower()
@@ -582,18 +591,17 @@ def test_get_users_overview(
         if role is not None:
             assert any(role_row["role"] == role for role_row in first["roles"])
 
-        if div_min is not None:
-            max_division = div_max if div_max is not None else 999
-            assert any(div_min <= role_row["division"] <= max_division for role_row in first["roles"])
+        if divisions is not None:
+            assert any(role_row["division"] in divisions for role_row in first["roles"])
 
 
-def test_get_users_overview_invalid_division_range(rpc: RpcHarness) -> None:
+def test_get_users_overview_rejects_a_division_outside_the_grid(rpc: RpcHarness) -> None:
     env = rpc.call_sync(
         "rpc.app.users.overview",
-        {"query": build_query({"div_min": 15, "div_max": 5})},
+        {"query": build_query({"divisions": [3, 99]})},
     )
     assert env["ok"] is False
-    assert env["error"]["code"] == "bad_request"
+    assert env["error"]["code"] == "unprocessable"
 
 
 @pytest.mark.parametrize(("user_id",), [(599,), (79,)])

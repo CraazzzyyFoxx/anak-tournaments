@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import typing
 from collections import Counter
 from statistics import mean
@@ -51,14 +52,6 @@ tournament_stats = [
     enums.LogStatsName.DamageDelta,
     enums.LogStatsName.Deaths,
     enums.LogStatsName.Performance,
-]
-
-
-overview_hero_metrics_order = [
-    enums.LogStatsName.Eliminations,
-    enums.LogStatsName.FinalBlows,
-    enums.LogStatsName.HeroDamageDealt,
-    enums.LogStatsName.HealingDealt,
 ]
 
 
@@ -306,7 +299,6 @@ class UserService:
 
     async def _gather_overview_enrichment(
         self,
-        session: AsyncSession,
         user_ids: list[int],
         *,
         workspace_id: int | None,
@@ -315,29 +307,22 @@ class UserService:
         dict[int, list[tuple[enums.HeroClass, int, int | None]]],
         dict[int, int],
         dict[int, int],
-        dict[int, tuple[float | None, float | None, float | None, float | None]],
+        dict[int, tuple[float | None, float | None, float | None, float | None, int | None]],
         dict[int, list[tuple[models.Hero, float]]],
-        dict[tuple[int, int], dict[enums.LogStatsName, float]],
+        dict[int, tuple[int, int, int]],
+        dict[int, datetime.datetime | None],
     ]:
         """Fan out the independent per-page aggregates.
 
         AsyncSession is not concurrency-safe, so each parallel query gets
-        its own session (same pattern as DashboardService._gather). Hero
-        metrics need the top-heroes map, so they run after the gather on the
-        request session.
+        its own session (same pattern as DashboardService._gather).
         """
 
         async def _isolated(fn):
             async with async_session_maker() as isolated:
                 return await fn(isolated)
 
-        (
-            raw_roles_map,
-            tournaments_count_map,
-            achievements_count_map,
-            averages_map,
-            top_heroes_map,
-        ) = await asyncio.gather(
+        return await asyncio.gather(
             _isolated(lambda s: self.overview.get_overview_role_divisions(s, user_ids, workspace_id=workspace_id)),
             _isolated(lambda s: self.overview.get_overview_tournaments_count(s, user_ids, workspace_id=workspace_id)),
             _isolated(lambda s: self.overview.get_overview_achievements_count(s, user_ids, workspace_id=workspace_id)),
@@ -347,17 +332,8 @@ class UserService:
                     s, user_ids, limit=top_heroes_limit, workspace_id=workspace_id
                 )
             ),
-        )
-        hero_metrics_map = await self.overview.get_overview_top_hero_metrics(
-            session, top_heroes_map, workspace_id=workspace_id
-        )
-        return (
-            raw_roles_map,
-            tournaments_count_map,
-            achievements_count_map,
-            averages_map,
-            top_heroes_map,
-            hero_metrics_map,
+            _isolated(lambda s: self.overview.get_overview_map_records(s, user_ids, workspace_id=workspace_id)),
+            _isolated(lambda s: self.overview.get_overview_last_active(s, user_ids, workspace_id=workspace_id)),
         )
 
     async def get_overview(
@@ -369,17 +345,6 @@ class UserService:
         grid: DivisionGrid,
         normalizer: DivisionGridNormalizer | None = None,
     ) -> schemas.UserOverviewResponse:
-        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="invalid_filter",
-                        msg="div_min must be less than or equal to div_max.",
-                    )
-                ],
-            )
-
         users, total = await self.overview.get_overview_users(session, params, grid, workspace_id=workspace_id)
         if not users:
             return schemas.UserOverviewResponse(
@@ -396,8 +361,9 @@ class UserService:
             achievements_count_map,
             averages_map,
             top_heroes_map,
-            hero_metrics_map,
-        ) = await self._gather_overview_enrichment(session, user_ids, workspace_id=workspace_id)
+            map_records_map,
+            last_active_map,
+        ) = await self._gather_overview_enrichment(user_ids, workspace_id=workspace_id)
 
         roles_by_user, division_grids = await _overview_role_divisions(
             session,
@@ -409,44 +375,32 @@ class UserService:
 
         rows: list[schemas.UserOverviewRow] = []
         for user in users:
-            roles = roles_by_user.get(user.id, [])
-
-            top_heroes: list[schemas.UserOverviewHero] = []
-            for hero, playtime_seconds in top_heroes_map.get(user.id, []):
-                metrics_payload: list[schemas.UserOverviewHeroMetric] = []
-                metrics = hero_metrics_map.get((user.id, hero.id), {})
-                for metric_name in overview_hero_metrics_order:
-                    metric_value = metrics.get(metric_name)
-                    if metric_value is None:
-                        continue
-                    metrics_payload.append(
-                        schemas.UserOverviewHeroMetric(
-                            name=metric_name,
-                            avg_10=round(metric_value, 2),
-                        )
-                    )
-
-                top_heroes.append(
-                    schemas.UserOverviewHero(
-                        hero=hero_service.to_read(hero),
-                        playtime_seconds=round(playtime_seconds, 2),
-                        metrics=metrics_payload,
-                    )
-                )
-
-            avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness = averages_map.get(
-                user.id,
-                (None, None, None, None),
+            avg_placement, avg_playoff_placement, avg_group_placement, avg_closeness, best_placement = averages_map.get(
+                user.id, (None, None, None, None, None)
             )
+            maps_won, maps_lost, encounters_played = map_records_map.get(user.id, (0, 0, 0))
+            last_active = last_active_map.get(user.id)
 
             rows.append(
                 schemas.UserOverviewRow(
                     id=user.id,
                     name=user.name,
-                    roles=roles,
-                    top_heroes=top_heroes,
+                    avatar_url=user.avatar_url,
+                    roles=roles_by_user.get(user.id, []),
+                    top_heroes=[
+                        schemas.UserOverviewHero(
+                            hero=hero_service.to_read(hero),
+                            playtime_seconds=round(playtime_seconds, 2),
+                        )
+                        for hero, playtime_seconds in top_heroes_map.get(user.id, [])
+                    ],
                     tournaments_count=tournaments_count_map.get(user.id, 0),
                     achievements_count=achievements_count_map.get(user.id, 0),
+                    maps_won=maps_won,
+                    maps_lost=maps_lost,
+                    encounters_played=encounters_played,
+                    best_placement=best_placement,
+                    last_active_at=last_active.date().isoformat() if last_active is not None else None,
                     averages=schemas.UserOverviewAverages(
                         avg_closeness=round(avg_closeness, 2) if avg_closeness is not None else None,
                         avg_placement=round(avg_placement, 2) if avg_placement is not None else None,
@@ -474,22 +428,11 @@ class UserService:
         grid: DivisionGrid,
         workspace_id: int | None = None,
     ) -> schemas.UserOverviewStats:
-        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="invalid_filter",
-                        msg="div_min must be less than or equal to div_max.",
-                    )
-                ],
-            )
-
         payload = await self.overview.get_overview_stats(
             session,
             role=params.role,
-            div_min=params.div_min,
-            div_max=params.div_max,
+            divisions=params.divisions,
+            has_logs=params.has_logs,
             query=params.query,
             grid=grid,
             workspace_id=workspace_id,
@@ -505,22 +448,11 @@ class UserService:
         normalizer: DivisionGridNormalizer | None = None,
         workspace_id: int | None = None,
     ) -> schemas.UserCatalogResponse:
-        if params.div_min is not None and params.div_max is not None and params.div_min > params.div_max:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="invalid_filter",
-                        msg="div_min must be less than or equal to div_max.",
-                    )
-                ],
-            )
-
         letters_with_users, total_users, available_letters = await self.overview.get_catalog_users(
             session,
             role=params.role,
-            div_min=params.div_min,
-            div_max=params.div_max,
+            divisions=params.divisions,
+            has_logs=params.has_logs,
             query=params.query,
             letter=params.letter,
             per_letter=params.per_letter,
@@ -544,9 +476,9 @@ class UserService:
             achievements_count_map,
             averages_map,
             top_heroes_map,
-            hero_metrics_map,
+            map_records_map,
+            last_active_map,
         ) = await self._gather_overview_enrichment(
-            session,
             user_ids,
             workspace_id=workspace_id,
             top_heroes_limit=3,
@@ -564,40 +496,30 @@ class UserService:
         for letter_label, users in letters_with_users:
             entries: list[schemas.UserCatalogEntry] = []
             for user in users:
-                roles = roles_by_user.get(user.id, [])
-
-                top_heroes: list[schemas.UserOverviewHero] = []
-                for hero, playtime_seconds in top_heroes_map.get(user.id, []):
-                    metrics_payload: list[schemas.UserOverviewHeroMetric] = []
-                    metrics = hero_metrics_map.get((user.id, hero.id), {})
-                    for metric_name in overview_hero_metrics_order:
-                        metric_value = metrics.get(metric_name)
-                        if metric_value is None:
-                            continue
-                        metrics_payload.append(
-                            schemas.UserOverviewHeroMetric(
-                                name=metric_name,
-                                avg_10=round(metric_value, 2),
-                            )
-                        )
-                    top_heroes.append(
-                        schemas.UserOverviewHero(
-                            hero=hero_service.to_read(hero),
-                            playtime_seconds=round(playtime_seconds, 2),
-                            metrics=metrics_payload,
-                        )
-                    )
-
-                avg_placement, _, _, _ = averages_map.get(user.id, (None, None, None, None))
+                avg_placement, _, _, _, best_placement = averages_map.get(user.id, (None, None, None, None, None))
+                maps_won, maps_lost, encounters_played = map_records_map.get(user.id, (0, 0, 0))
+                last_active = last_active_map.get(user.id)
 
                 entries.append(
                     schemas.UserCatalogEntry(
                         id=user.id,
                         name=user.name,
-                        roles=roles,
-                        top_heroes=top_heroes,
+                        avatar_url=user.avatar_url,
+                        roles=roles_by_user.get(user.id, []),
+                        top_heroes=[
+                            schemas.UserOverviewHero(
+                                hero=hero_service.to_read(hero),
+                                playtime_seconds=round(playtime_seconds, 2),
+                            )
+                            for hero, playtime_seconds in top_heroes_map.get(user.id, [])
+                        ],
                         tournaments_count=tournaments_count_map.get(user.id, 0),
                         achievements_count=achievements_count_map.get(user.id, 0),
+                        maps_won=maps_won,
+                        maps_lost=maps_lost,
+                        encounters_played=encounters_played,
+                        best_placement=best_placement,
+                        last_active_at=last_active.date().isoformat() if last_active is not None else None,
                         avg_placement=round(avg_placement, 2) if avg_placement is not None else None,
                     )
                 )

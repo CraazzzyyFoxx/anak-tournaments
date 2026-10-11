@@ -13179,10 +13179,25 @@ export interface components {
         "app.UserCatalogEntry": {
             /** Achievements Count */
             achievements_count: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
             /** Avg Placement */
             avg_placement: number | null;
+            /** Best Placement */
+            best_placement: number | null;
+            /** Encounters Played */
+            encounters_played: number;
             /** Id */
             id: number;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
             /** Name */
             name: string;
             /** Roles */
@@ -13580,19 +13595,18 @@ export interface components {
             /** Avg Playoff Placement */
             avg_playoff_placement: number | null;
         };
+        /** UserOverviewDivisionCount */
+        "app.UserOverviewDivisionCount": {
+            /** Count */
+            count: number;
+            /** Division */
+            division: number;
+        };
         /** UserOverviewHero */
         "app.UserOverviewHero": {
             hero: components["schemas"]["app.HeroRead"];
-            /** Metrics */
-            metrics: components["schemas"]["app.UserOverviewHeroMetric"][];
             /** Playtime Seconds */
             playtime_seconds: number;
-        };
-        /** UserOverviewHeroMetric */
-        "app.UserOverviewHeroMetric": {
-            /** Avg 10 */
-            avg_10: number;
-            name: components["schemas"]["app.LogStatsName"];
         };
         /**
          * UserOverviewResponse
@@ -13625,9 +13639,24 @@ export interface components {
         "app.UserOverviewRow": {
             /** Achievements Count */
             achievements_count: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
             averages: components["schemas"]["app.UserOverviewAverages"];
+            /** Best Placement */
+            best_placement: number | null;
+            /** Encounters Played */
+            encounters_played: number;
             /** Id */
             id: number;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
             /** Name */
             name: string;
             /** Roles */
@@ -13647,8 +13676,12 @@ export interface components {
             avg_tournaments_per_player: number;
             /** Damage Count */
             damage_count: number;
+            /** Division Counts */
+            division_counts?: components["schemas"]["app.UserOverviewDivisionCount"][];
             /** Flex Count */
             flex_count: number;
+            /** Flex Declared Count */
+            flex_declared_count: number;
             /** Median Tournaments Per Player */
             median_tournaments_per_player: number;
             /** Support Count */
@@ -41896,8 +41929,9 @@ export interface operations {
                 query?: string;
                 fields?: string[];
                 role?: components["schemas"]["app.HeroClass"] | null;
-                div_min?: number | null;
-                div_max?: number | null;
+                divisions?: number[];
+                has_logs?: boolean;
+                min_encounters?: number;
             };
             header?: never;
             path?: never;
@@ -41958,8 +41992,8 @@ export interface operations {
         parameters: {
             query?: {
                 role?: components["schemas"]["app.HeroClass"] | null;
-                div_min?: number | null;
-                div_max?: number | null;
+                divisions?: number[];
+                has_logs?: boolean;
                 query?: string | null;
                 letter?: string | null;
                 per_letter?: number;
@@ -42024,8 +42058,8 @@ export interface operations {
         parameters: {
             query?: {
                 role?: components["schemas"]["app.HeroClass"] | null;
-                div_min?: number | null;
-                div_max?: number | null;
+                divisions?: number[];
+                has_logs?: boolean;
                 query?: string | null;
             };
             header?: never;
@@ -73387,7 +73421,9 @@ export enum PathsApiV1UsersOverviewGetParametersQuerySort {
     name = "name",
     tournaments_count = "tournaments_count",
     achievements_count = "achievements_count",
-    avg_placement = "avg_placement"
+    avg_placement = "avg_placement",
+    winrate = "winrate",
+    best_placement = "best_placement"
 }
 export enum PathsApiV1UsersIdCompareGetParametersQueryBaseline {
     target_user = "target_user",

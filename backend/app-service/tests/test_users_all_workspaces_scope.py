@@ -84,20 +84,49 @@ class WorkspaceScopeParsingTests(TestCase):
 
 
 class OverviewDivisionFilterTests(TestCase):
-    """``div_min``/``div_max`` cannot be translated once for everyone."""
+    """The ``divisions`` chips cannot be translated once for everyone."""
 
-    def test_scoped_read_filters_on_an_indexable_rank_range(self) -> None:
+    def test_scoped_read_filters_on_indexable_rank_ranges(self) -> None:
         sql = _compiled(
             _scope._apply_overview_role_filters(
                 sa.select(models.User.id),
                 role=None,
-                div_min=3,
-                div_max=5,
+                divisions=[3, 5],
                 grid=DEFAULT_GRID,
                 workspace_id=7,
             )
         )
         self.assertIn("player.rank >= ", sql)
+        self.assertNotIn("division_grid_tier", sql)
+        # A set of divisions is an OR of per-division rank ranges, not one span:
+        # picking 3 and 5 must not drag 4 in with them.
+        self.assertIn(" OR ", sql)
+
+    def test_a_division_set_keeps_every_picked_division(self) -> None:
+        picked = _compiled(
+            _scope._apply_overview_role_filters(
+                sa.select(models.User.id),
+                role=None,
+                divisions=[3],
+                grid=DEFAULT_GRID,
+                workspace_id=7,
+            )
+        )
+        bounds = {tier.number: (tier.rank_min, tier.rank_max) for tier in DEFAULT_GRID.tiers if tier.number in (3, 5)}
+        self.assertIn(f"player.rank >= {bounds[3][0]}", picked)
+        self.assertNotIn(f"player.rank >= {bounds[5][0]}", picked)
+
+    def test_no_divisions_is_no_division_filter(self) -> None:
+        sql = _compiled(
+            _scope._apply_overview_role_filters(
+                sa.select(models.User.id),
+                role=enums.HeroClass.tank,
+                divisions=[],
+                grid=DEFAULT_GRID,
+                workspace_id=7,
+            )
+        )
+        self.assertNotIn("player.rank", sql)
         self.assertNotIn("division_grid_tier", sql)
 
     def test_all_workspaces_read_filters_each_row_on_its_own_grid(self) -> None:
@@ -105,8 +134,7 @@ class OverviewDivisionFilterTests(TestCase):
             _scope._apply_overview_role_filters(
                 sa.select(models.User.id),
                 role=None,
-                div_min=3,
-                div_max=5,
+                divisions=[3, 5],
                 grid=DEFAULT_GRID,
                 workspace_id=None,
             )
@@ -117,9 +145,14 @@ class OverviewDivisionFilterTests(TestCase):
         self.assertIn("tournament_1.division_grid_version_id", sql)
         self.assertIn("workspace_1.default_division_grid_version_id", sql)
         self.assertIn("tournament_1.id = tournament.player.tournament_id", sql)
-        self.assertIn("BETWEEN 3 AND 5", sql)
+        self.assertIn("IN (3, 5)", sql)
         # A rank range from one grid would silently mis-filter the others.
         self.assertNotIn("player.rank >= 4", sql)
+
+    def test_has_logs_filter_probes_match_statistics_per_user(self) -> None:
+        sql = _compiled(_scope.apply_has_logs_filter(sa.select(models.User.id)))
+        self.assertIn("EXISTS", sql)
+        self.assertIn('matches.statistics.user_id = players."user".id', sql)
 
 
 class OverviewRoleDivisionTests(IsolatedAsyncioTestCase):

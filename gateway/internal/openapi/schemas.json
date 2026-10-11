@@ -3007,7 +3007,9 @@
               "name",
               "tournaments_count",
               "achievements_count",
-              "avg_placement"
+              "avg_placement",
+              "winrate",
+              "best_placement"
             ],
             "title": "Sort",
             "type": "string"
@@ -3057,39 +3059,35 @@
           }
         },
         {
-          "name": "div_min",
+          "name": "divisions",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Min"
+            "items": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": "Divisions",
+            "type": "array"
           }
         },
         {
-          "name": "div_max",
+          "name": "has_logs",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Max"
+            "default": false,
+            "title": "Has Logs",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "min_encounters",
+          "required": false,
+          "schema": {
+            "default": 20,
+            "minimum": 0,
+            "title": "Min Encounters",
+            "type": "integer"
           }
         }
       ],
@@ -3118,39 +3116,25 @@
           }
         },
         {
-          "name": "div_min",
+          "name": "divisions",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Min"
+            "items": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": "Divisions",
+            "type": "array"
           }
         },
         {
-          "name": "div_max",
+          "name": "has_logs",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Max"
+            "default": false,
+            "title": "Has Logs",
+            "type": "boolean"
           }
         },
         {
@@ -3235,39 +3219,25 @@
           }
         },
         {
-          "name": "div_min",
+          "name": "divisions",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Min"
+            "items": {
+              "maximum": 20,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "title": "Divisions",
+            "type": "array"
           }
         },
         {
-          "name": "div_max",
+          "name": "has_logs",
           "required": false,
           "schema": {
-            "anyOf": [
-              {
-                "maximum": 20,
-                "minimum": 1,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Div Max"
+            "default": false,
+            "title": "Has Logs",
+            "type": "boolean"
           }
         },
         {
@@ -17903,6 +17873,18 @@
           "title": "Achievements Count",
           "type": "integer"
         },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
         "avg_placement": {
           "anyOf": [
             {
@@ -17914,8 +17896,42 @@
           ],
           "title": "Avg Placement"
         },
+        "best_placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Best Placement"
+        },
+        "encounters_played": {
+          "title": "Encounters Played",
+          "type": "integer"
+        },
         "id": {
           "title": "Id",
+          "type": "integer"
+        },
+        "last_active_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Active At"
+        },
+        "maps_lost": {
+          "title": "Maps Lost",
+          "type": "integer"
+        },
+        "maps_won": {
+          "title": "Maps Won",
           "type": "integer"
         },
         "name": {
@@ -17948,6 +17964,11 @@
         "top_heroes",
         "tournaments_count",
         "achievements_count",
+        "maps_won",
+        "maps_lost",
+        "encounters_played",
+        "best_placement",
+        "last_active_at",
         "avg_placement"
       ],
       "title": "UserCatalogEntry",
@@ -17981,33 +18002,19 @@
     },
     "app.UserCatalogQueryParams": {
       "properties": {
-        "div_max": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Max"
+        "divisions": {
+          "items": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Divisions",
+          "type": "array"
         },
-        "div_min": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Min"
+        "has_logs": {
+          "default": false,
+          "title": "Has Logs",
+          "type": "boolean"
         },
         "letter": {
           "anyOf": [
@@ -19895,17 +19902,28 @@
       "title": "UserOverviewAverages",
       "type": "object"
     },
+    "app.UserOverviewDivisionCount": {
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "division": {
+          "title": "Division",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "division",
+        "count"
+      ],
+      "title": "UserOverviewDivisionCount",
+      "type": "object"
+    },
     "app.UserOverviewHero": {
       "properties": {
         "hero": {
           "$ref": "#/components/schemas/app.HeroRead"
-        },
-        "metrics": {
-          "items": {
-            "$ref": "#/components/schemas/app.UserOverviewHeroMetric"
-          },
-          "title": "Metrics",
-          "type": "array"
         },
         "playtime_seconds": {
           "title": "Playtime Seconds",
@@ -19914,58 +19932,21 @@
       },
       "required": [
         "hero",
-        "playtime_seconds",
-        "metrics"
+        "playtime_seconds"
       ],
       "title": "UserOverviewHero",
       "type": "object"
     },
-    "app.UserOverviewHeroMetric": {
-      "properties": {
-        "avg_10": {
-          "title": "Avg 10",
-          "type": "number"
-        },
-        "name": {
-          "$ref": "#/components/schemas/app.LogStatsName"
-        }
-      },
-      "required": [
-        "name",
-        "avg_10"
-      ],
-      "title": "UserOverviewHeroMetric",
-      "type": "object"
-    },
     "app.UserOverviewQueryParams": {
       "properties": {
-        "div_max": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Max"
-        },
-        "div_min": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Min"
+        "divisions": {
+          "items": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Divisions",
+          "type": "array"
         },
         "entities": {
           "items": {
@@ -19980,6 +19961,17 @@
           },
           "title": "Fields",
           "type": "array"
+        },
+        "has_logs": {
+          "default": false,
+          "title": "Has Logs",
+          "type": "boolean"
+        },
+        "min_encounters": {
+          "default": 20,
+          "minimum": 0,
+          "title": "Min Encounters",
+          "type": "integer"
         },
         "only_count": {
           "default": false,
@@ -20026,7 +20018,9 @@
             "name",
             "tournaments_count",
             "achievements_count",
-            "avg_placement"
+            "avg_placement",
+            "winrate",
+            "best_placement"
           ],
           "title": "Sort",
           "type": "string"
@@ -20109,11 +20103,57 @@
           "title": "Achievements Count",
           "type": "integer"
         },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
         "averages": {
           "$ref": "#/components/schemas/app.UserOverviewAverages"
         },
+        "best_placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Best Placement"
+        },
+        "encounters_played": {
+          "title": "Encounters Played",
+          "type": "integer"
+        },
         "id": {
           "title": "Id",
+          "type": "integer"
+        },
+        "last_active_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Last Active At"
+        },
+        "maps_lost": {
+          "title": "Maps Lost",
+          "type": "integer"
+        },
+        "maps_won": {
+          "title": "Maps Won",
           "type": "integer"
         },
         "name": {
@@ -20146,6 +20186,11 @@
         "top_heroes",
         "tournaments_count",
         "achievements_count",
+        "maps_won",
+        "maps_lost",
+        "encounters_played",
+        "best_placement",
+        "last_active_at",
         "averages"
       ],
       "title": "UserOverviewRow",
@@ -20169,8 +20214,19 @@
           "title": "Damage Count",
           "type": "integer"
         },
+        "division_counts": {
+          "items": {
+            "$ref": "#/components/schemas/app.UserOverviewDivisionCount"
+          },
+          "title": "Division Counts",
+          "type": "array"
+        },
         "flex_count": {
           "title": "Flex Count",
+          "type": "integer"
+        },
+        "flex_declared_count": {
+          "title": "Flex Declared Count",
           "type": "integer"
         },
         "median_tournaments_per_player": {
@@ -20209,40 +20265,27 @@
         "tank_count",
         "damage_count",
         "support_count",
-        "flex_count"
+        "flex_count",
+        "flex_declared_count"
       ],
       "title": "UserOverviewStats",
       "type": "object"
     },
     "app.UserOverviewStatsQueryParams": {
       "properties": {
-        "div_max": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Max"
+        "divisions": {
+          "items": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "title": "Divisions",
+          "type": "array"
         },
-        "div_min": {
-          "anyOf": [
-            {
-              "maximum": 20,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Div Min"
+        "has_logs": {
+          "default": false,
+          "title": "Has Logs",
+          "type": "boolean"
         },
         "query": {
           "anyOf": [

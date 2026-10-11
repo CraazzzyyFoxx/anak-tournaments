@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.orm import aliased, joinedload, selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.division_grid import DivisionGrid, division_filter_predicates
-from shared.services.division_grid.access import effective_division_filter_predicates
+from shared.division_grid import DivisionGrid, division_case_expr, division_filter_predicates
+from shared.services.division_grid.access import effective_division_number_expr
 from src import models
 from src.core import enums, utils
 
@@ -174,18 +174,56 @@ def _build_eligible_hero_stats_cte(
     return base_select.cte(cte_name)
 
 
+def overview_division_number_expr(
+    rank_column: sa.ColumnElement[int],
+    tournament_id_column: sa.ColumnElement[int],
+    grid: DivisionGrid,
+    workspace_id: int | None,
+) -> sa.ColumnElement[int]:
+    """The division number a rank maps to, on the grid the read is scoped to."""
+    if workspace_id is None:
+        return effective_division_number_expr(rank_column, tournament_id_column)
+    return division_case_expr(rank_column, grid)
+
+
+def division_set_predicates(
+    rank_column: sa.ColumnElement[int],
+    tournament_id_column: sa.ColumnElement[int],
+    divisions: typing.Sequence[int],
+    grid: DivisionGrid,
+    workspace_id: int | None,
+) -> list[typing.Any]:
+    """``division(rank) IN divisions`` for the scope's grid resolution.
+
+    Scoped reads keep the indexable rank ranges of
+    :func:`division_filter_predicates` — one OR'd range per selected division,
+    so a contiguous pick stays a plain ``rank`` comparison. The all-workspaces
+    read has to resolve each row on its own grid, which is already a correlated
+    subquery, so an ``IN`` over it costs the same as the range form.
+    """
+    wanted = sorted(set(divisions))
+    if not wanted:
+        return []
+    if workspace_id is None:
+        return [effective_division_number_expr(rank_column, tournament_id_column).in_(wanted)]
+    return [
+        sa.or_(
+            *[sa.and_(*division_filter_predicates(rank_column, number, number, grid)) for number in wanted],
+        )
+    ]
+
+
 def _apply_overview_role_filters(
     query: sa.Select,
     *,
     role: enums.HeroClass | None,
-    div_min: int | None,
-    div_max: int | None,
+    divisions: typing.Sequence[int] = (),
     grid: DivisionGrid,
     workspace_id: int | None = None,
 ) -> sa.Select:
     """Keep users who have a player row matching the role/division chips.
 
-    Workspace-scoped reads resolve the division range against the one
+    Workspace-scoped reads resolve the selected divisions against the one
     workspace grid. The all-workspaces read (``workspace_id is None``) cannot:
     the same rank is a different division in different grids, so each player
     row is matched against its own tournament's effective grid.
@@ -197,20 +235,34 @@ def _apply_overview_role_filters(
 
     if role is not None:
         role_filters.append(models.Player.role == role)
-    if workspace_id is None:
-        role_filters.extend(
-            effective_division_filter_predicates(
-                models.Player.rank,
-                models.Player.tournament_id,
-                div_min,
-                div_max,
-            )
+    role_filters.extend(
+        division_set_predicates(
+            models.Player.rank,
+            models.Player.tournament_id,
+            divisions,
+            grid,
+            workspace_id,
         )
-    else:
-        role_filters.extend(division_filter_predicates(models.Player.rank, div_min, div_max, grid))
+    )
 
     role_exists = sa.exists(sa.select(1).select_from(models.Player).where(*role_filters).correlate(models.User))
     return query.where(role_exists)
+
+
+def apply_has_logs_filter(query: sa.Select) -> sa.Select:
+    """Keep only users with at least one parsed match-stat row.
+
+    EXISTS driven from the user side so it probes
+    ``ix_match_statistics_user_round_name`` once per candidate instead of
+    scanning matches.statistics (same shape as the with_logs KPI).
+    """
+    return query.where(
+        sa.exists(
+            sa.select(sa.literal(1))
+            .select_from(models.MatchStatistics)
+            .where(models.MatchStatistics.user_id == models.User.id)
+        )
+    )
 
 
 def _apply_workspace_member_filter(query: sa.Select, workspace_id: int | None) -> sa.Select:
