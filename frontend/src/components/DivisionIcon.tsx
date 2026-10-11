@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionIconSrc, getDivisionLabel } from "@/lib/divisions/grid";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
@@ -13,12 +15,8 @@ interface DivisionIconProps {
 }
 
 /**
- * Rank crest for a division number.
- *
- * Plain `<img>` (not `next/image`) for the same reason team logos use one: stored
- * `icon_url`s point at whatever S3 host the deployment configured, and
- * `next/image` rejects a hostname missing from `next.config.mjs` remotePatterns
- * with a hard error instead of degrading.
+ * Rank crest for a division number. Nothing is rendered when the grid has no
+ * icon for it — a broken image glyph is worse than no crest.
  */
 const DivisionIcon = ({
   division,
@@ -32,10 +30,11 @@ const DivisionIcon = ({
   const src = getDivisionIconSrc(preferredGrid, division);
   const name = getDivisionLabel(preferredGrid, division);
 
+  if (!src) return null;
+
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src ?? ""}
+    <Image
+      src={src}
       alt={name ?? `Division ${division}`}
       width={width}
       height={height}

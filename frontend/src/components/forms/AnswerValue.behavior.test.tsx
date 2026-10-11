@@ -17,6 +17,14 @@ vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
 }));
 
+// `next/image` outside a Next build rewrites src through the optimizer loader;
+// the shipped config sets `images.unoptimized`, so the real render keeps it
+// verbatim.
+vi.mock("next/image", () => ({
+  // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
+}));
+
 // A workspace grid that calls every rank one thing. If the chip reads it, the
 // crest below says "Workspace Apex" instead of the OW ladder's division.
 vi.mock("@/hooks/useCurrentWorkspace", () => ({

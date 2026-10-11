@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, type CSSProperties } from "react";
 
 import { cn, initials } from "@/lib/utils";
@@ -56,11 +57,9 @@ export function WorkspaceAvatar({
         } as CSSProperties
       }
     >
-      {showImage ? (
-        // Plain <img>: workspace icons live on arbitrary hosts next/image is not configured for.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={workspace.icon_url ?? undefined}
+      {showImage && workspace.icon_url ? (
+        <Image
+          src={workspace.icon_url}
           alt=""
           width={size}
           height={size}

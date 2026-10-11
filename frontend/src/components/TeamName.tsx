@@ -1,4 +1,6 @@
 
+import Image from "next/image";
+
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,19 +41,13 @@ interface TeamLogoProps {
  * There is deliberately no initials/colour-glyph fallback: a team without an
  * image shows no image anywhere on the site, so every surface stays consistent
  * whether or not the roster uploaded one.
- *
- * Plain `<img>` (not `next/image`) for the same reason workspace icons use one:
- * the URL points at whatever S3/MinIO host the deployment configured, and
- * `next/image` rejects a hostname missing from `next.config.mjs` remotePatterns
- * with a hard error instead of degrading.
  */
 export const TeamLogo = ({ team, size = "sm", className, alt = "" }: TeamLogoProps) => {
   if (!team?.image_url) return null;
   const px = LOGO_PX[size];
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <Image
       src={team.image_url}
       alt={alt}
       aria-hidden={alt === "" ? true : undefined}

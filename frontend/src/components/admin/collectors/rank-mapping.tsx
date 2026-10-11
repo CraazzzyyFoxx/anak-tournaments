@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
@@ -131,8 +132,7 @@ export function RankMappingPanel() {
                             <SelectValue placeholder={t("selectPlaceholder")}>
                               {tier ? (
                                 <span className="flex items-center gap-2">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={tier.icon_url} alt="" width={20} height={20} />
+                                  <Image src={tier.icon_url} alt="" width={20} height={20} />
                                   <span className="truncate">{tier.name}</span>
                                   <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                                     {tier.rank_min}
@@ -146,8 +146,7 @@ export function RankMappingPanel() {
                             {tiers.map((option) => (
                               <SelectItem key={option.number} value={String(option.number)}>
                                 <span className="flex items-center gap-2">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={option.icon_url} alt="" width={18} height={18} />
+                                  <Image src={option.icon_url} alt="" width={18} height={18} />
                                   {option.name}
                                 </span>
                               </SelectItem>
