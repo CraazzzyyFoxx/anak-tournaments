@@ -15,6 +15,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from PIL import Image  # noqa: E402
 
+from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from shared.domain.discord_ui import SHORTCODE  # noqa: E402
 from src.domain.mix_discord import SignupPlayer, lineup_card, lineup_picture, signup_card  # noqa: E402
 from src.domain.mix_lineup_image import render_png  # noqa: E402
@@ -249,8 +250,10 @@ def _picture(document: dict, **overrides):
         "players": document["players"],
         "team_names": {},
         "next_map": None,
+        "map_image": None,
         "points_per_win": None,
         "board_url": BOARD_URL,
+        "grid": DEFAULT_GRID,
     }
     kwargs.update(overrides)
     return lineup_picture(**kwargs)
@@ -271,10 +274,28 @@ def test_the_picture_seats_every_player_under_their_team_with_the_division_they_
         ("damage", "Cid", 2800, False),
         ("support", "Dee", 2700, True),
     ]
-    # The badge is the default ladder's tier, named in the card's language.
-    assert (first.seats[0].division, first.seats[0].division_name) == ("diamond-5", "Алмаз 5")
+    # The badge is the grid tier's own picture; the in-code ladder's site-relative path is resolved on the site.
+    assert first.seats[0].division_icon == "https://owt.example/divisions/diamond-5.png"
     # The averages are of the numbers drawn, so their gap checks out on the picture.
     assert (first.average, second.average) == (2850, 2600)
+
+
+def test_the_picture_carries_the_gap_the_points_and_the_maps_art() -> None:
+    document = _document({"Tank": [("Ana", 3000)]}, {"Tank": [("Bob", 2900)]})
+    picture = _picture(
+        document, points_per_win=25, next_map=("Busan", "Контроль"), map_image="https://s3.example/busan.jpg"
+    )
+
+    assert picture.pills == ("Разница средних 100", "+25 за победу")
+    assert (picture.map_name, picture.gamemode) == ("Busan", "Контроль")
+    # Everything fetched before drawing: the map's art and one badge per distinct tier.
+    assert picture.image_urls == {
+        "https://s3.example/busan.jpg",
+        "https://owt.example/divisions/diamond-5.png",
+        "https://owt.example/divisions/emerald-1.png",
+    }
+    # Art for a map nobody rolled is not drawn.
+    assert _picture(document, map_image="https://s3.example/busan.jpg").map_image is None
 
 
 def test_the_picture_names_the_same_lineup_the_same_file_and_a_swap_a_new_one() -> None:
@@ -290,12 +311,21 @@ def test_the_picture_names_the_same_lineup_the_same_file_and_a_swap_a_new_one() 
     assert _picture(document).filename != _picture(document, next_map=("Busan", None)).filename
 
 
-def test_the_picture_draws_as_a_card_sized_png_whatever_the_names() -> None:
-    """Guards the asset paths too: a missing font fails here, not in the projector."""
+def test_the_picture_draws_as_a_card_sized_png_whatever_the_names_and_whatever_failed_to_load() -> None:
+    """Guards the asset paths too: a missing font fails here, not in the projector.
+    A picture that did not load, or loaded as garbage, is left out, not fatal."""
     document = _document({"Goalie": [("Ana" * 40, 3000)]}, {"Tank": [("Сережа Спардович", 900)]})
+    picture = _picture(
+        document,
+        points_per_win=25,
+        lobby_label="B",
+        next_map=("Busan", "Контроль"),
+        map_image="https://s3.example/busan.jpg",
+    )
 
-    with Image.open(io.BytesIO(render_png(_picture(document, points_per_win=25, lobby_label="B")))) as image:
-        assert (image.format, image.size) == ("PNG", (1200, 630))
+    for images in ({}, dict.fromkeys(picture.image_urls, b"not an image")):
+        with Image.open(io.BytesIO(render_png(picture, images))) as image:
+            assert (image.format, image.size) == ("PNG", (1200, 630))
 
 
 def test_the_card_shows_its_picture_and_pings_the_seated_players_it_was_given_ids_for() -> None:

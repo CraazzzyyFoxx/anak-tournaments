@@ -138,12 +138,15 @@ row's card at flush. The lock, not the queue, is what orders concurrent renders:
 the roster last writes and queues last, so a burst of Join clicks converges on the newest roster.
 
 **Lineup picture.** The lineup card shows the matchup as a 1200×630 PNG drawn here with Pillow
-(`src/domain/mix_lineup_image.py`) from the stored balance: names, role, the Overwatch division of
-each seat's rating, team averages and their gap, the next map. Fonts, rank badges and role glyphs are
-copies in `assets/lineup` (Onest from the frontend, `static/divisions`, the bot's role emoji), so
-drawing needs no network. The file name hashes everything drawn, so a card that would look the same
-is skipped without drawing, and a card whose text changed but whose picture did not is edited
-without re-uploading it.
+(`src/domain/mix_lineup_image.py`) from the stored balance, in the mix board's own look: the next
+map's art behind one card with both teams around a VS seam, a tile per seat (role, rank badge, name,
+rating), team averages and the gap between them. The map art and the rank badges are fetched by the
+URLs the database holds (`map.image_path`, the division grid tier's `icon_url`; a site-relative one
+is resolved against `PUBLIC_SITE_URL`), with a 3 s timeout and an hour's in-memory cache; one that
+fails to load is left out and the post still goes. Fonts (Onest, Inter — the site's faces) and the
+role glyphs are copies in `assets/lineup`. The file name hashes everything drawn, so a card that
+would look the same is skipped without drawing, and a card whose text changed but whose picture did
+not is edited without re-uploading it.
 
 **Realtime topics** (published to Redis, relayed to clients by the gateway):
 

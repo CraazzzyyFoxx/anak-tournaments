@@ -26,8 +26,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import urljoin
 
-from shared.division_grid import DEFAULT_GRID
+from shared.division_grid import DEFAULT_GRID, DivisionGrid
 from shared.domain.discord_ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division_emoji, emoji
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.schemas.events import DiscordActionButton, DiscordCard, DiscordLinkButton
@@ -215,38 +216,26 @@ def signup_card(
     )
 
 
-#: Russian names of the Overwatch divisions, by the tier slug's division part.
-_DIVISION_NAMES = {
-    "bronze": "Бронза",
-    "silver": "Серебро",
-    "gold": "Золото",
-    "platinum": "Платина",
-    "emerald": "Изумруд",
-    "diamond": "Алмаз",
-    "master": "Мастер",
-    "grandmaster": "Грандмастер",
-    "champion": "Чемпион",
-}
-
-
-def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any]) -> LineupSeat:
+def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any], grid: DivisionGrid, board_url: str) -> LineupSeat:
     rating = int(seat_rating(player, bucket))
-    tier = DEFAULT_GRID.resolve_division(rating)
-    division, _, number = (tier.slug or "").rpartition("-")
+    icon = grid.resolve_division(rating).icon_url
     return LineupSeat(
         role=role_slot_code(bucket),
         name=str(player.get("name") or f"#{uuid}"),
         rating=rating,
-        division=tier.slug,
-        division_name=f"{_DIVISION_NAMES[division]} {number}" if division in _DIVISION_NAMES else tier.name,
+        # A stored grid holds absolute (bucket) URLs; the in-code ladder a
+        # site-relative ``/divisions/...`` the site itself serves.
+        division_icon=urljoin(board_url, icon) if icon else None,
         captain=player.get("is_captain") is True,
     )
 
 
-def _picture_team(name: str, team: Mapping[str, Any], players: Mapping[str, Any]) -> LineupTeam:
+def _picture_team(
+    name: str, team: Mapping[str, Any], players: Mapping[str, Any], grid: DivisionGrid, board_url: str
+) -> LineupTeam:
     roster = team.get("roster")
     seats = tuple(
-        _picture_seat(bucket, str(uuid), players.get(str(uuid)) or {})
+        _picture_seat(bucket, str(uuid), players.get(str(uuid)) or {}, grid, board_url)
         for bucket, uuids in (roster.items() if isinstance(roster, Mapping) else ())
         if isinstance(uuids, list)
         for uuid in uuids
@@ -271,29 +260,40 @@ def lineup_picture(
     players: Mapping[str, Any],
     team_names: Mapping[int, str],
     next_map: tuple[str, str | None] | None,
+    map_image: str | None,
     points_per_win: int | None,
     board_url: str,
+    grid: DivisionGrid,
     lobby_label: str | None = None,
 ) -> LineupPicture:
     """What the matchup picture of one lobby shows.
 
     ``variant`` is one option of a stored ``lobby_document`` and ``players``
     that document's player map, which its seat uuids resolve against. A rank
-    badge is the Overwatch division the seat's rating lands in, like the
-    signup card's.
+    badge is the ``grid`` tier the seat's rating lands in -- the grid the mix
+    balances on -- and ``map_image`` the next map's art, both as the database
+    stores their URLs.
     """
-    teams = variant.get("teams")
+    raw_teams = variant.get("teams")
+    teams = tuple(
+        _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players, grid, board_url)
+        for index, team in enumerate(raw_teams if isinstance(raw_teams, list) else [])
+        if isinstance(team, Mapping)
+    )
+    averages = [team.average for team in teams if team.average is not None]
+    pills = (
+        *([f"Разница средних {abs(averages[0] - averages[1])}"] if len(averages) == 2 else []),
+        *([f"+{points_per_win} за победу"] if points_per_win else []),
+    )
+    map_name, gamemode = next_map if next_map is not None else (None, None)
     return LineupPicture(
         kicker=f"Микс · Лобби {lobby_label}" if lobby_label else "Микс",
         title=f"Игра {match_number} · {mix_name}",
-        note=f"+{points_per_win} за победу" if points_per_win else None,
-        teams=tuple(
-            _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players)
-            for index, team in enumerate(teams if isinstance(teams, list) else [])
-            if isinstance(team, Mapping)
-        ),
-        map_name=_map_line(next_map),
-        footer=board_url.split("://", 1)[-1],
+        pills=pills,
+        teams=teams,
+        map_name=map_name,
+        gamemode=gamemode,
+        map_image=map_image if next_map is not None else None,
     )
 
 

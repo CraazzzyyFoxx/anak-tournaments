@@ -65,7 +65,7 @@ from shared.services.workspace_roster import (
 )
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
 from src.domain.mix_discord import SignupPlayer, lineup_card, lineup_picture, signup_card
-from src.domain.mix_lineup_image import LineupPicture, render_png
+from src.domain.mix_lineup_image import LineupPicture, load_images, render_png
 from src.domain.mix_lobbies import seated_member_ids, seated_teams
 from src.domain.mix_lobby_split import LobbySplitError, SplitCandidate, split_into_lobbies
 from src.domain.mix_ranker import Ranker
@@ -118,8 +118,9 @@ _BLOCKER_STATUS = {
 
 
 async def _png_b64(picture: LineupPicture) -> str:
-    """``picture`` drawn, base64 for the command. Off the event loop: a draw is tens of milliseconds of CPU."""
-    return base64.b64encode(await asyncio.to_thread(render_png, picture)).decode("ascii")
+    """``picture`` drawn, base64 for the command: its pictures fetched first, the draw off the event loop."""
+    images = await load_images(picture.image_urls)
+    return base64.b64encode(await asyncio.to_thread(render_png, picture, images)).decode("ascii")
 
 
 def _blocker(code: str) -> HTTPException:
@@ -2228,6 +2229,7 @@ class CustomGameService:
     ) -> tuple[DiscordCard, LineupPicture]:
         """The matchup card of one lobby and the picture it shows, as the lineup stands right now."""
         next_map: tuple[str, str | None] | None = None
+        map_image: str | None = None
         if lobby.next_map_id is not None:
             # The gamemode is eager-loaded: an async session raises on an
             # unawaited lazy load, and the card names the mode next to the map.
@@ -2238,6 +2240,7 @@ class CustomGameService:
             )
             if row is not None:
                 next_map = (row.name, row.gamemode.name if row.gamemode is not None else None)
+                map_image = row.image_path or None
         # The host's knob, resolved: the card promises what recording this
         # match will actually move. ``0`` is "off", and off prints nothing.
         points_per_win = await self.host_points_per_win(session, game.host_user_id) or None
@@ -2253,8 +2256,11 @@ class CustomGameService:
             players=_lobby_players(as_lobby_document(lobby.balance_result_json)),
             team_names=await self._lobby_team_names(session, game.id, lobby.lobby_index),
             next_map=next_map,
+            map_image=map_image,
             points_per_win=points_per_win,
             board_url=board_url,
+            # The grid the mix balances on (``balance``), so a badge is the rank it was seated at.
+            grid=await get_effective_division_grid(session, None),
             lobby_label=lobby_label,
         )
         card = lineup_card(

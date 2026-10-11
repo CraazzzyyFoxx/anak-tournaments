@@ -428,13 +428,23 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # The workspace grid only feeds the rank resolution, which is mocked
         # above; its tiers are bare numbers, which is why the seat badge does
         # not come from it (see test_self_state_badges_...).
-        self.grid = SimpleNamespace(resolve_division=lambda _rank: _row(name="Division 1", slug="division-1"))
+        self.grid = SimpleNamespace(
+            resolve_division=lambda _rank: _row(
+                name="Division 1", slug="division-1", icon_url="https://s3.example/division-1.png"
+            )
+        )
         self._grid_patch = patch(
             "src.services.custom_game.get_effective_division_grid",
             new=AsyncMock(return_value=self.grid),
         )
         self._grid_patch.start()
         self.addCleanup(self._grid_patch.stop)
+        # A lineup picture's map art and rank badges come over the network; here
+        # none load, and the picture is drawn without them.
+        self.load_images = AsyncMock(return_value={})
+        self._images_patch = patch("src.services.custom_game.load_images", new=self.load_images)
+        self._images_patch.start()
+        self.addCleanup(self._images_patch.stop)
         # No workspace-level roster default unless a test says otherwise --
         # `roster_shape`/`balance` then fall back to the built-in Overwatch 5v5
         # shape, matching every existing assertion below.
@@ -2772,7 +2782,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.session.scalar = AsyncMock(
             side_effect=[
                 {"mix_discord_channel_id": "777"},
-                _row(id=42, name="Busan", gamemode=_row(name="Control")),
+                _row(id=42, name="Busan", gamemode=_row(name="Control"), image_path="https://s3.example/busan.jpg"),
             ]
         )
         # Only the first seat's account linked a Discord.
@@ -2800,6 +2810,11 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(command.message_ref, row.id)
         self.assertEqual((row.subject, row.slot, row.kind), ("mix:11", "lineup:0:4", "mix.lineup"))
         self.assertTrue(command.allow_mentions)
+        # The picture is drawn with the URLs the database holds: the map's art and the grid's badge.
+        self.assertEqual(
+            self.load_images.await_args.args[0],
+            {"https://s3.example/busan.jpg", "https://s3.example/division-1.png"},
+        )
 
     async def test_discord_lineup_posts_the_matchup_as_a_picture_drawn_here(self) -> None:
         result = {"variants": [{"teams": [{"roster": {"Tank": [{"uuid": "1", "name": "Ana"}]}}]}]}
