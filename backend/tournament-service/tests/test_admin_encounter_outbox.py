@@ -101,6 +101,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
         encounter = SimpleNamespace(
             id=10,
             slot_count=2,
+            scoring_preset="wins",
             tournament_id=1,
             scheduled_at=None,
             name="old",

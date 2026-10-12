@@ -20,32 +20,60 @@ from shared.models.tenancy.workspace import Workspace
 from shared.services.division_grid.access import get_default_division_grid_version_id
 from src.services.workspace.service import workspaces as workspace_service
 
+_loop: asyncio.AbstractEventLoop
+
+
+def run(coro):
+    """Run ``coro`` on the loop that owns ``db_session``'s connection."""
+    return _loop.run_until_complete(coro)
+
 
 @pytest.fixture
 def db_session():
+    """Yield a live AsyncSession, or skip the test if the DB is unreachable.
+
+    Probes with ``select current_database()`` (mirrors the app-service ``rpc``
+    fixture / identity-service's ``db_session`` fixture) and hard-guards
+    against ever running against a production database. The session is never
+    committed by these tests, so nothing written here persists.
+
+    The session holds one asyncpg connection, so every step of a test (probe,
+    body, rollback) runs on the same event loop via ``run``; a fresh
+    ``asyncio.run`` per step would hand the connection to a closed loop.
+    """
+    global _loop
     from src.core import db as db_module
+
+    _loop = loop = asyncio.new_event_loop()
 
     async def _probe_and_open():
         session = db_module.async_session_maker()
         dbname = (await session.execute(sa.text("select current_database()"))).scalar()
         return session, dbname
 
-    try:
-        session, dbname = asyncio.run(_probe_and_open())
-    except Exception as exc:  # noqa: BLE001 -- any connect failure => skip, not fail
-        pytest.skip(f"database unreachable: {exc}")
-        return
-
-    if dbname in {"anak_v5", "anak_prod"}:
-        asyncio.run(session.close())
-        pytest.skip("refusing to run integration tests against production")
-        return
+    async def _finish(session):
+        await session.rollback()
+        await session.close()
+        await db_module.async_engine.dispose()
 
     try:
-        yield session
+        try:
+            session, dbname = loop.run_until_complete(_probe_and_open())
+        except Exception as exc:  # noqa: BLE001 -- any connect failure => skip, not fail
+            pytest.skip(f"database unreachable: {exc}")
+            return
+
+        if dbname in {"anak_v5", "anak_prod"}:
+            loop.run_until_complete(_finish(session))
+            pytest.skip("refusing to run integration tests against production")
+            return
+
+        try:
+            yield session
+        finally:
+            loop.run_until_complete(_finish(session))
     finally:
-        asyncio.run(session.rollback())
-        asyncio.run(session.close())
+        loop.close()
 
 
 async def _make_workspace(session) -> Workspace:
@@ -114,7 +142,7 @@ def test_staff_is_ranked_deduped_and_skips_playerless_accounts(db_session) -> No
 
         return await workspace_service.get_staff(db_session, workspace.id)
 
-    staff = asyncio.run(_run())
+    staff = run(_run())
 
     assert staff == [
         ("owner", owner_name),

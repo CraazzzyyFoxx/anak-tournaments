@@ -51,6 +51,7 @@ def _encounter() -> SimpleNamespace:
     return SimpleNamespace(
         id=10,
         slot_count=2,
+        scoring_preset="wins",
         tournament_id=1,
         scheduled_at=None,
         status=enums.EncounterStatus.COMPLETED,
