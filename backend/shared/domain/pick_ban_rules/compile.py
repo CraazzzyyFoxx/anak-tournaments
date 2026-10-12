@@ -21,6 +21,16 @@ from .schema import LEGACY_ACTOR_SLOTS, Constraint, DisputeRule, Phase, Resolved
 #: How many lead bans a bracket sequence spends before its picks.
 LEAD_BANS = 2
 
+
+class UnassignedSide(ValueError):
+    """``side:<code>`` read before the ``side_pick`` that hands it out.
+
+    A ``ValueError`` so a caller that cannot defer (the constructor's demand
+    arithmetic, a stored ruleset read out of order) still sees the old
+    behaviour; :func:`resolve_round` catches it and leaves the step unbound.
+    """
+
+
 _V1_ACTIONS = {"ban": "ban", "pick": "pick", "protect": "protect"}
 
 
@@ -216,7 +226,7 @@ def resolve_actors(
         code = actors.removeprefix("side:")
         actor = (sides or {}).get(code)
         if actor is None:
-            raise ValueError(f"actors {actors!r} is read before any step assigned side {code!r}")
+            raise UnassignedSide(f"actors {actors!r} is read before any step assigned side {code!r}")
         return [actor]
     raise ValueError(f"unknown actors {actors!r}")
 
@@ -262,6 +272,18 @@ def resolve_round(
         if step.action == "decider" and kind != "map":
             continue
         count = 1 if step.action in ("decider", "side_pick") else step.count
+        # A ``side:<code>`` actor names whoever an EARLIER ``side_pick`` of this
+        # same round will hand that side to, and the round is resolved before
+        # any of its steps is played. Such a step is written unbound and gets
+        # its actors from ``runtime.bind_side_actors`` the moment the side
+        # exists; the cursor stops on it until then.
+        try:
+            actors = resolve_actors(
+                step.actors, participants=participants, opener=opener, prev_winner=prev_winner, sides=sides
+            )
+            token = None
+        except UnassignedSide:
+            actors, token = [], step.actors
         resolved.append(
             ResolvedStep(
                 index=start_index + len(resolved),
@@ -269,9 +291,8 @@ def resolve_round(
                 phase_id=phase.id,
                 step_id=step.id,
                 action=step.action,
-                actors=resolve_actors(
-                    step.actors, participants=participants, opener=opener, prev_winner=prev_winner, sides=sides
-                ),
+                actors=actors,
+                actors_token=token,
                 count=count,
                 min=count if step.min is None else min(step.min, count),
                 blind=step.blind,

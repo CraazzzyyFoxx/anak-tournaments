@@ -7,6 +7,8 @@ with sides is a V3 discipline, and V1 must not let a ruleset pretend otherwise.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from shared.disciplines import DISCIPLINES, DisciplineSpec, discipline
@@ -214,6 +216,70 @@ def test_an_actor_naming_an_unseated_slot_is_refused():
         issue.code for issue in pbr.validate_ruleset(ruleset, kind="map", slot_count=2) if issue.severity == "error"
     }
     assert "actors_slot_unseated" in codes
+
+
+def test_a_side_actor_is_left_unbound_until_its_side_pick_is_played(sided_discipline):
+    """A round's steps resolve when the round OPENS; the side only exists once
+    the pick is played. The step is written with no actors and keeps its token,
+    and the cursor stops on it so it can never be walked past."""
+    steps = pbr.resolve_round(
+        pbr.parse_ruleset(_side_ruleset(_SIDE_PICK, {**_PICK, "actors": "side:defence"})),
+        kind="map",
+        round=1,
+        start_index=0,
+        participants=SEATS,
+        opener=SLOT1,
+        best_of=1,
+    )
+    self_pick, deferred = steps
+    assert self_pick.actors == [SLOT1]
+    assert (deferred.actors, deferred.actors_token) == ([], "side:defence")
+    assert deferred.is_unbound
+    assert pbr.current_step(steps, []) is self_pick
+
+    # Once the pick reveals, the sides it settled bind the later step: the
+    # chooser takes the side they named, the other seat the remaining one.
+    played = [
+        SimpleNamespace(
+            step_index=0,
+            encounter_team_id=SLOT1,
+            attempt=1,
+            state="revealed",
+            items_json=[{"item_id": 1, "target_player_id": None}],
+            locked_at=None,
+            revealed_at=None,
+        )
+    ]
+    assigned = pbr.assigned_sides(steps, played, SIDED.sides, participants=SEATS, round=1)
+    assert assigned == {"defence": SLOT1, "attack": SLOT2}
+    assert pbr.resolve_actors("side:defence", participants=SEATS, opener=SLOT1, sides=assigned) == [SLOT1]
+    assert pbr.resolve_actors("side:attack", participants=SEATS, opener=SLOT1, sides=assigned) == [SLOT2]
+
+
+def test_an_unbound_step_stops_the_cursor_rather_than_being_skipped(sided_discipline):
+    steps = pbr.resolve_round(
+        pbr.parse_ruleset(_side_ruleset(_SIDE_PICK, {**_PICK, "actors": "side:defence"})),
+        kind="map",
+        round=1,
+        start_index=0,
+        participants=SEATS,
+        opener=SLOT1,
+        best_of=1,
+    )
+    revealed = [
+        SimpleNamespace(
+            step_index=0,
+            encounter_team_id=SLOT1,
+            attempt=1,
+            state="revealed",
+            items_json=[{"item_id": 0, "target_player_id": None}],
+            locked_at=None,
+            revealed_at=None,
+        )
+    ]
+    # The side pick is answered, but the step after it is still unbound -- the
+    # cursor must stop there, not report the sequence complete.
+    assert pbr.current_step(steps, revealed) is steps[1]
 
 
 def test_a_side_pick_spends_nothing_from_the_pool(sided_discipline):

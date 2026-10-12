@@ -383,6 +383,63 @@ class PickBanActionService:
             if any(row.starting_side is not None for row in rows)
         ]
 
+    def _bind_side_actors(self, rt: _Runtime) -> bool:
+        """Give every unbound ``side:<code>`` step its actors, once the
+        ``side_pick`` of its round has handed that side out.
+
+        A round's steps are all resolved when the round OPENS, but a side only
+        exists once the pick is played, so those steps are written with no
+        actors and keep their token (``ResolvedStep.actors_token``). This is the
+        other half: it runs at the top of every ``_settle`` pass and again the
+        moment a side pick reveals, and it writes the bound sequence back to the
+        session so the next request reads actors rather than a token.
+        """
+        unbound = [step for step in rt.steps if step.is_unbound]
+        if not unbound:
+            return False
+        sides = self.side_codes(rt.encounter)
+        participants = rt.participants
+        bound = False
+        for index, step in enumerate(rt.steps):
+            if not step.is_unbound:
+                continue
+            assigned = pbr.assigned_sides(rt.steps, rt.submissions, sides, participants=participants, round=step.round)
+            try:
+                actors = pbr.resolve_actors(
+                    step.actors_token or "",
+                    participants=participants,
+                    opener=rt.pick_ban.first_team_id or participants[0],
+                    sides=assigned,
+                )
+            except pbr.UnassignedSide:
+                continue  # its side pick has not revealed yet
+            rt.steps[index] = step.model_copy(update={"actors": actors, "actors_token": None})
+            bound = True
+        if bound:
+            rt.pick_ban.resolved_sequence_json = [step.to_json() for step in rt.steps]
+        return bound
+
+    def side_pick_pending(self, rt: _Runtime, position: int) -> bool:
+        """Whether position ``position`` still owes a ``side_pick`` an answer.
+
+        A game cannot START while the side it is played on is undecided (spec
+        §6 row 9): the position stays ``planned`` -- named, but not open for
+        claims -- until the pick resolves or the clock flips a coin for it.
+        """
+        if not self.side_codes(rt.encounter):
+            return False
+        return any(
+            step.action == "side_pick"
+            and (step.round or 1) == position
+            and (step.is_unbound or not pbr.ready_to_reveal(step, rt.submissions))
+            for step in rt.steps
+        )
+
+    def _blocked_positions(self, rt: _Runtime) -> frozenset[int]:
+        """Positions no game may leave ``planned`` on yet."""
+        rounds = {step.round or 1 for step in rt.steps if step.action == "side_pick"}
+        return frozenset(position for position in rounds if self.side_pick_pending(rt, position))
+
     # -- settling ----------------------------------------------------------
     @staticmethod
     def step_deadline(pick_ban: PickBanSession, step: pbr.ResolvedStep) -> datetime | None:
@@ -511,6 +568,7 @@ class PickBanActionService:
         """
         if str(rt.pick_ban.status) == MapVetoSessionStatus.CANCELLED:
             return False
+        self._bind_side_actors(rt)
         opening = pbr.current_step(rt.steps, rt.submissions)
         timed_index = opening.index if opening is not None else None
         changed = False
@@ -519,6 +577,12 @@ class PickBanActionService:
             pbr.project_entries(rt.entries, rt.steps, rt.submissions)
             step = pbr.current_step(rt.steps, rt.submissions)
             if step is None:
+                break
+            if step.is_unbound:
+                # The ``side_pick`` that hands this step's side out has not been
+                # played yet, and the cursor stops here (``current_step``), so
+                # there is nothing this pass can settle. The bind above runs
+                # again on the next one, after that step reveals.
                 break
             if step.is_system:
                 items = pbr.resolve_system_step(step, self._ctx(rt, step))
@@ -542,6 +606,9 @@ class PickBanActionService:
                 self._reveal(rt, step)
                 if step.action == "side_pick":
                     await self._settle_side_pick(session, rt, step)
+                    # The side now exists, so every later step of this round
+                    # that names it can finally be bound.
+                    self._bind_side_actors(rt)
                 await record_room_event(
                     session,
                     rt.encounter.id,
@@ -633,7 +700,9 @@ class PickBanActionService:
         await self._settle(session, rt)
         await session.flush()
         if kind == PickBanKind.MAP:
-            await self.games.sync_games_with_picks(session, rt.encounter, rt.pick_ban)
+            await self.games.sync_games_with_picks(
+                session, rt.encounter, rt.pick_ban, blocked_positions=self._blocked_positions(rt)
+            )
         await emit_pick_ban_update(session, rt.encounter.id, kind=kind.value)
         await session.commit()
 
@@ -1120,7 +1189,9 @@ class PickBanActionService:
         games, claims = await self._game_snapshot(session, encounter, refresh=True)
         plan, stale = self.games._pick_game_changes(rt.entries, games, claims)
         if plan or stale:
-            await self.games.sync_games_with_picks(session, encounter, locked)
+            await self.games.sync_games_with_picks(
+                session, encounter, locked, blocked_positions=self._blocked_positions(rt)
+            )
             changed.add(PickBanKind.MAP.value)
         return locked
 

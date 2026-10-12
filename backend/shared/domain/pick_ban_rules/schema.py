@@ -150,7 +150,16 @@ class ResolvedStep(BaseModel):
     """One step of ``pick_ban_session.resolved_sequence_json`` — a step of the
     ruleset bound to a concrete round: actors resolved to the PARTICIPATIONS
     that take it, inherited timer/min/on_timeout filled in, ``index`` global in
-    the session."""
+    the session.
+
+    One actor token cannot be bound when the round is resolved: ``side:<code>``
+    names whoever a ``side_pick`` EARLIER IN THE SAME ROUND will hand that side
+    to, and that is not known until the step is played. Such a step is written
+    with no actors and keeps its token in ``actors_token``; the runtime binds it
+    the moment the side exists (:func:`runtime.bind_side_actors`), and
+    :func:`runtime.current_step` stops on it until then, so an unbound step can
+    never be skipped past.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -160,8 +169,12 @@ class ResolvedStep(BaseModel):
     phase_id: str
     step_id: str
     action: StepAction
-    #: Participation ids, in acting order; ``[None]`` for an engine-resolved step.
+    #: Participation ids, in acting order; ``[None]`` for an engine-resolved
+    #: step, and ``[]`` while ``actors_token`` is still waiting on its side.
     actors: list[ResolvedActor]
+    #: The ruleset token this step's actors still have to be resolved from;
+    #: ``None`` once they are.
+    actors_token: str | None = None
     count: int
     min: int
     blind: bool
@@ -188,6 +201,11 @@ class ResolvedStep(BaseModel):
     @property
     def is_system(self) -> bool:
         return self.actors == [None]
+
+    @property
+    def is_unbound(self) -> bool:
+        """Whether this step still owes its actors a ``side_pick`` result."""
+        return not self.actors and self.actors_token is not None
 
 
 def format_path(loc: tuple[Any, ...]) -> str:

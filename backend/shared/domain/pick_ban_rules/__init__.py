@@ -14,6 +14,7 @@ section it implements.
 
 from .compile import (
     LEAD_BANS,
+    UnassignedSide,
     build_sequence_for_best_of,
     build_slot_sequence,
     phase_matches,
@@ -60,6 +61,7 @@ from .runtime import (
     SubmissionLike,
     TargetPlayer,
     applied_items,
+    assigned_sides,
     carried_bans,
     current_attempt,
     current_step,
@@ -98,6 +100,7 @@ __all__ = (
     "CONSTRAINTS",
     "HERO_GROUPS",
     "LEAD_BANS",
+    "UnassignedSide",
     "LEAVES",
     "AVAILABLE",
     "BANNED",
@@ -136,6 +139,7 @@ __all__ = (
     "SubmissionLike",
     "TargetPlayer",
     "applied_items",
+    "assigned_sides",
     "build_sequence_for_best_of",
     "build_slot_sequence",
     "carried_bans",

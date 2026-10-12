@@ -950,6 +950,7 @@ class PickBanSessionService:
         *,
         completed_round: int,
         winner: int | None,
+        decided: bool = True,
         loser_choice: int | None = None,
         commit: bool = True,
     ) -> PickBanSession:
@@ -972,11 +973,13 @@ class PickBanSessionService:
         the config: an organizer editing or deleting the config mid-series
         changes nothing about a running room (D6).
 
-        ``winner`` is the participation that won the previous position, or
-        ``None`` while it is undecided or drawn. A drawn map names no winner, so
-        a result-dependent rotation falls back to the session's established
-        opener; an undecided one simply owes the round, which is appended later,
-        once the result lands — opening it now would have to invent an opener.
+        ``decided`` is whether the previous position has an accepted result at
+        all; ``winner`` is the participation that won it outright, and ``None``
+        for a DRAW -- which is decided and names nobody. The two are separate
+        because they mean opposite things here: a drawn map falls back to the
+        session's established opener and the round opens NOW, while an undecided
+        one owes the round until the result lands (opening it would have to
+        invent an opener).
 
         Raises ``pick_ban_engine.RotationNeedsChoice`` when the rotation is
         ``result_loser_choice`` and ``loser_choice`` was not supplied — the caller
@@ -1020,7 +1023,11 @@ class PickBanSessionService:
 
         participants = [team.id for team in teams]
         rotation = pool_rotation(pool)
-        if winner is None and next_round > 1 and rotation in _RESULT_ROTATIONS:
+        # PENDING, not drawn: a confirmed draw names no winner and falls back to
+        # the session's opener (``resolve_round_opener``), while a position with
+        # no accepted result yet owes the round until it has one. Collapsing the
+        # two left a drawn map stalling the room forever.
+        if not decided and next_round > 1 and rotation in _RESULT_ROTATIONS:
             return pick_ban  # the round is owed until the previous position is confirmed
         opener = engine.resolve_round_opener(
             rotation=rotation,
@@ -1086,7 +1093,11 @@ class PickBanSessionService:
         pick_ban.resolved_sequence_json = [*pick_ban.resolved_sequence_json, *(step.to_json() for step in new_steps)]
         pick_ban.awaiting_choice = False
         pick_ban.pending_chooser_team_id = None
-        pick_ban.first_team_id = opener
+        # ``first_team_id`` stays the SEED opener: ``resolve_round_opener`` reads
+        # it as the session's immutable baseline (``alternate`` counts rounds off
+        # it), so writing this round's opener back would make round 3 repeat
+        # round 2. Who opens THIS round is the journal row below and the step's
+        # own actors.
         pick_ban.current_step_started_at = step_clock(pick_ban)
         if pick_ban.status == MapVetoSessionStatus.COMPLETED and new_steps:
             pick_ban.status = MapVetoSessionStatus.ACTIVE
@@ -1238,9 +1249,15 @@ class PickBanSessionService:
             loser_choice=first_team_id,
         )
 
-    async def round_winner(self, session: AsyncSession, encounter: Encounter, round_number: int) -> int | None:
-        """The participation that won series position ``round_number`` outright;
-        ``None`` while it is pending, cancelled or drawn.
+    async def round_result(
+        self, session: AsyncSession, encounter: Encounter, round_number: int
+    ) -> tuple[bool, int | None]:
+        """``(decided, winner)`` for series position ``round_number``.
+
+        ``decided`` is False while the position is pending or cancelled;
+        ``winner`` is ``None`` on a DRAW, which IS decided and names nobody. The
+        two are reported together because a caller that conflated them stalled
+        the room on every drawn map.
 
         The position's ``EncounterGame`` is the authority (spec §5.1): a parsed
         ``Match`` is an observation, and a claim nobody agreed with is not a
@@ -1248,13 +1265,13 @@ class PickBanSessionService:
         scoring rule, so a duel and a lobby answer it the same way.
         """
         if round_number < 1:
-            return None
+            return False, None
         game = next(
             (game for game in await self.games.list_games(session, encounter.id) if game.position == round_number),
             None,
         )
         if game is None or game.state != EncounterGameState.CONFIRMED:
-            return None
+            return False, None
         lines = (await self.games.lines_by_game(session, [game])).get(game.id) or []
         places = resolve_placements(
             await self.games.rules(session, encounter),
@@ -1269,7 +1286,7 @@ class PickBanSessionService:
             ],
         )
         first = [team_id for team_id, place in places.items() if place == 1]
-        return first[0] if len(first) == 1 else None
+        return True, (first[0] if len(first) == 1 else None)
 
     async def round_target(
         self, session: AsyncSession, encounter: Encounter, kind: PickBanKind, *, encounter_locked: bool = False
@@ -1338,7 +1355,7 @@ class PickBanSessionService:
         if (
             next_round > 1
             and pool_rotation(pool) in _RESULT_ROTATIONS
-            and await self.round_winner(session, encounter, highest) is None
+            and not (await self.round_result(session, encounter, highest))[0]
         ):
             return False  # owed until the previous position is confirmed
         return True
@@ -1405,10 +1422,10 @@ class PickBanSessionService:
         changed = False
         highest = await self.highest_round_of(session, pick_ban) or 0
         while highest < target:
-            winner = await self.round_winner(session, encounter, highest)
+            decided, winner = await self.round_result(session, encounter, highest)
             try:
                 await self.advance_to_next_round(
-                    session, pick_ban, completed_round=highest, winner=winner, commit=False
+                    session, pick_ban, completed_round=highest, winner=winner, decided=decided, commit=False
                 )
             except engine.RotationNeedsChoice:
                 # `result_loser_choice`: the round waits for the losing captain's

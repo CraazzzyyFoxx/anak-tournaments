@@ -260,12 +260,22 @@ class EncounterGameService:
         )
 
     async def sync_games_with_picks(
-        self, session: AsyncSession, encounter: Encounter, map_pick_ban: Any
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        map_pick_ban: Any,
+        *,
+        blocked_positions: frozenset[int] = frozenset(),
     ) -> list[EncounterGame]:
         """Make the live games mirror the map session's settled picks.
 
         Never touches a confirmed game: an undo that would strand one is refused
         upstream, so reaching here means the tail is still unplayed.
+
+        ``blocked_positions`` are positions that may be NAMED but must not open
+        for claims yet -- a game cannot start while a required ``side_pick`` of
+        its round is unresolved (spec §6 row 9), so the map lands and the state
+        stays ``planned`` until the pick does.
         """
         entries = list(await self.entry_repo.list_by_session(session, map_pick_ban.id))
         games = await self.list_games(session, encounter.id)
@@ -274,18 +284,21 @@ class EncounterGameService:
         if not changes and not stale:
             return games
         for position, entry, game in changes:
+            opening = (
+                EncounterGameState.PLANNED if position in blocked_positions else EncounterGameState.AWAITING_RESULT
+            )
             if game is None:
                 game = await self.open_game(
                     session,
                     encounter,
                     position=position,
                     map_id=entry.item_id,
-                    state=EncounterGameState.AWAITING_RESULT,
+                    state=opening,
                 )
                 games.append(game)
             else:
                 game.map_id = entry.item_id
-                if game.state == EncounterGameState.PLANNED:
+                if game.state == EncounterGameState.PLANNED and position not in blocked_positions:
                     game.state = EncounterGameState.AWAITING_RESULT
         if stale:
             await self.cancel_games(session, encounter, stale, actor_user_id=None, reason="pick_undone")

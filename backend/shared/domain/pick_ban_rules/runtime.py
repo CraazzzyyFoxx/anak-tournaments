@@ -173,14 +173,64 @@ def actor_submission(
 
 def current_step(steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLike]) -> ResolvedStep | None:
     """The first step some actor has not revealed yet; ``None`` once the
-    resolved sequence is exhausted."""
+    resolved sequence is exhausted.
+
+    An UNBOUND step (a ``side:<code>`` actor whose side is not handed out yet)
+    stops the cursor rather than being walked past: it has no actors to compare
+    against, and skipping it would silently drop a step of the draft.
+    """
     rows = list(submissions)
     for step in steps:
+        if step.is_unbound:
+            return step
         for actor in step.actors:
             row = actor_submission(rows, step.index, actor)
             if row is None or row.state != REVEALED:
                 return step
     return None
+
+
+def assigned_sides(
+    steps: Sequence[ResolvedStep],
+    submissions: Iterable[SubmissionLike],
+    sides: Sequence[str],
+    *,
+    participants: Sequence[int],
+    round: int | None,
+) -> dict[str, int]:
+    """``{side code: participation}`` as this round's played ``side_pick`` steps
+    settled it.
+
+    Read off the action log, not off ``game_team``: the log is the source of
+    truth for everything else the room decides, and binding an actor to a row
+    the projection has not written yet would make the two disagree.
+
+    A ``side_pick`` submission carries ONE item whose ``item_id`` is the index
+    into ``sides`` -- a side is not a board entry, so there is nothing else for
+    it to name. The chooser takes the side they named and the remaining sides
+    go to the remaining participations in seat order, which is exactly what
+    ``_apply_side_pick`` writes onto ``game_team``.
+    """
+    rows = list(submissions)
+    assigned: dict[str, int] = {}
+    for step in steps:
+        if step.action != "side_pick" or step.round != round:
+            continue
+        for actor in step.acting_actors:
+            row = actor_submission(rows, step.index, actor)
+            if row is None or row.state != REVEALED:
+                continue
+            items = _items_of(row)
+            if not items or not sides:
+                continue
+            assigned.setdefault(sides[int(items[0]["item_id"]) % len(sides)], actor)
+    if not assigned:
+        return assigned
+    remaining = [side for side in sides if side not in assigned]
+    others = [actor for actor in participants if actor not in assigned.values()]
+    for side, actor in zip(remaining, others, strict=False):
+        assigned[side] = actor
+    return assigned
 
 
 def _items_of(submission: SubmissionLike) -> list[dict[str, Any]]:
