@@ -16,7 +16,7 @@ Serialization parity:
   ``model_dump(mode="json", exclude_none=True)``; the delete returns 204 -> None.
 
 Commit semantics: every write service called here commits internally
-(captain.submit_captain_report,
+(captain.submit_team_report,
 pick_ban_action.perform_pick_ban_action, reg_service.create/update/withdraw/check_in,
 encounter service.upsert_saved_view/delete_saved_view), so the handlers add no
 extra commit. The pick-ban state read commits nothing at all: it is a pure
@@ -53,6 +53,7 @@ from shared.services.chat import (
     ChatRoom,
     ChatSettingsInput,
 )
+from shared.services.encounter.participants import active_teams
 from shared.services.subscriptions.realtime import emit_subscriptions_updated
 from shared.services.subscriptions.wiring import build_resolver, build_store
 from shared.services.tournament.visibility import ensure_tournament_viewable
@@ -71,13 +72,13 @@ from src.rpc._helpers import (
     _run,
 )
 from src.schemas.captain import (
-    CaptainReportSubmission,
     ElectOpenerInput,
+    GameClaimIn,
     GameMapSelectInput,
-    GameReportInput,
     PickBanActionInput,
     PickBanSubmitInput,
     PickBanUndoInput,
+    TeamReportIn,
     resolve_optional_viewer_team,
 )
 from src.schemas.registration import (
@@ -111,7 +112,7 @@ from src.schemas.registration_team import (
 from src.services import visibility_resolvers
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import pick_ban_action as pick_ban_action
-from src.services.encounter.captain import captain_service
+from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.chat_access import encounter_chat_service
 from src.services.encounter.games import encounter_game_service
 from src.services.encounter.map_report import ClaimResultIn, map_report_service
@@ -260,26 +261,45 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            body = CaptainReportSubmission.model_validate(_payload(data))
-            # submit_captain_report commits internally; route returns a custom dict.
-            encounter = await captain_service.submit_captain_report(
+            body = TeamReportIn.model_validate(_payload(data))
+            encounter = await captain_service._load_encounter(session, encounter_id)
+            # The reporter is the CALLER's seat, never the body's: a captain
+            # files their own report and nobody else's.
+            participation, player_id = await captain_service.resolve_participation(session, user, encounter)
+            # submit_team_report commits internally; route returns a custom dict.
+            encounter = await captain_service.submit_team_report(
                 session,
-                user,
                 encounter_id,
-                home_score=body.home_score,
-                away_score=body.away_score,
+                encounter_team_id=participation.id,
+                reporter_user_id=player_id,
+                games_played=body.games_played,
+                results=[
+                    ReportResultIn(
+                        encounter_team_id=line.encounter_team_id,
+                        score=line.score,
+                        placement=line.placement,
+                        wins=line.wins,
+                    )
+                    for line in body.results
+                ],
+                basis_version=body.basis_version,
                 closeness=body.closeness,
-                map_codes=[(mc.map_index, mc.code) for mc in body.map_codes],
                 comment=body.comment,
                 custom_fields=body.custom_fields,
+                map_codes=[(mc.map_index, mc.code) for mc in body.map_codes],
+                actor_auth_user_id=user.id,
             )
             reports = await captain_service.get_encounter_reports(session, encounter_id)
             return {
                 "id": encounter.id,
                 "result_status": encounter.result_status,
                 "status": encounter.status,
-                "home_score": encounter.home_score,
-                "away_score": encounter.away_score,
+                "result_source": encounter.result_source,
+                "result_version": encounter.result_version,
+                "teams": [
+                    {"encounter_team_id": seat.id, "score": seat.score, "placement": seat.placement}
+                    for seat in await active_teams(session, encounter.id)
+                ],
                 "closeness": encounter.closeness,
                 "reports": reports,
             }
@@ -436,7 +456,7 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             encounter_id = _require_id(data)
             game_id = _path_int(data, "game_id")
-            body = GameReportInput.model_validate(_payload(data))
+            body = GameClaimIn.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
             # The claimant is the CALLER's seat, never the body's: a captain
             # files their own claim and nobody else's.

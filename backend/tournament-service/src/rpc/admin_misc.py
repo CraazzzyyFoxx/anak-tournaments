@@ -33,6 +33,7 @@ from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.services.audit import record_admin_audit
 from shared.services.bracket.usability import assert_encounter_live
+from shared.services.encounter.participants import active_teams
 from src import models, schemas
 from src.core import auth
 from src.rpc._helpers import (
@@ -55,20 +56,30 @@ from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.admin.standing import standing_service
 from src.services.admin.tournament import tournament_service
 from src.services.computation import jobs as computation_jobs
-from src.services.encounter.captain import captain_service
+from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.report_form import report_form_service
 from src.services.tournament import flows as tournament_flows
 from src.services.tournament.schedule import schedule_service
 
 
-def _serialize_result(encounter: models.Encounter) -> dict:
-    """The settled result state both result endpoints return."""
+async def _serialize_result(session: Any, encounter: models.Encounter) -> dict:
+    """The settled result state both result endpoints return.
+
+    The standing lives on the participations now, so the seats are re-read
+    rather than taken off the encounter row: the result writer has just
+    rewritten them and the caller holds no loaded collection.
+    """
+    seats = await active_teams(session, encounter.id)
     return schemas.EncounterResultRead(
         id=encounter.id,
         status=encounter.status,
         result_status=encounter.result_status,
-        home_score=encounter.home_score,
-        away_score=encounter.away_score,
+        result_source=encounter.result_source,
+        result_version=encounter.result_version,
+        teams=[
+            schemas.EncounterResultSnapshotLine(encounter_team_id=seat.id, score=seat.score, placement=seat.placement)
+            for seat in seats
+        ],
         closeness=encounter.closeness,
         confirmed_at=encounter.confirmed_at,
     ).model_dump(mode="json")
@@ -95,14 +106,16 @@ async def _assert_bracket_live(session: Any, encounter_id: int) -> None:
         await assert_encounter_live(session, encounter)
 
 
-def _slot_state(encounter: models.Encounter) -> dict:
+async def _slot_state(session: Any, encounter: models.Encounter) -> schemas.EncounterSlotRead:
     """One side of a slot swap, as the bracket re-renders it."""
-    return {
-        "id": encounter.id,
-        "home_team_id": encounter.home_team_id,
-        "away_team_id": encounter.away_team_id,
-        "name": encounter.name,
-    }
+    return schemas.EncounterSlotRead(
+        id=encounter.id,
+        teams=[
+            schemas.EncounterSeatRead(id=seat.id, slot=seat.slot, team_id=seat.team_id, name=seat.name)
+            for seat in await active_teams(session, encounter.id)
+        ],
+        name=encounter.name,
+    )
 
 
 _user_repo = UserRepository()
@@ -172,7 +185,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "result")
             await _assert_bracket_live(session, encounter_id)
-            body = schemas.EncounterSetResultInput.model_validate(_payload(data))
+            body = schemas.SetResultIn.model_validate(_payload(data))
             await record_admin_audit(
                 session,
                 action="encounter.set_result",
@@ -189,12 +202,19 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 encounter_id,
                 actor_user_id=await _actor_player_id(session, user),
-                home_score=body.home_score,
-                away_score=body.away_score,
+                reason=body.reason,
+                results=[
+                    ReportResultIn(
+                        encounter_team_id=line.encounter_team_id,
+                        score=line.score,
+                        placement=line.placement,
+                    )
+                    for line in body.results
+                ],
                 closeness=body.closeness,
                 adopt_report_team_id=body.adopt_report_team_id,
             )
-            return _serialize_result(encounter)
+            return await _serialize_result(session, encounter)
 
         return await _run(logger, op)
 
@@ -220,8 +240,8 @@ def register(broker: Any, logger: Any) -> None:
             # re-renders the pair without a refetch.
             source, target = await enc_service.encounter_service.swap_slots(session, encounter_id, body)
             return schemas.EncounterSlotSwapRead(
-                source=_slot_state(source),
-                target=_slot_state(target),
+                source=await _slot_state(session, source),
+                target=await _slot_state(session, target),
             ).model_dump(mode="json")
 
         return await _run(logger, op)
@@ -233,6 +253,7 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
             ensure_workspace_permission(user, ws_id, "match", "result")
+            body = schemas.ReopenResultIn.model_validate(_payload(data))
             await record_admin_audit(
                 session,
                 action="encounter.reopen_result",
@@ -241,12 +262,16 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ws_id,
                 entity_type="encounter",
                 entity_id=encounter_id,
+                after=body.model_dump(mode="json"),
             )
             await _assert_source_correction_allowed(session, encounter_id)
             encounter = await captain_service.reopen_encounter_result(
-                session, encounter_id, actor_user_id=await _actor_player_id(session, user)
+                session,
+                encounter_id,
+                actor_user_id=await _actor_player_id(session, user),
+                reason=body.reason,
             )
-            return _serialize_result(encounter)
+            return await _serialize_result(session, encounter)
 
         return await _run(logger, op)
 

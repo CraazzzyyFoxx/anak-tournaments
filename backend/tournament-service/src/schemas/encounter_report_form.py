@@ -5,8 +5,8 @@ split so the admin builder page and the public read share one payload. The read
 model is used verbatim for the admin GET, the admin PUT response and the
 ``form`` sibling of the public reports envelope.
 
-``home_score``/``away_score`` are deliberately absent: they are the input to
-result derivation, so a report without a score is meaningless.
+``results`` is deliberately absent: the per-participation scoreline is the
+input to result derivation, so a report without one is meaningless.
 """
 
 from __future__ import annotations
@@ -41,7 +41,9 @@ LABEL_MAX_LENGTH = 64
 CUSTOM_FIELD_KEY_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 # Keys that would collide with a built-in report field on the wire.
-RESERVED_CUSTOM_FIELD_KEYS = frozenset({"home_score", "away_score", "score", "closeness", "map_codes", "comment"})
+RESERVED_CUSTOM_FIELD_KEYS = frozenset(
+    {"basis_version", "games_played", "results", "score", "closeness", "map_codes", "comment"}
+)
 
 
 class ReportBuiltInFieldConfig(BaseModel):

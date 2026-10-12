@@ -16,11 +16,11 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	// move together, so a dispute can never be left half-resolved. reopen is the
 	// only way out of a dispute an admin does not want to force-confirm.
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/result", Queue: "rpc.tournament.encounter_set_result", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/result/reopen", Queue: "rpc.tournament.encounter_reopen_result", IDParam: "encounter_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/result/reopen", Queue: "rpc.tournament.encounter_reopen_result", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/encounters/{encounter_id}/result-audit", Queue: "rpc.tournament.encounter_result_audit", IDParam: "encounter_id", Auth: edge.AuthRequired},
-	// Bracket drag-and-drop: exchange the teams two slots hold (same encounter +
-	// other slot = a home/away flip). Seeding only — the worker refuses a settled
-	// or live encounter.
+	// Bracket drag-and-drop: exchange the teams two seats hold (same encounter +
+	// another slot = an internal swap). Seeding only -- the worker refuses a
+	// settled or live encounter.
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/swap-slot", Queue: "rpc.tournament.encounter_swap_slot", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
 	// captain reports — cross-tournament, workspace-scoped (?workspace_id=). Both
 	// carry the same filter set, so both take AllQuery. The /stats literal is

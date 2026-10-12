@@ -47,6 +47,7 @@ from src.services.encounter import pick_ban_config, room_control, room_journal
 from src.services.encounter import pick_ban_session as pick_ban_session
 from src.services.encounter.captain import ReportResultIn
 from src.services.encounter.game_correction import game_correction_service
+from src.services.encounter.games import GameResultIn
 from src.services.encounter.pregame_rooms import pregame_rooms_service
 from src.services.encounter.room_reconcile import request_tournament_reconcile
 
@@ -177,13 +178,22 @@ class AdminReadinessSet(BaseModel):
     ready: bool
 
 
-class AdminGameResultInput(BaseModel):
-    """Body for the admin game-result correction: the position's score as the
-    organizer decides it, plus the reason that goes into the audit journal (a
-    correction is never anonymous -- spec §6.5)."""
+class AdminGameResultLineInput(BaseModel):
+    """One participation's numbers inside an admin game correction."""
 
-    home_score: int = Field(ge=0)
-    away_score: int = Field(ge=0)
+    encounter_team_id: int
+    score: int | None = Field(default=None, ge=0)
+    placement: int | None = Field(default=None, ge=1)
+    column_values: dict[str, float] = Field(default_factory=dict)
+
+
+class AdminGameResultInput(BaseModel):
+    """Body for the admin game-result correction: the position's numbers as the
+    organizer decides them, one line per live participation, plus the reason
+    that goes into the audit journal (a correction is never anonymous --
+    spec §6.5)."""
+
+    results: list[AdminGameResultLineInput] = Field(min_length=1)
     reason: str = Field(min_length=1, max_length=500)
 
 
@@ -713,7 +723,7 @@ def register(broker: Any, logger: Any) -> None:
                 # (admin_misc._actor_player_id explains the translation).
                 actor_player_id=await admin_misc._actor_player_id(session, user),
             )
-            return admin_misc._serialize_result(encounter)
+            return await admin_misc._serialize_result(session, encounter)
 
         return await _run(logger, op)
 
@@ -737,19 +747,25 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=encounter.id,
                 after={
                     "game_id": game_id,
-                    "home_score": body.home_score,
-                    "away_score": body.away_score,
+                    "results": [line.model_dump(mode="json") for line in body.results],
                     "reason": body.reason,
                 },
             )
-            # Commits internally (the accepted score, the live series score and
+            # Commits internally (the accepted numbers, the live standing and
             # any rebuilt round land together).
-            return await game_correction_service.correct(
+            return await game_correction_service.correct_game(
                 session,
-                encounter,
+                encounter.id,
                 game_id=game_id,
-                home_score=body.home_score,
-                away_score=body.away_score,
+                results=[
+                    GameResultIn(
+                        encounter_team_id=line.encounter_team_id,
+                        score=line.score,
+                        placement=line.placement,
+                        column_values=dict(line.column_values),
+                    )
+                    for line in body.results
+                ],
                 actor_user_id=user.id,
                 reason=body.reason,
             )

@@ -19,6 +19,7 @@ from shared.repository import (
 )
 from shared.services.bracket.advancement import reset_downstream
 from shared.services.bracket.swiss_state import remove_swiss_bye_round
+from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
 from src import models, schemas
 from src.core import enums
 from src.services.notifications.lifecycle import after_encounter_teams_changed, lifecycle_notifier
@@ -56,40 +57,68 @@ def _reject_settled_result_edits(encounter: models.Encounter, update_data: dict)
     """Completion is not a field edit -- in either direction.
 
     Into ``COMPLETED``: the result endpoint owns it (``_reject_completed_status``).
-    Out of it -- or rewiring a settled encounter's team slots or score -- the
-    reopen endpoint owns it: that one clears ``result_status``/``confirmed_at``/score
-    and unwinds whatever the old result advanced downstream. The bare status write
-    this used to allow left ``result_status='confirmed'`` beside a non-COMPLETED
-    status, which the database refuses outright
-    (``ck_encounter_result_status_matches_status``), so the edit died on an
-    IntegrityError instead of on a message naming the endpoint that can do it. A
-    bare score write was worse: it went through, flipped the winner, and left the
-    bracket advanced on the old one with no audit row -- advancement only runs on
-    finalize.
+    Out of it, the reopen endpoint owns it: that one clears
+    ``result_status``/``confirmed_at``/``result_source`` and unwinds whatever the
+    old result advanced downstream. The bare status write this used to allow left
+    ``result_status='confirmed'`` beside a non-COMPLETED status, which the
+    database refuses outright (``ck_encounter_confirmed_completed``), so the edit
+    died on an IntegrityError instead of on a message naming the endpoint that
+    can do it. The standing and the seats are not in this payload at all any
+    more: they live on the participations, which only the result writer and the
+    slot swap touch.
 
-    Repeating the encounter's current values is not a transition: the admin form
+    Repeating the encounter's current status is not a transition: the admin form
     posts every field, so renaming a completed encounter must not trip the
     completion guard and push admins into flipping the status by hand.
     """
     new_status = update_data.get("status", encounter.status)
     if new_status != encounter.status:
         _reject_completed_status(new_status.value)
-    if encounter.status != enums.EncounterStatus.COMPLETED:
-        return
-    rewired = any(
-        field in update_data and update_data[field] != getattr(encounter, field)
-        for field in ("home_team_id", "away_team_id", "home_score", "away_score")
-    )
-    if new_status == encounter.status and not rewired:
+    if encounter.status != enums.EncounterStatus.COMPLETED or new_status == encounter.status:
         return
     raise HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail=(
             "use_reopen_endpoint: reopen the result via POST "
             "/api/v1/admin/encounters/{encounter_id}/result/reopen before changing a completed "
-            "encounter's status, teams or score"
+            "encounter's status"
         ),
     )
+
+
+async def _roster_snapshot(session: AsyncSession, participation: models.EncounterTeam) -> list[MemberSnapshot]:
+    """Re-read one participation's roster as the snapshots ``place_team`` takes.
+
+    A seat that changes slot is a NEW participation, so the line-up it already
+    recorded has to be copied onto it; reading the rows back is the only way to
+    do that without a second author of the snapshot shape.
+    """
+    members = await session.execute(
+        select(models.EncounterTeamMember).where(
+            models.EncounterTeamMember.encounter_team_id == participation.id,
+        )
+    )
+    rows = list(members.scalars().all())
+    if not rows:
+        return []
+    role_rows = await session.execute(
+        select(models.EncounterTeamMemberRole).where(
+            models.EncounterTeamMemberRole.team_member_id.in_([row.id for row in rows])
+        )
+    )
+    roles: dict[int, list[tuple[str, str]]] = {}
+    for role in role_rows.scalars().all():
+        roles.setdefault(role.team_member_id, []).append((role.dimension, role.role))
+    return [
+        MemberSnapshot(
+            workspace_member_id=row.workspace_member_id,
+            display_name=row.display_name_snapshot,
+            rank=row.rank,
+            is_substitute=row.is_substitute,
+            roles=tuple(roles.get(row.id, ())),
+        )
+        for row in rows
+    ]
 
 
 def _reject_swapping_a_busy_encounter(encounter: models.Encounter) -> None:
@@ -202,7 +231,7 @@ class AdminEncounterService:
         return team
 
     async def create_encounter(self, session: AsyncSession, data: schemas.EncounterCreate) -> models.Encounter:
-        """Create a new encounter"""
+        """Create a new encounter and seat the teams the payload names."""
         _reject_completed_status(data.status)
 
         # Verify tournament exists
@@ -211,16 +240,25 @@ class AdminEncounterService:
         if not tournament:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-        # Verify selected teams exist and belong to this tournament when provided
-        if data.home_team_id is not None:
-            await self._require_team_in_tournament(
-                session, team_id=data.home_team_id, tournament_id=data.tournament_id, label="Home team"
+        seats = {seat.slot: seat for seat in data.teams}
+        if len(seats) != len(data.teams):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Two seats name the same slot",
             )
-
-        if data.away_team_id is not None:
-            await self._require_team_in_tournament(
-                session, team_id=data.away_team_id, tournament_id=data.tournament_id, label="Away team"
-            )
+        for seat in data.teams:
+            if seat.slot > data.slot_count:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Slot {seat.slot} is outside this encounter's seats (1..{data.slot_count})",
+                )
+            if seat.team_id is not None:
+                await self._require_team_in_tournament(
+                    session,
+                    team_id=seat.team_id,
+                    tournament_id=data.tournament_id,
+                    label=f"Slot {seat.slot} team",
+                )
 
         stage_id, stage_item_id = await self._resolve_stage_refs(
             session,
@@ -228,6 +266,7 @@ class AdminEncounterService:
             stage_id=data.stage_id,
             stage_item_id=data.stage_item_id,
         )
+        stage = await self.stage_repo.get(session, stage_id)
 
         # Parse status
         try:
@@ -235,32 +274,50 @@ class AdminEncounterService:
         except ValueError:
             encounter_status = enums.EncounterStatus.OPEN
 
-        # Create encounter
+        # Create encounter. The workspace, the discipline and the scoring rule
+        # are copies of the owner's (D62): an encounter is played under the
+        # rule of the stage it sits in.
         encounter = models.Encounter(
-            name=data.name,
+            workspace_id=tournament.workspace_id,
+            discipline=tournament.discipline,
             tournament_id=data.tournament_id,
-            stage_id=stage_id,
-            stage_item_id=stage_item_id,
-            home_team_id=data.home_team_id,
-            away_team_id=data.away_team_id,
-            round=data.round,
+            scoring_rule_id=stage.scoring_rule_id,
+            name=data.name,
+            slot_count=data.slot_count,
             best_of=data.best_of,
-            home_score=data.home_score,
-            away_score=data.away_score,
             status=encounter_status,
             scheduled_at=data.scheduled_at,
             started_at=data.started_at,
             ended_at=data.ended_at,
-            current_map_index=data.current_map_index,
+            current_game_position=data.current_map_index,
         )
 
         # Not ``repo.create``: that flushes, and the enqueue below must stay the
         # first write of this transaction (see the outbox-ordering regression test).
         session.add(encounter)
         await enqueue_tournament_recalculation(session, data.tournament_id)
-        # After the enqueue, whose flush is what gives the row its id. The
-        # notifier applies its own guards -- a slot-less or already-played row
-        # tells nobody; a time is not required.
+        # After the enqueue, whose flush is what gives the row its id.
+        session.add(
+            models.BracketEncounter(
+                encounter_id=encounter.id,
+                tournament_id=data.tournament_id,
+                stage_id=stage_id,
+                stage_item_id=stage_item_id,
+                round=data.round,
+            )
+        )
+        for seat in sorted(data.teams, key=lambda row: row.slot):
+            await place_team(
+                session,
+                encounter,
+                slot=seat.slot,
+                team_id=seat.team_id,
+                name=await self._team_name(session, seat.team_id) or "TBD",
+                seed=None,
+                members=(),
+            )
+        # The notifier applies its own guards -- a slot-less or already-played
+        # row tells nobody; a time is not required.
         await lifecycle_notifier.on_encounter_changed(session, encounter)
         await session.commit()
         await session.refresh(encounter)
@@ -270,17 +327,13 @@ class AdminEncounterService:
     async def update_encounter(
         self, session: AsyncSession, encounter_id: int, data: schemas.EncounterUpdate
     ) -> models.Encounter:
-        """Update encounter fields"""
-        encounter = await self.encounter_repo.get_for_update(
-            session,
-            encounter_id,
-            options=[
-                selectinload(models.Encounter.home_team),
-                selectinload(models.Encounter.away_team),
-                selectinload(models.Encounter.stage),
-                selectinload(models.Encounter.stage_item),
-            ],
-        )
+        """Update encounter fields.
+
+        The bracket coordinate (``stage``/``stage_item``/``round``) lives on
+        ``tournament.bracket_encounter`` and is written there; the seats are not
+        in this payload at all (the slot swap owns them).
+        """
+        encounter = await self.encounter_repo.get_for_update(session, encounter_id)
 
         if not encounter:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
@@ -306,54 +359,46 @@ class AdminEncounterService:
                     detail=f"Invalid status. Must be one of: {', '.join([s.value for s in enums.EncounterStatus])}",
                 )
         _reject_settled_result_edits(encounter, update_data)
-        # A score/status/team write on this encounter is a result correction, so
-        # it may only land while the qualifications it already fed are still
-        # untouched; a pure rename or reschedule is not a correction.
-        if any(
-            field in update_data for field in ("home_score", "away_score", "status", "home_team_id", "away_team_id")
-        ):
+        # A status write on this encounter is a result correction, so it may only
+        # land while the qualifications it already fed are still untouched; a
+        # pure rename or reschedule is not a correction.
+        if "status" in update_data:
             await self._assert_source_correction_allowed(session, encounter)
 
-        if "home_team_id" in update_data and update_data["home_team_id"] is not None:
-            await self._require_team_in_tournament(
-                session,
-                team_id=update_data["home_team_id"],
-                tournament_id=encounter.tournament_id,
-                label="Home team",
-            )
-
-        if "away_team_id" in update_data and update_data["away_team_id"] is not None:
-            await self._require_team_in_tournament(
-                session,
-                team_id=update_data["away_team_id"],
-                tournament_id=encounter.tournament_id,
-                label="Away team",
-            )
-
+        position = await session.get(models.BracketEncounter, encounter.id)
         resolved_stage_id, resolved_stage_item_id = await self._resolve_stage_refs(
             session,
             tournament_id=encounter.tournament_id,
-            stage_id=update_data.get("stage_id", encounter.stage_id),
-            stage_item_id=update_data.get("stage_item_id", encounter.stage_item_id),
+            stage_id=update_data.pop("stage_id", position.stage_id if position else None),
+            stage_item_id=update_data.pop("stage_item_id", position.stage_item_id if position else None),
         )
-        update_data["stage_id"] = resolved_stage_id
-        update_data["stage_item_id"] = resolved_stage_item_id
+        new_round = update_data.pop("round", position.round if position else 0)
+        if position is None:
+            session.add(
+                models.BracketEncounter(
+                    encounter_id=encounter.id,
+                    tournament_id=encounter.tournament_id,
+                    stage_id=resolved_stage_id,
+                    stage_item_id=resolved_stage_item_id,
+                    round=new_round,
+                )
+            )
+        else:
+            position.stage_id = resolved_stage_id
+            position.stage_item_id = resolved_stage_item_id
+            position.round = new_round
+        # ``current_map_index`` is the wire's name for the live position.
+        if "current_map_index" in update_data:
+            update_data["current_game_position"] = update_data.pop("current_map_index")
 
         tournament_id = encounter.tournament_id
-        previous_teams = (encounter.home_team_id, encounter.away_team_id)
         # Read only when the payload carries the field: an edit that never
         # mentions ``scheduled_at`` cannot have changed it.
         previous_scheduled_at = encounter.scheduled_at if "scheduled_at" in update_data else None
         for field, value in update_data.items():
             setattr(encounter, field, value)
 
-        teams_changed = (encounter.home_team_id, encounter.away_team_id) != previous_teams
-        if teams_changed:
-            # Admin re-assigned a team slot: sync map/hero pick-ban sessions
-            # (ensure when both teams are now known, reset a stale existing one)
-            # and tell the rosters who they now play.
-            await after_encounter_teams_changed(session, encounter, channel=True)
-        elif "scheduled_at" in update_data and encounter.scheduled_at != previous_scheduled_at:
+        if "scheduled_at" in update_data and encounter.scheduled_at != previous_scheduled_at:
             await lifecycle_notifier.on_encounter_changed(session, encounter)
 
         await enqueue_tournament_recalculation(session, tournament_id)
@@ -382,18 +427,22 @@ class AdminEncounterService:
     async def swap_slots(
         self, session: AsyncSession, encounter_id: int, data: schemas.EncounterSwapSlotInput
     ) -> tuple[models.Encounter, models.Encounter]:
-        """Exchange the team ids two bracket slots hold, in one transaction.
+        """Exchange the teams two bracket seats hold, in one transaction.
 
-        The bracket's drag-and-drop: either slot may be empty (that is how a team
-        is moved into a TBD slot), and naming the same encounter with the other
-        slot flips home/away. Seeding only -- a settled or running encounter is
-        refused rather than silently re-teamed under its result.
+        The bracket's drag-and-drop: either seat may be empty (that is how a team
+        is moved into a TBD slot), and naming the same encounter with another
+        slot exchanges two of its own seats. Seeding only -- a settled or running
+        encounter is refused rather than silently re-teamed under its result.
 
-        Both an initial seed and a derived slot may be swapped, so the origin
-        travels with the team: the ``EncounterLink`` feeding a derived slot is
-        re-pointed at the slot its team moved into. Otherwise the next
+        A seat does not change hands in place: the occupant is retired and a new
+        participation written (D55), so the games the old one played stay
+        attached to the row that played them.
+
+        Both an initial seed and a derived seat may be swapped, so the origin
+        travels with the team: the ``EncounterLink`` feeding a derived seat is
+        re-pointed at the seat its team moved into. Otherwise the next
         advancement would overwrite the manual move, and -- since the Grand
-        Final and its reset are identified by those links -- a home/away flip
+        Final and its reset are identified by those links -- an internal swap
         would hide the Grand Final from the reset rule.
         """
         if data.target_encounter_id == encounter_id and data.target_slot == data.slot:
@@ -407,14 +456,7 @@ class AdminEncounterService:
         # and deadlock.
         locked: dict[int, models.Encounter] = {}
         for locked_id in sorted({encounter_id, data.target_encounter_id}):
-            row = await self.encounter_repo.get_for_update(
-                session,
-                locked_id,
-                options=[
-                    selectinload(models.Encounter.home_team),
-                    selectinload(models.Encounter.away_team),
-                ],
-            )
+            row = await self.encounter_repo.get_for_update(session, locked_id)
             if not row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
             locked[locked_id] = row
@@ -427,7 +469,11 @@ class AdminEncounterService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Target encounter does not belong to this tournament",
             )
-        if target.stage_id != source.stage_id:
+        source_position = await session.get(models.BracketEncounter, source.id)
+        target_position = await session.get(models.BracketEncounter, target.id)
+        source_stage = source_position.stage_id if source_position is not None else None
+        target_stage = target_position.stage_id if target_position is not None else None
+        if target_stage != source_stage:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Target encounter does not belong to the same stage",
@@ -436,34 +482,61 @@ class AdminEncounterService:
         touched = [source] if source is target else [source, target]
         for encounter in touched:
             _reject_swapping_a_busy_encounter(encounter)
-
-        previous = {encounter.id: (encounter.home_team_id, encounter.away_team_id) for encounter in touched}
-        source_field = f"{data.slot}_team_id"
-        target_field = f"{data.target_slot}_team_id"
-        # Both reads before either write -- on a home/away flip the two slots
-        # live on the same row. ``or None`` so a 0 left by an older writer and a
-        # NULL both land as the empty slot the column actually stores.
-        source_team_id = getattr(source, source_field) or None
-        target_team_id = getattr(target, target_field) or None
-        setattr(source, source_field, target_team_id)
-        setattr(target, target_field, source_team_id)
-
-        for encounter in touched:
-            if encounter.home_team_id is not None and encounter.home_team_id == encounter.away_team_id:
+        for encounter, slot in ((source, data.slot), (target, data.target_slot)):
+            if slot > encounter.slot_count:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="A team cannot occupy both slots of one encounter",
+                    detail=f"Slot {slot} is outside encounter {encounter.id}'s seats (1..{encounter.slot_count})",
+                )
+
+        # Both reads before either write -- on an internal swap the two seats
+        # live on the same encounter.
+        source_seats = {seat.slot: seat for seat in await active_teams(session, source.id)}
+        target_seats = (
+            source_seats if target is source else {seat.slot: seat for seat in await active_teams(session, target.id)}
+        )
+        moving_out = source_seats.get(data.slot)
+        moving_in = target_seats.get(data.target_slot)
+        if moving_out is None and moving_in is None:
+            return source, target
+        # The rosters travel with their teams, so they are read while the old
+        # participations are still live.
+        rosters = {
+            seat.id: await _roster_snapshot(session, seat) for seat in (moving_out, moving_in) if seat is not None
+        }
+
+        for encounter, slot in ((source, data.slot), (target, data.target_slot)):
+            await vacate_slot(session, encounter, slot=slot)
+        for encounter, slot, seat in (
+            (source, data.slot, moving_in),
+            (target, data.target_slot, moving_out),
+        ):
+            if seat is None:
+                continue
+            await place_team(
+                session,
+                encounter,
+                slot=slot,
+                team_id=seat.team_id,
+                name=seat.name,
+                seed=seat.seed,
+                members=rosters[seat.id],
+            )
+
+        for encounter in touched:
+            seats = await active_teams(session, encounter.id)
+            team_ids = [seat.team_id for seat in seats if seat.team_id is not None]
+            if len(set(team_ids)) != len(team_ids):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="A team cannot occupy two seats of one encounter",
                 )
 
         await self._move_slot_links(session, source, target, data)
 
         for encounter in touched:
-            if (encounter.home_team_id, encounter.away_team_id) == previous[encounter.id]:
-                continue
-            encounter.name = build_encounter_name(
-                await self._team_name(session, encounter.home_team_id),
-                await self._team_name(session, encounter.away_team_id),
-            )
+            seats = await active_teams(session, encounter.id)
+            encounter.name = build_encounter_name([seat.name for seat in seats])
             await after_encounter_teams_changed(session, encounter, channel=True)
 
         await enqueue_tournament_recalculation(session, source.tournament_id)
@@ -478,34 +551,32 @@ class AdminEncounterService:
         target: models.Encounter,
         data: schemas.EncounterSwapSlotInput,
     ) -> None:
-        """Re-point the advancement edges that fed the two swapped slots.
+        """Re-point the advancement edges that fed the two swapped seats.
 
-        A derived slot is owned by the ``EncounterLink`` targeting it; moving
+        A derived seat is owned by the ``EncounterLink`` targeting it; moving
         only the team would leave the next advancement writing the old team
         back into it. One query for both sides, both reads before either write
-        -- on a home/away flip the two links sit on the same encounter.
+        -- on an internal swap the two links sit on the same encounter.
         """
         rows = await session.execute(
             select(models.EncounterLink).where(models.EncounterLink.target_encounter_id.in_({source.id, target.id}))
         )
         links = list(rows.scalars().all())
-        source_slot = enums.EncounterLinkSlot(data.slot)
-        target_slot = enums.EncounterLinkSlot(data.target_slot)
 
-        def _link_for(encounter_id: int, slot: enums.EncounterLinkSlot) -> models.EncounterLink | None:
+        def _link_for(encounter_id: int, slot: int) -> models.EncounterLink | None:
             return next(
                 (link for link in links if link.target_encounter_id == encounter_id and link.target_slot == slot),
                 None,
             )
 
-        source_link = _link_for(source.id, source_slot)
-        target_link = _link_for(target.id, target_slot)
+        source_link = _link_for(source.id, data.slot)
+        target_link = _link_for(target.id, data.target_slot)
         if source_link is not None:
             source_link.target_encounter_id = target.id
-            source_link.target_slot = target_slot
+            source_link.target_slot = data.target_slot
         if target_link is not None:
             target_link.target_encounter_id = source.id
-            target_link.target_slot = source_slot
+            target_link.target_slot = data.slot
 
     async def update_match(
         self,

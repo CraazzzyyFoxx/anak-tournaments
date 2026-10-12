@@ -25,6 +25,10 @@ def main() -> None:
             schemas[name] = schema
         operations.update(frag.get("operations", {}))
     json.dump({"schemas": schemas, "operations": operations}, sys.stdout, indent=2, sort_keys=True)
+    # Trailing newline: pre-commit's end-of-file-fixer appends one to the
+    # committed manifest, so without it here every `--check` run reports the
+    # file as stale over a single byte.
+    sys.stdout.write("\n")
 
 
 if __name__ == "__main__":

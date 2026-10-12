@@ -91,7 +91,7 @@ def _repos(*encounters: SimpleNamespace):
         yield SimpleNamespace(sync=sync, enqueue=enqueue)
 
 
-def _body(slot: str, target_id: int, target_slot: str):
+def _body(slot: int, target_id: int, target_slot: int):
     return schemas.EncounterSwapSlotInput(slot=slot, target_encounter_id=target_id, target_slot=target_slot)
 
 
@@ -120,7 +120,7 @@ class SwapSlots(IsolatedAsyncioTestCase):
             patch.object(enc_service.encounter_service.encounter_repo, "get", AsyncMock(return_value=source)),
         ):
             envelope = await broker.handlers["rpc.tournament.encounter_swap_slot"](
-                {"identity": identity, "id": 10, "payload": _body("home", 11, "home").model_dump()},
+                {"identity": identity, "id": 10, "payload": _body(1, 11, 1).model_dump()},
                 None,
             )
 
@@ -142,7 +142,7 @@ class SwapSlots(IsolatedAsyncioTestCase):
         target = _encounter(11, 3, None)
         with _repos(source, target) as stubs:
             returned_source, returned_target = await enc_service.encounter_service.swap_slots(
-                _session(), 10, _body("home", 11, "away")
+                _session(), 10, _body(1, 11, 2)
             )
 
         self.assertEqual((None, 2), (source.home_team_id, source.away_team_id))
@@ -158,7 +158,7 @@ class SwapSlots(IsolatedAsyncioTestCase):
         encounter = _encounter(10, 1, 2)
         with _repos(encounter) as stubs:
             returned_source, returned_target = await enc_service.encounter_service.swap_slots(
-                _session(), 10, _body("home", 10, "away")
+                _session(), 10, _body(1, 10, 2)
             )
 
         self.assertEqual((2, 1), (encounter.home_team_id, encounter.away_team_id))
@@ -170,7 +170,7 @@ class SwapSlots(IsolatedAsyncioTestCase):
 
     async def test_rejects_the_same_slot_of_the_same_encounter(self) -> None:
         with assert_http_status(self, 400):
-            await enc_service.encounter_service.swap_slots(_session(), 10, _body("home", 10, "home"))
+            await enc_service.encounter_service.swap_slots(_session(), 10, _body(1, 10, 1))
 
     async def test_rejects_a_completed_target(self) -> None:
         source = _encounter(10, 1, 2)
@@ -182,19 +182,19 @@ class SwapSlots(IsolatedAsyncioTestCase):
             result_status=enums.EncounterResultStatus.CONFIRMED,
         )
         with _repos(source, target), assert_http_status(self, 409):
-            await enc_service.encounter_service.swap_slots(_session(), 10, _body("home", 11, "home"))
+            await enc_service.encounter_service.swap_slots(_session(), 10, _body(1, 11, 1))
         self.assertEqual(1, source.home_team_id)
 
     async def test_rejects_a_live_target(self) -> None:
         source = _encounter(10, 1, 2)
         target = _encounter(11, 3, 4, started_at=datetime.now(UTC))
         with _repos(source, target), assert_http_status(self, 409):
-            await enc_service.encounter_service.swap_slots(_session(), 10, _body("home", 11, "home"))
+            await enc_service.encounter_service.swap_slots(_session(), 10, _body(1, 11, 1))
         self.assertEqual(1, source.home_team_id)
 
     async def test_rejects_a_target_in_another_stage(self) -> None:
         source = _encounter(10, 1, 2)
         target = _encounter(11, 3, 4, stage_id=9)
         with _repos(source, target), assert_http_status(self, 400):
-            await enc_service.encounter_service.swap_slots(_session(), 10, _body("home", 11, "home"))
+            await enc_service.encounter_service.swap_slots(_session(), 10, _body(1, 11, 1))
         self.assertEqual(1, source.home_team_id)

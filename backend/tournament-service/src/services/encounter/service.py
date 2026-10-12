@@ -617,10 +617,9 @@ class EncounterService:
                     sa.func.count()
                     .filter(completed, duel, seat_one.score + seat_two.score == models.Encounter.best_of)
                     .label("went_distance"),
-                    # The two SEATS' win counts, left and right; the wire still
-                    # spells them home/away until Task 9 renames the field.
-                    sa.func.count().filter(completed, duel, seat_one.score > seat_two.score).label("home_wins"),
-                    sa.func.count().filter(completed, duel, seat_two.score > seat_one.score).label("away_wins"),
+                    # The two SEATS' win counts, slot 1 and slot 2 of the card.
+                    sa.func.count().filter(completed, duel, seat_one.score > seat_two.score).label("slot_one_wins"),
+                    sa.func.count().filter(completed, duel, seat_two.score > seat_one.score).label("slot_two_wins"),
                     sa.func.count()
                     .filter(models.Encounter.best_of >= 5, models.Encounter.closeness >= 0.6)
                     .label("close_bo5"),
@@ -663,8 +662,8 @@ class EncounterService:
         completed_series_count = int(agg.completed_series or 0)
         sweep_count = int(agg.sweeps or 0)
         went_distance_count = int(agg.went_distance or 0)
-        home_wins = int(agg.home_wins or 0)
-        away_wins = int(agg.away_wins or 0)
+        slot_one_wins = int(agg.slot_one_wins or 0)
+        slot_two_wins = int(agg.slot_two_wins or 0)
         close_bo5_count = int(agg.close_bo5 or 0)
         finals_count = int(agg.finals or 0)
         avg_series_seconds = agg.avg_series_seconds
@@ -728,11 +727,7 @@ class EncounterService:
         closest_rows = await session.execute(
             encounter_base()
             .where(models.Encounter.closeness.isnot(None))
-            .options(
-                *encounter_entities(
-                    ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"]
-                )
-            )
+            .options(*encounter_entities(["tournament", "stage", "stage_item", "teams", "matches", "matches.map"]))
             .order_by(
                 models.Encounter.closeness.desc(),
                 models.Encounter.updated_at.desc().nullslast(),
@@ -743,22 +738,14 @@ class EncounterService:
         upcoming_rows = await session.execute(
             encounter_base()
             .where(_upcoming_condition(now))
-            .options(
-                *encounter_entities(
-                    ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"]
-                )
-            )
+            .options(*encounter_entities(["tournament", "stage", "stage_item", "teams", "matches", "matches.map"]))
             .order_by(models.Encounter.scheduled_at.asc(), models.Encounter.id.desc())
             .limit(4)
         )
         live_rows = await session.execute(
             encounter_base()
             .where(_live_condition(now))
-            .options(
-                *encounter_entities(
-                    ["tournament", "stage", "stage_item", "home_team", "away_team", "matches", "matches.map"]
-                )
-            )
+            .options(*encounter_entities(["tournament", "stage", "stage_item", "teams", "matches", "matches.map"]))
             .order_by(models.Encounter.started_at.desc().nullslast(), models.Encounter.id.desc())
             .limit(4)
         )
@@ -787,8 +774,8 @@ class EncounterService:
             "completed_series_count": completed_series_count,
             "sweep_count": sweep_count,
             "went_distance_count": went_distance_count,
-            "home_wins": home_wins,
-            "away_wins": away_wins,
+            "slot_one_wins": slot_one_wins,
+            "slot_two_wins": slot_two_wins,
             "closest": closest_rows.unique().scalars().all(),
             "upcoming": upcoming_rows.unique().scalars().all(),
             "live": live_rows.unique().scalars().all(),

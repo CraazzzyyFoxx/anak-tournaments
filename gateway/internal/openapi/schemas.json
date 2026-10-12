@@ -6839,7 +6839,7 @@
       "summary": "List tournament links"
     },
     "rpc.tournament.admin.update#encounter": {
-      "description": "Permission: workspace `match.result` for the score fields (home_score, away_score, status, closeness, started_at, ended_at, current_map_index), `match.update` for every other field; a payload mixing both needs both. Updates an encounter by id.",
+      "description": "Permission: workspace `match.result` for the result fields (status, closeness, started_at, ended_at, current_map_index), `match.update` for every other field; a payload mixing both needs both. Updates an encounter by id. The scoreline is not here: it lives on the participations and only `encounter_set_result` writes it.",
       "request": {
         "array": false,
         "ref": "tournament.EncounterUpdate"
@@ -6959,12 +6959,12 @@
       "summary": "Update tournament link"
     },
     "rpc.tournament.admin_encounter_readiness_set": {
-      "description": "Permission: workspace `match.result` on the encounter's workspace. Sets one side's captain readiness (body `{side, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness: {home, away}}`. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the opposite captain's screen moves without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists \u2014 readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit entry is what names who forced it.",
+      "description": "Permission: workspace `match.result` on the encounter's workspace. Sets one participation's captain readiness (body `{encounter_team_id, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness}` keyed by participation. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the other captains' screens move without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists \u2014 readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit records who forced it.",
       "request": {
         "array": false,
         "ref": "tournament.AdminReadinessSet"
       },
-      "summary": "Force a side's captain readiness"
+      "summary": "Force a captain's readiness"
     },
     "rpc.tournament.admin_encounter_reports_list": {
       "description": "Permission: workspace `match.read` on the workspace named by `workspace_id`. Every encounter in the workspace with the pair of captain reports filed against it. The row is the encounter, not the report, because a dispute spans two reports and the action that settles it is per-encounter. `scores_match` is null until both sides have reported \u2014 that is a different state from disagreeing. `series_score_valid` is advisory: reports predate per-round best-of, so a mismatch is information, not an error. Filter with `tournament_id`, `stage_id`, `result_status`, `mismatch_only`, `reported_count` and a free-text `query` over team and encounter names.",
@@ -7281,7 +7281,7 @@
       "summary": "Captain report counters"
     },
     "rpc.tournament.admin_encounter_technical_loss": {
-      "description": "Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_side` without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit the score and it is derived \u2014 the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting side keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the side that forfeits is recorded 2:3). An explicit score must put the forfeiting side below its opponent (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage was already seeded from, and on an already confirmed result (reopen it first). The reason is required and lands in both the admin audit and the room journal.",
+      "description": "Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_team_id` (a participation, never a side) without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit `results` and the scores are derived \u2014 the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting participation keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the participation that forfeits is recorded 2:3). Explicit `results` must put the forfeiting participation below every other (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage already consumed, and on an already confirmed result. `reason` is mandatory \u2014 a walkover is never anonymous.",
       "request": {
         "array": false,
         "ref": "tournament.AdminTechnicalLossInput"
@@ -7293,7 +7293,7 @@
       "summary": "Record a technical loss"
     },
     "rpc.tournament.admin_game_result": {
-      "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's score as an `admin` result and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which side won a position scraps and re-opens the round that outcome had opened, so the response is `{game, rebuilt_rounds}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
+      "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result \u2014 one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) \u2014 and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which participation won a position scraps and re-opens the round that outcome had opened, so the response is `{game, reset_downstream}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
       "request": {
         "array": false,
         "ref": "tournament.AdminGameResultInput"
@@ -7576,8 +7576,8 @@
       "summary": "List pre-game rooms"
     },
     "rpc.tournament.captain_my_role": {
-      "description": "Permission: authenticated user; self-service \u2014 the answer is only about the caller's own captaincy. Returns the calling user's captain side (home/away) for an encounter, or null if they are not a captain.",
-      "summary": "Get my captain side"
+      "description": "Permission: authenticated user; self-service \u2014 the answer is only about the caller's own captaincy. Returns the calling user's participation for an encounter as `{encounter_team_id, slot}`, both null if they captain none of its seats.",
+      "summary": "Get my seat"
     },
     "rpc.tournament.captain_pick_ban_act": {
       "description": "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the caller's new room state. OPEN steps only: a blind step is a 400 that says to use the submit route. Acting when the caller's side does not owe the current step, sending the wrong action for it, naming an item the step's rules do not allow, or omitting the opponent player a per-player ban must name is a 400, as is a session that is not initialized or no longer active.",
@@ -7620,19 +7620,19 @@
       "summary": "Request or withdraw an undo"
     },
     "rpc.tournament.captain_ready": {
-      "description": "Permission: authenticated user who captains one of the encounter's two teams (403 when the account captains neither team or has no linked player profile). Marks the calling captain's side ready to begin the encounter's pre-game phase and returns the resulting `{home, away}` readiness map; idempotent. The pick/ban session only opens once both sides are ready, and any change of team assignment clears both.",
+      "description": "Permission: authenticated user who captains one of the encounter's live participations (403 when the account captains none of them or has no linked player profile). Marks the calling captain's seat ready to begin the encounter's pre-game phase and returns the resulting readiness map, keyed by participation id; idempotent. The pick/ban session only opens once every seat is ready, and any change of team assignment clears them all.",
       "summary": "Confirm readiness"
     },
     "rpc.tournament.captain_report_game": {
-      "description": "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Files the calling captain's own claim of ONE series position's score, immediately after that game rather than at series end; the side is taken from the caller, never from the body. Both sides claim independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), and 409 while the stage bracket is still a preview the organizer has not activated.",
+      "description": "Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Files the calling captain's own claim of ONE series position's result, immediately after that game rather than at series end: `basis_version` plus one `results` line per participation (`encounter_team_id`, optional score, placement and the stage's own `column_values`). The claiming seat is taken from the caller, never from the body. Every live participation claims independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), 409 on a `basis_version` behind the game's current one, and 409 while the stage bracket is still a preview the organizer has not activated.",
       "request": {
         "array": false,
-        "ref": "tournament.GameReportInput"
+        "ref": "tournament.GameClaimIn"
       },
-      "summary": "Report a game result"
+      "summary": "Claim a game result"
     },
     "rpc.tournament.captain_reports": {
-      "description": "Permission: public; no authentication required \u2014 visible to anyone who may view the tournament. Returns both captains' reports for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.",
+      "description": "Permission: public; no authentication required \u2014 visible to anyone who may view the tournament. Returns every participation's report for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.",
       "summary": "Get captain reports"
     },
     "rpc.tournament.captain_select_game_map": {
@@ -7644,8 +7644,12 @@
       "summary": "Name a game's map"
     },
     "rpc.tournament.captain_submit_report": {
-      "description": "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Lets an encounter captain submit their own report: series score plus whatever the tournament's match-report form enables \u2014 closeness 1..10, per-map match codes, a free-text comment and any organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average (null when either side left it blank), otherwise it is disputed \u2014 comments and custom values never take part in that comparison. Upsert allowed until confirmed.",
-      "summary": "Submit captain report"
+      "description": "Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Lets a captain submit their own report of the finished series: `basis_version`, `games_played` and one `results` line per live participation (`encounter_team_id`, score and optionally placement or wins \u2014 never a side), plus whatever the tournament's match-report form enables \u2014 closeness 1..10, per-map match codes, a free-text comment and any organizer-defined text fields. The reporting seat is resolved from the caller, never taken from the body. Fields the config disables are dropped rather than rejected, so a stale client cannot fail a submit; fields it marks required are enforced with a 422. A `basis_version` behind the encounter's current one is stale and refused rather than silently winning. Reports are per-participation; when every live participation's numbers agree the encounter auto-confirms and closeness becomes their average (null when any of them left it blank), otherwise it is disputed \u2014 comments and custom values never take part in that comparison. Upsert allowed until confirmed.",
+      "request": {
+        "array": false,
+        "ref": "tournament.TeamReportIn"
+      },
+      "summary": "Submit team report"
     },
     "rpc.tournament.challonge_create_tournament": {
       "description": "Permission: workspace `tournament.create` on the target workspace. Creates a tournament from an existing Challonge bracket -- fetches it for the name/description, links it, and imports its current structure and results in one shot.",
@@ -7848,7 +7852,11 @@
       "summary": "Set pre-game chat visibility"
     },
     "rpc.tournament.encounter_reopen_result": {
-      "description": "Permission: workspace `match.result` on the encounter's workspace. Un-confirms an encounter so it can be replayed or re-reported, clearing its score, closeness and confirmation, and cascading through anything the old result advanced. Captain reports are kept. 409 when there is no recorded result.",
+      "description": "Permission: workspace `match.result` on the encounter's workspace. Un-confirms an encounter so it can be replayed or re-reported, clearing the participations' scores, closeness and confirmation, and cascading through anything the old result advanced. Team reports are kept. `reason` is mandatory \u2014 it is what the journal row carries. 409 when there is no recorded result.",
+      "request": {
+        "array": false,
+        "ref": "tournament.ReopenResultIn"
+      },
       "response": {
         "array": false,
         "ref": "tournament.EncounterResultRead"
@@ -7864,10 +7872,10 @@
       "summary": "Get encounter result history"
     },
     "rpc.tournament.encounter_set_result": {
-      "description": "Permission: workspace `match.result` on the encounter's workspace. Confirms an encounter result in one transaction: score, status, result_status and the audit row move together. The score is taken from the first available source \u2014 an explicit home_score/away_score, the report of adopt_report_team_id, both reports when they agree, or the encounter's own non-zero score \u2014 and 422 when none applies. 409 when the result is already confirmed (reopen it first).",
+      "description": "Permission: workspace `match.result` on the encounter's workspace. Confirms an encounter result in one transaction: the participations' scores, status, result_status, result_version and the audit row move together. `reason` is mandatory. Each `results` line names an `encounter_team_id` \u2014 never a side \u2014 with its score and optional placement; leave `results` empty and name `adopt_report_team_id` to take that participation's own report as truth instead, which resolves a dispute in one call. 422 when neither applies. 409 when the result is already confirmed (reopen it first).",
       "request": {
         "array": false,
-        "ref": "tournament.EncounterSetResultInput"
+        "ref": "tournament.SetResultIn"
       },
       "response": {
         "array": false,
@@ -7876,7 +7884,7 @@
       "summary": "Set encounter result"
     },
     "rpc.tournament.encounter_swap_slot": {
-      "description": "Permission: workspace `match.update` on the encounter's workspace. Swaps one of an encounter's team slots with another slot and answers with both sides' resulting team/score state, so the bracket re-renders the pair without a refetch."
+      "description": "Permission: workspace `match.update` on the encounter's workspace. Swaps one of an encounter's team slots with another slot and answers with both encounters' resulting seats, so the bracket re-renders the pair without a refetch."
     },
     "rpc.tournament.encounter_update_match": {
       "description": "Permission: workspace `match.result` on the workspace resolved from the match. Edits one played map of an encounter (teams, score, map, lobby code, time, log name) and answers the match's own columns.",
@@ -8113,18 +8121,19 @@
           }
         },
         {
-          "name": "format",
+          "name": "slot_count",
           "required": false,
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/tournament.EncounterFormat"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "default": null
+            "default": null,
+            "title": "Slot Count"
           }
         }
       ],
@@ -8796,18 +8805,19 @@
           }
         },
         {
-          "name": "format",
+          "name": "slot_count",
           "required": false,
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/tournament.EncounterFormat"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "default": null
+            "default": null,
+            "title": "Slot Count"
           }
         }
       ],
@@ -33459,32 +33469,95 @@
       "title": "TournamentStreamsRead",
       "type": "object"
     },
-    "tournament.AdminGameResultInput": {
-      "description": "Body for the admin game-result correction: the position's score as the\norganizer decides it, plus the reason that goes into the audit journal (a\ncorrection is never anonymous -- spec \u00a76.5).",
+    "tournament.AdminForfeitResult": {
+      "description": "One participation's score in an explicitly stated forfeit.",
       "properties": {
-        "away_score": {
-          "minimum": 0,
-          "title": "Away Score",
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
           "type": "integer"
         },
-        "home_score": {
-          "minimum": 0,
-          "title": "Home Score",
-          "type": "integer"
-        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "encounter_team_id",
+        "score"
+      ],
+      "title": "AdminForfeitResult",
+      "type": "object"
+    },
+    "tournament.AdminGameResultInput": {
+      "description": "Body for the admin game-result correction: the position's numbers as the\norganizer decides them, one line per live participation, plus the reason\nthat goes into the audit journal (a correction is never anonymous --\nspec \u00a76.5).",
+      "properties": {
         "reason": {
           "maxLength": 500,
           "minLength": 1,
           "title": "Reason",
           "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.AdminGameResultLineInput"
+          },
+          "minItems": 1,
+          "title": "Results",
+          "type": "array"
         }
       },
       "required": [
-        "home_score",
-        "away_score",
+        "results",
         "reason"
       ],
       "title": "AdminGameResultInput",
+      "type": "object"
+    },
+    "tournament.AdminGameResultLineInput": {
+      "description": "One participation's numbers inside an admin game correction.",
+      "properties": {
+        "column_values": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Column Values",
+          "type": "object"
+        },
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "encounter_team_id"
+      ],
+      "title": "AdminGameResultLineInput",
       "type": "object"
     },
     "tournament.AdminMatchDetail": {
@@ -33812,74 +33885,47 @@
       "type": "object"
     },
     "tournament.AdminReadinessSet": {
-      "description": "Body for the admin readiness override: force one side's captain\nreadiness on or off.\n\n``ready: false`` is only meaningful before a session exists -- readiness\ngates session CREATION and nothing else -- so the service 409s once one\ndoes (reset the session instead).",
+      "description": "Body for the admin readiness override: force one participation's captain\nreadiness on or off.\n\n``ready: false`` is only meaningful before a session exists -- readiness\ngates session CREATION and nothing else -- so the service 409s once one\ndoes (reset the session instead).",
       "properties": {
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
         "ready": {
           "title": "Ready",
           "type": "boolean"
-        },
-        "side": {
-          "enum": [
-            "home",
-            "away"
-          ],
-          "title": "Side",
-          "type": "string"
         }
       },
       "required": [
-        "side",
+        "encounter_team_id",
         "ready"
       ],
       "title": "AdminReadinessSet",
       "type": "object"
     },
     "tournament.AdminTechnicalLossInput": {
-      "description": "Body for the technical-loss route: which side forfeits, optionally the\nexact score to record it as (omitted = the default forfeit score), and the\nreason -- a walkover is never anonymous.",
+      "description": "Body for the technical-loss route: which PARTICIPATION forfeits,\noptionally the exact scores to record it as (omitted = the default forfeit\nscore), and the reason -- a walkover is never anonymous.",
       "properties": {
-        "away_score": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Score"
-        },
-        "home_score": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Score"
-        },
-        "loser_side": {
-          "enum": [
-            "home",
-            "away"
-          ],
-          "title": "Loser Side",
-          "type": "string"
+        "loser_team_id": {
+          "title": "Loser Team Id",
+          "type": "integer"
         },
         "reason": {
           "maxLength": 500,
           "minLength": 1,
           "title": "Reason",
           "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.AdminForfeitResult"
+          },
+          "title": "Results",
+          "type": "array"
         }
       },
       "required": [
-        "loser_side",
+        "loser_team_id",
         "reason"
       ],
       "title": "AdminTechnicalLossInput",
@@ -36201,137 +36247,25 @@
       "title": "BulkSetBalancerStatusRequest",
       "type": "object"
     },
-    "tournament.CaptainReportRead": {
-      "description": "One captain's independent report of an encounter's result.",
+    "tournament.CaptainMapCodeInput": {
       "properties": {
-        "away_score": {
-          "title": "Away Score",
+        "code": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Code",
+          "type": "string"
+        },
+        "map_index": {
+          "minimum": 1,
+          "title": "Map Index",
           "type": "integer"
-        },
-        "closeness": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Closeness"
-        },
-        "comment": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Comment"
-        },
-        "created_at": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Created At"
-        },
-        "custom_fields": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "title": "Custom Fields",
-          "type": "object"
-        },
-        "encounter_id": {
-          "title": "Encounter Id",
-          "type": "integer"
-        },
-        "home_score": {
-          "title": "Home Score",
-          "type": "integer"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "map_codes": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.EncounterMapCodeRead"
-          },
-          "title": "Map Codes",
-          "type": "array"
-        },
-        "reporter_name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Reporter Name"
-        },
-        "reporter_user_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Reporter User Id"
-        },
-        "side": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Side"
-        },
-        "team_id": {
-          "title": "Team Id",
-          "type": "integer"
-        },
-        "updated_at": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Updated At"
         }
       },
       "required": [
-        "id",
-        "encounter_id",
-        "team_id",
-        "side",
-        "reporter_user_id",
-        "home_score",
-        "away_score",
-        "closeness",
-        "map_codes",
-        "created_at",
-        "updated_at"
+        "map_index",
+        "code"
       ],
-      "title": "CaptainReportRead",
+      "title": "CaptainMapCodeInput",
       "type": "object"
     },
     "tournament.ChallengeCodeRead": {
@@ -38899,15 +38833,15 @@
       "type": "object"
     },
     "tournament.ElectOpenerInput": {
-      "description": "``result_loser_choice`` rotation only: the losing captain names who\nopens the next round's bans.",
+      "description": "``result_loser_choice`` rotation only: the losing captain names which\nPARTICIPATION opens the next round's bans.",
       "properties": {
-        "first_side": {
-          "title": "First Side",
-          "type": "string"
+        "first_team_id": {
+          "title": "First Team Id",
+          "type": "integer"
         }
       },
       "required": [
-        "first_side"
+        "first_team_id"
       ],
       "title": "ElectOpenerInput",
       "type": "object"
@@ -38915,23 +38849,6 @@
     "tournament.EncounterCreate": {
       "description": "Schema for creating an encounter",
       "properties": {
-        "away_score": {
-          "default": 0,
-          "title": "Away Score",
-          "type": "integer"
-        },
-        "away_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Team Id"
-        },
         "best_of": {
           "default": 3,
           "minimum": 1,
@@ -38963,23 +38880,6 @@
           "default": null,
           "title": "Ended At"
         },
-        "home_score": {
-          "default": 0,
-          "title": "Home Score",
-          "type": "integer"
-        },
-        "home_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Team Id"
-        },
         "name": {
           "title": "Name",
           "type": "string"
@@ -39000,6 +38900,12 @@
           ],
           "default": null,
           "title": "Scheduled At"
+        },
+        "slot_count": {
+          "default": 2,
+          "minimum": 2,
+          "title": "Slot Count",
+          "type": "integer"
         },
         "stage_id": {
           "anyOf": [
@@ -39042,6 +38948,13 @@
           "default": "open",
           "title": "Status",
           "type": "string"
+        },
+        "teams": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterSeatInput"
+          },
+          "title": "Teams",
+          "type": "array"
         },
         "tournament_id": {
           "title": "Tournament Id",
@@ -39197,42 +39110,9 @@
       "title": "EncounterFiltersRead",
       "type": "object"
     },
-    "tournament.EncounterFormat": {
-      "description": "How many sides an encounter has. Fixed at creation.\n\n``duel`` is two sides and a series -- every feature built on home/away\naccepts only it. ``ffa`` is a lobby of N participants\n(``tournament.encounter_participant``) scored per game per participant.",
-      "enum": [
-        "duel",
-        "ffa"
-      ],
-      "title": "EncounterFormat",
-      "type": "string"
-    },
     "tournament.EncounterGameRead": {
       "description": "One position of the series and what the tournament DECIDED for it.\n\nDistinct from ``MatchRead``, which is what a parsed log OBSERVED: a position\nexists (and names its map) long before any log arrives, and a series may\nplay the same map twice \u2014 only ``position`` tells those two plays apart.",
       "properties": {
-        "accepted_away_score": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Accepted Away Score"
-        },
-        "accepted_home_score": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Accepted Home Score"
-        },
         "confirmed_at": {
           "anyOf": [
             {
@@ -39297,6 +39177,14 @@
         "state": {
           "title": "State",
           "type": "string"
+        },
+        "teams": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterGameTeamRead"
+          },
+          "title": "Teams",
+          "type": "array"
         }
       },
       "required": [
@@ -39318,6 +39206,76 @@
       ],
       "title": "EncounterGameState",
       "type": "string"
+    },
+    "tournament.EncounterGameTeamRead": {
+      "description": "One participation's accepted numbers and side in one game.",
+      "properties": {
+        "column_values": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "default": {},
+          "title": "Column Values",
+          "type": "object"
+        },
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "replay_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Code"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "starting_side": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Starting Side"
+        }
+      },
+      "required": [
+        "encounter_team_id"
+      ],
+      "title": "EncounterGameTeamRead",
+      "type": "object"
     },
     "tournament.EncounterHistogramBucketRead": {
       "properties": {
@@ -39397,41 +39355,6 @@
       "title": "EncounterKpiRead",
       "type": "object"
     },
-    "tournament.EncounterMapCodeRead": {
-      "properties": {
-        "code": {
-          "title": "Code",
-          "type": "string"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "map_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Map Id"
-        },
-        "map_index": {
-          "title": "Map Index",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "map_index",
-        "map_id",
-        "code"
-      ],
-      "title": "EncounterMapCodeRead",
-      "type": "object"
-    },
     "tournament.EncounterMapMetricRead": {
       "properties": {
         "count": {
@@ -39489,8 +39412,8 @@
           "title": "Score Heatmap",
           "type": "array"
         },
-        "side_balance": {
-          "$ref": "#/components/schemas/tournament.EncounterSideBalanceRead"
+        "slot_balance": {
+          "$ref": "#/components/schemas/tournament.EncounterSlotBalanceRead"
         },
         "stage_split": {
           "items": {
@@ -39509,9 +39432,45 @@
         "featured",
         "hot_maps",
         "pulse",
-        "side_balance"
+        "slot_balance"
       ],
       "title": "EncounterOverviewRead",
+      "type": "object"
+    },
+    "tournament.EncounterParticipationRef": {
+      "description": "One live seat of an encounter, as a list row names it.",
+      "properties": {
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "integer"
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Team Id"
+        }
+      },
+      "required": [
+        "encounter_team_id",
+        "slot",
+        "team_id",
+        "name"
+      ],
+      "title": "EncounterParticipationRef",
       "type": "object"
     },
     "tournament.EncounterPulseRead": {
@@ -39573,28 +39532,6 @@
     },
     "tournament.EncounterRead": {
       "properties": {
-        "away_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.TeamRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "away_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Team Id"
-        },
         "best_of": {
           "default": 3,
           "title": "Best Of",
@@ -39660,10 +39597,6 @@
           "default": null,
           "title": "Ended At"
         },
-        "format": {
-          "$ref": "#/components/schemas/tournament.EncounterFormat",
-          "default": "duel"
-        },
         "games": {
           "default": [],
           "items": {
@@ -39675,28 +39608,6 @@
         "has_logs": {
           "title": "Has Logs",
           "type": "boolean"
-        },
-        "home_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.TeamRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "home_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Team Id"
         },
         "id": {
           "title": "Id",
@@ -39713,10 +39624,27 @@
           "title": "Name",
           "type": "string"
         },
+        "result_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Source"
+        },
         "result_status": {
           "default": "none",
           "title": "Result Status",
           "type": "string"
+        },
+        "result_version": {
+          "default": 0,
+          "title": "Result Version",
+          "type": "integer"
         },
         "round": {
           "title": "Round",
@@ -39735,8 +39663,10 @@
           "default": null,
           "title": "Scheduled At"
         },
-        "score": {
-          "$ref": "#/components/schemas/tournament.Score"
+        "slot_count": {
+          "default": 2,
+          "title": "Slot Count",
+          "type": "integer"
         },
         "sources": {
           "default": [],
@@ -39807,6 +39737,14 @@
           "title": "Status",
           "type": "string"
         },
+        "teams": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterTeamRead"
+          },
+          "title": "Teams",
+          "type": "array"
+        },
         "tournament": {
           "anyOf": [
             {
@@ -39825,7 +39763,6 @@
       "required": [
         "id",
         "name",
-        "score",
         "round",
         "tournament_id",
         "challonge_id",
@@ -39835,8 +39772,6 @@
         "stage",
         "stage_item",
         "tournament",
-        "home_team",
-        "away_team",
         "matches"
       ],
       "title": "EncounterRead",
@@ -39945,51 +39880,11 @@
       "type": "object"
     },
     "tournament.EncounterReportsRow": {
-      "description": "One encounter plus the pair of reports filed against it.\n\nThe row, not the report, is the unit: a dispute spans two reports and the\naction that resolves it is per-encounter.",
+      "description": "One encounter plus every report filed against it.\n\nThe row, not the report, is the unit: a dispute spans the reports of all of\nan encounter's participations and the action that resolves it is\nper-encounter.",
       "properties": {
-        "away_report": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.CaptainReportRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "away_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "best_of": {
           "title": "Best Of",
           "type": "integer"
-        },
-        "home_report": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.CaptainReportRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "home_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
-            },
-            {
-              "type": "null"
-            }
-          ]
         },
         "id": {
           "title": "Id",
@@ -40009,16 +39904,37 @@
           "title": "Name",
           "type": "string"
         },
+        "participations": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterParticipationRef"
+          },
+          "title": "Participations",
+          "type": "array"
+        },
         "reported_count": {
           "title": "Reported Count",
           "type": "integer"
+        },
+        "reports": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.TeamReportRead"
+          },
+          "title": "Reports",
+          "type": "array"
         },
         "result_status": {
           "$ref": "#/components/schemas/tournament.EncounterResultStatus"
         },
         "round": {
-          "title": "Round",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Round"
         },
         "scheduled_at": {
           "anyOf": [
@@ -40031,17 +39947,6 @@
             }
           ],
           "title": "Scheduled At"
-        },
-        "scores_match": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Scores Match"
         },
         "series_score_valid": {
           "title": "Series Score Valid",
@@ -40067,6 +39972,17 @@
               "type": "null"
             }
           ]
+        },
+        "standings_match": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Standings Match"
         },
         "status": {
           "$ref": "#/components/schemas/tournament.EncounterStatus"
@@ -40099,12 +40015,8 @@
         "status",
         "result_status",
         "scheduled_at",
-        "home_team",
-        "away_team",
-        "home_report",
-        "away_report",
         "reported_count",
-        "scores_match",
+        "standings_match",
         "series_score_valid",
         "last_resolution"
       ],
@@ -40193,20 +40105,27 @@
           ],
           "title": "Adopted Team Id"
         },
-        "away_score_after": {
-          "title": "Away Score After",
-          "type": "integer"
+        "after": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterResultSnapshotLine"
+          },
+          "title": "After",
+          "type": "array"
         },
-        "away_score_before": {
+        "before": {
           "anyOf": [
             {
-              "type": "integer"
+              "items": {
+                "$ref": "#/components/schemas/tournament.EncounterResultSnapshotLine"
+              },
+              "type": "array"
             },
             {
               "type": "null"
             }
           ],
-          "title": "Away Score Before"
+          "default": null,
+          "title": "Before"
         },
         "created_at": {
           "format": "date-time",
@@ -40227,11 +40146,7 @@
             }
           ]
         },
-        "home_score_after": {
-          "title": "Home Score After",
-          "type": "integer"
-        },
-        "home_score_before": {
+        "game_id": {
           "anyOf": [
             {
               "type": "integer"
@@ -40240,11 +40155,32 @@
               "type": "null"
             }
           ],
-          "title": "Home Score Before"
+          "default": null,
+          "title": "Game Id"
         },
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "result_version": {
+          "title": "Result Version",
+          "type": "integer"
+        },
+        "snapshot_scope": {
+          "title": "Snapshot Scope",
+          "type": "string"
         },
         "source": {
           "title": "Source",
@@ -40257,15 +40193,14 @@
       "required": [
         "id",
         "encounter_id",
+        "result_version",
         "actor_user_id",
         "actor_name",
         "action",
         "from_result_status",
         "to_result_status",
-        "home_score_before",
-        "away_score_before",
-        "home_score_after",
-        "away_score_after",
+        "snapshot_scope",
+        "after",
         "adopted_team_id",
         "source",
         "created_at"
@@ -40276,10 +40211,6 @@
     "tournament.EncounterResultRead": {
       "description": "What the result endpoints return: the settled state of the encounter.",
       "properties": {
-        "away_score": {
-          "title": "Away Score",
-          "type": "integer"
-        },
         "closeness": {
           "anyOf": [
             {
@@ -40303,31 +40234,81 @@
           ],
           "title": "Confirmed At"
         },
-        "home_score": {
-          "title": "Home Score",
-          "type": "integer"
-        },
         "id": {
           "title": "Id",
           "type": "integer"
         },
+        "result_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Result Source"
+        },
         "result_status": {
           "$ref": "#/components/schemas/tournament.EncounterResultStatus"
         },
+        "result_version": {
+          "title": "Result Version",
+          "type": "integer"
+        },
         "status": {
           "$ref": "#/components/schemas/tournament.EncounterStatus"
+        },
+        "teams": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterResultSnapshotLine"
+          },
+          "title": "Teams",
+          "type": "array"
         }
       },
       "required": [
         "id",
         "status",
         "result_status",
-        "home_score",
-        "away_score",
+        "result_source",
+        "result_version",
+        "teams",
         "closeness",
         "confirmed_at"
       ],
       "title": "EncounterResultRead",
+      "type": "object"
+    },
+    "tournament.EncounterResultSnapshotLine": {
+      "description": "One participation's numbers inside an audit snapshot.",
+      "properties": {
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "encounter_team_id",
+        "score"
+      ],
+      "title": "EncounterResultSnapshotLine",
       "type": "object"
     },
     "tournament.EncounterResultStatus": {
@@ -40392,23 +40373,24 @@
       "type": "object"
     },
     "tournament.EncounterScoreHeatmapCellRead": {
+      "description": "One scoreline of a two-seat encounter, slot 1 against slot 2.",
       "properties": {
-        "away": {
-          "title": "Away",
-          "type": "integer"
-        },
         "count": {
           "title": "Count",
           "type": "integer"
         },
-        "home": {
-          "title": "Home",
+        "slot_one": {
+          "title": "Slot One",
+          "type": "integer"
+        },
+        "slot_two": {
+          "title": "Slot Two",
           "type": "integer"
         }
       },
       "required": [
-        "home",
-        "away",
+        "slot_one",
+        "slot_two",
         "count"
       ],
       "title": "EncounterScoreHeatmapCellRead",
@@ -40470,17 +40452,6 @@
           "title": "Fields",
           "type": "array"
         },
-        "format": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.EncounterFormat"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
         "has_logs": {
           "anyOf": [
             {
@@ -40528,6 +40499,18 @@
           ],
           "title": "Scope",
           "type": "string"
+        },
+        "slot_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slot Count"
         },
         "sort": {
           "default": "id",
@@ -40586,112 +40569,81 @@
       "title": "EncounterSearchQueryParams",
       "type": "object"
     },
-    "tournament.EncounterSetResultInput": {
-      "description": "Body of the single admin result write.\n\nEvery field is optional: an empty body means \"confirm what is already\nthere\", which covers the common case of two agreeing reports. Supplying\n``adopt_report_team_id`` is how a dispute is resolved in one call \u2014 \"this\nside was right\" \u2014 instead of editing the score and confirming separately.",
+    "tournament.EncounterSeatInput": {
+      "description": "One seat of a new encounter: which slot, and the team that takes it.",
       "properties": {
-        "adopt_report_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Adopt Report Team Id"
-        },
-        "away_score": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Score"
-        },
-        "closeness": {
-          "anyOf": [
-            {
-              "maximum": 10,
-              "minimum": 1,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Closeness"
-        },
-        "home_score": {
-          "anyOf": [
-            {
-              "minimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Score"
-        }
-      },
-      "title": "EncounterSetResultInput",
-      "type": "object"
-    },
-    "tournament.EncounterSideBalanceRead": {
-      "properties": {
-        "away_win_pct": {
-          "title": "Away Win Pct",
-          "type": "number"
-        },
-        "away_wins": {
-          "title": "Away Wins",
+        "slot": {
+          "minimum": 1,
+          "title": "Slot",
           "type": "integer"
         },
-        "home_win_pct": {
-          "title": "Home Win Pct",
+        "team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
+        }
+      },
+      "required": [
+        "slot"
+      ],
+      "title": "EncounterSeatInput",
+      "type": "object"
+    },
+    "tournament.EncounterSlotBalanceRead": {
+      "description": "How often each seat of a duel wins \u2014 the seeding bias a bracket's slot 1\ncarries, which is all \"side\" ever meant here.",
+      "properties": {
+        "slot_one_win_pct": {
+          "title": "Slot One Win Pct",
           "type": "number"
         },
-        "home_wins": {
-          "title": "Home Wins",
+        "slot_one_wins": {
+          "title": "Slot One Wins",
+          "type": "integer"
+        },
+        "slot_two_win_pct": {
+          "title": "Slot Two Win Pct",
+          "type": "number"
+        },
+        "slot_two_wins": {
+          "title": "Slot Two Wins",
           "type": "integer"
         }
       },
       "required": [
-        "home_wins",
-        "away_wins",
-        "home_win_pct",
-        "away_win_pct"
+        "slot_one_wins",
+        "slot_two_wins",
+        "slot_one_win_pct",
+        "slot_two_win_pct"
       ],
-      "title": "EncounterSideBalanceRead",
+      "title": "EncounterSlotBalanceRead",
       "type": "object"
     },
     "tournament.EncounterSlotSourceRead": {
-      "description": "Where an unresolved slot's team comes from: the ``role`` of\n``encounter_id`` fills ``slot`` of this encounter.\n\nThe bracket's real advancement edges (``EncounterLink``). A reader labels an\nempty slot from them (\"L M3\") instead of inferring the bracket's shape from\nround numbers, which cannot tell a lower bracket seeded from the group stage\napart from one fed by the upper bracket's first losers.",
+      "description": "Where an unresolved slot's team comes from: ``source_position`` of\n``encounter_id`` fills ``slot`` of this encounter.\n\nThe bracket's real advancement edges (``EncounterLink``). A reader labels an\nempty slot from them (\"1st of M3\") instead of inferring the bracket's shape\nfrom round numbers, which cannot tell a lower bracket seeded from the group\nstage apart from one fed by the upper bracket's first losers. Both ends are\nplaces and seats, never winner/loser or home/away.",
       "properties": {
         "encounter_id": {
           "title": "Encounter Id",
           "type": "integer"
         },
-        "role": {
-          "title": "Role",
-          "type": "string"
-        },
         "slot": {
           "title": "Slot",
-          "type": "string"
+          "type": "integer"
+        },
+        "source_position": {
+          "title": "Source Position",
+          "type": "integer"
         }
       },
       "required": [
         "encounter_id",
-        "role",
+        "source_position",
         "slot"
       ],
       "title": "EncounterSlotSourceRead",
@@ -40731,34 +40683,6 @@
     },
     "tournament.EncounterSummaryRead": {
       "properties": {
-        "away_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Team Id"
-        },
-        "format": {
-          "$ref": "#/components/schemas/tournament.EncounterFormat",
-          "default": "duel"
-        },
-        "home_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Team Id"
-        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -40776,8 +40700,10 @@
           "title": "Round",
           "type": "integer"
         },
-        "score": {
-          "$ref": "#/components/schemas/tournament.Score"
+        "slot_count": {
+          "default": 2,
+          "title": "Slot Count",
+          "type": "integer"
         },
         "stage_id": {
           "anyOf": [
@@ -40807,6 +40733,14 @@
           "title": "Status",
           "type": "string"
         },
+        "teams": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterTeamRead"
+          },
+          "title": "Teams",
+          "type": "array"
+        },
         "tournament_id": {
           "title": "Tournament Id",
           "type": "integer"
@@ -40815,12 +40749,92 @@
       "required": [
         "id",
         "name",
-        "score",
         "round",
         "tournament_id",
         "status"
       ],
       "title": "EncounterSummaryRead",
+      "type": "object"
+    },
+    "tournament.EncounterTeamRead": {
+      "description": "One live seat of an encounter (``encounter.team``), in slot order.\n\n``id`` is the participation id every write addresses -- a claim, a report\nand an admin result all name it, never a slot and never a side. ``team_id``\nis the source ``tournament.team`` and goes NULL when that team is deleted;\n``name`` is the snapshot that outlives it.",
+      "properties": {
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "score": {
+          "default": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "integer"
+        },
+        "team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.TeamRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
+        }
+      },
+      "required": [
+        "id",
+        "slot",
+        "name"
+      ],
+      "title": "EncounterTeamRead",
       "type": "object"
     },
     "tournament.EncounterTeamRef": {
@@ -40849,32 +40863,8 @@
       "type": "object"
     },
     "tournament.EncounterUpdate": {
-      "description": "Schema for updating an encounter",
+      "description": "Schema for updating an encounter.\n\nSeats are not edited here: a seat changes hands through the slot swap,\nwhich retires the old participation instead of rewriting it, so the games\nit played stay attached to the row that played them (D55).",
       "properties": {
-        "away_score": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Score"
-        },
-        "away_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Team Id"
-        },
         "best_of": {
           "anyOf": [
             {
@@ -40926,30 +40916,6 @@
           ],
           "default": null,
           "title": "Ended At"
-        },
-        "home_score": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Score"
-        },
-        "home_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Team Id"
         },
         "name": {
           "anyOf": [
@@ -41071,42 +41037,6 @@
         "better"
       ],
       "title": "FfaColumnRead",
-      "type": "object"
-    },
-    "tournament.FfaColumnSettings": {
-      "additionalProperties": false,
-      "description": "One value an ffa_league stage records per team per game.",
-      "properties": {
-        "better": {
-          "default": "higher",
-          "enum": [
-            "higher",
-            "lower"
-          ],
-          "title": "Better",
-          "type": "string"
-        },
-        "key": {
-          "title": "Key",
-          "type": "string"
-        },
-        "label": {
-          "maxLength": 32,
-          "minLength": 1,
-          "title": "Label",
-          "type": "string"
-        },
-        "public": {
-          "default": true,
-          "title": "Public",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "key",
-        "label"
-      ],
-      "title": "FfaColumnSettings",
       "type": "object"
     },
     "tournament.FfaGameCancelInput": {
@@ -41493,36 +41423,6 @@
       "title": "FfaRulesRead",
       "type": "object"
     },
-    "tournament.FfaScoring": {
-      "additionalProperties": false,
-      "description": "What an ffa_league stage records and what it pays for it (plan \u00a73.1).\n\nInert on any other stage type. The unset block is the behaviour a stage had\nbefore columns existed: one raw score column paid one for one.",
-      "properties": {
-        "columns": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.FfaColumnSettings"
-          },
-          "title": "Columns",
-          "type": "array"
-        },
-        "formula": {
-          "default": "score",
-          "maxLength": 500,
-          "minLength": 1,
-          "title": "Formula",
-          "type": "string"
-        },
-        "placement_points": {
-          "items": {
-            "type": "number"
-          },
-          "maxItems": 100,
-          "title": "Placement Points",
-          "type": "array"
-        }
-      },
-      "title": "FfaScoring",
-      "type": "object"
-    },
     "tournament.FieldValidation": {
       "properties": {
         "error_message": {
@@ -41832,6 +41732,72 @@
       "title": "FormSection",
       "type": "object"
     },
+    "tournament.GameClaimIn": {
+      "description": "One captain's independent claim of a single played GAME's result \u2014\nsubmitted immediately after that position, not at series end (contrast\n``TeamReportIn``). The position, not the map, identifies what is being\nclaimed: a series may play the same map twice. See\n``services.encounter.map_report``.",
+      "properties": {
+        "basis_version": {
+          "default": 0,
+          "title": "Basis Version",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.GameClaimResultIn"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "title": "GameClaimIn",
+      "type": "object"
+    },
+    "tournament.GameClaimResultIn": {
+      "description": "One participation's numbers inside a game claim.",
+      "properties": {
+        "column_values": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Column Values",
+          "type": "object"
+        },
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        }
+      },
+      "required": [
+        "encounter_team_id"
+      ],
+      "title": "GameClaimResultIn",
+      "type": "object"
+    },
     "tournament.GameMapSelectInput": {
       "description": "Freeplay's half of what the map pick-ban does automatically: a captain\nnames the map an open position is played on.",
       "properties": {
@@ -41844,27 +41810,6 @@
         "map_id"
       ],
       "title": "GameMapSelectInput",
-      "type": "object"
-    },
-    "tournament.GameReportInput": {
-      "description": "One captain's independent claim of a single played GAME's result \u2014\nsubmitted immediately after that position, not at series end (contrast\n``CaptainReportSubmission``). The position, not the map, identifies what is\nbeing claimed: a series may play the same map twice. See\n``services.encounter.map_report``.",
-      "properties": {
-        "away_score": {
-          "minimum": 0,
-          "title": "Away Score",
-          "type": "integer"
-        },
-        "home_score": {
-          "minimum": 0,
-          "title": "Home Score",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "home_score",
-        "away_score"
-      ],
-      "title": "GameReportInput",
       "type": "object"
     },
     "tournament.GamemodeRead": {
@@ -43054,7 +42999,7 @@
       "type": "object"
     },
     "tournament.MatchUpdate": {
-      "description": "Partial update for a single match (map) within an encounter.",
+      "description": "Partial update for a single match (map) within an encounter.\n\n``matches.match`` is what a parsed LOG observed, and a V4 log names two\nsides; that is why this one shape still does.",
       "properties": {
         "away_score": {
           "anyOf": [
@@ -43440,16 +43385,21 @@
       "type": "object"
     },
     "tournament.PickBanAdminAct": {
-      "description": "Body for the admin act-for-a-side route: perform one step on behalf of\nan absent captain. ``target_player_id`` names the opponent roster player a\nper-player ban is spent on (ruleset v2 target steps); ``null`` everywhere\nelse.",
+      "description": "Body for the admin act-for-a-participation route: perform one step on\nbehalf of an absent captain. ``target_player_id`` names the opponent roster\nplayer a per-player ban is spent on (ruleset v2 target steps); ``null``\neverywhere else.",
       "properties": {
         "action": {
           "enum": [
             "pick",
             "ban",
-            "protect"
+            "protect",
+            "side_pick"
           ],
           "title": "Action",
           "type": "string"
+        },
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
         },
         "item_id": {
           "title": "Item Id",
@@ -43457,14 +43407,6 @@
         },
         "kind": {
           "$ref": "#/components/schemas/tournament.PickBanKind"
-        },
-        "side": {
-          "enum": [
-            "home",
-            "away"
-          ],
-          "title": "Side",
-          "type": "string"
         },
         "target_player_id": {
           "anyOf": [
@@ -43481,7 +43423,7 @@
       },
       "required": [
         "kind",
-        "side",
+        "encounter_team_id",
         "item_id",
         "action"
       ],
@@ -43547,8 +43489,12 @@
       "type": "object"
     },
     "tournament.PickBanAdminSubmit": {
-      "description": "Body for the admin submit-for-a-side route: replace a BLIND step's draft\non behalf of a captain who is not there to author it. Items reuse the\ncaptain schema so the two surfaces cannot drift.",
+      "description": "Body for the admin submit-for-a-participation route: replace a BLIND\nstep's draft on behalf of a captain who is not there to author it. Items\nreuse the captain schema so the two surfaces cannot drift.",
       "properties": {
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
         "items": {
           "items": {
             "$ref": "#/components/schemas/tournament.PickBanSubmissionItemInput"
@@ -43563,19 +43509,11 @@
           "default": false,
           "title": "Lock",
           "type": "boolean"
-        },
-        "side": {
-          "enum": [
-            "home",
-            "away"
-          ],
-          "title": "Side",
-          "type": "string"
         }
       },
       "required": [
         "kind",
-        "side"
+        "encounter_team_id"
       ],
       "title": "PickBanAdminSubmit",
       "type": "object"
@@ -43781,7 +43719,7 @@
       "type": "object"
     },
     "tournament.PickBanSubmitInput": {
-      "description": "A blind step's whole draft, replacing whatever the side had. ``lock``\nvalidates it in full and makes it final \u2014 the step reveals once every\nacting side has locked.",
+      "description": "A blind step's whole draft, replacing whatever the participation had.\n``lock`` validates it in full and makes it final \u2014 the step reveals once\nevery acting participation has locked.",
       "properties": {
         "items": {
           "items": {
@@ -44498,16 +44436,12 @@
     "tournament.PregameKindSummary": {
       "description": "One kind's (map|hero) room, as the overview needs it.",
       "properties": {
-        "acting_sides": {
+        "acting_team_ids": {
           "default": [],
           "items": {
-            "enum": [
-              "home",
-              "away"
-            ],
-            "type": "string"
+            "type": "integer"
           },
-          "title": "Acting Sides",
+          "title": "Acting Team Ids",
           "type": "array"
         },
         "awaiting_choice": {
@@ -44675,6 +44609,18 @@
           "title": "Data",
           "type": "object"
         },
+        "encounter_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Encounter Team Id"
+        },
         "id": {
           "title": "Id",
           "type": "string"
@@ -44714,22 +44660,6 @@
           ],
           "default": null,
           "title": "Reason"
-        },
-        "side": {
-          "anyOf": [
-            {
-              "enum": [
-                "home",
-                "away"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Side"
         },
         "source": {
           "enum": [
@@ -44789,22 +44719,6 @@
           "title": "Attention",
           "type": "array"
         },
-        "away_score": {
-          "default": 0,
-          "title": "Away Score",
-          "type": "integer"
-        },
-        "away_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.PregameRoomTeam"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
         "best_of": {
           "title": "Best Of",
           "type": "integer"
@@ -44820,22 +44734,6 @@
           "anyOf": [
             {
               "$ref": "#/components/schemas/tournament.PregameKindSummary"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "home_score": {
-          "default": 0,
-          "title": "Home Score",
-          "type": "integer"
-        },
-        "home_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.PregameRoomTeam"
             },
             {
               "type": "null"
@@ -44934,6 +44832,14 @@
         "status": {
           "title": "Status",
           "type": "string"
+        },
+        "teams": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/tournament.PregameRoomTeam"
+          },
+          "title": "Teams",
+          "type": "array"
         }
       },
       "required": [
@@ -44950,18 +44856,41 @@
       "type": "object"
     },
     "tournament.PregameRoomTeam": {
+      "description": "One seat of the room (``encounter.team``), in slot order.",
       "properties": {
-        "id": {
-          "title": "Id",
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
           "type": "integer"
         },
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "score": {
+          "default": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "integer"
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
         }
       },
       "required": [
-        "id",
+        "encounter_team_id",
+        "slot",
         "name"
       ],
       "title": "PregameRoomTeam",
@@ -46809,6 +46738,22 @@
       "title": "RegistrationUpdate",
       "type": "object"
     },
+    "tournament.ReopenResultIn": {
+      "description": "Body of the result reopen: the organizer's stated reason.\n\nReopening unmakes a human decision, so a human signs it -- the journal row\n``reopen`` writes carries this verbatim.",
+      "properties": {
+        "reason": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "ReopenResultIn",
+      "type": "object"
+    },
     "tournament.ReportBuiltInFieldConfig": {
       "properties": {
         "enabled": {
@@ -47035,6 +46980,42 @@
         "away"
       ],
       "title": "Score",
+      "type": "object"
+    },
+    "tournament.ScoringColumnSettings": {
+      "additionalProperties": false,
+      "description": "One value a stage's games record per team (plan \u00a73.1).",
+      "properties": {
+        "better": {
+          "default": "higher",
+          "enum": [
+            "higher",
+            "lower"
+          ],
+          "title": "Better",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "public": {
+          "default": true,
+          "title": "Public",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "label"
+      ],
+      "title": "ScoringColumnSettings",
       "type": "object"
     },
     "tournament.ScrimCreateRequest": {
@@ -47429,6 +47410,87 @@
       "title": "SetBalancerStatusRequest",
       "type": "object"
     },
+    "tournament.SetResultIn": {
+      "description": "Body of the single admin result write.\n\n``reason`` is required: an admin result overrides what the participants\nsaid and the journal has to say why. ``results`` may be empty only when\n``adopt_report_team_id`` names the participation whose report is taken as\ntruth instead -- which is how a dispute is resolved in one call.",
+      "properties": {
+        "adopt_report_team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Adopt Report Team Id"
+        },
+        "closeness": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Closeness"
+        },
+        "reason": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.SetResultLineIn"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "SetResultIn",
+      "type": "object"
+    },
+    "tournament.SetResultLineIn": {
+      "description": "One participation's line of an admin result.",
+      "properties": {
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "encounter_team_id",
+        "score"
+      ],
+      "title": "SetResultLineIn",
+      "type": "object"
+    },
     "tournament.SocialAccountRead": {
       "description": "Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/\u2026).",
       "properties": {
@@ -47597,9 +47659,6 @@
           ],
           "default": null,
           "title": "Description"
-        },
-        "ffa_scoring": {
-          "$ref": "#/components/schemas/tournament.FfaScoring"
         },
         "max_rounds": {
           "default": 5,
@@ -48203,9 +48262,6 @@
           ],
           "title": "Description"
         },
-        "ffa_scoring": {
-          "$ref": "#/components/schemas/tournament.FfaScoring"
-        },
         "has_custom_bracket": {
           "default": false,
           "title": "Has Custom Bracket",
@@ -48325,8 +48381,23 @@
     },
     "tournament.StageScoring": {
       "additionalProperties": false,
-      "description": "Points per result on this stage. ``None`` = the tournament's points.",
+      "description": "How a stage scores, at all three levels (plan \u00a75, D51).\n\n``win``/``draw``/``loss`` are level 3: what one encounter's result pays in\nthe stage table; ``None`` = the tournament's points. The rest is the\n``encounter.scoring_rule`` every encounter of the stage is played and\nranked by -- ``wins`` is a Bo-N series, ``points`` a lobby scored by the\norganizer's own columns. It replaced the ``ffa_scoring`` block: once a duel\nhas a rule row too, \"ffa\" is no longer what the setting is about.\n\nEvery rule field is nullable and means \"the preset's default\", the way\n``ranking_preset`` does: the preset itself defaults to the one the stage\nTYPE implies, which only the service knows.",
       "properties": {
+        "columns": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/tournament.ScoringColumnSettings"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Columns"
+        },
         "draw": {
           "anyOf": [
             {
@@ -48339,6 +48410,20 @@
           "default": null,
           "title": "Draw"
         },
+        "formula": {
+          "anyOf": [
+            {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Formula"
+        },
         "loss": {
           "anyOf": [
             {
@@ -48350,6 +48435,38 @@
           ],
           "default": null,
           "title": "Loss"
+        },
+        "placement_points": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "number"
+              },
+              "maxItems": 100,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement Points"
+        },
+        "preset": {
+          "anyOf": [
+            {
+              "enum": [
+                "wins",
+                "points"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset"
         },
         "win": {
           "anyOf": [
@@ -48439,9 +48556,6 @@
             }
           ],
           "title": "Description"
-        },
-        "ffa_scoring": {
-          "$ref": "#/components/schemas/tournament.FfaScoring"
         },
         "has_custom_bracket": {
           "default": false,
@@ -48564,7 +48678,7 @@
       "type": "string"
     },
     "tournament.StageUpdate": {
-      "description": "A partial edit: only the fields sent change (the service reads\n``exclude_unset``). ``scoring``, ``best_of`` and ``ffa_scoring`` are each\nreplaced as a whole. The non-nullable regulation fields carry a default only\nso that an explicit ``null`` is refused instead of written.",
+      "description": "A partial edit: only the fields sent change (the service reads\n``exclude_unset``). ``scoring`` and ``best_of`` are each replaced as a\nwhole. The non-nullable regulation fields carry a default only\nso that an explicit ``null`` is refused instead of written.",
       "properties": {
         "advance_count": {
           "anyOf": [
@@ -48615,9 +48729,6 @@
           ],
           "default": null,
           "title": "Description"
-        },
-        "ffa_scoring": {
-          "$ref": "#/components/schemas/tournament.FfaScoring"
         },
         "max_rounds": {
           "anyOf": [
@@ -49865,6 +49976,289 @@
       "title": "TeamRead",
       "type": "object"
     },
+    "tournament.TeamReportIn": {
+      "description": "One participation's independent report of the finished encounter.\n\n``results`` carries one line per live seat -- a duel reports two, a lobby\nas many as it seats, and neither is oriented. Everything after\n``games_played`` is optional here and validated against the tournament's\nreport-form config server-side (``services.encounter.report_form``),\nbecause what is required depends on that config, not on the wire shape.",
+      "properties": {
+        "basis_version": {
+          "default": 0,
+          "title": "Basis Version",
+          "type": "integer"
+        },
+        "closeness": {
+          "anyOf": [
+            {
+              "maximum": 10,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Closeness"
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comment"
+        },
+        "custom_fields": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Custom Fields",
+          "type": "object"
+        },
+        "games_played": {
+          "minimum": 0,
+          "title": "Games Played",
+          "type": "integer"
+        },
+        "map_codes": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.CaptainMapCodeInput"
+          },
+          "title": "Map Codes",
+          "type": "array"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.TeamReportResultIn"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "games_played"
+      ],
+      "title": "TeamReportIn",
+      "type": "object"
+    },
+    "tournament.TeamReportRead": {
+      "description": "One participation's independent report of an encounter's result.",
+      "properties": {
+        "basis_version": {
+          "title": "Basis Version",
+          "type": "integer"
+        },
+        "closeness": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Closeness"
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Comment"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Created At"
+        },
+        "custom_fields": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Custom Fields",
+          "type": "object"
+        },
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "games_played": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Games Played"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "reporter_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reporter Name"
+        },
+        "reporter_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reporter User Id"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.TeamReportResultRead"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updated At"
+        }
+      },
+      "required": [
+        "id",
+        "encounter_id",
+        "encounter_team_id",
+        "reporter_user_id",
+        "games_played",
+        "basis_version",
+        "closeness",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "TeamReportRead",
+      "type": "object"
+    },
+    "tournament.TeamReportResultIn": {
+      "description": "One participation's line of a series report.\n\n``wins`` is omitted when the encounter's rule does not count them (a\nlobby's card, where points alone decide); ``placement`` when the form does\nnot ask for places.",
+      "properties": {
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "score": {
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "wins": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wins"
+        }
+      },
+      "required": [
+        "encounter_team_id",
+        "score"
+      ],
+      "title": "TeamReportResultIn",
+      "type": "object"
+    },
+    "tournament.TeamReportResultRead": {
+      "description": "One participation's line inside one report.",
+      "properties": {
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "wins": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wins"
+        }
+      },
+      "required": [
+        "encounter_team_id",
+        "score"
+      ],
+      "title": "TeamReportResultRead",
+      "type": "object"
+    },
     "tournament.TeamUpdate": {
       "description": "Schema for updating a team",
       "properties": {
@@ -50021,12 +50415,6 @@
     "tournament.TemplateMatch": {
       "additionalProperties": false,
       "properties": {
-        "away": {
-          "$ref": "#/components/schemas/tournament.TemplateSlot"
-        },
-        "home": {
-          "$ref": "#/components/schemas/tournament.TemplateSlot"
-        },
         "id": {
           "maximum": 10000,
           "minimum": 0,
@@ -50038,13 +50426,21 @@
           "minimum": -256,
           "title": "Round",
           "type": "integer"
+        },
+        "slots": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.TemplateSlot"
+          },
+          "maxItems": 100,
+          "minItems": 2,
+          "title": "Slots",
+          "type": "array"
         }
       },
       "required": [
         "id",
         "round",
-        "home",
-        "away"
+        "slots"
       ],
       "title": "TemplateMatch",
       "type": "object"
@@ -50052,18 +50448,6 @@
     "tournament.TemplateSlot": {
       "additionalProperties": false,
       "properties": {
-        "loser_of": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Loser Of"
-        },
         "seed": {
           "anyOf": [
             {
@@ -50078,7 +50462,13 @@
           "default": null,
           "title": "Seed"
         },
-        "winner_of": {
+        "slot": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Slot",
+          "type": "integer"
+        },
+        "source_match": {
           "anyOf": [
             {
               "type": "integer"
@@ -50088,9 +50478,26 @@
             }
           ],
           "default": null,
-          "title": "Winner Of"
+          "title": "Source Match"
+        },
+        "source_position": {
+          "anyOf": [
+            {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Position"
         }
       },
+      "required": [
+        "slot"
+      ],
       "title": "TemplateSlot",
       "type": "object"
     },

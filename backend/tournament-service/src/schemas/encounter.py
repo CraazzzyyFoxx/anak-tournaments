@@ -21,6 +21,7 @@ __all__ = (
     "EncounterFeaturedRead",
     "EncounterFiltersRead",
     "EncounterGameRead",
+    "EncounterGameTeamRead",
     "EncounterHistogramBucketRead",
     "EncounterKpiRead",
     "EncounterMapMetricRead",
@@ -32,8 +33,9 @@ __all__ = (
     "EncounterScoreHeatmapCellRead",
     "EncounterSlotSourceRead",
     "EncounterSummaryRead",
-    "EncounterSideBalanceRead",
+    "EncounterSlotBalanceRead",
     "EncounterStageSplitRead",
+    "EncounterTeamRead",
     "MatchRead",
     "MatchReadWithStats",
     "EncounterSearchParams",
@@ -43,33 +45,72 @@ __all__ = (
 )
 
 
+class EncounterTeamRead(BaseModel):
+    """One live seat of an encounter (``encounter.team``), in slot order.
+
+    ``id`` is the participation id every write addresses -- a claim, a report
+    and an admin result all name it, never a slot and never a side. ``team_id``
+    is the source ``tournament.team`` and goes NULL when that team is deleted;
+    ``name`` is the snapshot that outlives it.
+    """
+
+    id: int
+    slot: int
+    team_id: int | None = None
+    name: str
+    seed: int | None = None
+    #: The materialized standing inside the encounter (``wins`` under the
+    #: series preset, points under a lobby's formula).
+    score: float = 0.0
+    placement: int | None = None
+    active: bool = True
+    #: The source team, expanded only when the ``teams`` entity is requested --
+    #: the seat itself already carries the name a reader needs.
+    team: TeamRead | None = None
+
+
+class EncounterGameTeamRead(BaseModel):
+    """One participation's accepted numbers and side in one game."""
+
+    encounter_team_id: int
+    #: The game's raw score (map rounds); ``None`` for a game that has none.
+    score: int | None = None
+    placement: int | None = None
+    #: The stage's own columns for this participation; an absent key reads 0.
+    column_values: dict[str, float] = {}
+    #: Discipline side code; ``None`` when the discipline has no sides.
+    starting_side: str | None = None
+    replay_code: str | None = None
+
+
 class EncounterSummaryRead(BaseRead):
     name: str
     slot_count: int = 2
-    home_team_id: int | None = None
-    away_team_id: int | None = None
-    score: Score
     round: int
     tournament_id: int
     stage_id: int | None = None
     stage_item_id: int | None = None
     status: str
     result_status: str = "none"
+    teams: list[EncounterTeamRead] = []
 
 
 class EncounterSlotSourceRead(BaseModel):
-    """Where an unresolved slot's team comes from: the ``role`` of
+    """Where an unresolved slot's team comes from: ``source_position`` of
     ``encounter_id`` fills ``slot`` of this encounter.
 
     The bracket's real advancement edges (``EncounterLink``). A reader labels an
-    empty slot from them ("L M3") instead of inferring the bracket's shape from
-    round numbers, which cannot tell a lower bracket seeded from the group stage
-    apart from one fed by the upper bracket's first losers.
+    empty slot from them ("1st of M3") instead of inferring the bracket's shape
+    from round numbers, which cannot tell a lower bracket seeded from the group
+    stage apart from one fed by the upper bracket's first losers. Both ends are
+    places and seats, never winner/loser or home/away.
     """
 
     encounter_id: int
-    role: str
-    slot: str
+    #: Place in the source encounter's final standing; 1 is first.
+    source_position: int
+    #: Seat of this encounter the edge fills, ``1..slot_count``.
+    slot: int
 
 
 class EncounterGameRead(BaseRead):
@@ -84,19 +125,16 @@ class EncounterGameRead(BaseRead):
     map_id: int | None = None
     map: MapRead | None = None
     state: str
-    accepted_home_score: int | None = None
-    accepted_away_score: int | None = None
     result_source: str | None = None
     result_version: int = 0
     confirmed_at: datetime | None = None
+    #: One line per participation seated in this game.
+    teams: list[EncounterGameTeamRead] = []
 
 
 class EncounterRead(BaseRead):
     name: str
     slot_count: int = 2
-    home_team_id: int | None = None
-    away_team_id: int | None = None
-    score: Score
     round: int
     best_of: int = 3
     tournament_id: int
@@ -107,6 +145,13 @@ class EncounterRead(BaseRead):
     has_logs: bool
     status: str
     result_status: str = "none"
+    #: Which writer decided the standing (``games``/``series_claim``/``admin``/
+    #: ``import``); ``None`` while no official result exists, where readers show
+    #: the running total of the confirmed games.
+    result_source: str | None = None
+    #: Bumped by every result write; a claim or report names the version it was
+    #: made against so a correction in between makes it stale, not a winner.
+    result_version: int = 0
     sources: list[EncounterSlotSourceRead] = []
     scheduled_at: datetime | None = None
     started_at: datetime | None = None
@@ -117,8 +162,8 @@ class EncounterRead(BaseRead):
     stage: StageSummaryRead | None
     stage_item: StageItemSummaryRead | None
     tournament: TournamentRead | None
-    home_team: TeamRead | None
-    away_team: TeamRead | None
+    #: The live seats only; retired participations are history.
+    teams: list[EncounterTeamRead] = []
     matches: list[MatchRead]
     games: list[EncounterGameRead] = []
 
@@ -193,8 +238,10 @@ class EncounterHistogramBucketRead(BaseModel):
 
 
 class EncounterScoreHeatmapCellRead(BaseModel):
-    home: int
-    away: int
+    """One scoreline of a two-seat encounter, slot 1 against slot 2."""
+
+    slot_one: int
+    slot_two: int
     count: int
 
 
@@ -219,11 +266,14 @@ class EncounterPulseRead(BaseModel):
     most_decisive_map: str | None
 
 
-class EncounterSideBalanceRead(BaseModel):
-    home_wins: int
-    away_wins: int
-    home_win_pct: float
-    away_win_pct: float
+class EncounterSlotBalanceRead(BaseModel):
+    """How often each seat of a duel wins — the seeding bias a bracket's slot 1
+    carries, which is all "side" ever meant here."""
+
+    slot_one_wins: int
+    slot_two_wins: int
+    slot_one_win_pct: float
+    slot_two_win_pct: float
 
 
 class EncounterFeaturedRead(BaseModel):
@@ -241,7 +291,7 @@ class EncounterOverviewRead(BaseModel):
     featured: EncounterFeaturedRead
     hot_maps: list[EncounterMapMetricRead]
     pulse: EncounterPulseRead
-    side_balance: EncounterSideBalanceRead
+    slot_balance: EncounterSlotBalanceRead
 
 
 @dataclass

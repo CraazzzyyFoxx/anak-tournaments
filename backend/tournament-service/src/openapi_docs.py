@@ -242,9 +242,10 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.admin.update#encounter": {
         "summary": "Update encounter",
         "description": (
-            "Permission: workspace `match.result` for the score fields (home_score, away_score, status, "
-            "closeness, started_at, ended_at, current_map_index), `match.update` for every other field; a "
-            "payload mixing both needs both. Updates an encounter by id."
+            "Permission: workspace `match.result` for the result fields (status, closeness, started_at, "
+            "ended_at, current_map_index), `match.update` for every other field; a payload mixing both "
+            "needs both. Updates an encounter by id. The scoreline is not here: it lives on the "
+            "participations and only `encounter_set_result` writes it."
         ),
     },
     "rpc.tournament.admin.delete#encounter": {
@@ -256,18 +257,21 @@ DOCS: dict[str, dict] = {
         "summary": "Set encounter result",
         "description": (
             "Permission: workspace `match.result` on the encounter's workspace. "
-            "Confirms an encounter result in one transaction: score, status, result_status and the audit row "
-            "move together. The score is taken from the first available source — an explicit home_score/away_score, "
-            "the report of adopt_report_team_id, both reports when they agree, or the encounter's own non-zero "
-            "score — and 422 when none applies. 409 when the result is already confirmed (reopen it first)."
+            "Confirms an encounter result in one transaction: the participations' scores, status, "
+            "result_status, result_version and the audit row move together. `reason` is mandatory. Each "
+            "`results` line names an `encounter_team_id` — never a side — with its score and optional "
+            "placement; leave `results` empty and name `adopt_report_team_id` to take that participation's "
+            "own report as truth instead, which resolves a dispute in one call. 422 when neither applies. "
+            "409 when the result is already confirmed (reopen it first)."
         ),
     },
     "rpc.tournament.encounter_reopen_result": {
         "summary": "Reopen encounter result",
         "description": (
             "Permission: workspace `match.result` on the encounter's workspace. "
-            "Un-confirms an encounter so it can be replayed or re-reported, clearing its score, closeness and "
-            "confirmation, and cascading through anything the old result advanced. Captain reports are kept. "
+            "Un-confirms an encounter so it can be replayed or re-reported, clearing the participations' "
+            "scores, closeness and confirmation, and cascading through anything the old result advanced. "
+            "Team reports are kept. `reason` is mandatory — it is what the journal row carries. "
             "409 when there is no recorded result."
         ),
     },
@@ -279,8 +283,8 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.encounter_swap_slot": {
         "description": (
             "Permission: workspace `match.update` on the encounter's workspace. "
-            "Swaps one of an encounter's team slots with another slot and answers with both sides' "
-            "resulting team/score state, so the bracket re-renders the pair without a refetch."
+            "Swaps one of an encounter's team slots with another slot and answers with both encounters' "
+            "resulting seats, so the bracket re-renders the pair without a refetch."
         ),
     },
     # ── match report form (per-tournament captain-report config) ───────────
@@ -511,12 +515,12 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin_encounter_technical_loss": {
         "summary": "Record a technical loss",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_side` without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit the score and it is derived — the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting side keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the side that forfeits is recorded 2:3). An explicit score must put the forfeiting side below its opponent (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage was already seeded from, and on an already confirmed result (reopen it first). The reason is required and lands in both the admin audit and the room journal.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_team_id` (a participation, never a side) without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit `results` and the scores are derived — the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting participation keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the participation that forfeits is recorded 2:3). Explicit `results` must put the forfeiting participation below every other (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage already consumed, and on an already confirmed result. `reason` is mandatory — a walkover is never anonymous.",
     },
     # ── bespoke: readiness override + the pre-game rooms board ────────────
     "rpc.tournament.admin_encounter_readiness_set": {
-        "summary": "Force a side's captain readiness",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Sets one side's captain readiness (body `{side, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness: {home, away}}`. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the opposite captain's screen moves without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit entry is what names who forced it.",
+        "summary": "Force a captain's readiness",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Sets one participation's captain readiness (body `{encounter_team_id, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness}` keyed by participation. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the other captains' screens move without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit records who forced it.",
     },
     "rpc.tournament.admin_pregame_rooms": {
         "summary": "List pre-game rooms",
@@ -529,7 +533,7 @@ DOCS: dict[str, dict] = {
     # ── bespoke: admin correction of one series position's result ──────────
     "rpc.tournament.admin_game_result": {
         "summary": "Correct a game result",
-        "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's score as an `admin` result and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which side won a position scraps and re-opens the round that outcome had opened, so the response is `{game, rebuilt_rounds}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which participation won a position scraps and re-opens the round that outcome had opened, so the response is `{game, reset_downstream}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.",
     },
     # ── bespoke: generic pick-ban config CRUD (map + hero) ──────────────────
     "rpc.tournament.admin_pick_ban_config_list": {
@@ -1070,19 +1074,23 @@ DOCS: dict[str, dict] = {
     },
     # ── public registration (captain / self-service) ──────────────────────
     "rpc.tournament.captain_my_role": {
-        "summary": "Get my captain side",
-        "description": "Permission: authenticated user; self-service — the answer is only about the caller's own captaincy. Returns the calling user's captain side (home/away) for an encounter, or null if they are not a captain.",
+        "summary": "Get my seat",
+        "description": "Permission: authenticated user; self-service — the answer is only about the caller's own captaincy. Returns the calling user's participation for an encounter as `{encounter_team_id, slot}`, both null if they captain none of its seats.",
     },
     "rpc.tournament.captain_submit_report": {
-        "summary": "Submit captain report",
+        "summary": "Submit team report",
         "description": (
-            "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). "
-            "Lets an encounter captain submit their own report: series score plus whatever the tournament's "
-            "match-report form enables — closeness 1..10, per-map match codes, a free-text comment and any "
-            "organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a "
-            "stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are "
-            "per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes "
-            "their average (null when either side left it blank), otherwise it is disputed — comments and "
+            "Permission: authenticated user who captains one of the encounter's live participations (403 "
+            "otherwise). Lets a captain submit their own report of the finished series: `basis_version`, "
+            "`games_played` and one `results` line per live participation (`encounter_team_id`, score and "
+            "optionally placement or wins — never a side), plus whatever the tournament's match-report form "
+            "enables — closeness 1..10, per-map match codes, a free-text comment and any organizer-defined "
+            "text fields. The reporting seat is resolved from the caller, never taken from the body. Fields "
+            "the config disables are dropped rather than rejected, so a stale client cannot fail a submit; "
+            "fields it marks required are enforced with a 422. A `basis_version` behind the encounter's "
+            "current one is stale and refused rather than silently winning. Reports are per-participation; "
+            "when every live participation's numbers agree the encounter auto-confirms and closeness becomes "
+            "their average (null when any of them left it blank), otherwise it is disputed — comments and "
             "custom values never take part in that comparison. Upsert allowed until confirmed."
         ),
     },
@@ -1090,7 +1098,7 @@ DOCS: dict[str, dict] = {
         "summary": "Get captain reports",
         "description": (
             "Permission: public; no authentication required — visible to anyone who may view the tournament. "
-            "Returns both captains' reports for an encounter (score, closeness, per-map codes, comment and "
+            "Returns every participation's report for an encounter (score, closeness, per-map codes, comment and "
             "custom field values) alongside the tournament's match-report form config under `form`, so the "
             "report dialog renders exactly the rules the submit endpoint enforces."
         ),
@@ -1171,18 +1179,21 @@ DOCS: dict[str, dict] = {
         ),
     },
     "rpc.tournament.captain_report_game": {
-        "summary": "Report a game result",
+        "summary": "Claim a game result",
         "description": (
-            "Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). "
-            "Files the calling captain's own claim of ONE series position's score, immediately after that "
-            "game rather than at series end; the side is taken from the caller, never from the body. Both "
-            "sides claim independently: matching claims accept the game's result and open whatever the "
-            "series owes next, differing ones mark the game `disputed` for an organizer. Returns "
+            "Permission: authenticated user who captains one of the encounter's live participations (403 "
+            "otherwise). Files the calling captain's own claim of ONE series position's result, immediately "
+            "after that game rather than at series end: `basis_version` plus one `results` line per "
+            "participation (`encounter_team_id`, optional score, placement and the stage's own "
+            "`column_values`). The claiming seat is taken from the caller, never from the body. Every live "
+            "participation claims independently: matching claims accept the game's result and open whatever "
+            "the series owes next, differing ones mark the game `disputed` for an organizer. Returns "
             "`{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, "
             "409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 "
             "`map_not_selected` while the position still has no map (choose it first, through "
-            "captain_select_game_map or the map pick-ban), and 409 while the stage bracket is still a "
-            "preview the organizer has not activated."
+            "captain_select_game_map or the map pick-ban), 409 on a `basis_version` behind the game's "
+            "current one, and 409 while the stage bracket is still a preview the organizer has not "
+            "activated."
         ),
     },
     "rpc.tournament.captain_select_game_map": {
@@ -1198,11 +1209,11 @@ DOCS: dict[str, dict] = {
     "rpc.tournament.captain_ready": {
         "summary": "Confirm readiness",
         "description": (
-            "Permission: authenticated user who captains one of the encounter's two teams (403 when the "
-            "account captains neither team or has no linked player profile). "
-            "Marks the calling captain's side ready to begin the encounter's pre-game phase and returns the "
-            "resulting `{home, away}` readiness map; idempotent. The pick/ban session only opens once both "
-            "sides are ready, and any change of team assignment clears both."
+            "Permission: authenticated user who captains one of the encounter's live participations (403 "
+            "when the account captains none of them or has no linked player profile). "
+            "Marks the calling captain's seat ready to begin the encounter's pre-game phase and returns the "
+            "resulting readiness map, keyed by participation id; idempotent. The pick/ban session only "
+            "opens once every seat is ready, and any change of team assignment clears them all."
         ),
     },
     "rpc.tournament.encounter_chat_history": {

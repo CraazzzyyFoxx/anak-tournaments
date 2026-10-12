@@ -1,8 +1,9 @@
-"""Captain result-submission and map-veto request schemas + viewer-side helper.
+"""Captain result-submission and pick-ban request schemas + viewer-seat helper.
 
 Extracted verbatim from the decommissioned ``src/routes/captain.py`` so the
 typed-RPC handlers in ``src/rpc/public_rpc.py`` keep validating the SAME bodies
-and resolving the viewer side identically. This module must NOT import fastapi.
+and resolving the viewer's participation identically. This module must NOT
+import fastapi.
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ class PickBanUndoInput(BaseModel):
     consent: bool = True
 
 
-class GameResultInput(BaseModel):
+class GameClaimResultIn(BaseModel):
     """One participation's numbers inside a game claim."""
 
     encounter_team_id: int
@@ -68,17 +69,17 @@ class GameResultInput(BaseModel):
     column_values: dict[str, float] = Field(default_factory=dict)
 
 
-class GameReportInput(BaseModel):
+class GameClaimIn(BaseModel):
     """One captain's independent claim of a single played GAME's result —
     submitted immediately after that position, not at series end (contrast
-    ``CaptainReportSubmission``). The position, not the map, identifies what is
-    being claimed: a series may play the same map twice. See
+    ``TeamReportIn``). The position, not the map, identifies what is being
+    claimed: a series may play the same map twice. See
     ``services.encounter.map_report``."""
 
     #: The ``game.result_version`` the claim was made against -- a correction
     #: landing in between makes this claim stale rather than silently winning.
     basis_version: int = 0
-    results: list[GameResultInput] = Field(default_factory=list)
+    results: list[GameClaimResultIn] = Field(default_factory=list)
 
 
 class GameMapSelectInput(BaseModel):
@@ -93,17 +94,36 @@ class CaptainMapCodeInput(BaseModel):
     code: str = Field(min_length=1, max_length=32)
 
 
-class CaptainReportSubmission(BaseModel):
-    """One captain's independent encounter report.
+class TeamReportResultIn(BaseModel):
+    """One participation's line of a series report.
 
-    ``home_score``/``away_score`` are in the encounter's home/away orientation.
-    Everything else is optional here and validated against the tournament's
-    report-form config server-side (``services.encounter.report_form``), because
-    what is required depends on that config, not on the wire shape.
+    ``wins`` is omitted when the encounter's rule does not count them (a
+    lobby's card, where points alone decide); ``placement`` when the form does
+    not ask for places.
     """
 
-    home_score: int = Field(ge=0)
-    away_score: int = Field(ge=0)
+    encounter_team_id: int
+    score: float = Field(ge=0)
+    placement: int | None = Field(default=None, ge=1)
+    wins: int | None = Field(default=None, ge=0)
+
+
+class TeamReportIn(BaseModel):
+    """One participation's independent report of the finished encounter.
+
+    ``results`` carries one line per live seat -- a duel reports two, a lobby
+    as many as it seats, and neither is oriented. Everything after
+    ``games_played`` is optional here and validated against the tournament's
+    report-form config server-side (``services.encounter.report_form``),
+    because what is required depends on that config, not on the wire shape.
+    """
+
+    #: The ``encounter.result_version`` the report was filed against -- a
+    #: correction landing in between makes it stale rather than a winner.
+    basis_version: int = 0
+    #: Draws included: how many of the series' positions were actually played.
+    games_played: int = Field(ge=0)
+    results: list[TeamReportResultIn] = Field(default_factory=list)
     closeness: int | None = Field(default=None, ge=1, le=10)
     map_codes: list[CaptainMapCodeInput] = Field(default_factory=list)
     comment: str | None = None

@@ -66,12 +66,12 @@ def _int_or_400(value: Any, field: str) -> int:
         raise HTTPException(status_code=400, detail=f"invalid {field}") from exc
 
 
-#: The score side of ``EncounterUpdate``: what ``match.result`` may set. Every
-#: other field (teams, stage, round, best-of, schedule, name) is the bracket's
+#: The result side of ``EncounterUpdate``: what ``match.result`` may set. Every
+#: other field (stage, round, best-of, schedule, name) is the bracket's
 #: structure and stays on ``match.update``; an unknown key counts as structure.
-_ENCOUNTER_RESULT_FIELDS = frozenset(
-    {"home_score", "away_score", "status", "closeness", "started_at", "ended_at", "current_map_index"}
-)
+#: The scoreline itself is NOT here any more -- it lives on the participations
+#: and only ``rpc.tournament.encounter_set_result`` writes it.
+_ENCOUNTER_RESULT_FIELDS = frozenset({"status", "closeness", "started_at", "ended_at", "current_map_index"})
 
 
 def _encounter_update_actions(fields: frozenset[str]) -> tuple[str, ...]:
