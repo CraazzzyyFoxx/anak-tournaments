@@ -10,15 +10,20 @@ import {
   normalizeEncounterFilters,
 } from "./encounters.helpers";
 
+function seats(one: number, two: number): Encounter["teams"] {
+  return [
+    { id: 1, slot: 1, team_id: 1, name: "A", seed: null, score: one, placement: null, active: true },
+    { id: 2, slot: 2, team_id: 2, name: "B", seed: null, score: two, placement: null, active: true }
+  ];
+}
+
 function encounter(overrides: Partial<Encounter>): Encounter {
   return {
     id: 1,
     created_at: new Date("2026-05-01T12:00:00Z"),
     updated_at: null,
     name: "A vs B",
-    home_team_id: 1,
-    away_team_id: 2,
-    score: { home: 0, away: 0 },
+    slot_count: 2,
     round: 1,
     best_of: 3,
     tournament_id: 1,
@@ -29,14 +34,16 @@ function encounter(overrides: Partial<Encounter>): Encounter {
     closeness: null,
     has_logs: false,
     result_status: "none",
+    result_source: null,
+    result_version: 0,
     scheduled_at: null,
     started_at: null,
     ended_at: null,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: null as never,
-    away_team: null as never,
+    games: [],
+    teams: seats(0, 0),
     tournament: null as never,
     stage: null,
     stage_item: null,
@@ -95,16 +102,10 @@ describe("encounters helpers", () => {
   });
 
   it("resolves a winner only once the series is completed", () => {
-    expect(getEncounterWinner(encounter({ score: { home: 2, away: 1 } }))).toBeNull();
-    expect(
-      getEncounterWinner(encounter({ status: "completed", score: { home: 2, away: 1 } }))
-    ).toBe("home");
-    expect(
-      getEncounterWinner(encounter({ status: "completed", score: { home: 1, away: 2 } }))
-    ).toBe("away");
-    expect(
-      getEncounterWinner(encounter({ status: "completed", score: { home: 2, away: 2 } }))
-    ).toBeNull();
+    expect(getEncounterWinner(encounter({ teams: seats(2, 1) }))).toBeNull();
+    expect(getEncounterWinner(encounter({ status: "completed", teams: seats(2, 1) }))).toBe(1);
+    expect(getEncounterWinner(encounter({ status: "completed", teams: seats(1, 2) }))).toBe(2);
+    expect(getEncounterWinner(encounter({ status: "completed", teams: seats(2, 2) }))).toBeNull();
   });
 
   it("formats aggregate seconds for pulse cards", () => {

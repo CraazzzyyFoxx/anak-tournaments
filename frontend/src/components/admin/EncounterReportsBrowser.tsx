@@ -27,6 +27,7 @@ import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { encounterReportFilterDefs } from "./encounter-reports/filters";
 import { ReportInspectorPanel } from "./encounter-reports/ReportInspectorPanel";
 import { useEncounterReportColumns } from "./encounter-reports/useEncounterReportColumns";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import { useEncounterReportScope } from "./encounter-reports/useEncounterReportScope";
 
 const PAGE_SIZE = 25;
@@ -175,8 +176,8 @@ export function EncounterReportsBrowser({
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{row.original.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {row.original.home_team?.name ?? "?"} vs {row.original.away_team?.name ?? "?"} ·{" "}
-                  {row.original.reported_count}/2 reported
+                  {seatsBySlot(row.original.participations).map((seat) => seat.name).join(" vs ")} ·{" "}
+                  {row.original.reported_count}/{row.original.participations.length} reported
                 </p>
                 <p className="text-xs text-muted-foreground">{row.original.result_status}</p>
               </div>

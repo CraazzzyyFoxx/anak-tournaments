@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -32,14 +33,12 @@ import { utcToZonedInput, zonedInputToUtc } from "@/lib/workspace/timezone";
 import { useTranslations } from "next-intl";
 import adminService from "@/services/admin.service";
 import captainService from "@/services/captain.service";
-import { CaptainReportsView, pickReport } from "@/components/tournaments/CaptainReportsView";
+import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
 import { refreshEncounterViews } from "@/components/tournaments/refreshEncounterViews";
-import type {
-  EncounterEditableStatus,
-  EncounterSetResultInput,
-  EncounterUpdateInput
-} from "@/types/admin.types";
-import type { CaptainReport, Encounter } from "@/types/encounter.types";
+import type { EncounterEditableStatus, EncounterUpdateInput } from "@/types/admin.types";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { seatsBySlot } from "@/lib/encounter/seats";
+import type { CaptainReport, Encounter, EncounterTeam } from "@/types/encounter.types";
 import type { StageType } from "@/types/tournament.types";
 import { cn } from "@/lib/utils";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -68,12 +67,18 @@ const BEST_OF_OPTIONS = [1, 2, 3, 5, 7] as const;
 type EncounterStatusOption = (typeof ENCOUNTER_STATUSES)[number] | typeof COMPLETED_STATUS;
 
 /**
- * Where the score about to be confirmed comes from. A report side is sent as
+ * Where the score about to be confirmed comes from. A taken report is sent as
  * `adopt_report_team_id`, so the audit records whose word was taken, not just
  * the number.
  */
-type ResultSource = "agreed" | "home" | "away" | "current" | "manual";
-type ResultChoice = { source: ResultSource; score: EncounterScore };
+type ResultSource = "agreed" | "report" | "current" | "manual";
+type ResultChoice = {
+  source: ResultSource;
+  /** The participation whose report is taken; only with source `report`. */
+  reportTeamId?: number;
+  /** Slot 1 against slot 2. */
+  score: EncounterScore;
+};
 
 /** A completed encounter keeps `completed` so the select has something to show;
  * anything unrecognised falls back to `open` instead of rendering blank. */
@@ -90,38 +95,35 @@ function closenessFloatToStars(closeness: number | null | undefined): number {
   return Math.max(1, Math.min(10, Math.round(closeness * 10)));
 }
 
-function reportScore(report: CaptainReport): EncounterScore {
-  return { homeScore: report.home_score, awayScore: report.away_score };
+/** A duel report's standing, slot 1 against slot 2. */
+function reportScore(report: CaptainReport, [first, second]: readonly [number, number]): EncounterScore {
+  const of = (id: number) => report.results.find((line) => line.encounter_team_id === id)?.score ?? 0;
+  return { one: of(first), two: of(second) };
 }
 
 /**
- * The score the dialog opens on, in the server's own fallback order: the two
+ * The score the dialog opens on, in the server's own fallback order: the
  * reports when they agree, the only report when one captain has filed, then the
- * encounter's own score (a pre-game room's live series count) unless it is
+ * encounter's own standing (a pre-game room's live series count) unless it is
  * still 0:0. Nothing otherwise — a 0:0 nobody reported is not a result, and
  * confirming it would record a draw.
  */
 function suggestResult(
-  encounter: Encounter,
-  homeReport: CaptainReport | null,
-  awayReport: CaptainReport | null
+  seats: readonly [EncounterTeam, EncounterTeam],
+  reports: readonly CaptainReport[]
 ): ResultChoice | null {
-  const single = homeReport ?? awayReport;
-  if (homeReport && awayReport) {
-    if (
-      homeReport.home_score === awayReport.home_score &&
-      homeReport.away_score === awayReport.away_score
-    ) {
-      return { source: "agreed", score: reportScore(homeReport) };
+  const ids: [number, number] = [seats[0].id, seats[1].id];
+  const scorelines = reports.map((report) => reportScore(report, ids));
+  if (reports.length === seats.length) {
+    const [head] = scorelines;
+    if (scorelines.every((line) => line.one === head.one && line.two === head.two)) {
+      return { source: "agreed", score: head };
     }
-  } else if (single) {
-    return { source: homeReport ? "home" : "away", score: reportScore(single) };
+  } else if (reports.length === 1) {
+    return { source: "report", reportTeamId: reports[0].encounter_team_id, score: scorelines[0] };
   }
-  const home = encounter.score?.home ?? 0;
-  const away = encounter.score?.away ?? 0;
-  return home === 0 && away === 0
-    ? null
-    : { source: "current", score: { homeScore: home, awayScore: away } };
+  const current = { one: seats[0].score, two: seats[1].score };
+  return current.one === 0 && current.two === 0 ? null : { source: "current", score: current };
 }
 
 export function EncounterEditDialog({
@@ -133,8 +135,7 @@ export function EncounterEditDialog({
 }: Readonly<EncounterEditDialogProps>) {
   const resetKey = [
     encounter.id,
-    encounter.score?.home ?? 0,
-    encounter.score?.away ?? 0,
+    encounter.result_version,
     encounter.status ?? "open",
     encounter.closeness ?? "none",
     encounter.scheduled_at instanceof Date
@@ -172,8 +173,9 @@ function EncounterEditDialogBody({
 }: Readonly<Omit<EncounterEditDialogProps, "open">>) {
   const qc = useQueryClient();
   const t = useTranslations();
-  const homeTeamLabel = encounter.home_team?.name?.trim() || t("common.homeTeam");
-  const awayTeamLabel = encounter.away_team?.name?.trim() || t("common.awayTeam");
+  const seats = seatsBySlot(encounter.teams);
+  // A result needs both seats filled: a duel with an empty seat has no standing to write.
+  const pair = seats.length === 2 ? ([seats[0], seats[1]] as const) : null;
   const isConfirmed = encounter.result_status === "confirmed";
 
   const [status, setStatus] = useState<EncounterStatusOption>(() => normalizeStatus(encounter.status));
@@ -201,21 +203,19 @@ function EncounterEditDialogBody({
   // `null` follows the suggestion: the reports arrive after the dialog opens,
   // and the score has to follow them until the admin makes a choice of their own.
   const [picked, setPicked] = useState<ResultChoice | null>(null);
+  // The journal's line for whatever the admin writes below: required by the server.
+  const [reason, setReason] = useState("");
 
   const reportsQuery = useQuery({
     queryKey: encounterQueryKeys.captainReports(encounter.id),
     queryFn: () => captainService.getReports(encounter.id)
   });
   const reports = reportsQuery.data?.reports ?? [];
-  const homeReport = pickReport(reports, "home", encounter.home_team_id);
-  const awayReport = pickReport(reports, "away", encounter.away_team_id);
-  const result = picked ?? suggestResult(encounter, homeReport, awayReport);
+  const result = picked ?? (pair ? suggestResult(pair, reports) : null);
   // The finalizer rejects a draw on an elimination stage with a 400; saying so
   // while the score is still on screen beats learning it from a toast.
   const drawBlocked =
-    result != null &&
-    result.score.homeScore === result.score.awayScore &&
-    stageNeedsWinner(stageType);
+    result != null && result.score.one === result.score.two && stageNeedsWinner(stageType);
 
   let sourceHint: string | null = null;
   if (result == null) {
@@ -224,9 +224,9 @@ function EncounterEditDialogBody({
     sourceHint = t("matchEdit.sourceAgreed");
   } else if (result.source === "current") {
     sourceHint = t("matchEdit.sourceCurrent");
-  } else if (result.source === "home" || result.source === "away") {
-    sourceHint = t(homeReport && awayReport ? "matchEdit.sourceReport" : "matchEdit.sourceSingleReport", {
-      team: result.source === "home" ? homeTeamLabel : awayTeamLabel
+  } else if (result.source === "report") {
+    sourceHint = t(reports.length === seats.length ? "matchEdit.sourceReport" : "matchEdit.sourceSingleReport", {
+      team: seats.find((seat) => seat.id === result.reportTeamId)?.name ?? ""
     });
   }
 
@@ -252,13 +252,19 @@ function EncounterEditDialogBody({
 
   const confirmMutation = useMutation({
     mutationFn: (choice: ResultChoice) => {
-      const report =
-        choice.source === "home" ? homeReport : choice.source === "away" ? awayReport : null;
-      const score: EncounterSetResultInput = report
-        ? { adopt_report_team_id: report.team_id }
-        : { home_score: choice.score.homeScore, away_score: choice.score.awayScore };
+      if (!pair) throw new Error("An encounter with an empty seat has no result to confirm");
+      const [first, second] = pair;
+      const adopted = choice.source === "report" ? choice.reportTeamId : undefined;
       return adminService.setEncounterResult(encounter.id, {
-        ...score,
+        reason: reason.trim(),
+        results:
+          adopted != null
+            ? []
+            : [
+                { encounter_team_id: first.id, score: choice.score.one },
+                { encounter_team_id: second.id, score: choice.score.two }
+              ],
+        ...(adopted != null ? { adopt_report_team_id: adopted } : {}),
         ...(stars > 0 ? { closeness: stars } : {})
       });
     },
@@ -273,7 +279,7 @@ function EncounterEditDialogBody({
   });
 
   const reopenMutation = useMutation({
-    mutationFn: () => adminService.reopenEncounterResult(encounter.id),
+    mutationFn: () => adminService.reopenEncounterResult(encounter.id, reason.trim()),
     onSuccess: async () => {
       notify.success(t("matchEdit.resultReopened"));
       await refreshEncounterViews(qc, encounter.tournament_id);
@@ -302,7 +308,7 @@ function EncounterEditDialogBody({
           )}
         </DialogTitle>
         <DialogDescription className="text-[color:var(--aqt-fg-muted)] text-sm font-semibold mt-1">
-          {encounter.home_team?.name} vs {encounter.away_team?.name}
+          {seats.map((seat) => seat.name).join(" vs ")}
         </DialogDescription>
       </DialogHeader>
 
@@ -324,26 +330,32 @@ function EncounterEditDialogBody({
                 <p className="mt-0.5 text-xs text-muted-foreground">{t("matchEdit.confirmedHint")}</p>
               </div>
               <div className="rounded-lg border border-border/60 bg-background px-3.5 py-1.5 text-lg font-bold tracking-label text-foreground tabular-nums">
-                {encounter.score?.home ?? 0} – {encounter.score?.away ?? 0}
+                {seats.map((seat) => seat.score).join(" – ")}
               </div>
             </div>
           ) : (
             <>
-              {(homeReport || awayReport) && (
+              {pair && reports.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-xs font-semibold text-muted-foreground">{t("matchEdit.takeReport")}</p>
                   <div className="flex flex-wrap gap-2">
-                    {(["home", "away"] as const).map((side) => {
-                      const report = side === "home" ? homeReport : awayReport;
+                    {seats.map((seat) => {
+                      const report = reportOf(reports, seat.id);
                       if (!report) return null;
-                      const selected = result?.source === side;
+                      const selected = result?.source === "report" && result.reportTeamId === seat.id;
                       return (
                         <Button
-                          key={side}
+                          key={seat.id}
                           type="button"
                           variant="ghost"
                           aria-pressed={selected}
-                          onClick={() => setPicked({ source: side, score: reportScore(report) })}
+                          onClick={() =>
+                            setPicked({
+                              source: "report",
+                              reportTeamId: seat.id,
+                              score: reportScore(report, [pair[0].id, pair[1].id])
+                            })
+                          }
                           className={cn(
                             "h-9 rounded-lg border px-3 font-semibold transition-all duration-150",
                             selected
@@ -351,9 +363,9 @@ function EncounterEditDialogBody({
                               : "border-border/60 bg-muted/10 text-foreground hover:border-border hover:bg-accent hover:text-accent-foreground"
                           )}
                         >
-                          {side === "home" ? homeTeamLabel : awayTeamLabel}
+                          {seat.name}
                           <span className="ml-2 font-mono tabular-nums">
-                            {report.home_score} – {report.away_score}
+                            {scoreline(report.results, [pair[0].id, pair[1].id])}
                           </span>
                         </Button>
                       );
@@ -362,15 +374,17 @@ function EncounterEditDialogBody({
                 </div>
               )}
 
-              <EncounterScoreControls
-                idPrefix={`encounter-edit-${encounter.id}`}
-                homeScore={result?.score.homeScore ?? 0}
-                awayScore={result?.score.awayScore ?? 0}
-                homeLabel={homeTeamLabel}
-                awayLabel={awayTeamLabel}
-                bestOf={encounter.best_of}
-                onScoreChange={(score) => setPicked({ source: "manual", score })}
-              />
+              {pair ? (
+                <EncounterScoreControls
+                  idPrefix={`encounter-edit-${encounter.id}`}
+                  one={result?.score.one ?? 0}
+                  two={result?.score.two ?? 0}
+                  firstLabel={pair[0].name}
+                  secondLabel={pair[1].name}
+                  bestOf={encounter.best_of}
+                  onScoreChange={(score) => setPicked({ source: "manual", score })}
+                />
+              ) : null}
 
               <p className="text-label font-medium leading-normal text-[color:var(--aqt-fg-dim)]" aria-live="polite">
                 {sourceHint}
@@ -423,12 +437,28 @@ function EncounterEditDialogBody({
             )}
           </div>
 
+          <div className="space-y-1.5">
+            <Label htmlFor={`encounter-edit-${encounter.id}-reason`} className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">
+              {t("matchEdit.reason")}
+            </Label>
+            <Input
+              id={`encounter-edit-${encounter.id}-reason`}
+              value={reason}
+              maxLength={500}
+              placeholder={t("matchEdit.reasonPlaceholder")}
+              onChange={(event) => setReason(event.target.value)}
+            />
+            <p className="text-label font-medium leading-normal text-[color:var(--aqt-fg-dim)]">
+              {t("matchEdit.reasonHint")}
+            </p>
+          </div>
+
           <div className="flex justify-end">
             {isConfirmed ? (
               <Button
                 variant="secondary"
                 onClick={() => reopenMutation.mutate()}
-                disabled={reopenMutation.isPending}
+                disabled={reason.trim().length === 0 || reopenMutation.isPending}
                 className="h-10 px-5 font-semibold"
               >
                 {reopenMutation.isPending ? t("matchEdit.reopening") : t("matchEdit.reopenResult")}
@@ -438,13 +468,19 @@ function EncounterEditDialogBody({
                 onClick={() => result && confirmMutation.mutate(result)}
                 // Not while the reports load: the score would still be the
                 // encounter's own, not the one they are about to suggest.
-                disabled={result == null || drawBlocked || reportsQuery.isPending || confirmMutation.isPending}
+                disabled={
+                  result == null ||
+                  drawBlocked ||
+                  reason.trim().length === 0 ||
+                  reportsQuery.isPending ||
+                  confirmMutation.isPending
+                }
                 className="h-10 px-5 font-bold"
               >
                 {confirmMutation.isPending
                   ? t("matchEdit.confirming")
                   : result
-                    ? t("matchEdit.confirmScore", { home: result.score.homeScore, away: result.score.awayScore })
+                    ? t("matchEdit.confirmScore", { first: result.score.one, second: result.score.two })
                     : t("matchEdit.confirmResult")}
               </Button>
             )}

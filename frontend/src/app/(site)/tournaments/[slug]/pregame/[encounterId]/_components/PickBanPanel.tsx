@@ -24,9 +24,10 @@ import {
   isSessionActive,
   lastRevealedBlindStep,
   pickBanReserveMap,
+  pickBanSeats,
+  seatName,
   stepSubmissions,
-  viewerSubmission,
-  type PickBanSide
+  viewerSubmission
 } from "@/components/pick-ban/pick-ban-model";
 import { PickBanCommandBar } from "@/components/pick-ban/PickBanCommandBar";
 import { PickBanDraftTray } from "@/components/pick-ban/PickBanDraftTray";
@@ -98,9 +99,10 @@ export function PickBanPanel({
   const queryClient = useQueryClient();
 
   const step = state.current_step;
-  const viewerSide = state.viewer_side;
-  const opponentSide: PickBanSide | null =
-    viewerSide === "home" ? "away" : viewerSide === "away" ? "home" : null;
+  const viewerTeamId = state.viewer_team_id;
+  const seats = pickBanSeats(encounter.teams);
+  const opponentTeamId =
+    viewerTeamId == null ? null : (seats.find((seat) => seat.id !== viewerTeamId)?.id ?? null);
   const submission = viewerSubmission(state);
   const serverDraft = submission?.items ?? [];
   const draftLocked = submission != null && submission.state !== "draft";
@@ -183,17 +185,14 @@ export function PickBanPanel({
     return () => clearTimeout(timer);
   }, [localDraft, stepKey, submitDraft]);
 
-  const sideName = (side: PickBanSide) =>
-    side === "home"
-      ? (encounter.home_team?.name ?? t("side.home"))
-      : (encounter.away_team?.name ?? t("side.away"));
+  const teamName = (teamId: number) => seatName(seats, teamId);
 
   const targets = state.targets;
-  const targetRoster = targets != null && opponentSide != null ? targets[opponentSide] : [];
+  const targetRoster = targets != null && opponentTeamId != null ? (targets[opponentTeamId] ?? []) : [];
   const targetName = (playerId: number) =>
-    [...(targets?.home ?? []), ...(targets?.away ?? [])].find(
-      (player) => player.player_id === playerId
-    )?.name ?? null;
+    Object.values(targets ?? {})
+      .flat()
+      .find((player) => player.player_id === playerId)?.name ?? null;
 
   const isBlindStep = step?.blind === true;
   const captainAction: PickBanAction | null =
@@ -273,23 +272,25 @@ export function PickBanPanel({
 
   const revealedStep = lastRevealedBlindStep(state.sequence, state.submissions);
 
-  // The backend enforces who may elect (pending_loser_side); this only gates
-  // whether the losing captain's own client shows the modal at all.
+  // The backend enforces who may elect (pending_chooser_team_id); this only
+  // gates whether the losing captain's own client shows the modal at all.
   const showElectOpener =
-    session.awaiting_choice && state.viewer_side === session.pending_loser_side;
+    session.awaiting_choice &&
+    viewerTeamId != null &&
+    viewerTeamId === session.pending_chooser_team_id;
   // ...and everyone ELSE has to be told why the room stopped. The round the
   // choice is holding does not exist yet, so a spectator, the winning captain
   // and an organizer all saw a finished round with nothing to click and no
   // reason given — the exact shape of a hung room.
-  const pendingOpenerSide = session.awaiting_choice ? session.pending_loser_side : null;
+  const pendingOpenerTeamId = session.awaiting_choice ? session.pending_chooser_team_id : null;
 
   return (
     <>
-      {pendingOpenerSide != null ? (
+      {pendingOpenerTeamId != null ? (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-3 text-sm">
           <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--aqt-amber)]" aria-hidden />
           <p className="text-[color:var(--aqt-fg-muted)]">
-            {t("electOpener.waiting", { team: sideName(pendingOpenerSide) })}
+            {t("electOpener.waiting", { team: teamName(pendingOpenerTeamId) })}
           </p>
         </div>
       ) : null}
@@ -306,10 +307,10 @@ export function PickBanPanel({
             isComplete={state.is_complete}
             currentRound={state.current_round}
             itemsById={itemsById}
-            sideName={sideName}
+            teamName={teamName}
             session={session}
           />
-          {step?.target != null && opponentSide != null ? (
+          {step?.target != null && opponentTeamId != null ? (
             targetRoster.length > 0 ? (
               <div className="lg:sticky lg:top-[var(--aqt-sticky-top)]">
                 <PickBanTargetBoard
@@ -333,7 +334,7 @@ export function PickBanPanel({
                   onSelect={(playerId) =>
                     setSelectedTargetId((current) => (current === playerId ? null : playerId))
                   }
-                  teamName={sideName(opponentSide)}
+                  teamName={teamName(opponentTeamId)}
                   disabled={!canSelect}
                 />
               </div>
@@ -346,7 +347,7 @@ export function PickBanPanel({
               >
                 <UserX className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--aqt-amber)]" aria-hidden />
                 <p className="text-[color:var(--aqt-fg-muted)]">
-                  {t("target.noRoster", { team: sideName(opponentSide) })}
+                  {t("target.noRoster", { team: teamName(opponentTeamId) })}
                 </p>
               </div>
             )
@@ -359,7 +360,7 @@ export function PickBanPanel({
               step={revealedStep}
               submissions={stepSubmissions(state.submissions, revealedStep.index)}
               itemsById={itemsById}
-              sideName={sideName}
+              seats={seats}
               targetName={targetName}
               dispute={state.dispute}
               disputing={disputeMutation.isPending}
@@ -385,6 +386,7 @@ export function PickBanPanel({
               }
               setSelectedItemId((current) => (current === itemId ? null : itemId));
             }}
+            seats={seats}
             header={header}
           />
 
@@ -395,9 +397,9 @@ export function PickBanPanel({
             kind={kind}
             encounterId={encounterId}
             undo={state.undo}
-            viewerSide={state.viewer_side}
+            viewerTeamId={viewerTeamId}
             itemsById={itemsById}
-            sideName={sideName}
+            seats={seats}
             invalidateKeys={[queryKey]}
           />
 
@@ -428,10 +430,10 @@ export function PickBanPanel({
       {isSessionActive(session) ? (
         <PickBanCommandBar
           state={state}
-          sideName={sideName}
+          teamName={teamName}
           captainAction={state.is_complete ? null : captainAction}
           draft={
-            isBlindStep && step != null && viewerSide != null ? (
+            isBlindStep && step != null && viewerTeamId != null ? (
               <PickBanDraftTray
                 kind={kind}
                 step={step}
@@ -442,11 +444,11 @@ export function PickBanPanel({
                 locking={submitMutation.isPending}
                 itemsById={itemsById}
                 targetName={targetName}
-                opponentSide={opponentSide}
+                opponentTeamId={opponentTeamId}
                 opponentProgress={
-                  opponentSide != null ? state.step_progress?.[opponentSide] : undefined
+                  opponentTeamId != null ? state.step_progress?.[opponentTeamId] : undefined
                 }
-                opponentName={opponentSide != null ? sideName(opponentSide) : ""}
+                opponentName={opponentTeamId != null ? teamName(opponentTeamId) : ""}
                 onRemove={(index) =>
                   setLocalDraft({
                     key: stepKey,
@@ -479,8 +481,7 @@ export function PickBanPanel({
         kind={kind}
         encounterId={encounterId}
         open={showElectOpener}
-        homeName={sideName("home")}
-        awayName={sideName("away")}
+        seats={seats}
         queryKey={queryKey}
       />
     </>

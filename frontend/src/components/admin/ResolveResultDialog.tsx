@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronDown, History } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
@@ -27,12 +27,16 @@ import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { stageNeedsWinner } from "@/lib/encounter/score";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { seatsBySlot } from "@/lib/encounter/seats";
 
 /**
- * How the score is decided. Mirrors the server's resolution order so what the
- * dialog previews is what the server stores — the two must not drift.
+ * How the score is decided: one participation's report is adopted (its
+ * `encounter_team_id`, as a string) or the score is typed (`"manual"`). Mirrors
+ * the server's resolution order so what the dialog previews is what the server
+ * stores — the two must not drift.
  */
-type Mode = "adopt_home" | "adopt_away" | "manual";
+type Mode = string;
 
 export interface ResolveResultDialogProps {
   row: EncounterReportsRow | null;
@@ -60,6 +64,7 @@ export function ResolveResultDialog({
   const format = useFormatter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
 
   const isConfirmed = row?.result_status === "confirmed";
 
@@ -80,7 +85,7 @@ export function ResolveResultDialog({
   });
 
   const reopenMutation = useMutation({
-    mutationFn: () => adminService.reopenEncounterResult(row!.id),
+    mutationFn: () => adminService.reopenEncounterResult(row!.id, reopenReason.trim()),
     onSuccess: () => {
       notify.success("Result reopened");
       setReopenOpen(false);
@@ -92,9 +97,7 @@ export function ResolveResultDialog({
 
   if (!row) return null;
 
-  const mapCodes = [row.home_report, row.away_report].flatMap((report) =>
-    (report?.map_codes ?? []).map((code) => ({ report, code }))
-  );
+  const seatIds = seatsBySlot(row.participations).map((seat) => seat.encounter_team_id);
 
   return (
     <>
@@ -114,34 +117,26 @@ export function ResolveResultDialog({
           </DialogHeader>
 
           <AdminReportPairCell
-            homeReport={row.home_report}
-            awayReport={row.away_report}
-            scoresMatch={row.scores_match}
+            participations={row.participations}
+            reports={row.reports}
+            standingsMatch={row.standings_match}
             seriesScoreValid={row.series_score_valid}
           />
 
-          {mapCodes.length > 0 ? (
-            <div className="rounded-lg border border-border/60 p-3">
-              <p className={EYEBROW_CLASS}>
-                Replay codes
-              </p>
-              <ul className="mt-2 space-y-1">
-                {mapCodes.map(({ report, code }) => (
-                  <li key={`${report!.id}-${code.id}`} className="flex gap-2 text-xs">
-                    <span className="text-muted-foreground">
-                      {report!.side === "away" ? "Away" : "Home"} &middot; Map {code.map_index}
-                    </span>
-                    <span className="font-mono">{code.code}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
           {isConfirmed ? (
-            <p className="text-sm text-muted-foreground">
-              This result is already confirmed. Reopen it to replay or re-report the encounter.
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">
+                This result is already confirmed. Reopen it to replay or re-report the encounter.
+              </p>
+              <Label htmlFor="reopen-reason">Reason to reopen</Label>
+              <Input
+                id="reopen-reason"
+                value={reopenReason}
+                maxLength={500}
+                onChange={(event) => setReopenReason(event.target.value)}
+                placeholder="Why this result is reopened"
+              />
+            </div>
           ) : (
             // Keyed by encounter: switching rows must start from that row's
             // evidence, and a `key` does that without an effect that writes
@@ -183,7 +178,7 @@ export function ResolveResultDialog({
                         <span className="font-medium text-foreground">{entry.action}</span> by{" "}
                         {entry.actor_name ?? "an automated process"} &middot;{" "}
                         <span className="font-mono tabular-nums">
-                          {entry.home_score_after} &ndash; {entry.away_score_after}
+                          {scoreline(entry.after, seatIds)}
                         </span>{" "}
                         &middot;{" "}
                         {format.dateTime(new Date(entry.created_at), {
@@ -203,7 +198,12 @@ export function ResolveResultDialog({
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
                 Close
               </Button>
-              <Button type="button" variant="secondary" onClick={() => setReopenOpen(true)}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={reopenReason.trim() === ""}
+                onClick={() => setReopenOpen(true)}
+              >
                 Reopen
               </Button>
             </DialogFooter>
@@ -243,40 +243,52 @@ function ResolveForm({
   onConfirm: (payload: EncounterSetResultInput) => void;
 }>) {
   const modeFieldId = useId();
-  // Preselect the side with evidence. When only one captain has reported that
-  // report is all there is, so defaulting to manual entry would make the
+  const seats = seatsBySlot(row.participations);
+  const seatIds = seats.map((seat) => seat.encounter_team_id);
+  // A duel's standing is whole games; a lobby's is points, which may be fractional.
+  const wholeScores = seats.length === 2;
+  // Preselect the first seat with evidence. When only one captain has reported
+  // that report is all there is, so defaulting to manual entry would make the
   // commonest case the most laborious.
-  const [mode, setMode] = useState<Mode>(
-    row.home_report ? "adopt_home" : row.away_report ? "adopt_away" : "manual"
-  );
-  const [homeScore, setHomeScore] = useState(
-    String(row.home_report?.home_score ?? row.away_report?.home_score ?? "")
-  );
-  const [awayScore, setAwayScore] = useState(
-    String(row.home_report?.away_score ?? row.away_report?.away_score ?? "")
+  const firstReport = seats.map((seat) => reportOf(row.reports, seat.encounter_team_id)).find((report) => report);
+  const [mode, setMode] = useState<Mode>(firstReport ? String(firstReport.encounter_team_id) : "manual");
+  const [scores, setScores] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      seatIds.map((id) => [
+        id,
+        String(firstReport?.results.find((line) => line.encounter_team_id === id)?.score ?? "")
+      ])
+    )
   );
   const [closeness, setCloseness] = useState("");
+  // The journal's line for this decision; the server refuses a result without one.
+  const [reason, setReason] = useState("");
 
-  const preview = useMemo(() => {
-    if (mode === "adopt_home" && row.home_report) {
-      return { home: row.home_report.home_score, away: row.home_report.away_score };
+  const adopted = mode === "manual" ? null : (reportOf(row.reports, Number(mode)) ?? null);
+  const preview = (() => {
+    if (adopted) {
+      return seatIds.map(
+        (id) => adopted.results.find((line) => line.encounter_team_id === id)?.score ?? 0
+      );
     }
-    if (mode === "adopt_away" && row.away_report) {
-      return { home: row.away_report.home_score, away: row.away_report.away_score };
-    }
-    if (mode !== "manual") return null;
-    const home = Number(homeScore);
-    const away = Number(awayScore);
-    if (homeScore === "" || awayScore === "") return null;
-    if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0) return null;
-    return { home, away };
-  }, [row, mode, homeScore, awayScore]);
+    const entered = seatIds.map((id) => scores[id] ?? "");
+    if (entered.some((value) => value.trim() === "")) return null;
+    const numbers = entered.map(Number);
+    return numbers.every(
+      (value) => Number.isFinite(value) && value >= 0 && (!wholeScores || Number.isInteger(value))
+    )
+      ? numbers
+      : null;
+  })();
 
   // An elimination bracket needs a winner and the finalizer rejects a draw with
   // a 400. Blocking here means the admin learns it while the score is still in
   // front of them, rather than after a round trip.
   const drawBlocked =
-    preview != null && preview.home === preview.away && stageNeedsWinner(row.stage_type);
+    preview != null &&
+    wholeScores &&
+    preview[0] === preview[1] &&
+    stageNeedsWinner(row.stage_type);
 
   const closenessNumber = closeness === "" ? null : Number(closeness);
   const closenessInvalid =
@@ -284,35 +296,36 @@ function ResolveForm({
     (!Number.isInteger(closenessNumber) || closenessNumber < 1 || closenessNumber > 10);
 
   const options: Array<{ value: Mode; label: string; disabled: boolean; detail: string }> = [
-    {
-      value: "adopt_home",
-      label: `Adopt ${row.home_team?.name ?? "home"} report`,
-      disabled: row.home_report == null,
-      detail: row.home_report
-        ? `${row.home_report.home_score} \u2013 ${row.home_report.away_score}`
-        : "no report filed"
-    },
-    {
-      value: "adopt_away",
-      label: `Adopt ${row.away_team?.name ?? "away"} report`,
-      disabled: row.away_report == null,
-      detail: row.away_report
-        ? `${row.away_report.home_score} \u2013 ${row.away_report.away_score}`
-        : "no report filed"
-    },
+    ...seats.map((seat) => {
+      const report = reportOf(row.reports, seat.encounter_team_id);
+      return {
+        value: String(seat.encounter_team_id),
+        label: `Adopt ${seat.name} report`,
+        disabled: report == null,
+        detail: report ? scoreline(report.results, seatIds) : "no report filed"
+      };
+    }),
     { value: "manual", label: "Enter the score manually", disabled: false, detail: "" }
   ];
 
   function submit() {
     const closenessField = closenessNumber ?? undefined;
-    if (mode === "adopt_home" || mode === "adopt_away") {
-      const report = mode === "adopt_home" ? row.home_report : row.away_report;
-      // `adopt_report_team_id` rather than the score it happens to hold: the
-      // audit records which side was believed, not just the number.
-      onConfirm({ adopt_report_team_id: report?.team_id, closeness: closenessField });
+    if (adopted) {
+      // `adopt_report_team_id` rather than the numbers it happens to hold: the
+      // audit records whose report was believed, not just the standing.
+      onConfirm({
+        reason: reason.trim(),
+        results: [],
+        adopt_report_team_id: adopted.encounter_team_id,
+        closeness: closenessField
+      });
       return;
     }
-    onConfirm({ home_score: preview?.home, away_score: preview?.away, closeness: closenessField });
+    onConfirm({
+      reason: reason.trim(),
+      results: seatIds.map((id, index) => ({ encounter_team_id: id, score: preview?.[index] ?? 0 })),
+      closeness: closenessField
+    });
   }
 
   return (
@@ -328,7 +341,7 @@ function ResolveForm({
             already on screen, and duplicating it would announce it twice. */}
         <RadioGroup
           value={mode}
-          onValueChange={(next) => setMode(next as Mode)}
+          onValueChange={(next) => setMode(next)}
           aria-labelledby={`${modeFieldId}-legend`}
         >
           {options.map((option) => (
@@ -359,26 +372,20 @@ function ResolveForm({
 
         {mode === "manual" ? (
           <div className="flex flex-wrap items-end gap-2 pt-1">
-            <div className="space-y-1">
-              <Label htmlFor="resolve-home">Home</Label>
-              <Input
-                id="resolve-home"
-                inputMode="numeric"
-                className="h-8 w-20"
-                value={homeScore}
-                onChange={(event) => setHomeScore(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="resolve-away">Away</Label>
-              <Input
-                id="resolve-away"
-                inputMode="numeric"
-                className="h-8 w-20"
-                value={awayScore}
-                onChange={(event) => setAwayScore(event.target.value)}
-              />
-            </div>
+            {seats.map((seat) => (
+              <div key={seat.encounter_team_id} className="space-y-1">
+                <Label htmlFor={`${modeFieldId}-score-${seat.encounter_team_id}`}>{seat.name}</Label>
+                <Input
+                  id={`${modeFieldId}-score-${seat.encounter_team_id}`}
+                  inputMode={wholeScores ? "numeric" : "decimal"}
+                  className="h-8 w-20"
+                  value={scores[seat.encounter_team_id] ?? ""}
+                  onChange={(event) =>
+                    setScores((current) => ({ ...current, [seat.encounter_team_id]: event.target.value }))
+                  }
+                />
+              </div>
+            ))}
           </div>
         ) : null}
 
@@ -397,15 +404,25 @@ function ResolveForm({
             Left blank, the encounter takes the average of the filed reports.
           </p>
         </div>
+
+        <div className="space-y-1 pt-1">
+          <Label htmlFor={`${modeFieldId}-reason`}>Reason</Label>
+          <Input
+            id={`${modeFieldId}-reason`}
+            value={reason}
+            maxLength={500}
+            onChange={(event) => setReason(event.target.value)}
+            placeholder="Why this result is set"
+          />
+          <p className="text-xs text-muted-foreground">Required. Recorded in the result journal.</p>
+        </div>
       </fieldset>
 
       <p className="text-sm" aria-live="polite">
         {preview ? (
           <>
             Will record{" "}
-            <span className="font-mono font-semibold tabular-nums">
-              {preview.home} &ndash; {preview.away}
-            </span>
+            <span className="font-mono font-semibold tabular-nums">{preview.join(" \u2013 ")}</span>
           </>
         ) : (
           <span className="text-muted-foreground">No score selected yet.</span>
@@ -423,7 +440,9 @@ function ResolveForm({
       <DialogFooter>
         <Button
           type="button"
-          disabled={preview == null || drawBlocked || closenessInvalid || pending}
+          disabled={
+            preview == null || drawBlocked || closenessInvalid || reason.trim() === "" || pending
+          }
           onClick={submit}
         >
           {pending ? <Spinner /> : null}

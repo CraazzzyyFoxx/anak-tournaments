@@ -49,6 +49,7 @@ function SlotRow({
   node,
   slot,
   highlighted,
+  onHoverTeam,
   liveTeamStreams,
   draggable,
   rearranging

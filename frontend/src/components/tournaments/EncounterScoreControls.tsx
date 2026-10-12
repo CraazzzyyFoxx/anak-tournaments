@@ -15,9 +15,9 @@ import {
 
 type EncounterScoreControlsProps = EncounterScore & {
   idPrefix: string;
-  /** Team name where one is known; the generic side otherwise. */
-  homeLabel?: string;
-  awayLabel?: string;
+  /** Team name where one is known; the generic slot label otherwise. */
+  firstLabel?: string;
+  secondLabel?: string;
   presetLabel?: string;
   showGroupStageHint?: boolean;
   /** When set, presets adapt to the series length; BO4+ shows no presets (manual only). */
@@ -28,10 +28,10 @@ type EncounterScoreControlsProps = EncounterScore & {
 
 export function EncounterScoreControls({
   idPrefix,
-  homeScore,
-  awayScore,
-  homeLabel = "Home",
-  awayLabel = "Away",
+  one,
+  two,
+  firstLabel = "Team 1",
+  secondLabel = "Team 2",
   presetLabel,
   showGroupStageHint = false,
   bestOf,
@@ -41,17 +41,15 @@ export function EncounterScoreControls({
   const t = useTranslations();
   const presets: EncounterScorePreset[] =
     bestOf != null ? getScorePresetsForBestOf(bestOf) : GROUP_STAGE_SCORE_PRESETS;
-  const selectedPreset = presets.find(
-    (preset) => preset.homeScore === homeScore && preset.awayScore === awayScore
-  );
+  const selectedPreset = presets.find((preset) => preset.one === one && preset.two === two);
   const resolvedPresetLabel = presetLabel ?? t("matchEdit.resultPresets");
 
-  const updateHomeScore = (value: string | number) => {
-    onScoreChange({ homeScore: clampScoreValue(value), awayScore });
+  const updateFirstScore = (value: string | number) => {
+    onScoreChange({ one: clampScoreValue(value), two });
   };
 
-  const updateAwayScore = (value: string | number) => {
-    onScoreChange({ homeScore, awayScore: clampScoreValue(value) });
+  const updateSecondScore = (value: string | number) => {
+    onScoreChange({ one, two: clampScoreValue(value) });
   };
 
   const applyPreset = (score: EncounterScore) => {
@@ -80,24 +78,24 @@ export function EncounterScoreControls({
           className="rounded-lg border border-border/60 bg-background px-3.5 py-1.5 text-lg font-bold tracking-label text-foreground tabular-nums"
         >
           <span aria-hidden>
-            {homeScore} – {awayScore}
+            {one} – {two}
           </span>
-          <span className="sr-only">{`${homeLabel} ${homeScore}, ${awayLabel} ${awayScore}`}</span>
+          <span className="sr-only">{`${firstLabel} ${one}, ${secondLabel} ${two}`}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <ScoreStepper
-          id={`${idPrefix}-home-score`}
-          label={homeLabel}
-          value={homeScore}
-          onChange={updateHomeScore}
+          id={`${idPrefix}-first-score`}
+          label={firstLabel}
+          value={one}
+          onChange={updateFirstScore}
         />
         <ScoreStepper
-          id={`${idPrefix}-away-score`}
-          label={awayLabel}
-          value={awayScore}
-          onChange={updateAwayScore}
+          id={`${idPrefix}-second-score`}
+          label={secondLabel}
+          value={two}
+          onChange={updateSecondScore}
         />
       </div>
 
@@ -127,14 +125,9 @@ export function EncounterScoreControls({
                       : "border border-border/60 bg-muted/10 text-foreground hover:border-border hover:bg-accent hover:text-accent-foreground"
                   )}
                   aria-pressed={isSelected}
-                  aria-label={`Set the score to ${homeLabel} ${preset.homeScore}, ${awayLabel} ${preset.awayScore}`}
+                  aria-label={`Set the score to ${firstLabel} ${preset.one}, ${secondLabel} ${preset.two}`}
                   title={t(`matchEdit.presetDescriptions.${preset.description}` as Parameters<typeof t>[0])}
-                  onClick={() =>
-                    applyPreset({
-                      homeScore: preset.homeScore,
-                      awayScore: preset.awayScore,
-                    })
-                  }
+                  onClick={() => applyPreset({ one: preset.one, two: preset.two })}
                 >
                   {preset.label}
                 </Button>

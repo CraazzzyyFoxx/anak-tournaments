@@ -7,10 +7,11 @@ function getTeamName(teams: EncounterTeam[], teamId: number | null | undefined):
   return name || "TBD";
 }
 
+/** `"A vs B"`, slot 1 first. */
 export function buildEncounterName(
   teams: EncounterTeam[],
-  homeTeamId: number | null | undefined,
-  awayTeamId: number | null | undefined
+  firstTeamId: number | null | undefined,
+  secondTeamId: number | null | undefined
 ): string {
-  return `${getTeamName(teams, homeTeamId)} vs ${getTeamName(teams, awayTeamId)}`;
+  return `${getTeamName(teams, firstTeamId)} vs ${getTeamName(teams, secondTeamId)}`;
 }

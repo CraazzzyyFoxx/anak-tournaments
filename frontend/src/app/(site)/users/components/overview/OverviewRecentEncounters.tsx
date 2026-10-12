@@ -8,14 +8,16 @@ import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
 import { Hero } from "@/types/hero.types";
 import { cn } from "@/lib/utils";
 import { getPlayerSlug } from "@/lib/player";
+import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 
 interface Props {
   encounters: EncounterWithUserStats[];
+  userId: number;
   userName: string;
   tournaments: UserTournament[];
 }
 
-const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: Props) => {
+const OverviewRecentEncounters = async ({ encounters, userId, userName, tournaments }: Props) => {
   if (encounters.length === 0) return null;
   const t = await getTranslations();
   const userSlug = getPlayerSlug(userName);
@@ -34,14 +36,10 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
     >
       {encounters.map((enc) => {
         const userTeamId = enc.tournament ? teamIdByTournament.get(enc.tournament.id) : undefined;
-        const isUserHome = userTeamId != null && enc.home_team_id === userTeamId;
-        const opponent =
-          (isUserHome ? enc.away_team?.name : enc.home_team?.name) ??
-          (isUserHome ? t("common.awayTeam") : t("common.homeTeam"));
+        const perspective = encounterPerspective(enc, userId, userTeamId);
+        const opponent = perspective.opponent?.name ?? t("common.tbd");
         const stage = enc.stage_item?.name ?? enc.stage?.name ?? "";
-        const score = enc.score;
-        const scoreKind =
-          score.home === score.away ? "draw" : (isUserHome ? score.home > score.away : score.away > score.home) ? "win" : "loss";
+        const scoreKind = perspective.kind;
         const mapCount = enc.matches?.length ?? 0;
         // Stage is the honest label when the bracket recorded one; the series
         // length is the only thing left to say when it did not.
@@ -88,7 +86,7 @@ const OverviewRecentEncounters = async ({ encounters, userName, tournaments }: P
                 scoreKind === "draw" && "text-[color:var(--aqt-amber)]"
               )}
             >
-              {score.home} - {score.away}
+              {perspective.userScore} - {perspective.oppScore}
             </span>
             <MatchLogIndicator hasLogs={enc.has_logs} size={13} className="h-6 w-6" />
           </HoverPrefetchLink>

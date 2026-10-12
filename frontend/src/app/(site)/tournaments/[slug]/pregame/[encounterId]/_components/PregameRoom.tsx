@@ -22,8 +22,9 @@ import { encounterChatRoom } from "@/lib/realtime/chat-rooms";
 import {
   PICK_BAN_UNAVAILABLE_COPY,
   gameAtPosition,
-  type PickBanSide
+  pickBanSeats
 } from "@/components/pick-ban/pick-ban-model";
+import { isLobby } from "@/lib/encounter/seats";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { FfaPregameRoom } from "./FfaPregameRoom";
 import { PregameAdminPanel } from "./PregameAdminPanel";
@@ -77,13 +78,13 @@ export function PregameRoom(props: Readonly<PregameRoomProps>) {
     enabled: Number.isFinite(encounterId) && encounterId > 0
   });
 
-  // Until the format is known, neither room is the right one to show: rendering
+  // Until the seat count is known, neither room is the right one to show: rendering
   // the duel room first would flash a readiness gate at a lobby.
   if (encounterQuery.isPending) {
     return <RoomSkeleton />;
   }
 
-  if (encounterQuery.data?.format === "ffa") {
+  if (encounterQuery.data != null && isLobby(encounterQuery.data)) {
     return <FfaPregameRoom encounter={encounterQuery.data} />;
   }
 
@@ -172,10 +173,9 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
 
   const series = buildSeriesMaps(loop, room.mapsById, (id) => t("map.itemNumber", { id }));
   const heroName = (id: number) => t("hero.itemNumber", { id });
-  const sideNameOf = (side: PickBanSide) =>
-    side === "home"
-      ? (encounter.home_team?.name ?? t("side.home"))
-      : (encounter.away_team?.name ?? t("side.away"));
+  const seats = pickBanSeats(encounter.teams);
+  const seatNameAt = (index: number) => seats[index]?.name ?? t("tbd");
+  const viewerTeamId = mapState.viewer_team_id ?? room.viewerTeamId;
   const seriesSummary = mapState.series ?? null;
   // The readiness gate already shows both rosters inline; every later screen
   // has its pool or report there, so the rosters sit one click away instead.
@@ -194,10 +194,12 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
         series={series}
         seriesScore={
           seriesSummary != null
-            ? { home: seriesSummary.home_wins, away: seriesSummary.away_wins }
+            ? {
+                one: seriesSummary.wins[String(seats[0]?.id)] ?? 0,
+                two: seriesSummary.wins[String(seats[1]?.id)] ?? 0
+              }
             : null
         }
-        official={seriesSummary?.official ?? null}
         returnTo={returnTo}
       />
       {showRostersButton || canUploadLog ? (
@@ -205,8 +207,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           {showRostersButton ? (
             <EncounterRostersModal
               encounterId={encounterId}
-              homeTeamName={sideNameOf("home")}
-              awayTeamName={sideNameOf("away")}
+              teamNames={[seatNameAt(0), seatNameAt(1)]}
               trigger={
                 <Button type="button" variant="outline" size="sm">
                   <Users className="h-4 w-4" aria-hidden />
@@ -274,14 +275,10 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             encounterId={encounterId}
             statesByKind={loop.statesByKind}
             activeKind={activeKind}
-            sideNameOf={sideNameOf}
+            seats={seats}
             itemsByKind={room.itemsByKind}
             bestOf={encounter.best_of ?? 0}
-            seriesWins={
-              seriesSummary != null
-                ? { home: seriesSummary.home_wins, away: seriesSummary.away_wins }
-                : null
-            }
+            seriesWins={seriesSummary?.wins ?? null}
             onMutated={room.invalidateRoom}
             grid={grid}
           />
@@ -301,7 +298,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           <PregameReadiness
             encounter={encounter}
             readiness={mapState.readiness}
-            viewerSide={room.viewerSide}
+            viewerTeamId={room.viewerTeamId}
             pending={room.readyPending}
             onReady={room.markReady}
           />
@@ -325,11 +322,8 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           }
           mapImagePath={reportMapItem?.image_path ?? null}
           round={loop.reportRound}
-          viewerSide={mapState.viewer_side ?? room.viewerSide}
-          homeName={sideNameOf("home")}
-          awayName={sideNameOf("away")}
-          homeTeam={encounter.home_team ?? null}
-          awayTeam={encounter.away_team ?? null}
+          viewerTeamId={viewerTeamId}
+          teams={loop.teams}
           game={reportGame}
           heroBoard={heroBoardForRound(
             heroState,
@@ -342,9 +336,9 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
               kind="hero"
               encounterId={encounterId}
               undo={heroState.undo}
-              viewerSide={heroState.viewer_side}
+              viewerTeamId={heroState.viewer_team_id}
               itemsById={room.heroesById}
-              sideName={sideNameOf}
+              seats={seats}
               invalidateKeys={[room.mapKey, room.heroKey]}
             />
           }
@@ -369,11 +363,9 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
       <div className="flex flex-col gap-4">
         <PregameFinalReport
           encounter={encounter}
-          viewerSide={mapState.viewer_side ?? room.viewerSide}
+          viewerTeamId={viewerTeamId}
           reportable={seriesReport}
           heroRounds={buildHeroRounds(heroState, series, room.heroesById, heroName)}
-          homeName={sideNameOf("home")}
-          awayName={sideNameOf("away")}
           header={header}
           returnTo={returnTo}
         />

@@ -9,6 +9,7 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
 import TeamName from "@/components/TeamName";
 import { pregameRoomHref } from "@/lib/encounter/pregame-room";
+import { duelSeats, isLobby, seatsBySlot, seatTeam } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
 
 import { EncounterStatusCell, ScheduledAtCell, encounterScopeLabel } from "./EncounterCells";
@@ -50,9 +51,15 @@ export function useEncounterColumns({
               {row.original.name}
             </p>
             <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-              <TeamName team={row.original.home_team} fallback="TBD" size="xs" />
-              <span>vs</span>
-              <TeamName team={row.original.away_team} fallback="TBD" size="xs" />
+              {isLobby(row.original) ? (
+                <span>{row.original.teams.length}/{row.original.slot_count} teams</span>
+              ) : (
+                <>
+                  <TeamName team={seatTeam(duelSeats(row.original.teams)[0])} fallback="TBD" size="xs" />
+                  <span>vs</span>
+                  <TeamName team={seatTeam(duelSeats(row.original.teams)[1])} fallback="TBD" size="xs" />
+                </>
+              )}
             </p>
           </div>
         )
@@ -76,13 +83,13 @@ export function useEncounterColumns({
         cell: ({ row }) => <ScheduledAtCell value={row.original.scheduled_at} />
       },
       {
-        accessorKey: "score",
+        id: "score",
         header: "Score",
         size: 92,
         enableSorting: false,
         cell: ({ row }) => (
           <span className="font-mono text-sm font-semibold tabular-nums">
-            {row.original.score.home} &ndash; {row.original.score.away}
+            {seatsBySlot(row.original.teams).map((seat) => seat.score).join(" \u2013 ")}
           </span>
         )
       },
@@ -122,7 +129,7 @@ export function useEncounterColumns({
             label: "Open pre-game room",
             icon: ListChecks,
             // An FFA lobby has no captain room to open.
-            hidden: row.format === "ffa",
+            hidden: isLobby(row),
             href: pregameRoomHref(row.tournament_id, row.id, returnTo)
           },
           { label: "Edit encounter", icon: Pencil, hidden: !canUpdate, onSelect: () => onEdit(row) },

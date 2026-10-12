@@ -144,16 +144,14 @@ export function OverviewCompletedView({
       : findLowerFinal(encounters, stageId);
 
   const podiumTeam = (
-    seat: EncounterTeam | null | undefined,
+    entry: EncounterTeam | Team | null | undefined,
     note: string | null
   ): PodiumTeam | null => {
-    if (!seat) return null;
-    return {
-      id: seat.team_id ?? seat.id,
-      name: seat.name,
-      image_url: seat.team?.image_url,
-      note
-    };
+    if (!entry) return null;
+    // A seat names its source team by `team_id`; a team read is the team itself.
+    const id = "slot" in entry ? (entry.team_id ?? entry.id) : entry.id;
+    const image_url = "slot" in entry ? entry.team?.image_url : entry.image_url;
+    return { id, name: entry.name, image_url, note };
   };
 
   let podium: { first: PodiumTeam; second: PodiumTeam; third: PodiumTeam | null } | null = null;

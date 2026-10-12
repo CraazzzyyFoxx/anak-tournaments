@@ -89,8 +89,8 @@ export function ScrimCreateDialog({
     : null;
   const [label, setLabel] = useState("");
   const [bestOf, setBestOf] = useState(DEFAULT_BEST_OF);
-  const [homeName, setHomeName] = useState("");
-  const [awayName, setAwayName] = useState("");
+  const [ownName, setOwnName] = useState("");
+  const [opponentName, setOpponentName] = useState("");
   const [source, setSource] = useState<PoolSource>("copy");
   const [copyTournamentId, setCopyTournamentId] = useState<number | null>(null);
   const [copyStageId, setCopyStageId] = useState<number | null>(null);
@@ -143,7 +143,7 @@ export function ScrimCreateDialog({
   );
 
   const poolIssues = source === "custom" ? validateScrimPoolDraft(pool) : [];
-  const namesFilled = label.trim() !== "" && homeName.trim() !== "" && awayName.trim() !== "";
+  const namesFilled = label.trim() !== "" && ownName.trim() !== "" && opponentName.trim() !== "";
   const canSubmit =
     workspaceId != null && namesFilled &&
     (source === "copy" ? copyTournamentId != null : poolIssues.length === 0);
@@ -192,8 +192,7 @@ export function ScrimCreateDialog({
       workspace_id: workspaceId,
       label: label.trim(),
       best_of: bestOf,
-      home_team_name: homeName.trim(),
-      away_team_name: awayName.trim(),
+      team_names: [ownName.trim(), opponentName.trim()],
       pool: poolInput
     });
   };
@@ -251,26 +250,26 @@ export function ScrimCreateDialog({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
-                <FieldLabel htmlFor={`${ids}-home`}>{t("homeLabel")}</FieldLabel>
+                <FieldLabel htmlFor={`${ids}-own`}>{t("ownLabel")}</FieldLabel>
                 <Input
-                  id={`${ids}-home`}
-                  value={homeName}
-                  onChange={(event) => setHomeName(event.target.value)}
-                  placeholder={t("homePlaceholder")}
+                  id={`${ids}-own`}
+                  value={ownName}
+                  onChange={(event) => setOwnName(event.target.value)}
+                  placeholder={t("ownPlaceholder")}
                   maxLength={120}
                 />
-                <FieldDescription>{t("homeHint")}</FieldDescription>
+                <FieldDescription>{t("ownHint")}</FieldDescription>
               </Field>
               <Field>
-                <FieldLabel htmlFor={`${ids}-away`}>{t("awayLabel")}</FieldLabel>
+                <FieldLabel htmlFor={`${ids}-opponent`}>{t("opponentLabel")}</FieldLabel>
                 <Input
-                  id={`${ids}-away`}
-                  value={awayName}
-                  onChange={(event) => setAwayName(event.target.value)}
-                  placeholder={t("awayPlaceholder")}
+                  id={`${ids}-opponent`}
+                  value={opponentName}
+                  onChange={(event) => setOpponentName(event.target.value)}
+                  placeholder={t("opponentPlaceholder")}
                   maxLength={120}
                 />
-                <FieldDescription>{t("awayHint")}</FieldDescription>
+                <FieldDescription>{t("opponentHint")}</FieldDescription>
               </Field>
             </div>
 

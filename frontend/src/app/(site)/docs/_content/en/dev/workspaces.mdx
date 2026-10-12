@@ -81,7 +81,7 @@ Two grants in that catalogue are narrower than their resource suggests, and the 
 
 | Permission | What it covers | What it does **not** |
 | --- | --- | --- |
-| `match.result` | The result of an encounter: `home_score`, `away_score`, `status`, `closeness`, `started_at`, `ended_at`, `current_map_index` on the generic PATCH, plus the result endpoints — set/reopen, per-map results, per-game corrections, FFA game results and void, and the live pick-ban overrides (reset, act, submit, reopen, elect opener) | Anything about the match itself |
+| `match.result` | The result of an encounter: `status`, `closeness`, `started_at`, `ended_at`, `current_map_index` on the generic PATCH, plus the result endpoints — set/reopen, per-map results, per-game corrections, FFA game results and void, and the live pick-ban overrides (reset, act, submit, reopen, elect opener) | Anything about the match itself |
 | `match.update` | The match itself: name, stage, teams, round, best-of, scheduled time, bracket slot swaps, pick-ban configuration, the report form, the FFA games count | The result fields above |
 | `registration.roles` | A registration's `roles` — including `answers.roles` — and its ranks and pin (`pin`, `clear_pin`), plus applying rank autofill | The rest of the registration, which `registration.update` covers |
 

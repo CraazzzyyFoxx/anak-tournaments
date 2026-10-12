@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Gavel, ListChecks, Pencil, Upload } from "lucide-react";
@@ -15,6 +16,8 @@ import { pregameRoomHref } from "@/lib/encounter/pregame-room";
 import adminService from "@/services/admin.service";
 import type { AdminMatchRow } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { isLobby, seatsBySlot, seatTeam } from "@/lib/encounter/seats";
 
 import { EncounterStatusCell, InspectorField } from "./EncounterCells";
 
@@ -51,19 +54,25 @@ export function EncounterInspectorPanel({
       })
   });
 
+  const seats = seatsBySlot(encounter.teams);
+  const seatIds = seats.map((seat) => seat.id);
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <InspectorField label="Teams">
           <span className="flex items-center gap-1.5">
-            <TeamName team={encounter.home_team} fallback="TBD" size="xs" />
-            <span className="text-muted-foreground">vs</span>
-            <TeamName team={encounter.away_team} fallback="TBD" size="xs" />
+            {seats.map((seat, index) => (
+              <Fragment key={seat.id}>
+                {index > 0 ? <span className="text-muted-foreground">vs</span> : null}
+                <TeamName team={seatTeam(seat)} fallback="TBD" size="xs" />
+              </Fragment>
+            ))}
           </span>
         </InspectorField>
         <InspectorField label="Score">
           <span className="font-mono tabular-nums">
-            {encounter.score.home} &ndash; {encounter.score.away}
+            {seats.map((seat) => seat.score).join(" \u2013 ")}
           </span>
         </InspectorField>
         <InspectorField label="Status">
@@ -86,28 +95,26 @@ export function EncounterInspectorPanel({
           </p>
         ) : (
           <ul className="mt-2 space-y-1 text-sm">
-            {(
-              [
-                ["Home", reportRow.home_report],
-                ["Away", reportRow.away_report]
-              ] as const
-            ).map(([side, report]) => (
-              <li key={side} className="flex items-center gap-2">
-                <span className="w-12 text-xs uppercase text-muted-foreground">{side}</span>
-                {report ? (
-                  <>
-                    <span className="font-mono tabular-nums">
-                      {report.home_score} &ndash; {report.away_score}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {report.reporter_name ?? "unknown"}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-xs italic text-muted-foreground">no report</span>
-                )}
-              </li>
-            ))}
+            {seats.map((seat) => {
+              const report = reportOf(reportRow.reports, seat.id);
+              return (
+                <li key={seat.id} className="flex items-center gap-2">
+                  <span className="w-24 truncate text-xs uppercase text-muted-foreground" title={seat.name}>
+                    {seat.name}
+                  </span>
+                  {report ? (
+                    <>
+                      <span className="font-mono tabular-nums">{scoreline(report.results, seatIds)}</span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {report.reporter_name ?? "unknown"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-xs italic text-muted-foreground">no report</span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -159,7 +166,7 @@ export function EncounterInspectorActions({
 }>) {
   return (
     <>
-      {encounter.format === "ffa" ? null : (
+      {isLobby(encounter) ? null : (
         <Button asChild variant="outline" size="sm">
           {/* Readiness, the veto and the per-map reports all live in the room,
               and the organizer controls there are the same ones a captain

@@ -16,6 +16,7 @@ import AnomalyLegend from "@/app/(site)/tournaments/analytics/components/Anomaly
 import AnomalyTooltip from "@/app/(site)/tournaments/analytics/components/AnomalyTooltip";
 import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
+import { duelSeats } from "@/lib/encounter/seats";
 
 interface MatchQualityCardProps {
   tournamentId: number;
@@ -147,10 +148,8 @@ export default function MatchQualityCard({ tournamentId }: Readonly<MatchQuality
   const encounterLabelById = React.useMemo(() => {
     const map = new Map<number, string>();
     (encounters?.results ?? []).forEach((encounter) => {
-      const teams =
-        encounter.home_team?.name && encounter.away_team?.name
-          ? `${encounter.home_team.name} ${t("analytics.matchQuality.vs")} ${encounter.away_team.name}`
-          : null;
+      const [one, two] = duelSeats(encounter.teams);
+      const teams = one && two ? `${one.name} ${t("analytics.matchQuality.vs")} ${two.name}` : null;
       const label = encounter.name?.trim() || teams;
       if (label) map.set(encounter.id, label);
     });

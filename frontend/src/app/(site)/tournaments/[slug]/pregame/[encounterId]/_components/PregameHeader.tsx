@@ -18,6 +18,7 @@ import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
+import { seatAt, seatTeam, type Duel } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
 import type { PickBanSession } from "@/types/tournament.types";
 
@@ -45,7 +46,7 @@ export interface PregameSeriesMap {
   name: string;
   item: PickBanItemLike | undefined;
   /** The confirmed score. Only ever set when `state` is `"played"`. */
-  score: { home: number; away: number } | null;
+  score: Duel<number> | null;
   state: PregameSeriesMapState;
 }
 
@@ -67,11 +68,9 @@ interface PregameHeaderProps {
   /**
    * The live series score: wins over the confirmed games, counted by the
    * backend. Null for a room whose payload carries no games (hero-only, or an
-   * older read), where the encounter's own score is the best available.
+   * older read), where the encounter's own standing is the best available.
    */
-  seriesScore?: { home: number; away: number } | null;
-  /** The finalized official score, set only once the encounter is finalized. */
-  official?: { home_score: number; away_score: number } | null;
+  seriesScore?: Duel<number> | null;
   /** Where the back arrow leads: the page the room was opened from. */
   returnTo: string;
 }
@@ -121,17 +120,19 @@ export function PregameHeader({
   round,
   series,
   seriesScore = null,
-  official = null,
   returnTo
 }: Readonly<PregameHeaderProps>) {
   const t = useTranslations("pickBan.room");
-  const homeTeam = encounter.home_team ?? null;
-  const awayTeam = encounter.away_team ?? null;
+  const seatOne = seatAt(encounter.teams, 1);
+  const seatTwo = seatAt(encounter.teams, 2);
   const bestOf = encounter.best_of ?? null;
-  // Wins over the confirmed games, not the encounter's column: the encounter
-  // only carries a score once it is finalized, and until then the games ARE
+  const standing: Duel<number> = { one: seatOne?.score ?? 0, two: seatTwo?.score ?? 0 };
+  // Wins over the confirmed games, not the encounter's standing: the seats only
+  // carry the series score once it is settled, and until then the games ARE
   // the series standing.
-  const score = seriesScore ?? encounter.score ?? null;
+  const score = seriesScore ?? standing;
+  // The settled standing, once the result is official.
+  const official = encounter.result_status === "confirmed" ? standing : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -154,13 +155,18 @@ export function PregameHeader({
       </div>
 
       <Scoreboard
-        homeName={homeTeam?.name ?? t("side.home")}
-        awayName={awayTeam?.name ?? t("side.away")}
-        homeTeam={homeTeam}
-        awayTeam={awayTeam}
-        homeSeed={session?.home_seed ?? null}
-        awaySeed={session?.away_seed ?? null}
-        firstSide={session?.first_side ?? null}
+        one={{
+          name: seatOne?.name ?? t("tbd"),
+          team: seatTeam(seatOne),
+          seed: seatOne?.seed ?? null,
+          opens: seatOne != null && session?.first_team_id === seatOne.id
+        }}
+        two={{
+          name: seatTwo?.name ?? t("tbd"),
+          team: seatTeam(seatTwo),
+          seed: seatTwo?.seed ?? null,
+          opens: seatTwo != null && session?.first_team_id === seatTwo.id
+        }}
         score={score}
         official={official}
         bestOf={bestOf}
@@ -197,37 +203,35 @@ function StatusMark({ status }: Readonly<{ status: PickBanSession["status"] }>) 
   );
 }
 
+/** One seat of the scoreboard: who sits in it and whether it opens the round. */
+interface ScoreboardSeat {
+  name: string;
+  team: TeamNameInput | null | undefined;
+  seed: number | null;
+  opens: boolean;
+}
+
 /**
- * The matchup as a broadcast scoreboard: each side's logo and seed flanking
+ * The matchup as a broadcast scoreboard: each seat's logo and seed flanking
  * the series score, with a dot per map of the Bo-N underneath so "2–1 of a
  * Bo5" reads as position in the series and not just two digits.
  */
 function Scoreboard({
-  homeName,
-  awayName,
-  homeTeam,
-  awayTeam,
-  homeSeed,
-  awaySeed,
-  firstSide,
+  one,
+  two,
   score,
   official,
   bestOf
 }: Readonly<{
-  homeName: string;
-  awayName: string;
-  homeTeam: TeamNameInput | null | undefined;
-  awayTeam: TeamNameInput | null | undefined;
-  homeSeed: number | null;
-  awaySeed: number | null;
-  firstSide: "home" | "away" | null;
-  score: { home: number; away: number } | null;
-  official: { home_score: number; away_score: number } | null;
+  one: ScoreboardSeat;
+  two: ScoreboardSeat;
+  score: Duel<number>;
+  official: Duel<number> | null;
   bestOf: number | null;
 }>) {
   const t = useTranslations("pickBan.room");
-  const homeScore = score?.home ?? 0;
-  const awayScore = score?.away ?? 0;
+  const scoreOne = score.one;
+  const scoreTwo = score.two;
   // Even series can end in a draw, so only odd series track wins to clinch.
   const toWin =
     bestOf != null && bestOf > 1 && bestOf % 2 === 1 ? Math.floor(bestOf / 2) + 1 : null;
@@ -243,11 +247,11 @@ function Scoreboard({
       className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/40 px-3 py-3 sm:grid sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-6 sm:px-5"
     >
       <TeamSide
-        name={homeName}
-        team={homeTeam}
-        seed={homeSeed}
+        name={one.name}
+        team={one.team}
+        seed={one.seed}
         accentVar="--aqt-teal"
-        opens={firstSide === "home"}
+        opens={one.opens}
         align="start"
       />
 
@@ -258,14 +262,14 @@ function Scoreboard({
           <span
             style={{
               color:
-                homeScore > awayScore
+                scoreOne > scoreTwo
                   ? "var(--aqt-teal)"
-                  : homeScore < awayScore
+                  : scoreOne < scoreTwo
                     ? "var(--aqt-fg-muted)"
                     : "var(--aqt-fg)"
             }}
           >
-            {homeScore}
+            {scoreOne}
           </span>
           <span aria-hidden className="text-[0.6em] text-[color:var(--aqt-fg-faint)]">
             :
@@ -273,19 +277,19 @@ function Scoreboard({
           <span
             style={{
               color:
-                awayScore > homeScore
+                scoreTwo > scoreOne
                   ? "var(--aqt-rose)"
-                  : awayScore < homeScore
+                  : scoreTwo < scoreOne
                     ? "var(--aqt-fg-muted)"
                     : "var(--aqt-fg)"
             }}
           >
-            {awayScore}
+            {scoreTwo}
           </span>
         </div>
         {toWin != null ? (
           <>
-            <SeriesPips homeScore={homeScore} awayScore={awayScore} toWin={toWin} />
+            <SeriesPips scoreOne={scoreOne} scoreTwo={scoreTwo} toWin={toWin} />
             <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
               {t("board.toWin", { n: toWin })}
             </span>
@@ -301,19 +305,19 @@ function Scoreboard({
             className="text-label uppercase tracking-label text-[color:var(--aqt-support)]"
           >
             {t("board.official", {
-              home: official.home_score,
-              away: official.away_score
+              first: official.one,
+              second: official.two
             })}
           </span>
         ) : null}
       </div>
 
       <TeamSide
-        name={awayName}
-        team={awayTeam}
-        seed={awaySeed}
+        name={two.name}
+        team={two.team}
+        seed={two.seed}
         accentVar="--aqt-rose"
-        opens={firstSide === "away"}
+        opens={two.opens}
         align="end"
       />
     </div>
@@ -390,35 +394,35 @@ function TeamSide({
 }
 
 /**
- * One pip per map of the Bo-N: won by home (teal, from the left), won by away
+ * One pip per map of the Bo-N: won by slot 1 (teal, from the left), won by slot 2
  * (rose, from the right), still to play (hollow). Purely decorative — the
  * digits above already carry the score for a screen reader.
  */
 function SeriesPips({
-  homeScore,
-  awayScore,
+  scoreOne,
+  scoreTwo,
   toWin
 }: Readonly<{
-  homeScore: number;
-  awayScore: number;
+  scoreOne: number;
+  scoreTwo: number;
   toWin: number;
 }>) {
   return (
     <span aria-hidden className="flex items-center gap-1">
       {Array.from({ length: toWin }, (_, index) => (
         <span
-          key={`home-${index}`}
+          key={`one-${index}`}
           className="h-1.5 w-3.5 rounded-full"
-          style={{ background: index < homeScore ? "var(--aqt-teal)" : "var(--aqt-border-2)" }}
+          style={{ background: index < scoreOne ? "var(--aqt-teal)" : "var(--aqt-border-2)" }}
         />
       ))}
       <span className="mx-0.5 h-2.5 w-px bg-[color:var(--aqt-border-3)]" />
       {Array.from({ length: toWin }, (_, index) => (
         <span
-          key={`away-${index}`}
+          key={`two-${index}`}
           className="h-1.5 w-3.5 rounded-full"
           style={{
-            background: toWin - 1 - index < awayScore ? "var(--aqt-rose)" : "var(--aqt-border-2)"
+            background: toWin - 1 - index < scoreTwo ? "var(--aqt-rose)" : "var(--aqt-border-2)"
           }}
         />
       ))}
@@ -595,9 +599,9 @@ function SeriesStrip({ series }: Readonly<{ series: PregameSeriesMap[] }>) {
                 of alignment. */}
             {map.score != null ? (
               <span className="mt-auto inline-flex items-baseline gap-1 font-onest text-sm font-semibold tabular-nums">
-                <span style={{ color: "var(--aqt-teal)" }}>{map.score.home}</span>
+                <span style={{ color: "var(--aqt-teal)" }}>{map.score.one}</span>
                 <span className="text-[color:var(--aqt-fg-faint)]">:</span>
-                <span style={{ color: "var(--aqt-rose)" }}>{map.score.away}</span>
+                <span style={{ color: "var(--aqt-rose)" }}>{map.score.two}</span>
               </span>
             ) : null}
           </li>

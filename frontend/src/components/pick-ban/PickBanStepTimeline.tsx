@@ -29,7 +29,6 @@ import {
   stepRoundGroups,
   stepSubmissions,
   stepSummary,
-  type PickBanSide,
   type PickBanStepSummary
 } from "./pick-ban-model";
 import { PickBanRoundLabel, type PickBanItemLike } from "./PickBanGrid";
@@ -50,7 +49,7 @@ interface PickBanStepTimelineProps {
    */
   currentRound: number | null;
   itemsById: Record<number, PickBanItemLike | undefined>;
-  sideName: (side: PickBanSide) => string;
+  teamName: (teamId: number) => string;
   /** Drives the "who goes first" line under the Steps title. */
   session: PickBanSession;
 }
@@ -63,7 +62,7 @@ export function PickBanStepTimeline({
   isComplete,
   currentRound,
   itemsById,
-  sideName,
+  teamName,
   session
 }: Readonly<PickBanStepTimelineProps>) {
   const t = useTranslations("pickBan.room");
@@ -84,7 +83,7 @@ export function PickBanStepTimeline({
       .flatMap((submission) => submission.items);
     // Who acts is a different sentence per shape, not a team name slotted into
     // one: "Both teams ban" / "{team} bans" / "Random ban".
-    const shape = summary.system ? "system" : summary.sides.length > 1 ? "both" : "side";
+    const shape = summary.system ? "system" : summary.actors.length > 1 ? "both" : "side";
     const headlineKey = `step.${shape}.${summary.action}` as const;
 
     const Icon = done
@@ -133,7 +132,7 @@ export function PickBanStepTimeline({
           {summary.action === "ban" ? <Ban className="h-3.5 w-3.5" aria-hidden /> : null}
           {summary.action === "protect" ? <Shield className="h-3.5 w-3.5" aria-hidden /> : null}
           {t(headlineKey, {
-            team: summary.sides.length === 1 ? sideName(summary.sides[0]) : ""
+            team: summary.actors.length === 1 ? teamName(summary.actors[0]) : ""
           })}
           {summary.action === "decider" ? (
             <TooltipProvider delayDuration={150}>
@@ -181,11 +180,11 @@ export function PickBanStepTimeline({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{t("steps.title")}</CardTitle>
-        {session.first_side ? (
+        {session.first_team_id != null ? (
           <p className="flex items-center gap-2 text-sm text-[color:var(--aqt-fg-muted)]">
             <Flag className="h-4 w-4 shrink-0 text-[color:var(--aqt-teal)]" aria-hidden />
             <span>
-              {t("firstBanner", { team: sideName(session.first_side) })}{" "}
+              {t("firstBanner", { team: teamName(session.first_team_id) })}{" "}
               <span className="text-[color:var(--aqt-fg-dim)]">
                 ({t(`seedSource.${session.seed_source}`)})
               </span>

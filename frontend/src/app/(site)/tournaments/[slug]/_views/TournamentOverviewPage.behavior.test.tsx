@@ -19,7 +19,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import type { Encounter } from "@/types/encounter.types";
+import type { Encounter, EncounterTeam } from "@/types/encounter.types";
 import type { MapRead } from "@/types/map.types";
 import type { Registration, RegistrationListResponse } from "@/types/registration.types";
 import type { Team } from "@/types/team.types";
@@ -127,12 +127,20 @@ function makeStage(overrides: Partial<StageSummary> & { id: number }): StageSumm
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
     best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    has_custom_bracket: false,
     challonge_id: null,
     challonge_slug: null,
     ...overrides
@@ -245,12 +253,27 @@ const BETA = makeTeam(2, "Beta");
 const GAMMA = makeTeam(3, "Gamma");
 const DELTA = makeTeam(4, "Delta");
 
+function seat(slot: number, team: Team, score: number): EncounterTeam {
+  return {
+    id: team.id * 10 + slot,
+    slot,
+    team_id: team.id,
+    name: team.name,
+    seed: null,
+    score,
+    placement: null,
+    active: true,
+    team
+  };
+}
+
+/** `scores` are the standings of slot 1 and slot 2. */
 function makeEncounter(
   id: number,
   round: number,
-  home: Team,
-  away: Team,
-  score: { home: number; away: number },
+  one: Team,
+  two: Team,
+  scores: [number, number],
   overrides: Partial<Encounter> = {}
 ): Encounter {
   return {
@@ -258,9 +281,7 @@ function makeEncounter(
     created_at: new Date("2024-08-12T12:00:00Z"),
     updated_at: null,
     name: `M${id}`,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    score,
+    slot_count: 2,
     round,
     best_of: 3,
     tournament_id: TOURNAMENT_ID,
@@ -271,14 +292,16 @@ function makeEncounter(
     closeness: null,
     has_logs: false,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: null,
     started_at: new Date("2024-08-12T12:00:00Z").toISOString(),
     ended_at: new Date("2024-08-12T13:00:00Z").toISOString(),
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: home,
-    away_team: away,
+    games: [],
+    teams: [seat(1, one, scores[0]), seat(2, two, scores[1])],
     tournament,
     stage: null,
     stage_item: null,
@@ -294,10 +317,10 @@ function makeEncounter(
  */
 function playedBracket(): Encounter[] {
   return [
-    makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 }),
-    makeEncounter(2, 1, BETA, DELTA, { home: 2, away: 0 }),
-    makeEncounter(4, -1, BETA, GAMMA, { home: 2, away: 0 }),
-    makeEncounter(3, 2, ALPHA, BETA, { home: 3, away: 2 })
+    makeEncounter(1, 1, ALPHA, GAMMA, [2, 0]),
+    makeEncounter(2, 1, BETA, DELTA, [2, 0]),
+    makeEncounter(4, -1, BETA, GAMMA, [2, 0]),
+    makeEncounter(3, 2, ALPHA, BETA, [3, 2])
   ];
 }
 
@@ -561,11 +584,11 @@ describe("while it is being played (§3B)", () => {
   it("puts the live matches first", async () => {
     getAllEncounters.mockResolvedValue({
       results: [
-        makeEncounter(1, 1, ALPHA, GAMMA, { home: 1, away: 1 }, {
+        makeEncounter(1, 1, ALPHA, GAMMA, [1, 1], {
           status: "in_progress",
           ended_at: null
         }),
-        makeEncounter(2, 1, BETA, DELTA, { home: 2, away: 0 })
+        makeEncounter(2, 1, BETA, DELTA, [2, 0])
       ],
       total: 2,
       page: 1,
@@ -600,8 +623,8 @@ describe("while it is being played (§3B)", () => {
     const soon = new Date(Date.now() + 3_600_000).toISOString();
     getAllEncounters.mockResolvedValue({
       results: [
-        makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 }),
-        makeEncounter(9, 2, ALPHA, BETA, { home: 0, away: 0 }, {
+        makeEncounter(1, 1, ALPHA, GAMMA, [2, 0]),
+        makeEncounter(9, 2, ALPHA, BETA, [0, 0], {
           status: "pending",
           scheduled_at: soon,
           started_at: null,
@@ -621,8 +644,8 @@ describe("while it is being played (§3B)", () => {
   // matches, no schedule, no results. The overview used to call that "nothing
   // published yet" while the bracket page showed the full grid.
   it("lists a drawn round that has no schedule and no results yet", async () => {
-    const drawn = (id: number, round: number, home: Team, away: Team) =>
-      makeEncounter(id, round, home, away, { home: 0, away: 0 }, {
+    const drawn = (id: number, round: number, one: Team, two: Team) =>
+      makeEncounter(id, round, one, two, [0, 0], {
         status: "open",
         result_status: "none",
         scheduled_at: null,
@@ -691,7 +714,7 @@ describe("while it is being played (§3B)", () => {
       }
     ]);
     getAllEncounters.mockResolvedValue({
-      results: [makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 })],
+      results: [makeEncounter(1, 1, ALPHA, GAMMA, [2, 0])],
       total: 1,
       page: 1,
       per_page: -1
@@ -807,7 +830,7 @@ describe("while it is being played (§3B)", () => {
       standingRow(4, DELTA, 12, "B", 2, [2, 0, 3], 2)
     ]);
     getAllEncounters.mockResolvedValue({
-      results: [makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 })],
+      results: [makeEncounter(1, 1, ALPHA, GAMMA, [2, 0])],
       total: 1,
       page: 1,
       per_page: -1
@@ -934,7 +957,7 @@ describe("once it is over (§3C)", () => {
       stages: [makeStage({ id: 7, name: "League", stage_type: "round_robin", is_completed: true })]
     });
     getAllEncounters.mockResolvedValue({
-      results: [makeEncounter(1, 1, ALPHA, GAMMA, { home: 2, away: 0 })],
+      results: [makeEncounter(1, 1, ALPHA, GAMMA, [2, 0])],
       total: 1,
       page: 1,
       per_page: -1
@@ -971,6 +994,8 @@ describe("once it is over (§3C)", () => {
 
     const podium = container.querySelector(`[aria-label="${en.tournamentDetail.podium.label}"]`);
     expect(podium?.textContent).toContain("Gamma");
+    expect(podium?.textContent).toContain("Alpha");
+    expect(podium?.textContent).toContain("Beta");
     expect(podium?.textContent).toContain(en.tournamentDetail.podium.place3);
   });
 });

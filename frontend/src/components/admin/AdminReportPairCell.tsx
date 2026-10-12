@@ -3,30 +3,35 @@
 import { AlertTriangle, Check, Minus } from "lucide-react";
 
 import { TONE_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
-import type { AdminCaptainReport } from "@/types/admin.types";
+import type { AdminCaptainReport, EncounterParticipationRef } from "@/types/admin.types";
 
 interface AdminReportPairCellProps {
-  homeReport: AdminCaptainReport | null;
-  awayReport: AdminCaptainReport | null;
-  /** `null` = fewer than two reports, so agreement is not yet knowable. */
-  scoresMatch: boolean | null;
-  /** False when a reported score cannot happen in this encounter's best-of. */
+  /** The encounter's live seats; their slot order is the order everything below reads in. */
+  participations: EncounterParticipationRef[];
+  reports: AdminCaptainReport[];
+  /** `null` = not every participation has reported, so agreement is not yet knowable. */
+  standingsMatch: boolean | null;
+  /** False when a reported standing cannot happen in this encounter's best-of. */
   seriesScoreValid: boolean;
   className?: string;
 }
 
-function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCaptainReport | null }>) {
+function ReportSeat({
+  label,
+  report,
+  standing
+}: Readonly<{ label: string; report: AdminCaptainReport | null; standing: string }>) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
+      <p className="truncate text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
         {label}
       </p>
       {report ? (
         <>
-          <p className="font-mono text-sm font-semibold tabular-nums">
-            {report.home_score} &ndash; {report.away_score}
-          </p>
+          <p className="font-mono text-sm font-semibold tabular-nums">{standing}</p>
           <p className="truncate text-xs text-muted-foreground">
             {report.reporter_name ?? "unknown"} &middot;{" "}
             {/* Match quality is configurable per tournament, so an absent rating
@@ -55,7 +60,7 @@ function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCa
 }
 
 /**
- * The two captains' reports for one encounter, side by side.
+ * Every participation's report for one encounter, side by side in slot order.
  *
  * Agreement is three-valued and rendered as three distinct things, not two: an
  * encounter waiting on a second captain is not in conflict, and showing it as
@@ -66,16 +71,18 @@ function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCa
  * contrast, and to a screen reader.
  */
 export function AdminReportPairCell({
-  homeReport,
-  awayReport,
-  scoresMatch,
+  participations,
+  reports,
+  standingsMatch,
   seriesScoreValid,
   className
 }: Readonly<AdminReportPairCellProps>) {
+  const seats = seatsBySlot(participations);
+  const seatIds = seats.map((seat) => seat.encounter_team_id);
   const verdict =
-    scoresMatch === null
-      ? { tone: "neutral" as const, icon: Minus, label: "Awaiting second report" }
-      : scoresMatch
+    standingsMatch === null
+      ? { tone: "neutral" as const, icon: Minus, label: "Awaiting remaining reports" }
+      : standingsMatch
         ? { tone: "success" as const, icon: Check, label: "Reports agree" }
         : { tone: "danger" as const, icon: AlertTriangle, label: "Reports disagree" };
   const VerdictIcon = verdict.icon;
@@ -83,8 +90,17 @@ export function AdminReportPairCell({
   return (
     <div className={cn("space-y-2", className)}>
       <div className="grid grid-cols-2 gap-3">
-        <ReportSide label="Home" report={homeReport} />
-        <ReportSide label="Away" report={awayReport} />
+        {seats.map((seat) => {
+          const report = reportOf(reports, seat.encounter_team_id);
+          return (
+            <ReportSeat
+              key={seat.encounter_team_id}
+              label={seat.name}
+              report={report}
+              standing={report ? scoreline(report.results, seatIds) : ""}
+            />
+          );
+        })}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <span

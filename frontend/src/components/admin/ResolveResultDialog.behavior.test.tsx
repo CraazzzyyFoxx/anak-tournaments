@@ -46,23 +46,25 @@ async function mount(node: ReactNode) {
   return document.body;
 }
 
-function report(overrides: Partial<AdminCaptainReport> = {}): AdminCaptainReport {
+/** A report by participation `by`, claiming `one` – `two` (slot 1 – slot 2). */
+function report(by: 1 | 2, one: number, two: number): AdminCaptainReport {
   return {
-    id: 1,
+    id: by,
     encounter_id: 10,
-    team_id: 1,
-    side: "home",
+    encounter_team_id: by,
     reporter_user_id: null,
     reporter_name: "cap",
-    home_score: 2,
-    away_score: 1,
+    games_played: one + two,
+    basis_version: 1,
+    results: [
+      { encounter_team_id: 1, score: one, placement: null, wins: one },
+      { encounter_team_id: 2, score: two, placement: null, wins: two }
+    ],
     closeness: 6,
-    map_codes: [],
     comment: null,
     custom_fields: {},
     created_at: null,
-    updated_at: null,
-    ...overrides
+    updated_at: null
   };
 }
 
@@ -79,12 +81,14 @@ function row(overrides: Partial<EncounterReportsRow> = {}): EncounterReportsRow 
     status: "OPEN",
     result_status: "disputed",
     scheduled_at: null,
-    home_team: { id: 1, name: "A" },
-    away_team: { id: 2, name: "B" },
-    home_report: report(),
-    away_report: report({ id: 2, team_id: 2, side: "away", home_score: 0, away_score: 2 }),
+    // Out of slot order on purpose: everything reads by slot.
+    participations: [
+      { encounter_team_id: 2, slot: 2, team_id: 22, name: "B" },
+      { encounter_team_id: 1, slot: 1, team_id: 11, name: "A" }
+    ],
+    reports: [report(1, 2, 1), report(2, 0, 2)],
     reported_count: 2,
-    scores_match: false,
+    standings_match: false,
     series_score_valid: true,
     last_resolution: null,
     ...overrides
@@ -109,6 +113,22 @@ function findRadio(labelText: string): HTMLButtonElement {
   return radio as HTMLButtonElement;
 }
 
+/** Type into a React-controlled input the way a browser would. */
+async function typeInto(input: HTMLInputElement, value: string) {
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+function byLabel(text: string): HTMLInputElement {
+  const label = Array.from(document.body.querySelectorAll("label")).find(
+    (node) => node.textContent?.trim() === text
+  );
+  if (!label) throw new Error(`no field labelled ${text}`);
+  return document.getElementById(label.htmlFor) as HTMLInputElement;
+}
+
 describe("ResolveResultDialog", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -117,63 +137,97 @@ describe("ResolveResultDialog", () => {
     getEncounterResultAudit.mockReset().mockResolvedValue([]);
   });
 
-  it("previews the adopted report's score, not the encounter's", async () => {
+  it("previews the adopted report's standing in slot order, not the encounter's", async () => {
     // The admin is choosing between two claims; the preview must show the claim
     // that will be recorded, or the choice is unverifiable before submitting.
-    const body = await mount(
-      <ResolveResultDialog row={row()} open onOpenChange={() => {}} />
-    );
+    const body = await mount(<ResolveResultDialog row={row()} open onOpenChange={() => {}} />);
     expect(body.textContent).toContain("2 – 1");
   });
 
-  it("adopts a side by team id rather than by copying its numbers", async () => {
-    // The audit records which side was believed. Sending the bare score would
-    // settle the encounter but lose why.
+  it("adopts a report by participation id rather than by copying its numbers", async () => {
+    // The audit records whose report was believed. Sending the bare standing
+    // would settle the encounter but lose why.
     await mount(<ResolveResultDialog row={row()} open onOpenChange={() => {}} />);
+    await typeInto(byLabel("Reason"), "captains agreed on a replay");
     await act(async () => {
       findButton("Confirm result")?.click();
     });
     expect(setEncounterResult).toHaveBeenCalledWith(10, {
+      reason: "captains agreed on a replay",
+      results: [],
       adopt_report_team_id: 1,
       closeness: undefined
     });
   });
 
-  it("adopts the other side once the admin picks it", async () => {
+  it("adopts the other report once the admin picks it", async () => {
     const body = await mount(<ResolveResultDialog row={row()} open onOpenChange={() => {}} />);
 
-    const away = findRadio("Adopt B report");
-    expect(away.getAttribute("role")).toBe("radio");
-    expect(away.getAttribute("aria-checked")).toBe("false");
+    const second = findRadio("Adopt B report");
+    expect(second.getAttribute("role")).toBe("radio");
+    expect(second.getAttribute("aria-checked")).toBe("false");
 
     await act(async () => {
-      away.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      second.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
     // B reported 0 – 2, so the preview has to follow the selection.
     expect(body.textContent).toContain("0 – 2");
+    await typeInto(byLabel("Reason"), "B's log matches");
     await act(async () => {
       findButton("Confirm result")?.click();
     });
     expect(setEncounterResult).toHaveBeenCalledWith(10, {
+      reason: "B's log matches",
+      results: [],
       adopt_report_team_id: 2,
       closeness: undefined
     });
   });
 
-  it("cannot adopt a side that filed nothing", async () => {
+  it("will not confirm without a reason: the server refuses one", async () => {
+    await mount(<ResolveResultDialog row={row()} open onOpenChange={() => {}} />);
+    expect(findButton("Confirm result")?.disabled).toBe(true);
+    await typeInto(byLabel("Reason"), "   ");
+    expect(findButton("Confirm result")?.disabled).toBe(true);
+    await typeInto(byLabel("Reason"), "why");
+    expect(findButton("Confirm result")?.disabled).toBe(false);
+  });
+
+  it("writes a typed standing as one line per participation, slot 1 first", async () => {
+    await mount(<ResolveResultDialog row={row()} open onOpenChange={() => {}} />);
+    await act(async () => {
+      findRadio("Enter the score manually").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await typeInto(byLabel("A"), "2");
+    await typeInto(byLabel("B"), "0");
+    await typeInto(byLabel("Reason"), "log review");
+    await act(async () => {
+      findButton("Confirm result")?.click();
+    });
+    expect(setEncounterResult).toHaveBeenCalledWith(10, {
+      reason: "log review",
+      results: [
+        { encounter_team_id: 1, score: 2 },
+        { encounter_team_id: 2, score: 0 }
+      ],
+      closeness: undefined
+    });
+  });
+
+  it("cannot adopt a participation that filed nothing", async () => {
     await mount(
-      <ResolveResultDialog row={row({ away_report: null })} open onOpenChange={() => {}} />
+      <ResolveResultDialog row={row({ reports: [report(1, 2, 1)] })} open onOpenChange={() => {}} />
     );
 
-    const away = findRadio("Adopt B report");
-    expect(away.getAttribute("data-disabled")).not.toBeNull();
+    const second = findRadio("Adopt B report");
+    expect(second.getAttribute("data-disabled")).not.toBeNull();
 
     await act(async () => {
-      away.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      second.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
 
-    // Still on the home report, because the empty side is not selectable.
+    // Still on the first report, because the empty seat is not selectable.
     expect(findRadio("Adopt A report").getAttribute("aria-checked")).toBe("true");
   });
 
@@ -182,11 +236,11 @@ describe("ResolveResultDialog", () => {
     // front of the admin instead of bouncing them through a round trip.
     const drawn = row({
       stage_type: "single_elimination",
-      home_report: report({ home_score: 1, away_score: 1 }),
-      away_report: report({ id: 2, team_id: 2, side: "away", home_score: 1, away_score: 1 }),
-      scores_match: true
+      reports: [report(1, 1, 1), report(2, 1, 1)],
+      standings_match: true
     });
     const body = await mount(<ResolveResultDialog row={drawn} open onOpenChange={() => {}} />);
+    await typeInto(byLabel("Reason"), "why");
     expect(body.textContent).toContain("elimination bracket needs a winner");
     expect(findButton("Confirm result")?.disabled).toBe(true);
   });
@@ -194,11 +248,11 @@ describe("ResolveResultDialog", () => {
   it("allows a draw when the stage is not an elimination bracket", async () => {
     const drawn = row({
       stage_type: "round_robin",
-      home_report: report({ home_score: 1, away_score: 1 }),
-      away_report: report({ id: 2, team_id: 2, side: "away", home_score: 1, away_score: 1 }),
-      scores_match: true
+      reports: [report(1, 1, 1), report(2, 1, 1)],
+      standings_match: true
     });
     const body = await mount(<ResolveResultDialog row={drawn} open onOpenChange={() => {}} />);
+    await typeInto(byLabel("Reason"), "why");
     expect(body.textContent).not.toContain("elimination bracket needs a winner");
     expect(findButton("Confirm result")?.disabled).toBe(false);
   });
@@ -214,11 +268,14 @@ describe("ResolveResultDialog", () => {
     expect(body.textContent).toContain("already confirmed");
   });
 
-  it("puts reopening behind a confirmation step", async () => {
-    // Reopening resets bracket progression; it must not be one stray click.
+  it("puts reopening behind a reason and a confirmation step", async () => {
+    // Reopening resets bracket progression; it must not be one stray click, and
+    // the journal row it writes needs the organizer's reason.
     await mount(
       <ResolveResultDialog row={row({ result_status: "confirmed" })} open onOpenChange={() => {}} />
     );
+    expect(findButton("Reopen")?.disabled).toBe(true);
+    await typeInto(byLabel("Reason to reopen"), "wrong log was parsed");
     await act(async () => {
       findButton("Reopen")?.click();
     });
@@ -241,15 +298,15 @@ describe("ResolveResultDialog", () => {
     expect(document.body.textContent).toContain("No recorded changes");
   });
 
-  it("cannot submit when neither side reported and no score was typed", async () => {
+  it("cannot submit when nobody reported and no score was typed", async () => {
     const empty = row({
-      home_report: null,
-      away_report: null,
+      reports: [],
       reported_count: 0,
-      scores_match: null,
+      standings_match: null,
       result_status: "none"
     });
     const body = await mount(<ResolveResultDialog row={empty} open onOpenChange={() => {}} />);
+    await typeInto(byLabel("Reason"), "why");
     expect(body.textContent).toContain("No score selected yet");
     expect(findButton("Confirm result")?.disabled).toBe(true);
   });

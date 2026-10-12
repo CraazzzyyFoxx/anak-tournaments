@@ -6,6 +6,7 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
 import { BracketView, type BracketSlotRef } from "@/components/bracket/BracketView";
 import { previewToBracketMatches, type BracketMatch } from "@/lib/bracket/view";
+import { seatAt } from "@/lib/encounter/seats";
 import { notify } from "@/lib/notify";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -119,15 +120,15 @@ export function BracketPreview({
   const swapSeeds = useCallback(
     async (source: BracketSlotRef, target: BracketSlotRef) => {
       const teamAt = ({ encounter, slot }: BracketSlotRef) =>
-        slot === "home" ? encounter.home_team_id : encounter.away_team_id;
+        seatAt(encounter.teams, slot)?.team_id ?? null;
       const sourceTeam = teamAt(source);
       const targetTeam = teamAt(target);
       const input = stage.items
         .flatMap((item) => item.inputs)
         .find((row) => row.team_id === sourceTeam);
-      // Team ↔ team only: a TBD slot is a later round or an unseeded
-      // placeholder (id <= 0), not a seed to trade places with.
-      if (!input || targetTeam <= 0 || targetTeam === sourceTeam) return;
+      // Team ↔ team only: an empty seat is a later round or an unseeded
+      // placeholder, not a seed to trade places with.
+      if (!input || targetTeam == null || targetTeam === sourceTeam) return;
       try {
         await adminService.updateStageItemInput(input.id, { team_id: targetTeam, input_type: "final" });
         notify.success("Teams swapped");

@@ -30,6 +30,29 @@ import { duelSeats, type Duel } from "@/lib/encounter/seats";
 import type { EncounterTeam } from "@/types/encounter.types";
 
 /**
+ * One participation of the room as its components name it: `id` is the
+ * `EncounterTeam.id` every pick-ban write and read addresses, `slot` fixes the
+ * order (and the accent: slot 1 teal, slot 2 rose).
+ */
+export interface PickBanSeat {
+  id: number;
+  slot: number;
+  name: string;
+}
+
+/** The room's participations from the encounter's live seats, in slot order. */
+export function pickBanSeats(teams: readonly PickBanSeat[]): PickBanSeat[] {
+  return [...teams]
+    .sort((a, b) => a.slot - b.slot)
+    .map(({ id, slot, name }) => ({ id, slot, name }));
+}
+
+/** A participation's display name; empty string for one the room does not know. */
+export function seatName(seats: readonly PickBanSeat[], teamId: number | null | undefined): string {
+  return seats.find((seat) => seat.id === teamId)?.name ?? "";
+}
+
+/**
  * Picked items in their final play order (action_index, legacy `order`
  * fallback).
  *

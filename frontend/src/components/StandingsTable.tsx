@@ -67,21 +67,29 @@ export function upperBracketCut(
 
 type ResultKind = "w" | "l" | "t";
 
+/** The team's own seat and what the other seats scored, from the encounter's participations. */
+function seatScores(teamId: number, encounter: Encounter): { own: number; others: number[] } {
+  const seats = encounter.teams ?? [];
+  return {
+    own: seats.find((seat) => seat.team_id === teamId)?.score ?? 0,
+    others: seats.filter((seat) => seat.team_id !== teamId).map((seat) => seat.score)
+  };
+}
+
 function resultOf(teamId: number, encounter: Encounter): ResultKind {
-  const teamScore = encounter.home_team_id === teamId ? encounter.score.home : encounter.score.away;
-  const opponentScore =
-    encounter.home_team_id === teamId ? encounter.score.away : encounter.score.home;
-  if (teamScore === opponentScore) return "t";
-  return teamScore > opponentScore ? "w" : "l";
+  const { own, others } = seatScores(teamId, encounter);
+  const best = Math.max(...others, 0);
+  if (own === best) return "t";
+  return own > best ? "w" : "l";
 }
 
 function computeMaps(teamId: number, history: Encounter[]) {
   let won = 0;
   let lost = 0;
   for (const encounter of history) {
-    const isHome = encounter.home_team_id === teamId;
-    won += isHome ? encounter.score.home : encounter.score.away;
-    lost += isHome ? encounter.score.away : encounter.score.home;
+    const { own, others } = seatScores(teamId, encounter);
+    won += own;
+    lost += others.reduce((sum, score) => sum + score, 0);
   }
   return { won, lost, diff: won - lost };
 }
@@ -211,12 +219,12 @@ const StandingsTable = ({
   // A column sum names the organizer's column: its label comes from the stage
   // this table already loads (`stages`, above); the bare key stands in only
   // while that query is still in flight.
-  const ffaColumns =
-    stages.find((candidate) => candidate.id === stage?.id)?.ffa_scoring?.columns ?? [];
+  const scoringColumns =
+    stages.find((candidate) => candidate.id === stage?.id)?.scoring.columns ?? [];
   const labelFor = (id: string) => {
     if (id.startsWith(FFA_STAT_PREFIX)) {
       const columnKey = id.slice(FFA_STAT_PREFIX.length);
-      const column = ffaColumns.find((candidate) => candidate.key === columnKey);
+      const column = scoringColumns.find((candidate) => candidate.key === columnKey);
       return t("common.tiebreakerMetrics.ffa_stat", { label: column?.label ?? columnKey });
     }
     const key = `common.tiebreakerMetrics.${id as TiebreakerMetricId}` as const;

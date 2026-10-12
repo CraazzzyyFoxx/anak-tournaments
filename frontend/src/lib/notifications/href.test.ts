@@ -58,7 +58,7 @@ describe("notification destinations", () => {
       notificationHref({
         ...item,
         kind: "encounter.dispute_review",
-        payload: { tournament_id: 42, encounter_id: 87, position: 0, home_team_name: "A", away_team_name: "B" }
+        payload: { tournament_id: 42, encounter_id: 87, position: 0, team_names: ["A", "B"] }
       })
     ).toBe("/tournaments/42/pregame/87");
   });

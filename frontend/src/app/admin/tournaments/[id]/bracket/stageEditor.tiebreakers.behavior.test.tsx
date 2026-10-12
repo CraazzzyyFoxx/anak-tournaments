@@ -116,16 +116,19 @@ function roundRobinStage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
-    swiss_bye_points: null,
-    de_grand_final_type: "no_reset",
-    seed_ranking: "slot",
-    best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: {
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: "points",
       columns: [{ key: "score", label: "Счёт", public: true, better: "higher" }],
       placement_points: [],
       formula: "score"
     },
+    swiss_bye_points: null,
+    de_grand_final_type: "no_reset",
+    seed_ranking: "slot",
+    best_of: { default: 3, by_round: {}, final: null },
     challonge_id: null,
     challonge_slug: null,
     items: []

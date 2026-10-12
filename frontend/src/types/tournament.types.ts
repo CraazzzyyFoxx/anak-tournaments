@@ -30,6 +30,9 @@ export type StageItemInputType = "final" | "tentative" | "empty";
 
 export type EncounterResultStatus = "none" | "pending_confirmation" | "confirmed" | "disputed";
 
+/** Which writer decided an encounter's standing; only a reopen changes anything but `games`. */
+export type EncounterResultSource = "games" | "series_claim" | "admin" | "import";
+
 
 // ─── Team group ─────────────────────────────────────────────────────────────
 

@@ -9,10 +9,18 @@ import {
   countMapWins,
   formatCloseness,
   formatSeriesClock,
-  getMatchWinner,
   getSeriesSeconds,
   getSeriesVerdict
 } from "@/lib/encounter/detail";
+import { duelWinner } from "@/lib/encounter/seats";
+
+/** The encounter's two seats (participations 1 and 2, teams 1 and 2), with a standing each. */
+function duelOf(scoreOne: number, scoreTwo: number): Encounter["teams"] {
+  return [
+    { id: 1, slot: 1, team_id: 1, name: "A", seed: null, score: scoreOne, placement: null, active: true },
+    { id: 2, slot: 2, team_id: 2, name: "B", seed: null, score: scoreTwo, placement: null, active: true }
+  ];
+}
 
 function match(id: number, home: number, away: number, time: number | null = 600): Match {
   return {
@@ -41,9 +49,7 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     created_at: new Date(0),
     updated_at: null,
     name: "A vs B",
-    home_team_id: 1,
-    away_team_id: 2,
-    score: { home: 0, away: 0 },
+    slot_count: 2,
     round: 1,
     best_of: 5,
     tournament_id: 3,
@@ -59,25 +65,26 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     ended_at: null,
     current_map_index: null,
     confirmed_at: null,
+    result_source: null,
+    result_version: 0,
     matches: [],
     games: [],
-    home_team: { id: 1, name: "A", players: [] } as unknown as Encounter["home_team"],
-    away_team: { id: 2, name: "B", players: [] } as unknown as Encounter["away_team"],
+    teams: duelOf(0, 0),
     tournament: {} as Encounter["tournament"],
     ...overrides
   };
 }
 
-describe("getMatchWinner", () => {
-  it("names the higher score and treats a level map as drawn", () => {
-    expect(getMatchWinner({ home: 2, away: 1 })).toBe("home");
-    expect(getMatchWinner({ home: 1, away: 2 })).toBe("away");
-    expect(getMatchWinner({ home: 1, away: 1 })).toBeNull();
+describe("duelWinner", () => {
+  it("names the higher score's slot and treats a level map as drawn", () => {
+    expect(duelWinner({ one: 2, two: 1 })).toBe(1);
+    expect(duelWinner({ one: 1, two: 2 })).toBe(2);
+    expect(duelWinner({ one: 1, two: 1 })).toBeNull();
   });
 });
 
-describe("parsed scores from the encounter's sides", () => {
-  // The lobby put the encounter's away team first: the log's home is team 2.
+describe("parsed scores from the encounter's seats", () => {
+  // The lobby put the encounter's slot-2 team first: the log's home is team 2.
   const flipped = (id: number, home: number, away: number): Match => ({
     ...match(id, home, away),
     home_team_id: 2,
@@ -86,14 +93,14 @@ describe("parsed scores from the encounter's sides", () => {
 
   it("turns a log recorded with the sides flipped around", () => {
     const slots = buildSeriesSlots(encounter({ best_of: 1, matches: [flipped(1, 0, 3)] }));
-    expect(slots[0].parsedScore).toEqual({ home: 3, away: 0 });
-    expect(slots[0].winner).toBe("home");
+    expect(slots[0].parsedScore).toEqual({ one: 3, two: 0 });
+    expect(slots[0].winner).toBe(1);
   });
 
-  it("counts a flipped log's map for the side that actually won it", () => {
+  it("counts a flipped log's map for the seat that actually won it", () => {
     expect(
       countMapWins(encounter({ matches: [flipped(1, 0, 3), match(2, 2, 1), flipped(3, 2, 1)] }))
-    ).toEqual({ home: 2, away: 1, drawn: 0 });
+    ).toEqual({ one: 2, two: 1, drawn: 0 });
   });
 });
 
@@ -104,7 +111,7 @@ describe("buildSeriesSlots", () => {
     );
     expect(slots).toHaveLength(5);
     expect(slots.map((slot) => slot.index)).toEqual([1, 2, 3, 4, 5]);
-    expect(slots.slice(0, 3).map((slot) => slot.winner)).toEqual(["home", "home", "home"]);
+    expect(slots.slice(0, 3).map((slot) => slot.winner)).toEqual([1, 1, 1]);
     expect(slots[3].match).toBeNull();
     expect(slots[4].match).toBeNull();
   });
@@ -151,11 +158,13 @@ describe("buildSeriesSlots", () => {
             map_id: 21,
             map: null,
             state: "confirmed",
-            accepted_home_score: 2,
-            accepted_away_score: 1,
             result_source: "captain_agreement",
             result_version: 1,
-            confirmed_at: null
+            confirmed_at: null,
+            teams: [
+              { encounter_team_id: 1, score: 2, placement: null, column_values: {}, starting_side: null, replay_code: null },
+              { encounter_team_id: 2, score: 1, placement: null, column_values: {}, starting_side: null, replay_code: null }
+            ]
           },
           {
             id: 2,
@@ -163,18 +172,17 @@ describe("buildSeriesSlots", () => {
             map_id: 21,
             map: null,
             state: "awaiting_result",
-            accepted_home_score: null,
-            accepted_away_score: null,
             result_source: null,
             result_version: 1,
-            confirmed_at: null
+            confirmed_at: null,
+            teams: []
           }
         ]
       })
     );
     expect(slots.map((slot) => slot.match?.id)).toEqual([8, 7, undefined]);
     // The 9:9 logs decide nothing: only the game's accepted score does.
-    expect(slots.map((slot) => slot.winner)).toEqual(["home", null, null]);
+    expect(slots.map((slot) => slot.winner)).toEqual([1, null, null]);
   });
 
   it("keeps the map of a position that has no parsed log yet", () => {
@@ -191,11 +199,10 @@ describe("buildSeriesSlots", () => {
             map_id: 21,
             map: { id: 21, name: "Ilios", image_path: "/ilios.jpg" } as Encounter["games"][number]["map"],
             state: "awaiting_result",
-            accepted_home_score: null,
-            accepted_away_score: null,
             result_source: null,
             result_version: 0,
-            confirmed_at: null
+            confirmed_at: null,
+            teams: []
           }
         ]
       })
@@ -206,16 +213,16 @@ describe("buildSeriesSlots", () => {
 });
 
 describe("countMapWins", () => {
-  it("counts wins per side and drawn maps separately", () => {
+  it("counts wins per seat and drawn maps separately", () => {
     expect(
       countMapWins(encounter({ matches: [match(1, 2, 0), match(2, 1, 2), match(3, 1, 1)] }))
-    ).toEqual({ home: 1, away: 1, drawn: 1 });
+    ).toEqual({ one: 1, two: 1, drawn: 1 });
   });
 });
 
 describe("getSeriesVerdict", () => {
   it("withholds a winner until the series is completed", () => {
-    expect(getSeriesVerdict(encounter({ status: "pending", score: { home: 1, away: 0 } }))).toEqual(
+    expect(getSeriesVerdict(encounter({ status: "pending", teams: duelOf(1, 0) }))).toEqual(
       {
         outcome: "unplayed",
         winner: null,
@@ -225,20 +232,20 @@ describe("getSeriesVerdict", () => {
   });
 
   it("names winner and loser once completed", () => {
-    expect(getSeriesVerdict(encounter({ score: { home: 3, away: 1 } }))).toEqual({
+    expect(getSeriesVerdict(encounter({ teams: duelOf(3, 1) }))).toEqual({
       outcome: "win",
-      winner: "home",
-      loser: "away"
+      winner: 1,
+      loser: 2
     });
-    expect(getSeriesVerdict(encounter({ score: { home: 1, away: 3 } }))).toEqual({
+    expect(getSeriesVerdict(encounter({ teams: duelOf(1, 3) }))).toEqual({
       outcome: "win",
-      winner: "away",
-      loser: "home"
+      winner: 2,
+      loser: 1
     });
   });
 
   it("reports a completed level series as a draw", () => {
-    expect(getSeriesVerdict(encounter({ score: { home: 2, away: 2 } })).outcome).toBe("draw");
+    expect(getSeriesVerdict(encounter({ teams: duelOf(2, 2) })).outcome).toBe("draw");
   });
 });
 
@@ -354,9 +361,9 @@ describe("aggregateSeriesStats", () => {
       team(2, "B", [player(21, { [LogStatsName.Eliminations]: 5 }, [200])])
     );
 
-    const result = aggregateSeriesStats([mapOne, mapTwo], { home_team_id: 1, away_team_id: 2 });
+    const result = aggregateSeriesStats([mapOne, mapTwo], { teams: duelOf(0, 0) });
     expect(result).not.toBeNull();
-    const row = result!.home.players[0].stats[0];
+    const row = result!.one.players[0].stats[0];
     expect(row[LogStatsName.Eliminations]).toBe(16);
     expect(row[LogStatsName.Deaths]).toBe(5);
     expect(result!.meta[11].mapsPlayed).toBe(2);
@@ -378,9 +385,9 @@ describe("aggregateSeriesStats", () => {
           team(2, "B", [player(21, {}, [200])])
         )
       ],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
-    const heroes = result!.home.players[0].heroes[0] as { id: number }[];
+    const heroes = result!.one.players[0].heroes[0] as { id: number }[];
     expect(heroes.map((hero) => hero.id).sort()).toEqual([100, 101, 102]);
   });
 
@@ -422,9 +429,9 @@ describe("aggregateSeriesStats", () => {
           team(2, "B", [player(21, {}, [200])])
         )
       ],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
-    const row = result!.home.players[0].stats[0];
+    const row = result!.one.players[0].stats[0];
     expect(row[LogStatsName.KD]).toBe(1);
     expect(row[LogStatsName.KDA]).toBeCloseTo(1.6, 5);
   });
@@ -443,9 +450,9 @@ describe("aggregateSeriesStats", () => {
           team(2, "B", [player(21, {}, [200])])
         )
       ],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
-    expect(result!.home.players[0].stats[0][LogStatsName.MultikillBest]).toBe(4);
+    expect(result!.one.players[0].stats[0][LogStatsName.MultikillBest]).toBe(4);
   });
 
   it("derives accuracy from shot counts and omits it when nothing was fired", () => {
@@ -476,10 +483,10 @@ describe("aggregateSeriesStats", () => {
           team(2, "B", [player(21, {}, [200])])
         )
       ],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
-    const shooter = result!.home.players.find((entry) => entry.id === 11)!.stats[0];
-    const abstainer = result!.home.players.find((entry) => entry.id === 12)!.stats[0];
+    const shooter = result!.one.players.find((entry) => entry.id === 11)!.stats[0];
+    const abstainer = result!.one.players.find((entry) => entry.id === 12)!.stats[0];
     expect(shooter[LogStatsName.WeaponAccuracy]).toBeCloseTo(0.3, 5);
     expect(shooter[LogStatsName.CriticalHitAccuracy]).toBeCloseTo(10 / 60, 5);
     expect(abstainer[LogStatsName.WeaponAccuracy]).toBeUndefined();
@@ -496,9 +503,9 @@ describe("aggregateSeriesStats", () => {
           team(2, "B", [player(21, {}, [200])])
         )
       ],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
-    const row = result!.home.players[0].stats[0];
+    const row = result!.one.players[0].stats[0];
     expect(row[LogStatsName.ImpactPoints]).toBeUndefined();
     expect(row[LogStatsName.ImpactRank]).toBeUndefined();
   });
@@ -509,13 +516,13 @@ describe("aggregateSeriesStats", () => {
     const middle = player(21, { [LogStatsName.Eliminations]: 10 }, [200]);
     const result = aggregateSeriesStats(
       [statMatch(1, team(1, "A", [strong, weak]), team(2, "B", [middle]))],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
     expect(result!.meta[11].seriesPlacement).toBe(1);
     expect(result!.meta[21].seriesPlacement).toBe(2);
     expect(result!.meta[12].seriesPlacement).toBe(3);
     expect(
-      result!.home.players.find((entry) => entry.id === 11)!.stats[0][LogStatsName.Performance]
+      result!.one.players.find((entry) => entry.id === 11)!.stats[0][LogStatsName.Performance]
     ).toBe(1);
   });
 
@@ -523,12 +530,11 @@ describe("aggregateSeriesStats", () => {
     const home = team(1, "A", [player(11, { [LogStatsName.Eliminations]: 7 }, [100])]);
     const away = team(2, "B", [player(21, { [LogStatsName.Eliminations]: 3 }, [200])]);
     const result = aggregateSeriesStats([statMatch(1, home, away), statMatch(2, away, home)], {
-      home_team_id: 1,
-      away_team_id: 2
+      teams: duelOf(0, 0)
     });
-    expect(result!.home.name).toBe("A");
-    expect(result!.home.players[0].stats[0][LogStatsName.Eliminations]).toBe(14);
-    expect(result!.away.players[0].stats[0][LogStatsName.Eliminations]).toBe(6);
+    expect(result!.one.name).toBe("A");
+    expect(result!.one.players[0].stats[0][LogStatsName.Eliminations]).toBe(14);
+    expect(result!.two.players[0].stats[0][LogStatsName.Eliminations]).toBe(6);
   });
 
   it("does not count a rostered player who never fielded a hero as having played", () => {
@@ -540,7 +546,7 @@ describe("aggregateSeriesStats", () => {
           team(2, "B", [player(21, {}, [200])])
         )
       ],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
     expect(result!.meta[11].mapsPlayed).toBe(1);
     expect(result!.meta[12].mapsPlayed).toBe(0);
@@ -550,7 +556,7 @@ describe("aggregateSeriesStats", () => {
   it("returns null when neither side of the encounter appears in the loaded maps", () => {
     const result = aggregateSeriesStats(
       [statMatch(1, team(7, "X", [player(11, {}, [100])]), team(8, "Y", [player(21, {}, [200])]))],
-      { home_team_id: 1, away_team_id: 2 }
+      { teams: duelOf(0, 0) }
     );
     expect(result).toBeNull();
   });

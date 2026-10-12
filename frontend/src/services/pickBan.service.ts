@@ -15,6 +15,7 @@ import type {
 } from "@/types/tournament.types";
 
 export interface PickBanActionInput {
+  /** The catalog item (a hero or map). */
   item_id: number;
   action: "ban" | "pick" | "protect";
   /** Required on a step with a `target`: the opponent player the item is banned for. */
@@ -22,9 +23,9 @@ export interface PickBanActionInput {
 }
 
 export interface PickBanSubmitInput {
-  /** Replaces the side's whole draft for the current (blind) step. */
+  /** Replaces the participation's whole draft for the current (blind) step. */
   items: PickBanSubmissionItem[];
-  /** true = final; the step reveals once every acting side locked. */
+  /** true = final; the step reveals once every acting participation locked. */
   lock: boolean;
 }
 
@@ -38,12 +39,22 @@ export interface PickBanRulesPreviewInput {
 }
 
 interface ElectOpenerInput {
-  first_side: "home" | "away";
+  /** The participation (`EncounterTeam.id`) that opens the next round. */
+  first_team_id: number;
+}
+
+/** One participation's numbers inside a game claim or an admin correction. */
+export interface GameResultLineInput {
+  encounter_team_id: number;
+  score?: number | null;
+  placement?: number | null;
+  column_values?: Record<string, number>;
 }
 
 interface GameReportInput {
-  home_score: number;
-  away_score: number;
+  /** The `game.result_version` the claim is made against; a correction in between makes it stale (409). */
+  basis_version: number;
+  results: GameResultLineInput[];
 }
 
 interface GameReportResult {
@@ -52,10 +63,8 @@ interface GameReportResult {
   game: PickBanGame;
 }
 
-interface ReadinessMap {
-  home: boolean;
-  away: boolean;
-}
+/** `EncounterTeam.id` (as a string) -> whether that captain confirmed readiness. */
+type ReadinessMap = Record<string, boolean>;
 
 class PickBanService {
   /**
@@ -98,8 +107,8 @@ class PickBanService {
   }
 
   /**
-   * Reopen the last revealed blind step for BOTH sides (unilateral, limited by
-   * the step's `dispute.max`). Each side's new draft is prefilled with its
+   * Reopen the last revealed blind step for EVERY acting participation (unilateral, limited by
+   * the step's `dispute.max`). Each participation's new draft is prefilled with its
    * previous items. Returns the new state.
    */
   async disputeStep(kind: PickBanKind, encounterId: number): Promise<PickBanState> {
@@ -127,7 +136,7 @@ class PickBanService {
 
   /**
    * Records the calling captain's consent to undo the session's last action.
-   * The OPPONENT's matching call is what applies it — this is a two-sided
+   * The OPPONENT's matching call is what applies it — this is a mutual
    * agreement, not a take-back. `consent: false` withdraws an open request
    * (the asker changing their mind and the opponent refusing are one outcome).
    */
@@ -182,7 +191,7 @@ class PickBanService {
   async correctGameResult(
     encounterId: number,
     gameId: number,
-    data: { home_score: number; away_score: number; reason: string }
+    data: { results: GameResultLineInput[]; reason: string }
   ): Promise<{ game: PickBanGame; rebuilt_rounds: number[] }> {
     const response = await apiFetch(
       `/api/v1/admin/encounters/${encounterId}/games/${gameId}/result`,
@@ -191,7 +200,7 @@ class PickBanService {
     return response.json();
   }
 
-  /** Confirms the calling captain's side is ready to begin the encounter's
+  /** Confirms the calling captain's team is ready to begin the encounter's
    * pre-game phase (shared gate across both pick-ban kinds). */
   async markReady(encounterId: number): Promise<{ readiness: ReadinessMap }> {
     const response = await apiFetch(`/api/v1/encounters/${encounterId}/ready`, { method: "POST" });

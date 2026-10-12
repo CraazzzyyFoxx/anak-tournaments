@@ -2,15 +2,11 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
-import type { Encounter } from "@/types/encounter.types";
+import type { Encounter, EncounterTeam } from "@/types/encounter.types";
 import { TeamLogo } from "@/components/TeamName";
 import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
-import {
-  buildSeriesSlots,
-  getSeriesVerdict,
-  type SeriesSide,
-  type SeriesSlot
-} from "@/lib/encounter/detail";
+import { buildSeriesSlots, getSeriesVerdict, type SeriesSlot } from "@/lib/encounter/detail";
+import { duelSeats, seatTeam, type Duel, type DuelSlot } from "@/lib/encounter/seats";
 import styles from "@/components/match/EncounterDetail.module.css";
 
 export type EncounterHeaderFact = { label: string; value: string; sub?: string };
@@ -38,8 +34,11 @@ export default function EncounterHeader({
   const t = useTranslations();
   const slots = buildSeriesSlots(encounter);
   const verdict = getSeriesVerdict(encounter);
-  const homeName = encounter.home_team?.name ?? t("common.tbd");
-  const awayName = encounter.away_team?.name ?? t("common.tbd");
+  const [seatOne, seatTwo] = duelSeats(encounter.teams);
+  const names = {
+    one: seatOne?.name ?? t("common.tbd"),
+    two: seatTwo?.name ?? t("common.tbd")
+  };
 
   return (
     <header className={cn(styles.card, styles.header)}>
@@ -50,29 +49,31 @@ export default function EncounterHeader({
 
       {/* The page's one h1: the matchup, read by the outline the way the old
           hero title was, while the board below draws it. */}
-      <h1 className="sr-only">{t("encounters.detail.heroTitle", { home: homeName, away: awayName })}</h1>
+      <h1 className="sr-only">
+        {t("encounters.detail.heroTitle", { first: names.one, second: names.two })}
+      </h1>
       <div className={styles.board}>
-        <TeamBlock encounter={encounter} side="home" />
+        <TeamBlock seat={seatOne} slot={1} />
         <div className={styles.boardCenter}>
           <p className={styles.boardScore}>
-            <span className={styles.scoreHome}>{encounter.score.home}</span>
+            <span className={styles.scoreOne}>{seatOne?.score ?? 0}</span>
             <span aria-hidden className={styles.scoreSep}>
               :
             </span>
-            <span className={styles.scoreAway}>{encounter.score.away}</span>
+            <span className={styles.scoreTwo}>{seatTwo?.score ?? 0}</span>
           </p>
           <p className={styles.boardVerdict}>
             {verdict.outcome === "win"
               ? t("encounters.detail.verdictWin", {
-                  team: verdict.winner === "home" ? homeName : awayName
+                  team: verdict.winner === 1 ? names.one : names.two
                 })
               : verdict.outcome === "draw"
                 ? t("encounters.detail.verdictDraw")
                 : t("encounters.detail.verdictPending")}
           </p>
-          <MapPips slots={slots} />
+          <MapPips slots={slots} teams={encounter.teams} names={names} />
         </div>
-        <TeamBlock encounter={encounter} side="away" />
+        <TeamBlock seat={seatTwo} slot={2} />
       </div>
 
       <div className={styles.headerFoot}>
@@ -95,26 +96,30 @@ export default function EncounterHeader({
   );
 }
 
-function TeamBlock({ encounter, side }: Readonly<{ encounter: Encounter; side: SeriesSide }>) {
+function TeamBlock({
+  seat,
+  slot
+}: Readonly<{ seat: EncounterTeam | null; slot: DuelSlot }>) {
   const t = useTranslations();
-  const team = side === "home" ? encounter.home_team : encounter.away_team;
   const meta = [
-    team?.placement != null ? `${t("encounters.detail.placementShort")} #${team.placement}` : null,
-    team?.group?.name ? `${t("common.group")} ${team.group.name}` : null
+    seat?.team?.placement != null
+      ? `${t("encounters.detail.placementShort")} #${seat.team.placement}`
+      : null,
+    seat?.team?.group?.name ? `${t("common.group")} ${seat.team.group.name}` : null
   ].filter(Boolean);
 
   return (
     <div
       className={cn(
         styles.boardSide,
-        side === "home" ? styles.sideHome : styles.sideAway,
-        side === "away" && styles.boardSideAway
+        slot === 1 ? styles.slotOne : styles.slotTwo,
+        slot === 2 && styles.boardSlotTwo
       )}
     >
-      <TeamLogo team={team} size="xl" />
+      <TeamLogo team={seatTeam(seat)} size="xl" />
       <div className={styles.boardIdentity}>
         {/* Not a heading: a scoreboard label. The h1 above names the matchup. */}
-        <p className={styles.boardName}>{team?.name ?? t("common.tbd")}</p>
+        <p className={styles.boardName}>{seat?.name ?? t("common.tbd")}</p>
         {/* Plain text, not chips: the winner is already the verdict and the pips. */}
         {meta.length > 0 ? <p className={styles.boardMeta}>{meta.join(" · ")}</p> : null}
       </div>
@@ -123,19 +128,19 @@ function TeamBlock({ encounter, side }: Readonly<{ encounter: Encounter; side: S
 }
 
 /** Played: a parsed log or an accepted result — the page's own rule. */
-function isPlayed(slot: SeriesSlot): boolean {
-  return slot.match != null || acceptedScore(slot.game) != null;
+function isPlayed(slot: SeriesSlot, teams: Encounter["teams"]): boolean {
+  return slot.match != null || acceptedScore(slot.game, teams) != null;
 }
 
 /**
  * Pip hue, in the same precedence the aria summary below reads out: in-progress
  * first, then never-played, then the winner's side, then a tie.
  */
-function pipToneClass(slot: SeriesSlot): string {
+function pipToneClass(slot: SeriesSlot, teams: Encounter["teams"]): string {
   if (slot.isLive) return styles.pipLive;
-  if (!isPlayed(slot)) return styles.pipEmpty;
-  if (slot.winner === "home") return styles.pipHome;
-  if (slot.winner === "away") return styles.pipAway;
+  if (!isPlayed(slot, teams)) return styles.pipEmpty;
+  if (slot.winner === 1) return styles.pipOne;
+  if (slot.winner === 2) return styles.pipTwo;
   return styles.pipDraw;
 }
 
@@ -144,14 +149,18 @@ function pipToneClass(slot: SeriesSlot): string {
  * the series never needed, ringed for the map in progress. This is what makes a
  * 3–1 in a Bo5 legible as "four maps played, one spare".
  */
-function MapPips({ slots }: Readonly<{ slots: SeriesSlot[] }>) {
+function MapPips({
+  slots,
+  teams,
+  names
+}: Readonly<{ slots: SeriesSlot[]; teams: Encounter["teams"]; names: Duel<string> }>) {
   const t = useTranslations();
   const summary = slots
     .map((slot) => {
       if (slot.isLive) return t("encounters.state.live");
-      if (!isPlayed(slot)) return t("encounters.detail.pipUnplayed");
+      if (!isPlayed(slot, teams)) return t("encounters.detail.pipUnplayed");
       if (!slot.winner) return t("encounters.detail.tie");
-      return slot.winner === "home" ? t("common.homeTeam") : t("common.awayTeam");
+      return slot.winner === 1 ? names.one : names.two;
     })
     .join(", ");
 
@@ -162,7 +171,7 @@ function MapPips({ slots }: Readonly<{ slots: SeriesSlot[] }>) {
       aria-label={t("encounters.detail.pipsAria", { summary })}
     >
       {slots.map((slot) => (
-        <span key={slot.index} aria-hidden className={cn(styles.pip, pipToneClass(slot))} />
+        <span key={slot.index} aria-hidden className={cn(styles.pip, pipToneClass(slot, teams))} />
       ))}
     </div>
   );

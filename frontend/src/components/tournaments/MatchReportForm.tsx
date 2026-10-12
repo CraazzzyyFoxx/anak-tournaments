@@ -12,15 +12,18 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
 import captainService, { type CaptainReportSubmitResult } from "@/services/captain.service";
 import pickBanService from "@/services/pickBan.service";
 import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
 import { refreshEncounterViews } from "@/components/tournaments/refreshEncounterViews";
 import { buildMapCodeSlots } from "@/components/tournaments/matchReportSlots";
+import { reportOf } from "@/lib/encounter/reports";
+import { seriesClaimErrors, seriesReportErrorCodes } from "@/lib/encounter/series-claim";
+import { isLobby, seatsBySlot } from "@/lib/encounter/seats";
 import {
   DEFAULT_MATCH_REPORT_BUILT_INS,
-  type CaptainReport,
   type Encounter,
   type ReportCustomFieldDefinition
 } from "@/types/encounter.types";
@@ -62,26 +65,7 @@ function clampCloseness(value: number): MatchQuality {
  * re-derive rather than keep a draft built against the old ones.
  */
 export function matchReportDraftKey(encounter: Encounter): string {
-  return [
-    encounter.id,
-    encounter.score?.home ?? 0,
-    encounter.score?.away ?? 0,
-    encounter.closeness ?? "none"
-  ].join(":");
-}
-
-function findOwnReport(
-  reports: CaptainReport[],
-  side: "home" | "away" | null,
-  encounter: Encounter
-): CaptainReport | null {
-  if (side) {
-    const bySide = reports.find((report) => report.side === side);
-    if (bySide) return bySide;
-    const teamId = side === "home" ? encounter.home_team_id : encounter.away_team_id;
-    return reports.find((report) => report.team_id === teamId) ?? null;
-  }
-  return null;
+  return [encounter.id, encounter.result_version, encounter.closeness ?? "none"].join(":");
 }
 
 /**
@@ -182,9 +166,11 @@ export function MatchReportForm({
 }: Readonly<MatchReportFormProps>) {
   const qc = useQueryClient();
   const t = useTranslations();
-  const homeTeamLabel = encounter.home_team?.name?.trim() || t("common.homeTeam");
-  const awayTeamLabel = encounter.away_team?.name?.trim() || t("common.awayTeam");
+  const seats = seatsBySlot(encounter.teams);
+  const duel = !isLobby(encounter);
+  const [first, second] = seats;
   const idPrefix = `match-report-${encounter.id}`;
+  const gamesPlayedId = `${idPrefix}-games-played`;
 
   // The form holds only what the captain has actually edited. Everything else is
   // DERIVED from the server data below, so there is nothing to copy in an effect
@@ -192,8 +178,9 @@ export function MatchReportForm({
   // `closeness` is `MatchQuality | null` *and* optional: `undefined` means
   // untouched, an explicit `null` means the captain chose not to rate.
   const [draft, setDraft] = useState<{
-    homeScore?: number;
-    awayScore?: number;
+    /** Per participation: its wins in a duel, its points in a lobby. */
+    scores?: Record<number, number>;
+    gamesPlayed?: number;
     closeness?: MatchQuality | null;
     codes?: Record<number, string>;
     comment?: string;
@@ -237,9 +224,10 @@ export function MatchReportForm({
     return lookup;
   }, [mapsQuery.data]);
 
+  const ownTeamId = roleQuery.data?.encounter_team_id ?? null;
   const ownReport = useMemo(
-    () => findOwnReport(reportsQuery.data?.reports ?? [], roleQuery.data?.side ?? null, encounter),
-    [reportsQuery.data?.reports, roleQuery.data?.side, encounter]
+    () => reportOf(reportsQuery.data?.reports ?? [], ownTeamId),
+    [reportsQuery.data?.reports, ownTeamId]
   );
 
   // Effective form values: the captain's edit if there is one, else their own
@@ -250,8 +238,26 @@ export function MatchReportForm({
   // The encounter's score is what makes this form arrive prefilled at the end
   // of a pre-game loop: `map_report.submit_map_report` counts every reconciled
   // map into it, so the series score is already there to confirm.
-  const homeScore = draft.homeScore ?? ownReport?.home_score ?? encounter.score?.home ?? 0;
-  const awayScore = draft.awayScore ?? ownReport?.away_score ?? encounter.score?.away ?? 0;
+  const scores: Record<number, number> = Object.fromEntries(
+    seats.map((seat) => [
+      seat.id,
+      draft.scores?.[seat.id] ??
+        ownReport?.results.find((line) => line.encounter_team_id === seat.id)?.score ??
+        seat.score
+    ])
+  );
+  const confirmedGames = encounter.games.filter((game) => game.state === "confirmed").length;
+  // A duel's score is its wins, so the games it played are at least that many;
+  // a lobby's card plays to its end.
+  const gamesPlayed =
+    draft.gamesPlayed ??
+    ownReport?.games_played ??
+    (duel
+      ? Math.min(
+          encounter.best_of,
+          Math.max(confirmedGames, Object.values(scores).reduce((sum, value) => sum + value, 0))
+        )
+      : encounter.best_of);
   // `encounter.closeness` is a 0..1 float; a report's is 1..10 stars.
   const reportCloseness =
     ownReport?.closeness != null ? clampCloseness(ownReport.closeness) : null;
@@ -270,21 +276,35 @@ export function MatchReportForm({
       : (savedCloseness ?? (closenessConfig.required ? DEFAULT_CLOSENESS : null));
   const codes =
     draft.codes ??
-    Object.fromEntries((ownReport?.map_codes ?? []).map((code) => [code.map_index, code.code]));
+    Object.fromEntries(
+      encounter.games.flatMap((game) =>
+        game.teams
+          .filter((line) => line.encounter_team_id === ownTeamId && line.replay_code)
+          .map((line) => [game.position, line.replay_code as string])
+      )
+    );
   const comment = draft.comment ?? ownReport?.comment ?? "";
   const customValues = draft.customFields ?? ownReport?.custom_fields ?? {};
 
   // A 2-0 Bo3 played two maps, not three; a forfeit played none. Clamped to the
   // slots that exist so an impossible score cannot demand a code with no input.
   const playedSlots = useMemo(
-    () => slots.slice(0, Math.max(0, Math.min(homeScore + awayScore, slots.length))),
-    [slots, homeScore, awayScore]
+    () => slots.slice(0, Math.max(0, Math.min(gamesPlayed, slots.length))),
+    [slots, gamesPlayed]
   );
 
   // One pass yields both the per-field messages (for aria-describedby) and the
   // single reason the submit button is disabled, so the two can never disagree.
-  const validation = useMemo(() => {
-    const score = homeScore < 0 || awayScore < 0 ? t("matchEdit.negativeScoreError") : null;
+  const validation = (() => {
+    // The same checks, with the same codes, the server runs on a series claim.
+    const claimErrors = seriesClaimErrors({
+      preset: duel ? "wins" : "points",
+      bestOf: encounter.best_of,
+      teamIds: seats.map((seat) => seat.id),
+      games: encounter.games,
+      claim: { gamesPlayed, totals: scores, wins: duel ? scores : null }
+    });
+    const score = claimErrors.length > 0 ? claimErrors.map((code) => t(`matchReport.errors.${code}`)).join(" ") : null;
 
     const closenessError =
       closenessConfig.enabled && closenessConfig.required && closeness == null
@@ -322,28 +342,21 @@ export function MatchReportForm({
       custom,
       firstError: score ?? closenessError ?? mapCodesError ?? commentError ?? firstCustom ?? null
     };
-  }, [
-    homeScore,
-    awayScore,
-    closeness,
-    closenessConfig,
-    mapCodesConfig,
-    commentConfig,
-    playedSlots,
-    codes,
-    comment,
-    customDefs,
-    customValues,
-    t
-  ]);
+  })();
 
   const validationError = validation.firstError;
 
   const submitMutation = useMutation({
     mutationFn: () =>
       captainService.submitReport(encounter.id, {
-        home_score: homeScore,
-        away_score: awayScore,
+        basis_version: encounter.result_version,
+        games_played: gamesPlayed,
+        results: seats.map((seat) => ({
+          encounter_team_id: seat.id,
+          score: scores[seat.id],
+          // A duel's rule counts wins, and its score IS its wins; a lobby's card has none.
+          wins: duel ? scores[seat.id] : null
+        })),
         closeness: closenessConfig.enabled ? closeness : null,
         map_codes: mapCodesConfig.enabled
           ? slots
@@ -374,9 +387,15 @@ export function MatchReportForm({
       onSubmitted();
     },
     onError: (error) => {
+      // A code the form knows is worded here, in the captain's language; anything
+      // else keeps the server's own message.
+      const known = seriesReportErrorCodes(error);
       notify.apiError(error, {
         title: t("matchReport.submitErrorMessage"),
-        description: getApiErrorMessage(error)
+        description:
+          known.length > 0
+            ? known.map((code) => t(`matchReport.errors.${code}`)).join("\n")
+            : getApiErrorMessage(error)
       });
     }
   });
@@ -397,22 +416,68 @@ export function MatchReportForm({
         </p>
       ) : null}
       <div className={cn("space-y-4", fieldsClassName)}>
-        <EncounterScoreControls
-          idPrefix={idPrefix}
-          homeScore={homeScore}
-          awayScore={awayScore}
-          homeLabel={homeTeamLabel}
-          awayLabel={awayTeamLabel}
-          presetLabel={t("matchReport.quickResult")}
-          bestOf={encounter.best_of}
-          onScoreChange={(score) =>
-            setDraft((prev) => ({
-              ...prev,
-              homeScore: score.homeScore,
-              awayScore: score.awayScore
-            }))
-          }
-        />
+        {duel ? (
+          first &&
+          second && (
+            <EncounterScoreControls
+              idPrefix={idPrefix}
+              one={scores[first.id]}
+              two={scores[second.id]}
+              firstLabel={first.name}
+              secondLabel={second.name}
+              presetLabel={t("matchReport.quickResult")}
+              bestOf={encounter.best_of}
+              onScoreChange={(score) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  scores: { ...scores, [first.id]: score.one, [second.id]: score.two }
+                }))
+              }
+            />
+          )
+        ) : (
+          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+            <BlockHeading label={t("matchReport.pointsLabel")} required />
+            {seats.map((seat) => (
+              <div key={seat.id} className="flex items-center gap-3">
+                <Label
+                  htmlFor={`${idPrefix}-points-${seat.id}`}
+                  className="w-28 shrink-0 truncate text-xs font-semibold text-[color:var(--aqt-fg-muted)]"
+                >
+                  {seat.name}
+                </Label>
+                <NumberInput
+                  id={`${idPrefix}-points-${seat.id}`}
+                  min={0}
+                  value={scores[seat.id]}
+                  onValueChange={(next) =>
+                    setDraft((prev) => ({ ...prev, scores: { ...scores, [seat.id]: next ?? 0 } }))
+                  }
+                  className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-1.5 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <BlockHeading
+            htmlFor={gamesPlayedId}
+            label={t("matchReport.gamesPlayed")}
+            required
+            hint={t("matchReport.gamesPlayedHint")}
+          />
+          <NumberInput
+            id={gamesPlayedId}
+            integer
+            min={0}
+            max={encounter.best_of}
+            value={gamesPlayed}
+            onValueChange={(next) => setDraft((prev) => ({ ...prev, gamesPlayed: next ?? 0 }))}
+            aria-invalid={validation.score != null}
+            className="h-9 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg)]"
+          />
+        </div>
 
         {closenessConfig.enabled && (
           <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">

@@ -18460,16 +18460,14 @@ export interface components {
         };
         /** ScrimCreateRequest */
         "tournament.ScrimCreateRequest": {
-            /** Away Team Name */
-            away_team_name: string;
             /** Best Of */
             best_of: number;
-            /** Home Team Name */
-            home_team_name: string;
             /** Label */
             label: string;
             /** Pool */
             pool: components["schemas"]["tournament.ScrimPoolCopy"] | components["schemas"]["tournament.ScrimPoolCustom"];
+            /** Team Names */
+            team_names: string[];
             /** Workspace Id */
             workspace_id: number;
         };
@@ -18553,7 +18551,6 @@ export interface components {
         };
         /** ScrimRoomRead */
         "tournament.ScrimRoomRead": {
-            away_team: components["schemas"]["tournament.ScrimTeamRead"];
             /** Best Of */
             best_of: number;
             /** Can Claim */
@@ -18569,19 +18566,20 @@ export interface components {
             created_at: string;
             /** Encounter Id */
             encounter_id: number;
-            home_team: components["schemas"]["tournament.ScrimTeamRead"];
             /** Id */
             id: number;
             /** Label */
             label: string;
             /** Stage Id */
             stage_id: number;
+            /** Teams */
+            teams: components["schemas"]["tournament.ScrimTeamRead"][];
             /** Token */
             token: string;
             /** Tournament Id */
             tournament_id: number;
-            /** Viewer Side */
-            viewer_side: TournamentScrimRoomReadViewer_sideAnyOf0 | null;
+            /** Viewer Slot */
+            viewer_slot: number | null;
             /** Workspace Id */
             workspace_id: number;
         };
@@ -18593,6 +18591,8 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+            /** Slot */
+            slot: number;
         };
         /**
          * SocialAccountRead
@@ -74190,10 +74190,6 @@ export enum TournamentScrimPoolCopySource {
 }
 export enum TournamentScrimPoolCustomSource {
     custom = "custom"
-}
-export enum TournamentScrimRoomReadViewer_sideAnyOf0 {
-    home = "home",
-    away = "away"
 }
 export enum TournamentSortOrder {
     asc = "asc",

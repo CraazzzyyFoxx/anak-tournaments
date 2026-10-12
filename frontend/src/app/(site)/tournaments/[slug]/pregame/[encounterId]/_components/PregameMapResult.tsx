@@ -9,9 +9,11 @@ import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
-import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
+import { acceptedScore, pickBanSeats } from "@/components/pick-ban/pick-ban-model";
+import { duelSeats, seatTeam, type Duel } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
-import type { PickBanGame, PickBanGameReport } from "@/types/tournament.types";
+import type { EncounterTeam } from "@/types/encounter.types";
+import type { PickBanGame, PickBanGameClaim } from "@/types/tournament.types";
 
 import { PregameHeroBans, type PregameHeroBoard } from "./PregameHeroBans";
 
@@ -23,13 +25,10 @@ interface PregameMapResultProps {
   mapImagePath: string | null;
   /** Which map of the series this is, 1-based. */
   round: number;
-  /** Null for a spectator: they watch the step, they never file a report. */
-  viewerSide: "home" | "away" | null;
-  homeName: string;
-  awayName: string;
-  /** The side's team, for its logo — undefined when the encounter has none. */
-  homeTeam: TeamNameInput | null | undefined;
-  awayTeam: TeamNameInput | null | undefined;
+  /** The participation the viewer captains; null for a spectator: they watch the step, they never file a report. */
+  viewerTeamId: number | null;
+  /** The encounter's live seats: names, logos and the slot order of the two claim tiles. */
+  teams: EncounterTeam[];
   /**
    * This position's game — the result authority for it. Null only while the
    * server has not opened one (an older payload); the screen then shows the
@@ -82,11 +81,8 @@ export function PregameMapResult({
   mapName,
   mapImagePath,
   round,
-  viewerSide,
-  homeName,
-  awayName,
-  homeTeam,
-  awayTeam,
+  viewerTeamId,
+  teams,
   game,
   heroBoard,
   heroUndo,
@@ -97,16 +93,34 @@ export function PregameMapResult({
   const t = useTranslations("pickBan.room");
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const reports = game?.reports ?? [];
-  const homeReport = reports.find((report) => report.side === "home") ?? null;
-  const awayReport = reports.find((report) => report.side === "away") ?? null;
-  const ownReport = viewerSide === "home" ? homeReport : viewerSide === "away" ? awayReport : null;
-  const bothFiled = homeReport != null && awayReport != null;
+  const [seatOne, seatTwo] = duelSeats(teams);
+  const seats = pickBanSeats(teams);
+  const claims = game?.claims ?? [];
+  const claimOf = (seat: EncounterTeam | null) =>
+    claims.find((claim) => claim.claimant_team_id === seat?.id) ?? null;
+  const claimOne = claimOf(seatOne);
+  const claimTwo = claimOf(seatTwo);
+  const ownClaim =
+    viewerTeamId != null && viewerTeamId === seatOne?.id
+      ? claimOne
+      : viewerTeamId != null && viewerTeamId === seatTwo?.id
+        ? claimTwo
+        : null;
+  const bothFiled = claimOne != null && claimTwo != null;
   const disputed = game?.state === "disputed";
-  const accepted = acceptedScore(game);
+  const accepted = acceptedScore(game, teams);
 
-  /** A side's tile shows its numbers when both are in, or when they are the viewer's own. */
-  const visibleTo = (side: "home" | "away") => bothFiled || viewerSide === side;
+  /** A seat's tile shows its numbers when both claims are in, or when they are the viewer's own. */
+  const visibleTo = (seat: EncounterTeam | null) =>
+    bothFiled || (viewerTeamId != null && viewerTeamId === seat?.id);
+  /** One claim as a scoreline in slot order, whoever filed it. */
+  const claimScore = (claim: PickBanGameClaim | null): Duel<number> | null =>
+    claim == null
+      ? null
+      : {
+          one: claim.results.find((line) => line.encounter_team_id === seatOne?.id)?.score ?? 0,
+          two: claim.results.find((line) => line.encounter_team_id === seatTwo?.id)?.score ?? 0
+        };
 
   return (
     <>
@@ -175,10 +189,7 @@ export function PregameMapResult({
                 <div className="mx-auto w-full max-w-2xl">
                   <PregameHeroBans
                     board={heroBoard}
-                    homeName={homeName}
-                    awayName={awayName}
-                    homeTeam={homeTeam}
-                    awayTeam={awayTeam}
+                    teams={teams}
                   />
                 </div>
                 {/* Directly under the list it corrects: a wrong ban is noticed
@@ -196,18 +207,18 @@ export function PregameMapResult({
                   grid items default to `min-width:auto` and would not shrink. */}
               <div className="mx-auto grid w-full max-w-2xl grid-cols-1 items-stretch gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:gap-4">
                 <ClaimTile
-                  name={homeName}
-                  team={homeTeam}
-                  report={homeReport}
-                  revealed={visibleTo("home")}
+                  name={seatOne?.name ?? t("tbd")}
+                  team={seatTeam(seatOne)}
+                  report={claimScore(claimOne)}
+                  revealed={visibleTo(seatOne)}
                   accentVar="--aqt-teal"
                 />
                 <Verdict bothFiled={bothFiled} disputed={disputed} />
                 <ClaimTile
-                  name={awayName}
-                  team={awayTeam}
-                  report={awayReport}
-                  revealed={visibleTo("away")}
+                  name={seatTwo?.name ?? t("tbd")}
+                  team={seatTeam(seatTwo)}
+                  report={claimScore(claimTwo)}
+                  revealed={visibleTo(seatTwo)}
                   accentVar="--aqt-rose"
                 />
               </div>
@@ -218,7 +229,7 @@ export function PregameMapResult({
                   className="flex items-start gap-2 text-sm text-[color:var(--aqt-support)]"
                 >
                   <Check className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-                  {t("mapResult.accepted", { home: accepted.home, away: accepted.away })}
+                  {t("mapResult.accepted", { first: accepted.one, second: accepted.two })}
                 </p>
               ) : disputed ? (
                 <p
@@ -234,15 +245,15 @@ export function PregameMapResult({
                 </p>
               )}
 
-              {viewerSide != null && game != null ? (
+              {viewerTeamId != null && game != null ? (
                 <div>
                   <Button
                     onClick={() => setDialogOpen(true)}
-                    variant={ownReport == null || accepted != null ? "default" : "outline"}
+                    variant={ownClaim == null || accepted != null ? "default" : "outline"}
                   >
                     {accepted != null
                       ? t("mapResult.view")
-                      : ownReport == null
+                      : ownClaim == null
                         ? t("mapResult.report")
                         : t("mapResult.amend")}
                   </Button>
@@ -253,12 +264,13 @@ export function PregameMapResult({
         </CardContent>
       </Card>
 
-      {viewerSide != null && dialogOpen && game != null ? (
+      {viewerTeamId != null && dialogOpen && game != null ? (
         <MapReportDialog
           encounterId={encounterId}
           game={game}
           mapName={mapName}
-          side={viewerSide}
+          seats={seats}
+          viewerTeamId={viewerTeamId}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           mapChoices={mapChoices}
@@ -270,7 +282,7 @@ export function PregameMapResult({
 }
 
 /**
- * One side's claim: logo, team, and either its two digits or the reason they
+ * One seat's claim: logo, team, and either its two digits or the reason they
  * are not on screen. The digit slab stays the same size in every state, so the
  * tile does not resize under the reader as reports land.
  */
@@ -283,7 +295,8 @@ function ClaimTile({
 }: Readonly<{
   name: string;
   team: TeamNameInput | null | undefined;
-  report: PickBanGameReport | null;
+  /** The claim as a scoreline in slot order, or null while it is unfiled. */
+  report: Duel<number> | null;
   revealed: boolean;
   accentVar: "--aqt-teal" | "--aqt-rose";
 }>) {
@@ -296,8 +309,8 @@ function ClaimTile({
       : revealed
         ? t("mapResult.filedScore", {
             team: name,
-            home: report.home_score,
-            away: report.away_score
+            first: report.one,
+            second: report.two
           })
         : t("mapResult.filed", { team: name });
 
@@ -333,9 +346,9 @@ function ClaimTile({
       >
         {state === "filed" && report != null ? (
           <>
-            {report.home_score}
+            {report.one}
             <span className="text-[0.62em] text-[color:var(--aqt-fg-faint)]">:</span>
-            {report.away_score}
+            {report.two}
           </>
         ) : (
           <span className="text-[color:var(--aqt-fg-faint)]">

@@ -50,17 +50,36 @@ export const PICK_BAN_ROTATIONS: PickBanFirstBanRotation[] = [
   "result_loser_choice",
 ];
 
-/** Every actor resolution the engine implements, in menu order (§1). */
+/** Every actor resolution the menu offers, in menu order (§1). `side:<code>` is authored only for a discipline with sides. */
 export const PICK_BAN_ACTORS: PickBanActors[] = [
   "first",
   "second",
   "both",
-  "home",
-  "away",
+  "slot:1",
+  "slot:2",
   "winner_prev",
   "loser_prev",
   "system",
 ];
+
+/** The `actors.*` / `actorsHint.*` message key of an actor token. */
+export type PickBanActorsKey =
+  | "first"
+  | "second"
+  | "both"
+  | "slot_1"
+  | "slot_2"
+  | "other"
+  | "winner_prev"
+  | "loser_prev"
+  | "system";
+
+export function actorsMessageKey(actors: PickBanActors): PickBanActorsKey {
+  if (actors === "slot:1") return "slot_1";
+  if (actors === "slot:2") return "slot_2";
+  if (actors.startsWith("slot:") || actors.startsWith("side:")) return "other";
+  return actors as PickBanActorsKey;
+}
 
 export const PICK_BAN_STEP_ACTIONS: PickBanStepAction[] = ["ban", "pick", "protect", "decider"];
 export const PICK_BAN_TIMEOUTS: PickBanTimeoutPolicy[] = ["random_fill", "lock_draft", "wait"];

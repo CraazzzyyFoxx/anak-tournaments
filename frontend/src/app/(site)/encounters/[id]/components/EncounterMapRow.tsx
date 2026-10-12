@@ -22,14 +22,16 @@ import encounterService from "@/services/encounter.service";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
 import { formatSeriesClock, type SeriesSlot } from "@/lib/encounter/detail";
+import type { Duel } from "@/lib/encounter/seats";
+import type { Encounter } from "@/types/encounter.types";
 import { Pill } from "@/components/match/EncounterAtoms";
 import styles from "@/components/match/EncounterDetail.module.css";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
 interface EncounterMapRowProps {
   slot: SeriesSlot;
-  homeName: string;
-  awayName: string;
+  names: Duel<string>;
+  teams: Encounter["teams"];
   tournamentGrid?: DivisionGridVersion | null;
   /** Localized duration unit suffixes for the playtime. */
   clockUnits: { h: string; m: string; s: string };
@@ -46,8 +48,8 @@ interface EncounterMapRowProps {
  */
 export default function EncounterMapRow({
   slot,
-  homeName,
-  awayName,
+  names,
+  teams,
   tournamentGrid,
   clockUnits
 }: Readonly<EncounterMapRowProps>) {
@@ -57,7 +59,7 @@ export default function EncounterMapRow({
   const game = slot.game;
   // Two contracts for one position: the game carries the result the encounter
   // stands behind, the match is the parsed log (spec §11).
-  const accepted = acceptedScore(game);
+  const accepted = acceptedScore(game, teams);
   const parsed = slot.parsedScore;
 
   const matchQuery = useQuery({
@@ -98,14 +100,14 @@ export default function EncounterMapRow({
   const parsedDiffers =
     parsed != null &&
     shown !== parsed &&
-    (shown == null || shown.home !== parsed.home || shown.away !== parsed.away);
+    (shown == null || shown.one !== parsed.one || shown.two !== parsed.two);
   const scoreLabel =
     shown != null
       ? t("encounters.detail.mapScoreAria", {
-          home: homeName,
-          away: awayName,
-          homeScore: shown.home,
-          awayScore: shown.away
+          first: names.one,
+          second: names.two,
+          firstScore: shown.one,
+          secondScore: shown.two
         })
       : t("encounters.detail.mapNotPlayed");
 
@@ -141,7 +143,7 @@ export default function EncounterMapRow({
             <span className={cn(shown != null && styles.metaWarn)}>
               · {t("encounters.game.parsedScore")}{" "}
               <span className={styles.mono}>
-                {parsed.home}:{parsed.away}
+                {parsed.one}:{parsed.two}
               </span>
             </span>
           ) : null}
@@ -155,9 +157,9 @@ export default function EncounterMapRow({
         data-game-state={game?.state ?? "none"}
         className={cn(
           styles.mapScore,
-          shown == null || shown.home === shown.away
+          shown == null || shown.one === shown.two
             ? styles.mapScoreDraw
-            : shown.home > shown.away
+            : shown.one > shown.two
               ? styles.mapScoreWin
               : styles.mapScoreLoss
         )}
@@ -165,11 +167,11 @@ export default function EncounterMapRow({
       >
         {shown != null ? (
           <>
-            <span>{shown.home}</span>
+            <span>{shown.one}</span>
             <span aria-hidden className={styles.mapScoreSep}>
               :
             </span>
-            <span>{shown.away}</span>
+            <span>{shown.two}</span>
           </>
         ) : (
           <span aria-hidden>—</span>
@@ -213,17 +215,17 @@ export default function EncounterMapRow({
                 {mapName}
               </DialogTitle>
               <span className={styles.dialogScore}>
-                <span className={cn(styles.dialogTeam, styles.scoreHome)}>{homeName}</span>
-                <span className={cn(styles.scoreHome, "text-lg font-bold")}>
-                  {parsed?.home}
+                <span className={cn(styles.dialogTeam, styles.scoreOne)}>{names.one}</span>
+                <span className={cn(styles.scoreOne, "text-lg font-bold")}>
+                  {parsed?.one}
                 </span>
                 <span aria-hidden className={styles.scoreSep}>
                   :
                 </span>
-                <span className={cn(styles.scoreAway, "text-lg font-bold")}>
-                  {parsed?.away}
+                <span className={cn(styles.scoreTwo, "text-lg font-bold")}>
+                  {parsed?.two}
                 </span>
-                <span className={cn(styles.dialogTeam, styles.scoreAway)}>{awayName}</span>
+                <span className={cn(styles.dialogTeam, styles.scoreTwo)}>{names.two}</span>
               </span>
               <span className={styles.dialogFacts}>
                 {duration ? (

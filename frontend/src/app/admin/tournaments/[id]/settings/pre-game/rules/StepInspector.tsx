@@ -17,6 +17,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import {
   PICK_BAN_ACTORS,
+  actorsMessageKey,
   PICK_BAN_STEP_ACTIONS,
   PICK_BAN_TIMEOUTS,
 } from "@/lib/tournament/pick-ban-config";
@@ -110,13 +111,13 @@ export function StepInspector({
             <SelectContent>
               {PICK_BAN_ACTORS.map((actors) => (
                 <SelectItem key={actors} value={actors}>
-                  {t(`actors.${actors}`)}
+                  {t(`actors.${actorsMessageKey(actors)}`)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <FieldDescription id={`${ids}-actors-hint`}>
-            {t(`actorsHint.${step.actors}`)}
+            {t(`actorsHint.${actorsMessageKey(step.actors)}`)}
           </FieldDescription>
         </Field>
 

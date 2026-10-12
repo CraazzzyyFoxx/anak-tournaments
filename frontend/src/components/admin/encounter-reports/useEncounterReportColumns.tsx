@@ -13,34 +13,42 @@ import { cn } from "@/lib/utils";
 import type { AdminCaptainReport, EncounterReportsRow } from "@/types/admin.types";
 import type { ReportCustomFieldDefinition } from "@/types/encounter.types";
 
-import { DASH, fmtDate, mapCodes, submittedAt } from "./report-model";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { seatsBySlot } from "@/lib/encounter/seats";
+
+import { DASH, fmtDate, submittedAt } from "./report-model";
 
 /**
- * One field of both reports, home over away.
+ * One field of every seat's report, in slot order.
  *
- * Every added column compares the two sides, and a column that showed one side
+ * Every added column compares the seats, and a column that showed one of them
  * would hide exactly the disagreement an admin opened the table to find.
  */
-function SidesCell({ home, away }: Readonly<{ home: ReactNode; away: ReactNode }>) {
+function SeatsCell({
+  rows
+}: Readonly<{ rows: { slot: number; name: string; value: ReactNode }[] }>) {
   return (
     <div className="space-y-0.5 text-xs">
-      <p className="truncate">
-        <span className="mr-1 text-muted-foreground">H</span>
-        {home}
-      </p>
-      <p className="truncate">
-        <span className="mr-1 text-muted-foreground">A</span>
-        {away}
-      </p>
+      {rows.map(({ slot, name, value }) => (
+        <p key={slot} className="truncate">
+          <span className="mr-1 text-muted-foreground" title={name}>
+            {slot}
+          </span>
+          {value}
+        </p>
+      ))}
     </div>
   );
 }
 
-/** A column reading one string off each report, blank rendered as an em dash. */
+/**
+ * A column reading one string off each seat's report (`seatIds` is the slot
+ * order of the row's seats), blank rendered as an em dash.
+ */
 function sidesColumn(
   id: string,
   header: string,
-  read: (report: AdminCaptainReport | null) => string,
+  read: (report: AdminCaptainReport | null, seatIds: number[]) => string,
   meta: Parameters<typeof columnMeta<EncounterReportsRow>>[0]
 ): ColumnDef<EncounterReportsRow> {
   return {
@@ -49,12 +57,18 @@ function sidesColumn(
     // The endpoint sorts on none of these, so a sort control would be a lie.
     enableSorting: false,
     cell: ({ row }) => {
-      const home = read(row.original.home_report);
-      const away = read(row.original.away_report);
+      const seats = seatsBySlot(row.original.participations);
+      const seatIds = seats.map((seat) => seat.encounter_team_id);
       return (
-        <SidesCell
-          home={<span title={home || undefined}>{home || DASH}</span>}
-          away={<span title={away || undefined}>{away || DASH}</span>}
+        <SeatsCell
+          rows={seats.map((seat) => {
+            const text = read(reportOf(row.original.reports, seat.encounter_team_id), seatIds);
+            return {
+              slot: seat.slot,
+              name: seat.name,
+              value: <span title={text || undefined}>{text || DASH}</span>
+            };
+          })}
         />
       );
     },
@@ -111,7 +125,9 @@ export function useEncounterReportColumns({
         enableSorting: false,
         cell: ({ row }) => (
           <p className="max-w-[16rem] truncate text-xs text-muted-foreground">
-            {row.original.home_team?.name ?? "?"} vs {row.original.away_team?.name ?? "?"}
+            {seatsBySlot(row.original.participations)
+              .map((seat) => seat.name)
+              .join(" vs ")}
           </p>
         ),
         meta: columnMeta<EncounterReportsRow>({ category: "core" })
@@ -123,9 +139,9 @@ export function useEncounterReportColumns({
         enableSorting: false,
         cell: ({ row }) => (
           <AdminReportPairCell
-            homeReport={row.original.home_report}
-            awayReport={row.original.away_report}
-            scoresMatch={row.original.scores_match}
+            participations={row.original.participations}
+            reports={row.original.reports}
+            standingsMatch={row.original.standings_match}
             seriesScoreValid={row.original.series_score_valid}
           />
         ),
@@ -166,7 +182,9 @@ export function useEncounterReportColumns({
         header: "Filed",
         enableSorting: false,
         cell: ({ row }) => (
-          <span className="text-xs tabular-nums">{row.original.reported_count}/2</span>
+          <span className="text-xs tabular-nums">
+            {row.original.reported_count}/{row.original.participations.length}
+          </span>
         ),
         meta: columnMeta<EncounterReportsRow>({
           category: "meta",
@@ -208,15 +226,9 @@ export function useEncounterReportColumns({
       sidesColumn(
         "scores",
         "Reported score",
-        (report) => (report ? `${report.home_score} – ${report.away_score}` : ""),
+        (report, seatIds) => (report ? scoreline(report.results, seatIds) : ""),
         { category: "meta", defaultHidden: true, numeric: true, className: "min-w-[100px]" }
       ),
-      sidesColumn("map_codes", "Lobby codes", mapCodes, {
-        category: "meta",
-        defaultHidden: true,
-        responsive: "lg",
-        className: "min-w-[180px] max-w-[240px]"
-      }),
       sidesColumn("comments", "Comments", (report) => report?.comment ?? "", {
         category: "meta",
         defaultHidden: true,

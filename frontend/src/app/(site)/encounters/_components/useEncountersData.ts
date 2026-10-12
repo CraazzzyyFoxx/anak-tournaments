@@ -67,8 +67,7 @@ export function useEncountersData({
             "tournament",
             "stage",
             "stage_item",
-            "home_team",
-            "away_team",
+            "teams",
             "matches",
             "matches.map"
           ]

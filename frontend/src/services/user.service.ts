@@ -208,10 +208,8 @@ export default class userService {
       "tournament",
       "stage",
       "stage_item",
-      "home_team",
-      "home_team.players",
-      "away_team",
-      "away_team.players",
+      "teams",
+      "teams.players",
       "matches.map"
     ],
     filters?: {

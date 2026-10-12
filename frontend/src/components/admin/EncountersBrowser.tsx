@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import encounterService from "@/services/encounter.service";
 import type { Encounter } from "@/types/encounter.types";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
@@ -233,7 +234,7 @@ export function EncountersBrowser({
               <p className="truncate text-xs text-muted-foreground">
                 {encounterScopeLabel(row.original)} · R{row.original.round} ·{" "}
                 <span className="font-mono tabular-nums">
-                  {row.original.score.home}&ndash;{row.original.score.away}
+                  {seatsBySlot(row.original.teams).map((seat) => seat.score).join("\u2013")}
                 </span>
               </p>
               <p className="text-xs text-muted-foreground">

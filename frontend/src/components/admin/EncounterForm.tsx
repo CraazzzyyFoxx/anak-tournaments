@@ -5,8 +5,7 @@ import { Star } from "lucide-react";
 
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { buildEncounterName } from "@/components/admin/encounter-name";
-import { isGroupStageScoreContext } from "@/lib/encounter/score";
-import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
+import { duelSeats } from "@/lib/encounter/seats";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -38,11 +37,10 @@ export interface EncounterFormState {
   name: string;
   stage_id: number | null;
   stage_item_id: number | null;
-  home_team_id: number | null;
-  away_team_id: number | null;
+  /** The team seated in slot 1 / slot 2. Chosen at creation; a seat changes hands through the slot swap. */
+  first_team_id: number | null;
+  second_team_id: number | null;
   round: number;
-  home_score: number;
-  away_score: number;
   status: EncounterEditableStatus;
   /** 0..1; `null` when nobody rated the match. Editable only on an existing row. */
   closeness: number | null;
@@ -72,26 +70,23 @@ export function emptyEncounterForm(
     name: "",
     stage_id: defaultStageId,
     stage_item_id: defaultStageItemId,
-    home_team_id: null,
-    away_team_id: null,
+    first_team_id: null,
+    second_team_id: null,
     round: 1,
-    home_score: 0,
-    away_score: 0,
     status: "OPEN",
     closeness: null
   };
 }
 
 export function encounterFormOf(encounter: Encounter): EncounterFormState {
+  const [first, second] = duelSeats(encounter.teams);
   return {
     name: encounter.name,
     stage_id: encounter.stage_id ?? null,
     stage_item_id: encounter.stage_item_id ?? null,
-    home_team_id: encounter.home_team_id,
-    away_team_id: encounter.away_team_id,
+    first_team_id: first?.team_id ?? null,
+    second_team_id: second?.team_id ?? null,
     round: encounter.round,
-    home_score: encounter.score.home,
-    away_score: encounter.score.away,
     status: editableEncounterStatus(encounter.status),
     closeness: encounter.closeness
   };
@@ -102,9 +97,9 @@ export function encounterFormError(form: EncounterFormState): string | null {
   if (!form.name.trim()) return "Enter an encounter name.";
   if (form.stage_id == null) return "Select a stage before saving the encounter.";
   if (
-    form.home_team_id != null &&
-    form.away_team_id != null &&
-    form.home_team_id === form.away_team_id
+    form.first_team_id != null &&
+    form.second_team_id != null &&
+    form.first_team_id === form.second_team_id
   ) {
     return "Pick two different teams.";
   }
@@ -120,11 +115,11 @@ export function encounterCreatePayload(
     tournament_id: tournamentId,
     stage_id: form.stage_id,
     stage_item_id: form.stage_item_id,
-    home_team_id: form.home_team_id,
-    away_team_id: form.away_team_id,
+    // Only the seats a team was picked for: an empty seat is filled later.
+    teams: [form.first_team_id, form.second_team_id].flatMap((teamId, index) =>
+      teamId == null ? [] : [{ slot: index + 1, team_id: teamId }]
+    ),
     round: form.round,
-    home_score: form.home_score,
-    away_score: form.away_score,
     status: form.status
   };
 }
@@ -134,11 +129,7 @@ export function encounterUpdatePayload(form: EncounterFormState): EncounterUpdat
     name: form.name.trim(),
     stage_id: form.stage_id,
     stage_item_id: form.stage_item_id,
-    home_team_id: form.home_team_id,
-    away_team_id: form.away_team_id,
     round: form.round,
-    home_score: form.home_score,
-    away_score: form.away_score,
     status: form.status,
     closeness: form.closeness
   };
@@ -174,8 +165,6 @@ export function EncounterForm({
 }>) {
   const prefix = useId();
   const stage = stages.find((entry) => entry.id === value.stage_id) ?? null;
-  const stageItem = stage?.items.find((item) => item.id === value.stage_item_id) ?? null;
-  const isGroupStage = isGroupStageScoreContext(stage, stageItem);
   const stars = closenessToStars(value.closeness);
 
   return (
@@ -250,42 +239,46 @@ export function EncounterForm({
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div>
-          <Label htmlFor={`${prefix}-home`}>Home team</Label>
-          <TeamCombobox
-            id={`${prefix}-home`}
-            teams={teams}
-            value={value.home_team_id}
-            placeholder="Select home team"
-            onSelect={(team) => {
-              const homeTeamId = team?.id ?? null;
-              onChange({
-                ...value,
-                name: buildEncounterName(teams, homeTeamId, value.away_team_id),
-                home_team_id: homeTeamId
-              });
-            }}
-          />
+      {mode === "create" ? (
+        // A seat changes hands through the slot swap, not through a field edit,
+        // so the teams are chosen once, here.
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor={`${prefix}-first`}>First team (slot 1)</Label>
+            <TeamCombobox
+              id={`${prefix}-first`}
+              teams={teams}
+              value={value.first_team_id}
+              placeholder="Select the first team"
+              onSelect={(team) => {
+                const firstTeamId = team?.id ?? null;
+                onChange({
+                  ...value,
+                  name: buildEncounterName(teams, firstTeamId, value.second_team_id),
+                  first_team_id: firstTeamId
+                });
+              }}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`${prefix}-second`}>Second team (slot 2)</Label>
+            <TeamCombobox
+              id={`${prefix}-second`}
+              teams={teams}
+              value={value.second_team_id}
+              placeholder="Select the second team"
+              onSelect={(team) => {
+                const secondTeamId = team?.id ?? null;
+                onChange({
+                  ...value,
+                  name: buildEncounterName(teams, value.first_team_id, secondTeamId),
+                  second_team_id: secondTeamId
+                });
+              }}
+            />
+          </div>
         </div>
-        <div>
-          <Label htmlFor={`${prefix}-away`}>Away team</Label>
-          <TeamCombobox
-            id={`${prefix}-away`}
-            teams={teams}
-            value={value.away_team_id}
-            placeholder="Select away team"
-            onSelect={(team) => {
-              const awayTeamId = team?.id ?? null;
-              onChange({
-                ...value,
-                name: buildEncounterName(teams, value.home_team_id, awayTeamId),
-                away_team_id: awayTeamId
-              });
-            }}
-          />
-        </div>
-      </div>
+      ) : null}
 
       <div>
         <Label htmlFor={`${prefix}-round`}>Round *</Label>
@@ -296,17 +289,6 @@ export function EncounterForm({
           onValueChange={(next) => onChange({ ...value, round: next ?? 1 })}
         />
       </div>
-
-      <EncounterScoreControls
-        idPrefix={`${prefix}-score`}
-        homeScore={value.home_score}
-        awayScore={value.away_score}
-        presetLabel={isGroupStage ? "Group stage presets" : "Result presets"}
-        showGroupStageHint={isGroupStage}
-        onScoreChange={(score) =>
-          onChange({ ...value, home_score: score.homeScore, away_score: score.awayScore })
-        }
-      />
 
       <div>
         <Label htmlFor={`${prefix}-status`}>Status</Label>

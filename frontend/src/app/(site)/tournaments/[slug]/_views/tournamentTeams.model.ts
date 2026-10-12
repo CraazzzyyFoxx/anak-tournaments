@@ -1,4 +1,5 @@
-import { isEncounterCompleted } from "@/lib/encounter/status";
+import { duelSeats } from "@/lib/encounter/seats";
+import { getEncounterWinner } from "@/lib/encounter/status";
 import { normalizePlayerRole } from "@/lib/roster/player-role";
 import type { Encounter } from "@/types/encounter.types";
 import type { Hero } from "@/types/hero.types";
@@ -65,12 +66,11 @@ export function buildRecords(encounters: Encounter[]): Map<number, TeamRecord> {
   };
 
   for (const encounter of encounters) {
-    if (!isEncounterCompleted(encounter)) continue;
-    const home = encounter.score?.home ?? 0;
-    const away = encounter.score?.away ?? 0;
-    if (home === away) continue;
-    bump(encounter.home_team_id, home > away);
-    bump(encounter.away_team_id, away > home);
+    const winner = getEncounterWinner(encounter);
+    if (winner === null) continue;
+    const [one, two] = duelSeats(encounter.teams);
+    bump(one?.team_id, winner === 1);
+    bump(two?.team_id, winner === 2);
   }
 
   return records;

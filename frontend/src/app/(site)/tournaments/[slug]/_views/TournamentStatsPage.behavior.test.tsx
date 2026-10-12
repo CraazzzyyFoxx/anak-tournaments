@@ -234,9 +234,7 @@ function encounter(matches: Match[]): Encounter {
     created_at: new Date("2025-02-02T00:00:00Z"),
     updated_at: null,
     name: "A vs B",
-    home_team_id: 1,
-    away_team_id: 2,
-    score: { home: 2, away: 1 },
+    slot_count: 2,
     round: 1,
     best_of: 5,
     tournament_id: TOURNAMENT_ID,
@@ -247,14 +245,19 @@ function encounter(matches: Match[]): Encounter {
     closeness: null,
     has_logs: true,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: null,
     started_at: null,
     ended_at: null,
     current_map_index: null,
     confirmed_at: null,
     matches,
-    home_team: { id: 1, name: "A" } as Encounter["home_team"],
-    away_team: { id: 2, name: "B" } as Encounter["away_team"],
+    games: [],
+    teams: [
+      { id: 11, slot: 1, team_id: 1, name: "A", seed: null, score: 2, placement: null, active: true },
+      { id: 12, slot: 2, team_id: 2, name: "B", seed: null, score: 1, placement: null, active: true }
+    ],
     tournament: makeTournament()
   };
 }

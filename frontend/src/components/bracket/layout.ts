@@ -272,10 +272,12 @@ function addSourceEdges(
     const sources = node.encounter.sources ?? [];
     if (sources.length > 0) wired.add(node.encounter.id);
     for (const source of sources) {
-      if (source.role !== "winner" && !(includeLoserEdges && source.role === "loser")) continue;
+      // Place 1 is the winner's connector, place 2 the loser's drop.
+      const kind = source.source_position === 1 ? "winner" : "loser";
+      if (kind !== "winner" && !(includeLoserEdges && source.source_position === 2)) continue;
       const sourceNode = nodesById.get(`match-${source.encounter_id}`);
       if (!sourceNode) continue;
-      const edge = edgeBetween(sourceNode, node, source.role === "loser" ? "loser" : "winner");
+      const edge = edgeBetween(sourceNode, node, kind);
       if (seen.has(edge.id)) continue;
       seen.add(edge.id);
       edges.push(edge);

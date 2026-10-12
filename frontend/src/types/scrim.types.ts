@@ -31,13 +31,10 @@ export interface ScrimCreateInput {
   workspace_id: number;
   label: string;
   best_of: number;
-  home_team_name: string;
-  away_team_name: string;
+  /** Slot order: the creator's team first, the opponent's second. */
+  team_names: [string, string];
   pool: ScrimPoolInput;
 }
-
-/** Which side of a room the viewer captains. */
-type ScrimSide = "home" | "away";
 
 /**
  * Which rooms a list call asks for: the viewer's own, or every room of the
@@ -46,9 +43,10 @@ type ScrimSide = "home" | "away";
 export type ScrimListScope = "mine" | "workspace";
 
 interface ScrimTeam {
+  slot: number;
   id: number;
   name: string;
-  /** False while the side is still open to the link's next taker. */
+  /** False while the slot is still open to the link's next taker. */
   captain_claimed: boolean;
 }
 
@@ -63,9 +61,10 @@ export interface ScrimRoom {
   /** What `PregameRoom` runs on; the room UI needs nothing else. */
   encounter_id: number;
   best_of: number;
-  home_team: ScrimTeam;
-  away_team: ScrimTeam;
-  viewer_side: ScrimSide | null;
+  /** Always two, slot 1 (the creator's team) first. */
+  teams: ScrimTeam[];
+  /** The slot the viewer captains, or null for a spectator. */
+  viewer_slot: number | null;
   /** True only for a workspace member who captains neither side while one is open. */
   can_claim: boolean;
   /**

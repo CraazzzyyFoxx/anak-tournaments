@@ -125,8 +125,8 @@
     "loadMore": "Загрузить ещё",
     "unknown": "Неизвестно",
     "any": "Любой",
-    "homeTeam": "Хозяева",
-    "awayTeam": "Гости",
+    "firstTeam": "Первая команда",
+    "secondTeam": "Вторая команда",
     "selectPlaceholder": "Выберите…",
     "required": "Обязательно",
     "sortBy": "Сортировка",
@@ -1361,7 +1361,10 @@
     "save": "Сохранить параметры",
     "confirming": "Подтверждение…",
     "confirmResult": "Подтвердить результат",
-    "confirmScore": "Подтвердить {home}:{away}",
+    "confirmScore": "Подтвердить {first}:{second}",
+    "reason": "Причина",
+    "reasonPlaceholder": "Почему результат выставлен или переоткрыт",
+    "reasonHint": "Обязательно. Попадёт в журнал результата.",
     "resultSection": "Результат",
     "settingsSection": "Параметры матча",
     "takeReport": "Взять счёт из отчёта капитана",
@@ -1380,11 +1383,11 @@
     "saveErrorMessage": "Не удалось сохранить",
     "confirmErrorMessage": "Не удалось подтвердить",
     "presetDescriptions": {
-      "Home sweep": "Сухая победа хозяев",
-      "Home close win": "Плотная победа хозяев",
-      "Draw": "Ничья",
-      "Away close win": "Плотная победа гостей",
-      "Away sweep": "Сухая победа гостей"
+      "firstSweep": "Сухая победа первой команды",
+      "firstClose": "Минимальная победа первой команды",
+      "draw": "Ничья",
+      "secondClose": "Минимальная победа второй команды",
+      "secondSweep": "Сухая победа второй команды"
     },
     "starsAria": "{count, plural, one {# звезда} few {# звезды} many {# звёзд} other {# звёзд}}",
     "notSet": "Не задано",
@@ -1421,8 +1424,20 @@
     "mapCodePlaceholder": "Код реплея",
     "mapLabel": "Карта {index}",
     "bothReportsTitle": "Репорты капитанов",
-    "homeReport": "Репорт хозяев",
-    "awayReport": "Репорт гостей",
+    "teamReport": "Репорт",
+    "gamesPlayed": "Сыграно игр",
+    "gamesPlayedHint": "Все сыгранные позиции, включая ничьи",
+    "pointsLabel": "Очки",
+    "errors": {
+      "series_claim_teams": "В репорте должны быть все команды матча",
+      "series_claim_games_played": "Число сыгранных игр не сходится с уже записанными играми или форматом матча",
+      "series_claim_not_final": "Матч не мог закончиться с таким счётом",
+      "series_claim_unreachable": "С таким счётом матч закончился бы раньше",
+      "series_claim_wins": "У команды меньше побед, чем дают уже записанные игры",
+      "series_claim_mismatch": "Счёт расходится с уже записанными играми",
+      "stale_state": "Результат изменился с тех пор, как вы открыли форму. Обновите страницу и отправьте репорт заново.",
+      "result_locked": "Результат уже подтверждён. Попросите организатора переоткрыть его."
+    },
     "noReportYet": "Репорта пока нет",
     "avgCloseness": "Средняя близость",
     "reportOrEdit": "Отправить / изменить мой репорт",
@@ -3343,7 +3358,7 @@
     "liveTeamStreamWithViewers": "{player} сейчас в эфире · {count, plural, one {# зритель} few {# зрителя} many {# зрителей} other {# зрителя}}",
     "rosters": {
       "title": "Составы команд",
-      "description": "{home} vs {away}"
+      "description": "{first} vs {second}"
     },
     "pending": "Ожидает",
     "disputed": "Спор",
@@ -3360,7 +3375,7 @@
     "rearrangeDone": "Команды переставлены",
     "rearrangeFailed": "Не удалось переставить команды",
     "dragTeam": "Перетащить {team}",
-    "matchAria": "{label}: {home} — {away}",
+    "matchAria": "{label}: {first} — {second}",
     "floatRecord": "Счёт перед этим раундом: {record}",
     "dnd": {
       "instructions": "Нажмите Пробел или Enter, чтобы взять команду, стрелками переместите её на другой слот и нажмите Пробел или Enter, чтобы поменять местами. Escape отменяет.",
@@ -3535,19 +3550,19 @@
       "sub": "Текущая область фильтра",
       "empty": "Пока нет данных по картам."
     },
-    "sideBalance": {
-      "title": "Баланс сторон",
-      "sub": "Победитель: дома или в гостях",
-      "homeWins": "Победы дома",
-      "awayWins": "Победы в гостях"
+    "slotBalance": {
+      "title": "Баланс слотов",
+      "sub": "Победитель: слот 1 или слот 2",
+      "slotOneWins": "Победы слота 1",
+      "slotTwoWins": "Победы слота 2"
     },
     "detail": {
-      "metaTitle": "{home} против {away}",
-      "metaDescription": "Обзор встречи {home} против {away} на {siteName}.",
+      "metaTitle": "{first} против {second}",
+      "metaDescription": "Обзор встречи {first} против {second} на {siteName}.",
       "back": "Назад к встречам",
       "tie": "Ничья",
       "pregameRoom": "Предигровая комната",
-      "heroTitle": "{home} против {away}",
+      "heroTitle": "{first} против {second}",
       "verdictWin": "Победа в серии: {team}",
       "verdictDraw": "Серия сыграна вничью",
       "verdictPending": "Серия не завершена",
@@ -3556,7 +3571,7 @@
       "pipUnplayed": "не сыграна",
       "challonge": "Challonge",
       "statMaps": "Сыграно карт",
-      "statMapsSub": "{format} · {home}–{away} по картам",
+      "statMapsSub": "{format} · {one}–{two} по картам",
       "statDuration": "Время серии",
       "statDurationSub": "в среднем {value} на карту",
       "scheduledAt": "Назначено",
@@ -3568,7 +3583,7 @@
       "mapNotPlayed": "Не сыграна",
       "mapInProgress": "Идёт сейчас",
       "mapInProgressHint": "Результат этой карты ещё не внесён",
-      "mapScoreAria": "{home} {homeScore}, {away} {awayScore}",
+      "mapScoreAria": "{first} {firstScore}, {second} {secondScore}",
       "openScoreboard": "Статистика",
       "rosters": "Составы",
       "seriesStats": "Статистика серии",
@@ -3585,7 +3600,6 @@
       "reportedScore": "Указанный счёт",
       "reportedCloseness": "Качество матча",
       "reportedClosenessValue": "{value} из 10",
-      "reportedCodes": "Коды лобби",
       "reportedComment": "Комментарий",
       "pregame": "Предигровая фаза",
       "pregameMap": "Вето карт",
@@ -3595,10 +3609,9 @@
       "pregamePicked": "Выбрано",
       "pregameBanned": "Забанено",
       "pregameFirst": "Первый ход",
-      "pregameSeeds": "Посев (хозяева / гости)",
+      "pregameSeeds": "Посев (слот 1 / слот 2)",
       "pregameTurn": "Текущий ход",
-      "readinessHome": "Готовность хозяев",
-      "readinessAway": "Готовность гостей",
+      "readiness": "Слот {slot} готов",
       "tabsLabel": "Разделы матча",
       "tabs": {
         "overview": "Обзор",
@@ -3651,12 +3664,8 @@
         "seedSource": {
           "bracket_slot": "по сетке",
           "standings": "по таблице",
-          "fallback_home": "по умолчанию (хозяева)",
+          "fallback_first_slot": "по умолчанию (первый слот)",
           "admin": "назначено администратором"
-        },
-        "side": {
-          "home": "хозяева",
-          "away": "гости"
         },
         "empty": {
           "notConfiguredTitle": "Вето не настроено",
@@ -3698,8 +3707,6 @@
             "remaining": "Осталась"
           },
           "by": {
-            "home": "хозяева",
-            "away": "гости",
             "decider": "решающая",
             "admin": "администратор"
           }
@@ -3776,8 +3783,8 @@
         "itemNumber": "Герой №{id}"
       },
       "title": "Предигровая комната",
-      "metaTitle": "Бан-пик: {home} против {away}",
-      "metaDescription": "Комната бан-пика {home} против {away} на {siteName}.",
+      "metaTitle": "Бан-пик: {first} против {second}",
+      "metaDescription": "Комната бан-пика {first} против {second} на {siteName}.",
       "metaDescriptionFallback": "Комната бан-пика на {siteName}.",
       "phase": {
         "map": "Вето карт",
@@ -3796,7 +3803,7 @@
         "score": "Серия",
         "bestOf": "Bo{n}",
         "toWin": "до {n} побед",
-        "official": "Официальный счёт {home}:{away}"
+        "official": "Официальный счёт {first}:{second}"
       },
       "series": {
         "label": "Карты этой серии",
@@ -3817,12 +3824,8 @@
       "seedSource": {
         "bracket_slot": "по сетке",
         "standings": "по таблице",
-        "fallback_home": "по умолчанию (хозяева)",
+        "fallback_first_slot": "по умолчанию (первый слот)",
         "admin": "назначено администратором"
-      },
-      "side": {
-        "home": "хозяева",
-        "away": "гости"
       },
       "notConfiguredTitle": "Не настроено",
       "notConfiguredHint": "Организатор ещё не задал правила для этого матча. Загляните позже.",
@@ -3894,16 +3897,14 @@
         "remaining": "Остался"
       },
       "by": {
-        "home": "хозяева",
-        "away": "гости",
+        "team": "от {team}",
         "decider": "решающий",
         "admin": "администратор"
       },
       "protectedBy": {
-        "home": "защищено хозяевами",
-        "away": "защищено гостями"
+        "team": "защищено: {team}"
       },
-      "turn": "Ход: {side} — {action}",
+      "turn": "Ход: {team} — {action}",
       "turnBoth": "Обе команды — {action}",
       "turnRevealing": "Открываем оба драфта",
       "action": {
@@ -3986,8 +3987,7 @@
       "electOpener": {
         "title": "Выберите, кто открывает следующий раунд",
         "hint": "Ваша сторона проиграла предыдущую карту. Выберите, кто банит первым в этом раунде.",
-        "chooseHome": "Открывают хозяева",
-        "chooseAway": "Открывают гости",
+        "choose": "Открывает {team}",
         "confirm": "Подтвердить",
         "sending": "Отправка…",
         "failed": "Не удалось отправить выбор",
@@ -4006,8 +4006,14 @@
         "resolved": "Результат подтверждён — переход к следующей карте",
         "mapLabel": "Сыгранная карта",
         "lockedTitle": "Результат этой карты подтверждён",
-        "lockedHint": "Зачтённый счёт — {home}:{away}. Изменить его теперь может только организатор.",
-        "close": "Закрыть"
+        "lockedHint": "Зачтённый счёт — {first}:{second}. Изменить его теперь может только организатор.",
+        "close": "Закрыть",
+        "errors": {
+          "stale_state": "Результат этой карты изменился, пока вы его сообщали. Комната обновлена — сообщите счёт ещё раз.",
+          "result_locked": "Результат этой карты уже зачтён. Изменить его теперь может только организатор.",
+          "map_locked": "Капитан уже сообщил результат этой карты, поэтому её больше нельзя изменить.",
+          "side_pick_pending": "Сторона, на которой играется эта карта, ещё не определена."
+        }
       },
       "admin": {
         "title": "Управление пик-баном (администратор)",
@@ -4135,7 +4141,7 @@
         "hint": "Оба капитана сообщают счёт независимо. Совпали — карта зачтена и открываются баны следующей; разошлись — решает администратор.",
         "pending": "{team} ещё не сообщила результат",
         "filed": "{team} сообщила результат",
-        "filedScore": "{team} сообщила {home}–{away}",
+        "filedScore": "{team} сообщила {first}–{second}",
         "claim": {
           "waiting": "Нет отчёта",
           "sealed": "Скрыт до второго отчёта",
@@ -4149,7 +4155,7 @@
         "report": "Сообщить результат",
         "amend": "Изменить мой результат",
         "pickMap": "Какую карту сыграли?",
-        "accepted": "Зачтённый счёт {home}:{away} — карта закрыта",
+        "accepted": "Зачтённый счёт {first}:{second} — карта закрыта",
         "view": "Посмотреть результат"
       },
       "heroBans": {
@@ -4184,7 +4190,8 @@
       "finalReport": {
         "title": "Отчёт по матчу",
         "hint": "Пик-бан завершён. Это турнирный отчёт по матчу: подтвердите счёт серии, укажите коды матчей и всё остальное, что просят организаторы. После отправки вернём вас туда, откуда вы пришли."
-      }
+      },
+      "tbd": "Уточняется"
     },
     "admin": {
       "readOnly": "У вас нет прав менять эти наборы правил.",
@@ -4364,8 +4371,9 @@
         "first": "Начинающий",
         "second": "Вторая сторона",
         "both": "Обе стороны",
-        "home": "Хозяева",
-        "away": "Гости",
+        "slot_1": "Первая команда",
+        "slot_2": "Вторая команда",
+        "other": "Определяется прошлым шагом",
         "winner_prev": "Победитель прошлой карты",
         "loser_prev": "Проигравший прошлой карты",
         "system": "Движок"
@@ -4374,8 +4382,9 @@
         "first": "Сторона, которая начинает эту карту по правилу очерёдности на шаге «Стороны».",
         "second": "Вторая сторона этой карты.",
         "both": "Обе стороны ходят на одном шаге.",
-        "home": "Всегда команда хозяев, независимо от очерёдности.",
-        "away": "Всегда команда гостей, независимо от очерёдности.",
+        "slot_1": "Всегда команда в слоте 1 матча, независимо от очерёдности.",
+        "slot_2": "Всегда команда в слоте 2 матча, независимо от очерёдности.",
+        "other": "Участник, которому эту роль передал предыдущий шаг раунда.",
         "winner_prev": "Победитель прошлой карты; на первой карте — начинающий.",
         "loser_prev": "Проигравший прошлой карты; на первой карте — начинающий.",
         "system": "Никто не ходит: шаг разыгрывает сам движок."
@@ -4645,8 +4654,8 @@
     "spectatorRead": "Зрители могут читать",
     "visibilityFailed": "Видимость не изменена",
     "role": {
-      "home": "хозяева",
-      "away": "гости",
+      "home": "капитан",
+      "away": "капитан",
       "captain": "капитан",
       "staff": "судейство",
       "spectator": "зритель"
@@ -6961,10 +6970,9 @@
       "bestOf": "Bo{count}",
       "closed": "Закрыта",
       "awaitingOpponent": "Ждём соперника",
-      "sides": "{home} — {away}",
+      "matchup": "{first} — {second}",
       "createdAt": "Создана {date}",
-      "youAreHome": "вы капитан домашней стороны",
-      "youAreAway": "вы капитан гостевой стороны",
+      "youCaptain": "вы капитан команды «{team}»",
       "copyLink": "Скопировать ссылку",
       "linkCopied": "Ссылка скопирована",
       "linkCopyFailed": "Не удалось скопировать ссылку",
@@ -6987,12 +6995,12 @@
       "labelLabel": "Название комнаты",
       "labelPlaceholder": "Скрим во вторник",
       "labelHint": "То, что оба капитана увидят в шапке комнаты.",
-      "homeLabel": "Домашняя команда",
-      "homePlaceholder": "Ваша команда",
-      "homeHint": "Вы капитан этой стороны.",
-      "awayLabel": "Гостевая команда",
-      "awayPlaceholder": "Команда соперника",
-      "awayHint": "Эту сторону займёт тот, кто первым откроет ссылку.",
+      "ownLabel": "Ваша команда",
+      "ownPlaceholder": "Название команды",
+      "ownHint": "Вы капитан этой команды.",
+      "opponentLabel": "Команда соперника",
+      "opponentPlaceholder": "Команда соперника",
+      "opponentHint": "Эту команду возглавит тот, кто первым откроет ссылку.",
       "bestOfLabel": "Длина серии",
       "bestOfValue": "Best of {count}",
       "bestOfHint": "Сколько карт играется в серии. От этого же зависит порядок вето.",
@@ -7037,7 +7045,7 @@
       "uniqueRoleHint": "Не даёт стороне забанить двух героев одной роли в одном раунде."
     },
     "claim": {
-      "sides": "{home} — {away}",
+      "matchup": "{first} — {second}",
       "prompt": "В этой комнате ещё нет капитана для «{team}».",
       "claim": "Стать капитаном «{team}»",
       "watch": "Просто смотреть",
@@ -7193,8 +7201,8 @@
       },
       "encounter": {
         "report_disputed": "{map_index, plural, =0 {Отчёт по вашему матчу оспорен} other {Отчёт по карте # вашего матча оспорен}}",
-        "dispute_review": "{position, plural, =0 {Капитаны <b>{home_team_name}</b> и <b>{away_team_name}</b> разошлись в итоговом счёте серии — нужно решение организатора} other {Капитаны <b>{home_team_name}</b> и <b>{away_team_name}</b> разошлись в счёте карты # — нужно решение организатора}}",
-        "scheduled": "Матч <b>{home_team_name} — {away_team_name}</b> на {tournament_name} {scheduled_at, select, none {готов к игре — время ещё не назначено} other {назначен на {scheduled_at}}}"
+        "dispute_review": "{position, plural, =0 {Капитаны {teams} разошлись в итоговом счёте серии — нужно решение организатора} other {Капитаны {teams} разошлись в счёте карты # — нужно решение организатора}}",
+        "scheduled": "Матч {teams} на {tournament_name} {scheduled_at, select, none {готов к игре — время ещё не назначено} other {назначен на {scheduled_at}}}"
       },
       "announcement": {
         "published": "Новое объявление"
@@ -7327,6 +7335,10 @@
         "title": "Снять эти уведомления?",
         "description": "Они пропадут из входящих у получателей и перестанут считаться в счётчике. Сами записи и отметки о прочтении сохранятся — но вернуть уведомления с этого экрана нельзя."
       }
+    },
+    "teamsSeparator": {
+      "scheduled": " — ",
+      "dispute": " и "
     }
   },
   "mixes": {

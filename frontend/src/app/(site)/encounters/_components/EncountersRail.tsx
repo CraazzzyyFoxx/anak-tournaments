@@ -80,33 +80,33 @@ export function EncountersRail({ overview }: Readonly<{ overview: EncounterOverv
 
       <div className={styles.card}>
         <div className={styles.cardHead}>
-          <div className={styles.cardTitle}>{t("encounters.sideBalance.title")}</div>
-          <span className={styles.cardSub}>{t("encounters.sideBalance.sub")}</span>
+          <div className={styles.cardTitle}>{t("encounters.slotBalance.title")}</div>
+          <span className={styles.cardSub}>{t("encounters.slotBalance.sub")}</span>
         </div>
         <div className={styles.cardBody}>
           <div className={styles.balance}>
             <div
-              className={cn(styles.balanceHome, "tabular-nums")}
-              style={{ width: `${overview.side_balance.home_win_pct}%` }}
+              className={cn(styles.balanceOne, "tabular-nums")}
+              style={{ width: `${overview.slot_balance.slot_one_win_pct}%` }}
             >
-              {overview.side_balance.home_win_pct}%
+              {overview.slot_balance.slot_one_win_pct}%
             </div>
             <div
-              className={cn(styles.balanceAway, "tabular-nums")}
-              style={{ width: `${overview.side_balance.away_win_pct}%` }}
+              className={cn(styles.balanceTwo, "tabular-nums")}
+              style={{ width: `${overview.slot_balance.slot_two_win_pct}%` }}
             >
-              {overview.side_balance.away_win_pct}%
+              {overview.slot_balance.slot_two_win_pct}%
             </div>
           </div>
           <div className={styles.balanceLegend}>
             <span>
-              <span aria-hidden className={styles.balanceLegendHome}>
+              <span aria-hidden className={styles.balanceLegendOne}>
                 ●{" "}
               </span>
-              {t("encounters.sideBalance.homeWins")}
+              {t("encounters.slotBalance.slotOneWins")}
             </span>
             <span>
-              {t("encounters.sideBalance.awayWins")}{" "}
+              {t("encounters.slotBalance.slotTwoWins")}{" "}
               <span aria-hidden className={styles.dim}>
                 ●
               </span>

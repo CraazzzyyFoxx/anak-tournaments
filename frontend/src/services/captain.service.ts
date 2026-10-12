@@ -5,9 +5,23 @@ interface CaptainMapCodeInput {
   code: string;
 }
 
+/** One participation's line of a series report: its wins in a duel, its points in a lobby. */
+export interface CaptainReportResultInput {
+  encounter_team_id: number;
+  score: number;
+  placement?: number | null;
+  /** Omitted when the encounter's rule does not count wins (a lobby's card). */
+  wins?: number | null;
+}
+
+/** `TeamReportIn`: the finished series as one captain saw it. */
 interface CaptainReportInput {
-  home_score: number;
-  away_score: number;
+  /** The `encounter.result_version` the form was filled against. */
+  basis_version: number;
+  /** Draws included: how many of the series' positions were actually played. */
+  games_played: number;
+  /** One line per live participation. */
+  results: CaptainReportResultInput[];
   /** 1..10, or null when the tournament disables/does not require match quality. */
   closeness: number | null;
   map_codes: CaptainMapCodeInput[];
@@ -19,8 +33,10 @@ export interface CaptainReportSubmitResult {
   id: number;
   result_status: string;
   status: string;
-  home_score: number;
-  away_score: number;
+  result_source: string | null;
+  result_version: number;
+  /** The standing, one line per live participation. */
+  teams: { encounter_team_id: number; score: number; placement: number | null }[];
   closeness: number | null;
   reports: CaptainReport[];
 }
@@ -47,9 +63,10 @@ class CaptainService {
     return response.json();
   }
 
+  /** The caller's seat in the encounter; both null when they captain none of its participations. */
   async getMyRole(
     encounterId: number
-  ): Promise<{ side: "home" | "away" | null }> {
+  ): Promise<{ encounter_team_id: number | null; slot: number | null }> {
     const response = await apiFetch(`/api/v1/encounters/${encounterId}/my-role`);
     return response.json();
   }

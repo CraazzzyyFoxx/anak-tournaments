@@ -31,7 +31,7 @@ export default function Loading() {
             <Block className="h-3 w-40" />
             <Block className="h-[18px] w-24" />
           </div>
-          <div className={cn(styles.boardSide, styles.boardSideAway)}>
+          <div className={cn(styles.boardSide, styles.boardSlotTwo)}>
             <div className="flex min-w-0 flex-1 flex-col items-end gap-2">
               <Block className="h-5 w-40" />
               <Block className="h-3 w-28" />

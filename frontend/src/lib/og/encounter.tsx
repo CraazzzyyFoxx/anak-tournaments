@@ -16,6 +16,7 @@ import {
   getDivisionIconSrc,
   type DivisionGridLike
 } from "@/lib/divisions/grid";
+import { duelSeats, isLobby } from "@/lib/encounter/seats";
 import { getEncounterState, isEncounterCompleted } from "@/lib/encounter/status";
 import { sortTeamPlayers } from "@/lib/player";
 import encounterService from "@/services/encounter.service";
@@ -369,7 +370,7 @@ export async function renderEncounterOg(encounterId: number) {
     </div>
   );
 
-  if (encounter.format === "ffa") {
+  if (isLobby(encounter)) {
     return new ImageResponse(
       <Shell>
         {header}
@@ -392,16 +393,17 @@ export async function renderEncounterOg(encounterId: number) {
     );
   }
 
+  const [one, two] = duelSeats(encounter.teams);
   const completed = isEncounterCompleted(encounter);
   const scheduledAt = encounter.scheduled_at ? new Date(encounter.scheduled_at) : null;
   const center = completed
-    ? `${encounter.score.home} : ${encounter.score.away}`
+    ? `${one?.score ?? 0} : ${two?.score ?? 0}`
     : scheduledAt
       ? format.dateTime(scheduledAt, { dateStyle: "medium", timeStyle: "short" })
       : t("common.tbd");
 
   const grid = encounter.tournament?.division_grid_version ?? DEFAULT_DIVISION_GRID;
-  const crests = await resolveCrests(grid, [encounter.home_team, encounter.away_team]);
+  const crests = await resolveCrests(grid, [one?.team ?? null, two?.team ?? null]);
 
   return new ImageResponse(
     <Shell>
@@ -420,7 +422,7 @@ export async function renderEncounterOg(encounterId: number) {
       >
         <div style={{ display: "flex", alignItems: "stretch" }}>
           <TeamColumn
-            team={encounter.home_team}
+            team={one?.team ?? null}
             grid={grid}
             crests={crests}
             align="flex-start"
@@ -452,7 +454,7 @@ export async function renderEncounterOg(encounterId: number) {
             </div>
           </div>
           <TeamColumn
-            team={encounter.away_team}
+            team={two?.team ?? null}
             grid={grid}
             crests={crests}
             align="flex-end"

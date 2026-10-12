@@ -4,7 +4,7 @@ import { Bell, Check, CheckCheck, CircleAlert, Settings2, Trash2, X } from "luci
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
 
 import {
   NotificationActions,
@@ -35,6 +35,23 @@ import type { NotificationItem } from "@/types/notification.types";
  * read `2026-09-25T18:00:00Z` in both locales.
  */
 const DATE_FIELDS = ["scheduled_at", "closes_at"] as const;
+
+/**
+ * The payload's `team_names` (every participation, in slot order) as bold
+ * names joined by the locale's separator. Producers still emit the old
+ * two-name keys for the app-service renderer; the inbox reads only this one.
+ */
+function teamNamesNode(names: unknown, separator: string): ReactNode {
+  if (!Array.isArray(names)) return null;
+  return names
+    .filter((name): name is string => typeof name === "string")
+    .map((name, index) => (
+      <Fragment key={index}>
+        {index > 0 ? separator : null}
+        <b>{name}</b>
+      </Fragment>
+    ));
+}
 
 /** Below this the panel is the whole screen rather than a popover. */
 const PHONE_QUERY = "(max-width: 639px)";
@@ -500,7 +517,16 @@ function Row({
       // The key is only known at runtime, so the typed translator cannot
       // narrow it — every kind message takes the same `<b>` tag and scalars.
       const translate = t.rich as (key: string, values: Record<string, unknown>) => ReactNode;
-      body = translate(key, { ...values, b: (chunks: ReactNode) => <b>{chunks}</b> });
+      body = translate(key, {
+        ...values,
+        teams: teamNamesNode(
+          item.payload.team_names,
+          item.kind === "encounter.scheduled"
+            ? t("notifications.teamsSeparator.scheduled")
+            : t("notifications.teamsSeparator.dispute")
+        ),
+        b: (chunks: ReactNode) => <b>{chunks}</b>
+      });
     }
   }
 

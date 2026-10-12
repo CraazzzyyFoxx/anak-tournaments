@@ -121,7 +121,7 @@ const RecentEncountersSection = async ({ user, scope }: { user: User; scope: Sta
         5,
         "played_at",
         "desc",
-        ["tournament", "stage", "stage_item", "home_team", "away_team", "matches.map"],
+        ["tournament", "stage", "stage_item", "teams", "matches.map"],
         undefined,
         scope
       )
@@ -131,6 +131,7 @@ const RecentEncountersSection = async ({ user, scope }: { user: User; scope: Sta
   return (
     <OverviewRecentEncounters
       encounters={encounters.results}
+      userId={user.id}
       userName={user.name}
       tournaments={tournaments}
     />

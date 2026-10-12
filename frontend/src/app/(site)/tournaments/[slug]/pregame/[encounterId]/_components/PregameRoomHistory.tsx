@@ -10,7 +10,7 @@ import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import adminService from "@/services/admin.service";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
-import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
+import { seatName, type PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PregameRoomHistoryEntry } from "@/types/admin.types";
 import type { PickBanKind } from "@/types/tournament.types";
 
@@ -68,6 +68,30 @@ const VERBS = { ban: true, pick: true, protect: true } as const;
 const asText = (value: unknown) => (typeof value === "string" ? value : null);
 const asNumber = (value: unknown) => (typeof value === "number" ? value : null);
 
+/**
+ * The scoreline a journal row carries, in slot order: a technical loss logs
+ * `scores` (participation id -> score), a game correction logs `results`
+ * (one line per participation). `null` when the row has neither.
+ */
+function scoreLabel(data: Record<string, unknown>, seats: PickBanSeat[]): string | null {
+  const byTeam: Record<number, number> = {};
+  if (data.scores != null && typeof data.scores === "object" && !Array.isArray(data.scores)) {
+    for (const [teamId, score] of Object.entries(data.scores)) {
+      if (typeof score === "number") byTeam[Number(teamId)] = score;
+    }
+  }
+  if (Array.isArray(data.results)) {
+    for (const line of data.results) {
+      const row = line as Record<string, unknown>;
+      const teamId = asNumber(row.encounter_team_id);
+      const score = asNumber(row.score);
+      if (teamId != null && score != null) byTeam[teamId] = score;
+    }
+  }
+  const scores = seats.map((seat) => byTeam[seat.id]);
+  return scores.length > 0 && scores.every((score) => score != null) ? scores.join("–") : null;
+}
+
 /** The item ids an entry talks about, however the recorder packed them. */
 function itemIds(data: Record<string, unknown>): number[] {
   const single = asNumber(data.item_id);
@@ -98,11 +122,12 @@ function itemIds(data: Record<string, unknown>): number[] {
  */
 export function PregameRoomHistory({
   encounterId,
-  sideNameOf,
+  seats,
   itemsByKind
 }: Readonly<{
   encounterId: number;
-  sideNameOf: (side: PickBanSide) => string;
+  /** The room's participations: the journal names a team by its participation id. */
+  seats: PickBanSeat[];
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
 }>) {
   const t = useTranslations("pickBan.room");
@@ -129,18 +154,17 @@ export function PregameRoomHistory({
     if (ACTIONS[key] == null) return t("history.action.unknown", { action: entry.action });
 
     const data = entry.data ?? {};
-    const loser = data.loser_side === "home" || data.loser_side === "away" ? data.loser_side : null;
-    const first = data.first_side === "home" || data.first_side === "away" ? data.first_side : null;
-    const side = entry.side ?? loser;
-    const home = asNumber(data.home_score);
-    const away = asNumber(data.away_score);
+    const loser = asNumber(data.loser_team_id);
+    const first = asNumber(data.first_team_id);
+    const teamId = entry.encounter_team_id ?? loser;
+    const score = scoreLabel(data, seats);
     const verb = asText(data.action);
     const names = itemIds(data).map(
       (id) => itemsByKind[entry.kind === "hero" ? "hero" : "map"][id]?.name ?? `#${id}`
     );
     return t(`history.action.${key}`, {
-      team: side != null ? sideNameOf(side) : t("history.unknownTeam"),
-      first: first != null ? sideNameOf(first) : t("history.unknownTeam"),
+      team: teamId != null ? seatName(seats, teamId) : t("history.unknownTeam"),
+      first: first != null ? seatName(seats, first) : t("history.unknownTeam"),
       kind: entry.kind != null ? t(`phase.${entry.kind}`) : t("title"),
       verb:
         verb != null && verb in VERBS
@@ -151,7 +175,7 @@ export function PregameRoomHistory({
       round: asNumber(data.round) ?? "—",
       step: asNumber(data.step_index) ?? "—",
       position: asNumber(data.position) ?? "—",
-      score: home != null && away != null ? `${home}–${away}` : "—",
+      score: score ?? "—",
       seconds: asNumber(data.seconds) ?? asNumber(data.paused_seconds) ?? 0,
       attempt: asNumber(data.attempt) ?? "—",
       policy: asText(data.policy) ?? "—"

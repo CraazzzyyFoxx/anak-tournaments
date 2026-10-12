@@ -339,7 +339,7 @@ export function placementClass(placement: number): string {
   return "def";
 }
 
-interface TournamentTeamCardFrameProps extends React.HTMLAttributes<HTMLElement> {
+interface TournamentTeamCardFrameProps extends Omit<React.HTMLAttributes<HTMLElement>, "slot"> {
   name: React.ReactNode;
   leadingTag?: React.ReactNode;
   positionTag?: React.ReactNode;

@@ -72,7 +72,7 @@ export function useOverviewMatchPresenter({
   };
 
   const streamsCountOf = (encounter: Encounter) =>
-    [encounter.home_team_id, encounter.away_team_id].filter((teamId) => liveTeamStreams.has(teamId))
+    encounter.teams.filter((seat) => seat.team_id != null && liveTeamStreams.has(seat.team_id))
       .length;
 
   const bracketHref = (encounter: Encounter) =>

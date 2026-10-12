@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { AdminCaptainReport } from "@/types/admin.types";
 import type { ReportCustomFieldDefinition } from "@/types/encounter.types";
 
-import { DASH, fmtDate, mapCodes, submittedAt } from "./report-model";
+import { DASH, fmtDate, submittedAt } from "./report-model";
 
 /**
  * Everything one captain filed, in full.
@@ -19,11 +19,14 @@ import { DASH, fmtDate, mapCodes, submittedAt } from "./report-model";
 export function ReportDetail({
   label,
   teamName,
+  standing,
   report,
   customFields
 }: Readonly<{
   label: string;
   teamName: string;
+  /** What the report claims, in slot order: `2 – 1`. */
+  standing: string;
   report: AdminCaptainReport | null;
   customFields: ReportCustomFieldDefinition[];
 }>) {
@@ -43,7 +46,6 @@ export function ReportDetail({
   // listed under their key rather than dropped with the definition.
   const known = new Set(customFields.map((field) => field.key));
   const extras = Object.entries(report.custom_fields).filter(([key]) => !known.has(key));
-  const codes = mapCodes(report);
 
   return (
     <section className="space-y-2 rounded-xl border border-border/60 p-3">
@@ -51,9 +53,7 @@ export function ReportDetail({
         <p className={EYEBROW_CLASS}>
           {label} · {teamName}
         </p>
-        <p className="font-mono text-sm font-semibold tabular-nums">
-          {report.home_score} &ndash; {report.away_score}
-        </p>
+        <p className="font-mono text-sm font-semibold tabular-nums">{standing}</p>
       </div>
 
       <dl className="space-y-1 text-sm">
@@ -63,7 +63,6 @@ export function ReportDetail({
           label="Closeness"
           value={report.closeness == null ? "not rated" : `${report.closeness}/10`}
         />
-        {codes ? <Field label="Lobby codes" value={codes} mono /> : null}
         {report.comment ? <Field label="Comment" value={report.comment} /> : null}
         {customFields.map((field) => (
           <Field

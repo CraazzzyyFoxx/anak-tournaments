@@ -125,8 +125,8 @@
     "loadMore": "Load more",
     "unknown": "Unknown",
     "any": "Any",
-    "homeTeam": "Home team",
-    "awayTeam": "Away team",
+    "firstTeam": "First team",
+    "secondTeam": "Second team",
     "selectPlaceholder": "Select...",
     "required": "Required",
     "sortBy": "Sort by",
@@ -1361,7 +1361,10 @@
     "save": "Save settings",
     "confirming": "Confirming...",
     "confirmResult": "Confirm Result",
-    "confirmScore": "Confirm {home}:{away}",
+    "confirmScore": "Confirm {first}:{second}",
+    "reason": "Reason",
+    "reasonPlaceholder": "Why the result is set or reopened",
+    "reasonHint": "Required. Recorded in the result journal.",
     "resultSection": "Result",
     "settingsSection": "Match settings",
     "takeReport": "Take the score from a captain report",
@@ -1380,11 +1383,11 @@
     "saveErrorMessage": "Failed to save",
     "confirmErrorMessage": "Failed to confirm",
     "presetDescriptions": {
-      "Home sweep": "Home team sweep",
-      "Home close win": "Narrow home win",
-      "Draw": "Draw",
-      "Away close win": "Narrow away win",
-      "Away sweep": "Away team sweep"
+      "firstSweep": "First team sweep",
+      "firstClose": "Narrow win, first team",
+      "draw": "Draw",
+      "secondClose": "Narrow win, second team",
+      "secondSweep": "Second team sweep"
     },
     "starsAria": "{count, plural, one {# star} other {# stars}}",
     "notSet": "Not set",
@@ -1421,8 +1424,20 @@
     "mapCodePlaceholder": "Replay code",
     "mapLabel": "Map {index}",
     "bothReportsTitle": "Captain reports",
-    "homeReport": "Home report",
-    "awayReport": "Away report",
+    "teamReport": "Report",
+    "gamesPlayed": "Games played",
+    "gamesPlayedHint": "Every position played, drawn ones included",
+    "pointsLabel": "Points",
+    "errors": {
+      "series_claim_teams": "The report must name every team of the match",
+      "series_claim_games_played": "The number of games played does not fit the games already recorded or the match format",
+      "series_claim_not_final": "The match cannot be over on this score",
+      "series_claim_unreachable": "The match would have been decided earlier on this score",
+      "series_claim_wins": "A team has fewer wins than the games already recorded give it",
+      "series_claim_mismatch": "The score differs from the games already recorded",
+      "stale_state": "The result has changed since you opened this form. Reload and report again.",
+      "result_locked": "The result is already confirmed. Ask an organizer to reopen it."
+    },
     "noReportYet": "No report yet",
     "avgCloseness": "Average closeness",
     "reportOrEdit": "Report / Edit my report",
@@ -3343,7 +3358,7 @@
     "liveTeamStreamWithViewers": "{player} is streaming live · {count, plural, one {# viewer} other {# viewers}}",
     "rosters": {
       "title": "Team Rosters",
-      "description": "{home} vs {away}"
+      "description": "{first} vs {second}"
     },
     "pending": "Pending",
     "disputed": "Disputed",
@@ -3360,7 +3375,7 @@
     "rearrangeDone": "Teams swapped",
     "rearrangeFailed": "Could not swap teams",
     "dragTeam": "Drag {team}",
-    "matchAria": "{label}: {home} vs {away}",
+    "matchAria": "{label}: {first} vs {second}",
     "floatRecord": "Record coming into this round: {record}",
     "dnd": {
       "instructions": "Press Space or Enter to pick up a team, move it with the arrow keys onto another slot, then press Space or Enter to swap. Escape cancels.",
@@ -3535,19 +3550,19 @@
       "sub": "Current filter scope",
       "empty": "No map data yet."
     },
-    "sideBalance": {
-      "title": "Side balance",
-      "sub": "Home vs. away winner",
-      "homeWins": "Home wins",
-      "awayWins": "Away wins"
+    "slotBalance": {
+      "title": "Slot balance",
+      "sub": "Slot 1 vs. slot 2 winner",
+      "slotOneWins": "Slot 1 wins",
+      "slotTwoWins": "Slot 2 wins"
     },
     "detail": {
-      "metaTitle": "{home} vs {away}",
-      "metaDescription": "Overview for {home} vs {away} on {siteName}.",
+      "metaTitle": "{first} vs {second}",
+      "metaDescription": "Overview for {first} vs {second} on {siteName}.",
       "back": "Back to encounters",
       "tie": "Tie",
       "pregameRoom": "Pre-game room",
-      "heroTitle": "{home} vs {away}",
+      "heroTitle": "{first} vs {second}",
       "verdictWin": "Series won by {team}",
       "verdictDraw": "Series drawn",
       "verdictPending": "Series not decided",
@@ -3556,7 +3571,7 @@
       "pipUnplayed": "not played",
       "challonge": "Challonge",
       "statMaps": "Maps played",
-      "statMapsSub": "{format} · {home}–{away} on maps",
+      "statMapsSub": "{format} · {one}–{two} on maps",
       "statDuration": "Series time",
       "statDurationSub": "{value} average per map",
       "scheduledAt": "Scheduled",
@@ -3568,7 +3583,7 @@
       "mapNotPlayed": "Not played",
       "mapInProgress": "In progress",
       "mapInProgressHint": "The result of this map has not been reported yet",
-      "mapScoreAria": "{home} {homeScore}, {away} {awayScore}",
+      "mapScoreAria": "{first} {firstScore}, {second} {secondScore}",
       "openScoreboard": "Scoreboard",
       "rosters": "Rosters",
       "seriesStats": "Series statistics",
@@ -3585,7 +3600,6 @@
       "reportedScore": "Reported score",
       "reportedCloseness": "Match quality",
       "reportedClosenessValue": "{value} of 10",
-      "reportedCodes": "Lobby codes",
       "reportedComment": "Comment",
       "pregame": "Pre-game",
       "pregameMap": "Map veto",
@@ -3595,10 +3609,9 @@
       "pregamePicked": "Picked",
       "pregameBanned": "Banned",
       "pregameFirst": "First move",
-      "pregameSeeds": "Seeds (home / away)",
+      "pregameSeeds": "Seeds (slot 1 / slot 2)",
       "pregameTurn": "Current turn",
-      "readinessHome": "Home ready",
-      "readinessAway": "Away ready",
+      "readiness": "Slot {slot} ready",
       "tabsLabel": "Match sections",
       "tabs": {
         "overview": "Overview",
@@ -3651,12 +3664,8 @@
         "seedSource": {
           "bracket_slot": "from bracket",
           "standings": "from standings",
-          "fallback_home": "default (home)",
+          "fallback_first_slot": "default (first slot)",
           "admin": "set by admin"
-        },
-        "side": {
-          "home": "home",
-          "away": "away"
         },
         "empty": {
           "notConfiguredTitle": "Veto is not configured",
@@ -3698,8 +3707,6 @@
             "remaining": "Remaining"
           },
           "by": {
-            "home": "home",
-            "away": "away",
             "decider": "decider",
             "admin": "admin"
           }
@@ -3776,8 +3783,8 @@
         "itemNumber": "Hero #{id}"
       },
       "title": "Pre-game Room",
-      "metaTitle": "Pick-ban: {home} vs {away}",
-      "metaDescription": "Pick-ban room for {home} vs {away} on {siteName}.",
+      "metaTitle": "Pick-ban: {first} vs {second}",
+      "metaDescription": "Pick-ban room for {first} vs {second} on {siteName}.",
       "metaDescriptionFallback": "Pick-ban room on {siteName}.",
       "phase": {
         "map": "Map veto",
@@ -3796,7 +3803,7 @@
         "score": "Series",
         "bestOf": "Bo{n}",
         "toWin": "first to {n}",
-        "official": "Official {home}:{away}"
+        "official": "Official {first}:{second}"
       },
       "series": {
         "label": "Maps of this series",
@@ -3817,12 +3824,8 @@
       "seedSource": {
         "bracket_slot": "from bracket",
         "standings": "from standings",
-        "fallback_home": "default (home)",
+        "fallback_first_slot": "default (first slot)",
         "admin": "set by admin"
-      },
-      "side": {
-        "home": "home",
-        "away": "away"
       },
       "notConfiguredTitle": "Not configured",
       "notConfiguredHint": "The organizer has not set rules for this match yet. Check back later.",
@@ -3894,16 +3897,14 @@
         "remaining": "Remaining"
       },
       "by": {
-        "home": "home",
-        "away": "away",
+        "team": "by {team}",
         "decider": "decider",
         "admin": "admin"
       },
       "protectedBy": {
-        "home": "protected by home",
-        "away": "protected by away"
+        "team": "protected by {team}"
       },
-      "turn": "Turn: {side} — {action}",
+      "turn": "Turn: {team} — {action}",
       "turnBoth": "Both teams — {action}",
       "turnRevealing": "Revealing both drafts",
       "action": {
@@ -3986,8 +3987,7 @@
       "electOpener": {
         "title": "Choose who opens the next round",
         "hint": "Your side lost the previous map. Choose who bans first this round.",
-        "chooseHome": "Home opens",
-        "chooseAway": "Away opens",
+        "choose": "{team} opens",
         "confirm": "Confirm",
         "sending": "Sending...",
         "failed": "Failed to submit the choice",
@@ -4006,8 +4006,14 @@
         "resolved": "Result confirmed — moving to the next map",
         "mapLabel": "Map played",
         "lockedTitle": "This map's result is confirmed",
-        "lockedHint": "The accepted score is {home}:{away}. Only an organizer can change it now.",
-        "close": "Close"
+        "lockedHint": "The accepted score is {first}:{second}. Only an organizer can change it now.",
+        "close": "Close",
+        "errors": {
+          "stale_state": "This map's result changed while you were reporting. The room has reloaded — report again.",
+          "result_locked": "This map's result is already accepted. Only an organizer can change it now.",
+          "map_locked": "A captain already reported this map, so it can no longer be changed.",
+          "side_pick_pending": "The side this map is played on is not decided yet."
+        }
       },
       "admin": {
         "title": "Pick-ban controls (admin)",
@@ -4135,7 +4141,7 @@
         "hint": "Both captains report this map independently. Matching reports lock it in and open the next map's bans; a mismatch goes to an admin.",
         "pending": "{team} has not reported yet",
         "filed": "{team} has reported",
-        "filedScore": "{team} reported {home}–{away}",
+        "filedScore": "{team} reported {first}–{second}",
         "claim": {
           "waiting": "Not reported",
           "sealed": "Sealed until both",
@@ -4149,7 +4155,7 @@
         "report": "Report the result",
         "amend": "Change my report",
         "pickMap": "Which map did you play?",
-        "accepted": "Accepted score {home}:{away} — this map is locked in",
+        "accepted": "Accepted score {first}:{second} — this map is locked in",
         "view": "View the result"
       },
       "heroBans": {
@@ -4184,7 +4190,8 @@
       "finalReport": {
         "title": "Report the match",
         "hint": "Pick and ban are done. This is the tournament's match report: confirm the series score, add the match codes and anything else the organizers asked for. Filing it takes you back where you came from."
-      }
+      },
+      "tbd": "TBD"
     },
     "admin": {
       "readOnly": "You do not have permission to change these rule sets.",
@@ -4364,8 +4371,9 @@
         "first": "Opener",
         "second": "Second side",
         "both": "Both sides",
-        "home": "Home",
-        "away": "Away",
+        "slot_1": "First team",
+        "slot_2": "Second team",
+        "other": "Chosen by an earlier step",
         "winner_prev": "Winner of the previous map",
         "loser_prev": "Loser of the previous map",
         "system": "Engine"
@@ -4374,8 +4382,9 @@
         "first": "The side that opens this map, per the rotation on the Sides step.",
         "second": "The other side of this map.",
         "both": "Both sides act on the same step.",
-        "home": "Always the home team, whatever the rotation says.",
-        "away": "Always the away team, whatever the rotation says.",
+        "slot_1": "Always the team in slot 1 of the match, whatever the rotation says.",
+        "slot_2": "Always the team in slot 2 of the match, whatever the rotation says.",
+        "other": "The participation an earlier step of the round handed this role to.",
         "winner_prev": "The winner of the previous map; the opener on the first map.",
         "loser_prev": "The loser of the previous map; the opener on the first map.",
         "system": "Nobody acts: the engine rolls this step itself."
@@ -4645,8 +4654,8 @@
     "spectatorRead": "Spectators can read",
     "visibilityFailed": "Visibility not changed",
     "role": {
-      "home": "home",
-      "away": "away",
+      "home": "captain",
+      "away": "captain",
       "captain": "captain",
       "staff": "staff",
       "spectator": "spectator"
@@ -6961,10 +6970,9 @@
       "bestOf": "Bo{count}",
       "closed": "Closed",
       "awaitingOpponent": "Waiting for the opponent",
-      "sides": "{home} vs {away}",
+      "matchup": "{first} vs {second}",
       "createdAt": "Created {date}",
-      "youAreHome": "you captain the home side",
-      "youAreAway": "you captain the away side",
+      "youCaptain": "you captain {team}",
       "copyLink": "Copy link",
       "linkCopied": "Link copied",
       "linkCopyFailed": "Unable to copy the link",
@@ -6987,12 +6995,12 @@
       "labelLabel": "Room name",
       "labelPlaceholder": "Tuesday scrim",
       "labelHint": "What both captains see at the top of the room.",
-      "homeLabel": "Home team",
-      "homePlaceholder": "Your team",
-      "homeHint": "You captain this side.",
-      "awayLabel": "Away team",
-      "awayPlaceholder": "Their team",
-      "awayHint": "The first person to open the link claims this side.",
+      "ownLabel": "Your team",
+      "ownPlaceholder": "Team name",
+      "ownHint": "You captain this team.",
+      "opponentLabel": "Opposing team",
+      "opponentPlaceholder": "Their team",
+      "opponentHint": "The first person to open the link captains this team.",
       "bestOfLabel": "Series length",
       "bestOfValue": "Best of {count}",
       "bestOfHint": "How many maps the series plays. It sets the veto order too.",
@@ -7037,7 +7045,7 @@
       "uniqueRoleHint": "Stops a side from banning two heroes of the same role in the same round."
     },
     "claim": {
-      "sides": "{home} vs {away}",
+      "matchup": "{first} vs {second}",
       "prompt": "This room still needs a captain for {team}.",
       "claim": "Captain {team}",
       "watch": "Just watch",
@@ -7193,8 +7201,8 @@
       },
       "encounter": {
         "report_disputed": "{map_index, plural, =0 {A report in your match is disputed} other {The report for map # of your match is disputed}}",
-        "dispute_review": "{position, plural, =0 {<b>{home_team_name}</b> and <b>{away_team_name}</b> disagree on the final series score — an organizer has to decide} other {<b>{home_team_name}</b> and <b>{away_team_name}</b> disagree on the score of map # — an organizer has to decide}}",
-        "scheduled": "<b>{home_team_name} vs {away_team_name}</b> in {tournament_name} {scheduled_at, select, none {is ready to play — the time is still to be announced} other {is scheduled for {scheduled_at}}}"
+        "dispute_review": "{position, plural, =0 {{teams} disagree on the final series score — an organizer has to decide} other {{teams} disagree on the score of map # — an organizer has to decide}}",
+        "scheduled": "{teams} in {tournament_name} {scheduled_at, select, none {is ready to play — the time is still to be announced} other {is scheduled for {scheduled_at}}}"
       },
       "announcement": {
         "published": "New announcement"
@@ -7327,6 +7335,10 @@
         "title": "Retire these notifications?",
         "description": "They stop appearing in recipients' inboxes and stop counting toward their badge. The records and the read marks stay, so who saw them remains answerable — but this cannot be undone from here."
       }
+    },
+    "teamsSeparator": {
+      "scheduled": " vs ",
+      "dispute": " and "
     }
   },
   "mixes": {

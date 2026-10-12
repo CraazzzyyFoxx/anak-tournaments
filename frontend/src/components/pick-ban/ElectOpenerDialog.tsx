@@ -18,14 +18,14 @@ import { notify } from "@/lib/notify";
 import pickBanService from "@/services/pickBan.service";
 import type { PickBanKind } from "@/types/tournament.types";
 import { Spinner } from "@/components/ui/spinner";
-import type { PickBanSide } from "./pick-ban-model";
+import type { PickBanSeat } from "./pick-ban-model";
 
 interface ElectOpenerDialogProps {
   kind: PickBanKind;
   encounterId: number;
   open: boolean;
-  homeName: string;
-  awayName: string;
+  /** The participations that may open the round, in slot order. */
+  seats: PickBanSeat[];
   queryKey: unknown[];
 }
 
@@ -34,13 +34,13 @@ interface ElectOpenerDialogProps {
  * true (`first_ban_rotation: result_loser_choice`). The backend enforces who
  * may submit this — `open` alone gates VISIBILITY, not authorization.
  */
-export function ElectOpenerDialog({ kind, encounterId, open, homeName, awayName, queryKey }: Readonly<ElectOpenerDialogProps>) {
+export function ElectOpenerDialog({ kind, encounterId, open, seats, queryKey }: Readonly<ElectOpenerDialogProps>) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
-  const [choice, setChoice] = useState<PickBanSide | null>(null);
+  const [choice, setChoice] = useState<number | null>(null);
 
   const mutation = useMutation({
-    mutationFn: (first_side: PickBanSide) => pickBanService.electOpener(kind, encounterId, { first_side }),
+    mutationFn: (first_team_id: number) => pickBanService.electOpener(kind, encounterId, { first_team_id }),
     onError: (error) => notify.apiError(error, { title: t("electOpener.failed") }),
     onSettled: () => {
       setChoice(null);
@@ -59,20 +59,16 @@ export function ElectOpenerDialog({ kind, encounterId, open, homeName, awayName,
           <AlertDialogDescription>{t("electOpener.hint")}</AlertDialogDescription>
         </AlertDialogHeader>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button
-            variant={choice === "home" ? "default" : "outline"}
-            className="flex-1"
-            onClick={() => setChoice("home")}
-          >
-            {t("electOpener.chooseHome")} · {homeName}
-          </Button>
-          <Button
-            variant={choice === "away" ? "default" : "outline"}
-            className="flex-1"
-            onClick={() => setChoice("away")}
-          >
-            {t("electOpener.chooseAway")} · {awayName}
-          </Button>
+          {seats.map((seat) => (
+            <Button
+              key={seat.id}
+              variant={choice === seat.id ? "default" : "outline"}
+              className="flex-1"
+              onClick={() => setChoice(seat.id)}
+            >
+              {t("electOpener.choose", { team: seat.name })}
+            </Button>
+          ))}
         </div>
         <AlertDialogFooter>
           <Button

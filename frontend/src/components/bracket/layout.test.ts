@@ -26,12 +26,19 @@ function match(id: number, round: number, overrides: Partial<BracketMatch> = {})
     id,
     round,
     status: "open",
-    score: { home: 0, away: 0 },
-    home_team_id: id * 10,
-    away_team_id: id * 10 + 1,
+    teams: [
+      { slot: 1, team_id: id * 10, name: `Team ${id * 10}`, score: 0 },
+      { slot: 2, team_id: id * 10 + 1, name: `Team ${id * 10 + 1}`, score: 0 }
+    ],
     ...overrides
   };
 }
+
+/** A match's two seats, slot 1 first. */
+const seats = (one: number, two: number, scoreOne = 0, scoreTwo = 0): BracketMatch["teams"] => [
+  { slot: 1, team_id: one, name: `Team ${one}`, score: scoreOne },
+  { slot: 2, team_id: two, name: `Team ${two}`, score: scoreTwo }
+];
 
 const nodeOf = (layout: ReturnType<typeof buildLayout>, id: number) =>
   layout.nodes.find((node) => node.encounter.id === id)!;
@@ -136,13 +143,16 @@ describe("buildLayout", () => {
   });
 
   it("splits a Swiss round's column into record pools, each card under its pool's label", () => {
-    const done = (home: number, away: number) => ({ status: "completed", score: { home, away } });
+    const done = (id: number, scoreOne: number, scoreTwo: number) => ({
+      status: "completed",
+      teams: seats(id * 10, id * 10 + 1, scoreOne, scoreTwo)
+    });
     const layout = buildLayout(
       [
-        match(1, 1, done(2, 0)),
-        match(2, 1, done(0, 2)),
-        match(3, 2, { home_team_id: 10, away_team_id: 21 }), // both 1-0
-        match(4, 2, { home_team_id: 11, away_team_id: 20 }) // both 0-1
+        match(1, 1, done(1, 2, 0)),
+        match(2, 1, done(2, 0, 2)),
+        match(3, 2, { teams: seats(10, 21) }), // both 1-0
+        match(4, 2, { teams: seats(11, 20) }) // both 0-1
       ],
       "swiss",
       label
@@ -161,7 +171,7 @@ describe("buildLayout", () => {
   it("names the winner on a settled connector and nobody on an open one", () => {
     const layout = buildLayout(
       [
-        match(1, 1, { status: "completed", score: { home: 0, away: 2 } }),
+        match(1, 1, { status: "completed", teams: seats(10, 11, 0, 2) }),
         match(2, 1),
         match(3, 2)
       ],

@@ -204,16 +204,25 @@ const FREAKS = team(3, "Freak deck", 3705, 3, GROUP_B, [
 
 const TEAMS = [EMERALD, BAN_KOTA, FREAKS];
 
-/** Emerald beat Ban kota twice; Freaks played nothing settled. */
-function encounter(id: number, home: Team, away: Team, score: { home: number; away: number }): Encounter {
+/** Emerald beat Ban kota twice; Freaks played nothing settled. `scores` are slot 1 and slot 2. */
+function encounter(id: number, one: Team, two: Team, scores: [number, number]): Encounter {
+  const seat = (slot: number, team: Team, score: number) => ({
+    id: id * 10 + slot,
+    slot,
+    team_id: team.id,
+    name: team.name,
+    seed: null,
+    score,
+    placement: null,
+    active: true,
+    team
+  });
   return {
     id,
     created_at: new Date(0),
     updated_at: null,
     name: `E${id}`,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    score,
+    slot_count: 2,
     round: 1,
     best_of: 3,
     tournament_id: TOURNAMENT_ID,
@@ -224,21 +233,23 @@ function encounter(id: number, home: Team, away: Team, score: { home: number; aw
     closeness: null,
     has_logs: false,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: null,
     started_at: null,
     ended_at: null,
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: home,
-    away_team: away,
+    games: [],
+    teams: [seat(1, one, scores[0]), seat(2, two, scores[1])],
     tournament: makeTournament("completed")
   };
 }
 
 const ENCOUNTERS = [
-  encounter(10, EMERALD, BAN_KOTA, { home: 2, away: 0 }),
-  encounter(11, EMERALD, FREAKS, { home: 2, away: 1 })
+  encounter(10, EMERALD, BAN_KOTA, [2, 0]),
+  encounter(11, EMERALD, FREAKS, [2, 1])
 ];
 
 let container: HTMLDivElement;

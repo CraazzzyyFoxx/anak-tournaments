@@ -15,7 +15,6 @@ import { useMapsCatalog } from "@/hooks/useMapsCatalog";
 import { createTrailingCoalescer, type Coalescer } from "@/lib/realtime/coalesce";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
-import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
 import type { Encounter } from "@/types/encounter.types";
 import type { MapRead } from "@/types/map.types";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
@@ -34,7 +33,8 @@ export interface PregameRoomData {
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
   /** Every map in the catalog, for the no-veto "which map did you play" picker. */
   mapChoices: MapRead[];
-  viewerSide: PickBanSide | null;
+  /** The participation the viewer captains (`EncounterTeam.id`), or null for anyone else. */
+  viewerTeamId: number | null;
   readyPending: boolean;
   markReady: () => void;
   refetchAll: () => void;
@@ -116,8 +116,8 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
   });
   const mapsQuery = useMapsCatalog();
   const heroesQuery = useHeroesCatalog();
-  // `build_unavailable_state` reports `viewer_side: null` regardless of
-  // identity (there is no session yet to resolve a side against), so the
+  // `build_unavailable_state` reports `viewer_team_id: null` regardless of
+  // identity (there is no session yet to resolve a participation against), so the
   // readiness gate's "you're a captain" check needs its own read.
   const roleQuery = useQuery({
     queryKey: encounterQueryKeys.myRole(encounterId),
@@ -264,7 +264,7 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
     heroesById,
     itemsByKind: { map: mapsById, hero: heroesById },
     mapChoices: mapsQuery.data ?? [],
-    viewerSide: roleQuery.data?.side ?? null,
+    viewerTeamId: roleQuery.data?.encounter_team_id ?? null,
     readyPending: readyMutation.isPending,
     markReady: () => readyMutation.mutate(),
     refetchAll: () => {
