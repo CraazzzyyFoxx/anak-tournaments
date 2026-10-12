@@ -116,9 +116,11 @@ export function buildStageUpdatePayload(stage: Stage, form: StageForm): StageUpd
     // the format this stage used to be would silently beat "Games per lobby",
     // with nothing in the editor that can reach it, so only `default` is kept.
     best_of: isFfa ? { default: form.bestOf.default, by_round: {}, final: null } : form.bestOf,
-    // Only an FFA league is scored by columns and a formula; any other type
-    // leaves the stored rule alone rather than saving one its format cannot use
-    // (`scoring` is sent whole, so "alone" means sending it back as it was).
+    // Only an FFA league is scored by columns and a formula. A stage that stays
+    // another type leaves its stored rule alone (`scoring` is sent whole, so
+    // "alone" means sending it back as it was). A stage whose FORMAT changes sends
+    // every rule field as null: the server reads that as "the new type's own
+    // rule" and would otherwise keep the old `points` rule on a duel format.
     // The formula is trimmed, not otherwise touched: it is the organizer's text,
     // and the parser that refuses it also reports the position inside it.
     scoring: {
@@ -132,12 +134,14 @@ export function buildStageUpdatePayload(stage: Stage, form: StageForm): StageUpd
             placement_points: form.ffaPlacementPoints,
             formula: form.ffaFormula.trim()
           }
-        : {
-            preset: stage.scoring.preset,
-            columns: stage.scoring.columns,
-            placement_points: stage.scoring.placement_points,
-            formula: stage.scoring.formula
-          })
+        : form.stageType !== stage.stage_type
+          ? { preset: null, columns: null, placement_points: null, formula: null }
+          : {
+              preset: stage.scoring.preset,
+              columns: stage.scoring.columns,
+              placement_points: stage.scoring.placement_points,
+              formula: stage.scoring.formula
+            })
     }
   };
 }

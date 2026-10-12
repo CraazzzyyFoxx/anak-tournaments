@@ -472,8 +472,9 @@ describe("Stage editor, FFA league scoring", () => {
 
     const sent = payload();
     expect(sent.stage_type).toBe("round_robin");
-    // The rule is sent whole, so a stage that stops being FFA hands back the one it had.
-    expect(sent.scoring).toEqual(SAVED_SCORING);
+    // The format changed, so every rule field goes out null: the server reads
+    // that as "the new type's own rule" (`wins`) and resets the FFA one.
+    expect(sent.scoring).toEqual(NO_RULE);
     // A lobby metric on a duel stage is silently dropped by the engine, so the
     // order the editor saves has to be one the new format can actually run.
     expect(sent.tiebreak_order?.filter((id) => id.startsWith("ffa_"))).toEqual([]);
