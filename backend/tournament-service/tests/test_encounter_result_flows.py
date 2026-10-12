@@ -535,8 +535,6 @@ class DisputeNotificationTests(ResultFlowCase):
                 "game_id": game.id,
                 "position": 1,
                 "team_names": ["T0", "T1"],
-                "home_team_name": "T0",
-                "away_team_name": "T1",
             },
             review[0].payload_json,
         )
@@ -583,8 +581,6 @@ class DisputeNotificationTests(ResultFlowCase):
                 "tournament_id": self.ids["t"],
                 "position": 0,
                 "team_names": ["T0", "T1"],
-                "home_team_name": "T0",
-                "away_team_name": "T1",
             },
             review[0].payload_json,
         )

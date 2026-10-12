@@ -676,8 +676,6 @@ class DisputedReportTests(_ProducerTestCase):
                 "game_id": self.game.id,
                 "position": 1,
                 "team_names": ["Vanguard", "Rearguard"],
-                "home_team_name": "Vanguard",
-                "away_team_name": "Rearguard",
             },
             rows[0].payload_json,
         )
@@ -730,8 +728,6 @@ class DisputedReportTests(_ProducerTestCase):
                 "tournament_id": TOURNAMENT_ID,
                 "position": 0,
                 "team_names": ["Vanguard", "Rearguard"],
-                "home_team_name": "Vanguard",
-                "away_team_name": "Rearguard",
             },
             rows[0].payload_json,
         )

@@ -245,11 +245,6 @@ class LifecycleNotifier:
             "tournament_id": tournament.id,
             "tournament_name": tournament.name,
             "team_names": team_names,
-            # The v1 wire's two keys, which app-service's notification_render
-            # still interpolates; Task 13 moves the locale strings onto
-            # ``team_names``. The VALUES are slot 1 and slot 2.
-            "home_team_name": team_names[0] if team_names else "",
-            "away_team_name": team_names[1] if len(team_names) > 1 else "",
             "scheduled_at": scheduled_at,
             "pick_ban": await self._has_pick_ban(session, encounter),
         }

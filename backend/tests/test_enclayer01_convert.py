@@ -100,6 +100,30 @@ def test_ruleset_actors_become_slots_and_everything_else_is_left_alone():
     assert mod.rewrite_ruleset(None) is None
 
 
+def test_stored_notification_payloads_trade_the_home_away_pair_for_team_names():
+    stored = {"encounter_id": 5, "tournament_id": 2, "home_team_name": "Vanguard", "away_team_name": "Rearguard"}
+    assert mod.notification_payload(stored) == {
+        "encounter_id": 5,
+        "tournament_id": 2,
+        "team_names": ["Vanguard", "Rearguard"],
+    }
+    # The producers wrote "" for a missing seat; a null or absent half is the same seat.
+    assert mod.notification_payload({"home_team_name": "Solo", "away_team_name": None})["team_names"] == ["Solo", ""]
+    assert mod.notification_payload({"away_team_name": "B"})["team_names"] == ["", "B"]
+
+
+def test_notification_payload_step_is_idempotent_and_keeps_a_lobby_list():
+    assert mod.notification_payload(
+        {"team_names": ["A", "B", "C"], "home_team_name": "A", "away_team_name": "B", "position": 1}
+    ) == {"team_names": ["A", "B", "C"], "position": 1}
+    done = {"encounter_id": 5, "team_names": ["Vanguard", "Rearguard"]}
+    assert mod.notification_payload(done) == done
+    assert mod.notification_payload(mod.notification_payload({"home_team_name": "A", "away_team_name": "B"})) == {
+        "team_names": ["A", "B"]
+    }
+    assert mod.notification_payload(None) is None
+
+
 def test_duel_audit_rows_become_one_entry_per_occupied_slot():
     slots = {1: 71, 2: 72}
     row = {

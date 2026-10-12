@@ -78,11 +78,6 @@ async def notify_dispute_review(
                 # 0 is the series-level sentinel the inbox's ``plural`` selects
                 # on; an absent key is not an ICU argument.
                 "position": 0 if game is None else game.position,
-                # The two legacy keys app-service's renderer still interpolates
-                # (``notification_render.py``); a lobby's extra participations
-                # are in ``team_names`` until the locale strings are cut over.
                 "team_names": list(team_names),
-                "home_team_name": team_names[0] if len(team_names) > 0 else "",
-                "away_team_name": team_names[1] if len(team_names) > 1 else "",
             },
         )

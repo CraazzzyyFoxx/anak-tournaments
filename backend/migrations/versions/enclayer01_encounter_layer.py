@@ -853,6 +853,28 @@ def rewrite_ruleset(document):
     return {**document, "phases": rewritten}
 
 
+#: The two keys a notification payload carried while an encounter had a home
+#: and an away side.
+_LEGACY_TEAM_NAME_KEYS = ("home_team_name", "away_team_name")
+_NOTIFICATION_KINDS = ("encounter.scheduled", "encounter.dispute_review")
+
+
+def notification_payload(payload):
+    """A stored notification payload with ``team_names`` instead of the pair.
+
+    The inbox and the Discord renderer read only ``team_names`` (every seat's
+    name in slot order); rows written before the cutover carry the pair alone.
+    Idempotent: a payload without the pair, or already carrying ``team_names``,
+    only loses the pair.
+    """
+    if not isinstance(payload, dict) or not any(key in payload for key in _LEGACY_TEAM_NAME_KEYS):
+        return payload
+    rest = {key: value for key, value in payload.items() if key not in _LEGACY_TEAM_NAME_KEYS}
+    if isinstance(rest.get("team_names"), list):
+        return rest
+    return {**rest, "team_names": [payload.get(key) or "" for key in _LEGACY_TEAM_NAME_KEYS]}
+
+
 def _snapshot_lines(entries, team_participations: dict[int, int]) -> list[dict] | None:
     """A lobby snapshot's rows, keyed by participation instead of source team.
 
@@ -1486,6 +1508,27 @@ def _rulesets(bind) -> None:
         )
 
 
+def _notifications(bind) -> None:
+    """Stored ``encounter.scheduled``/``encounter.dispute_review`` rows say
+    ``team_names``, not home/away (§13.7): the inbox renders nothing else."""
+    rows = (
+        bind.execute(
+            sa.text(
+                "SELECT id, payload_json FROM notification WHERE kind = ANY(:kinds)"
+                " AND jsonb_exists_any(payload_json, ARRAY['home_team_name', 'away_team_name']) ORDER BY id"
+            ),
+            {"kinds": list(_NOTIFICATION_KINDS)},
+        )
+        .mappings()
+        .all()
+    )
+    _write_many(
+        bind,
+        "UPDATE notification SET payload_json = CAST(:payload AS JSONB) WHERE id = :id",
+        [{"id": row["id"], "payload": json.dumps(notification_payload(row["payload_json"]))} for row in rows],
+    )
+
+
 def _audit(bind) -> None:
     """The journal's score pairs and lobby blobs become one shape over
     participations, and the rows get the versions they never had."""
@@ -1610,6 +1653,7 @@ def _backfill() -> None:
     for statement in (*_CLAIMS_AND_REPORTS, *_PICK_BAN, _LINKS):
         op.execute(statement)
     _rulesets(bind)
+    _notifications(bind)
     _audit(bind)
     for statement in _FINALIZE:
         op.execute(statement)

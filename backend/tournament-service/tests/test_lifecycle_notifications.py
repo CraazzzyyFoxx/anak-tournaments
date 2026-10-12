@@ -551,8 +551,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
         self.assertEqual([701, 702], self.fx.recipients("encounter.scheduled"))
         payload = self.fx.notifications("encounter.scheduled")[0].payload_json
         self.assertEqual(encounter.id, payload["encounter_id"])
-        self.assertEqual("Home", payload["home_team_name"])
-        self.assertEqual("Away", payload["away_team_name"])
+        self.assertEqual(["Home", "Away"], payload["team_names"])
         self.assertEqual(self.later, _instant(payload["scheduled_at"]))
         self.assertFalse(payload["pick_ban"])
         self.assertEqual(1, len(self.fx.broadcasts()))

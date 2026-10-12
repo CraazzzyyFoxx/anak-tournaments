@@ -72,8 +72,7 @@ describe("notification destinations", () => {
           tournament_id: 42,
           encounter_id: 87,
           scheduled_at: "2026-09-25T18:00:00Z",
-          home_team_name: "A",
-          away_team_name: "B"
+          team_names: ["A", "B"]
         }
       })
     ).toBe("/tournaments/42/pregame/87");
