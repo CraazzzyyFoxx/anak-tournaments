@@ -82,7 +82,7 @@ export function AdminTableToolbar({
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border/40 px-4 py-2.5">
       {showSearch ? (
-        <div className="relative w-64 shrink-0">
+        <div className="relative w-full sm:w-64 sm:shrink-0">
           <Label htmlFor={searchInputId} className="sr-only">{searchLabel}</Label>
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -97,7 +97,7 @@ export function AdminTableToolbar({
         </div>
       ) : null}
 
-      {toolbar ? <div className="min-w-0 flex-1">{toolbar}</div> : null}
+      {toolbar ? <div className="min-w-32 flex-1">{toolbar}</div> : null}
 
       {isRefreshing ? (
         <output className="flex shrink-0 items-center text-muted-foreground">
@@ -106,7 +106,7 @@ export function AdminTableToolbar({
         </output>
       ) : null}
 
-      <div className="ml-auto flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
         {bulkActions}
         {offPageSelected > 0 ? (
           <span className="text-xs tabular-nums text-muted-foreground" title={t("selectedRowsOtherPages")}>
