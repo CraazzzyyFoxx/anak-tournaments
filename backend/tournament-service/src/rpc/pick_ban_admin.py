@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -44,6 +45,7 @@ from src.schemas import captain as captain_schemas
 from src.services.encounter import pick_ban_action as pick_ban_action
 from src.services.encounter import pick_ban_config, room_control, room_journal
 from src.services.encounter import pick_ban_session as pick_ban_session
+from src.services.encounter.captain import ReportResultIn
 from src.services.encounter.game_correction import game_correction_service
 from src.services.encounter.pregame_rooms import pregame_rooms_service
 from src.services.encounter.room_reconcile import request_tournament_reconcile
@@ -81,25 +83,26 @@ class PickBanAdminReset(BaseModel):
 
 
 class PickBanAdminAct(BaseModel):
-    """Body for the admin act-for-a-side route: perform one step on behalf of
-    an absent captain. ``target_player_id`` names the opponent roster player a
-    per-player ban is spent on (ruleset v2 target steps); ``null`` everywhere
-    else."""
+    """Body for the admin act-for-a-participation route: perform one step on
+    behalf of an absent captain. ``target_player_id`` names the opponent roster
+    player a per-player ban is spent on (ruleset v2 target steps); ``null``
+    everywhere else."""
 
     kind: PickBanKind
-    side: Literal["home", "away"]
+    encounter_team_id: int
+    #: The catalog item, or the side INDEX on a ``side_pick`` step.
     item_id: int
-    action: Literal["pick", "ban", "protect"]
+    action: Literal["pick", "ban", "protect", "side_pick"]
     target_player_id: int | None = None
 
 
 class PickBanAdminSubmit(BaseModel):
-    """Body for the admin submit-for-a-side route: replace a BLIND step's draft
-    on behalf of a captain who is not there to author it. Items reuse the
-    captain schema so the two surfaces cannot drift."""
+    """Body for the admin submit-for-a-participation route: replace a BLIND
+    step's draft on behalf of a captain who is not there to author it. Items
+    reuse the captain schema so the two surfaces cannot drift."""
 
     kind: PickBanKind
-    side: Literal["home", "away"]
+    encounter_team_id: int
     items: list[captain_schemas.PickBanSubmissionItemInput] = Field(default_factory=list)
     lock: bool = False
 
@@ -118,7 +121,7 @@ class PickBanAdminElectOpener(BaseModel):
     who is not there to name it themselves."""
 
     kind: PickBanKind
-    first_side: Literal["home", "away"]
+    first_team_id: int
 
 
 class PickBanAdminPause(BaseModel):
@@ -146,25 +149,31 @@ class PickBanAdminCancel(BaseModel):
 
 
 class AdminTechnicalLossInput(BaseModel):
-    """Body for the technical-loss route: which side forfeits, optionally the
-    exact score to record it as (omitted = the default forfeit score), and the
-    reason -- a walkover is never anonymous."""
+    """Body for the technical-loss route: which PARTICIPATION forfeits,
+    optionally the exact scores to record it as (omitted = the default forfeit
+    score), and the reason -- a walkover is never anonymous."""
 
-    loser_side: Literal["home", "away"]
-    home_score: int | None = Field(default=None, ge=0)
-    away_score: int | None = Field(default=None, ge=0)
+    loser_team_id: int
+    results: list[AdminForfeitResult] = Field(default_factory=list)
     reason: str = Field(min_length=1, max_length=500)
 
 
+class AdminForfeitResult(BaseModel):
+    """One participation's score in an explicitly stated forfeit."""
+
+    encounter_team_id: int
+    score: float
+
+
 class AdminReadinessSet(BaseModel):
-    """Body for the admin readiness override: force one side's captain
+    """Body for the admin readiness override: force one participation's captain
     readiness on or off.
 
     ``ready: false`` is only meaningful before a session exists -- readiness
     gates session CREATION and nothing else -- so the service 409s once one
     does (reset the session instead)."""
 
-    side: Literal["home", "away"]
+    encounter_team_id: int
     ready: bool
 
 
@@ -235,6 +244,13 @@ def _pool_item_ids(mode: MapVetoMode, item_ids: list[int], slots: list[PickBanCo
     return list(dict.fromkeys(pooled))
 
 
+async def _discipline(session: Any, tournament_id: int) -> str:
+    """The tournament's discipline code -- what decides whether a ruleset may
+    name sides at all (D25)."""
+    code = await session.scalar(sa.select(models.Tournament.discipline).where(models.Tournament.id == tournament_id))
+    return str(code or "overwatch")
+
+
 def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.tournament.admin_pick_ban_config_list")
     async def _admin_pick_ban_config_list(data: dict, msg: RabbitMessage) -> dict:
@@ -264,6 +280,7 @@ def register(broker: Any, logger: Any) -> None:
                 slots=[(slot.candidates, slot.reserve_item_id) for slot in body.slots],
                 stage_id=body.stage_id,
                 round=body.round,
+                discipline=await _discipline(session, tournament_id),
                 groups=await pick_ban_config.group_vocabulary(session, body.kind),
             )
             config = await pick_ban_config.pick_ban_config_service.upsert_config(
@@ -391,6 +408,7 @@ def register(broker: Any, logger: Any) -> None:
                 body.ruleset,
                 kind=body.kind.value,
                 mode=body.mode.value,
+                discipline=await _discipline(session, tournament_id),
                 best_of=body.best_of,
                 pool_groups=await pick_ban_config.pool_group_counts(
                     session, body.kind, _pool_item_ids(body.mode, body.item_ids, body.slots)
@@ -431,13 +449,13 @@ def register(broker: Any, logger: Any) -> None:
                 after={"kind": body.kind},
             )
             # reset_pick_ban_session commits internally; the response is the
-            # same state shape the room polls (viewer_side stays null for
+            # same state shape the room polls (viewer stays null for
             # admins).
             await pick_ban_session.pick_ban_session_service.reset_pick_ban_session(
                 session, encounter, body.kind, actor_auth_user_id=user.id
             )
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, body.kind, viewer_side=None
+                session, encounter_id, body.kind, viewer=None
             )
 
         return await _run(logger, op)
@@ -460,25 +478,25 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=encounter_id,
                 after={
                     "kind": body.kind,
-                    "side": body.side,
+                    "encounter_team_id": body.encounter_team_id,
                     "action": body.action,
                     "item_id": body.item_id,
                     "target_player_id": body.target_player_id,
                 },
             )
-            # Same engine as the captain act route, side supplied explicitly
-            # (bypasses captain-side resolution); commits internally.
-            # ``viewer_side=None``: an organizer sees the whole board, including
-            # the other side's unrevealed draft, which a captain must not.
+            # Same engine as the captain act route, the acting participation
+            # supplied explicitly (bypassing captain resolution); commits
+            # internally. ``viewer=None``: an organizer sees the whole board,
+            # including an unrevealed draft, which a captain must not.
             return await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
                 body.kind,
-                body.side,
+                body.encounter_team_id,
                 item_id=body.item_id,
                 action=body.action,
                 target_player_id=body.target_player_id,
-                viewer_side=None,
+                viewer=None,
                 actor_auth_user_id=user.id,
             )
 
@@ -502,7 +520,7 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=encounter_id,
                 after={
                     "kind": body.kind,
-                    "side": body.side,
+                    "encounter_team_id": body.encounter_team_id,
                     "lock": body.lock,
                     "item_ids": [item.item_id for item in body.items],
                 },
@@ -511,10 +529,10 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 encounter_id,
                 body.kind,
-                body.side,
+                body.encounter_team_id,
                 items=[item.model_dump() for item in body.items],
                 lock=body.lock,
-                viewer_side=None,
+                viewer=None,
                 actor_auth_user_id=user.id,
             )
 
@@ -565,17 +583,17 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ws_id,
                 entity_type="encounter",
                 entity_id=encounter_id,
-                after={"kind": body.kind, "first_side": body.first_side},
+                after={"kind": body.kind, "first_team_id": body.first_team_id},
             )
-            # `acting_side=None` IS the override: the losing captain's exclusive
-            # right to choose does not apply to an organizer unsticking a room
-            # they are not playing in. Commits inside `advance_to_next_round`;
-            # the response is the state shape the room polls.
+            # `acting_team_id=None` IS the override: the losing captain's
+            # exclusive right to choose does not apply to an organizer
+            # unsticking a room they are not playing in. Commits inside
+            # `advance_to_next_round`; the response is the state the room polls.
             await pick_ban_session.pick_ban_session_service.elect_round_opener(
-                session, pick_ban, first_side=body.first_side, acting_side=None, actor_auth_user_id=user.id
+                session, pick_ban, first_team_id=body.first_team_id, acting_team_id=None, actor_auth_user_id=user.id
             )
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, body.kind, viewer_side=None
+                session, encounter_id, body.kind, viewer=None
             )
 
         return await _run(logger, op)
@@ -684,9 +702,11 @@ def register(broker: Any, logger: Any) -> None:
             encounter = await room_control.technical_loss(
                 session,
                 encounter,
-                loser_side=body.loser_side,
-                home_score=body.home_score,
-                away_score=body.away_score,
+                loser_team_id=body.loser_team_id,
+                results=[
+                    ReportResultIn(encounter_team_id=line.encounter_team_id, score=line.score) for line in body.results
+                ]
+                or None,
                 reason=body.reason,
                 actor_auth_user_id=user.id,
                 # The result audit's actor lives in PLAYER space, not auth space
@@ -760,7 +780,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ws_id,
                 entity_type="encounter",
                 entity_id=encounter.id,
-                after={"side": body.side, "ready": body.ready},
+                after={"encounter_team_id": body.encounter_team_id, "ready": body.ready},
             )
             service = pick_ban_session.pick_ban_session_service
             # ``ready_user_id`` is a PLAYER identity (``identity.user``), and an
@@ -770,10 +790,12 @@ def register(broker: Any, logger: Any) -> None:
             # internally and signal the room.
             if body.ready:
                 readiness = await service.mark_ready(
-                    session, encounter, body.side, None, actor_auth_user_id=user.id, source="admin"
+                    session, encounter, body.encounter_team_id, None, actor_auth_user_id=user.id, source="admin"
                 )
             else:
-                readiness = await service.clear_ready(session, encounter, body.side, actor_auth_user_id=user.id)
+                readiness = await service.clear_ready(
+                    session, encounter, body.encounter_team_id, actor_auth_user_id=user.id
+                )
             return {"readiness": readiness}
 
         return await _run(logger, op)

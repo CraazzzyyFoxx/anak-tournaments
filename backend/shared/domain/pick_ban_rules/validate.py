@@ -12,6 +12,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from shared.disciplines import DisciplineSpec
+from shared.disciplines import discipline as discipline_spec
+
 from .registry import (
     CONSTRAINTS,
     HERO_GROUPS,
@@ -21,7 +24,7 @@ from .registry import (
     ParamSpec,
     normalize_group,
 )
-from .schema import Issue, Phase, Ruleset, RulesetError, Step, parse_ruleset
+from .schema import LEGACY_ACTOR_SLOTS, Issue, Phase, Ruleset, RulesetError, Step, parse_ruleset
 
 __all__ = ["Issue", "validate_ruleset"]
 
@@ -47,19 +50,28 @@ def validate_ruleset(
     *,
     kind: str,
     mode: str = "pool",
+    discipline: str = "overwatch",
+    slot_count: int = 2,
     groups: Sequence[str] | None = None,
 ) -> list[Issue]:
-    """Validate a ruleset document for ``kind``/``mode``.
+    """Validate a ruleset document for ``kind``/``mode``/``discipline``.
 
     ``groups`` is the item-group vocabulary of the kind (gamemode slugs for
     maps); ``None`` means "do not check map group names" — the hero groups are
     a closed set and always checked.
+
+    ``discipline`` and ``slot_count`` decide what the actor vocabulary can say
+    (D25): ``slot:<n>`` must name a seat the card has, ``side:<code>`` a side
+    the discipline declares AND a side some earlier ``side_pick`` assigned, and
+    ``side_pick`` itself is legal only for a discipline that declares exactly
+    as many sides as the encounter seats participants.
     """
     try:
         ruleset = parse_ruleset(ruleset_json)
     except RulesetError as exc:
         return list(exc.issues)
 
+    spec = discipline_spec(discipline)
     known_groups = _known_groups(kind, groups)
     issues: list[Issue] = []
     if not ruleset.phases:
@@ -74,6 +86,9 @@ def validate_ruleset(
             issues.append(_error(f"{path}.id", "duplicate_phase_id", f"phase id {phase.id!r} is used twice"))
         seen_phase_ids.add(phase.id)
         _validate_phase(phase, path, issues, kind=kind, mode=mode, known_groups=known_groups)
+        # Sides a phase's own earlier steps have handed out: ``side:<code>`` is
+        # read per phase, because a phase IS one round of the series.
+        assigned_sides: set[str] = set()
         for step_index, step in enumerate(phase.steps):
             step_path = f"{path}.steps[{step_index}]"
             _validate_id(step.id, f"{step_path}.id", issues)
@@ -81,6 +96,9 @@ def validate_ruleset(
                 issues.append(_error(f"{step_path}.id", "duplicate_step_id", f"step id {step.id!r} is used twice"))
             seen_step_ids.add(step.id)
             _validate_step(step, step_path, issues, kind=kind, phase=phase, known_groups=known_groups)
+            _validate_actors(step, step_path, issues, spec=spec, slot_count=slot_count, assigned_sides=assigned_sides)
+            if step.action == "side_pick":
+                assigned_sides.update(spec.sides)
 
     if ruleset.timer_seconds is not None and ruleset.timer_seconds < MIN_TIMER_SECONDS:
         issues.append(
@@ -180,6 +198,18 @@ def _validate_step(
         if step.count != 1:
             issues.append(_error(f"{path}.count", "decider_count", "a decider settles exactly one item"))
 
+    if step.action == "side_pick":
+        if step.count != 1:
+            issues.append(_error(f"{path}.count", "side_pick_count", "a side pick settles exactly one side"))
+        if step.actors == "system":
+            # A coin flip is the TIMEOUT rule, not the step: someone has to be
+            # the one standing in for.
+            issues.append(_error(f"{path}.actors", "side_pick_actors", "a side pick is made by a participation"))
+        if step.blind:
+            issues.append(_error(f"{path}.blind", "side_pick_blind", "a side pick has nothing to hide"))
+        if step.target is not None:
+            issues.append(_error(f"{path}.target", "side_pick_target", "a side pick names no opponent player"))
+
     if not 1 <= step.count <= MAX_COUNT:
         issues.append(_error(f"{path}.count", "count_range", f"count must be between 1 and {MAX_COUNT}"))
     if step.min is not None and not 0 <= step.min <= step.count:
@@ -238,6 +268,45 @@ def _validate_step(
                 )
             )
         _validate_params(spec.params, constraint.params, constraint_path, issues, known_groups=known_groups)
+
+
+def _validate_actors(
+    step: Step,
+    path: str,
+    issues: list[Issue],
+    *,
+    spec: DisciplineSpec,
+    slot_count: int,
+    assigned_sides: set[str],
+) -> None:
+    """What the step's actor token may say about THIS discipline and card (D25)."""
+    actors = step.actors
+    if step.action == "side_pick" and len(spec.sides) != slot_count:
+        issues.append(
+            _error(
+                f"{path}.action",
+                "side_pick_unsupported",
+                f"{spec.name} declares {len(spec.sides)} side(s) for {slot_count} participants, "
+                "so there is no side to pick",
+            )
+        )
+    slot = LEGACY_ACTOR_SLOTS.get(actors)
+    if slot is None and actors.startswith("slot:"):
+        slot = int(actors.removeprefix("slot:"))
+    if slot is not None and not 1 <= slot <= slot_count:
+        issues.append(_error(f"{path}.actors", "actors_slot_unseated", f"this encounter seats slots 1..{slot_count}"))
+    if actors.startswith("side:"):
+        code = actors.removeprefix("side:")
+        if code not in spec.sides:
+            issues.append(_error(f"{path}.actors", "actors_unknown_side", f"{spec.name} declares no side {code!r}"))
+        elif code not in assigned_sides:
+            issues.append(
+                _error(
+                    f"{path}.actors",
+                    "actors_side_unassigned",
+                    f"side {code!r} is read before any side_pick step assigned it",
+                )
+            )
 
 
 # ── condition trees ─────────────────────────────────────────────────────────

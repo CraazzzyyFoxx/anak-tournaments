@@ -159,19 +159,26 @@ def validate_pick_ban_slot_config(slots: list[list[int]], *, reserves: list[int 
             raise HTTPException(status_code=422, detail=f"slot {index} reserve must not be one of its own candidates")
 
 
+#: Stand-in seats: only HOW MANY participations an actor token resolves to
+#: matters to the demand, never which.
+_DEMAND_SEATS = (1, 2)
+
+
 def _phase_demand(phase: pbr.Phase) -> int:
     """How many pool items one round of ``phase`` consumes, worst case.
 
-    Each non-decider step spends ``count`` items per acting side (``both`` is
-    two sides); a decider settles exactly one. Sides come from the engine's own
-    resolver so the two never drift -- the opener is irrelevant to the COUNT,
-    only to who acts.
+    Each item-spending step spends ``count`` per acting participation
+    (``both`` is everyone); a decider settles exactly one, and a side pick
+    spends nothing from the pool. Actors come from the engine's own resolver so
+    the two never drift.
     """
 
     def _spend(step: pbr.Step) -> int:
         if step.action == "decider":
             return 1
-        return step.count * len(pbr.resolve_sides(step.actors, opener="home", prev_outcome=None))
+        if step.action == "side_pick":
+            return 0
+        return step.count * len(pbr.resolve_actors(step.actors, participants=_DEMAND_SEATS, opener=_DEMAND_SEATS[0]))
 
     return sum(_spend(step) for step in phase.steps)
 
@@ -185,6 +192,7 @@ def validate_config_payload(
     slots: Sequence[tuple[Sequence[int], int | None]],
     stage_id: int | None,
     round: int | None,
+    discipline: str = "overwatch",
     groups: Sequence[str] | None = None,
 ) -> None:
     """Everything an upsert body must satisfy before it becomes a config row.
@@ -201,12 +209,13 @@ def validate_config_payload(
     exactly as in v1.
 
     ``groups`` is the kind's item-group vocabulary (see :func:`group_vocabulary`);
-    ``None`` skips map-group name checks.
+    ``None`` skips map-group name checks. ``discipline`` decides what the actor
+    vocabulary may say -- whether the game has sides to pick at all (D25).
     """
     if round is not None and stage_id is None:
         raise HTTPException(status_code=422, detail="round requires stage_id")
 
-    issues = pbr.validate_ruleset(ruleset, kind=kind.value, mode=mode.value, groups=groups)
+    issues = pbr.validate_ruleset(ruleset, kind=kind.value, mode=mode.value, discipline=discipline, groups=groups)
     errors = [issue for issue in issues if issue.severity == "error"]
     if errors:
         # A dict detail WITHOUT ``msg``: ``shared.rpc.common.http_error``'s

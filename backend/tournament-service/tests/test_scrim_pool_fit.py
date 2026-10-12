@@ -159,6 +159,24 @@ class _Fixture:
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
             for table in tables:
                 table.create(conn)
+            # The pick-ban config cascade resolves its (stage, round) coordinate
+            # from the bracket position now (D22), so every room read touches
+            # this table -- but its FKs use Postgres-only ``SET NULL (col)``
+            # forms sqlite cannot compile, so the shape is written by hand.
+            # Same story for the scoring rule the encounter points at: its
+            # ARRAY/JSONB columns have no sqlite form.
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.scoring_rule ("
+                " id INTEGER PRIMARY KEY, workspace_id INTEGER NOT NULL, preset TEXT NOT NULL,"
+                " columns TEXT NOT NULL DEFAULT '[]', placement_points TEXT NOT NULL DEFAULT '[]',"
+                " game_formula TEXT NOT NULL, end_formula TEXT NOT NULL,"
+                " created_at TIMESTAMP, updated_at TIMESTAMP)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE tournament.bracket_encounter ("
+                " encounter_id INTEGER PRIMARY KEY, tournament_id INTEGER NOT NULL,"
+                " stage_id INTEGER, stage_item_id INTEGER, round INTEGER NOT NULL)"
+            )
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 900
@@ -242,6 +260,25 @@ class _Fixture:
                 active=True,
                 score=0.0,
             )
+        # ``create_room`` writes the bracket position too: the pick-ban config
+        # cascade resolves its (stage, round) coordinate from it (D22), and the
+        # room's config is pinned to that stage.
+        self.session.execute(
+            sa.text(
+                "INSERT INTO encounter.scoring_rule"
+                " (id, workspace_id, preset, game_formula, end_formula)"
+                " VALUES (:r, :w, 'wins', 'win', 'games >= best_of')"
+            ),
+            {"r": RULE_ID, "w": WORKSPACE_ID},
+        )
+        self.session.execute(
+            sa.text(
+                "INSERT INTO tournament.bracket_encounter"
+                " (encounter_id, tournament_id, stage_id, stage_item_id, round)"
+                " VALUES (:e, :t, :s, NULL, 1)"
+            ),
+            {"e": ENCOUNTER_ID, "t": CONTAINER_ID, "s": STAGE_ID},
+        )
         self.session.commit()
         return self.session.get(models.Encounter, ENCOUNTER_ID)
 

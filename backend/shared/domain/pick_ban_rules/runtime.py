@@ -31,15 +31,26 @@ PICKED = "picked"
 BANNED = "banned"
 PROTECTED = "protected"
 
-#: ``pick_ban_entry.picked_by`` marker for anything the engine resolved itself.
-SYSTEM_PICKED_BY = "decider"
+#: ``pick_ban_entry.picked_by_kind`` for a participation, and for anything the
+#: engine resolved itself (``PickBanActorKind``).
+TEAM_KIND = "team"
+DECIDER_KIND = "decider"
+
+
+def actor_columns(actor: int | None) -> tuple[str, int | None]:
+    """``(picked_by_kind, picked_by_team_id)`` for one resolved actor -- the
+    pair the board's CHECK constraint keeps in step."""
+    return (TEAM_KIND, actor) if actor is not None else (DECIDER_KIND, None)
 
 
 class SubmissionLike(Protocol):
-    """One side's action on one step (``tournament.pick_ban_submission``)."""
+    """One participation's action on one step (``encounter.pick_ban_submission``).
+
+    ``encounter_team_id`` is ``None`` exactly when the engine answered.
+    """
 
     step_index: int
-    side: str
+    encounter_team_id: int | None
     attempt: int
     state: str
     items_json: list[dict[str, Any]]
@@ -48,14 +59,16 @@ class SubmissionLike(Protocol):
 
 
 class EntryLike(Protocol):
-    """One row of the round's board (``tournament.pick_ban_entry``)."""
+    """One row of the round's board (``encounter.pick_ban_entry``)."""
 
     item_id: int
     round: int | None
     order: int
     action_index: int | None
-    picked_by: str | None
-    protected_by: str | None
+    picked_by_kind: str | None
+    picked_by_team_id: int | None
+    protected_by_kind: str | None
+    protected_by_team_id: int | None
     status: str
     carried_from_round: int | None
 
@@ -72,8 +85,8 @@ class RuntimeCtx:
     """Everything the rules read that is not the step itself.
 
     ``available_item_ids`` are the round's entries still available (carried
-    bans are not among them); ``targets`` maps an ACTING side to the players it
-    may name — i.e. the opponent's roster.
+    bans are not among them); ``targets`` maps an ACTING participation to the
+    players it may name — i.e. the opponents' rosters.
     """
 
     kind: str
@@ -82,13 +95,13 @@ class RuntimeCtx:
     available_item_ids: tuple[int, ...] = ()
     groups: Mapping[int, str | None] = field(default_factory=dict)
     history: History = History()
-    targets: Mapping[str, Sequence[TargetPlayer]] = field(default_factory=dict)
+    targets: Mapping[int, Sequence[TargetPlayer]] = field(default_factory=dict)
 
     def group_of(self, item_id: int) -> str | None:
         return normalize_group(self.groups.get(item_id))
 
-    def targets_for(self, side: str) -> tuple[TargetPlayer, ...]:
-        return tuple(self.targets.get(side, ()))
+    def targets_for(self, actor: int | None) -> tuple[TargetPlayer, ...]:
+        return tuple(self.targets.get(actor, ())) if actor is not None else ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +124,8 @@ class EligibleSet:
 @dataclass(frozen=True, slots=True)
 class CarriedBan:
     item_id: int
-    side: str
+    #: The participation that banned it; ``None`` when the engine did.
+    actor: int | None
     from_round: int
 
 
@@ -140,23 +154,30 @@ def current_attempt(submissions: Iterable[SubmissionLike], step_index: int) -> i
     return max(attempts) if attempts else 1
 
 
-def side_submission(submissions: Iterable[SubmissionLike], step_index: int, side: str) -> SubmissionLike | None:
-    """A side's live submission for a step: its row at the current attempt,
+def actor_submission(
+    submissions: Iterable[SubmissionLike], step_index: int, actor: int | None
+) -> SubmissionLike | None:
+    """An actor's live submission for a step: its row at the current attempt,
     unless that row was voided."""
     attempt = current_attempt(submissions, step_index)
     for row in submissions:
-        if row.step_index == step_index and row.side == side and row.attempt == attempt and row.state != VOIDED:
+        if (
+            row.step_index == step_index
+            and row.encounter_team_id == actor
+            and row.attempt == attempt
+            and row.state != VOIDED
+        ):
             return row
     return None
 
 
 def current_step(steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLike]) -> ResolvedStep | None:
-    """The first step some acting side has not revealed yet; ``None`` once the
+    """The first step some actor has not revealed yet; ``None`` once the
     resolved sequence is exhausted."""
     rows = list(submissions)
     for step in steps:
-        for side in step.sides:
-            row = side_submission(rows, step.index, side)
+        for actor in step.actors:
+            row = actor_submission(rows, step.index, actor)
             if row is None or row.state != REVEALED:
                 return step
     return None
@@ -172,8 +193,8 @@ def applied_items(steps: Sequence[ResolvedStep], submissions: Iterable[Submissio
     rows = list(submissions)
     applied: list[AppliedItem] = []
     for step in steps:
-        for side in step.sides:
-            row = side_submission(rows, step.index, side)
+        for actor in step.actors:
+            row = actor_submission(rows, step.index, actor)
             if row is None:
                 continue
             if row.state != REVEALED and (step.blind or row.state not in (DRAFT, LOCKED)):
@@ -183,7 +204,7 @@ def applied_items(steps: Sequence[ResolvedStep], submissions: Iterable[Submissio
                     AppliedItem(
                         step_index=step.index,
                         round=step.round,
-                        side=side,
+                        actor=actor,
                         action=step.action,
                         item_id=int(item["item_id"]),
                     )
@@ -197,10 +218,11 @@ def history_of(steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLi
 
 
 def visible_submissions(
-    steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLike], viewer_side: str | None
+    steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLike], viewer: int | None
 ) -> list[SubmissionLike]:
-    """Blind privacy (D4): the server never serializes another side's unrevealed
-    draft. Revealed rows, every row of an open step, and the viewer's own."""
+    """Blind privacy (D4): the server never serializes another participation's
+    unrevealed draft. Revealed rows, every row of an open step, and the
+    viewer's own."""
     by_index = {step.index: step for step in steps}
     rows = list(submissions)
     visible: list[SubmissionLike] = []
@@ -208,19 +230,23 @@ def visible_submissions(
         if row.state == VOIDED or row.attempt != current_attempt(rows, row.step_index):
             continue
         step = by_index.get(row.step_index)
-        if row.state == REVEALED or (step is not None and not step.blind) or row.side == viewer_side:
+        if (
+            row.state == REVEALED
+            or (step is not None and not step.blind)
+            or (viewer is not None and row.encounter_team_id == viewer)
+        ):
             visible.append(row)
     return visible
 
 
-def step_progress(step: ResolvedStep, submissions: Iterable[SubmissionLike]) -> dict[str, dict[str, Any]]:
-    """Per acting side ``{locked, filled}`` — reported even while a blind draft
-    itself stays hidden."""
+def step_progress(step: ResolvedStep, submissions: Iterable[SubmissionLike]) -> dict[int, dict[str, Any]]:
+    """Per acting participation ``{locked, filled}`` — reported even while a
+    blind draft itself stays hidden."""
     rows = list(submissions)
-    progress: dict[str, dict[str, Any]] = {}
-    for side in step.acting_sides:
-        row = side_submission(rows, step.index, side)
-        progress[side] = {
+    progress: dict[int, dict[str, Any]] = {}
+    for actor in step.acting_actors:
+        row = actor_submission(rows, step.index, actor)
+        progress[actor] = {
             "locked": row is not None and row.state in (LOCKED, REVEALED),
             "filled": len(_items_of(row)) if row is not None else 0,
         }
@@ -228,11 +254,11 @@ def step_progress(step: ResolvedStep, submissions: Iterable[SubmissionLike]) -> 
 
 
 def ready_to_reveal(step: ResolvedStep, submissions: Iterable[SubmissionLike]) -> bool:
-    """True once every side of the step has a locked (or already revealed)
+    """True once every actor of the step has a locked (or already revealed)
     submission — the moment a blind step opens up."""
     rows = list(submissions)
-    for side in step.sides:
-        row = side_submission(rows, step.index, side)
+    for actor in step.actors:
+        row = actor_submission(rows, step.index, actor)
         if row is None or row.state not in (LOCKED, REVEALED):
             return False
     return True
@@ -252,8 +278,10 @@ def project_entries(
     for entry in entries:
         if entry.carried_from_round is None:
             entry.status = AVAILABLE
-            entry.picked_by = None
-            entry.protected_by = None
+            entry.picked_by_kind = None
+            entry.picked_by_team_id = None
+            entry.protected_by_kind = None
+            entry.protected_by_team_id = None
             entry.action_index = None
 
     by_round: dict[tuple[int | None, int], list[EntryLike]] = {}
@@ -268,26 +296,30 @@ def project_entries(
         if not candidates:
             continue
         entry = candidates[0]
-        side = SYSTEM_PICKED_BY if applied.side == "system" else applied.side
+        kind, actor = actor_columns(applied.actor)
         match applied.action:
             case "ban":
                 if entry.status != AVAILABLE:
-                    continue  # already banned by the other side of a blind step (D8), or protected
+                    continue  # already banned by the other actor of a blind step (D8), or protected
                 entry.status = BANNED
-                entry.picked_by = side
+                entry.picked_by_kind, entry.picked_by_team_id = kind, actor
             case "protect":
                 if entry.status != AVAILABLE:
                     continue
                 entry.status = PROTECTED
-                entry.protected_by = side
+                entry.protected_by_kind, entry.protected_by_team_id = kind, actor
             case "pick" | "decider":
                 if entry.status != AVAILABLE:
                     continue
                 picked += 1
                 entry.status = PICKED
-                entry.picked_by = SYSTEM_PICKED_BY if applied.action == "decider" else side
+                entry.picked_by_kind, entry.picked_by_team_id = (
+                    (DECIDER_KIND, None) if applied.action == "decider" else (kind, actor)
+                )
                 entry.order = picked
             case _:
+                # ``side_pick`` settles a side, not an item: it applies nothing
+                # to the board.
                 continue
         entry.action_index = action_index
         action_index += 1
@@ -295,7 +327,7 @@ def project_entries(
 
 def carried_bans(steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionLike], round: int) -> list[CarriedBan]:
     """Bans of earlier rounds still active on ``round``: ``lifetime is null or
-    r + lifetime > round``. First side wins on duplicates."""
+    r + lifetime > round``. The first actor wins on duplicates."""
     rows = list(submissions)
     seen: dict[int, CarriedBan] = {}
     for step in steps:
@@ -303,19 +335,15 @@ def carried_bans(steps: Sequence[ResolvedStep], submissions: Iterable[Submission
             continue
         if step.lifetime is not None and step.round + step.lifetime <= round:
             continue
-        for side in step.sides:
-            row = side_submission(rows, step.index, side)
+        for actor in step.actors:
+            row = actor_submission(rows, step.index, actor)
             if row is None or row.state != REVEALED:
                 continue
             for item in _items_of(row):
                 item_id = int(item["item_id"])
                 seen.setdefault(
                     item_id,
-                    CarriedBan(
-                        item_id=item_id,
-                        side=SYSTEM_PICKED_BY if side == "system" else side,
-                        from_round=step.round,
-                    ),
+                    CarriedBan(item_id=item_id, actor=actor, from_round=step.round),
                 )
     return list(seen.values())
 
@@ -323,12 +351,12 @@ def carried_bans(steps: Sequence[ResolvedStep], submissions: Iterable[Submission
 # ── eligibility ─────────────────────────────────────────────────────────────
 
 
-def _item_ctx(step: ResolvedStep, side: str, ctx: RuntimeCtx, item_id: int, target_role: str | None) -> ItemCtx:
+def _item_ctx(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx, item_id: int, target_role: str | None) -> ItemCtx:
     return ItemCtx(
         item_id=item_id,
         group=ctx.group_of(item_id),
         kind=ctx.kind,
-        side=None if side == "system" else side,
+        actor=actor,
         target_role=target_role,
         round=ctx.round,
         history=replace(ctx.history, current_step_index=step.index),
@@ -337,8 +365,8 @@ def _item_ctx(step: ResolvedStep, side: str, ctx: RuntimeCtx, item_id: int, targ
 
 def filter_pool(pool_filter: Mapping[str, Any] | None, item_ids: Sequence[int], ctx: RuntimeCtx) -> list[int]:
     """The configured candidates a round may actually open with: a pool filter
-    has no acting side and no target, so only absolute leaves apply (validation
-    enforces that)."""
+    has no acting participation and no target, so only absolute leaves apply
+    (validation enforces that)."""
     return [
         item_id
         for item_id in item_ids
@@ -348,7 +376,7 @@ def filter_pool(pool_filter: Mapping[str, Any] | None, item_ids: Sequence[int], 
                 item_id=item_id,
                 group=ctx.group_of(item_id),
                 kind=ctx.kind,
-                side=None,
+                actor=None,
                 target_role=None,
                 round=ctx.round,
                 history=ctx.history,
@@ -357,24 +385,24 @@ def filter_pool(pool_filter: Mapping[str, Any] | None, item_ids: Sequence[int], 
     ]
 
 
-def eligible_items(step: ResolvedStep, side: str, ctx: RuntimeCtx) -> EligibleSet:
-    """What ``side`` may choose on ``step`` right now. For a target step the
+def eligible_items(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx) -> EligibleSet:
+    """What ``actor`` may choose on ``step`` right now. For a target step the
     answer is per opponent player, and ``item_ids`` is their union."""
     if step.target is None:
         items = tuple(
             item_id
             for item_id in ctx.available_item_ids
-            if evaluate(step.eligible, _item_ctx(step, side, ctx, item_id, None))
+            if evaluate(step.eligible, _item_ctx(step, actor, ctx, item_id, None))
         )
         return EligibleSet(item_ids=items, by_target=None)
 
     by_target: dict[int, tuple[int, ...]] = {}
     union: list[int] = []
-    for player in ctx.targets_for(side):
+    for player in ctx.targets_for(actor):
         items = tuple(
             item_id
             for item_id in ctx.available_item_ids
-            if evaluate(step.eligible, _item_ctx(step, side, ctx, item_id, player.role))
+            if evaluate(step.eligible, _item_ctx(step, actor, ctx, item_id, player.role))
         )
         by_target[player.player_id] = items
         union.extend(item for item in items if item not in union)
@@ -393,11 +421,11 @@ def _max_per_group_rules(step: ResolvedStep) -> list[tuple[int, str, str | None]
     ]
 
 
-def _round_group_counts(step: ResolvedStep, side: str, ctx: RuntimeCtx) -> dict[str | None, int]:
-    """The side's applied items of the same action in EARLIER steps of the round."""
+def _round_group_counts(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx) -> dict[str | None, int]:
+    """The actor's applied items of the same action in EARLIER steps of the round."""
     counts: dict[str | None, int] = {}
     for applied in ctx.history.items:
-        if applied.side != side or applied.action != step.action or applied.round != ctx.round:
+        if applied.actor != actor or applied.action != step.action or applied.round != ctx.round:
             continue
         if applied.step_index >= step.index:
             continue
@@ -408,7 +436,7 @@ def _round_group_counts(step: ResolvedStep, side: str, ctx: RuntimeCtx) -> dict[
 
 def validate_items(
     step: ResolvedStep,
-    side: str,
+    actor: int | None,
     items: Sequence[Mapping[str, Any]],
     ctx: RuntimeCtx,
     *,
@@ -422,8 +450,8 @@ def validate_items(
     ``min_per_group``).
     """
     issues: list[str] = []
-    eligible = eligible_items(step, side, ctx)
-    allowed_targets = {player.player_id for player in ctx.targets_for(side)}
+    eligible = eligible_items(step, actor, ctx)
+    allowed_targets = {player.player_id for player in ctx.targets_for(actor)}
     available = set(ctx.available_item_ids)
 
     if len(items) > step.count:
@@ -466,7 +494,7 @@ def validate_items(
 
     rules = _max_per_group_rules(step)
     if rules:
-        carried = _round_group_counts(step, side, ctx)
+        carried = _round_group_counts(step, actor, ctx)
         for maximum, scope, group in rules:
             for candidate, count in group_counts.items():
                 if group is not None and candidate != group:
@@ -476,7 +504,7 @@ def validate_items(
                     issues.append("max_per_group")
 
     if final:
-        if len(items) < effective_min(step, side, ctx):
+        if len(items) < effective_min(step, actor, ctx):
             issues.append("not_enough_items")
         for constraint in step.constraints:
             if constraint.type != "min_per_group":
@@ -488,11 +516,11 @@ def validate_items(
     return list(dict.fromkeys(issues))
 
 
-def effective_min(step: ResolvedStep, side: str, ctx: RuntimeCtx) -> int:
+def effective_min(step: ResolvedStep, actor: int | None, ctx: RuntimeCtx) -> int:
     """``min`` capped by what is actually choosable, so an exhausted pool can
     never deadlock a lock: distinct eligible items, or for a target step with
     ``one_per_target`` the maximum target/item matching."""
-    eligible = eligible_items(step, side, ctx)
+    eligible = eligible_items(step, actor, ctx)
     if step.target is not None and any(constraint.type == "one_per_target" for constraint in step.constraints):
         capacity = _max_matching(eligible.by_target or {})
     else:
@@ -527,7 +555,7 @@ def _max_matching(by_target: Mapping[int, Sequence[int]]) -> int:
 
 def random_fill(
     step: ResolvedStep,
-    side: str,
+    actor: int | None,
     items: Sequence[Mapping[str, Any]],
     ctx: RuntimeCtx,
     rng: Random | None = None,
@@ -536,10 +564,10 @@ def random_fill(
     constraint satisfiable. CSPRNG by default; a seeded ``Random`` for tests."""
     chooser = rng or secrets.SystemRandom()
     filled = [dict(item) for item in items]
-    eligible = eligible_items(step, side, ctx)
+    eligible = eligible_items(step, actor, ctx)
 
     while len(filled) < step.count:
-        candidates = _fill_candidates(step, side, ctx, filled, eligible, chooser)
+        candidates = _fill_candidates(step, actor, ctx, filled, eligible, chooser)
         if not candidates:
             break
         filled.append(chooser.choice(candidates))
@@ -548,7 +576,7 @@ def random_fill(
 
 def _fill_candidates(
     step: ResolvedStep,
-    side: str,
+    actor: int | None,
     ctx: RuntimeCtx,
     filled: list[dict[str, Any]],
     eligible: EligibleSet,
@@ -567,7 +595,7 @@ def _fill_candidates(
                 {"item_id": item_id, "target_player_id": player_id} for item_id in item_ids if item_id not in used
             )
     chooser.shuffle(options)
-    return [option for option in options if not validate_items(step, side, [*filled, option], ctx)]
+    return [option for option in options if not validate_items(step, actor, [*filled, option], ctx)]
 
 
 def resolve_system_step(step: ResolvedStep, ctx: RuntimeCtx, rng: Random | None = None) -> list[dict[str, Any]]:
@@ -576,11 +604,11 @@ def resolve_system_step(step: ResolvedStep, ctx: RuntimeCtx, rng: Random | None 
     random-fills its count."""
     chooser = rng or secrets.SystemRandom()
     if step.action == "decider":
-        eligible = eligible_items(step, "system", ctx)
+        eligible = eligible_items(step, None, ctx)
         if not eligible.item_ids:
             return []
         return [{"item_id": chooser.choice(list(eligible.item_ids)), "target_player_id": None}]
-    return random_fill(step, "system", [], ctx, chooser)
+    return random_fill(step, None, [], ctx, chooser)
 
 
 # ── undo / dispute ──────────────────────────────────────────────────────────
@@ -594,8 +622,8 @@ def undo_target(steps: Sequence[ResolvedStep], submissions: Iterable[SubmissionL
     for step in steps:
         if step.is_system:
             continue
-        for side in step.acting_sides:
-            row = side_submission(rows, step.index, side)
+        for actor in step.acting_actors:
+            row = actor_submission(rows, step.index, actor)
             if row is not None and row.state != VOIDED and _items_of(row):
                 target = step.index
                 break
@@ -606,10 +634,10 @@ def dispute_target(
     steps: Sequence[ResolvedStep],
     submissions: Iterable[SubmissionLike],
     *,
-    side: str | None = None,
+    actor: int | None = None,
     blocked_rounds: frozenset[int] = frozenset(),
 ) -> DisputeState:
-    """Whether ``side`` may unilaterally reopen the latest revealed step.
+    """Whether ``actor`` may unilaterally reopen the latest revealed step.
 
     Allowed when that step is blind, its ``dispute`` is enabled, the attempts
     used are below its max, nothing was submitted on a later step, and the
@@ -620,8 +648,8 @@ def dispute_target(
 
     def fully_revealed(step: ResolvedStep) -> bool:
         return all(
-            (row := side_submission(rows, step.index, member)) is not None and row.state == REVEALED
-            for member in step.sides
+            (row := actor_submission(rows, step.index, member)) is not None and row.state == REVEALED
+            for member in step.actors
         )
 
     revealed = [step for step in steps if fully_revealed(step)]
@@ -630,10 +658,10 @@ def dispute_target(
     latest = revealed[-1]
 
     started_later = any(
-        side_submission(rows, step.index, member) is not None
+        actor_submission(rows, step.index, member) is not None
         for step in steps
         if step.index > latest.index
-        for member in step.sides
+        for member in step.actors
     )
     if started_later:
         return DisputeState(False, None, current_attempt(rows, latest.index) - 1, latest.dispute.max)
@@ -643,7 +671,7 @@ def dispute_target(
         latest.blind
         and latest.dispute.enabled
         and attempts_used < latest.dispute.max
-        and (side is None or side in latest.acting_sides)
+        and (actor is None or actor in latest.acting_actors)
         and (latest.round is None or latest.round not in blocked_rounds)
     )
     return DisputeState(

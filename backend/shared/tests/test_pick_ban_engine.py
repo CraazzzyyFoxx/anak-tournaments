@@ -46,85 +46,102 @@ def test_current_round_none_for_flat_pool():
     assert engine.current_round(pool) is None
 
 
+#: Participation ids: the resolved actor vocabulary (§13.4), slot 1 and slot 2.
+SLOT1, SLOT2 = 11, 22
+SEATS = (SLOT1, SLOT2)
+
+
 # ── resolve_round_opener (result-dependent rotation) ────────────────────────
 
 
-def test_round_one_always_uses_session_first_side_regardless_of_rotation():
+def test_round_one_always_uses_the_session_opener_regardless_of_rotation():
     for rotation in enums.FirstBanRotation:
-        side = engine.resolve_round_opener(
+        opener = engine.resolve_round_opener(
             rotation=rotation,
             round_number=1,
-            session_first_side="away",
-            previous_round_outcome=None,
+            participants=SEATS,
+            session_opener=SLOT2,
+            previous_round_winner=None,
             previous_round_loser_choice=None,
         )
-        assert side == "away"
+        assert opener == SLOT2
 
 
 def test_fixed_rotation_keeps_the_same_opener_every_round():
-    side = engine.resolve_round_opener(
+    opener = engine.resolve_round_opener(
         rotation=enums.FirstBanRotation.FIXED,
         round_number=3,
-        session_first_side="home",
-        previous_round_outcome="away",
+        participants=SEATS,
+        session_opener=SLOT1,
+        previous_round_winner=SLOT2,
         previous_round_loser_choice=None,
     )
-    assert side == "home"
+    assert opener == SLOT1
 
 
 def test_alternate_rotation_flips_each_round():
     opener_r2 = engine.resolve_round_opener(
         rotation=enums.FirstBanRotation.ALTERNATE,
         round_number=2,
-        session_first_side="home",
-        previous_round_outcome=None,
+        participants=SEATS,
+        session_opener=SLOT1,
+        previous_round_winner=None,
         previous_round_loser_choice=None,
     )
     opener_r3 = engine.resolve_round_opener(
         rotation=enums.FirstBanRotation.ALTERNATE,
         round_number=3,
-        session_first_side="home",
-        previous_round_outcome=None,
+        participants=SEATS,
+        session_opener=SLOT1,
+        previous_round_winner=None,
         previous_round_loser_choice=None,
     )
-    assert opener_r2 == "away"
-    assert opener_r3 == "home"
+    assert opener_r2 == SLOT2
+    assert opener_r3 == SLOT1
 
 
 def test_result_winner_first_uses_previous_winner():
-    side = engine.resolve_round_opener(
+    opener = engine.resolve_round_opener(
         rotation=enums.FirstBanRotation.RESULT_WINNER_FIRST,
         round_number=2,
-        session_first_side="home",
-        previous_round_outcome="away",
+        participants=SEATS,
+        session_opener=SLOT1,
+        previous_round_winner=SLOT2,
         previous_round_loser_choice=None,
     )
-    assert side == "away"
+    assert opener == SLOT2
 
 
-def test_result_loser_first_uses_opposite_of_previous_winner():
-    side = engine.resolve_round_opener(
+def test_result_loser_first_uses_the_seat_after_the_previous_winner():
+    opener = engine.resolve_round_opener(
         rotation=enums.FirstBanRotation.RESULT_LOSER_FIRST,
         round_number=2,
-        session_first_side="home",
-        previous_round_outcome="away",
+        participants=SEATS,
+        session_opener=SLOT1,
+        previous_round_winner=SLOT2,
         previous_round_loser_choice=None,
     )
-    assert side == "home"
+    assert opener == SLOT1
 
 
-def test_result_dependent_rotation_requires_a_previous_outcome():
-    with pytest.raises(ValueError, match="previous_round_outcome is required"):
+def test_result_dependent_rotation_falls_back_without_a_previous_winner():
+    """A drawn map and an undecided one name no winner; the caller owes the
+    round until it is confirmed, and the rotation falls back rather than
+    inventing a seat."""
+    assert (
         engine.resolve_round_opener(
             rotation=enums.FirstBanRotation.RESULT_WINNER_FIRST,
             round_number=2,
-            session_first_side="home",
-            previous_round_outcome=None,
+            participants=SEATS,
+            session_opener=SLOT1,
+            previous_round_winner=None,
             previous_round_loser_choice=None,
         )
+        == SLOT1
+    )
 
 
-def test_result_rotations_fall_back_to_the_snapshot_side_on_a_draw() -> None:
+def test_result_rotations_fall_back_to_the_snapshot_opener_on_a_draw() -> None:
     for rotation in (
         enums.FirstBanRotation.RESULT_WINNER_FIRST,
         enums.FirstBanRotation.RESULT_LOSER_FIRST,
@@ -134,21 +151,23 @@ def test_result_rotations_fall_back_to_the_snapshot_side_on_a_draw() -> None:
             engine.resolve_round_opener(
                 rotation=rotation,
                 round_number=2,
-                session_first_side="away",
-                previous_round_outcome="draw",
+                participants=SEATS,
+                session_opener=SLOT2,
+                previous_round_winner=None,
                 previous_round_loser_choice=None,
             )
-            == "away"
+            == SLOT2
         )
 
 
-def test_result_rotations_refuse_a_pending_outcome() -> None:
-    with pytest.raises(ValueError):
+def test_an_opener_outside_the_card_is_a_caller_bug() -> None:
+    with pytest.raises(ValueError, match="not one of this encounter"):
         engine.resolve_round_opener(
-            rotation=enums.FirstBanRotation.RESULT_LOSER_FIRST,
+            rotation=enums.FirstBanRotation.FIXED,
             round_number=2,
-            session_first_side="home",
-            previous_round_outcome=None,
+            participants=SEATS,
+            session_opener=999,
+            previous_round_winner=None,
             previous_round_loser_choice=None,
         )
 
@@ -158,51 +177,20 @@ def test_result_loser_choice_raises_needs_choice_when_unresolved():
         engine.resolve_round_opener(
             rotation=enums.FirstBanRotation.RESULT_LOSER_CHOICE,
             round_number=2,
-            session_first_side="home",
-            previous_round_outcome="away",
+            participants=SEATS,
+            session_opener=SLOT1,
+            previous_round_winner=SLOT2,
             previous_round_loser_choice=None,
         )
 
 
-def test_result_loser_choice_returns_the_elected_side_once_chosen():
-    side = engine.resolve_round_opener(
+def test_result_loser_choice_returns_the_elected_participation_once_chosen():
+    opener = engine.resolve_round_opener(
         rotation=enums.FirstBanRotation.RESULT_LOSER_CHOICE,
         round_number=2,
-        session_first_side="home",
-        previous_round_outcome="away",
-        previous_round_loser_choice="home",
+        participants=SEATS,
+        session_opener=SLOT1,
+        previous_round_winner=SLOT2,
+        previous_round_loser_choice=SLOT1,
     )
-    assert side == "home"
-
-
-# ── reconcile_map_reports / map_outcome ──────────────────────────────────────
-
-
-def test_reconcile_map_reports_waits_when_one_side_missing():
-    result = engine.reconcile_map_reports(engine.MapReportPair(home_report=(2, 1), away_report=None))
-    assert result.resolved is None
-    assert result.disputed is False
-
-
-def test_reconcile_map_reports_resolves_on_agreement():
-    result = engine.reconcile_map_reports(engine.MapReportPair(home_report=(2, 1), away_report=(2, 1)))
-    assert result.resolved == (2, 1)
-    assert result.disputed is False
-
-
-def test_reconcile_map_reports_disputes_on_mismatch():
-    result = engine.reconcile_map_reports(engine.MapReportPair(home_report=(2, 1), away_report=(1, 2)))
-    assert result.resolved is None
-    assert result.disputed is True
-
-
-def test_map_outcome_home():
-    assert engine.map_outcome(2, 1) == "home"
-
-
-def test_map_outcome_away():
-    assert engine.map_outcome(0, 1) == "away"
-
-
-def test_map_outcome_draw_on_a_level_score():
-    assert engine.map_outcome(0, 0) == "draw"
+    assert opener == SLOT1

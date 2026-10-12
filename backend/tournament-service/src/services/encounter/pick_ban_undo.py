@@ -34,7 +34,7 @@ from shared.core.enums import EncounterGameState, MapVetoSessionStatus, PickBanK
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_engine as engine
 from shared.domain import pick_ban_rules as pbr
-from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
+from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
 from shared.repository import EncounterRepository, PickBanEntryRepository, PickBanSubmissionRepository
 from src.services.encounter.pick_ban_session import (
     PickBanSessionService,
@@ -50,7 +50,7 @@ def clear_undo_request(pick_ban: PickBanSession) -> None:
     """Drop any open request. Called on every new action as well as after an
     undo lands: a consent is given for ONE specific step, so it must never
     outlive the state it was read against."""
-    pick_ban.undo_requested_by = None
+    pick_ban.undo_requested_by_team_id = None
     pick_ban.undo_target_index = None
 
 
@@ -63,19 +63,27 @@ def undo_state(
     already agreed to it.
 
     ``item_ids`` empty means nothing is undoable -- the single signal the UI
-    needs to decide whether the affordance exists at all. ``requested_by`` is
-    reported only while it still matches the step in play; a request left behind
-    by a since-superseded step reads as no request, exactly as the consent check
-    itself treats it.
+    needs to decide whether the affordance exists at all.
+    ``requested_by_team_id`` is reported only while it still matches the step
+    in play; a request left behind by a since-superseded step reads as no
+    request, exactly as the consent check itself treats it.
     """
     target = pbr.undo_target(steps, submissions)
     if target is None:
-        return {"requested_by": None, "step_index": None, "item_ids": [], "action": None, "side": None}
+        return {
+            "requested_by_team_id": None,
+            "step_index": None,
+            "item_ids": [],
+            "action": None,
+            "encounter_team_id": None,
+        }
     step = next(candidate for candidate in steps if candidate.index == target)
-    sides = step.acting_sides
-    requested_by = pick_ban.undo_requested_by if pick_ban is not None and pick_ban.undo_target_index == target else None
+    actors = step.acting_actors
+    requested_by = (
+        pick_ban.undo_requested_by_team_id if pick_ban is not None and pick_ban.undo_target_index == target else None
+    )
     return {
-        "requested_by": requested_by,
+        "requested_by_team_id": requested_by,
         "step_index": target,
         # Play order, so the UI lists them the way they were committed -- the
         # step itself plus everything resolved off its back.
@@ -83,8 +91,8 @@ def undo_state(
             applied.item_id for applied in pbr.applied_items(steps, submissions) if applied.step_index >= target
         ],
         "action": step.action,
-        # A multi-side (simultaneous) step belongs to nobody in particular.
-        "side": sides[0] if len(sides) == 1 else None,
+        # A simultaneous step belongs to no participation in particular.
+        "encounter_team_id": actors[0] if len(actors) == 1 else None,
     }
 
 
@@ -134,15 +142,15 @@ class PickBanUndoService:
         session: AsyncSession,
         encounter_id: int,
         kind: PickBanKind,
-        captain_side: str,
+        encounter_team_id: int,
         *,
         consent: bool = True,
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
-        """Record ``captain_side``'s consent to undo the last step, applying it
-        the moment both sides have given it. ``consent=False`` withdraws an open
-        request (either side may: the asker changes their mind, or the opponent
-        refuses).
+        """Record ``encounter_team_id``'s consent to undo the last step,
+        applying it the moment the opponent has given it too. ``consent=False``
+        withdraws an open request (either side may: the asker changes their
+        mind, or the opponent refuses).
 
         Returns the resulting undo block, so the caller renders the outcome
         without a second read.
@@ -158,7 +166,7 @@ class PickBanUndoService:
         # Undo is a captains-only agreement, so a paused room refuses it outright.
         assert_not_paused(pick_ban)
 
-        steps = resolved_steps(pick_ban)
+        steps = resolved_steps(pick_ban, await self.sessions.teams_of(session, encounter_id))
         entries = list(
             await self.entry_repo.list_by_session(session, pick_ban.id, ordered=True, populate_existing=True)
         )
@@ -175,17 +183,17 @@ class PickBanUndoService:
         # have, or withdrawing one nobody opened, moves nothing worth recording.
         journaled: str | None = None
         if not consent:
-            if pick_ban.undo_requested_by is not None:
+            if pick_ban.undo_requested_by_team_id is not None:
                 journaled = "undo_withdrawn"
             clear_undo_request(pick_ban)
         else:
             # A request standing against a DIFFERENT step is stale, not an
             # agreement -- this call then opens a fresh one instead of applying it.
-            pending_side = pick_ban.undo_requested_by if pick_ban.undo_target_index == target else None
-            if pending_side is None or pending_side == captain_side:
-                if pending_side != captain_side:
+            pending = pick_ban.undo_requested_by_team_id if pick_ban.undo_target_index == target else None
+            if pending is None or pending == encounter_team_id:
+                if pending != encounter_team_id:
                     journaled = "undo_requested"
-                pick_ban.undo_requested_by = captain_side
+                pick_ban.undo_requested_by_team_id = encounter_team_id
                 pick_ban.undo_target_index = target
             else:
                 journaled = "undo_applied"
@@ -204,7 +212,7 @@ class PickBanUndoService:
                 action=journaled,
                 source="captain",
                 kind=kind.value,
-                side=captain_side,
+                encounter_team_id=encounter_team_id,
                 actor_auth_user_id=actor_auth_user_id,
                 data={"step_index": target},
             )
@@ -276,8 +284,8 @@ class PickBanUndoService:
         games = [
             game for game in await self.sessions.games.list_games(session, encounter_id) if game.position in positions
         ]
-        reports = await self.sessions.games.reports_by_game(session, games)
-        if any(game.state == EncounterGameState.CONFIRMED or reports.get(game.id) for game in games):
+        claims = await self.sessions.games.claims_by_game(session, games)
+        if any(game.state == EncounterGameState.CONFIRMED or claims.get(game.id) for game in games):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Undo is not possible: this map already has a result claim",

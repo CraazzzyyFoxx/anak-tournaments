@@ -282,11 +282,12 @@ class PickBanSubmissionRepository(BaseRepository[models.PickBanSubmission]):
     ) -> Sequence[models.PickBanSubmission]:
         """Every submission of the session in replay order.
 
-        ``(step_index, attempt, side)`` IS the order the projection walks: steps in
-        sequence order, the latest attempt last, and within one attempt the sides in a
-        stable order so a blind step's duplicate merge resolves the same way on every
-        recomputation. ``populate_existing`` for callers that already mutated rows in
-        this transaction and must not be served the identity map's stale copies.
+        ``(step_index, attempt, encounter_team_id)`` IS the order the projection walks:
+        steps in sequence order, the latest attempt last, and within one attempt the
+        actors in a stable order so a blind step's duplicate merge resolves the same
+        way on every recomputation. ``populate_existing`` for callers that already
+        mutated rows in this transaction and must not be served the identity map's
+        stale copies.
         """
         query = self._apply_options(
             self.select().where(models.PickBanSubmission.session_id == session_id),
@@ -295,7 +296,7 @@ class PickBanSubmissionRepository(BaseRepository[models.PickBanSubmission]):
         query = query.order_by(
             models.PickBanSubmission.step_index,
             models.PickBanSubmission.attempt,
-            models.PickBanSubmission.side,
+            models.PickBanSubmission.encounter_team_id,
         )
         if populate_existing:
             query = query.execution_options(populate_existing=True)
@@ -321,30 +322,33 @@ class EncounterReadinessRepository(BaseRepository[models.EncounterReadiness]):
     def __init__(self) -> None:
         super().__init__(models.EncounterReadiness)
 
-    async def list_sides(self, session: AsyncSession, encounter_id: int) -> Sequence[str]:
+    async def list_ready_teams(self, session: AsyncSession, encounter_id: int) -> Sequence[int]:
+        """The participations that have confirmed readiness for this encounter."""
         result = await session.execute(
-            sa.select(models.EncounterReadiness.side).where(models.EncounterReadiness.encounter_id == encounter_id)
+            sa.select(models.EncounterReadiness.encounter_team_id).where(
+                models.EncounterReadiness.encounter_id == encounter_id
+            )
         )
         return result.scalars().all()
 
-    async def get_for_side(
-        self, session: AsyncSession, *, encounter_id: int, side: str
+    async def get_for_team(
+        self, session: AsyncSession, *, encounter_id: int, encounter_team_id: int
     ) -> models.EncounterReadiness | None:
-        return await self.get_by(session, encounter_id=encounter_id, side=side)
+        return await self.get_by(session, encounter_id=encounter_id, encounter_team_id=encounter_team_id)
 
     async def delete_for_encounter(self, session: AsyncSession, encounter_id: int) -> None:
         await session.execute(
             sa.delete(models.EncounterReadiness).where(models.EncounterReadiness.encounter_id == encounter_id)
         )
 
-    async def delete_for_side(self, session: AsyncSession, *, encounter_id: int, side: str) -> None:
-        """Drop ONE side's confirmation, leaving the opponent's standing -- the
-        organizer's readiness override, where ``delete_for_encounter`` is the
-        team-change reset that must clear both."""
+    async def delete_for_team(self, session: AsyncSession, *, encounter_id: int, encounter_team_id: int) -> None:
+        """Drop ONE participation's confirmation, leaving the others standing --
+        the organizer's readiness override, where ``delete_for_encounter`` is
+        the seat-change reset that must clear every one."""
         await session.execute(
             sa.delete(models.EncounterReadiness).where(
                 models.EncounterReadiness.encounter_id == encounter_id,
-                models.EncounterReadiness.side == side,
+                models.EncounterReadiness.encounter_team_id == encounter_team_id,
             )
         )
 

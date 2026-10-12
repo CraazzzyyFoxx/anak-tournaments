@@ -5,10 +5,9 @@ The step vocabulary, cursor, eligibility, undo target and projection all moved
 to ``shared.domain.pick_ban_rules`` (design
 ``docs/plans/2026-09-28-pick-ban-constructor.md``). What stays here is the
 encounter-level arithmetic both kinds still share: which round a board is on,
-the play order of its settled picks, who opens the next round under a
-result-dependent rotation, and how two captains' map reports reconcile into one
-map's score. What a series ADDS UP to is not here: that is one engine for every
-encounter, ``shared.domain.encounter_scoring``.
+the play order of its settled picks, and which PARTICIPATION opens the next
+round under a result-dependent rotation. What a series ADDS UP to is not here:
+that is one engine for every encounter, ``shared.domain.encounter_scoring``.
 
 Deliberately free of any AsyncSession/DB call — every function takes plain
 data and returns plain data or raises ``ValueError`` (the RPC layer translates
@@ -17,13 +16,12 @@ to HTTP), so the whole module is unit-testable without a database.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Literal
 
 from shared.core import enums
 
-Side = Literal["home", "away"]
-Action = Literal["ban", "pick", "protect", "decider"]
+Action = Literal["ban", "pick", "protect", "decider", "side_pick"]
 
 
 # ── board arithmetic ────────────────────────────────────────────────────────
@@ -61,107 +59,59 @@ def settled_in_order(pool: list) -> list:
 class RotationNeedsChoice(Exception):
     """Raised by `resolve_round_opener` when the rotation is
     `result_loser_choice` and no choice has been made yet — the caller must
-    create the round with `first_side=None`, `awaiting_choice=True` and wait
-    for an `elect_opener` action instead of resolving a side here."""
+    leave the round with `first_team_id=NULL`, `awaiting_choice=True` and wait
+    for an `elect_opener` action instead of resolving an actor here."""
 
 
 def resolve_round_opener(
     *,
     rotation: enums.FirstBanRotation,
     round_number: int,
-    session_first_side: Side,
-    previous_round_outcome: MapOutcome | None,
-    previous_round_loser_choice: Side | None,
-) -> Side:
-    """Who opens `round_number`'s bans (the side `_first` maps onto).
+    participants: Sequence[int],
+    session_opener: int,
+    previous_round_winner: int | None,
+    previous_round_loser_choice: int | None,
+) -> int:
+    """Which PARTICIPATION opens `round_number`'s bans.
 
-    Round 1 always uses `session_first_side` (seed resolution — unrelated to
-    any rotation setting, since there is no previous map). Round 2+ dispatches
-    on `rotation`:
+    Round 1 always uses `session_opener` (seed resolution — unrelated to any
+    rotation setting, since there is no previous map). Round 2+ dispatches on
+    `rotation`:
 
-    - `fixed`: same side every round (`session_first_side`).
-    - `alternate`: flips each round from `session_first_side`.
+    - `fixed`: the same participation every round (`session_opener`).
+    - `alternate`: moves one seat along the card each round, so a duel flips.
     - `result_winner_first` / `result_loser_first`: read
-      `previous_round_outcome`. A `"draw"` has no winner and no loser, so the
-      rotation falls back to the fixed snapshot side (`session_first_side`).
-      `None` means the previous map has no accepted result yet — a caller bug,
-      so `ValueError`.
-    - `result_loser_choice`: a `"draw"` leaves nobody to elect, so it too
-      falls back to `session_first_side`; otherwise it requires
+      `previous_round_winner`. A drawn map has no winner and no loser, so the
+      rotation falls back to the snapshot opener (`session_opener`); that is
+      also what a winner nobody seats any more means.
+    - `result_loser_choice`: a draw leaves nobody to elect, so it too falls
+      back to `session_opener`; otherwise it requires
       `previous_round_loser_choice` — if that is `None`, raises
-      `RotationNeedsChoice` so the caller creates the round in
-      `awaiting_choice` state instead of resolving a side.
+      `RotationNeedsChoice` so the caller leaves the round in
+      `awaiting_choice` state instead of resolving an actor.
     """
-    if round_number <= 1:
-        return session_first_side
-
-    if rotation == enums.FirstBanRotation.FIXED:
-        return session_first_side
+    seats = list(participants)
+    if session_opener not in seats:
+        raise ValueError("the session's opener is not one of this encounter's participations")
+    if round_number <= 1 or rotation == enums.FirstBanRotation.FIXED:
+        return session_opener
     if rotation == enums.FirstBanRotation.ALTERNATE:
-        flips = round_number - 1
-        return session_first_side if flips % 2 == 0 else _other(session_first_side)
+        return seats[(seats.index(session_opener) + round_number - 1) % len(seats)]
     if rotation in (
         enums.FirstBanRotation.RESULT_WINNER_FIRST,
         enums.FirstBanRotation.RESULT_LOSER_FIRST,
         enums.FirstBanRotation.RESULT_LOSER_CHOICE,
     ):
-        if previous_round_outcome is None:
-            raise ValueError("previous_round_outcome is required for a result-dependent rotation")
-        if previous_round_outcome == "draw":
-            return session_first_side
+        if previous_round_winner is None or previous_round_winner not in seats:
+            return session_opener
         if rotation == enums.FirstBanRotation.RESULT_WINNER_FIRST:
-            return previous_round_outcome
+            return previous_round_winner
+        # The seat after the winner: for a duel that IS the loser, and for a
+        # wider card it is the one rule that names exactly one participation.
+        runner_up = seats[(seats.index(previous_round_winner) + 1) % len(seats)]
         if rotation == enums.FirstBanRotation.RESULT_LOSER_FIRST:
-            return _other(previous_round_outcome)
+            return runner_up
         if previous_round_loser_choice is None:
             raise RotationNeedsChoice()
         return previous_round_loser_choice
     raise ValueError(f"unhandled rotation {rotation!r}")
-
-
-def _other(side: Side) -> Side:
-    return "away" if side == "home" else "home"
-
-
-# ── per-map result reconciliation (EncounterMapReport -> Match) ─────────────
-
-
-@dataclass(frozen=True)
-class MapReportPair:
-    home_report: tuple[int, int] | None  # (home_score, away_score) as the HOME captain reported it
-    away_report: tuple[int, int] | None  # as the AWAY captain reported it
-
-
-@dataclass(frozen=True)
-class ReconciliationResult:
-    resolved: tuple[int, int] | None  # (home_score, away_score) if both agree
-    disputed: bool
-
-
-def reconcile_map_reports(pair: MapReportPair) -> ReconciliationResult:
-    """Agree -> resolved score. Present but disagree -> disputed. Either
-    missing -> neither (still waiting on a captain).
-
-    Mirrors `captain.set_encounter_result`'s series-level reconciliation
-    (Decision log #10): "both reports agreeing" is a resolution path there
-    too — this is the same rule applied to one map instead of the whole
-    series, not a new reconciliation concept.
-    """
-    if pair.home_report is None or pair.away_report is None:
-        return ReconciliationResult(resolved=None, disputed=False)
-    if pair.home_report == pair.away_report:
-        return ReconciliationResult(resolved=pair.home_report, disputed=False)
-    return ReconciliationResult(resolved=None, disputed=True)
-
-
-MapOutcome = Literal["home", "away", "draw"]
-
-
-def map_outcome(home_score: int, away_score: int) -> MapOutcome:
-    """Who won ONE map. The result-dependent rotation reads it to pick the next
-    round's opener; what the series adds up to is the scoring engine's."""
-    if home_score > away_score:
-        return "home"
-    if away_score > home_score:
-        return "away"
-    return "draw"

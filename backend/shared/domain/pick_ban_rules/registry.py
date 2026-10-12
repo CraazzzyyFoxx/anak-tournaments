@@ -141,8 +141,8 @@ class AppliedItem:
 
     step_index: int
     round: int | None
-    #: ``home``/``away``/``system``.
-    side: str
+    #: The participation that applied it; ``None`` when the engine did.
+    actor: int | None
     action: str
     item_id: int
 
@@ -151,7 +151,7 @@ class AppliedItem:
 class History:
     """Applied items the relative leaves read. ``current_step_index`` is
     excluded from every answer: a step never sees its own submissions, so a
-    blind step's two sides cannot leak into each other's eligibility."""
+    blind step's actors cannot leak into each other's eligibility."""
 
     items: tuple[AppliedItem, ...] = ()
     current_step_index: int | None = None
@@ -162,7 +162,7 @@ class History:
         item_id: int,
         actions: tuple[str, ...],
         by: str,
-        side: str | None,
+        actor: int | None,
         scope: str,
         round: int | None,
     ) -> bool:
@@ -171,9 +171,9 @@ class History:
                 continue
             if self.current_step_index is not None and applied.step_index == self.current_step_index:
                 continue
-            if by == "self" and applied.side != side:
+            if by == "self" and applied.actor != actor:
                 continue
-            if by == "opponent" and (applied.side == "system" or applied.side == side or side is None):
+            if by == "opponent" and (applied.actor is None or applied.actor == actor or actor is None):
                 continue
             if scope == "round" and applied.round != round:
                 continue
@@ -196,15 +196,16 @@ class RoundCtx:
 class ItemCtx:
     """Context of a step's ``eligible`` / a phase's ``pool_filter``.
 
-    ``side`` is the acting side (``None`` in a pool filter, where relative
-    leaves are rejected by validation); ``target_role`` is the role of the
-    opponent player the item would be named for, or ``None``.
+    ``actor`` is the acting participation (``None`` in a pool filter and for an
+    engine-resolved step, where relative leaves are rejected by validation);
+    ``target_role`` is the role of the opponent player the item would be named
+    for, or ``None``.
     """
 
     item_id: int
     group: str | None
     kind: str
-    side: str | None = None
+    actor: int | None = None
     target_role: str | None = None
     round: int | None = None
     history: History = History()
@@ -277,7 +278,7 @@ def _banned_by(params: Mapping[str, Any], ctx: ItemCtx) -> bool:
         item_id=ctx.item_id,
         actions=("ban",),
         by=str(params["by"]),
-        side=ctx.side,
+        actor=ctx.actor,
         scope=str(params["scope"]),
         round=ctx.round,
     )
@@ -289,7 +290,7 @@ def _picked_by(params: Mapping[str, Any], ctx: ItemCtx) -> bool:
         item_id=ctx.item_id,
         actions=("pick", "decider"),
         by=str(params["by"]),
-        side=ctx.side,
+        actor=ctx.actor,
         scope=str(params["scope"]),
         round=ctx.round,
     )

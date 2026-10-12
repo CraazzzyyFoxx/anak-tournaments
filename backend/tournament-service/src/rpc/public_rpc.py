@@ -78,7 +78,7 @@ from src.schemas.captain import (
     PickBanActionInput,
     PickBanSubmitInput,
     PickBanUndoInput,
-    resolve_optional_viewer_side,
+    resolve_optional_viewer_team,
 )
 from src.schemas.registration import (
     RegistrationStatusResponse,
@@ -114,7 +114,7 @@ from src.services.encounter import pick_ban_action as pick_ban_action
 from src.services.encounter.captain import captain_service
 from src.services.encounter.chat_access import encounter_chat_service
 from src.services.encounter.games import encounter_game_service
-from src.services.encounter.map_report import map_report_service
+from src.services.encounter.map_report import ClaimResultIn, map_report_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
 from src.services.encounter.report_form import report_form_service
@@ -248,10 +248,10 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             encounter = await captain_service._load_encounter(session, encounter_id)
             try:
-                side = await captain_service.resolve_captain_side(session, user, encounter)
+                participation, _player_id = await captain_service.resolve_participation(session, user, encounter)
             except HTTPException:
-                side = None
-            return {"side": side}
+                return {"encounter_team_id": None, "slot": None}
+            return {"encounter_team_id": participation.id, "slot": participation.slot}
 
         return await _run(logger, op)
 
@@ -321,9 +321,9 @@ def register(broker: Any, logger: Any) -> None:
             )
             await ensure_tournament_viewable(session, user, tournament_id)
             encounter = await captain_service._load_encounter(session, encounter_id, for_update=False)
-            viewer_side = await resolve_optional_viewer_side(session, user, encounter)
+            viewer = await resolve_optional_viewer_team(session, user, encounter)
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, kind, viewer_side=viewer_side
+                session, encounter_id, kind, viewer=viewer
             )
 
         return await _run(logger, op)
@@ -336,14 +336,14 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             body = PickBanActionInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            participation, _player_id = await captain_service.resolve_participation(session, user, encounter)
             # Returns the acting captain's own new state: the room re-renders
             # from the response instead of racing its own refetch.
             return await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
                 kind,
-                captain_side,
+                participation.id,
                 item_id=body.item_id,
                 action=body.action,
                 target_player_id=body.target_player_id,
@@ -360,12 +360,12 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             body = PickBanSubmitInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            participation, _player_id = await captain_service.resolve_participation(session, user, encounter)
             return await pick_ban_action.pick_ban_action_service.submit_items(
                 session,
                 encounter_id,
                 kind,
-                captain_side,
+                participation.id,
                 items=[item.model_dump() for item in body.items],
                 lock=body.lock,
                 actor_auth_user_id=user.id,
@@ -380,9 +380,9 @@ def register(broker: Any, logger: Any) -> None:
             user = _identity(data)
             encounter_id = _require_id(data)
             encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            participation, _player_id = await captain_service.resolve_participation(session, user, encounter)
             return await pick_ban_action.pick_ban_action_service.dispute_step(
-                session, encounter_id, kind, captain_side, actor_auth_user_id=user.id
+                session, encounter_id, kind, participation.id, actor_auth_user_id=user.id
             )
 
         return await _run(logger, op)
@@ -395,19 +395,19 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             body = ElectOpenerInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            participation, _player_id = await captain_service.resolve_participation(session, user, encounter)
             pick_ban = await pick_ban_session_service.get_pick_ban_session(session, encounter_id, kind)
             if pick_ban is None:
                 raise HTTPException(status_code=400, detail="No round is awaiting an opener choice")
             await pick_ban_session_service.elect_round_opener(
                 session,
                 pick_ban,
-                first_side=body.first_side,
-                acting_side=captain_side,
+                first_team_id=body.first_team_id,
+                acting_team_id=participation.id,
                 actor_auth_user_id=user.id,
             )
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, kind, viewer_side=captain_side
+                session, encounter_id, kind, viewer=participation.id
             )
 
         return await _run(logger, op)
@@ -420,12 +420,12 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             body = PickBanUndoInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
-            captain_side = await captain_service.resolve_captain_side(session, user, encounter)
+            participation, _player_id = await captain_service.resolve_participation(session, user, encounter)
             # Commits internally; returns the resulting undo block (empty
             # `item_ids` once the undo landed and the step it restored is open
             # again).
             return await pick_ban_undo_service.perform_undo(
-                session, encounter_id, kind, captain_side, consent=body.consent, actor_auth_user_id=user.id
+                session, encounter_id, kind, participation.id, consent=body.consent, actor_auth_user_id=user.id
             )
 
         return await _run(logger, op)
@@ -438,18 +438,25 @@ def register(broker: Any, logger: Any) -> None:
             game_id = _path_int(data, "game_id")
             body = GameReportInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
-            # The side is the CALLER's, never the body's: a captain files their
-            # own claim and nobody else's.
-            side = await captain_service.resolve_captain_side(session, user, encounter)
-            # Commits internally once the pair of claims is reconciled.
-            return await map_report_service.submit_map_report(
+            # The claimant is the CALLER's seat, never the body's: a captain
+            # files their own claim and nobody else's.
+            participation, player_id = await captain_service.resolve_participation(session, user, encounter)
+            # Commits internally once every live participation has claimed.
+            return await map_report_service.submit_game_claim(
                 session,
-                encounter,
-                game_id=game_id,
-                side=side,
-                reporter_user_id=user.id,
-                home_score=body.home_score,
-                away_score=body.away_score,
+                game_id,
+                claimant_team_id=participation.id,
+                reporter_user_id=player_id,
+                results=[
+                    ClaimResultIn(
+                        encounter_team_id=line.encounter_team_id,
+                        score=line.score,
+                        placement=line.placement,
+                        column_values=dict(line.column_values),
+                    )
+                    for line in body.results
+                ],
+                basis_version=body.basis_version,
                 actor_auth_user_id=user.id,
             )
 
@@ -464,7 +471,7 @@ def register(broker: Any, logger: Any) -> None:
             body = GameMapSelectInput.model_validate(_payload(data))
             encounter = await captain_service._load_encounter(session, encounter_id)
             await assert_encounter_live(session, encounter)
-            await captain_service.resolve_captain_side(session, user, encounter)
+            await captain_service.resolve_participation(session, user, encounter)
             # Locked for the same reason a claim locks it: two captains naming a
             # map at once must not both win.
             game = await encounter_game_service.game_repo.get_for_update(session, game_id)
@@ -472,8 +479,8 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=404, detail="Game not found")
             await encounter_game_service.select_map(session, encounter, game, map_id=body.map_id)
             await session.commit()
-            reports = (await encounter_game_service.reports_by_game(session, [game])).get(game.id) or []
-            return {"game": encounter_game_service.serialize(game, reports)}
+            lines = (await encounter_game_service.lines_by_game(session, [game])).get(game.id) or []
+            return {"game": encounter_game_service.serialize(game, lines)}
 
         return await _run(logger, op)
 
@@ -484,13 +491,11 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             encounter = await captain_service._load_encounter(session, encounter_id)
             await assert_encounter_live(session, encounter)
-            captain_side, captain_user_id, _team_id = await captain_service.resolve_captain_identity(
-                session, user, encounter
-            )
-            # mark_ready commits internally and signals the opposite captain's
-            # room -- nothing polls it while no session exists.
+            participation, captain_user_id = await captain_service.resolve_participation(session, user, encounter)
+            # mark_ready commits internally and signals the other captains'
+            # rooms -- nothing polls it while no session exists.
             readiness = await pick_ban_session_service.mark_ready(
-                session, encounter, captain_side, captain_user_id, actor_auth_user_id=user.id
+                session, encounter, participation.id, captain_user_id, actor_auth_user_id=user.id
             )
             return {"readiness": readiness}
 

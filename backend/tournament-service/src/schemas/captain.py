@@ -21,8 +21,10 @@ class PickBanActionInput(BaseModel):
     map-kind pick-ban session. ``target_player_id`` is required exactly when
     the step names an opponent roster player (``step.target``)."""
 
+    #: The catalog item, or -- for a ``side_pick`` step -- the INDEX into the
+    #: discipline's side codes (the room state's ``sides`` array).
     item_id: int
-    action: str  # "ban" | "pick" | "protect"
+    action: str  # "ban" | "pick" | "protect" | "side_pick"
     target_player_id: int | None = None
 
 
@@ -34,19 +36,19 @@ class PickBanSubmissionItemInput(BaseModel):
 
 
 class PickBanSubmitInput(BaseModel):
-    """A blind step's whole draft, replacing whatever the side had. ``lock``
-    validates it in full and makes it final — the step reveals once every
-    acting side has locked."""
+    """A blind step's whole draft, replacing whatever the participation had.
+    ``lock`` validates it in full and makes it final — the step reveals once
+    every acting participation has locked."""
 
     items: list[PickBanSubmissionItemInput] = Field(default_factory=list)
     lock: bool = False
 
 
 class ElectOpenerInput(BaseModel):
-    """``result_loser_choice`` rotation only: the losing captain names who
-    opens the next round's bans."""
+    """``result_loser_choice`` rotation only: the losing captain names which
+    PARTICIPATION opens the next round's bans."""
 
-    first_side: str  # "home" | "away"
+    first_team_id: int
 
 
 class PickBanUndoInput(BaseModel):
@@ -57,6 +59,15 @@ class PickBanUndoInput(BaseModel):
     consent: bool = True
 
 
+class GameResultInput(BaseModel):
+    """One participation's numbers inside a game claim."""
+
+    encounter_team_id: int
+    score: int | None = Field(default=None, ge=0)
+    placement: int | None = Field(default=None, ge=1)
+    column_values: dict[str, float] = Field(default_factory=dict)
+
+
 class GameReportInput(BaseModel):
     """One captain's independent claim of a single played GAME's result —
     submitted immediately after that position, not at series end (contrast
@@ -64,8 +75,10 @@ class GameReportInput(BaseModel):
     being claimed: a series may play the same map twice. See
     ``services.encounter.map_report``."""
 
-    home_score: int = Field(ge=0)
-    away_score: int = Field(ge=0)
+    #: The ``game.result_version`` the claim was made against -- a correction
+    #: landing in between makes this claim stale rather than silently winning.
+    basis_version: int = 0
+    results: list[GameResultInput] = Field(default_factory=list)
 
 
 class GameMapSelectInput(BaseModel):
@@ -98,28 +111,32 @@ class CaptainReportSubmission(BaseModel):
 
 
 # HTTP 403 Forbidden — matched without importing fastapi so this module stays
-# fastapi-free. ``captain_service.resolve_captain_side`` raises a
+# fastapi-free. ``captain_service.resolve_participation`` raises a
 # ``HTTPException`` whose ``status_code`` we inspect by attribute.
 _HTTP_403_FORBIDDEN = 403
 
 
-async def resolve_optional_viewer_side(
+async def resolve_optional_viewer_team(
     session: AsyncSession,
     auth_user: models.AuthUser | None,
     encounter: models.Encounter,
-) -> str | None:
-    """Resolve a viewer's captain side for read-only annotation, or ``None``.
+) -> int | None:
+    """The PARTICIPATION a viewer captains, for read-only annotation, or ``None``.
 
-    Mirrors the old WebSocket viewer resolution: an authenticated captain gets
-    their side ('home'/'away'); anonymous or non-captain viewers get ``None``
-    (and see the pool serialized identically — ``viewer_side`` is presentation
-    only). A 403 means "not a captain" and resolves to ``None``.
+    An authenticated captain gets their own seat's id; anonymous and
+    non-captain viewers get ``None`` (and see the pool serialized identically —
+    ``viewer_team_id`` is presentation only, except that a blind step's draft
+    is private to its own seat). A 403 means "not a captain" and resolves to
+    ``None``.
     """
     if auth_user is None:
         return None
     try:
-        return await captain_mod.captain_service.resolve_captain_side(session, auth_user, encounter)
+        participation, _player_id = await captain_mod.captain_service.resolve_participation(
+            session, auth_user, encounter
+        )
     except Exception as exc:  # noqa: BLE001 - re-raised below unless it's a 403
         if getattr(exc, "status_code", None) == _HTTP_403_FORBIDDEN:
             return None
         raise
+    return participation.id
