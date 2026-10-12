@@ -88,6 +88,9 @@ export function useEncounterForm({
 
   return {
     mode,
+    // The workspace-wide browser can edit a row with no tournament chip set, so
+    // the stages and teams the form offers come from the row, not the scope.
+    tournamentId: editing?.tournament_id ?? scopeTournamentId,
     value,
     setValue,
     error,

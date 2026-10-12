@@ -126,6 +126,10 @@ export function EncountersBrowser({
   };
 
   const form = useEncounterForm({ scopeTournamentId, stages, onSaved: invalidate });
+  const formScope = useEncounterScope({
+    tournamentId: form.tournamentId,
+    scopeTournamentId: form.tournamentId
+  });
 
   const deleteMutation = useMutation({
     mutationFn: (encounterId: number) => adminService.deleteEncounter(encounterId),
@@ -338,8 +342,8 @@ export function EncountersBrowser({
           mode={form.mode === "edit" ? "edit" : "create"}
           value={form.value}
           onChange={form.setValue}
-          stages={stages}
-          teams={teams}
+          stages={formScope.stages}
+          teams={formScope.teams}
         />
       </EntityFormDialog>
 
