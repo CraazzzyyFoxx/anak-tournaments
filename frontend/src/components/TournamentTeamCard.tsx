@@ -5,7 +5,8 @@
 import "./TournamentTeamCard.css";
 
 import React from "react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
+import { useFormatter } from "@/lib/datetime/client";
 import { Crown, Shuffle, Sprout } from "lucide-react";
 import {
   sortTeamPlayers,
