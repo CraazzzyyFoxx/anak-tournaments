@@ -41,16 +41,19 @@ _MU = 1100
 
 
 @dataclass(frozen=True)
+class AnalyticsTeam:
+    team_id: int
+    name: str
+    players: list[str]
+    score: float
+    placement: int
+
+
+@dataclass(frozen=True)
 class AnalyticsMatch:
     tournament_id: int
-    home_team_id: int
-    home_team_name: str
-    away_team_id: int
-    away_team_name: str
-    home_players: list[str]
-    away_players: list[str]
-    home_score: int
-    away_score: int
+    #: Every live seat, in slot order.
+    teams: list[AnalyticsTeam]
     time: datetime
 
 
@@ -147,43 +150,51 @@ def prepare_openskill_data(
     pl: PlackettLuce,
     teams: typing.Sequence[typing.Any],
     encounters: typing.Sequence[typing.Any],
+    rosters: typing.Mapping[int, typing.Any],
 ) -> tuple[set[str], dict[str, PlackettLuceRating], list[AnalyticsMatch]]:
+    """Seed ratings from the rosters, then replay ``encounters`` in order.
+
+    An encounter rates its live seats as N teams, ranked by ``placement``; ``rosters`` maps a
+    source ``team_id`` to its ``Team`` (with players). An encounter with no result yet, fewer than
+    two seats, or a seat without a roster is not replayed.
+    """
     del df  # replay is seeded from rosters + encounters, not the frame
     agents: set[str] = set()
     players_rating: dict[str, PlackettLuceRating] = {}
     analytics_matches: list[AnalyticsMatch] = []
 
     for encounter in encounters:
-        if encounter.home_team is None or encounter.away_team is None:
+        seats = sorted((seat for seat in encounter.teams if seat.active), key=lambda seat: seat.slot)
+        replay: list[tuple[typing.Any, list[typing.Any]]] = []
+        for seat in seats:
+            team = rosters.get(seat.team_id) if seat.team_id is not None else None
+            players = list(team.players or ()) if team is not None else []
+            if not players:
+                break
+            replay.append((seat, players))
+        if len(replay) < 2 or len(replay) != len(seats) or any(seat.placement is None for seat, _ in replay):
             continue
 
-        home_players = list(encounter.home_team.players or ())
-        away_players = list(encounter.away_team.players or ())
-        if not home_players or not away_players:
-            continue
-
-        home_team = [get_id_role(player) for player in home_players]
-        away_team = [get_id_role(player) for player in away_players]
-
-        for player in [*home_players, *away_players]:
-            id_role = get_id_role(player)
-            if players_rating.get(id_role) is None:
-                players_rating[id_role] = get_player_rating(pl, player)
-
-        agents = agents.union(set(home_team))
-        agents = agents.union(set(away_team))
+        for _, players in replay:
+            for player in players:
+                id_role = get_id_role(player)
+                agents.add(id_role)
+                if players_rating.get(id_role) is None:
+                    players_rating[id_role] = get_player_rating(pl, player)
 
         analytics_matches.append(
             AnalyticsMatch(
                 tournament_id=encounter.tournament_id,
-                home_team_id=encounter.home_team_id,
-                home_team_name=encounter.home_team.name,
-                away_team_id=encounter.away_team_id,
-                away_team_name=encounter.away_team.name,
-                home_players=home_team,
-                away_players=away_team,
-                home_score=encounter.home_score,
-                away_score=encounter.away_score,
+                teams=[
+                    AnalyticsTeam(
+                        team_id=seat.team_id,
+                        name=seat.name,
+                        players=[get_id_role(player) for player in players],
+                        score=seat.score,
+                        placement=seat.placement,
+                    )
+                    for seat, players in replay
+                ],
                 time=encounter.tournament.start_date,
             )
         )
@@ -195,16 +206,11 @@ def prepare_openskill_data(
                 players_rating[id_role] = get_player_rating(pl, player)
 
     for match in analytics_matches:
-        home_side = [players_rating[i] for i in match.home_players]
-        away_side = [players_rating[i] for i in match.away_players]
-        rated_home, rated_away = pl.rate(
-            [home_side, away_side],
-            scores=[match.home_score, match.away_score],
-        )
-        for player_index in range(len(match.home_players)):
-            players_rating[match.home_players[player_index]] = rated_home[player_index]
-        for player_index in range(len(match.away_players)):
-            players_rating[match.away_players[player_index]] = rated_away[player_index]
+        sides = [[players_rating[i] for i in side.players] for side in match.teams]
+        rated = pl.rate(sides, ranks=[side.placement for side in match.teams])
+        for side, rated_side in zip(match.teams, rated, strict=True):
+            for id_role, rating in zip(side.players, rated_side, strict=True):
+                players_rating[id_role] = rating
 
     return agents, players_rating, analytics_matches
 

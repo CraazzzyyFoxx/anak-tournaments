@@ -67,6 +67,7 @@ TABLES = (
     models.Player.__table__,
     models.WorkspaceMember.__table__,
     models.Encounter.__table__,
+    models.EncounterTeam.__table__,
     models.Match.__table__,
     models.MatchStatistics.__table__,
     models.Standing.__table__,
@@ -198,13 +199,30 @@ class _Fixture:
             models.Encounter.__table__,
             id=encounter_id,
             tournament_id=tournament_id,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
+            scoring_rule_id=1,
             name="Encounter",
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=2,
-            away_score=1,
-            round=1,
+            slot_count=2,
+            status="OPEN",
+            result_status="none",
+            result_version=0,
+            best_of=3,
         )
+        # Slot 1 wins 2-1: the participations are the encounter's result.
+        for slot, (team_id, score, placement) in enumerate(((home_team_id, 2, 1), (away_team_id, 1, 2)), 1):
+            self.insert(
+                models.EncounterTeam.__table__,
+                id=self._id(),
+                encounter_id=encounter_id,
+                tournament_id=tournament_id,
+                slot=slot,
+                team_id=team_id,
+                name=f"Seat {slot}",
+                active=True,
+                score=score,
+                placement=placement,
+            )
         return encounter_id
 
     def match(self, encounter_id: int, home_team_id: int, away_team_id: int) -> int:
@@ -432,6 +450,7 @@ class OpenSkillReplayIsolationTests(_DatabaseTestCase):
             analytics_flows.get_plackett_luce(),
             teams,
             encounters,
+            await analytics_service.get_rosters(self.db.shim, encounters),
         )
 
         self.assertEqual(2, len(replayed), "both rostered encounters should be replayed")

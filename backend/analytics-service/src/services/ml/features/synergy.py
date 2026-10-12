@@ -135,20 +135,42 @@ async def team_synergy_features(
 
     prior_rosters = await _roster_frame(session, [models.Player.tournament_id.in_(prior_ids)])
 
+    first_seat = sa.orm.aliased(models.EncounterTeam, name="first_seat")
+    second_seat = sa.orm.aliased(models.EncounterTeam, name="second_seat")
     encounters = pd.DataFrame(
         (
             await session.execute(
                 sa.select(
-                    models.Encounter.home_team_id.label("home_team_id"),
-                    models.Encounter.away_team_id.label("away_team_id"),
-                    models.Encounter.home_score.label("home_score"),
-                    models.Encounter.away_score.label("away_score"),
-                ).where(
+                    first_seat.team_id.label("home_team_id"),
+                    second_seat.team_id.label("away_team_id"),
+                    first_seat.score.label("home_score"),
+                    second_seat.score.label("away_score"),
+                )
+                .select_from(models.Encounter)
+                .join(
+                    first_seat,
+                    sa.and_(
+                        first_seat.encounter_id == models.Encounter.id,
+                        first_seat.slot == 1,
+                        first_seat.active.is_(True),
+                    ),
+                )
+                .join(
+                    second_seat,
+                    sa.and_(
+                        second_seat.encounter_id == models.Encounter.id,
+                        second_seat.slot == 2,
+                        second_seat.active.is_(True),
+                    ),
+                )
+                .where(
+                    # A duel only, decided: one seat placed ahead of the other.
+                    models.Encounter.slot_count == 2,
                     models.Encounter.tournament_id.in_(prior_ids),
-                    models.Encounter.home_score.is_not(None),
-                    models.Encounter.away_score.is_not(None),
-                    models.Encounter.home_score != models.Encounter.away_score,
-                    models.Encounter.home_team_id != models.Encounter.away_team_id,
+                    first_seat.placement.is_not(None),
+                    second_seat.placement.is_not(None),
+                    first_seat.placement != second_seat.placement,
+                    first_seat.team_id != second_seat.team_id,
                 )
             )
         )

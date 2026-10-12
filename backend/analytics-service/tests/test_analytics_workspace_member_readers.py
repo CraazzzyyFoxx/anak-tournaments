@@ -84,7 +84,7 @@ def _compiled(stmt) -> str:
 
 class GetAnalyticsWindowAndSelfJoinTests(IsolatedAsyncioTestCase):
     """``get_analytics`` is the riskiest shape in the service: two CTEs
-    (``player_points_home``/``player_points_away``) grouped by the identity
+    (``player_points``/``player_matches`` over the team's live seat) grouped by the identity
     column, a self-join of the outer query against both CTEs on that column,
     and two LAG(...) OVER (PARTITION BY ...) window functions."""
 
@@ -103,13 +103,10 @@ class GetAnalyticsWindowAndSelfJoinTests(IsolatedAsyncioTestCase):
         # Self-join of the outer query against both home/away CTEs keys off
         # workspace_member.player_id, not the retained FK column.
         self.assertIn(
-            "LEFT OUTER JOIN player_points_home ON workspace_member.player_id = player_points_home.user_id",
+            "LEFT OUTER JOIN player_points ON workspace_member.player_id = player_points.user_id",
             sql,
         )
-        self.assertIn(
-            "LEFT OUTER JOIN player_points_away ON workspace_member.player_id = player_points_away.user_id",
-            sql,
-        )
+        self.assertNotIn("home_team_id", sql)
         # Window functions partition by the substitute identity column.
         self.assertIn(
             "PARTITION BY workspace_member.player_id, tournament.player.role "
@@ -137,9 +134,9 @@ class GetAnalyticsWindowAndSelfJoinTests(IsolatedAsyncioTestCase):
             sql,
         )
         # No cartesian/ambiguous-FROM regression: exactly one Player-anchored
-        # workspace_member join per CTE/outer-query FROM clause (7 total:
+        # workspace_member join per CTE/outer-query FROM clause (3 total:
         # points_home, points_away, performance_points CTE, + outer query).
-        self.assertEqual(sql.count("JOIN workspace_member ON workspace_member.id"), 4)
+        self.assertEqual(sql.count("JOIN workspace_member ON workspace_member.id"), 3)
 
 
 class GetTeamsWithPlayersEagerLoadTests(IsolatedAsyncioTestCase):

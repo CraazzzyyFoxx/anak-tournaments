@@ -2,17 +2,19 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-__all__ = ("AnalyticsMatch",)
+__all__ = ("AnalyticsMatch", "AnalyticsTeam")
+
+
+class AnalyticsTeam(BaseModel):
+    team_id: int
+    name: str
+    players: list[str]
+    score: float
+    placement: int
 
 
 class AnalyticsMatch(BaseModel):
     tournament_id: int
-    home_team_id: int
-    home_team_name: str
-    away_team_id: int
-    away_team_name: str
-    home_players: list[str]
-    away_players: list[str]
-    home_score: int
-    away_score: int
+    #: Every live seat of the encounter, in slot order.
+    teams: list[AnalyticsTeam]
     time: datetime

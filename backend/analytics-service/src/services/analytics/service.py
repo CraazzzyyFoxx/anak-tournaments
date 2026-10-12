@@ -3,6 +3,7 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared.core import enums
 from shared.division_grid import DivisionGrid, load_runtime_grid
@@ -30,75 +31,54 @@ class AnalyticsService:
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
     ) -> typing.Sequence[sa.RowMapping]:
-        points_home = (
+        # A team's maps in an encounter are the series score of its live seat and of the other
+        # seat; a lobby (more than two seats) scores points, not maps, so it only counts as played.
+        seat = aliased(models.EncounterTeam, name="seat")
+        others = aliased(models.EncounterTeam, name="others")
+        lost = (
+            sa.select(sa.func.coalesce(sa.func.sum(others.score), 0))
+            .where(others.encounter_id == seat.encounter_id, others.active.is_(True), others.id != seat.id)
+            .correlate(seat)
+            .scalar_subquery()
+        )
+        points = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role.label("role"),
                 models.Player.team_id.label("team_id"),
-                sa.func.sum(models.Encounter.home_score).label("wins"),
-                sa.func.sum(models.Encounter.away_score).label("losses"),
+                sa.func.sum(seat.score).label("wins"),
+                sa.func.sum(lost).label("losses"),
             )
             .select_from(models.Player)
             .join(
                 models.WorkspaceMember,
                 models.WorkspaceMember.id == models.Player.workspace_member_id,
             )
-            .join(models.Encounter, models.Player.team_id == models.Encounter.home_team_id)
+            .join(seat, sa.and_(seat.team_id == models.Player.team_id, seat.active.is_(True)))
+            .join(models.Encounter, sa.and_(models.Encounter.id == seat.encounter_id, models.Encounter.slot_count == 2))
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
             .where(
                 models.Tournament.id >= 1,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .group_by(models.WorkspaceMember.player_id, models.Player.role, models.Player.team_id)
-        ).cte("player_points_home")
+        ).cte("player_points")
 
-        points_away = (
+        match_seat = aliased(models.EncounterTeam, name="match_seat")
+        matches = (
             sa.select(
-                models.WorkspaceMember.player_id.label("user_id"),
-                models.Player.role.label("role"),
-                models.Player.team_id.label("team_id"),
-                sa.func.sum(models.Encounter.away_score).label("wins"),
-                sa.func.sum(models.Encounter.home_score).label("losses"),
-            )
-            .select_from(models.Player)
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-            )
-            .join(models.Encounter, models.Player.team_id == models.Encounter.away_team_id)
-            .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-            .where(
-                models.Tournament.id >= 1,
-                *workspace_scope_filter(workspace_id, workspace_ids),
-            )
-            .group_by(models.WorkspaceMember.player_id, models.Player.role, models.Player.team_id)
-        ).cte("player_points_away")
-
-        matches_home = (
-            sa.select(
-                models.Encounter.home_team_id.label("team_id"),
+                match_seat.team_id.label("team_id"),
                 sa.func.count(models.Encounter.id).label("match_count"),
             )
+            .join(models.Encounter, models.Encounter.id == match_seat.encounter_id)
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
             .where(
+                match_seat.active.is_(True),
                 models.Tournament.id >= 1,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
-            .group_by(models.Encounter.home_team_id)
-        ).cte("player_matches_home")
-
-        matches_away = (
-            sa.select(
-                models.Encounter.away_team_id.label("team_id"),
-                sa.func.count(models.Encounter.id).label("match_count"),
-            )
-            .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-            .where(
-                models.Tournament.id >= 1,
-                *workspace_scope_filter(workspace_id, workspace_ids),
-            )
-            .group_by(models.Encounter.away_team_id)
-        ).cte("player_matches_away")
+            .group_by(match_seat.team_id)
+        ).cte("player_matches")
 
         team_counts = (
             sa.select(
@@ -170,11 +150,9 @@ class AnalyticsService:
                 models.Player.is_newcomer.label("is_newcomer"),
                 models.Player.is_newcomer_role.label("is_newcomer_role"),
                 models.Tournament.id.label("tournament_id"),
-                (sa.func.coalesce(points_home.c.wins, 0) + sa.func.coalesce(points_away.c.wins, 0)).label("wins"),
-                (sa.func.coalesce(points_home.c.losses, 0) + sa.func.coalesce(points_away.c.losses, 0)).label("losses"),
-                (
-                    sa.func.coalesce(matches_home.c.match_count, 0) + sa.func.coalesce(matches_away.c.match_count, 0)
-                ).label("match_count"),
+                sa.func.coalesce(points.c.wins, 0).label("wins"),
+                sa.func.coalesce(points.c.losses, 0).label("losses"),
+                sa.func.coalesce(matches.c.match_count, 0).label("match_count"),
                 standings.c.overall_position.label("overall_position"),
                 team_counts.c.team_count.label("team_count"),
                 performance_points.c.performance_points.label("performance_points"),
@@ -199,25 +177,15 @@ class AnalyticsService:
             )
             .join(models.Tournament, models.Player.tournament_id == models.Tournament.id)
             .join(
-                points_home,
+                points,
                 sa.and_(
-                    models.WorkspaceMember.player_id == points_home.c.user_id,
-                    models.Player.role == points_home.c.role,
-                    models.Player.team_id == points_home.c.team_id,
+                    models.WorkspaceMember.player_id == points.c.user_id,
+                    models.Player.role == points.c.role,
+                    models.Player.team_id == points.c.team_id,
                 ),
                 isouter=True,
             )
-            .join(
-                points_away,
-                sa.and_(
-                    models.WorkspaceMember.player_id == points_away.c.user_id,
-                    models.Player.role == points_away.c.role,
-                    models.Player.team_id == points_away.c.team_id,
-                ),
-                isouter=True,
-            )
-            .join(matches_home, models.Player.team_id == matches_home.c.team_id, isouter=True)
-            .join(matches_away, models.Player.team_id == matches_away.c.team_id, isouter=True)
+            .join(matches, models.Player.team_id == matches.c.team_id, isouter=True)
             .join(
                 standings,
                 sa.and_(
@@ -250,16 +218,7 @@ class AnalyticsService:
         query = (
             sa.select(models.Encounter)
             .options(
-                sa.orm.joinedload(models.Encounter.home_team),
-                sa.orm.joinedload(models.Encounter.away_team),
-                sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.home_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
-                sa.orm.joinedload(models.Encounter.away_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
+                sa.orm.selectinload(models.Encounter.teams),
                 sa.orm.joinedload(models.Encounter.tournament),
             )
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
@@ -374,16 +333,7 @@ class AnalyticsService:
         query = (
             sa.select(models.Encounter)
             .options(
-                sa.orm.joinedload(models.Encounter.home_team),
-                sa.orm.joinedload(models.Encounter.away_team),
-                sa.orm.joinedload(models.Encounter.home_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.away_team).joinedload(models.Team.players),
-                sa.orm.joinedload(models.Encounter.home_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
-                sa.orm.joinedload(models.Encounter.away_team)
-                .joinedload(models.Team.players)
-                .joinedload(models.Player.workspace_member),
+                sa.orm.selectinload(models.Encounter.teams),
                 sa.orm.joinedload(models.Encounter.tournament),
             )
             .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
@@ -494,6 +444,24 @@ class AnalyticsService:
         self, session: AsyncSession, tournament_id: int
     ) -> typing.Sequence[models.AnalyticsPlayer]:
         return await self.players.list_by_tournament(session, tournament_id)
+
+    async def get_rosters(
+        self, session: AsyncSession, encounters: typing.Iterable[models.Encounter]
+    ) -> dict[int, models.Team]:
+        """The source teams behind the encounters' live seats, with players and their workspace members.
+
+        A seat names its team by id only (and the id goes NULL once the team is deleted), so
+        the rosters a replay rates are read here, in one query for the whole window.
+        """
+        team_ids = {seat.team_id for encounter in encounters for seat in encounter.teams if seat.team_id is not None}
+        if not team_ids:
+            return {}
+        teams = await session.scalars(
+            sa.select(models.Team)
+            .options(sa.orm.selectinload(models.Team.players).selectinload(models.Player.workspace_member))
+            .where(models.Team.id.in_(team_ids))
+        )
+        return {team.id: team for team in teams.unique()}
 
     async def get_teams_with_players(self, session: AsyncSession, tournament_id: int) -> typing.Sequence[models.Team]:
         """Return teams of a tournament with players and player users eagerly loaded.
