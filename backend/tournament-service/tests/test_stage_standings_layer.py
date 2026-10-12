@@ -19,25 +19,31 @@ import asyncio
 import itertools
 import os
 import sys
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared.core import enums
+from shared.core.errors import BaseAPIException
 from shared.models.encounter import Encounter, EncounterTeam, ScoringRule
-from shared.models.identity.user import User
+from shared.models.identity.auth_user import AuthUser
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament.bracket_encounter import BracketEncounter
+from shared.models.tournament.scrim import ScrimRoom
 from shared.models.tournament.stage import Stage, StageItem, StageItemInput
 from shared.models.tournament.team import Team
 from shared.models.tournament.tournament import Tournament
-from shared.services.encounter.participants import active_teams, place_team
+from shared.services.encounter.participants import active_teams, place_team, vacate_slot
 from shared.services.encounter.result import apply_result
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 from src import schemas
 from src.services.admin.stage import rule_values, stage_service
+from src.services.challonge import sync as challonge_sync
+from src.services.scrim.service import _free_side, scrim_service
 from src.services.standings.service import Seat, StageEncounter, standings_service
 
 _TAG = itertools.count()
@@ -436,11 +442,55 @@ class StandingsTests(StageLayerCase):
 
 
 class ScrimClaimTests(StageLayerCase):
-    """A room claim fills slot 2 through ``place_team``."""
+    """``claim_side`` fills slot 2 through ``place_team``.
 
-    async def test_the_claim_seats_slot_two(self) -> None:
-        from src.services.scrim.service import _free_side, _seat_at
+    The real entry point, not the writer under it: what this guards is
+    ``_free_side``'s new definition (slot 2 has no LIVE participation), the
+    reserved slot-2 row ``create_room`` leaves behind, and the ordering that
+    makes winning the conditional ``captain_id`` update the thing that
+    authorizes the seat.
 
+    ``create_room`` itself cannot run here: it provisions the room's pick-ban
+    pool, and ``src.services.encounter.pick_ban_session`` does not import yet
+    (Task 8). The rows it writes are built directly instead, in exactly the
+    shape it writes them.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.auth_user_ids: list[int] = []
+
+    async def asyncTearDown(self) -> None:
+        async with self.Session() as s:
+            await s.execute(sa.delete(AuthUser).where(AuthUser.id.in_(self.auth_user_ids or [0])))
+            await s.commit()
+        await super().asyncTearDown()
+
+    async def _auth_user(self, tag: str) -> int:
+        async with self.Session() as s:
+            user = AuthUser(
+                email=f"{tag}-{self.tag}@example.test",
+                username=f"{tag}-{self.tag}",
+                is_active=True,
+            )
+            s.add(user)
+            await s.commit()
+            self.auth_user_ids.append(user.id)
+            return user.id
+
+    def _viewer(self, auth_user_id: int, tag: str) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=auth_user_id,
+            username=f"{tag}-{self.tag}",
+            email=f"{tag}-{self.tag}@example.test",
+            is_superuser=False,
+            get_workspace_ids=lambda: {self.workspace_id},
+            has_workspace_permission=lambda *_a, **_k: False,
+        )
+
+    async def _room(self) -> tuple[str, int]:
+        """A provisioned room: slot 1 seated, slot 2 reserved and retired."""
+        creator = await self._auth_user("creator")
         async with self.Session() as s:
             rule = ScoringRule(
                 workspace_id=self.workspace_id,
@@ -449,6 +499,17 @@ class ScrimClaimTests(StageLayerCase):
                 end_formula="games >= best_of or max_wins * 2 > best_of",
             )
             s.add(rule)
+            await s.flush()
+            stage = Stage(
+                tournament_id=self.tournament_id,
+                scoring_rule_id=rule.id,
+                name="room",
+                stage_type=enums.StageType.SINGLE_ELIMINATION,
+                max_rounds=1,
+                order=1,
+                is_published=True,
+            )
+            s.add(stage)
             await s.flush()
             encounter = Encounter(
                 workspace_id=self.workspace_id,
@@ -462,137 +523,280 @@ class ScrimClaimTests(StageLayerCase):
             )
             s.add(encounter)
             await s.flush()
-            await place_team(
-                s, encounter, slot=1, team_id=self.team_ids[0], name="A", seed=None, members=()
+            s.add(
+                BracketEncounter(
+                    encounter_id=encounter.id,
+                    tournament_id=self.tournament_id,
+                    stage_id=stage.id,
+                    round=1,
+                )
             )
-            # The reservation: seated, then retired, exactly as ``create_room`` does.
-            from shared.services.encounter.participants import vacate_slot
-
-            await place_team(
-                s, encounter, slot=2, team_id=self.team_ids[1], name="B", seed=None, members=()
-            )
+            await place_team(s, encounter, slot=1, team_id=self.team_ids[0], name="A", seed=None, members=())
+            await place_team(s, encounter, slot=2, team_id=self.team_ids[1], name="B", seed=None, members=())
             await vacate_slot(s, encounter, slot=2)
+            room = ScrimRoom(
+                token=f"tok-{self.tag}",
+                label="room",
+                workspace_id=self.workspace_id,
+                tournament_id=self.tournament_id,
+                stage_id=stage.id,
+                encounter_id=encounter.id,
+                created_by_auth_user_id=creator,
+            )
+            s.add(room)
             await s.commit()
-            encounter_id = encounter.id
+            return room.token, encounter.id
+
+    async def test_the_claim_seats_slot_two(self) -> None:
+        token, encounter_id = await self._room()
+        claimant = self._viewer(await self._auth_user("claimant"), "claimant")
 
         async with self.Session() as s:
-            loaded = await s.get_one(
-                Encounter, encounter_id, options=[sa.orm.selectinload(Encounter.teams)]
-            )
-            self.assertEqual("away", _free_side(loaded))
-            reserved = _seat_at(loaded, 2)
-            self.assertIsNotNone(reserved)
-            self.assertFalse(reserved.active)
-            self.assertEqual(self.team_ids[1], reserved.team_id)
+            room = await scrim_service._load_room(s, token)
+            self.assertEqual("away", _free_side(room.encounter))
 
-            # The claim itself: slot 2 is filled by the participation writer.
-            await place_team(
-                s, loaded, slot=2, team_id=reserved.team_id, name=reserved.name, seed=None, members=()
-            )
-            await s.commit()
+        async with self.Session() as s:
+            payload = await scrim_service.claim_side(s, claimant, token)
 
+        self.assertEqual("away", payload["viewer_side"])
+        self.assertTrue(payload["away_team"]["captain_claimed"])
         async with self.Session() as s:
             seats = await active_teams(s, encounter_id)
+            rows = (
+                (await s.execute(sa.select(EncounterTeam).where(EncounterTeam.encounter_id == encounter_id)))
+                .scalars()
+                .all()
+            )
         self.assertEqual([1, 2], [seat.slot for seat in seats])
         self.assertEqual([self.team_ids[0], self.team_ids[1]], [seat.team_id for seat in seats])
-        # The reservation stays on record beside the live seat (append-only).
+        # Append-only: the reservation stays on record beside the live seat.
+        self.assertEqual(3, len(rows))
+
+    async def test_a_second_claimant_is_refused(self) -> None:
+        token, _encounter_id = await self._room()
+        first = self._viewer(await self._auth_user("first"), "first")
+        second = self._viewer(await self._auth_user("second"), "second")
+
         async with self.Session() as s:
-            rows = (
-                await s.execute(sa.select(EncounterTeam).where(EncounterTeam.encounter_id == encounter_id))
-            ).scalars()
-        self.assertEqual(3, len(list(rows)))
+            await scrim_service.claim_side(s, first, token)
+        with self.assertRaises(BaseAPIException) as ctx:
+            async with self.Session() as s:
+                await scrim_service.claim_side(s, second, token)
+        self.assertEqual(409, ctx.exception.status_code)
+
+    async def test_the_holder_claiming_again_is_idempotent(self) -> None:
+        token, encounter_id = await self._room()
+        claimant = self._viewer(await self._auth_user("again"), "again")
+
+        async with self.Session() as s:
+            await scrim_service.claim_side(s, claimant, token)
+        async with self.Session() as s:
+            payload = await scrim_service.claim_side(s, claimant, token)
+
+        self.assertEqual("away", payload["viewer_side"])
+        async with self.Session() as s:
+            seats = await active_teams(s, encounter_id)
+        self.assertEqual(2, len(seats), "a repeat claim must not write a second seat")
 
 
 class ChallongeRoundTripTests(StageLayerCase):
-    """Participants 1/2 map to slots 1/2 and an import stands as source ``import``."""
+    """Import and export: Challonge's participants 1 and 2 are slots 1 and 2."""
 
-    async def test_an_imported_result_seats_both_slots_and_stands_as_import(self) -> None:
-        from src.services.challonge.sync import _reseat, _write_import_result
+    def _match(self, **overrides) -> SimpleNamespace:
+        fields = {
+            "id": 9001,
+            "round": 1,
+            "state": "complete",
+            "scores_csv": "2-1",
+            "player1_id": 1,
+            "player2_id": 2,
+            "group_id": None,
+            "player1_prereq_match_id": None,
+            "player2_prereq_match_id": None,
+            "player1_is_prereq_match_loser": False,
+            "player2_is_prereq_match_loser": False,
+        }
+        return SimpleNamespace(**{**fields, **overrides})
 
+    async def _import(self, match: SimpleNamespace, *, stage: Stage):
+        """One match through ``_upsert_encounter_from_challonge``, for real."""
+        source = challonge_sync._ImportSource(challonge_id=5, source_id=None, source_type="stage", stage=stage)
+        match_lookup = challonge_sync._MatchLookup(
+            by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={}
+        )
         async with self.Session() as s:
-            rule = ScoringRule(
-                workspace_id=self.workspace_id,
-                preset="wins",
-                game_formula="win",
-                end_formula="games >= best_of or max_wins * 2 > best_of",
+            tournament = await s.get_one(Tournament, self.tournament_id)
+            teams_by_id = {
+                team.id: team for team in (await s.execute(sa.select(Team).where(Team.id.in_(self.team_ids)))).scalars()
+            }
+            team_lookup = challonge_sync._TeamLookup(
+                by_source_key={},
+                by_key={(None, 1): self.team_ids[0], (None, 2): self.team_ids[1]},
+                teams_by_id=teams_by_id,
             )
-            s.add(rule)
-            await s.flush()
-            encounter = Encounter(
-                workspace_id=self.workspace_id,
-                discipline="overwatch",
-                tournament_id=self.tournament_id,
-                scoring_rule_id=rule.id,
-                name="M",
-                slot_count=2,
-                status=enums.EncounterStatus.OPEN,
-            )
-            s.add(encounter)
-            await s.flush()
-            # player1 -> slot 1, player2 -> slot 2.
-            changed = await _reseat(
-                s, encounter, [self.team_ids[0], self.team_ids[1]], {self.team_ids[0]: "A", self.team_ids[1]: "B"}
-            )
-            self.assertTrue(changed)
-            await _write_import_result(s, encounter, [2, 1])
+            with (
+                patch.object(
+                    challonge_sync.structure_service,
+                    "_resolve_stage_refs_for_match",
+                    AsyncMock(return_value=SimpleNamespace(stage_id=stage.id, stage_item_id=None)),
+                ),
+                patch.object(challonge_sync, "after_encounter_teams_changed", AsyncMock()),
+            ):
+                result = await challonge_sync.sync_service._upsert_encounter_from_challonge(
+                    s,
+                    tournament,
+                    source,
+                    match,
+                    match_lookup=match_lookup,
+                    team_lookup=team_lookup,
+                )
             await s.commit()
-            encounter_id = encounter.id
+            return result, result.encounter.id
 
+    async def test_an_imported_match_seats_slots_one_and_two_and_stands_as_import(self) -> None:
+        stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
+        result, encounter_id = await self._import(self._match(), stage=stage)
+
+        self.assertEqual("created", result.action)
+        self.assertTrue(result.newly_completed)
         async with self.Session() as s:
             row = await s.get_one(Encounter, encounter_id)
             seats = await active_teams(s, encounter_id)
+            position = await s.get(BracketEncounter, encounter_id)
         self.assertEqual("import", row.result_source)
         self.assertEqual(enums.EncounterResultStatus.CONFIRMED, row.result_status)
         self.assertEqual(enums.EncounterStatus.COMPLETED, row.status)
+        self.assertEqual(stage.scoring_rule_id, row.scoring_rule_id)
+        self.assertEqual(self.workspace_id, row.workspace_id)
+        self.assertEqual("overwatch", row.discipline)
+        self.assertEqual(2, row.slot_count)
+        self.assertIsNotNone(position)
+        self.assertEqual(1, position.round)
+        # player1 -> slot 1, player2 -> slot 2.
         self.assertEqual([self.team_ids[0], self.team_ids[1]], [seat.team_id for seat in seats])
         self.assertEqual([2.0, 1.0], [seat.score for seat in seats])
         self.assertEqual([1, 2], [seat.placement for seat in seats])
 
-    async def test_a_drawn_scoreline_shares_first_place(self) -> None:
-        from src.services.challonge.sync import _places
-
-        self.assertEqual({1: 1, 2: 1}, _places({1: 1.0, 2: 1.0}))
-        self.assertEqual({1: 1, 2: 2}, _places({1: 2.0, 2: 1.0}))
-
-    async def test_reseating_retires_the_old_occupant(self) -> None:
-        from src.services.challonge.sync import _reseat
+    async def test_an_open_match_leaves_the_running_tally_without_a_standing(self) -> None:
+        stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
+        _created, encounter_id = await self._import(self._match(state="open", scores_csv="1-0"), stage=stage)
 
         async with self.Session() as s:
-            rule = ScoringRule(
-                workspace_id=self.workspace_id,
-                preset="wins",
-                game_formula="win",
-                end_formula="games >= best_of or max_wins * 2 > best_of",
+            row = await s.get_one(Encounter, encounter_id)
+        self.assertIsNone(row.result_source)
+        self.assertNotEqual(enums.EncounterStatus.COMPLETED, row.status)
+
+    async def test_a_locally_confirmed_result_is_not_converted_to_an_import(self) -> None:
+        """A sync may not take over a decision somebody made here (D57)."""
+        stage = await self.make_stage(enums.StageType.ROUND_ROBIN, teams=self.team_ids[:2])
+        async with self.Session() as s:
+            encounters = await stage_service.generate_encounters(s, stage.id, notify=False)
+            encounter = await s.get_one(Encounter, encounters[0].id)
+            seats = await active_teams(s, encounter.id)
+            await apply_result(
+                s,
+                encounter,
+                source=enums.EncounterResultSource.ADMIN,
+                totals={seats[0].id: 2.0, seats[1].id: 0.0},
+                placements={seats[0].id: 1, seats[1].id: 2},
+                action=enums.EncounterResultAuditAction.CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                reason="admin call",
             )
-            s.add(rule)
-            await s.flush()
-            encounter = Encounter(
-                workspace_id=self.workspace_id,
-                discipline="overwatch",
-                tournament_id=self.tournament_id,
-                scoring_rule_id=rule.id,
-                name="M",
-                slot_count=2,
-                status=enums.EncounterStatus.OPEN,
-            )
-            s.add(encounter)
-            await s.flush()
-            names = {team_id: f"T{team_id}" for team_id in self.team_ids}
-            await _reseat(s, encounter, [self.team_ids[0], self.team_ids[1]], names)
-            # Challonge corrected participant 2.
-            changed = await _reseat(s, encounter, [self.team_ids[0], self.team_ids[2]], names)
             await s.commit()
             encounter_id = encounter.id
+            version = encounter.result_version
+
+        source = challonge_sync._ImportSource(challonge_id=5, source_id=None, source_type="stage", stage=stage)
+        match_lookup = challonge_sync._MatchLookup(
+            by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={}
+        )
+        async with self.Session() as s:
+            match_lookup.by_challonge_id[9001] = await s.get_one(Encounter, encounter_id)
+            with patch.object(challonge_sync, "advance_after_result", AsyncMock()):
+                await challonge_sync.sync_service._advance_completed_challonge_matches(
+                    s, [(source, self._match())], match_lookup=match_lookup
+                )
+            await s.commit()
+
+        async with self.Session() as s:
+            row = await s.get_one(Encounter, encounter_id)
+        self.assertEqual("admin", row.result_source)
+        self.assertEqual(version, row.result_version, "no second write, no spurious IMPORT audit row")
+
+    async def test_the_export_pushes_the_two_seats_in_slot_order(self) -> None:
+        stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
+        _result, encounter_id = await self._import(self._match(), stage=stage)
+        pushed: dict = {}
+
+        async def _update_match(tournament_id, match_id, *, scores_csv, winner_id):
+            pushed.update(match_id=match_id, scores_csv=scores_csv, winner_id=winner_id)
+
+        source = challonge_sync._ImportSource(challonge_id=5, source_id=None, source_type="stage", stage=stage)
+        async with self.Session() as s:
+            tournament = await s.get_one(Tournament, self.tournament_id)
+            encounter = await s.get_one(Encounter, encounter_id)
+            with (
+                patch.object(
+                    challonge_sync.sync_service, "_resolve_export_target", AsyncMock(return_value=(source, 9001))
+                ),
+                patch.object(challonge_sync.sync_service, "_resolve_winner_challonge_id", AsyncMock(return_value=1)),
+                patch.object(challonge_sync.challonge_client, "update_match", AsyncMock(side_effect=_update_match)),
+                patch.object(challonge_sync.sync_log_service, "_log_sync", AsyncMock()),
+            ):
+                self.assertTrue(await challonge_sync.sync_service.push_single_result(s, tournament, encounter))
+
+        # Slot 1's score first: that IS participant 1's.
+        self.assertEqual("2-1", pushed["scores_csv"])
+        self.assertEqual(1, pushed["winner_id"])
+        self.assertEqual(9001, pushed["match_id"])
+
+    async def test_a_drawn_scoreline_exports_as_a_tie(self) -> None:
+        stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
+        _result, encounter_id = await self._import(self._match(scores_csv="1-1"), stage=stage)
+        pushed: dict = {}
+
+        async def _update_match(tournament_id, match_id, *, scores_csv, winner_id):
+            pushed.update(scores_csv=scores_csv, winner_id=winner_id)
+
+        source = challonge_sync._ImportSource(challonge_id=5, source_id=None, source_type="stage", stage=stage)
+        async with self.Session() as s:
+            tournament = await s.get_one(Tournament, self.tournament_id)
+            encounter = await s.get_one(Encounter, encounter_id)
+            with (
+                patch.object(
+                    challonge_sync.sync_service, "_resolve_export_target", AsyncMock(return_value=(source, 9001))
+                ),
+                patch.object(challonge_sync.challonge_client, "update_match", AsyncMock(side_effect=_update_match)),
+                patch.object(challonge_sync.sync_log_service, "_log_sync", AsyncMock()),
+            ):
+                await challonge_sync.sync_service.push_single_result(s, tournament, encounter)
+
+        self.assertEqual("tie", pushed["winner_id"])
+        self.assertEqual("1-1", pushed["scores_csv"])
+
+    async def test_reseating_retires_the_old_occupant(self) -> None:
+        """Challonge corrected participant 2: the seat changes hands (D55)."""
+        stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
+        _result, encounter_id = await self._import(self._match(state="open"), stage=stage)
+        names = {team_id: f"T{team_id}" for team_id in self.team_ids}
+
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, encounter_id)
+            changed = await challonge_sync._reseat(s, encounter, [self.team_ids[0], self.team_ids[2]], names)
+            await s.commit()
         self.assertTrue(changed)
         async with self.Session() as s:
             seats = await active_teams(s, encounter_id)
-            all_rows = (
-                await s.execute(sa.select(EncounterTeam).where(EncounterTeam.encounter_id == encounter_id))
-            ).scalars()
+            rows = (
+                (await s.execute(sa.select(EncounterTeam).where(EncounterTeam.encounter_id == encounter_id)))
+                .scalars()
+                .all()
+            )
         self.assertEqual([self.team_ids[0], self.team_ids[2]], [seat.team_id for seat in seats])
-        self.assertEqual(3, len(list(all_rows)), "the replaced occupant stays on record")
+        self.assertEqual(3, len(rows), "the replaced occupant stays on record")
 
-
-def _unused() -> None:
-    """Keep the imports the cases reach for through locals honest."""
-    assert User is not None
+    async def test_a_drawn_scoreline_shares_first_place(self) -> None:
+        self.assertEqual({1: 1, 2: 1}, challonge_sync._places({1: 1.0, 2: 1.0}))
+        self.assertEqual({1: 1, 2: 2}, challonge_sync._places({1: 2.0, 2: 1.0}))

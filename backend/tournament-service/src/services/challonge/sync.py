@@ -1846,10 +1846,16 @@ class ChallongeSyncService:
                 continue
             encounter = match_lookup.get(source, match.id)
             if encounter is not None:
-                # Re-fires advancement for every complete match (idempotent), so it
-                # must not re-stamp a standing an earlier pass already wrote: only
-                # an encounter without an ``import`` result gets one here.
-                if encounter.result_source != enums.EncounterResultSource.IMPORT.value:
+                # Re-fires advancement for every complete match (idempotent), so
+                # it must not re-stamp a standing that already exists -- and a
+                # standing somebody else decided is not ours to replace. A result
+                # confirmed from games, from a captain's series claim or by an
+                # admin stays theirs: ``refresh_from_games`` deliberately keeps
+                # its hands off an ``import`` result (D57), so converting one
+                # here would make the local decision unrecomputable forever.
+                # That includes the encounter ``_upsert_encounter_from_challonge``
+                # just reported as a CONFLICT, which is still in ``match_lookup``.
+                if encounter.result_status != enums.EncounterResultStatus.CONFIRMED:
                     seats = await active_teams(session, encounter.id)
                     await _write_import_result(session, encounter, [seat.score for seat in seats])
                 await advance_after_result(session, encounter)

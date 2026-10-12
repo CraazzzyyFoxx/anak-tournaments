@@ -681,7 +681,17 @@ class AdminStageService:
                 )
 
         rule_before = rule_values(stage.stage_type, stage.scoring)
-        rule_after = rule_values(next_type, update_data["scoring"]) if "scoring" in update_data else rule_before
+        if "scoring" in update_data:
+            rule_after = rule_values(next_type, update_data["scoring"])
+        elif next_type != stage.stage_type:
+            # The stored rule is the OLD type's. An empty block is what "the one
+            # the stage type implies" means, so a lobby stage turned round robin
+            # becomes ``wins`` with its ``max_wins * 2 > best_of`` end rule (a Bo3
+            # settles at 2-0 again) instead of keeping ``points`` and the columns
+            # a duel never records.
+            rule_after = rule_values(next_type, {})
+        else:
+            rule_after = rule_before
         if rule_after != rule_before:
             await self._assert_scoring_editable(session, stage, rule_before, rule_after)
 
@@ -1657,8 +1667,7 @@ class AdminStageService:
         ordered = [team_id for team_id in dict.fromkeys(team_ids) if team_id is not None and team_id > 0]
         names = await self._load_team_names(session, ordered)
         return {
-            team_id: SeatTeam(name=names.get(team_id, "TBD"), seed=index)
-            for index, team_id in enumerate(ordered, 1)
+            team_id: SeatTeam(name=names.get(team_id, "TBD"), seed=index) for index, team_id in enumerate(ordered, 1)
         }
 
     async def _create_encounters_from_skeleton(

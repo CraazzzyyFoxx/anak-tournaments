@@ -1131,9 +1131,7 @@ class StandingsService:
             )
         return seats
 
-    async def load_stage_encounters(
-        self, session: AsyncSession, stage_id: int
-    ) -> list[StageEncounter]:
+    async def load_stage_encounters(self, session: AsyncSession, stage_id: int) -> list[StageEncounter]:
         """One stage's encounters, flattened for the ranking engine.
 
         Two queries for the whole stage: the cards with their bracket positions,

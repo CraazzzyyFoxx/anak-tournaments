@@ -860,6 +860,10 @@ class ScrimService:
             members=(),
         )
         await session.commit()
+        # The seats were loaded before this write; the read below serializes
+        # from them, and a session that does not expire on commit would answer
+        # with the room as it was BEFORE the claim.
+        await session.refresh(room.encounter, ["teams"])
         return await self.get_room_by_token(session, user, token)
 
     async def close_room(self, session: AsyncSession, user: models.AuthUser, token: str) -> dict:
