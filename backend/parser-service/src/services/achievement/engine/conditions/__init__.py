@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
 from src import models
+from src.domain.achievement_duel import active_seat
 
 # PostgreSQL enum stores PascalCase names (e.g. 'Performance'),
 # while Python StrEnum has lowercase values (e.g. 'performance').
@@ -212,6 +213,7 @@ async def get_eligible_keys(
         return {(row[0], row[1]) for row in result}
 
     if resolved is AchievementGrain.user_encounter:
+        seat, on_seat = active_seat()
         query = (
             sa.select(
                 models.WorkspaceMember.player_id,
@@ -220,17 +222,11 @@ async def get_eligible_keys(
             )
             .select_from(models.Encounter)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .join(
-                models.Team,
-                sa.or_(
-                    models.Team.id == models.Encounter.home_team_id,
-                    models.Team.id == models.Encounter.away_team_id,
-                ),
-            )
+            .join(seat, on_seat)
             .join(
                 models.Player,
                 sa.and_(
-                    models.Player.team_id == models.Team.id,
+                    models.Player.team_id == seat.team_id,
                     models.Player.tournament_id == models.Encounter.tournament_id,
                 ),
             )

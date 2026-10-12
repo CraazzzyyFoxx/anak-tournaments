@@ -26,9 +26,13 @@ os.environ["DEBUG"] = "true"
 encounter_flows = importlib.import_module("src.services.encounter.flows")
 MapVetoMode = importlib.import_module("shared.core.enums").MapVetoMode
 
-GROUP = SimpleNamespace(id=1, home_team_id=10, away_team_id=20, stage_id=100, round=4)
-PLAYOFF = SimpleNamespace(id=2, home_team_id=20, away_team_id=10, stage_id=200, round=-3)
-OTHER_PAIR = SimpleNamespace(id=3, home_team_id=10, away_team_id=30, stage_id=100, round=1)
+GROUP = SimpleNamespace(id=1)
+PLAYOFF = SimpleNamespace(id=2)
+OTHER_PAIR = SimpleNamespace(id=3)
+
+#: The teams each encounter seats right now, and where each sits in the bracket.
+SEATED = {GROUP.id: {10, 20}, PLAYOFF.id: {20, 10}, OTHER_PAIR.id: {10, 30}}
+POSITIONS = {GROUP.id: (100, 4), PLAYOFF.id: (200, -3), OTHER_PAIR.id: (100, 1)}
 
 RIALTO, LIJIANG, ROUTE_66 = 28, 13, 26
 
@@ -56,13 +60,20 @@ class ResolveForLogTests(IsolatedAsyncioTestCase):
     async def _resolve(self, candidates, *, previous=(), played=(), attached=None, map_id=LIJIANG, pools=POOLS):
         with (
             patch.object(encounter_flows.service, "list_by_teams", AsyncMock(return_value=list(candidates))),
+            patch.object(
+                encounter_flows.service, "active_team_ids", AsyncMock(side_effect=lambda _s, eid: SEATED[eid])
+            ),
+            patch.object(
+                encounter_flows.service,
+                "bracket_positions",
+                AsyncMock(side_effect=lambda _s, ids: {i: POSITIONS[i] for i in ids}),
+            ),
             patch.object(encounter_flows.service, "encounter_ids_with_log", AsyncMock(return_value=set(previous))),
             patch.object(encounter_flows.service, "encounter_ids_with_map", AsyncMock(return_value=set(played))),
         ):
             return await encounter_flows.resolve_for_log(
                 _Session(),
-                10,
-                20,
+                (10, 20),
                 log_name="m.txt",
                 map_id=map_id,
                 map_pools=pools,
@@ -98,7 +109,7 @@ class ResolveForLogTests(IsolatedAsyncioTestCase):
         self.assertIs(PLAYOFF, await self._resolve([GROUP, PLAYOFF], previous={PLAYOFF.id}))
 
     async def test_the_attached_encounter_wins_over_an_ambiguous_pair(self) -> None:
-        # Flipped orientation: the log's home side is the encounter's away side.
+        # The log lists the teams the other way round from the encounter's seats.
         self.assertIs(PLAYOFF, await self._resolve([GROUP, PLAYOFF], attached=PLAYOFF.id))
 
     async def test_an_attached_encounter_between_other_teams_is_refused(self) -> None:

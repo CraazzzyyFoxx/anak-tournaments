@@ -39,6 +39,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from shared.testing import create_sqlite_tables
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
@@ -82,7 +84,7 @@ TABLE_NAMES = (
     "tournament.stage_item",
     "tournament.team",
     "tournament.player",
-    "tournament.encounter",
+    "tournament.bracket_encounter",
     "tournament.standing",
     "matches.match",
     "matches.statistics",
@@ -98,11 +100,14 @@ TABLE_NAMES = (
     "balancer.draft_team",
     "balancer.draft_player",
     "balancer.draft_pick",
-    "tournament.encounter_captain_report",
-    "tournament.encounter_game",
-    "tournament.encounter_map_report",
-    "tournament.encounter_map_code",
-    "tournament.encounter_readiness",
+    "encounter.encounter",
+    "encounter.team",
+    "encounter.team_member",
+    "encounter.game",
+    "encounter.game_team",
+    "encounter.game_claim",
+    "encounter.team_report",
+    "encounter.readiness",
     "log_processing.record",
     "workspace_member",
     "achievements.rule",
@@ -213,8 +218,7 @@ class _Fixture:
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in tables if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in tables:
-                table.create(conn)
+            create_sqlite_tables(conn, tables)
             # The differ reconciles with ``INSERT ... ON CONFLICT DO NOTHING``
             # against a FUNCTIONAL unique index that only a migration creates
             # (``achenc01``). Without it here, SQLite rejects the conflict
@@ -306,27 +310,91 @@ class _Fixture:
     def encounter(
         self,
         tournament_id: int,
-        home_team_id: int,
-        away_team_id: int,
+        first_team_id: int,
+        second_team_id: int,
         *,
         stage_id: int | None = None,
+        stage_item_id: int | None = None,
+        first_score: int = 2,
+        second_score: int = 1,
+        round_no: int = 1,
+        status: object | None = None,
+        closeness: float | None = None,
     ) -> int:
+        """One duel: the two teams in slots 1 and 2, with the standing a decided series carries."""
+        status = enums.EncounterStatus.COMPLETED if status is None else status
+        decided = status == enums.EncounterStatus.COMPLETED
         encounter_id = self._id()
         self.insert(
             models.Encounter.__table__,
             id=encounter_id,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
+            tournament_id=tournament_id,
+            scoring_rule_id=1,
+            name="Encounter",
+            slot_count=2,
+            best_of=3,
+            status=status,
+            result_status=enums.EncounterResultStatus.CONFIRMED if decided else enums.EncounterResultStatus.NONE,
+            result_source="admin" if decided else None,
+            closeness=closeness,
+        )
+        self.insert(
+            models.BracketEncounter.__table__,
+            encounter_id=encounter_id,
             tournament_id=tournament_id,
             stage_id=stage_id,
-            name="Encounter",
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=2,
-            away_score=1,
-            round=1,
-            best_of=3,
-            status=enums.EncounterStatus.COMPLETED,
+            stage_item_id=stage_item_id,
+            round=round_no,
         )
+        scores = (first_score, second_score)
+        for slot, team_id in enumerate((first_team_id, second_team_id), 1):
+            self.insert(
+                models.EncounterTeam.__table__,
+                id=self._id(),
+                encounter_id=encounter_id,
+                tournament_id=tournament_id,
+                slot=slot,
+                team_id=team_id,
+                name=f"slot {slot}",
+                active=True,
+                score=scores[slot - 1],
+                # Equal scores share a place, like a drawn series.
+                placement=1 + sum(other > scores[slot - 1] for other in scores) if decided else None,
+            )
         return encounter_id
+
+    def seat(self, encounter_id: int, team_id: int) -> int:
+        """The participation id the team holds in the encounter."""
+        table = models.EncounterTeam.__table__
+        return int(
+            self.session.scalar(
+                sa.select(table.c.id).where(
+                    table.c.encounter_id == encounter_id, table.c.team_id == team_id, table.c.active.is_(True)
+                )
+            )
+        )
+
+    def replace_seat(self, encounter_id: int, slot: int, team_id: int) -> None:
+        """A bracket correction: the occupant of ``slot`` is retired and ``team_id`` takes the seat on."""
+        table = models.EncounterTeam.__table__
+        retired = self.session.execute(
+            sa.select(table).where(table.c.encounter_id == encounter_id, table.c.slot == slot, table.c.active.is_(True))
+        ).one()
+        self.session.execute(sa.update(table).where(table.c.id == retired.id).values(active=False))
+        self.insert(
+            table,
+            id=self._id(),
+            encounter_id=encounter_id,
+            tournament_id=retired.tournament_id,
+            slot=slot,
+            team_id=team_id,
+            name=f"slot {slot}",
+            active=True,
+            score=retired.score,
+            placement=retired.placement,
+        )
 
     def match(self, encounter_id: int, home_team_id: int, away_team_id: int) -> int:
         match_id = self._id()
@@ -378,6 +446,7 @@ class _Fixture:
         self.insert(
             models.Stage.__table__,
             id=stage_id,
+            scoring_rule_id=1,
             tournament_id=CONTAINER_ID,
             name="room 1",
             stage_type=enums.StageType.SINGLE_ELIMINATION,

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.enums import EncounterStatus
 from shared.models.achievements.achievement import AchievementGrain
 from src import models
+from src.domain.achievement_duel import series_total
 
 from ..context import EvalContext
 from . import ResultSet, register
@@ -87,19 +88,11 @@ async def execute_global_winrate(
     include_league = params.get("include_league", False)
     metric = params.get("metric", "winrate")
 
-    home_score = sa.case(
-        (models.Encounter.home_team_id == models.Team.id, models.Encounter.home_score),
-        else_=models.Encounter.away_score,
-    )
-    away_score = sa.case(
-        (models.Encounter.home_team_id == models.Team.id, models.Encounter.away_score),
-        else_=models.Encounter.home_score,
-    )
-
-    sum_home = sa.func.sum(home_score)
-    sum_away = sa.func.sum(away_score)
-    winrate = sum_home / sa.func.nullif(sum_home + sum_away, 0)
-    rank_expr = sum_home if metric == "won_maps" else winrate
+    # The team's own score over the score of everyone seated in the encounter.
+    seat = sa.orm.aliased(models.EncounterTeam, name="seat")
+    won = sa.func.sum(seat.score)
+    winrate = won / sa.func.nullif(sa.func.sum(series_total()), 0)
+    rank_expr = won if metric == "won_maps" else winrate
 
     query = (
         sa.select(models.WorkspaceMember.player_id)
@@ -109,13 +102,8 @@ async def execute_global_winrate(
             models.WorkspaceMember,
             models.WorkspaceMember.id == models.Player.workspace_member_id,
         )
-        .join(
-            models.Encounter,
-            sa.or_(
-                models.Encounter.home_team_id == models.Team.id,
-                models.Encounter.away_team_id == models.Team.id,
-            ),
-        )
+        .join(seat, sa.and_(seat.team_id == models.Team.id, seat.active.is_(True)))
+        .join(models.Encounter, models.Encounter.id == seat.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             models.Player.is_substitution.is_(False),

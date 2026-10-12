@@ -66,7 +66,7 @@ def assign_fights(kill_feed: Sequence[models.MatchKillFeed]) -> None:
 
 @dataclass(frozen=True)
 class PlayerRef:
-    player_id: int  # tournament.player.id (pivot key)
+    player_id: int  # pivot key; the log pipeline uses the account's user_id
     user_id: int  # players.user.id (stat rows / kill_feed key)
     team_id: int
     role: enums.HeroClass | None

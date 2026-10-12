@@ -21,17 +21,8 @@ enums = importlib.import_module("src.core.enums")
 from shared.services.realtime import Resource, Scope  # noqa: E402
 
 
-def _encounter(*, status: Any, home_score: int, away_score: int) -> SimpleNamespace:
-    return SimpleNamespace(
-        id=7,
-        tournament_id=42,
-        home_team_id=1,
-        away_team_id=2,
-        home_score=home_score,
-        away_score=away_score,
-        status=status,
-        result_status=enums.EncounterResultStatus.NONE,
-    )
+def _encounter(*, status: Any) -> SimpleNamespace:
+    return SimpleNamespace(id=7, tournament_id=42, status=status)
 
 
 class MatchLogOutboxTests(IsolatedAsyncioTestCase):
@@ -41,12 +32,13 @@ class MatchLogOutboxTests(IsolatedAsyncioTestCase):
         # app-service, whose cashews entries have no TTL-plus-replay safety net
         # if a Redis publish is lost.
         session = object()
-        encounter = _encounter(status=enums.EncounterStatus.COMPLETED, home_score=3, away_score=1)
+        encounter = _encounter(status=enums.EncounterStatus.COMPLETED)
 
         with (
             patch.object(flows, "emit", AsyncMock()) as emit,
             patch.object(flows, "enqueue_invalidation_outbox", AsyncMock()) as invalidate,
             patch.object(flows, "enqueue_outbox_event", AsyncMock()) as enqueue,
+            patch.object(flows, "enqueue_encounter_completed", AsyncMock()) as completed,
         ):
             await flows._enqueue_match_log_tournament_events(session, encounter)
 
@@ -68,27 +60,27 @@ class MatchLogOutboxTests(IsolatedAsyncioTestCase):
 
         # The two domain events are unrelated to caching and stay as they were:
         # a durable standings recalculation request, and the completed-encounter
-        # fan-out that only fires for a finished encounter.
-        self.assertEqual(2, enqueue.await_count)
-        recalc_call, completed_call = enqueue.await_args_list
+        # fan-out that only fires for a finished encounter. The latter is the
+        # shared writer, which reads the winner off the participations.
+        enqueue.assert_awaited_once()
+        recalc_call = enqueue.await_args
         self.assertIs(recalc_call.args[0], session)
         self.assertEqual("tournament_standings_invalidated", recalc_call.args[1].event_type)
         self.assertEqual("parser-service", recalc_call.args[1].source_service)
         self.assertEqual("tournament.standings.invalidated", recalc_call.kwargs["routing_key"])
-        self.assertEqual("encounter_completed", completed_call.args[1].event_type)
-        self.assertEqual(7, completed_call.args[1].encounter_id)
-        self.assertEqual(1, completed_call.args[1].winner_team_id)
-        self.assertEqual("tournament.encounter.completed", completed_call.kwargs["routing_key"])
+        completed.assert_awaited_once_with(session, encounter, source_service="parser-service")
 
     async def test_an_open_encounter_publishes_no_completion(self) -> None:
-        encounter = _encounter(status=enums.EncounterStatus.OPEN, home_score=0, away_score=0)
+        encounter = _encounter(status=enums.EncounterStatus.OPEN)
 
         with (
             patch.object(flows, "emit", AsyncMock()),
             patch.object(flows, "enqueue_invalidation_outbox", AsyncMock()),
             patch.object(flows, "enqueue_outbox_event", AsyncMock()) as enqueue,
+            patch.object(flows, "enqueue_encounter_completed", AsyncMock()) as completed,
         ):
             await flows._enqueue_match_log_tournament_events(object(), encounter)
 
+        completed.assert_not_awaited()
         self.assertEqual(1, enqueue.await_count)
         self.assertEqual("tournament_standings_invalidated", enqueue.await_args_list[0].args[1].event_type)

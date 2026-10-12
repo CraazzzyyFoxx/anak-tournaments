@@ -43,12 +43,14 @@ from shared.models.platform.notification import Notification  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigItem  # noqa: E402
 from shared.services.encounter import result  # noqa: E402
-from shared.testing import install_postgres_type_shims  # noqa: E402
+from shared.testing import (
+    create_sqlite_tables,  # noqa: E402
+    install_postgres_type_shims,  # noqa: E402
+)
 from src import models  # noqa: E402
 from src.services.admin.stage import stage_service  # noqa: E402
 from src.services.encounter.pick_ban_session import pick_ban_session_service  # noqa: E402
 from src.services.notifications.lifecycle import advance_and_announce, lifecycle_notifier  # noqa: E402
-from tests._encounter_layer import create_sqlite_tables  # noqa: E402
 
 install_postgres_type_shims()
 

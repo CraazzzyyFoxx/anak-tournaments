@@ -76,38 +76,6 @@ class _NodeFixture(_scrim._Fixture):
         )
         return player_id
 
-    def encounter(
-        self,
-        tournament_id: int,
-        home_team_id: int,
-        away_team_id: int,
-        *,
-        stage_id: int | None = None,
-        home_score: int = 2,
-        away_score: int = 1,
-        round_no: int = 1,
-        status: object | None = None,
-        closeness: float | None = None,
-    ) -> int:
-        encounter_id = self._id()
-        values = {
-            "id": encounter_id,
-            "tournament_id": tournament_id,
-            "stage_id": stage_id,
-            "name": "Encounter",
-            "home_team_id": home_team_id,
-            "away_team_id": away_team_id,
-            "home_score": home_score,
-            "away_score": away_score,
-            "round": round_no,
-            "best_of": 3,
-            "status": status if status is not None else enums.EncounterStatus.COMPLETED,
-        }
-        if closeness is not None:
-            values["closeness"] = closeness
-        self.insert(models.Encounter.__table__, **values)
-        return encounter_id
-
     def match(
         self,
         encounter_id: int,
@@ -138,6 +106,7 @@ class _NodeFixture(_scrim._Fixture):
         self.insert(
             models.Stage.__table__,
             id=stage_id,
+            scoring_rule_id=1,
             tournament_id=tournament_id,
             name=name,
             stage_type=stage_type,
@@ -459,8 +428,10 @@ class WinrateCompletedTests(_NodeCase):
         away = self.db.team(REAL_TOURNAMENT_ID, "away", captain_id=REAL_AWAY_USER)
         self.db.player(REAL_TOURNAMENT_ID, home, self.db.member(REAL_HOME_USER), name="home")
         self.db.player(REAL_TOURNAMENT_ID, away, self.db.member(REAL_AWAY_USER), name="away")
-        self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=2, away_score=0, status=EncounterStatus.COMPLETED)
-        self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=0, away_score=5, status=EncounterStatus.OPEN)
+        self.db.encounter(
+            REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=0, status=EncounterStatus.COMPLETED
+        )
+        self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=0, second_score=5, status=EncounterStatus.OPEN)
         self.db.session.commit()
         result = await evaluator.evaluate(
             self.db.shim,
@@ -475,8 +446,10 @@ class WinrateCompletedTests(_NodeCase):
         away = self.db.team(REAL_TOURNAMENT_ID, "away", captain_id=REAL_AWAY_USER)
         self.db.player(REAL_TOURNAMENT_ID, home, self.db.member(REAL_HOME_USER), name="home")
         self.db.player(REAL_TOURNAMENT_ID, away, self.db.member(REAL_AWAY_USER), name="away")
-        self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=2, away_score=0, status=EncounterStatus.COMPLETED)
-        self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=0, away_score=5, status=EncounterStatus.OPEN)
+        self.db.encounter(
+            REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=0, status=EncounterStatus.COMPLETED
+        )
+        self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=0, second_score=5, status=EncounterStatus.OPEN)
         self.db.session.commit()
         result = await evaluator.evaluate(
             self.db.shim,

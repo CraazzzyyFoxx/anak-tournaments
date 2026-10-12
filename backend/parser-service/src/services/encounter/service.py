@@ -63,28 +63,44 @@ class EncounterService:
         result = await session.execute(query)
         return result.unique().scalars().first()
 
-    async def list_by_teams(
-        self, session: AsyncSession, home_team_id: int, away_team_id: int
-    ) -> typing.Sequence[models.Encounter]:
-        """Every encounter the two teams play, in either orientation."""
-        query = (
-            sa.select(models.Encounter)
-            .where(
-                sa.or_(
-                    sa.and_(
-                        models.Encounter.home_team_id == home_team_id,
-                        models.Encounter.away_team_id == away_team_id,
-                    ),
-                    sa.and_(
-                        models.Encounter.home_team_id == away_team_id,
-                        models.Encounter.away_team_id == home_team_id,
-                    ),
-                )
+    async def list_by_teams(self, session: AsyncSession, *team_ids: int) -> typing.Sequence[models.Encounter]:
+        """Every encounter that currently seats all of ``team_ids``.
+
+        Only active participations count: a team a bracket correction replaced
+        no longer plays the encounter, whatever games it left behind.
+        """
+        seated = [
+            sa.exists().where(
+                models.EncounterTeam.encounter_id == models.Encounter.id,
+                models.EncounterTeam.team_id == team_id,
+                models.EncounterTeam.active.is_(True),
             )
-            .order_by(models.Encounter.id)
-        )
-        result = await session.execute(query)
+            for team_id in team_ids
+        ]
+        result = await session.execute(sa.select(models.Encounter).where(*seated).order_by(models.Encounter.id))
         return result.scalars().all()
+
+    async def active_team_ids(self, session: AsyncSession, encounter_id: int) -> set[int]:
+        """Source tournament teams seated in the encounter right now."""
+        result = await session.execute(
+            sa.select(models.EncounterTeam.team_id).where(
+                models.EncounterTeam.encounter_id == encounter_id,
+                models.EncounterTeam.active.is_(True),
+                models.EncounterTeam.team_id.is_not(None),
+            )
+        )
+        return set(result.scalars().all())
+
+    async def bracket_positions(
+        self, session: AsyncSession, encounter_ids: typing.Sequence[int]
+    ) -> dict[int, tuple[int | None, int]]:
+        """``encounter_id -> (stage_id, round)``; an encounter outside any bracket has no entry."""
+        result = await session.execute(
+            sa.select(
+                models.BracketEncounter.encounter_id, models.BracketEncounter.stage_id, models.BracketEncounter.round
+            ).where(models.BracketEncounter.encounter_id.in_(encounter_ids))
+        )
+        return {encounter_id: (stage_id, round_) for encounter_id, stage_id, round_ in result}
 
     async def encounter_ids_with_log(
         self, session: AsyncSession, encounter_ids: typing.Sequence[int], log_name: str
@@ -143,6 +159,8 @@ class EncounterService:
 encounter_service = EncounterService()
 get_match_by_encounter_and_map = encounter_service.get_match_by_encounter_and_map
 list_by_teams = encounter_service.list_by_teams
+active_team_ids = encounter_service.active_team_ids
+bracket_positions = encounter_service.bracket_positions
 encounter_ids_with_log = encounter_service.encounter_ids_with_log
 encounter_ids_with_map = encounter_service.encounter_ids_with_map
 create_match = encounter_service.create_match

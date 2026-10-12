@@ -134,3 +134,19 @@ async def get_players_by_team_and_battle_names(
     for username, player in rows:
         _index_by_requested_name(username, lowered_to_original, resolved, player)
     return resolved
+
+
+async def get_substitute(
+    session: AsyncSession, encounter_team_id: int, user_id: int
+) -> models.EncounterTeamMember | None:
+    """The substitute snapshot a participation already holds for this account, if any."""
+    query = (
+        sa.select(models.EncounterTeamMember)
+        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id)
+        .where(
+            models.EncounterTeamMember.encounter_team_id == encounter_team_id,
+            models.EncounterTeamMember.is_substitute.is_(True),
+            models.WorkspaceMember.player_id == user_id,
+        )
+    )
+    return (await session.scalars(query)).first()

@@ -65,14 +65,16 @@ from shared.models.identity.rbac import (  # noqa: E402
     user_roles,
 )
 from shared.models.platform.notification import Notification  # noqa: E402
-from shared.testing import install_postgres_type_shims  # noqa: E402
+from shared.testing import (
+    create_sqlite_tables,  # noqa: E402
+    install_postgres_type_shims,  # noqa: E402
+)
 from src import models  # noqa: E402
 from src.services.encounter import captain as captain_module  # noqa: E402
 from src.services.encounter import map_report as map_report_module  # noqa: E402
 from src.services.registration import lifecycle as lifecycle_module  # noqa: E402
 from src.services.registration import teams as teams_module  # noqa: E402
 from src.services.tournament import events as events_module  # noqa: E402
-from tests._encounter_layer import create_sqlite_tables  # noqa: E402
 
 install_postgres_type_shims()
 

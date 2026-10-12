@@ -1,5 +1,4 @@
 from .tournament import *
-from .encounter import *
 from .standing import *
 from .player_sub_role import *
 
@@ -11,9 +10,6 @@ __all__ = (
     "PlayerSubRoleCreate",
     "PlayerSubRoleRead",
     "PlayerSubRoleUpdate",
-    # Encounter schemas
-    "EncounterCreate",
-    "EncounterUpdate",
     # Standing schemas
     "StandingUpdate",
 )

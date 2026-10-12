@@ -44,23 +44,34 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int) -> bo
     encounter = await session.get(models.Encounter, encounter_id)
     if encounter is None:
         return False
-    games = (
+    seats = (
         await session.scalars(
-            sa.select(models.EncounterGame).where(
-                models.EncounterGame.encounter_id == encounter_id,
-                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
-                models.EncounterGame.format == "duel",
+            sa.select(models.EncounterTeam).where(
+                models.EncounterTeam.encounter_id == encounter_id, models.EncounterTeam.active.is_(True)
             )
         )
     ).all()
+    games = (
+        await session.scalars(
+            sa.select(models.EncounterGame)
+            .where(
+                models.EncounterGame.encounter_id == encounter_id,
+                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
+            )
+            .order_by(models.EncounterGame.position)
+        )
+    ).all()
+    game_scores: dict[int, dict[int, int | None]] = {game.id: {} for game in games}
+    for line in await session.scalars(
+        sa.select(models.EncounterGameTeam).where(models.EncounterGameTeam.game_id.in_(list(game_scores)))
+    ):
+        game_scores[line.game_id][line.encounter_team_id] = line.score
 
     scores = resolve_scores(
         Series(
-            home_team_id=encounter.home_team_id,
-            away_team_id=encounter.away_team_id,
+            teams={seat.id: seat.team_id for seat in seats},
             completed=encounter.status == enums.EncounterStatus.COMPLETED,
-            home_score=encounter.home_score,
-            away_score=encounter.away_score,
+            scores={seat.id: seat.score for seat in seats},
         ),
         [
             LoggedMap(
@@ -73,10 +84,7 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int) -> bo
             )
             for match, slug in rows
         ],
-        [
-            AcceptedGame(map_id=game.map_id, home_score=game.accepted_home_score, away_score=game.accepted_away_score)
-            for game in games
-        ],
+        [AcceptedGame(map_id=game.map_id, scores=game_scores[game.id]) for game in games],
     )
 
     changed = False

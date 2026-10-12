@@ -13,32 +13,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
 from src import models
+from src.domain.achievement_duel import Duel
+from src.domain.achievement_stage_filters import join_bracket_context
 
 from ..context import EvalContext
 from . import ResultSet, register
 from .encounter import join_final_encounters
 
-#: Which side of a *decided* encounter the outcome refers to. Unknown outcome → ``KeyError``.
-_OUTCOME_TEAM = {
-    "win": lambda: sa.case(
-        (models.Encounter.home_score > models.Encounter.away_score, models.Encounter.home_team_id),
-        else_=models.Encounter.away_team_id,
-    ),
-    "loss": lambda: sa.case(
-        (models.Encounter.home_score < models.Encounter.away_score, models.Encounter.home_team_id),
-        else_=models.Encounter.away_team_id,
-    ),
-}
-
 
 def _series_roster_query() -> sa.Select:
     """Encounter joined to stage context — no roster join, no columns yet."""
-    return (
+    return join_bracket_context(
         sa.select(models.Encounter.id)
         .select_from(models.Encounter)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .outerjoin(models.Stage, models.Stage.id == models.Encounter.stage_id)
-        .outerjoin(models.StageItem, models.StageItem.id == models.Encounter.stage_item_id)
     )
 
 
@@ -59,37 +47,35 @@ async def execute_encounter_result(
 
     params:
         outcome: "win" | "loss" — which side's roster qualifies.
-        margin: abs(home_score - away_score) must equal this.
+        margin: the winner's score minus the loser's must equal this.
         opponent_score: the LOSING side's map count must equal this (0 = a sweep).
         round_type: "any" (default) | "final".
     """
-    target_team_id = _OUTCOME_TEAM[params["outcome"]]()
-    margin_expr = sa.func.abs(models.Encounter.home_score - models.Encounter.away_score)
+    duel = Duel()
+    target_team_id = {"win": duel.winner_team_id, "loss": duel.loser_team_id}[params["outcome"]]
 
     where = [
         models.Tournament.workspace_id == context.workspace_id,
         models.Encounter.status == "COMPLETED",
         # A draw has no winner and no loser, so it qualifies neither side.
-        models.Encounter.home_score != models.Encounter.away_score,
+        duel.decided,
         models.Player.is_substitution.is_(False),
     ]
     if context.tournament:
         where.append(models.Encounter.tournament_id == context.tournament.id)
     if (margin := params.get("margin")) is not None:
-        where.append(margin_expr == margin)
+        where.append(duel.margin == margin)
     if (opponent_score := params.get("opponent_score")) is not None:
-        loser_score = sa.case(
-            (models.Encounter.home_score < models.Encounter.away_score, models.Encounter.home_score),
-            else_=models.Encounter.away_score,
-        )
-        where.append(loser_score == opponent_score)
+        where.append(duel.loser_score == opponent_score)
 
-    query = _series_roster_query().with_only_columns(
-        models.WorkspaceMember.player_id.label("user_id"),
-        models.Encounter.tournament_id.label("tournament_id"),
-        models.Encounter.id.label("encounter_id"),
-        models.Encounter.home_score.label("home_score"),
-        models.Encounter.away_score.label("away_score"),
+    query = duel.join(
+        _series_roster_query().with_only_columns(
+            models.WorkspaceMember.player_id.label("user_id"),
+            models.Encounter.tournament_id.label("tournament_id"),
+            models.Encounter.id.label("encounter_id"),
+            duel.winner_score.label("winner_score"),
+            duel.loser_score.label("loser_score"),
+        )
     )
 
     if params.get("round_type", "any") == "final":
@@ -117,9 +103,9 @@ async def execute_encounter_result(
         keys.add(key)
         context.record_evidence(
             key,
-            home_score=int(row.home_score),
-            away_score=int(row.away_score),
-            margin=abs(int(row.home_score) - int(row.away_score)),
+            winner_score=int(row.winner_score),
+            loser_score=int(row.loser_score),
+            margin=int(row.winner_score) - int(row.loser_score),
             outcome=params["outcome"],
         )
     return keys
@@ -148,14 +134,15 @@ async def execute_encounter_comeback(
     """
     min_deficit = params.get("min_deficit", 2)
 
-    maps_query = (
+    duel = Duel()
+    maps_query = duel.join(
         sa.select(
             models.Encounter.id.label("encounter_id"),
             models.Encounter.tournament_id.label("tournament_id"),
-            models.Encounter.home_team_id.label("enc_home_team_id"),
-            models.Encounter.away_team_id.label("enc_away_team_id"),
-            models.Encounter.home_score.label("enc_home_score"),
-            models.Encounter.away_score.label("enc_away_score"),
+            duel.winner_team_id.label("winner_team_id"),
+            duel.loser_team_id.label("loser_team_id"),
+            duel.winner_score.label("winner_score"),
+            duel.loser_score.label("loser_score"),
             models.Match.id.label("match_id"),
             models.Match.map_index.label("map_index"),
             models.Match.home_team_id.label("map_home_team_id"),
@@ -166,11 +153,10 @@ async def execute_encounter_comeback(
         .select_from(models.Match)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(
-            models.Tournament.workspace_id == context.workspace_id,
-            models.Encounter.status == "COMPLETED",
-            models.Encounter.home_score != models.Encounter.away_score,
-        )
+    ).where(
+        models.Tournament.workspace_id == context.workspace_id,
+        models.Encounter.status == "COMPLETED",
+        duel.decided,
     )
     if context.tournament:
         maps_query = maps_query.where(models.Encounter.tournament_id == context.tournament.id)
@@ -179,16 +165,11 @@ async def execute_encounter_comeback(
     for row in await session.execute(maps_query):
         series.setdefault(row.encounter_id, []).append(row)
 
-    # encounter_id -> (tournament_id, winning_team_id, max_deficit, home_score, away_score)
+    # encounter_id -> (tournament_id, winning_team_id, max_deficit, winner_score, loser_score)
     qualifying: dict[int, tuple[int, int, int, int, int]] = {}
     for encounter_id, rows in series.items():
         first = rows[0]
-        winner_team_id = (
-            first.enc_home_team_id if first.enc_home_score > first.enc_away_score else first.enc_away_team_id
-        )
-        loser_team_id = (
-            first.enc_away_team_id if first.enc_home_score > first.enc_away_score else first.enc_home_team_id
-        )
+        winner_team_id, loser_team_id = first.winner_team_id, first.loser_team_id
 
         won = lost = 0
         max_deficit = 0
@@ -216,8 +197,8 @@ async def execute_encounter_comeback(
                 first.tournament_id,
                 winner_team_id,
                 max_deficit,
-                first.enc_home_score,
-                first.enc_away_score,
+                first.winner_score,
+                first.loser_score,
             )
 
     if not qualifying:
@@ -243,14 +224,14 @@ async def execute_encounter_comeback(
         roster.setdefault(row.team_id, []).append(row.user_id)
 
     keys: ResultSet = set()
-    for encounter_id, (tournament_id, team_id, max_deficit, home_score, away_score) in qualifying.items():
+    for encounter_id, (tournament_id, team_id, max_deficit, winner_score, loser_score) in qualifying.items():
         for user_id in roster.get(team_id, ()):
             key = (user_id, tournament_id, encounter_id)
             keys.add(key)
             context.record_evidence(
                 key,
                 max_deficit=int(max_deficit),
-                home_score=int(home_score),
-                away_score=int(away_score),
+                winner_score=int(winner_score),
+                loser_score=int(loser_score),
             )
     return keys

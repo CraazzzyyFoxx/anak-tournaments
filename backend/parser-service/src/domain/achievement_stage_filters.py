@@ -24,9 +24,23 @@ GROUP_STAGE_TYPES = (
 )
 
 
+def join_bracket_context(query: sa.Select, *, encounter=models.Encounter) -> sa.Select:
+    """Left-join an encounter's bracket coordinate, stage and stage item.
+
+    The match layer owns no tournament structure: where an encounter sits is
+    ``tournament.bracket_encounter``, and an encounter with no row (a scrim)
+    simply has no stage and no round.
+    """
+    return (
+        query.outerjoin(models.BracketEncounter, models.BracketEncounter.encounter_id == encounter.id)
+        .outerjoin(models.Stage, models.Stage.id == models.BracketEncounter.stage_id)
+        .outerjoin(models.StageItem, models.StageItem.id == models.BracketEncounter.stage_item_id)
+    )
+
+
 def encounter_is_lower_bracket(
     *,
-    encounter=models.Encounter,
+    bracket=models.BracketEncounter,
     stage=models.Stage,
     stage_item=models.StageItem,
 ) -> sa.ColumnElement[bool]:
@@ -34,14 +48,14 @@ def encounter_is_lower_bracket(
         stage.stage_type == StageType.DOUBLE_ELIMINATION,
         sa.or_(
             stage_item.type == StageItemType.BRACKET_LOWER,
-            encounter.round < 0,
+            bracket.round < 0,
         ),
     )
 
 
 def encounter_is_upper_bracket(
     *,
-    encounter=models.Encounter,
+    bracket=models.BracketEncounter,
     stage=models.Stage,
     stage_item=models.StageItem,
 ) -> sa.ColumnElement[bool]:
@@ -57,7 +71,7 @@ def encounter_is_upper_bracket(
             stage.stage_type == StageType.DOUBLE_ELIMINATION,
             sa.or_(
                 stage_item.type == StageItemType.BRACKET_UPPER,
-                encounter.round > 0,
+                bracket.round > 0,
             ),
         ),
     )
@@ -65,18 +79,18 @@ def encounter_is_upper_bracket(
 
 def encounter_is_bracket(
     *,
-    encounter=models.Encounter,
+    bracket=models.BracketEncounter,
     stage=models.Stage,
     stage_item=models.StageItem,
 ) -> sa.ColumnElement[bool]:
     return sa.or_(
         encounter_is_upper_bracket(
-            encounter=encounter,
+            bracket=bracket,
             stage=stage,
             stage_item=stage_item,
         ),
         encounter_is_lower_bracket(
-            encounter=encounter,
+            bracket=bracket,
             stage=stage,
             stage_item=stage_item,
         ),

@@ -31,33 +31,9 @@ from shared.services.encounter.result import apply_result
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 
-__all__ = ("EncounterLayerCase", "add_encounter", "add_scoring_rule", "create_sqlite_tables")
+__all__ = ("EncounterLayerCase", "add_encounter", "add_scoring_rule")
 
 _TAG = itertools.count()
-
-
-def create_sqlite_tables(conn, tables: Sequence[sa.Table]) -> None:
-    """``CREATE`` ``tables`` on SQLite, for the suites that fake the database in memory.
-
-    SQLite cannot spell two things the encounter layer uses: ``ON DELETE SET NULL
-    (column)`` and a partial unique index (it would build a plain one, and a retired
-    seat beside its replacement would collide). Both are left out of the DDL --
-    these suites exercise queries and flushes, not the constraints.
-    """
-    for table in tables:
-        constraints = [
-            constraint
-            for constraint in table.constraints
-            if isinstance(constraint, sa.ForeignKeyConstraint) and (constraint.ondelete or "").startswith("SET NULL (")
-        ]
-        indexes = [index for index in table.indexes if index.dialect_options["postgresql"]["where"] is not None]
-        table.constraints.difference_update(constraints)
-        table.indexes.difference_update(indexes)
-        try:
-            table.create(conn)
-        finally:
-            table.constraints.update(constraints)
-            table.indexes.update(indexes)
 
 
 async def add_scoring_rule(session, workspace_id: int) -> ScoringRule:

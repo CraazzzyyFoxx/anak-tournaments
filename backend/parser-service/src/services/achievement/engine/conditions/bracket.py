@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
 from src import models
+from src.domain.achievement_duel import Duel, active_seat
 from src.domain.achievement_stage_filters import (
     encounter_is_lower_bracket,
     encounter_is_upper_bracket,
+    join_bracket_context,
     stage_is_completed,
 )
 
@@ -20,19 +22,16 @@ from . import ResultSet, register
 
 
 def _encounter_base_query(context: EvalContext) -> sa.Select:
-    query = (
+    query = join_bracket_context(
         sa.select(models.Encounter.tournament_id)
         .select_from(models.Encounter)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .outerjoin(models.Stage, models.Stage.id == models.Encounter.stage_id)
-        .outerjoin(models.StageItem, models.StageItem.id == models.Encounter.stage_item_id)
-        .where(
-            models.Encounter.status == "COMPLETED",
-            models.Tournament.workspace_id == context.workspace_id,
-            # A route is only known once its bracket is over: mid-stage an
-            # "upper only" team may still drop, a lost round may still change.
-            stage_is_completed(stage=models.Stage),
-        )
+    ).where(
+        models.Encounter.status == "COMPLETED",
+        models.Tournament.workspace_id == context.workspace_id,
+        # A route is only known once its bracket is over: mid-stage an
+        # "upper only" team may still drop, a lost round may still change.
+        stage_is_completed(stage=models.Stage),
     )
 
     if context.tournament:
@@ -46,65 +45,34 @@ def _team_participants_query(
     *,
     where_clause: sa.ColumnElement[bool],
 ) -> sa.Select:
-    base_query = _encounter_base_query(context).where(where_clause)
-    home_query = base_query.with_only_columns(
-        models.Encounter.tournament_id.label("tournament_id"),
-        models.Encounter.home_team_id.label("team_id"),
-    ).where(models.Encounter.home_team_id.is_not(None))
-    away_query = base_query.with_only_columns(
-        models.Encounter.tournament_id.label("tournament_id"),
-        models.Encounter.away_team_id.label("team_id"),
-    ).where(models.Encounter.away_team_id.is_not(None))
-    return sa.union_all(home_query, away_query)
+    """Every team seated in a matching encounter, once per encounter it holds a seat in."""
+    seat, on_seat = active_seat()
+    return (
+        _encounter_base_query(context)
+        .join(seat, on_seat)
+        .with_only_columns(
+            models.Encounter.tournament_id.label("tournament_id"),
+            seat.team_id.label("team_id"),
+        )
+        .where(where_clause, seat.team_id.is_not(None))
+    )
 
 
-def _winner_teams_query(
+def _decided_teams_query(
     context: EvalContext,
     *,
     where_clause: sa.ColumnElement[bool],
+    winners: bool,
 ) -> sa.Select:
-    winning_team_id = sa.case(
-        (
-            models.Encounter.home_score > models.Encounter.away_score,
-            models.Encounter.home_team_id,
-        ),
-        else_=models.Encounter.away_team_id,
-    )
+    """The winning (or losing) team of every decided duel; a drawn series has neither."""
+    duel = Duel()
     return (
-        _encounter_base_query(context)
+        duel.join(_encounter_base_query(context))
         .with_only_columns(
             models.Encounter.tournament_id.label("tournament_id"),
-            winning_team_id.label("team_id"),
+            (duel.winner_team_id if winners else duel.loser_team_id).label("team_id"),
         )
-        .where(
-            where_clause,
-            models.Encounter.home_score != models.Encounter.away_score,
-        )
-    )
-
-
-def _loser_teams_query(
-    context: EvalContext,
-    *,
-    where_clause: sa.ColumnElement[bool],
-) -> sa.Select:
-    losing_team_id = sa.case(
-        (
-            models.Encounter.home_score < models.Encounter.away_score,
-            models.Encounter.home_team_id,
-        ),
-        else_=models.Encounter.away_team_id,
-    )
-    return (
-        _encounter_base_query(context)
-        .with_only_columns(
-            models.Encounter.tournament_id.label("tournament_id"),
-            losing_team_id.label("team_id"),
-        )
-        .where(
-            where_clause,
-            models.Encounter.home_score != models.Encounter.away_score,
-        )
+        .where(where_clause, duel.decided)
     )
 
 
@@ -129,12 +97,12 @@ async def execute_bracket_path(
     from .stat_threshold import OPERATORS
 
     lower_clause = encounter_is_lower_bracket(
-        encounter=models.Encounter,
+        bracket=models.BracketEncounter,
         stage=models.Stage,
         stage_item=models.StageItem,
     )
     upper_clause = encounter_is_upper_bracket(
-        encounter=models.Encounter,
+        bracket=models.BracketEncounter,
         stage=models.Stage,
         stage_item=models.StageItem,
     )
@@ -142,21 +110,21 @@ async def execute_bracket_path(
     if lost_in_round:
         upper_clause = sa.and_(
             upper_clause,
-            OPERATORS[lost_in_round["op"]](models.Encounter.round, lost_in_round["value"]),
+            OPERATORS[lost_in_round["op"]](models.BracketEncounter.round, lost_in_round["value"]),
         )
 
     if played_lower:
         candidate_queries: list[sa.Select] = []
         if min_lb_wins:
             lower_win_counts = (
-                _winner_teams_query(context, where_clause=lower_clause)
+                _decided_teams_query(context, where_clause=lower_clause, winners=True)
                 .group_by(sa.text("tournament_id"), sa.text("team_id"))
                 .having(sa.func.count() >= min_lb_wins)
             )
             candidate_queries.append(lower_win_counts)
         else:
             candidate_queries.append(_team_participants_query(context, where_clause=lower_clause))
-            candidate_queries.append(_loser_teams_query(context, where_clause=upper_clause))
+            candidate_queries.append(_decided_teams_query(context, where_clause=upper_clause, winners=False))
 
         team_union = sa.union_all(*candidate_queries).subquery("candidate_bracket_teams")
         team_query = sa.select(
