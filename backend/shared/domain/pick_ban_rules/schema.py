@@ -172,8 +172,10 @@ class ResolvedStep(BaseModel):
     #: Participation ids, in acting order; ``[None]`` for an engine-resolved
     #: step, and ``[]`` while ``actors_token`` is still waiting on its side.
     actors: list[ResolvedActor]
-    #: The ruleset token this step's actors still have to be resolved from;
-    #: ``None`` once they are.
+    #: The ruleset token this step's actors are resolved from. Kept after the
+    #: binding, not cleared: an undo of the ``side_pick`` that assigned the side
+    #: has to be able to un-bind the step again, and a cleared token would have
+    #: thrown that away. ``None`` for every step bound at round-open.
     actors_token: str | None = None
     count: int
     min: int
@@ -206,6 +208,17 @@ class ResolvedStep(BaseModel):
     def is_unbound(self) -> bool:
         """Whether this step still owes its actors a ``side_pick`` result."""
         return not self.actors and self.actors_token is not None
+
+    @property
+    def is_bound_to_side(self) -> bool:
+        """Whether this step's actors came from a ``side_pick`` -- and so have
+        to be taken back if that pick is undone."""
+        return bool(self.actors) and (self.actors_token or "").startswith("side:")
+
+    def unbound(self) -> ResolvedStep:
+        """This step with its actors taken back -- what an undo of the
+        ``side_pick`` that assigned its side leaves behind."""
+        return self.model_copy(update={"actors": []})
 
 
 def format_path(loc: tuple[Any, ...]) -> str:

@@ -178,7 +178,15 @@ def _phase_demand(phase: pbr.Phase) -> int:
             return 1
         if step.action == "side_pick":
             return 0
-        return step.count * len(pbr.resolve_actors(step.actors, participants=_DEMAND_SEATS, opener=_DEMAND_SEATS[0]))
+        try:
+            actors = pbr.resolve_actors(step.actors, participants=_DEMAND_SEATS, opener=_DEMAND_SEATS[0])
+        except pbr.UnassignedSide:
+            # ``side:<code>`` only resolves once the round's ``side_pick`` is
+            # played, and it always names exactly ONE participation -- which is
+            # all the demand arithmetic needs, so it is counted rather than
+            # raising a 500 on a perfectly valid sided ruleset.
+            actors = [_DEMAND_SEATS[0]]
+        return step.count * len(actors)
 
     return sum(_spend(step) for step in phase.steps)
 

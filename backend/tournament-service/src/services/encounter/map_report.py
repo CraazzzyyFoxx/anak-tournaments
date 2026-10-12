@@ -122,6 +122,9 @@ class GameClaimService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Stage bracket is a preview and is not active yet; wait for the organizer to activate it",
             )
+        # A claim is a game STARTING, so the side it is played on has to be
+        # decided first (spec §6 row 9).
+        await self.games.assert_side_settled(session, encounter, game)
         if encounter.result_status == EncounterResultStatus.CONFIRMED:
             # A confirmed encounter has a standing somebody decided -- the
             # series report, an admin, an import, or the games themselves

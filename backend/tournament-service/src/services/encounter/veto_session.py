@@ -1,13 +1,17 @@
 """Shared pick-ban helpers that outlived the legacy map-veto session.
 
 ``VetoSessionService`` and the ``MapVetoConfig`` tables are gone. What remains
-is the seed vocabulary ``pick_ban_session`` still calls: which PARTICIPATION
-opens round 1, and where that answer came from.
+is the seed vocabulary ``pick_ban_session`` still calls -- which PARTICIPATION
+opens round 1, and where that answer came from -- plus the one gate the RESULT
+paths have to ask of the room: :func:`side_pick_pending`.
 
 Seeding reads the bracket, never the card's order: a seat's slot says where a
 team sits, not how it was ranked. The bracket slot it was fed into comes first,
 the previous stage's standing second, and with neither the first seat opens --
 ``VetoSeedSource.FALLBACK_FIRST_SLOT``.
+
+This module imports no service, which is what lets ``games``, ``map_report``
+and ``pick_ban_session`` all read it without a cycle.
 """
 
 from __future__ import annotations
@@ -34,6 +38,55 @@ SLOT_CANDIDATE_FLOOR = 2
 #: against. Lives here rather than on ``pick_ban_session`` so ``room_reconcile``
 #: -- which that module imports -- can read it without a cycle.
 ROOM_SLOT_COUNT = 2
+
+
+async def side_pick_pending(session: AsyncSession, encounter_id: int, position: int) -> bool:
+    """Whether series position ``position`` still owes a ``side_pick`` an answer.
+
+    A game cannot START while the side it is played on is undecided (spec §6
+    row 9): the position may be named, but no claim and no accepted result may
+    land on it until the pick resolves -- or the clock flips a coin for it.
+
+    Read straight off ``resolved_sequence_json`` and the submission log rather
+    than through the step objects: the result paths must not have to load a
+    room's whole runtime to ask one question, and an UNBOUND step (``actors:
+    []``, waiting on this very pick) counts as pending by the same rule.
+    """
+    rows = (
+        await session.execute(
+            select(models.PickBanSession.id, models.PickBanSession.resolved_sequence_json).where(
+                models.PickBanSession.encounter_id == encounter_id
+            )
+        )
+    ).all()
+    owed: dict[int, set[int | None]] = {}
+    for session_id, sequence in rows:
+        for step in sequence or []:
+            if step.get("action") != "side_pick" or (step.get("round") or 1) != position:
+                continue
+            actors = step.get("actors") or []
+            if not actors:
+                return True  # unbound: the pick itself has not been resolved
+            owed.setdefault(session_id, set())
+            for actor in actors:
+                owed[session_id].add((step["index"], actor))
+    if not owed:
+        return False
+    for session_id, keys in owed.items():
+        answered = {
+            (row.step_index, row.encounter_team_id)
+            for row in (
+                await session.execute(
+                    select(models.PickBanSubmission).where(
+                        models.PickBanSubmission.session_id == session_id,
+                        models.PickBanSubmission.state == "revealed",
+                    )
+                )
+            ).scalars()
+        }
+        if keys - answered:
+            return True
+    return False
 
 
 @dataclass(frozen=True)

@@ -106,7 +106,9 @@ def apply_undo(
     now: datetime,
 ) -> None:
     """Pure step: void the target step's live submissions and every later one,
-    re-project the board, and reopen the step."""
+    re-project the board, un-bind whatever a voided ``side_pick`` had assigned,
+    and reopen the step."""
+    undone_side_rounds: set[int | None] = set()
     for step in steps:
         if step.index < target:
             continue
@@ -114,6 +116,16 @@ def apply_undo(
         for row in submissions:
             if row.step_index == step.index and row.attempt == attempt and row.state != pbr.VOIDED:
                 row.state = pbr.VOIDED
+                if step.action == "side_pick":
+                    undone_side_rounds.add(step.round)
+    # A ``side:<code>`` step was bound to whoever the pick handed that side to;
+    # taking the pick back has to take the binding with it, or a re-pick would
+    # leave the later steps acting for the OLD assignment.
+    if undone_side_rounds:
+        for index, step in enumerate(steps):
+            if step.round in undone_side_rounds and step.is_bound_to_side:
+                steps[index] = step.unbound()
+        pick_ban.resolved_sequence_json = [step.to_json() for step in steps]
     pbr.project_entries(entries, steps, submissions)
     clear_undo_request(pick_ban)
     # A completed session ran out of sequence, which an undo puts back -- a

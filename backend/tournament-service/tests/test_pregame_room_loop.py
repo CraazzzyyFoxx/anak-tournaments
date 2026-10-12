@@ -41,8 +41,11 @@ from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 from src.services.encounter import room_control
 from src.services.encounter.games import GameResultIn, encounter_game_service
+from src.services.encounter.map_report import ClaimResultIn, map_report_service
 from src.services.encounter.pick_ban_action import pick_ban_action_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service, resolved_steps
+from src.services.encounter.pick_ban_undo import pick_ban_undo_service
+from src.services.encounter.veto_session import side_pick_pending
 from tests.test_pregame_participations import HEROES, SIDED
 
 _TAG = itertools.count()
@@ -558,10 +561,6 @@ class DeferredSideActorTests(LoopCase):
         state = await self.state()
         self.assertEqual("side_pick", state["expected_action"])
         self.assertEqual([self.slot1], state["acting_team_ids"])
-        # Nothing may start on a position whose side is still undecided.
-        async with self.Session() as s:
-            games = await encounter_game_service.list_games(s, self.encounter_id)
-        self.assertTrue(all(game.state == enums.EncounterGameState.PLANNED for game in games))
 
         # Slot 1 takes "defence" (index 1), so slot 2 gets "attack".
         await self.act(self.slot1, 1, action="side_pick")
@@ -579,7 +578,9 @@ class DeferredSideActorTests(LoopCase):
                 .scalars()
                 .all()
             )
-        self.assertEqual([None, None], [step.actors_token for step in steps[1:]])
+        # The token STAYS after the binding -- an undo of the pick has to be
+        # able to take the actors back.
+        self.assertEqual(["side:attack", "side:defence"], [step.actors_token for step in steps[1:]])
         self.assertEqual([[self.slot2], [self.slot1]], [step.actors for step in steps[1:]])
         self.assertEqual(
             {self.slot1: "defence", self.slot2: "attack"},
@@ -588,6 +589,119 @@ class DeferredSideActorTests(LoopCase):
 
         # And the room now takes the bound step from the right seat.
         self.assertEqual([self.slot2], (await self.state())["acting_team_ids"])
+
+    async def test_a_game_cannot_start_while_its_side_pick_is_open(self) -> None:
+        """Spec §6 row 9. The position may be NAMED, but no map selection, no
+        claim and no accepted result may land on it until the side is decided --
+        labelling the row ``planned`` is not a refusal, so the three write paths
+        ask the room themselves."""
+        await self.start(ban_ruleset(with_side_pick=True))
+        # Freeplay owns the positions here (the hero room names no maps), so
+        # the healer opens position 1 for real.
+        await self.reconcile()
+        async with self.Session() as s:
+            games = await encounter_game_service.list_games(s, self.encounter_id)
+        self.assertEqual([1], [game.position for game in games])
+        game_id = games[0].id
+
+        async with self.Session() as s:
+            self.assertTrue(await side_pick_pending(s, self.encounter_id, 1))
+            with self.assertRaises(BaseAPIException) as refused:
+                await map_report_service.submit_game_claim(
+                    s,
+                    game_id,
+                    claimant_team_id=self.slot1,
+                    reporter_user_id=None,
+                    results=[ClaimResultIn(encounter_team_id=seat, score=1) for seat in self.seats],
+                    basis_version=0,
+                )
+            self.assertEqual(409, refused.exception.status_code)
+            self.assertEqual("side_pick_pending", refused.exception.detail[0].code)
+
+        async with self.Session() as s:
+            encounter = await s.get_one(Encounter, self.encounter_id)
+            game = await s.get_one(EncounterGame, game_id)
+            with self.assertRaises(BaseAPIException) as locked:
+                await encounter_game_service.select_map(s, encounter, game, map_id=1)
+            self.assertEqual(409, locked.exception.status_code)
+            with self.assertRaises(BaseAPIException) as result:
+                await encounter_game_service.record_result(
+                    s,
+                    encounter,
+                    game,
+                    results=[GameResultIn(encounter_team_id=seat, score=1) for seat in self.seats],
+                    source=enums.EncounterGameResultSource.ADMIN,
+                    actor_user_id=None,
+                )
+            self.assertEqual(409, result.exception.status_code)
+
+        # Once the side is picked the same claim is accepted.
+        await self.act(self.slot1, 0, action="side_pick")
+        async with self.Session() as s:
+            self.assertFalse(await side_pick_pending(s, self.encounter_id, 1))
+            answer = await map_report_service.submit_game_claim(
+                s,
+                game_id,
+                claimant_team_id=self.slot1,
+                reporter_user_id=None,
+                results=[
+                    ClaimResultIn(encounter_team_id=seat, score=1 if seat == self.slot1 else 0) for seat in self.seats
+                ],
+                basis_version=0,
+            )
+        self.assertFalse(answer["disputed"])
+
+    async def test_undoing_a_side_pick_takes_its_bindings_back(self) -> None:
+        """A later ``side:<code>`` step was bound to whoever the pick handed
+        that side to; the undo has to take the binding with it, or a re-pick
+        would leave those steps acting for the OLD assignment."""
+        await self.start(ban_ruleset(with_side_pick=True))
+        await self.act(self.slot1, 1, action="side_pick")  # slot 1 takes defence
+        self.assertEqual([self.slot2], (await self.state())["acting_team_ids"])
+
+        for seat in self.seats:
+            async with self.Session() as s:
+                await pick_ban_undo_service.perform_undo(s, self.encounter_id, enums.PickBanKind.HERO, seat)
+
+        async with self.Session() as s:
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(s, self.encounter_id, enums.PickBanKind.HERO)
+            teams = await pick_ban_session_service.teams_of(s, self.encounter_id)
+            steps = resolved_steps(pick_ban, teams)
+        self.assertEqual([[], []], [step.actors for step in steps[1:]])
+        self.assertTrue(all(step.is_unbound for step in steps[1:]))
+        # The room is back on the side pick, and the OTHER choice binds the
+        # later steps the other way round.
+        self.assertEqual([self.slot1], (await self.state())["acting_team_ids"])
+        await self.act(self.slot1, 0, action="side_pick")  # this time: attack
+        self.assertEqual([self.slot1], (await self.state())["acting_team_ids"])
+
+    async def test_a_side_pick_nobody_answered_is_settled_by_a_coin_flip(self) -> None:
+        """The rules' own default on timeout. ``random_fill`` has no items to
+        draw on for a side, so the clock flips a coin between the discipline's
+        sides and the room moves on."""
+        await self.start(ban_ruleset(timer_seconds=30, with_side_pick=True))
+        async with self.Session() as s:
+            pick_ban = await pick_ban_session_service.get_pick_ban_session(
+                s, self.encounter_id, enums.PickBanKind.HERO, for_update=True
+            )
+            pick_ban.current_step_started_at = datetime.now(UTC) - timedelta(minutes=5)
+            await s.commit()
+
+        self.assertTrue(await self.reconcile())
+        async with self.Session() as s:
+            rows = (
+                (
+                    await s.execute(
+                        sa.select(EncounterGameTeam).where(EncounterGameTeam.encounter_id == self.encounter_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            self.assertFalse(await side_pick_pending(s, self.encounter_id, 1))
+        self.assertEqual({"attack", "defence"}, {row.starting_side for row in rows})
+        # And the step the flip settled bound the one that names its side.
+        self.assertEqual(1, len((await self.state())["acting_team_ids"]))
 
 
 def _unused() -> None:

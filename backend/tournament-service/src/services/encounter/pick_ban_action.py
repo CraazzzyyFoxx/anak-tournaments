@@ -361,12 +361,20 @@ class PickBanActionService:
         if game is None:
             game = await self.games.open_game(session, rt.encounter, position=position)
         rows = {row.encounter_team_id: row for row in (await self.games.lines_by_game(session, [game]))[game.id]}
+        # Cleared and flushed FIRST: a re-pick after an undo swaps the sides
+        # round, and ``uq_game_team_side`` sees the half-applied state of one
+        # statement batch -- the old holder would still own the side the new
+        # one is being given.
+        for row in rows.values():
+            row.starting_side = None
+        await session.flush()
         remaining = [code for code in sides if code != side]
         for team_id in rt.participants:
             row = rows.get(team_id)
             if row is None:
                 row = EncounterGameTeam(game_id=game.id, encounter_id=rt.encounter.id, encounter_team_id=team_id)
                 session.add(row)
+                rows[team_id] = row
             row.starting_side = side if team_id == actor else (remaining.pop(0) if remaining else None)
         await session.flush()
 
@@ -392,7 +400,8 @@ class PickBanActionService:
         actors and keep their token (``ResolvedStep.actors_token``). This is the
         other half: it runs at the top of every ``_settle`` pass and again the
         moment a side pick reveals, and it writes the bound sequence back to the
-        session so the next request reads actors rather than a token.
+        session so the next request reads actors rather than an empty list. The
+        token STAYS: undoing the pick has to be able to take the binding back.
         """
         unbound = [step for step in rt.steps if step.is_unbound]
         if not unbound:
@@ -413,7 +422,7 @@ class PickBanActionService:
                 )
             except pbr.UnassignedSide:
                 continue  # its side pick has not revealed yet
-            rt.steps[index] = step.model_copy(update={"actors": actors, "actors_token": None})
+            rt.steps[index] = step.model_copy(update={"actors": actors})
             bound = True
         if bound:
             rt.pick_ban.resolved_sequence_json = [step.to_json() for step in rt.steps]
