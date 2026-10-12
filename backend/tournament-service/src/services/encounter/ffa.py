@@ -143,6 +143,8 @@ class FfaEncounterService:
                 slot=slot,
                 team_id=team_id,
                 name=(names or {}).get(team_id, f"Team {team_id}"),
+                # ``team_ids`` arrives in seed order, so the slot IS the seed.
+                seed=slot,
                 members=(rosters or {}).get(team_id, ()),
             )
         await session.flush()
