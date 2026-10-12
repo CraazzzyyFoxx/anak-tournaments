@@ -306,6 +306,32 @@ class EncounterResultAuditRepository(BaseRepository[models.EncounterResultAudit]
         result = await session.execute(query)
         return result.unique().scalars().all()
 
+    async def pending_holds_since_last_decision(self, session: AsyncSession, encounter_id: int) -> int:
+        """How many ``auto_pending`` rows sit above the last journalled change
+        that was not one.
+
+        A hold only says "a report has been filed, the rest are owed"; it moves
+        no standing, so a form filled in before it was written is still about
+        the same result. Counting from the top of the journal -- rather than
+        looking for the last non-hold row -- also holds for an encounter whose
+        older versions were never journalled: every version it has above the
+        holds is then simply the current one minus the count.
+        """
+        audit = models.EncounterResultAudit
+        last_decision = (
+            sa.select(sa.func.coalesce(sa.func.max(audit.result_version), 0))
+            .where(audit.encounter_id == encounter_id, audit.action != enums.EncounterResultAuditAction.AUTO_PENDING)
+            .scalar_subquery()
+        )
+        result = await session.execute(
+            sa.select(sa.func.count()).where(
+                audit.encounter_id == encounter_id,
+                audit.action == enums.EncounterResultAuditAction.AUTO_PENDING,
+                audit.result_version > last_decision,
+            )
+        )
+        return int(result.scalar_one())
+
     async def list_with_actor(
         self, session: AsyncSession, encounter_id: int, *, limit: int
     ) -> Sequence[tuple[models.EncounterResultAudit, str | None, int | None]]:

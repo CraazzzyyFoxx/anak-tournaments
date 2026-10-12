@@ -191,7 +191,8 @@ async def hold_result(
 
     Reports that are still incomplete or contradict each other do not decide a
     standing: the seats' numbers and ``result_source`` are left exactly as they
-    were, only the status moves and ``confirmed_at`` is cleared. It is still a
+    were, only the status moves and ``confirmed_at`` and ``closeness`` (the
+    reports' average, meaningless without an agreed result) are cleared. It is still a
     change of the result, so it takes the same version step and writes the same
     one journal row as :func:`apply_result` does -- the journal stays the
     complete, ordered version sequence.
@@ -210,6 +211,7 @@ async def hold_result(
 
     encounter.result_status = status
     encounter.confirmed_at = None
+    encounter.closeness = None
     encounter.result_version += 1
 
     audit = record_result_transition(

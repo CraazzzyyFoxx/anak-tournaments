@@ -444,6 +444,14 @@ class HoldResultTests(ResultWriterCase):
         )
         self.assertTrue(all(row.before == row.after for row in rows))
 
+    async def test_a_hold_drops_the_reports_closeness_average(self) -> None:
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            encounter.closeness = 0.7
+            await s.commit()
+        await self.hold(enums.EncounterResultStatus.DISPUTED, enums.EncounterResultAuditAction.AUTO_DISPUTE)
+        self.assertIsNone((await self.reload()).closeness)
+
     async def test_only_a_pending_or_disputed_status_can_be_held(self) -> None:
         async with self.Session() as s:
             encounter = await result.lock_encounter(s, self.ids["e"])

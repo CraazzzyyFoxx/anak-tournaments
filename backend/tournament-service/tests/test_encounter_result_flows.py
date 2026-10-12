@@ -500,6 +500,91 @@ class SeriesReportTests(ResultFlowCase):
             ],
         )
 
+    async def file_report(self, seat, user, standing, *, basis_version: int) -> None:
+        async with self.Session() as s:
+            await captain_service.submit_team_report(
+                s,
+                self.ids["e"],
+                encounter_team_id=seat.id,
+                reporter_user_id=user,
+                games_played=3,
+                results=standing,
+                closeness=5,
+                basis_version=basis_version,
+            )
+
+    def standing(self, first, second, *, first_wins: int) -> list[ReportResultIn]:
+        """A Bo3 that went to three games, ``first_wins`` of them to ``first``."""
+        second_wins = 3 - first_wins
+        return [
+            ReportResultIn(
+                encounter_team_id=first.id,
+                score=float(first_wins),
+                placement=1 if first_wins > second_wins else 2,
+                wins=first_wins,
+            ),
+            ReportResultIn(
+                encounter_team_id=second.id,
+                score=float(second_wins),
+                placement=1 if second_wins > first_wins else 2,
+                wins=second_wins,
+            ),
+        ]
+
+    async def test_the_second_captain_may_file_against_the_version_before_the_first_report(self) -> None:
+        # Two captains reporting seconds apart is the normal flow: the second
+        # one's form was loaded before the first report took its hold version.
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            before = (await self.encounter(s)).result_version
+        agreed = self.standing(first, second, first_wins=2)
+
+        await self.file_report(first, self.users[0], agreed, basis_version=before)
+        await self.file_report(second, self.users[1], agreed, basis_version=before)
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.CONFIRMED, encounter.result_status)
+            self.assertEqual(enums.EncounterResultSource.SERIES_CLAIM.value, encounter.result_source)
+            self.assertEqual(before + 2, encounter.result_version)
+
+    async def test_the_second_captains_stale_looking_report_can_still_dispute(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            before = (await self.encounter(s)).result_version
+
+        await self.file_report(first, self.users[0], self.standing(first, second, first_wins=2), basis_version=before)
+        await self.file_report(second, self.users[1], self.standing(first, second, first_wins=1), basis_version=before)
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.DISPUTED, encounter.result_status)
+            self.assertEqual(before + 2, encounter.result_version)
+
+    async def test_a_basis_older_than_a_real_result_change_is_still_stale(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            before = (await self.encounter(s)).result_version
+        await self.file_report(first, self.users[0], self.standing(first, second, first_wins=2), basis_version=before)
+        await self.file_report(second, self.users[1], self.standing(first, second, first_wins=1), basis_version=before)
+        # The dispute is a real change; ``before`` predates it.
+        with self.assertRaises(BaseAPIException) as caught:
+            await self.file_report(
+                first, self.users[0], self.standing(first, second, first_wins=1), basis_version=before
+            )
+        self.assertEqual(409, caught.exception.status_code)
+        self.assertEqual(["stale_state"], _codes(caught.exception))
+
+        async with self.Session() as s:
+            current = (await self.encounter(s)).result_version
+        # The version after it is what a reload would send, and a future one never is.
+        with self.assertRaises(BaseAPIException) as ahead:
+            await self.file_report(
+                first, self.users[0], self.standing(first, second, first_wins=1), basis_version=current + 1
+            )
+        self.assertEqual(["stale_state"], _codes(ahead.exception))
+        await self.file_report(first, self.users[0], self.standing(first, second, first_wins=1), basis_version=current)
+
     async def test_a_game_claim_after_the_series_is_confirmed_is_refused(self) -> None:
         async with self.Session() as s:
             first, second = await self.seats(s)

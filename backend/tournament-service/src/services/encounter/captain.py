@@ -328,7 +328,12 @@ class CaptainService:
                     )
                 ],
             )
-        if basis_version != encounter.result_version:
+        # A filed report parks the result in ``pending_confirmation`` and that
+        # takes a version of its own, but it moves no standing: the opponent's
+        # form, filled in against the version before it, is still about the same
+        # result. Only a version that came from anything else makes it stale.
+        holds = await self.audit_repo.pending_holds_since_last_decision(session, encounter.id)
+        if not encounter.result_version - holds <= basis_version <= encounter.result_version:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=[
@@ -527,7 +532,6 @@ class CaptainService:
         reported = {row.encounter_team_id for row in reports}
 
         if not live.issubset(reported):
-            encounter.closeness = None
             # A captain re-filing while the others are still owed changes nothing
             # the result can show; only the move INTO pending is a transition.
             if encounter.result_status != EncounterResultStatus.PENDING_CONFIRMATION:
@@ -611,7 +615,6 @@ class CaptainService:
     ) -> None:
         """Record the contradiction. The standing is untouched -- nobody's
         numbers are adopted by a dispute, only the status moves."""
-        encounter.closeness = None
         await hold_result(
             session,
             encounter,
