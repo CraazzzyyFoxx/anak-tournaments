@@ -444,6 +444,9 @@ def _encounter_sync_snapshot(
     }
 
 
+_HELD_RESULT_STATUSES = (enums.EncounterResultStatus.DISPUTED, enums.EncounterResultStatus.PENDING_CONFIRMATION)
+
+
 def _has_local_decision(encounter: models.Encounter) -> bool:
     """Whether a local result outranks whatever Challonge is reporting.
 
@@ -451,10 +454,10 @@ def _has_local_decision(encounter: models.Encounter) -> bool:
     result is a decision in progress, and silently overwriting it destroyed the
     captains' evidence and the admin's pending call.
     """
-    return encounter.status == enums.EncounterStatus.COMPLETED or encounter.result_status in (
-        enums.EncounterResultStatus.CONFIRMED,
-        enums.EncounterResultStatus.DISPUTED,
-        enums.EncounterResultStatus.PENDING_CONFIRMATION,
+    return (
+        encounter.status == enums.EncounterStatus.COMPLETED
+        or encounter.result_status == enums.EncounterResultStatus.CONFIRMED
+        or encounter.result_status in _HELD_RESULT_STATUSES
     )
 
 
@@ -1707,8 +1710,12 @@ class ChallongeSyncService:
             remote_score = (float(home_score), float(away_score))
             local_teams = tuple(seat.team_id for seat in seats)
             remote_teams = (home_team_id, away_team_id)
+            # A dispute or a half-reported series is a decision in progress: the
+            # remote scoreline matching the running tally is no proof it is settled.
+            held = encounter.result_status in _HELD_RESULT_STATUSES
             if (
-                status != enums.EncounterStatus.COMPLETED
+                held
+                or status != enums.EncounterStatus.COMPLETED
                 or local_score != remote_score
                 or (None not in remote_teams and local_teams != remote_teams)
             ):
@@ -1717,7 +1724,9 @@ class ChallongeSyncService:
                     action="conflict",
                     encounter=encounter,
                     conflict_type=(
-                        "local_decided_remote_different"
+                        "local_result_held"
+                        if held
+                        else "local_decided_remote_different"
                         if status == enums.EncounterStatus.COMPLETED
                         else "local_decided_remote_not_completed"
                     ),

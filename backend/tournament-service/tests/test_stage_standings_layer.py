@@ -771,6 +771,39 @@ class ChallongeRoundTripTests(StageLayerCase):
                     row = await s.get_one(Encounter, encounter_id)
                 self.assertEqual((held, None, version), (row.result_status, row.result_source, row.result_version))
 
+    async def test_a_remote_score_equal_to_the_running_tally_does_not_settle_a_hold(self) -> None:
+        """The full import's upsert: matching scores are not a reason to adopt the remote result."""
+        for held in (enums.EncounterResultStatus.DISPUTED, enums.EncounterResultStatus.PENDING_CONFIRMATION):
+            with self.subTest(held=held):
+                stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION, name=held.value)
+                _created, encounter_id = await self._import(self._match(state="open"), stage=stage)
+                # The running tally lands on the seats with the next import of the open match.
+                await self._import(self._match(state="open", scores_csv="1-0"), stage=stage, existing=encounter_id)
+                async with self.Session() as s:
+                    encounter = await s.get_one(Encounter, encounter_id)
+                    await hold_result(
+                        s,
+                        encounter,
+                        status=held,
+                        action=enums.EncounterResultAuditAction.AUTO_DISPUTE,
+                        audit_source="series_claim",
+                        actor_user_id=None,
+                    )
+                    await s.commit()
+                    version = encounter.result_version
+
+                result, _ = await self._import(
+                    self._match(state="complete", scores_csv="1-0"), stage=stage, existing=encounter_id
+                )
+
+                self.assertEqual(("conflict", "local_result_held"), (result.action, result.conflict_type))
+                async with self.Session() as s:
+                    row = await s.get_one(Encounter, encounter_id)
+                self.assertEqual(
+                    (held, None, version, enums.EncounterStatus.OPEN),
+                    (row.result_status, row.result_source, row.result_version, row.status),
+                )
+
     async def test_the_import_takes_the_encounters_row_lock_before_it_writes(self) -> None:
         stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
         _created, encounter_id = await self._import(self._match(), stage=stage)
