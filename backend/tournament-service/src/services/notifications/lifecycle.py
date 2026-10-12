@@ -39,6 +39,7 @@ from shared.repository.tournament import (
     TournamentPhaseScheduleRepository,
     TournamentRepository,
 )
+from shared.services.bracket.advancement import AdvanceOutcome, advance_after_result
 from shared.services.bracket.usability import is_encounter_live
 from shared.services.encounter.participants import active_teams
 from shared.services.notifications import broadcast, notify
@@ -59,7 +60,7 @@ def _pick_ban_sessions():
     return pick_ban_session_service
 
 
-__all__ = ("LifecycleNotifier", "after_encounter_teams_changed", "lifecycle_notifier")
+__all__ = ("LifecycleNotifier", "advance_and_announce", "after_encounter_teams_changed", "lifecycle_notifier")
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -320,3 +321,25 @@ async def after_encounter_teams_changed(
     """
     await _pick_ban_sessions().sync_all_pick_ban_sessions_after_team_change(session, encounter)
     await lifecycle_notifier.on_encounter_changed(session, encounter, channel=channel)
+
+
+async def advance_and_announce(
+    session: AsyncSession,
+    encounter: models.Encounter,
+    *,
+    channel: bool = True,
+) -> AdvanceOutcome:
+    """Advance ``encounter``'s standing, then settle what each filled seat owes.
+
+    Advancement is the path where an already-scheduled slot finally learns who
+    plays in it, so every encounter the bracket just put a team into gets the
+    same upkeep as any other seat change: its pick-ban rooms follow the new
+    pairing and both rosters hear who they play. The shared primitive cannot do
+    this itself -- the notifier and the pick-ban service are this service's.
+    """
+    outcome = await advance_after_result(session, encounter)
+    for target_id in dict.fromkeys(target for target, _slot in outcome.placed):
+        await after_encounter_teams_changed(
+            session, await session.get_one(models.Encounter, target_id), channel=channel
+        )
+    return outcome

@@ -535,8 +535,9 @@ class AdminEncounterService:
         await self._move_slot_links(session, source, target, data)
 
         for encounter in touched:
-            seats = await active_teams(session, encounter.id)
-            encounter.name = build_encounter_name([seat.name for seat in seats])
+            # Slot-indexed, so a seat left empty reads TBD in ITS place.
+            seated = {seat.slot: seat.name for seat in await active_teams(session, encounter.id)}
+            encounter.name = build_encounter_name([seated.get(slot) for slot in range(1, encounter.slot_count + 1)])
             await after_encounter_teams_changed(session, encounter, channel=True)
 
         await enqueue_tournament_recalculation(session, source.tournament_id)

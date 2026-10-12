@@ -72,6 +72,7 @@ from src.services.encounter.dispute_review import notify_dispute_review
 from src.services.encounter.games import EncounterGameService, encounter_game_service
 from src.services.encounter.report_form import ReportFormService, report_form_service
 from src.services.encounter.room_journal import record_room_event
+from src.services.notifications.lifecycle import advance_and_announce
 from src.services.tournament.events import enqueue_encounter_completed, enqueue_tournament_recalculation
 
 __all__ = ("CaptainService", "ReportResultIn", "captain_service", "serialize_team_report")
@@ -553,7 +554,7 @@ class CaptainService:
         # game nobody may play (D54, D59).
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
         await enqueue_encounter_completed(session, encounter)
-        await advancement.advance_after_result(session, encounter)
+        await advance_and_announce(session, encounter)
         return True
 
     @staticmethod
@@ -729,7 +730,7 @@ class CaptainService:
                 latest.adopted_team_id = adopted_team_id
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
         await enqueue_encounter_completed(session, encounter)
-        await advancement.advance_after_result(session, encounter)
+        await advance_and_announce(session, encounter)
         await enqueue_tournament_recalculation(session, encounter.tournament_id)
         await session.commit()
 

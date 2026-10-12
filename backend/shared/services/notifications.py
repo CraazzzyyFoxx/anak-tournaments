@@ -165,6 +165,9 @@ class EncounterDisputeReviewPayload(_Payload):
     tournament_id: int
     game_id: int | None = None
     position: int = 0
+    #: Every participation's name in slot order -- the producer's real list. The two
+    #: keys below are the v1 wire app-service still renders (slots 1 and 2).
+    team_names: list[str] = []
     home_team_name: str
     away_team_name: str
 
@@ -202,6 +205,9 @@ class EncounterScheduledPayload(_Payload):
     encounter_id: int
     tournament_id: int
     tournament_name: str
+    #: Every seat's name in slot order -- the producer's real list. The two
+    #: keys below are the v1 wire app-service still renders (slots 1 and 2).
+    team_names: list[str] = []
     home_team_name: str
     away_team_name: str
     scheduled_at: datetime | None = None

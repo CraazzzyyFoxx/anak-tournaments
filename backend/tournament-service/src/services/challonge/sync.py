@@ -47,7 +47,6 @@ from shared.repository import (
     TeamRepository,
     TournamentRepository,
 )
-from shared.services.bracket.advancement import advance_after_result
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.distributed_lock import distributed_lock
 from shared.services.encounter.participants import active_teams, place_team, vacate_slot
@@ -57,7 +56,7 @@ from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.core import config
-from src.services.notifications.lifecycle import after_encounter_teams_changed
+from src.services.notifications.lifecycle import advance_and_announce, after_encounter_teams_changed
 from src.services.team.service import team_service
 from src.services.tournament.events import (
     RESULT_RESOURCES,
@@ -1858,7 +1857,7 @@ class ChallongeSyncService:
                 if encounter.result_status != enums.EncounterResultStatus.CONFIRMED:
                     seats = await active_teams(session, encounter.id)
                     await _write_import_result(session, encounter, [seat.score for seat in seats])
-                await advance_after_result(session, encounter)
+                await advance_and_announce(session, encounter, channel=False)
 
     async def import_tournament(self, session: AsyncSession, tournament_id: int, *, dry_run: bool = False) -> dict:
         """Full import from Challonge: upsert encounters with scores and status."""
