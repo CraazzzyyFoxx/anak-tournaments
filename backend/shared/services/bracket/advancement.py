@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import enums
 from shared.domain import pick_ban_engine as engine
 from shared.domain.encounter_naming import build_encounter_name_from_ids
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.encounter_game import EncounterGame
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.encounter_report import EncounterCaptainReport
 from shared.models.tournament.stage import Stage

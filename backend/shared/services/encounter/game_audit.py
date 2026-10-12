@@ -22,9 +22,9 @@ from collections.abc import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import EncounterGameState, EncounterResultAuditAction
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.encounter_game import EncounterGame
-from shared.models.tournament.encounter_result_audit import EncounterResultAudit
+from shared.models.encounter.audit import EncounterResultAudit
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame
 from shared.repository import EncounterResultAuditRepository
 
 __all__ = ("cancel_games", "record_game_result_transition")

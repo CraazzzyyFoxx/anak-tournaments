@@ -6,6 +6,7 @@ from shared.models.catalog.gamemode import *
 from shared.models.catalog.hero import *
 from shared.models.catalog.map import *
 from shared.models.division_grid.division_grid import *
+from shared.models.encounter import *
 from shared.models.identity.auth_user import *
 from shared.models.identity.social import *
 from shared.models.identity.user import *
@@ -14,13 +15,11 @@ from shared.models.preferences.encounter_saved_view import *
 from shared.models.ranks.overwatch_rank import *
 from shared.models.registration.registration import *
 from shared.models.tenancy.workspace import *
+from shared.models.tournament.bracket_encounter import *
 from shared.models.tournament.challonge import *
 from shared.models.tournament.computation import *
-from shared.models.tournament.encounter import *
-from shared.models.tournament.encounter_game import *
 from shared.models.tournament.encounter_link import *
 from shared.models.tournament.encounter_report import *
-from shared.models.tournament.encounter_result_audit import *
 from shared.models.tournament.link import *
 from shared.models.tournament.stage import *
 from shared.models.tournament.standings import *

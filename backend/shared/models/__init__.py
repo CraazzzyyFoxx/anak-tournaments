@@ -14,6 +14,7 @@ from .casual import *
 from .custom_game import *
 from .catalog import *
 from .division_grid import *
+from .encounter import *
 from .member_rank import *
 from .identity import *
 from .ingestion import *

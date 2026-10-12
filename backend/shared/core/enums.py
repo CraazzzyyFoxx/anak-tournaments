@@ -418,16 +418,25 @@ class StageType(StrEnum):
     FFA_LEAGUE = "ffa_league"
 
 
-class EncounterFormat(StrEnum):
-    """How many sides an encounter has. Fixed at creation.
+class EncounterResultSource(StrEnum):
+    """Where an encounter's official result came from (D57).
 
-    ``duel`` is two sides and a series -- every feature built on home/away
-    accepts only it. ``ffa`` is a lobby of N participants
-    (``tournament.encounter_participant``) scored per game per participant.
+    ``games`` is the aggregate of the confirmed games and is the only one a
+    rule recalculation may overwrite; the other three are decisions and are
+    changed only by a reopen.
     """
 
-    DUEL = "duel"
-    FFA = "ffa"
+    GAMES = "games"
+    SERIES_CLAIM = "series_claim"
+    ADMIN = "admin"
+    IMPORT = "import"
+
+
+class AuditSnapshotScope(StrEnum):
+    """What a ``encounter.result_audit`` row's before/after snapshot describes."""
+
+    ENCOUNTER = "encounter"
+    GAME = "game"
 
 
 class StageItemType(StrEnum):
@@ -479,11 +488,17 @@ class MapPoolEntryStatus(StrEnum):
     PROTECTED = "protected"
 
 
-class MapPickSide(StrEnum):
-    HOME = "home"
-    AWAY = "away"
+class PickBanActorKind(StrEnum):
+    """Who performed a pick-ban board action.
+
+    ``team`` is the only kind that names a participation; the others are the
+    engine resolving a step, an organizer overriding one, or a tiebreak.
+    """
+
+    TEAM = "team"
     DECIDER = "decider"
     ADMIN = "admin"
+    SYSTEM = "system"
 
 
 class MapVetoSessionStatus(StrEnum):
@@ -511,7 +526,8 @@ class EncounterGameResultSource(StrEnum):
 class VetoSeedSource(StrEnum):
     BRACKET_SLOT = "bracket_slot"
     STANDINGS = "standings"
-    FALLBACK_HOME = "fallback_home"
+    #: Neither participation could be seeded; the first slot opens by default.
+    FALLBACK_FIRST_SLOT = "fallback_first_slot"
     ADMIN = "admin"
 
 
@@ -557,20 +573,6 @@ class EncounterStatus(StrEnum):
     COMPLETED = "completed"
     PENDING = "pending"
     OPEN = "open"
-
-
-class EncounterLinkRole(StrEnum):
-    """Role of the source encounter relative to the target encounter."""
-
-    WINNER = "winner"
-    LOSER = "loser"
-
-
-class EncounterLinkSlot(StrEnum):
-    """Which slot in the target encounter this link fills."""
-
-    HOME = "home"
-    AWAY = "away"
 
 
 class MatchEvent(StrEnum):
@@ -650,7 +652,8 @@ __all__ = [
     "DraftPlayerStatus",
     "DraftPickStatus",
     "StageType",
-    "EncounterFormat",
+    "EncounterResultSource",
+    "AuditSnapshotScope",
     "StageItemType",
     "StageItemInputType",
     "EncounterResultStatus",
@@ -658,7 +661,7 @@ __all__ = [
     "EncounterGameState",
     "EncounterGameResultSource",
     "MapPoolEntryStatus",
-    "MapPickSide",
+    "PickBanActorKind",
     "MapVetoSessionStatus",
     "VetoSeedSource",
     "FirstPickRule",
@@ -666,8 +669,6 @@ __all__ = [
     "FirstBanRotation",
     "PickBanKind",
     "EncounterStatus",
-    "EncounterLinkRole",
-    "EncounterLinkSlot",
     "MatchEvent",
     "AbilityEvent",
     "MatchSource",

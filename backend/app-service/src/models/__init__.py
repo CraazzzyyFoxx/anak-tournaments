@@ -7,6 +7,7 @@ from shared.models.catalog.gamemode import *
 from shared.models.catalog.hero import *
 from shared.models.catalog.map import *
 from shared.models.division_grid.division_grid import *
+from shared.models.encounter import *
 from shared.models.identity.api_key import *
 from shared.models.identity.auth_user import *
 from shared.models.identity.rbac import *
@@ -19,7 +20,7 @@ from shared.models.matches.stat_baseline import *
 from shared.models.preferences.favorite_player import *
 from shared.models.registration.registration import *
 from shared.models.tenancy.workspace import *
-from shared.models.tournament.encounter import *
+from shared.models.tournament.bracket_encounter import *
 from shared.models.tournament.stage import *
 from shared.models.tournament.standings import *
 from shared.models.tournament.team import *

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status
 from shared.core.enums import EncounterResultStatus, EncounterStatus, StageType
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.models.tournament.encounter import Encounter
+from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.stage import Stage
 from shared.services.bracket import advancement
 

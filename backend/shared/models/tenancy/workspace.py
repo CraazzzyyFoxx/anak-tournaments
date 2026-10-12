@@ -163,6 +163,10 @@ class WorkspaceMember(db.TimeStampIntegerMixin):
     # Workspace-local nickname, when the workspace calls somebody by a name
     # other than their global ``players.user.name``. Falls back to that name.
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Soft removal (D66): the roster snapshots in ``encounter.team_member`` are
+    # anchored on this row and must not lose it, so ``remove_member`` strips the
+    # roles and the access and stamps this instead of deleting. NULL = active.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     workspace: Mapped[Workspace] = relationship(back_populates="members")
     player: Mapped[User] = relationship()

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.models.tournament.encounter import Encounter
+from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.stage import Stage
 
 __all__ = ("assert_encounter_live", "is_encounter_live")

@@ -15,8 +15,8 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.encounter_result_audit import EncounterResultAudit
+from shared.models.encounter.audit import EncounterResultAudit
+from shared.models.encounter.encounter import Encounter
 from shared.repository import EncounterResultAuditRepository
 
 __all__ = ("record_result_transition",)

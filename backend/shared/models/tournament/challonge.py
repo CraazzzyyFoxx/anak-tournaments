@@ -2,7 +2,7 @@ from sqlalchemy import JSON, ForeignKey, Index, Integer, String, Text, UniqueCon
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
-from shared.models.tournament.encounter import Encounter
+from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.stage import Stage, StageItem
 from shared.models.tournament.team import Team
 from shared.models.tournament.tournament import Tournament

@@ -83,10 +83,17 @@ class Stage(db.TimeStampIntegerMixin):
         CheckConstraint("seed_ranking IN ('slot', 'avg_sr', 'total_sr', 'random')", name="ck_stage_seed_ranking"),
         CheckConstraint("best_of_default >= 1", name="ck_stage_best_of_default"),
         CheckConstraint("best_of_final IS NULL OR best_of_final >= 1", name="ck_stage_best_of_final"),
+        #: Target of ``tournament.bracket_encounter``'s composite FK.
+        UniqueConstraint("id", "tournament_id", name="uq_stage_id_tournament"),
         {"schema": "tournament"},
     )
 
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
+    # Deferred: a stage and the rule it points at are written in one
+    # transaction, and the rule may be inserted after the stage.
+    scoring_rule_id: Mapped[int] = mapped_column(
+        BigInteger(), ForeignKey("encounter.scoring_rule.id", deferrable=True, initially="DEFERRED")
+    )
     name: Mapped[str] = mapped_column(String())
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     stage_type: Mapped[enums.StageType] = mapped_column(STAGE_TYPE_ENUM)
@@ -220,7 +227,11 @@ class StageRoundBestOf(db.Base):
 
 class StageItem(db.TimeStampIntegerMixin):
     __tablename__ = "stage_item"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        #: Target of ``tournament.bracket_encounter``'s composite FK.
+        UniqueConstraint("id", "stage_id", name="uq_stage_item_id_stage"),
+        {"schema": "tournament"},
+    )
 
     stage_id: Mapped[int] = mapped_column(ForeignKey(Stage.id, ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String())
