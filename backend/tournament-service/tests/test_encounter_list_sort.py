@@ -32,4 +32,4 @@ class EncounterListSortTests(TestCase):
         self.assertIn("AS anon_1", sql)
 
     def test_plain_column_sort_still_works(self) -> None:
-        self.assertIn("ORDER BY tournament.encounter.closeness ASC", self._compile("closeness"))
+        self.assertIn("ORDER BY encounter.encounter.closeness ASC", self._compile("closeness"))

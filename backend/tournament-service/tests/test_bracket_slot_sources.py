@@ -5,8 +5,8 @@ unresolved slot's team would come from out of round numbers and match counts.
 That inference cannot tell a lower bracket seeded straight from the group stage
 -- whose round 1 holds seeds, so its slots really are TBD -- from a standard one
 whose round 1 holds the upper bracket's first losers, and labelled the former
-wrong. These lock in the shape the reader consumes: grouped by TARGET encounter,
-with role/slot as the plain strings the wire carries.
+wrong. These lock in the shape the reader consumes: grouped by TARGET encounter, with the place a
+slot takes and the seat it fills.
 """
 
 from __future__ import annotations
@@ -26,12 +26,6 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 os.environ["DEBUG"] = "true"
 
 advancement = importlib.import_module("shared.services.bracket.advancement")
-enums = importlib.import_module("shared.core.enums")
-
-WINNER = enums.EncounterLinkRole.WINNER
-LOSER = enums.EncounterLinkRole.LOSER
-HOME = enums.EncounterLinkSlot.HOME
-AWAY = enums.EncounterLinkSlot.AWAY
 
 
 def _session(rows: list[tuple]) -> SimpleNamespace:
@@ -44,9 +38,9 @@ class ResolveSlotSourcesTests(IsolatedAsyncioTestCase):
         # seeded LB R1 match 4 and the loser of UB R1 match 1.
         session = _session(
             [
-                (6, 4, WINNER, HOME),
-                (6, 1, LOSER, AWAY),
-                (7, 5, WINNER, HOME),
+                (6, 4, 1, 1),
+                (6, 1, 2, 2),
+                (7, 5, 1, 1),
             ]
         )
 
@@ -54,8 +48,8 @@ class ResolveSlotSourcesTests(IsolatedAsyncioTestCase):
 
         self.assertEqual({6, 7}, set(sources))
         self.assertEqual(
-            [(4, "winner", "home"), (1, "loser", "away")],
-            [(source.encounter_id, source.role, source.slot) for source in sources[6]],
+            [(4, 1, 1), (1, 2, 2)],
+            [(source.encounter_id, source.source_position, source.slot) for source in sources[6]],
         )
         # A seeded round has no incoming edge at all — its slots stay TBD.
         self.assertNotIn(4, sources)

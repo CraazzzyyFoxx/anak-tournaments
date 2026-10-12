@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import sys
 import warnings
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -41,12 +42,13 @@ from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.models.platform.notification import Notification  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigItem  # noqa: E402
+from shared.services.encounter import result  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 from src import models  # noqa: E402
 from src.services.admin.stage import stage_service  # noqa: E402
-from src.services.encounter import finalize as finalize_module  # noqa: E402
-from src.services.notifications import lifecycle as lifecycle_module  # noqa: E402
-from src.services.notifications.lifecycle import lifecycle_notifier  # noqa: E402
+from src.services.encounter.pick_ban_session import pick_ban_session_service  # noqa: E402
+from src.services.notifications.lifecycle import advance_and_announce, lifecycle_notifier  # noqa: E402
+from tests._encounter_layer import create_sqlite_tables  # noqa: E402
 
 install_postgres_type_shims()
 
@@ -63,7 +65,13 @@ TABLE_NAMES = (
     "tournament.team",
     "tournament.player",
     "tournament.stage",
-    "tournament.encounter",
+    "encounter.encounter",
+    "encounter.team",
+    "encounter.result_audit",
+    "encounter.team_member",
+    "encounter.team_member_role",
+    "encounter.game",
+    "tournament.bracket_encounter",
     "tournament.encounter_link",
     "tournament.pick_ban_config",
     "tournament.pick_ban_config_item",
@@ -74,6 +82,8 @@ TABLE_NAMES = (
 WORKSPACE_ID = 1
 TOURNAMENT_ID = 10
 TOURNAMENT_NAME = "Autumn Cup"
+#: The scoring rule every row points at; SQLite enforces no foreign key, so it needs no row.
+RULE_ID = 1
 
 BROADCAST_ROUTING_KEY = "notification.broadcast"
 
@@ -133,6 +143,9 @@ class _AsyncSessionShim:
         # target encounter it is about to fill in.
         return self._session.get(entity, primary_key, **kwargs)
 
+    async def get_one(self, entity, primary_key, **kwargs):  # noqa: ANN001, ANN003, ANN202
+        return self._session.get_one(entity, primary_key, **kwargs)
+
     def add(self, obj) -> None:  # noqa: ANN001
         self._session.add(obj)
 
@@ -156,8 +169,7 @@ class _Fixture:
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in tables if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in tables:
-                table.create(conn)
+            create_sqlite_tables(conn, tables)
         self.session = Session(self.engine, expire_on_commit=False)
         self.shim = _AsyncSessionShim(self.session)
         self.tournament = models.Tournament(
@@ -248,6 +260,7 @@ class _Fixture:
         stage = models.Stage(
             tournament_id=TOURNAMENT_ID,
             name="Playoffs",
+            scoring_rule_id=RULE_ID,
             stage_type=enums.StageType.SINGLE_ELIMINATION,
             order=1,
             items=[],
@@ -273,31 +286,66 @@ class _Fixture:
     def encounter(
         self,
         *,
-        home_team_id: int | None,
-        away_team_id: int | None,
+        teams: Sequence[int | None],
         scheduled_at: datetime | None,
         round_number: int = 1,
         stage_id: int | None = None,
         status: enums.EncounterStatus = enums.EncounterStatus.OPEN,
         started_at: datetime | None = None,
     ) -> models.Encounter:
+        """A card of ``len(teams)`` seats; ``None`` leaves a seat empty."""
+        completed = status == enums.EncounterStatus.COMPLETED
         encounter = models.Encounter(
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             name="match",
             tournament_id=TOURNAMENT_ID,
-            stage_id=stage_id,
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=0,
-            away_score=0,
-            round=round_number,
+            scoring_rule_id=RULE_ID,
+            slot_count=len(teams),
             scheduled_at=scheduled_at,
             started_at=started_at,
             status=status,
-            result_status=enums.EncounterResultStatus.NONE,
+            result_status=enums.EncounterResultStatus.CONFIRMED if completed else enums.EncounterResultStatus.NONE,
+            result_source=enums.EncounterResultSource.ADMIN.value if completed else None,
         )
         self.session.add(encounter)
         self.session.flush()
+        if stage_id is not None:
+            self.session.add(
+                models.BracketEncounter(
+                    encounter_id=encounter.id,
+                    tournament_id=TOURNAMENT_ID,
+                    stage_id=stage_id,
+                    round=round_number,
+                )
+            )
+        for slot, team_id in enumerate(teams, 1):
+            if team_id is not None:
+                self.seat(encounter, slot, team_id)
+        self.session.flush()
         return encounter
+
+    def seat(self, encounter: models.Encounter, slot: int, team_id: int) -> models.EncounterTeam:
+        """Seat ``team_id`` in ``slot``, retiring whoever held it (append-only, D55)."""
+        for held in self.session.scalars(
+            sa.select(models.EncounterTeam).where(
+                models.EncounterTeam.encounter_id == encounter.id,
+                models.EncounterTeam.slot == slot,
+                models.EncounterTeam.active.is_(True),
+            )
+        ):
+            held.active = False
+        participation = models.EncounterTeam(
+            encounter_id=encounter.id,
+            tournament_id=TOURNAMENT_ID,
+            slot=slot,
+            team_id=team_id,
+            name=self.session.get(models.Team, team_id).name,
+            active=True,
+        )
+        self.session.add(participation)
+        self.session.flush()
+        return participation
 
     # -- assertions -------------------------------------------------------
 
@@ -492,8 +540,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
 
     async def test_a_future_time_tells_both_rosters_and_the_channel(self) -> None:
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
 
@@ -511,8 +558,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
     async def test_a_match_with_no_time_yet_still_tells_both_rosters(self) -> None:
         """Knowing the opponent is the news; the organizer schedules later."""
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=None,
         )
 
@@ -525,8 +571,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
     async def test_a_configured_pick_ban_pool_is_flagged(self) -> None:
         self.fx.pick_ban_config(enums.PickBanKind.HERO, 11, 12)
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
 
@@ -538,8 +583,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
         """A config with no pool plays nothing, so the room has nothing to open."""
         self.fx.pick_ban_config(enums.PickBanKind.MAP)
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
 
@@ -551,8 +595,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
         self.fx.tournament.discord_broadcasts_enabled = False
         self.fx.session.flush()
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
 
@@ -564,8 +607,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
     async def test_a_bulk_producer_writes_the_rows_but_posts_nothing(self) -> None:
         """``channel=False``: one Swiss round fills a dozen encounters at once."""
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
 
@@ -578,8 +620,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
         """The round scheduler sends one PATCH per encounter, carrying the time
         it already has."""
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
 
@@ -592,8 +633,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
 
     async def test_a_new_time_is_a_new_notification(self) -> None:
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
         await self._changed(encounter)
@@ -607,13 +647,12 @@ class EncounterScheduledTests(_LifecycleTestCase):
     async def test_a_new_opponent_is_a_new_notification(self) -> None:
         """An admin re-assigning a slot is a different match to prepare for."""
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
         await self._changed(encounter)
 
-        encounter.away_team_id = self.fx.team("Other", self.fx.member("OtherPlayer", auth_user_id=704)).id
+        self.fx.seat(encounter, 2, self.fx.team("Other", self.fx.member("OtherPlayer", auth_user_id=704)).id)
         await self._changed(encounter)
 
         # The home roster is told twice: a different opponent, a different match.
@@ -622,8 +661,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
 
     async def test_an_empty_slot_is_silent(self) -> None:
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=None,
+            teams=[self.home.id, None],
             scheduled_at=self.later,
         )
 
@@ -633,8 +671,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
 
     async def test_an_encounter_already_under_way_is_silent(self) -> None:
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
             started_at=datetime.now(UTC),
         )
@@ -646,8 +683,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
     async def test_a_completed_encounter_is_silent(self) -> None:
         """Backfilled brackets and Challonge imports land played matches."""
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
             status=enums.EncounterStatus.COMPLETED,
         )
@@ -660,8 +696,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
         self.fx.tournament.status = TournamentStatus.COMPLETED
         self.fx.session.flush()
         encounter = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=self.later,
         )
 
@@ -672,8 +707,7 @@ class EncounterScheduledTests(_LifecycleTestCase):
     async def test_a_preview_bracket_stays_silent_until_the_stage_is_activated(self) -> None:
         stage = self.fx.stage()
         self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=None,
             stage_id=stage.id,
         )
@@ -691,11 +725,11 @@ class EncounterScheduledTests(_LifecycleTestCase):
         later writes the group winners into it (``_fill_bracket_seeds``)."""
         stage = self.fx.stage()
         stage.is_published = True
-        encounter = self.fx.encounter(home_team_id=None, away_team_id=None, scheduled_at=None, stage_id=stage.id)
+        encounter = self.fx.encounter(teams=[None, None], scheduled_at=None, stage_id=stage.id)
 
         async def fill_seeds(session: Any, stage: models.Stage, existing_by_item: Any) -> list[models.Encounter]:
-            encounter.home_team_id, encounter.away_team_id = self.home.id, self.away.id
-            self.fx.session.flush()
+            self.fx.seat(encounter, 1, self.home.id)
+            self.fx.seat(encounter, 2, self.away.id)
             return [encounter]
 
         with patch.object(stage_service, "_generate_bracket_encounters", fill_seeds):
@@ -710,38 +744,53 @@ class EncounterScheduledTests(_LifecycleTestCase):
         """The scheduled slot whose opponent was still TBD: the time was set
         long before the semi-final was played."""
         source = self.fx.encounter(
-            home_team_id=self.home.id,
-            away_team_id=self.away.id,
+            teams=[self.home.id, self.away.id],
             scheduled_at=None,
         )
         target = self.fx.encounter(
-            home_team_id=self.fx.team("Final", self.fx.member("FinalPlayer", auth_user_id=703)).id,
-            away_team_id=None,
+            teams=[self.fx.team("Final", self.fx.member("FinalPlayer", auth_user_id=703)).id, None],
             scheduled_at=self.later,
             round_number=2,
         )
         self.fx.session.add(
             models.EncounterLink(
+                tournament_id=TOURNAMENT_ID,
                 source_encounter_id=source.id,
+                source_position=1,
                 target_encounter_id=target.id,
-                role=enums.EncounterLinkRole.WINNER,
-                target_slot=enums.EncounterLinkSlot.AWAY,
+                target_slot=2,
             )
         )
         self.fx.session.flush()
+        first, second = self.fx.session.scalars(
+            sa.select(models.EncounterTeam)
+            .where(models.EncounterTeam.encounter_id == source.id)
+            .order_by(models.EncounterTeam.slot)
+        )
+        await result.apply_result(
+            self.fx.shim,
+            source,
+            source=enums.EncounterResultSource.ADMIN,
+            totals={first.id: 2.0, second.id: 0.0},
+            placements={first.id: 1, second.id: 2},
+            action=enums.EncounterResultAuditAction.CONFIRM,
+            audit_source="admin",
+            actor_user_id=None,
+            reason="test",
+        )
 
         with patch.object(
-            lifecycle_module.pick_ban_session_service,
+            pick_ban_session_service,
             "sync_all_pick_ban_sessions_after_team_change",
             AsyncMock(),
         ):
-            await finalize_module.finalize_service.finalize_encounter_score(
-                self.fx.shim,
-                source.id,
-                home_score=2,
-                away_score=0,
-                source="admin",
-            )
+            outcome = await advance_and_announce(self.fx.shim, source)
 
-        self.assertEqual(self.home.id, target.away_team_id)
+        self.assertEqual([(target.id, 2)], outcome.placed)
+        seated = self.fx.session.execute(
+            sa.select(models.EncounterTeam.slot, models.EncounterTeam.team_id)
+            .where(models.EncounterTeam.encounter_id == target.id, models.EncounterTeam.active.is_(True))
+            .order_by(models.EncounterTeam.slot)
+        ).all()
+        self.assertEqual([self.home.id], [team_id for slot, team_id in seated if slot == 2])
         self.assertEqual([701, 703], self.fx.recipients("encounter.scheduled"))

@@ -620,7 +620,7 @@ class ReadPathTests(ResultFlowCase):
     number.
     """
 
-    async def test_the_overview_counts_the_two_seats_without_a_home_column(self) -> None:
+    async def test_the_overview_counts_the_two_seats_by_slot(self) -> None:
         async with self.Session() as s:
             first, second = await self.seats(s)
             await self.play(s, 1, first.id, second.id)
@@ -634,10 +634,10 @@ class ReadPathTests(ResultFlowCase):
         self.assertEqual(1, data["total"])
         self.assertEqual(1, data["completed_series_count"])
         # Slot 1 took both maps: a 2:0 is a sweep, and the win belongs to the
-        # LEFT seat. Nothing here reads a home column.
+        # first seat. Nothing here reads a side column.
         self.assertEqual(1, data["sweep_count"])
-        self.assertEqual(1, data["home_wins"])
-        self.assertEqual(0, data["away_wins"])
+        self.assertEqual(1, data["slot_one_wins"])
+        self.assertEqual(0, data["slot_two_wins"])
         self.assertEqual([(2, 0, 1)], [tuple(row) for row in data["score_rows"]])
 
     async def test_a_lobby_is_left_out_of_the_two_seat_metrics(self) -> None:
@@ -663,10 +663,10 @@ class ReadPathTests(ResultFlowCase):
                 schemas.EncounterSearchParams(page=1, per_page=50, tournament_id=self.ids["t"], slot_count=3),
             )
         # The lobby is in scope, but it contributes to neither win column: a
-        # three-seat encounter has no left-versus-right to balance.
+        # three-seat encounter has no first-versus-second to balance.
         self.assertEqual(1, data["total"])
-        self.assertEqual(0, data["home_wins"])
-        self.assertEqual(0, data["away_wins"])
+        self.assertEqual(0, data["slot_one_wins"])
+        self.assertEqual(0, data["slot_two_wins"])
         self.assertEqual([], [tuple(row) for row in data["score_rows"]])
 
     async def test_an_entity_less_read_serializes_from_the_seats(self) -> None:
@@ -678,22 +678,21 @@ class ReadPathTests(ResultFlowCase):
             encounter = await encounter_service.get_encounter(s, self.ids["e"], [])
             read = await flows_service.to_pydantic(s, encounter, [])
             summary = to_summary(encounter)
-        self.assertEqual(self.ids["team0"], read.home_team_id)
-        self.assertEqual(self.ids["team1"], read.away_team_id)
-        self.assertEqual((1, 0), (read.score.home, read.score.away))
+        self.assertEqual([self.ids["team0"], self.ids["team1"]], [seat.team_id for seat in read.teams])
+        self.assertEqual([1, 2], [seat.slot for seat in read.teams])
+        self.assertEqual((1.0, 0.0), tuple(seat.score for seat in read.teams))
         self.assertEqual(0, read.round)
         self.assertIsNone(read.stage_id)
-        self.assertEqual(self.ids["team0"], summary.home_team_id)
+        self.assertEqual([self.ids["team0"], self.ids["team1"]], [seat.team_id for seat in summary.teams])
 
     async def test_a_read_with_teams_eager_loads_their_nested_entities(self) -> None:
         async with self.Session() as s:
             encounter = await encounter_service.get_encounter(s, self.ids["e"], ["teams", "teams.players"])
             read = await flows_service.to_pydantic(s, encounter, ["teams", "teams.players"])
-        self.assertEqual("T0", read.home_team.name)
-        self.assertEqual("T1", read.away_team.name)
+        self.assertEqual(["T0", "T1"], [seat.team.name for seat in read.teams])
         # ``players`` is a to-many on the team: reaching it at all proves the
         # seat's team was loaded with its nested entities, not bare.
-        self.assertEqual([], read.home_team.players)
+        self.assertEqual([], read.teams[0].team.players)
 
     async def test_a_team_already_in_the_identity_map_is_reloaded_with_its_entities(self) -> None:
         """``session.get`` hands back an identity-mapped row as it was FIRST
@@ -711,5 +710,5 @@ class ReadPathTests(ResultFlowCase):
             # ``populate_existing`` the read hands back the bare one and the
             # next consumer of it lazy-loads.
             self.assertNotIn("players", sa.inspect(bare).unloaded)
-        self.assertEqual("T0", read.home_team.name)
-        self.assertEqual([], read.home_team.players)
+        self.assertEqual("T0", read.teams[0].team.name)
+        self.assertEqual([], read.teams[0].team.players)

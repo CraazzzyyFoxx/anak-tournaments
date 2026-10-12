@@ -714,7 +714,7 @@ class ChallongeRoundTripTests(StageLayerCase):
         )
         async with self.Session() as s:
             match_lookup.by_challonge_id[9001] = await s.get_one(Encounter, encounter_id)
-            with patch.object(challonge_sync, "advance_after_result", AsyncMock()):
+            with patch.object(challonge_sync, "advance_and_announce", AsyncMock()):
                 await challonge_sync.sync_service._advance_completed_challonge_matches(
                     s, [(source, self._match())], match_lookup=match_lookup
                 )

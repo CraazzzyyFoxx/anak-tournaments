@@ -41,7 +41,10 @@ _GATEWAY_COLUMN_DEPENDENCIES: tuple[tuple[str | None, str, str], ...] = (
     (None, "workspace", "is_hidden"),
     ("tournament", "tournament_preview_access", "tournament_id"),
     ("tournament", "tournament_preview_access", "auth_user_id"),
-    ("tournament", "encounter", "tournament_id"),
+    ("encounter", "encounter", "tournament_id"),
+    ("encounter", "team", "encounter_id"),
+    ("encounter", "team", "active"),
+    ("encounter", "team", "team_id"),
 )
 
 

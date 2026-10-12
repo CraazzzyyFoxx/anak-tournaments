@@ -19,30 +19,39 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import pytest
 import sqlalchemy as sa
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core import enums  # noqa: E402
+from shared.models.catalog.gamemode import Gamemode  # noqa: E402
 from shared.models.catalog.map import Map  # noqa: E402
 from shared.models.matches.match import Match  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
-from shared.models.tournament import Encounter, Team, Tournament  # noqa: E402
+from shared.models.tournament import Team, Tournament  # noqa: E402
 from src.services.tournament.service import tournament_service  # noqa: E402
+from tests._encounter_layer import add_encounter, add_scoring_rule  # noqa: E402
 
 
 def _day(year: int, month: int, day: int) -> datetime:
     return datetime(year, month, day, 12, 0, tzinfo=UTC)
 
 
-async def _seed(session: Any) -> int:
-    """Two counted tournaments sharing a day, plus a hidden one that must not count."""
+async def _seed(session: Any) -> tuple[int, int]:
+    """Two counted tournaments sharing a day, plus a hidden one that must not count.
+
+    Returns ``(workspace id, gamemode id)``; the map is the gamemode's own, so
+    dropping both clears the lot (the test DB ships no maps to borrow).
+    """
     suffix = uuid.uuid4().hex[:12]
-    map_id = await session.scalar(sa.select(Map.id).limit(1))
-    if map_id is None:
-        pytest.skip("no overwatch.map rows in the test DB")
+    gamemode = Gamemode(slug=f"ovstat-{suffix}", name=f"Overall stats {suffix}", image_path="x")
+    session.add(gamemode)
+    await session.flush()
+    played_map = Map(gamemode_id=gamemode.id, name=f"Overall stats {suffix}", image_path="x")
+    session.add(played_map)
+    await session.flush()
+    map_id = played_map.id
 
     workspace = Workspace(slug=f"ovstat-{suffix}", name=f"Overall stats {suffix}")
     session.add(workspace)
@@ -76,30 +85,17 @@ async def _seed(session: Any) -> int:
     session.add_all(teams)
     await session.flush()
 
-    def _encounter(status: enums.EncounterStatus) -> Encounter:
-        return Encounter(
-            name=f"E {suffix}",
-            home_team_id=teams[0].id,
-            away_team_id=teams[1].id,
-            home_score=0,
-            away_score=0,
-            round=1,
-            tournament_id=first.id,
-            status=status,
-        )
-
-    done = _encounter(enums.EncounterStatus.COMPLETED)
-    open_one = _encounter(enums.EncounterStatus.OPEN)
-    hidden_encounter = Encounter(
-        name=f"EH {suffix}",
-        home_score=0,
-        away_score=0,
-        round=1,
-        tournament_id=hidden.id,
-        status=enums.EncounterStatus.COMPLETED,
-        format=enums.EncounterFormat.FFA.value,
-    )
-    session.add_all([done, open_one, hidden_encounter])
+    rule = await add_scoring_rule(session, workspace.id)
+    done = await add_encounter(session, first, rule.id, teams=[teams[0].id, teams[1].id], scores=(2, 0))
+    open_one = await add_encounter(session, first, rule.id, teams=[teams[0].id, teams[1].id])
+    # A finished duel of the hidden tournament, counted nowhere.
+    hidden_teams = [
+        Team(tournament_id=hidden.id, name=f"H{index} {suffix}", balancer_name=f"h{index}-{suffix}")
+        for index in range(2)
+    ]
+    session.add_all(hidden_teams)
+    await session.flush()
+    await add_encounter(session, hidden, rule.id, teams=[team.id for team in hidden_teams], scores=(2, 0))
     await session.flush()
 
     # 3600 + 1800 on the finished encounter, 1800 on the open one: three maps,
@@ -132,28 +128,24 @@ async def _seed(session: Any) -> int:
         )
     )
     await session.commit()
-    return workspace.id
+    return workspace.id, gamemode.id
 
 
 def test_overall_counts_played_volume(db_session) -> None:
-    workspace_id: int | None = None
-
     async def _run():
-        nonlocal workspace_id
-        workspace_id = await _seed(db_session)
-        return await tournament_service.get_tournaments_overall(db_session, workspace_id=workspace_id)
+        seeded = await _seed(db_session)
+        try:
+            return await tournament_service.get_tournaments_overall(db_session, workspace_id=seeded[0])
+        finally:
+            # One loop for seed, read and drop: the session's connection is bound to it.
+            await db_session.rollback()
+            # Workspace first: its matches hold the map.
+            await db_session.execute(sa.delete(Workspace).where(Workspace.id == seeded[0]))
+            await db_session.execute(sa.delete(Map).where(Map.gamemode_id == seeded[1]))
+            await db_session.execute(sa.delete(Gamemode).where(Gamemode.id == seeded[1]))
+            await db_session.commit()
 
-    try:
-        overall = asyncio.run(_run())
-    finally:
-        if workspace_id is not None:
-
-            async def _drop():
-                await db_session.rollback()
-                await db_session.execute(sa.delete(Workspace).where(Workspace.id == workspace_id))
-                await db_session.commit()
-
-            asyncio.run(_drop())
+    overall = asyncio.run(_run())
 
     assert overall.tournaments == 2
     assert overall.encounters == 1

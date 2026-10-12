@@ -478,10 +478,10 @@ class GrandFinalResetTests(BracketCase):
     stage_type = enums.StageType.DOUBLE_ELIMINATION
     grand_final_type = "with_reset"
 
-    async def _grand_final(self, session) -> tuple[Encounter, Encounter]:
-        """An LB final feeding slot 2 of a grand final, both seated."""
+    async def _grand_final(self, session, *, lower_slot: int = 2, lower_round: int = -1) -> tuple[Encounter, Encounter]:
+        """A final feeding ``lower_slot`` of a grand final, both seated."""
         made: list[Encounter] = []
-        for name, round_number in (("LB Final", -1), ("Grand Final", 2)):
+        for name, round_number in (("LB Final", lower_round), ("Grand Final", 2)):
             encounter = Encounter(
                 workspace_id=self.ids["ws"],
                 discipline="overwatch",
@@ -510,7 +510,7 @@ class GrandFinalResetTests(BracketCase):
                 source_encounter_id=lower.id,
                 source_position=1,
                 target_encounter_id=grand_final.id,
-                target_slot=2,
+                target_slot=lower_slot,
             )
         )
         await session.flush()
@@ -568,6 +568,69 @@ class GrandFinalResetTests(BracketCase):
                     .scalars()
                     .all()
                 ),
+            )
+
+    async def test_the_lower_champion_in_the_first_slot_still_creates_the_reset(self) -> None:
+        """The rule follows the slot the lower-bracket link names, not a fixed seat."""
+        async with self.Session() as s:
+            _lower, grand_final = await self._grand_final(s, lower_slot=1)
+            await self.win(s, grand_final, winner_slot=1)
+            await advancement.advance_after_result(s, grand_final)
+            await s.commit()
+
+            links = (
+                (await s.execute(sa.select(EncounterLink).where(EncounterLink.source_encounter_id == grand_final.id)))
+                .scalars()
+                .all()
+            )
+            self.assertEqual({(1, 1), (2, 2)}, {(link.source_position, link.target_slot) for link in links})
+
+    async def test_the_created_reset_never_spawns_a_second_reset(self) -> None:
+        async with self.Session() as s:
+            _lower, grand_final = await self._grand_final(s)
+            await self.win(s, grand_final, winner_slot=2)
+            await advancement.advance_after_result(s, grand_final)
+            reset_id = await s.scalar(
+                sa.select(EncounterLink.target_encounter_id).where(EncounterLink.source_encounter_id == grand_final.id)
+            )
+            reset = await result.lock_encounter(s, reset_id)
+            await self.win(s, reset, winner_slot=2)
+            outcome = await advancement.advance_after_result(s, reset)
+            await s.commit()
+
+            self.assertEqual([], outcome.placed)
+            self.assertEqual(
+                [],
+                list(
+                    (await s.execute(sa.select(EncounterLink).where(EncounterLink.source_encounter_id == reset_id)))
+                    .scalars()
+                    .all()
+                ),
+            )
+
+    async def test_a_final_fed_only_from_upper_rounds_is_never_a_grand_final(self) -> None:
+        async with self.Session() as s:
+            _lower, grand_final = await self._grand_final(s, lower_round=1)
+            await self.win(s, grand_final, winner_slot=2)
+            outcome = await advancement.advance_after_result(s, grand_final)
+            await s.commit()
+
+            self.assertEqual([], outcome.placed)
+            self.assertIsNone(
+                await s.scalar(sa.select(EncounterLink.id).where(EncounterLink.source_encounter_id == grand_final.id))
+            )
+
+    async def test_a_no_reset_stage_ends_at_the_grand_final(self) -> None:
+        async with self.Session() as s:
+            _lower, grand_final = await self._grand_final(s)
+            (await s.get_one(Stage, self.ids["stage"])).de_grand_final_type = "no_reset"
+            await self.win(s, grand_final, winner_slot=2)
+            outcome = await advancement.advance_after_result(s, grand_final)
+            await s.commit()
+
+            self.assertEqual([], outcome.placed)
+            self.assertIsNone(
+                await s.scalar(sa.select(EncounterLink.id).where(EncounterLink.source_encounter_id == grand_final.id))
             )
 
     async def test_correcting_the_grand_final_drops_the_untouched_reset(self) -> None:
