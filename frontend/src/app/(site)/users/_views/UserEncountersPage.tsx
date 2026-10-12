@@ -5,6 +5,7 @@ import type { StatsScope } from "@/lib/site/stats-scope";
 import { Skeleton } from "@/components/ui/skeleton";
 import MatchesTable, { type MatchesFilters } from "@/app/(site)/users/components/matches/MatchesTable";
 import type { StageStats } from "@/app/(site)/users/components/matches/MatchesSidebars";
+import { USER_ENCOUNTER_ENTITIES } from "@/app/(site)/users/components/shared/encounter-perspective";
 
 const EMPTY_STAGES: StageStats = {
   group: { w: 0, l: 0 },
@@ -47,7 +48,7 @@ export const UserEncountersPage = async ({
         perPage,
         undefined,
         undefined,
-        undefined,
+        USER_ENCOUNTER_ENTITIES,
         filters,
         scope
       ),

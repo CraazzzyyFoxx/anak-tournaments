@@ -2,6 +2,14 @@ import type { ScoreKind } from "@/components/match/cells";
 import { seatsBySlot } from "@/lib/encounter/seats";
 import type { EncounterWithUserStats, MatchWithUserStats } from "@/types/user.types";
 
+/**
+ * What the profile's encounter lists ask the read to join. Lives here, not as a
+ * default of `userService.getUserEncounters`: that service is reachable from
+ * the root layout, and the quoted entity names would read to the zone i18n
+ * check as the `teams` message namespace the root bundle does not ship.
+ */
+export const USER_ENCOUNTER_ENTITIES = ["tournament", "stage", "stage_item", "teams", "teams.players", "matches.map"];
+
 type Seat = EncounterWithUserStats["teams"][number];
 
 /** An encounter read from the profile owner's seat; `own` is null when no seat is theirs. */

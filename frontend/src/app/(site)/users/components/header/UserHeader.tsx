@@ -12,7 +12,10 @@ import ProfileToolbar from "@/app/(site)/users/components/header/ProfileToolbar"
 import userService from "@/services/user.service";
 import { HeroFrame } from "@/components/site/PageHero";
 import type { StatsScope } from "@/lib/site/stats-scope";
-import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
+import {
+  encounterPerspective,
+  USER_ENCOUNTER_ENTITIES
+} from "@/app/(site)/users/components/shared/encounter-perspective";
 
 interface UserHeaderProps {
   profile: UserProfile;
@@ -35,7 +38,7 @@ const deriveFormStreak = async (userId: number, scope: StatsScope): Promise<Form
       10,
       "played_at",
       "desc",
-      undefined,
+      USER_ENCOUNTER_ENTITIES,
       undefined,
       scope
     );
