@@ -298,7 +298,7 @@ export function MatchReportForm({
   const validation = (() => {
     // The same checks, with the same codes, the server runs on a series claim.
     const claimErrors = seriesClaimErrors({
-      preset: duel ? "wins" : "points",
+      preset: encounter.scoring_preset,
       bestOf: encounter.best_of,
       teamIds: seats.map((seat) => seat.id),
       games: encounter.games,

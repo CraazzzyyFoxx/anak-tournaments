@@ -156,6 +156,9 @@ class Encounter(db.TimeStampIntegerMixin):
         # Derived from ``Match`` existence via ``column_property`` after
         # ``Match`` is defined (see ``shared/models/matches/match.py``).
         has_logs: Mapped[bool]
+        # Derived from the scoring rule via ``column_property`` (see
+        # ``shared/models/encounter/scoring_rule.py``): ``wins`` or ``points``.
+        scoring_preset: Mapped[str]
 
     # Joined on the owner's id alone, although the constraint behind it is the
     # three-column owner key: a many-to-one on a non-primary key cannot use the

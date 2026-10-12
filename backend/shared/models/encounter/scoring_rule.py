@@ -11,11 +11,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import ARRAY, JSON, CheckConstraint, Float, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import ARRAY, JSON, CheckConstraint, Float, ForeignKey, String, UniqueConstraint, select, text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, column_property, mapped_column
 
 from shared.core import db
+from shared.models.encounter.encounter import Encounter
 
 __all__ = ("ScoringRule",)
 
@@ -47,3 +48,13 @@ class ScoringRule(db.TimeStampIntegerMixin):
     game_formula: Mapped[str] = mapped_column(String(500))
     #: Variables: ``best_of``, ``games`` (confirmed games, draws included), ``max_wins``.
     end_formula: Mapped[str] = mapped_column(String(500))
+
+
+# The rule's preset, read with the encounter: a reader decides "lobby or duel"
+# from how the encounter is SCORED, not from how many seats it has (a two-seat
+# lobby is still a lobby). Derived rather than stored for the same reason
+# ``Encounter.has_logs`` is -- no second copy to keep in step with the rule --
+# and computed in the encounter's own SELECT, so a list page costs no lookups.
+Encounter.scoring_preset = column_property(
+    select(ScoringRule.preset).where(ScoringRule.id == Encounter.scoring_rule_id).correlate(Encounter).scalar_subquery()
+)

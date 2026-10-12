@@ -16893,6 +16893,12 @@ export interface components {
              */
             scheduled_at: string | null;
             /**
+             * Scoring Preset
+             * @default wins
+             * @enum {string}
+             */
+            scoring_preset: TournamentEncounterReadScoring_preset;
+            /**
              * Slot Count
              * @default 2
              */
@@ -17026,6 +17032,12 @@ export interface components {
             result_status: string;
             /** Round */
             round: number;
+            /**
+             * Scoring Preset
+             * @default wins
+             * @enum {string}
+             */
+            scoring_preset: TournamentEncounterSummaryReadScoring_preset;
             /**
              * Slot Count
              * @default 2
@@ -74081,6 +74093,10 @@ export enum TournamentEncounterGameState {
     confirmed = "confirmed",
     cancelled = "cancelled"
 }
+export enum TournamentEncounterReadScoring_preset {
+    wins = "wins",
+    points = "points"
+}
 export enum TournamentEncounterResultStatus {
     none = "none",
     pending_confirmation = "pending_confirmation",
@@ -74091,6 +74107,10 @@ export enum TournamentEncounterStatus {
     completed = "completed",
     pending = "pending",
     open = "open"
+}
+export enum TournamentEncounterSummaryReadScoring_preset {
+    wins = "wins",
+    points = "points"
 }
 export enum TournamentFfaColumnReadBetter {
     higher = "higher",

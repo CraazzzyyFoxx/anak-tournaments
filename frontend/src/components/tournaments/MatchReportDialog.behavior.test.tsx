@@ -83,6 +83,7 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     confirmed_at: null,
     matches: [],
     slot_count: 2,
+    scoring_preset: "wins",
     result_source: null,
     result_version: 1,
     games: [],
@@ -545,6 +546,20 @@ describe("MatchReportDialog series validation", () => {
     getReports.mockResolvedValue({ reports: [], form: bare });
     return mount(<MatchReportDialog open onOpenChange={() => {}} encounter={encounter({ teams })} />);
   }
+
+  it("files a two-seat points encounter as a lobby card: points, no wins", async () => {
+    // The seat count says duel, the preset says lobby: the card is paid by points.
+    getReports.mockResolvedValue({ reports: [], form: bare });
+    await mount(
+      <MatchReportDialog open onOpenChange={() => {}} encounter={encounter({ scoring_preset: "points", teams: seats(5, 3) })} />
+    );
+
+    await act(async () => {
+      submitButton()?.click();
+    });
+    const [, body] = submitReport.mock.calls[0];
+    expect(body.results.map((line: { wins: number | null }) => line.wins)).toEqual([null, null]);
+  });
 
   it("blocks a standing the match cannot end on, with the server's own code worded", async () => {
     // 1-1 after two games of a Bo3 is not over: `series_claim_not_final`.

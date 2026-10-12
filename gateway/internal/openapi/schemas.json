@@ -39655,6 +39655,15 @@
           "default": null,
           "title": "Scheduled At"
         },
+        "scoring_preset": {
+          "default": "wins",
+          "enum": [
+            "wins",
+            "points"
+          ],
+          "title": "Scoring Preset",
+          "type": "string"
+        },
         "slot_count": {
           "default": 2,
           "title": "Slot Count",
@@ -40699,6 +40708,15 @@
         "round": {
           "title": "Round",
           "type": "integer"
+        },
+        "scoring_preset": {
+          "default": "wins",
+          "enum": [
+            "wins",
+            "points"
+          ],
+          "title": "Scoring Preset",
+          "type": "string"
         },
         "slot_count": {
           "default": 2,

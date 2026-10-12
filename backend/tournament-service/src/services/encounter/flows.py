@@ -63,6 +63,7 @@ def to_summary(
 ) -> schemas.EncounterSummaryRead:
     return schemas.EncounterSummaryRead(
         **encounter.to_dict(),
+        scoring_preset=encounter.scoring_preset,
         **_position_fields(position),
         teams=[seat_to_read(seat) for seat in _seats(encounter)],
     )
@@ -307,6 +308,7 @@ class EncounterFlowsService:
         # silently drops it. Same footgun ``test_team_read_column_parity.py``
         # guards for ``Team.avg_sr``/``total_sr``.
         encounter_dict["has_logs"] = encounter.has_logs
+        encounter_dict["scoring_preset"] = encounter.scoring_preset
 
         return schemas.EncounterRead(
             **encounter_dict,

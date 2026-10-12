@@ -64,6 +64,8 @@ export interface Encounter {
   name: string;
   /** How many seats the card has: 2 is a duel, more is a lobby whose rows live in `FfaLobby`. */
   slot_count: number;
+  /** How the card is scored: `points` is a lobby's card (a two-seat one included), `wins` a series. */
+  scoring_preset: "wins" | "points";
   round: number;
   best_of: number;
   tournament_id: number;

@@ -7,9 +7,12 @@
 
 type Seated = { slot: number };
 
-/** More than two seats is a lobby (`slot_count > 2`), drawn by the FFA read. */
-export function isLobby(encounter: { slot_count: number }): boolean {
-  return encounter.slot_count > 2;
+/**
+ * A lobby is an encounter scored by `points`, whatever its seat count: a
+ * two-seat lobby is still a lobby, and its report and page follow the FFA read.
+ */
+export function isLobby(encounter: { scoring_preset: "wins" | "points" }): boolean {
+  return encounter.scoring_preset === "points";
 }
 
 /** The seats in slot order, whatever order the wire put them in. */

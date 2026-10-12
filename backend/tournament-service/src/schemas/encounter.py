@@ -86,6 +86,10 @@ class EncounterGameTeamRead(BaseModel):
 class EncounterSummaryRead(BaseRead):
     name: str
     slot_count: int = 2
+    #: How the encounter is scored: ``points`` is a lobby's card (a two-seat one
+    #: included), ``wins`` a series. A reader tells the two apart by this, never
+    #: by ``slot_count``.
+    scoring_preset: Literal["wins", "points"] = "wins"
     round: int
     tournament_id: int
     stage_id: int | None = None
@@ -135,6 +139,7 @@ class EncounterGameRead(BaseRead):
 class EncounterRead(BaseRead):
     name: str
     slot_count: int = 2
+    scoring_preset: Literal["wins", "points"] = "wins"
     round: int
     best_of: int = 3
     tournament_id: int
