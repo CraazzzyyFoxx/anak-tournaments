@@ -26,7 +26,8 @@ import type {
   VetoUnavailableReason
 } from "@/types/tournament.types";
 
-export type PickBanSide = "home" | "away";
+import { duelSeats, type Duel } from "@/lib/encounter/seats";
+import type { EncounterTeam } from "@/types/encounter.types";
 
 /**
  * Picked items in their final play order (action_index, legacy `order`
@@ -104,11 +105,18 @@ export function gameAtPosition(games: PickBanGame[], position: number): PickBanG
  * settled. The server holds the same line before it advances the series.
  */
 export function acceptedScore(
-  game: EncounterGame | null
-): { home: number; away: number } | null {
+  game: EncounterGame | PickBanGame | null,
+  seats: readonly Pick<EncounterTeam, "id" | "slot">[] | null | undefined
+): Duel<number> | null {
   if (game == null || game.state !== "confirmed") return null;
-  if (game.accepted_home_score == null || game.accepted_away_score == null) return null;
-  return { home: game.accepted_home_score, away: game.accepted_away_score };
+  const lines = "teams" in game ? game.teams : game.results;
+  const [one, two] = duelSeats(seats);
+  const scoreOf = (seat: Pick<EncounterTeam, "id"> | null) =>
+    lines.find((line) => line.encounter_team_id === seat?.id)?.score ?? null;
+  const oneScore = scoreOf(one);
+  const twoScore = scoreOf(two);
+  if (oneScore == null || twoScore == null) return null;
+  return { one: oneScore, two: twoScore };
 }
 
 /**
@@ -234,9 +242,9 @@ export function pickBanReserveMap(session: PickBanSession | null): Map<number, n
  */
 export interface PickBanStepSummary {
   action: PickBanStepAction;
-  /** The acting sides, in resolved order; empty for an engine-resolved step. */
-  sides: PickBanSide[];
-  /** No captain acts here — the engine rolls it (`sides: ["system"]`). */
+  /** The acting participations (`EncounterTeam.id`), in resolved order; empty for an engine-resolved step. */
+  actors: number[];
+  /** No captain acts here — the engine rolls it (`actors: [null]`). */
   system: boolean;
   /** Items per acting side; null when a step takes exactly one. */
   count: number | null;
@@ -252,11 +260,11 @@ export interface PickBanStepSummary {
 }
 
 export function stepSummary(step: PickBanResolvedStep): PickBanStepSummary {
-  const sides = step.sides.filter((side): side is PickBanSide => side !== "system");
+  const actors = step.actors.filter((actor): actor is number => actor !== null);
   return {
     action: step.action,
-    sides,
-    system: sides.length === 0,
+    actors,
+    system: actors.length === 0,
     count: step.count > 1 ? step.count : null,
     blind: step.blind,
     targeted: step.target != null,
@@ -361,10 +369,10 @@ export function stepSubmissions(
 
 /** The viewer's own submission on the step in play, or null (no step, spectator, nothing sent). */
 export function viewerSubmission(state: PickBanState): PickBanSubmission | null {
-  if (state.current_step_index == null || state.viewer_side == null) return null;
+  if (state.current_step_index == null || state.viewer_team_id == null) return null;
   return (
     stepSubmissions(state.submissions, state.current_step_index).find(
-      (submission) => submission.side === state.viewer_side
+      (submission) => submission.encounter_team_id === state.viewer_team_id
     ) ?? null
   );
 }
@@ -406,48 +414,45 @@ export function viewerDraftItems(state: PickBanState): PickBanSubmissionItem[] {
  * them rather than silently showing one side a ban it did not spend.
  */
 export function duplicateItemIds(submissions: PickBanSubmission[]): Set<number> {
-  const sidesByItem = new Map<number, Set<string>>();
+  const teamsByItem = new Map<number, Set<number>>();
   for (const submission of submissions) {
     for (const item of submission.items) {
-      const sides = sidesByItem.get(item.item_id) ?? new Set<string>();
-      sides.add(submission.side);
-      sidesByItem.set(item.item_id, sides);
+      const teams = teamsByItem.get(item.item_id) ?? new Set<number>();
+      teams.add(submission.encounter_team_id);
+      teamsByItem.set(item.item_id, teams);
     }
   }
   return new Set(
-    [...sidesByItem.entries()].filter(([, sides]) => sides.size > 1).map(([itemId]) => itemId)
+    [...teamsByItem.entries()].filter(([, teams]) => teams.size > 1).map(([itemId]) => itemId)
   );
 }
 
-export interface PickBanSideItems {
-  home: PickBanSubmissionItem[];
-  away: PickBanSubmissionItem[];
-}
+/** `EncounterTeam.id` -> the items that participation applied. */
+export type PickBanItemsByTeam = Record<number, PickBanSubmissionItem[]>;
 
 /**
- * What each side applied, in step then item order — optionally narrowed to one
- * round and one action.
+ * What each participation applied, in step then item order — optionally
+ * narrowed to one round and one action.
  *
  * Read from the submissions, never from the board: a blind step where both
- * sides banned the same hero writes ONE banned entry with one `picked_by`, so
- * the board alone would credit the ban to whichever side the projection walked
- * first and leave the other side a ban short.
+ * participations banned the same hero writes ONE banned entry with one
+ * `picked_by_team_id`, so the board alone would credit the ban to whichever
+ * the projection walked first and leave the other a ban short.
  */
-export function appliedItemsBySide(
+export function appliedItemsByTeam(
   sequence: PickBanResolvedStep[],
   submissions: PickBanSubmission[],
   filter: { round?: number | null; action?: PickBanStepAction } = {}
-): PickBanSideItems {
-  const items: PickBanSideItems = { home: [], away: [] };
+): PickBanItemsByTeam {
+  const items: PickBanItemsByTeam = {};
   for (const step of sequence) {
     if (filter.round !== undefined && step.round !== filter.round) continue;
     if (filter.action !== undefined && step.action !== filter.action) continue;
     for (const submission of stepSubmissions(submissions, step.index)) {
       // Applied = revealed, or any draft of an OPEN step: an open step's
       // choices are public the moment they are made (spec §5).
-      if (submission.side === "system") continue;
       if (step.blind && submission.state !== "revealed") continue;
-      items[submission.side].push(...submission.items);
+      (items[submission.encounter_team_id] ??= []).push(...submission.items);
     }
   }
   return items;
@@ -514,7 +519,7 @@ export type PickBanStatusLabelKey = `status.${PickBanEntryStatus | "remaining"}`
  * nobody picked the entry and it is simply what the sequence left standing.
  */
 export function statusLabelKey(entry: PickBanEntry): PickBanStatusLabelKey {
-  if (entry.round != null && entry.status === "picked" && entry.picked_by === "decider") {
+  if (entry.round != null && entry.status === "picked" && entry.picked_by_kind === "decider") {
     return "status.remaining";
   }
   return `status.${entry.status}`;

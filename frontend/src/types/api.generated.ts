@@ -2148,8 +2148,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Report a game result
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Files the calling captain's own claim of ONE series position's score, immediately after that game rather than at series end; the side is taken from the caller, never from the body. Both sides claim independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), and 409 while the stage bracket is still a preview the organizer has not activated.
+         * Claim a game result
+         * @description Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Files the calling captain's own claim of ONE series position's result, immediately after that game rather than at series end: `basis_version` plus one `results` line per participation (`encounter_team_id`, optional score, placement and the stage's own `column_values`). The claiming seat is taken from the caller, never from the body. Every live participation claims independently: matching claims accept the game's result and open whatever the series owes next, differing ones mark the game `disputed` for an organizer. Returns `{disputed, resolved, game}`. 404 when the game belongs to another encounter or is cancelled, 409 `result_locked` once the game is confirmed (only the admin correction changes it), 409 `map_not_selected` while the position still has no map (choose it first, through captain_select_game_map or the map pick-ban), 409 on a `basis_version` behind the game's current one, and 409 while the stage bracket is still a preview the organizer has not activated.
          *
          *     RPC subject: `rpc.tournament.captain_report_game`
          */
@@ -2168,8 +2168,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get my captain side
-         * @description Permission: authenticated user; self-service — the answer is only about the caller's own captaincy. Returns the calling user's captain side (home/away) for an encounter, or null if they are not a captain.
+         * Get my seat
+         * @description Permission: authenticated user; self-service — the answer is only about the caller's own captaincy. Returns the calling user's participation for an encounter as `{encounter_team_id, slot}`, both null if they captain none of its seats.
          *
          *     RPC subject: `rpc.tournament.captain_my_role`
          */
@@ -2325,7 +2325,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm readiness
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 when the account captains neither team or has no linked player profile). Marks the calling captain's side ready to begin the encounter's pre-game phase and returns the resulting `{home, away}` readiness map; idempotent. The pick/ban session only opens once both sides are ready, and any change of team assignment clears both.
+         * @description Permission: authenticated user who captains one of the encounter's live participations (403 when the account captains none of them or has no linked player profile). Marks the calling captain's seat ready to begin the encounter's pre-game phase and returns the resulting readiness map, keyed by participation id; idempotent. The pick/ban session only opens once every seat is ready, and any change of team assignment clears them all.
          *
          *     RPC subject: `rpc.tournament.captain_ready`
          */
@@ -2346,8 +2346,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Submit captain report
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Lets an encounter captain submit their own report: series score plus whatever the tournament's match-report form enables — closeness 1..10, per-map match codes, a free-text comment and any organizer-defined text fields. Fields the config disables are dropped rather than rejected, so a stale client cannot fail a submit; fields it marks required are enforced with a 422. Reports are per-captain; when both captains' scores match the encounter auto-confirms and closeness becomes their average (null when either side left it blank), otherwise it is disputed — comments and custom values never take part in that comparison. Upsert allowed until confirmed.
+         * Submit team report
+         * @description Permission: authenticated user who captains one of the encounter's live participations (403 otherwise). Lets a captain submit their own report of the finished series: `basis_version`, `games_played` and one `results` line per live participation (`encounter_team_id`, score and optionally placement or wins — never a side), plus whatever the tournament's match-report form enables — closeness 1..10, per-map match codes, a free-text comment and any organizer-defined text fields. The reporting seat is resolved from the caller, never taken from the body. Fields the config disables are dropped rather than rejected, so a stale client cannot fail a submit; fields it marks required are enforced with a 422. A `basis_version` behind the encounter's current one is stale and refused rather than silently winning. Reports are per-participation; when every live participation's numbers agree the encounter auto-confirms and closeness becomes their average (null when any of them left it blank), otherwise it is disputed — comments and custom values never take part in that comparison. Upsert allowed until confirmed.
          *
          *     RPC subject: `rpc.tournament.captain_submit_report`
          */
@@ -2367,7 +2367,7 @@ export interface paths {
         };
         /**
          * Get captain reports
-         * @description Permission: public; no authentication required — visible to anyone who may view the tournament. Returns both captains' reports for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.
+         * @description Permission: public; no authentication required — visible to anyone who may view the tournament. Returns every participation's report for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.
          *
          *     RPC subject: `rpc.tournament.captain_reports`
          */
@@ -5845,7 +5845,7 @@ export interface paths {
         head?: never;
         /**
          * Update encounter
-         * @description Permission: workspace `match.result` for the score fields (home_score, away_score, status, closeness, started_at, ended_at, current_map_index), `match.update` for every other field; a payload mixing both needs both. Updates an encounter by id.
+         * @description Permission: workspace `match.result` for the result fields (status, closeness, started_at, ended_at, current_map_index), `match.update` for every other field; a payload mixing both needs both. Updates an encounter by id. The scoreline is not here: it lives on the participations and only `encounter_set_result` writes it.
          *
          *     RPC subject: `rpc.tournament.admin.update`
          */
@@ -5929,7 +5929,7 @@ export interface paths {
         put?: never;
         /**
          * Correct a game result
-         * @description Permission: workspace `match.result` on the encounter's workspace. Writes one series position's score as an `admin` result and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which side won a position scraps and re-opens the round that outcome had opened, so the response is `{game, rebuilt_rounds}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Writes one series position's numbers as an `admin` result — one `results` line per live participation (`encounter_team_id`, optional score, placement and `column_values`) — and journals the mandatory `reason`; this is the only way a `confirmed` game (locked against captains with 409 `result_locked`) ever changes. Flipping which participation won a position scraps and re-opens the round that outcome had opened, so the response is `{game, reset_downstream}`; 409 `downstream_started` when a later round was already acted in or a later position already has a claim, 409 `map_not_selected` while the position still has no map (an organizer names it through the pick-ban or the captain map choice first), and 404 when the game belongs to another encounter or is cancelled.
          *
          *     RPC subject: `rpc.tournament.admin_game_result`
          */
@@ -6126,8 +6126,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Force a side's captain readiness
-         * @description Permission: workspace `match.result` on the encounter's workspace. Sets one side's captain readiness (body `{side, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness: {home, away}}`. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the opposite captain's screen moves without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit entry is what names who forced it.
+         * Force a captain's readiness
+         * @description Permission: workspace `match.result` on the encounter's workspace. Sets one participation's captain readiness (body `{encounter_team_id, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness}` keyed by participation. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the other captains' screens move without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit records who forced it.
          *
          *     RPC subject: `rpc.tournament.admin_encounter_readiness_set`
          */
@@ -6149,7 +6149,7 @@ export interface paths {
         put?: never;
         /**
          * Set encounter result
-         * @description Permission: workspace `match.result` on the encounter's workspace. Confirms an encounter result in one transaction: score, status, result_status and the audit row move together. The score is taken from the first available source — an explicit home_score/away_score, the report of adopt_report_team_id, both reports when they agree, or the encounter's own non-zero score — and 422 when none applies. 409 when the result is already confirmed (reopen it first).
+         * @description Permission: workspace `match.result` on the encounter's workspace. Confirms an encounter result in one transaction: the participations' scores, status, result_status, result_version and the audit row move together. `reason` is mandatory. Each `results` line names an `encounter_team_id` — never a side — with its score and optional placement; leave `results` empty and name `adopt_report_team_id` to take that participation's own report as truth instead, which resolves a dispute in one call. 422 when neither applies. 409 when the result is already confirmed (reopen it first).
          *
          *     RPC subject: `rpc.tournament.encounter_set_result`
          */
@@ -6193,7 +6193,7 @@ export interface paths {
         put?: never;
         /**
          * Reopen encounter result
-         * @description Permission: workspace `match.result` on the encounter's workspace. Un-confirms an encounter so it can be replayed or re-reported, clearing its score, closeness and confirmation, and cascading through anything the old result advanced. Captain reports are kept. 409 when there is no recorded result.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Un-confirms an encounter so it can be replayed or re-reported, clearing the participations' scores, closeness and confirmation, and cascading through anything the old result advanced. Team reports are kept. `reason` is mandatory — it is what the journal row carries. 409 when there is no recorded result.
          *
          *     RPC subject: `rpc.tournament.encounter_reopen_result`
          */
@@ -6237,7 +6237,7 @@ export interface paths {
         put?: never;
         /**
          * Encounter swap slot
-         * @description Permission: workspace `match.update` on the encounter's workspace. Swaps one of an encounter's team slots with another slot and answers with both sides' resulting team/score state, so the bracket re-renders the pair without a refetch.
+         * @description Permission: workspace `match.update` on the encounter's workspace. Swaps one of an encounter's team slots with another slot and answers with both encounters' resulting seats, so the bracket re-renders the pair without a refetch.
          *
          *     RPC subject: `rpc.tournament.encounter_swap_slot`
          */
@@ -6259,7 +6259,7 @@ export interface paths {
         put?: never;
         /**
          * Record a technical loss
-         * @description Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_side` without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit the score and it is derived — the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting side keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the side that forfeits is recorded 2:3). An explicit score must put the forfeiting side below its opponent (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage was already seeded from, and on an already confirmed result (reopen it first). The reason is required and lands in both the admin audit and the room journal.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Ends the encounter against `loser_team_id` (a participation, never a side) without playing it out, in one transaction: every live pick-ban session is cancelled, every position that is not already CONFIRMED is cancelled, and the result is confirmed (same shape `encounter_set_result` returns). Omit `results` and the scores are derived — the winner takes `best_of // 2 + 1` wins or more if it already had them, the forfeiting participation keeps the maps it really won, capped one short of winning (a Bo5 standing 2:0 for the participation that forfeits is recorded 2:3). Explicit `results` must put the forfeiting participation below every other (422). Same guards as the result route: 409 on a preview bracket's encounter, on a result a later stage already consumed, and on an already confirmed result. `reason` is mandatory — a walkover is never anonymous.
          *
          *     RPC subject: `rpc.tournament.admin_encounter_technical_loss`
          */
@@ -12382,13 +12382,6 @@ export interface components {
          * @description Encounter rendered on the user encounters page.
          */
         "app.EncounterReadWithUserStats": {
-            /** @default null */
-            away_team: components["schemas"]["app.UserEncounterTeamSummary"] | null;
-            /**
-             * Away Team Id
-             * @default null
-             */
-            away_team_id: number | null;
             /**
              * Best Of
              * @default 3
@@ -12404,13 +12397,6 @@ export interface components {
              * @default false
              */
             has_logs: boolean;
-            /** @default null */
-            home_team: components["schemas"]["app.UserEncounterTeamSummary"] | null;
-            /**
-             * Home Team Id
-             * @default null
-             */
-            home_team_id: number | null;
             /** Id */
             id: number;
             /** Matches */
@@ -12424,13 +12410,19 @@ export interface components {
             result_status: string;
             /** Round */
             round: number;
-            score: components["schemas"]["app.Score"];
+            /**
+             * Slot Count
+             * @default 2
+             */
+            slot_count: number;
             /** @default null */
             stage: components["schemas"]["app.UserEncounterStageSummary"] | null;
             /** @default null */
             stage_item: components["schemas"]["app.UserEncounterStageItemSummary"] | null;
             /** Status */
             status: string;
+            /** Teams */
+            teams?: components["schemas"]["app.UserEncounterTeamSummary"][];
             /** @default null */
             tournament: components["schemas"]["app.UserEncounterTournament"] | null;
             /** Tournament Id */
@@ -13406,11 +13398,12 @@ export interface components {
         };
         /**
          * UserEncounterTeamPlayerRef
-         * @description Player reference inside encounter teams — minimal id+user_id+role.
+         * @description Roster member inside an encounter seat — minimal id+user_id+role.
          *
-         *     Used only by the frontend to identify which side the viewer played on
+         *     Used only by the frontend to identify which seat the viewer played in
          *     (`players.find(p => p.user_id === selfUserId)`). Renders nothing on its
-         *     own — for the full player card see `UserTournamentPlayer`.
+         *     own — for the full player card see `UserTournamentPlayer`. ``id`` is the
+         *     roster snapshot row, not a tournament player.
          */
         "app.UserEncounterTeamPlayerRef": {
             /** Id */
@@ -13424,15 +13417,36 @@ export interface components {
         };
         /**
          * UserEncounterTeamSummary
-         * @description Team summary inside `EncounterReadWithUserStats.{home,away}_team`.
+         * @description One live seat inside `EncounterReadWithUserStats.teams`.
+         *
+         *     ``id`` is the participation (``encounter.team``), ``team_id`` the source
+         *     tournament team -- ``None`` once that team is deleted; ``name`` is the
+         *     snapshot the encounter was played under, and ``players`` its roster snapshot.
          */
         "app.UserEncounterTeamSummary": {
             /** Id */
             id: number;
             /** Name */
             name: string;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
             /** Players */
             players?: components["schemas"]["app.UserEncounterTeamPlayerRef"][];
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /** Slot */
+            slot: number;
+            /**
+             * Team Id
+             * @default null
+             */
+            team_id: number | null;
         };
         /**
          * UserEncounterTournament
@@ -16424,6 +16438,13 @@ export interface components {
              */
             subject: string | null;
         };
+        /** CaptainMapCodeInput */
+        "tournament.CaptainMapCodeInput": {
+            /** Code */
+            code: string;
+            /** Map Index */
+            map_index: number;
+        };
         /** ChatEnvelope */
         "tournament.ChatEnvelope": {
             /** Messages */
@@ -16585,12 +16606,12 @@ export interface components {
         };
         /**
          * ElectOpenerInput
-         * @description ``result_loser_choice`` rotation only: the losing captain names who
-         *     opens the next round's bans.
+         * @description ``result_loser_choice`` rotation only: the losing captain names which
+         *     PARTICIPATION opens the next round's bans.
          */
         "tournament.ElectOpenerInput": {
-            /** First Side */
-            first_side: string;
+            /** First Team Id */
+            first_team_id: number;
         };
         /** EncounterFeaturedRead */
         "tournament.EncounterFeaturedRead": {
@@ -16656,16 +16677,6 @@ export interface components {
             status: string | null;
         };
         /**
-         * EncounterFormat
-         * @description How many sides an encounter has. Fixed at creation.
-         *
-         *     ``duel`` is two sides and a series -- every feature built on home/away
-         *     accepts only it. ``ffa`` is a lobby of N participants
-         *     (``tournament.encounter_participant``) scored per game per participant.
-         * @enum {string}
-         */
-        "tournament.EncounterFormat": TournamentEncounterFormat;
-        /**
          * EncounterGameRead
          * @description One position of the series and what the tournament DECIDED for it.
          *
@@ -16674,16 +16685,6 @@ export interface components {
          *     play the same map twice — only ``position`` tells those two plays apart.
          */
         "tournament.EncounterGameRead": {
-            /**
-             * Accepted Away Score
-             * @default null
-             */
-            accepted_away_score: number | null;
-            /**
-             * Accepted Home Score
-             * @default null
-             */
-            accepted_home_score: number | null;
             /**
              * Confirmed At
              * @default null
@@ -16712,6 +16713,11 @@ export interface components {
             result_version: number;
             /** State */
             state: string;
+            /**
+             * Teams
+             * @default []
+             */
+            teams: components["schemas"]["tournament.EncounterGameTeamRead"][];
         };
         /**
          * EncounterGameState
@@ -16719,6 +16725,41 @@ export interface components {
          * @enum {string}
          */
         "tournament.EncounterGameState": TournamentEncounterGameState;
+        /**
+         * EncounterGameTeamRead
+         * @description One participation's accepted numbers and side in one game.
+         */
+        "tournament.EncounterGameTeamRead": {
+            /**
+             * Column Values
+             * @default {}
+             */
+            column_values: {
+                [key: string]: number;
+            };
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /**
+             * Replay Code
+             * @default null
+             */
+            replay_code: string | null;
+            /**
+             * Score
+             * @default null
+             */
+            score: number | null;
+            /**
+             * Starting Side
+             * @default null
+             */
+            starting_side: string | null;
+        };
         /** EncounterHistogramBucketRead */
         "tournament.EncounterHistogramBucketRead": {
             /** Count */
@@ -16769,7 +16810,7 @@ export interface components {
             pulse: components["schemas"]["tournament.EncounterPulseRead"];
             /** Score Heatmap */
             score_heatmap: components["schemas"]["tournament.EncounterScoreHeatmapCellRead"][];
-            side_balance: components["schemas"]["tournament.EncounterSideBalanceRead"];
+            slot_balance: components["schemas"]["tournament.EncounterSlotBalanceRead"];
             /** Stage Split */
             stage_split: components["schemas"]["tournament.EncounterStageSplitRead"][];
         };
@@ -16792,12 +16833,6 @@ export interface components {
         };
         /** EncounterRead */
         "tournament.EncounterRead": {
-            away_team: components["schemas"]["tournament.TeamRead"] | null;
-            /**
-             * Away Team Id
-             * @default null
-             */
-            away_team_id: number | null;
             /**
              * Best Of
              * @default 3
@@ -16822,8 +16857,6 @@ export interface components {
              * @default null
              */
             ended_at: string | null;
-            /** @default duel */
-            format: components["schemas"]["tournament.EncounterFormat"];
             /**
              * Games
              * @default []
@@ -16831,12 +16864,6 @@ export interface components {
             games: components["schemas"]["tournament.EncounterGameRead"][];
             /** Has Logs */
             has_logs: boolean;
-            home_team: components["schemas"]["tournament.TeamRead"] | null;
-            /**
-             * Home Team Id
-             * @default null
-             */
-            home_team_id: number | null;
             /** Id */
             id: number;
             /** Matches */
@@ -16844,10 +16871,20 @@ export interface components {
             /** Name */
             name: string;
             /**
+             * Result Source
+             * @default null
+             */
+            result_source: string | null;
+            /**
              * Result Status
              * @default none
              */
             result_status: string;
+            /**
+             * Result Version
+             * @default 0
+             */
+            result_version: number;
             /** Round */
             round: number;
             /**
@@ -16855,7 +16892,11 @@ export interface components {
              * @default null
              */
             scheduled_at: string | null;
-            score: components["schemas"]["tournament.Score"];
+            /**
+             * Slot Count
+             * @default 2
+             */
+            slot_count: number;
             /**
              * Sources
              * @default []
@@ -16880,6 +16921,11 @@ export interface components {
             started_at: string | null;
             /** Status */
             status: string;
+            /**
+             * Teams
+             * @default []
+             */
+            teams: components["schemas"]["tournament.EncounterTeamRead"][];
             tournament: components["schemas"]["tournament.TournamentRead"] | null;
             /** Tournament Id */
             tournament_id: number;
@@ -16907,43 +16953,51 @@ export interface components {
             /** Workspace Id */
             workspace_id: number;
         };
-        /** EncounterScoreHeatmapCellRead */
+        /**
+         * EncounterScoreHeatmapCellRead
+         * @description One scoreline of a two-seat encounter, slot 1 against slot 2.
+         */
         "tournament.EncounterScoreHeatmapCellRead": {
-            /** Away */
-            away: number;
             /** Count */
             count: number;
-            /** Home */
-            home: number;
+            /** Slot One */
+            slot_one: number;
+            /** Slot Two */
+            slot_two: number;
         };
-        /** EncounterSideBalanceRead */
-        "tournament.EncounterSideBalanceRead": {
-            /** Away Win Pct */
-            away_win_pct: number;
-            /** Away Wins */
-            away_wins: number;
-            /** Home Win Pct */
-            home_win_pct: number;
-            /** Home Wins */
-            home_wins: number;
+        /**
+         * EncounterSlotBalanceRead
+         * @description How often each seat of a duel wins — the seeding bias a bracket's slot 1
+         *     carries, which is all "side" ever meant here.
+         */
+        "tournament.EncounterSlotBalanceRead": {
+            /** Slot One Win Pct */
+            slot_one_win_pct: number;
+            /** Slot One Wins */
+            slot_one_wins: number;
+            /** Slot Two Win Pct */
+            slot_two_win_pct: number;
+            /** Slot Two Wins */
+            slot_two_wins: number;
         };
         /**
          * EncounterSlotSourceRead
-         * @description Where an unresolved slot's team comes from: the ``role`` of
+         * @description Where an unresolved slot's team comes from: ``source_position`` of
          *     ``encounter_id`` fills ``slot`` of this encounter.
          *
          *     The bracket's real advancement edges (``EncounterLink``). A reader labels an
-         *     empty slot from them ("L M3") instead of inferring the bracket's shape from
-         *     round numbers, which cannot tell a lower bracket seeded from the group stage
-         *     apart from one fed by the upper bracket's first losers.
+         *     empty slot from them ("1st of M3") instead of inferring the bracket's shape
+         *     from round numbers, which cannot tell a lower bracket seeded from the group
+         *     stage apart from one fed by the upper bracket's first losers. Both ends are
+         *     places and seats, never winner/loser or home/away.
          */
         "tournament.EncounterSlotSourceRead": {
             /** Encounter Id */
             encounter_id: number;
-            /** Role */
-            role: string;
             /** Slot */
-            slot: string;
+            slot: number;
+            /** Source Position */
+            source_position: number;
         };
         /** EncounterStageSplitRead */
         "tournament.EncounterStageSplitRead": {
@@ -16961,18 +17015,6 @@ export interface components {
         "tournament.EncounterStatus": TournamentEncounterStatus;
         /** EncounterSummaryRead */
         "tournament.EncounterSummaryRead": {
-            /**
-             * Away Team Id
-             * @default null
-             */
-            away_team_id: number | null;
-            /** @default duel */
-            format: components["schemas"]["tournament.EncounterFormat"];
-            /**
-             * Home Team Id
-             * @default null
-             */
-            home_team_id: number | null;
             /** Id */
             id: number;
             /** Name */
@@ -16984,7 +17026,11 @@ export interface components {
             result_status: string;
             /** Round */
             round: number;
-            score: components["schemas"]["tournament.Score"];
+            /**
+             * Slot Count
+             * @default 2
+             */
+            slot_count: number;
             /**
              * Stage Id
              * @default null
@@ -16997,8 +17043,57 @@ export interface components {
             stage_item_id: number | null;
             /** Status */
             status: string;
+            /**
+             * Teams
+             * @default []
+             */
+            teams: components["schemas"]["tournament.EncounterTeamRead"][];
             /** Tournament Id */
             tournament_id: number;
+        };
+        /**
+         * EncounterTeamRead
+         * @description One live seat of an encounter (``encounter.team``), in slot order.
+         *
+         *     ``id`` is the participation id every write addresses -- a claim, a report
+         *     and an admin result all name it, never a slot and never a side. ``team_id``
+         *     is the source ``tournament.team`` and goes NULL when that team is deleted;
+         *     ``name`` is the snapshot that outlives it.
+         */
+        "tournament.EncounterTeamRead": {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /**
+             * Seed
+             * @default null
+             */
+            seed: number | null;
+            /** Slot */
+            slot: number;
+            /** @default null */
+            team: components["schemas"]["tournament.TeamRead"] | null;
+            /**
+             * Team Id
+             * @default null
+             */
+            team_id: number | null;
         };
         /** FfaColumnRead */
         "tournament.FfaColumnRead": {
@@ -17012,27 +17107,6 @@ export interface components {
             /** Label */
             label: string;
             /** Public */
-            public: boolean;
-        };
-        /**
-         * FfaColumnSettings
-         * @description One value an ffa_league stage records per team per game.
-         */
-        "tournament.FfaColumnSettings": {
-            /**
-             * Better
-             * @default higher
-             * @enum {string}
-             */
-            better: TournamentFfaColumnSettingsBetter;
-            /** Key */
-            key: string;
-            /** Label */
-            label: string;
-            /**
-             * Public
-             * @default true
-             */
             public: boolean;
         };
         /** FfaGameCellRead */
@@ -17117,24 +17191,6 @@ export interface components {
             requires_placement: boolean;
         };
         /**
-         * FfaScoring
-         * @description What an ffa_league stage records and what it pays for it (plan §3.1).
-         *
-         *     Inert on any other stage type. The unset block is the behaviour a stage had
-         *     before columns existed: one raw score column paid one for one.
-         */
-        "tournament.FfaScoring": {
-            /** Columns */
-            columns?: components["schemas"]["tournament.FfaColumnSettings"][];
-            /**
-             * Formula
-             * @default score
-             */
-            formula: string;
-            /** Placement Points */
-            placement_points?: number[];
-        };
-        /**
          * FirstBanRotation
          * @enum {string}
          */
@@ -17145,6 +17201,45 @@ export interface components {
          */
         "tournament.FirstPickRule": TournamentFirstPickRule;
         /**
+         * GameClaimIn
+         * @description One captain's independent claim of a single played GAME's result —
+         *     submitted immediately after that position, not at series end (contrast
+         *     ``TeamReportIn``). The position, not the map, identifies what is being
+         *     claimed: a series may play the same map twice. See
+         *     ``services.encounter.map_report``.
+         */
+        "tournament.GameClaimIn": {
+            /**
+             * Basis Version
+             * @default 0
+             */
+            basis_version: number;
+            /** Results */
+            results?: components["schemas"]["tournament.GameClaimResultIn"][];
+        };
+        /**
+         * GameClaimResultIn
+         * @description One participation's numbers inside a game claim.
+         */
+        "tournament.GameClaimResultIn": {
+            /** Column Values */
+            column_values?: {
+                [key: string]: number;
+            };
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /**
+             * Score
+             * @default null
+             */
+            score: number | null;
+        };
+        /**
          * GameMapSelectInput
          * @description Freeplay's half of what the map pick-ban does automatically: a captain
          *     names the map an open position is played on.
@@ -17152,20 +17247,6 @@ export interface components {
         "tournament.GameMapSelectInput": {
             /** Map Id */
             map_id: number;
-        };
-        /**
-         * GameReportInput
-         * @description One captain's independent claim of a single played GAME's result —
-         *     submitted immediately after that position, not at series end (contrast
-         *     ``CaptainReportSubmission``). The position, not the map, identifies what is
-         *     being claimed: a series may play the same map twice. See
-         *     ``services.encounter.map_report``.
-         */
-        "tournament.GameReportInput": {
-            /** Away Score */
-            away_score: number;
-            /** Home Score */
-            home_score: number;
         };
         /** GamemodeRead */
         "tournament.GamemodeRead": {
@@ -17469,9 +17550,9 @@ export interface components {
         };
         /**
          * PickBanSubmitInput
-         * @description A blind step's whole draft, replacing whatever the side had. ``lock``
-         *     validates it in full and makes it final — the step reveals once every
-         *     acting side has locked.
+         * @description A blind step's whole draft, replacing whatever the participation had.
+         *     ``lock`` validates it in full and makes it final — the step reveals once
+         *     every acting participation has locked.
          */
         "tournament.PickBanSubmitInput": {
             /** Items */
@@ -18356,6 +18437,27 @@ export interface components {
             /** Home */
             home: number;
         };
+        /**
+         * ScoringColumnSettings
+         * @description One value a stage's games record per team (plan §3.1).
+         */
+        "tournament.ScoringColumnSettings": {
+            /**
+             * Better
+             * @default higher
+             * @enum {string}
+             */
+            better: TournamentScoringColumnSettingsBetter;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Public
+             * @default true
+             */
+            public: boolean;
+        };
         /** ScrimCreateRequest */
         "tournament.ScrimCreateRequest": {
             /** Away Team Name */
@@ -18653,7 +18755,6 @@ export interface components {
             de_grand_final_type: TournamentStageReadDe_grand_final_type;
             /** Description */
             description: string | null;
-            ffa_scoring?: components["schemas"]["tournament.FfaScoring"];
             /**
              * Has Custom Bracket
              * @default false
@@ -18712,19 +18813,50 @@ export interface components {
         };
         /**
          * StageScoring
-         * @description Points per result on this stage. ``None`` = the tournament's points.
+         * @description How a stage scores, at all three levels (plan §5, D51).
+         *
+         *     ``win``/``draw``/``loss`` are level 3: what one encounter's result pays in
+         *     the stage table; ``None`` = the tournament's points. The rest is the
+         *     ``encounter.scoring_rule`` every encounter of the stage is played and
+         *     ranked by -- ``wins`` is a Bo-N series, ``points`` a lobby scored by the
+         *     organizer's own columns. It replaced the ``ffa_scoring`` block: once a duel
+         *     has a rule row too, "ffa" is no longer what the setting is about.
+         *
+         *     Every rule field is nullable and means "the preset's default", the way
+         *     ``ranking_preset`` does: the preset itself defaults to the one the stage
+         *     TYPE implies, which only the service knows.
          */
         "tournament.StageScoring": {
+            /**
+             * Columns
+             * @default null
+             */
+            columns: components["schemas"]["tournament.ScoringColumnSettings"][] | null;
             /**
              * Draw
              * @default null
              */
             draw: number | null;
             /**
+             * Formula
+             * @default null
+             */
+            formula: string | null;
+            /**
              * Loss
              * @default null
              */
             loss: number | null;
+            /**
+             * Placement Points
+             * @default null
+             */
+            placement_points: number[] | null;
+            /**
+             * Preset
+             * @default null
+             */
+            preset: TournamentStageScoringPresetAnyOf0 | null;
             /**
              * Win
              * @default null
@@ -18762,7 +18894,6 @@ export interface components {
             de_grand_final_type: TournamentStageSummaryReadDe_grand_final_type;
             /** Description */
             description: string | null;
-            ffa_scoring?: components["schemas"]["tournament.FfaScoring"];
             /**
              * Has Custom Bracket
              * @default false
@@ -19045,6 +19176,67 @@ export interface components {
             tournament: components["schemas"]["tournament.TournamentRead"] | null;
             /** Tournament Id */
             tournament_id: number;
+        };
+        /**
+         * TeamReportIn
+         * @description One participation's independent report of the finished encounter.
+         *
+         *     ``results`` carries one line per live seat -- a duel reports two, a lobby
+         *     as many as it seats, and neither is oriented. Everything after
+         *     ``games_played`` is optional here and validated against the tournament's
+         *     report-form config server-side (``services.encounter.report_form``),
+         *     because what is required depends on that config, not on the wire shape.
+         */
+        "tournament.TeamReportIn": {
+            /**
+             * Basis Version
+             * @default 0
+             */
+            basis_version: number;
+            /**
+             * Closeness
+             * @default null
+             */
+            closeness: number | null;
+            /**
+             * Comment
+             * @default null
+             */
+            comment: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: string;
+            };
+            /** Games Played */
+            games_played: number;
+            /** Map Codes */
+            map_codes?: components["schemas"]["tournament.CaptainMapCodeInput"][];
+            /** Results */
+            results?: components["schemas"]["tournament.TeamReportResultIn"][];
+        };
+        /**
+         * TeamReportResultIn
+         * @description One participation's line of a series report.
+         *
+         *     ``wins`` is omitted when the encounter's rule does not count them (a
+         *     lobby's card, where points alone decide); ``placement`` when the form does
+         *     not ask for places.
+         */
+        "tournament.TeamReportResultIn": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /** Score */
+            score: number;
+            /**
+             * Wins
+             * @default null
+             */
+            wins: number | null;
         };
         /** TeamWithMatchStats */
         "tournament.TeamWithMatchStats": {
@@ -22820,18 +23012,49 @@ export interface components {
             tournament_id: number;
         };
         /**
+         * AdminForfeitResult
+         * @description One participation's score in an explicitly stated forfeit.
+         */
+        "tournament.AdminForfeitResult": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /** Score */
+            score: number;
+        };
+        /**
          * AdminGameResultInput
-         * @description Body for the admin game-result correction: the position's score as the
-         *     organizer decides it, plus the reason that goes into the audit journal (a
-         *     correction is never anonymous -- spec §6.5).
+         * @description Body for the admin game-result correction: the position's numbers as the
+         *     organizer decides them, one line per live participation, plus the reason
+         *     that goes into the audit journal (a correction is never anonymous --
+         *     spec §6.5).
          */
         "tournament.AdminGameResultInput": {
-            /** Away Score */
-            away_score: number;
-            /** Home Score */
-            home_score: number;
             /** Reason */
             reason: string;
+            /** Results */
+            results: components["schemas"]["tournament.AdminGameResultLineInput"][];
+        };
+        /**
+         * AdminGameResultLineInput
+         * @description One participation's numbers inside an admin game correction.
+         */
+        "tournament.AdminGameResultLineInput": {
+            /** Column Values */
+            column_values?: {
+                [key: string]: number;
+            };
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /**
+             * Score
+             * @default null
+             */
+            score: number | null;
         };
         /**
          * AdminMatchDetail
@@ -22927,7 +23150,7 @@ export interface components {
         };
         /**
          * AdminReadinessSet
-         * @description Body for the admin readiness override: force one side's captain
+         * @description Body for the admin readiness override: force one participation's captain
          *     readiness on or off.
          *
          *     ``ready: false`` is only meaningful before a session exists -- readiness
@@ -22935,38 +23158,24 @@ export interface components {
          *     does (reset the session instead).
          */
         "tournament.AdminReadinessSet": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
             /** Ready */
             ready: boolean;
-            /**
-             * Side
-             * @enum {string}
-             */
-            side: TournamentAdminReadinessSetSide;
         };
         /**
          * AdminTechnicalLossInput
-         * @description Body for the technical-loss route: which side forfeits, optionally the
-         *     exact score to record it as (omitted = the default forfeit score), and the
-         *     reason -- a walkover is never anonymous.
+         * @description Body for the technical-loss route: which PARTICIPATION forfeits,
+         *     optionally the exact scores to record it as (omitted = the default forfeit
+         *     score), and the reason -- a walkover is never anonymous.
          */
         "tournament.AdminTechnicalLossInput": {
-            /**
-             * Away Score
-             * @default null
-             */
-            away_score: number | null;
-            /**
-             * Home Score
-             * @default null
-             */
-            home_score: number | null;
-            /**
-             * Loser Side
-             * @enum {string}
-             */
-            loser_side: TournamentAdminTechnicalLossInputLoser_side;
+            /** Loser Team Id */
+            loser_team_id: number;
             /** Reason */
             reason: string;
+            /** Results */
+            results?: components["schemas"]["tournament.AdminForfeitResult"][];
         };
         /** BalancerGoogleSheetFeedRead */
         "tournament.BalancerGoogleSheetFeedRead": {
@@ -23996,48 +24205,6 @@ export interface components {
             registration_ids: number[];
         };
         /**
-         * CaptainReportRead
-         * @description One captain's independent report of an encounter's result.
-         */
-        "tournament.CaptainReportRead": {
-            /** Away Score */
-            away_score: number;
-            /** Closeness */
-            closeness: number | null;
-            /**
-             * Comment
-             * @default null
-             */
-            comment: string | null;
-            /** Created At */
-            created_at: string | null;
-            /** Custom Fields */
-            custom_fields?: {
-                [key: string]: string;
-            };
-            /** Encounter Id */
-            encounter_id: number;
-            /** Home Score */
-            home_score: number;
-            /** Id */
-            id: number;
-            /** Map Codes */
-            map_codes: components["schemas"]["tournament.EncounterMapCodeRead"][];
-            /**
-             * Reporter Name
-             * @default null
-             */
-            reporter_name: string | null;
-            /** Reporter User Id */
-            reporter_user_id: number | null;
-            /** Side */
-            side: string | null;
-            /** Team Id */
-            team_id: number;
-            /** Updated At */
-            updated_at: string | null;
-        };
-        /**
          * ChallengeCodeRead
          * @description Redacted: never carries the code or its digest.
          *
@@ -24851,16 +25018,6 @@ export interface components {
          */
         "tournament.EncounterCreate": {
             /**
-             * Away Score
-             * @default 0
-             */
-            away_score: number;
-            /**
-             * Away Team Id
-             * @default null
-             */
-            away_team_id: number | null;
-            /**
              * Best Of
              * @default 3
              */
@@ -24875,16 +25032,6 @@ export interface components {
              * @default null
              */
             ended_at: string | null;
-            /**
-             * Home Score
-             * @default 0
-             */
-            home_score: number;
-            /**
-             * Home Team Id
-             * @default null
-             */
-            home_team_id: number | null;
             /** Name */
             name: string;
             /** Round */
@@ -24894,6 +25041,11 @@ export interface components {
              * @default null
              */
             scheduled_at: string | null;
+            /**
+             * Slot Count
+             * @default 2
+             */
+            slot_count: number;
             /**
              * Stage Id
              * @default null
@@ -24914,53 +25066,59 @@ export interface components {
              * @default open
              */
             status: string;
+            /** Teams */
+            teams?: components["schemas"]["tournament.EncounterSeatInput"][];
             /** Tournament Id */
             tournament_id: number;
         };
-        /** EncounterMapCodeRead */
-        "tournament.EncounterMapCodeRead": {
-            /** Code */
-            code: string;
-            /** Id */
-            id: number;
-            /** Map Id */
-            map_id: number | null;
-            /** Map Index */
-            map_index: number;
+        /**
+         * EncounterParticipationRef
+         * @description One live seat of an encounter, as a list row names it.
+         */
+        "tournament.EncounterParticipationRef": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /** Name */
+            name: string;
+            /** Slot */
+            slot: number;
+            /** Team Id */
+            team_id: number | null;
         };
         /**
          * EncounterReportsRow
-         * @description One encounter plus the pair of reports filed against it.
+         * @description One encounter plus every report filed against it.
          *
-         *     The row, not the report, is the unit: a dispute spans two reports and the
-         *     action that resolves it is per-encounter.
+         *     The row, not the report, is the unit: a dispute spans the reports of all of
+         *     an encounter's participations and the action that resolves it is
+         *     per-encounter.
          */
         "tournament.EncounterReportsRow": {
-            away_report: components["schemas"]["tournament.CaptainReportRead"] | null;
-            away_team: components["schemas"]["tournament.EncounterTeamRef"] | null;
             /** Best Of */
             best_of: number;
-            home_report: components["schemas"]["tournament.CaptainReportRead"] | null;
-            home_team: components["schemas"]["tournament.EncounterTeamRef"] | null;
             /** Id */
             id: number;
             last_resolution: components["schemas"]["tournament.LastResolutionRead"] | null;
             /** Name */
             name: string;
+            /** Participations */
+            participations?: components["schemas"]["tournament.EncounterParticipationRef"][];
             /** Reported Count */
             reported_count: number;
+            /** Reports */
+            reports?: components["schemas"]["tournament.TeamReportRead"][];
             result_status: components["schemas"]["tournament.EncounterResultStatus"];
             /** Round */
-            round: number;
+            round: number | null;
             /** Scheduled At */
             scheduled_at: string | null;
-            /** Scores Match */
-            scores_match: boolean | null;
             /** Series Score Valid */
             series_score_valid: boolean;
             /** Stage Name */
             stage_name: string | null;
             stage_type: components["schemas"]["tournament.StageType"] | null;
+            /** Standings Match */
+            standings_match: boolean | null;
             status: components["schemas"]["tournament.EncounterStatus"];
             /** Tournament Id */
             tournament_id: number;
@@ -25006,10 +25164,13 @@ export interface components {
             actor_user_id: number | null;
             /** Adopted Team Id */
             adopted_team_id: number | null;
-            /** Away Score After */
-            away_score_after: number;
-            /** Away Score Before */
-            away_score_before: number | null;
+            /** After */
+            after: components["schemas"]["tournament.EncounterResultSnapshotLine"][];
+            /**
+             * Before
+             * @default null
+             */
+            before: components["schemas"]["tournament.EncounterResultSnapshotLine"][] | null;
             /**
              * Created At
              * Format: date-time
@@ -25018,12 +25179,22 @@ export interface components {
             /** Encounter Id */
             encounter_id: number;
             from_result_status: components["schemas"]["tournament.EncounterResultStatus"] | null;
-            /** Home Score After */
-            home_score_after: number;
-            /** Home Score Before */
-            home_score_before: number | null;
+            /**
+             * Game Id
+             * @default null
+             */
+            game_id: number | null;
             /** Id */
             id: number;
+            /**
+             * Reason
+             * @default null
+             */
+            reason: string | null;
+            /** Result Version */
+            result_version: number;
+            /** Snapshot Scope */
+            snapshot_scope: string;
             /** Source */
             source: string;
             to_result_status: components["schemas"]["tournament.EncounterResultStatus"];
@@ -25033,49 +25204,48 @@ export interface components {
          * @description What the result endpoints return: the settled state of the encounter.
          */
         "tournament.EncounterResultRead": {
-            /** Away Score */
-            away_score: number;
             /** Closeness */
             closeness: number | null;
             /** Confirmed At */
             confirmed_at: string | null;
-            /** Home Score */
-            home_score: number;
             /** Id */
             id: number;
+            /** Result Source */
+            result_source: string | null;
             result_status: components["schemas"]["tournament.EncounterResultStatus"];
+            /** Result Version */
+            result_version: number;
             status: components["schemas"]["tournament.EncounterStatus"];
+            /** Teams */
+            teams: components["schemas"]["tournament.EncounterResultSnapshotLine"][];
         };
         /**
-         * EncounterSetResultInput
-         * @description Body of the single admin result write.
-         *
-         *     Every field is optional: an empty body means "confirm what is already
-         *     there", which covers the common case of two agreeing reports. Supplying
-         *     ``adopt_report_team_id`` is how a dispute is resolved in one call — "this
-         *     side was right" — instead of editing the score and confirming separately.
+         * EncounterResultSnapshotLine
+         * @description One participation's numbers inside an audit snapshot.
          */
-        "tournament.EncounterSetResultInput": {
+        "tournament.EncounterResultSnapshotLine": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
             /**
-             * Adopt Report Team Id
+             * Placement
              * @default null
              */
-            adopt_report_team_id: number | null;
+            placement: number | null;
+            /** Score */
+            score: number;
+        };
+        /**
+         * EncounterSeatInput
+         * @description One seat of a new encounter: which slot, and the team that takes it.
+         */
+        "tournament.EncounterSeatInput": {
+            /** Slot */
+            slot: number;
             /**
-             * Away Score
+             * Team Id
              * @default null
              */
-            away_score: number | null;
-            /**
-             * Closeness
-             * @default null
-             */
-            closeness: number | null;
-            /**
-             * Home Score
-             * @default null
-             */
-            home_score: number | null;
+            team_id: number | null;
         };
         /** EncounterTeamRef */
         "tournament.EncounterTeamRef": {
@@ -25086,19 +25256,13 @@ export interface components {
         };
         /**
          * EncounterUpdate
-         * @description Schema for updating an encounter
+         * @description Schema for updating an encounter.
+         *
+         *     Seats are not edited here: a seat changes hands through the slot swap,
+         *     which retires the old participation instead of rewriting it, so the games
+         *     it played stay attached to the row that played them (D55).
          */
         "tournament.EncounterUpdate": {
-            /**
-             * Away Score
-             * @default null
-             */
-            away_score: number | null;
-            /**
-             * Away Team Id
-             * @default null
-             */
-            away_team_id: number | null;
             /**
              * Best Of
              * @default null
@@ -25119,16 +25283,6 @@ export interface components {
              * @default null
              */
             ended_at: string | null;
-            /**
-             * Home Score
-             * @default null
-             */
-            home_score: number | null;
-            /**
-             * Home Team Id
-             * @default null
-             */
-            home_team_id: number | null;
             /**
              * Name
              * @default null
@@ -25503,6 +25657,9 @@ export interface components {
         /**
          * MatchUpdate
          * @description Partial update for a single match (map) within an encounter.
+         *
+         *     ``matches.match`` is what a parsed LOG observed, and a V4 log names two
+         *     sides; that is why this one shape still does.
          */
         "tournament.MatchUpdate": {
             /**
@@ -25581,10 +25738,10 @@ export interface components {
         };
         /**
          * PickBanAdminAct
-         * @description Body for the admin act-for-a-side route: perform one step on behalf of
-         *     an absent captain. ``target_player_id`` names the opponent roster player a
-         *     per-player ban is spent on (ruleset v2 target steps); ``null`` everywhere
-         *     else.
+         * @description Body for the admin act-for-a-participation route: perform one step on
+         *     behalf of an absent captain. ``target_player_id`` names the opponent roster
+         *     player a per-player ban is spent on (ruleset v2 target steps); ``null``
+         *     everywhere else.
          */
         "tournament.PickBanAdminAct": {
             /**
@@ -25592,14 +25749,11 @@ export interface components {
              * @enum {string}
              */
             action: TournamentPickBanAdminActAction;
+            /** Encounter Team Id */
+            encounter_team_id: number;
             /** Item Id */
             item_id: number;
             kind: components["schemas"]["tournament.PickBanKind"];
-            /**
-             * Side
-             * @enum {string}
-             */
-            side: TournamentPickBanAdminActSide;
             /**
              * Target Player Id
              * @default null
@@ -25638,11 +25792,13 @@ export interface components {
         };
         /**
          * PickBanAdminSubmit
-         * @description Body for the admin submit-for-a-side route: replace a BLIND step's draft
-         *     on behalf of a captain who is not there to author it. Items reuse the
-         *     captain schema so the two surfaces cannot drift.
+         * @description Body for the admin submit-for-a-participation route: replace a BLIND
+         *     step's draft on behalf of a captain who is not there to author it. Items
+         *     reuse the captain schema so the two surfaces cannot drift.
          */
         "tournament.PickBanAdminSubmit": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
             /** Items */
             items?: components["schemas"]["tournament.PickBanSubmissionItemInput"][];
             kind: components["schemas"]["tournament.PickBanKind"];
@@ -25651,11 +25807,6 @@ export interface components {
              * @default false
              */
             lock: boolean;
-            /**
-             * Side
-             * @enum {string}
-             */
-            side: TournamentPickBanAdminSubmitSide;
         };
         /**
          * PickBanConfigSlotUpsert
@@ -25948,10 +26099,10 @@ export interface components {
          */
         "tournament.PregameKindSummary": {
             /**
-             * Acting Sides
+             * Acting Team Ids
              * @default []
              */
-            acting_sides: TournamentPregameKindSummaryActing_sides[];
+            acting_team_ids: number[];
             /**
              * Awaiting Choice
              * @default false
@@ -26037,6 +26188,11 @@ export interface components {
             data: {
                 [key: string]: unknown;
             };
+            /**
+             * Encounter Team Id
+             * @default null
+             */
+            encounter_team_id: number | null;
             /** Id */
             id: string;
             /**
@@ -26054,11 +26210,6 @@ export interface components {
              * @default null
              */
             reason: string | null;
-            /**
-             * Side
-             * @default null
-             */
-            side: TournamentPregameRoomHistoryEntrySideAnyOf0 | null;
             /**
              * Source
              * @enum {string}
@@ -26079,13 +26230,6 @@ export interface components {
              * @default []
              */
             attention: TournamentPregameRoomRowAttention[];
-            /**
-             * Away Score
-             * @default 0
-             */
-            away_score: number;
-            /** @default null */
-            away_team: components["schemas"]["tournament.PregameRoomTeam"] | null;
             /** Best Of */
             best_of: number;
             /** Encounter Id */
@@ -26093,13 +26237,6 @@ export interface components {
             games: components["schemas"]["tournament.PregameGamesSummary"];
             /** @default null */
             hero: components["schemas"]["tournament.PregameKindSummary"] | null;
-            /**
-             * Home Score
-             * @default 0
-             */
-            home_score: number;
-            /** @default null */
-            home_team: components["schemas"]["tournament.PregameRoomTeam"] | null;
             /** @default null */
             map: components["schemas"]["tournament.PregameKindSummary"] | null;
             /** Name */
@@ -26137,13 +26274,33 @@ export interface components {
             stage_name: string | null;
             /** Status */
             status: string;
+            /**
+             * Teams
+             * @default []
+             */
+            teams: components["schemas"]["tournament.PregameRoomTeam"][];
         };
-        /** PregameRoomTeam */
+        /**
+         * PregameRoomTeam
+         * @description One seat of the room (``encounter.team``), in slot order.
+         */
         "tournament.PregameRoomTeam": {
-            /** Id */
-            id: number;
+            /** Encounter Team Id */
+            encounter_team_id: number;
             /** Name */
             name: string;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /** Slot */
+            slot: number;
+            /**
+             * Team Id
+             * @default null
+             */
+            team_id: number | null;
         };
         /** PregameRoomsRead */
         "tournament.PregameRoomsRead": {
@@ -26419,6 +26576,17 @@ export interface components {
              */
             withdraw_members: boolean;
         };
+        /**
+         * ReopenResultIn
+         * @description Body of the result reopen: the organizer's stated reason.
+         *
+         *     Reopening unmakes a human decision, so a human signs it -- the journal row
+         *     ``reopen`` writes carries this verbatim.
+         */
+        "tournament.ReopenResultIn": {
+            /** Reason */
+            reason: string;
+        };
         /** ReportBuiltInFieldConfig */
         "tournament.ReportBuiltInFieldConfig": {
             /**
@@ -26518,6 +26686,46 @@ export interface components {
              */
             exclude_reason: string | null;
         };
+        /**
+         * SetResultIn
+         * @description Body of the single admin result write.
+         *
+         *     ``reason`` is required: an admin result overrides what the participants
+         *     said and the journal has to say why. ``results`` may be empty only when
+         *     ``adopt_report_team_id`` names the participation whose report is taken as
+         *     truth instead -- which is how a dispute is resolved in one call.
+         */
+        "tournament.SetResultIn": {
+            /**
+             * Adopt Report Team Id
+             * @default null
+             */
+            adopt_report_team_id: number | null;
+            /**
+             * Closeness
+             * @default null
+             */
+            closeness: number | null;
+            /** Reason */
+            reason: string;
+            /** Results */
+            results?: components["schemas"]["tournament.SetResultLineIn"][];
+        };
+        /**
+         * SetResultLineIn
+         * @description One participation's line of an admin result.
+         */
+        "tournament.SetResultLineIn": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /** Score */
+            score: number;
+        };
         /** StageCreate */
         "tournament.StageCreate": {
             /**
@@ -26552,7 +26760,6 @@ export interface components {
              * @default null
              */
             description: string | null;
-            ffa_scoring?: components["schemas"]["tournament.FfaScoring"];
             /**
              * Max Rounds
              * @default 5
@@ -26690,8 +26897,8 @@ export interface components {
         /**
          * StageUpdate
          * @description A partial edit: only the fields sent change (the service reads
-         *     ``exclude_unset``). ``scoring``, ``best_of`` and ``ffa_scoring`` are each
-         *     replaced as a whole. The non-nullable regulation fields carry a default only
+         *     ``exclude_unset``). ``scoring`` and ``best_of`` are each replaced as a
+         *     whole. The non-nullable regulation fields carry a default only
          *     so that an explicit ``null`` is refused instead of written.
          */
         "tournament.StageUpdate": {
@@ -26717,7 +26924,6 @@ export interface components {
              * @default null
              */
             description: string | null;
-            ffa_scoring?: components["schemas"]["tournament.FfaScoring"];
             /**
              * Max Rounds
              * @default null
@@ -27019,6 +27225,66 @@ export interface components {
             tournament_id: number;
         };
         /**
+         * TeamReportRead
+         * @description One participation's independent report of an encounter's result.
+         */
+        "tournament.TeamReportRead": {
+            /** Basis Version */
+            basis_version: number;
+            /** Closeness */
+            closeness: number | null;
+            /**
+             * Comment
+             * @default null
+             */
+            comment: string | null;
+            /** Created At */
+            created_at: string | null;
+            /** Custom Fields */
+            custom_fields?: {
+                [key: string]: string;
+            };
+            /** Encounter Id */
+            encounter_id: number;
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /** Games Played */
+            games_played: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Reporter Name
+             * @default null
+             */
+            reporter_name: string | null;
+            /** Reporter User Id */
+            reporter_user_id: number | null;
+            /** Results */
+            results?: components["schemas"]["tournament.TeamReportResultRead"][];
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * TeamReportResultRead
+         * @description One participation's line inside one report.
+         */
+        "tournament.TeamReportResultRead": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /** Score */
+            score: number;
+            /**
+             * Wins
+             * @default null
+             */
+            wins: number | null;
+        };
+        /**
          * TeamUpdate
          * @description Schema for updating a team
          */
@@ -27041,30 +27307,32 @@ export interface components {
         };
         /** TemplateMatch */
         "tournament.TemplateMatch": {
-            away: components["schemas"]["tournament.TemplateSlot"];
-            home: components["schemas"]["tournament.TemplateSlot"];
             /** Id */
             id: number;
             /** Round */
             round: number;
+            /** Slots */
+            slots: components["schemas"]["tournament.TemplateSlot"][];
         };
         /** TemplateSlot */
         "tournament.TemplateSlot": {
-            /**
-             * Loser Of
-             * @default null
-             */
-            loser_of: number | null;
             /**
              * Seed
              * @default null
              */
             seed: string | null;
+            /** Slot */
+            slot: number;
             /**
-             * Winner Of
+             * Source Match
              * @default null
              */
-            winner_of: number | null;
+            source_match: number | null;
+            /**
+             * Source Position
+             * @default null
+             */
+            source_position: number | null;
         };
         /** TournamentComputationJobRead */
         "tournament.TournamentComputationJobRead": {
@@ -34593,7 +34861,7 @@ export interface operations {
                 closeness_min?: number | null;
                 closeness_max?: number | null;
                 scope?: PathsApiV1EncountersGetParametersQueryScope;
-                format?: components["schemas"]["tournament.EncounterFormat"] | null;
+                slot_count?: number | null;
             };
             header?: never;
             path?: never;
@@ -34670,7 +34938,7 @@ export interface operations {
                 closeness_min?: number | null;
                 closeness_max?: number | null;
                 scope?: PathsApiV1EncountersOverviewGetParametersQueryScope;
-                format?: components["schemas"]["tournament.EncounterFormat"] | null;
+                slot_count?: number | null;
             };
             header?: never;
             path?: never;
@@ -35588,7 +35856,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["tournament.GameReportInput"];
+                "application/json": components["schemas"]["tournament.GameClaimIn"];
             };
         };
         responses: {
@@ -36302,7 +36570,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["tournament.TeamReportIn"];
             };
         };
         responses: {
@@ -49772,7 +50040,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["tournament.EncounterSetResultInput"];
+                "application/json": components["schemas"]["tournament.SetResultIn"];
             };
         };
         responses: {
@@ -49930,7 +50198,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["tournament.ReopenResultIn"];
+            };
+        };
         responses: {
             /** @description Success */
             200: {
@@ -73438,8 +73710,6 @@ export enum PathsApiV1UsersIdCompareHeroesGetParametersQueryBaseline {
 export enum PathsApiV1UsersIdEncountersGetParametersQuerySort {
     id = "id",
     name = "name",
-    home_team_id = "home_team_id",
-    away_team_id = "away_team_id",
     closeness = "closeness",
     round = "round",
     played_at = "played_at"
@@ -73786,10 +74056,6 @@ export enum TournamentEncounterFiltersReadScope {
     all = "all",
     my_team = "my_team"
 }
-export enum TournamentEncounterFormat {
-    duel = "duel",
-    ffa = "ffa"
-}
 export enum TournamentEncounterGameState {
     planned = "planned",
     awaiting_result = "awaiting_result",
@@ -73809,10 +74075,6 @@ export enum TournamentEncounterStatus {
     open = "open"
 }
 export enum TournamentFfaColumnReadBetter {
-    higher = "higher",
-    lower = "lower"
-}
-export enum TournamentFfaColumnSettingsBetter {
     higher = "higher",
     lower = "lower"
 }
@@ -73919,6 +74181,10 @@ export enum TournamentRosterShapeReadSourceAnyOf0 {
     workspace = "workspace",
     default = "default"
 }
+export enum TournamentScoringColumnSettingsBetter {
+    higher = "higher",
+    lower = "lower"
+}
 export enum TournamentScrimPoolCopySource {
     copy = "copy"
 }
@@ -73953,6 +74219,10 @@ export enum TournamentStageReadSeed_ranking {
     avg_sr = "avg_sr",
     total_sr = "total_sr",
     random = "random"
+}
+export enum TournamentStageScoringPresetAnyOf0 {
+    wins = "wins",
+    points = "points"
 }
 export enum TournamentStageSummaryReadDe_grand_final_type {
     no_reset = "no_reset",
@@ -74118,14 +74388,6 @@ export enum StreamStreamPollTickReadStatus {
     unauthorized = "unauthorized",
     unavailable = "unavailable",
     error = "error"
-}
-export enum TournamentAdminReadinessSetSide {
-    home = "home",
-    away = "away"
-}
-export enum TournamentAdminTechnicalLossInputLoser_side {
-    home = "home",
-    away = "away"
 }
 export enum TournamentBalancerRankAutofillStageOw_value {
     composite = "composite",
@@ -74299,19 +74561,8 @@ export enum TournamentMappingValueCategoryReadCategory {
 export enum TournamentPickBanAdminActAction {
     pick = "pick",
     ban = "ban",
-    protect = "protect"
-}
-export enum TournamentPickBanAdminActSide {
-    home = "home",
-    away = "away"
-}
-export enum TournamentPickBanAdminSubmitSide {
-    home = "home",
-    away = "away"
-}
-export enum TournamentPregameKindSummaryActing_sides {
-    home = "home",
-    away = "away"
+    protect = "protect",
+    side_pick = "side_pick"
 }
 export enum TournamentPregameKindSummaryStatusAnyOf0 {
     active = "active",
@@ -74325,10 +74576,6 @@ export enum TournamentPregameRoomHistoryEntryKindAnyOf0 {
 export enum TournamentPregameRoomHistoryEntryOrigin {
     room = "room",
     result = "result"
-}
-export enum TournamentPregameRoomHistoryEntrySideAnyOf0 {
-    home = "home",
-    away = "away"
 }
 export enum TournamentPregameRoomHistoryEntrySource {
     captain = "captain",

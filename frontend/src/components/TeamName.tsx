@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Minimal team-like shape accepted by `TeamName`. Compatible with `Team`,
- * `TeamWithStats`, `Encounter["home_team"]` and the admin team reads.
+ * `TeamWithStats`, `EncounterTeam["team"]` and the admin team reads.
  */
 export interface TeamNameInput {
   name: string;

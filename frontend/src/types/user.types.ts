@@ -124,9 +124,14 @@ interface UserEncounterTeamPlayerRef {
   name: string;
 }
 
+/** One live seat of an encounter: `id` is the participation, `team_id` the source team (null once deleted). */
 interface UserEncounterTeamSummary {
   id: number;
+  slot: number;
+  team_id: number | null;
   name: string;
+  score: number;
+  placement: number | null;
   players: UserEncounterTeamPlayerRef[];
 }
 
@@ -153,9 +158,7 @@ export interface MatchWithUserStats {
 export interface EncounterWithUserStats {
   id: number;
   name: string;
-  home_team_id: number | null;
-  away_team_id: number | null;
-  score: Score;
+  slot_count: number;
   round: number;
   best_of: number;
   tournament_id: number;
@@ -163,12 +166,13 @@ export interface EncounterWithUserStats {
   closeness: number | null;
   has_logs: boolean;
   result_status: string;
+  /** The source team the viewer played for. */
   user_team_id: number | null;
   tournament: UserEncounterTournament | null;
   stage: UserEncounterStageSummary | null;
   stage_item: UserEncounterStageItemSummary | null;
-  home_team: UserEncounterTeamSummary | null;
-  away_team: UserEncounterTeamSummary | null;
+  /** The live seats in slot order; a retired participation is history. */
+  teams: UserEncounterTeamSummary[];
   matches: MatchWithUserStats[];
 }
 

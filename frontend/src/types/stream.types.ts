@@ -18,7 +18,7 @@ export type StreamPlatform = "twitch" | "youtube" | "other";
  *
  * `id` is load-bearing beyond display: it is the join key the bracket uses to
  * mark which slots have someone on air, so it must be the tournament team id
- * that `Encounter.home_team_id`/`away_team_id` carry.
+ * that `EncounterTeam.team_id` carries.
  */
 interface StreamTeam {
   id: number;

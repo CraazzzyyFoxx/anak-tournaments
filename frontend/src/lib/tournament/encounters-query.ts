@@ -41,8 +41,7 @@ export function tournamentEncountersQueryOptions(
             "tournament",
             "stage",
             "stage_item",
-            "home_team",
-            "away_team",
+            "teams",
             // The row expansion is the series' maps with score, length and
             // mode; the nested relations only serialise when named.
             "matches",

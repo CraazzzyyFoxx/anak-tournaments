@@ -345,8 +345,8 @@ interface TournamentTeamCardFrameProps extends React.HTMLAttributes<HTMLElement>
   positionTag?: React.ReactNode;
   metricLabel?: React.ReactNode;
   metricValue?: React.ReactNode;
-  /** Encounter-bound cards: the side's colour along the top edge. */
-  side?: "home" | "away";
+  /** Encounter-bound cards: the seat's colour along the top edge (slot 1 teal, slot 2 rose). */
+  slot?: 1 | 2;
 }
 
 /** Shared team-card chrome: the Teams page, encounter, pre-game and rosters modal. */
@@ -356,7 +356,7 @@ export const TournamentTeamCardFrame = ({
   positionTag,
   metricLabel,
   metricValue,
-  side,
+  slot,
   children,
   className,
   ...props
@@ -365,7 +365,7 @@ export const TournamentTeamCardFrame = ({
   const hasMetric = metricLabel != null || metricValue != null;
 
   return (
-    <article className={cn("team-card", className)} data-side={side} {...props}>
+    <article className={cn("team-card", className)} data-slot={slot} {...props}>
       <header className="tc-header">
         {hasTags && (
           <div className="tc-tags">

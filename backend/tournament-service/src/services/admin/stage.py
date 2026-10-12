@@ -349,14 +349,13 @@ class AdminStageService:
         max_round = max((pairing.round_number for pairing in skeleton.pairings), default=0)
         sources: dict[int, list[dict]] = {}
         for edge in skeleton.advancement_edges:
-            # ``role``/``slot`` are the v1 wire's names (Task 9 renames them);
-            # the VALUES are the new model's -- a PLACE in the source encounter
-            # and a SEAT of the target, with no winner/loser or home/away left.
+            # A PLACE in the source encounter and a SEAT of the target: no
+            # winner/loser or home/away on the wire.
             sources.setdefault(edge.target_local_id, []).append(
                 {
                     "local_id": edge.source_local_id + 1,
-                    "role": str(edge.source_position),
-                    "slot": str(edge.target_slot),
+                    "source_position": edge.source_position,
+                    "slot": edge.target_slot,
                 }
             )
 

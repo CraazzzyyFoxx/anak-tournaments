@@ -10,25 +10,23 @@
  * No React in here, so the whole editing model is assertable as plain data.
  */
 import type { BracketMatch } from "@/lib/bracket/view";
+import type { DuelSlot } from "@/lib/encounter/seats";
 import type { BracketTemplate, TemplateSlot } from "@/types/admin.types";
 import type { EncounterSlotSource } from "@/types/encounter.types";
-import type { Team } from "@/types/team.types";
 
 /** The backend model's bounds (`shared/services/bracket/template.py`), mirrored. */
 export const MAX_MATCH_ID = 10_000;
 export const MAX_ROUND = 256;
 export const MAX_SEEDS = 512;
 
-type Side = "home" | "away";
-
 /** `null` = not wired yet; a draft holding one cannot be saved. */
 export type DraftSlot = TemplateSlot | null;
 
+/** The editor draws duels: a match's two slots, slot 1 first. */
 export interface DraftMatch {
   id: number;
   round: number;
-  home: DraftSlot;
-  away: DraftSlot;
+  slots: DraftSlot[];
 }
 
 export interface Draft {
@@ -39,9 +37,9 @@ export interface Draft {
 }
 
 export type DraftAction =
-  | { type: "connect"; source: number; role: "winner" | "loser"; target: number; slot: Side }
-  | { type: "seed"; target: number; slot: Side; seed: string }
-  | { type: "clear"; target: number; slot: Side }
+  | { type: "connect"; source: number; role: "winner" | "loser"; target: number; slot: DuelSlot }
+  | { type: "seed"; target: number; slot: DuelSlot; seed: string }
+  | { type: "clear"; target: number; slot: DuelSlot }
   /** `beforeFinal` renumbers the final out one round and takes its place. */
   | { type: "addMatch"; round: number; beforeFinal?: boolean }
   | { type: "deleteMatch"; id: number }
@@ -60,20 +58,18 @@ export type DraftAction =
 function place(
   draft: Draft,
   target: number,
-  slot: Side,
+  slot: DuelSlot,
   value: TemplateSlot,
   held: (current: DraftSlot) => boolean
 ): Draft {
-  const next = (match: DraftMatch, side: Side): DraftSlot => {
-    if (match.id === target && side === slot) return value;
-    return held(match[side]) ? null : match[side];
-  };
   return {
     ...draft,
     matches: draft.matches.map((match) => ({
       ...match,
-      home: next(match, "home"),
-      away: next(match, "away")
+      slots: match.slots.map((current, index): DraftSlot => {
+        if (match.id === target && index + 1 === slot) return value;
+        return held(current) ? null : current;
+      })
     }))
   };
 }
@@ -82,9 +78,15 @@ export function draftReducer(draft: Draft, action: DraftAction): Draft {
   switch (action.type) {
     case "connect": {
       const { source, role, target, slot } = action;
-      const value: TemplateSlot = role === "winner" ? { winner_of: source } : { loser_of: source };
-      return place(draft, target, slot, value, (current) =>
-        role === "winner" ? current?.winner_of === source : current?.loser_of === source
+      // A duel's first place is the winner, its second the loser.
+      const position = role === "winner" ? 1 : 2;
+      const value: TemplateSlot = { source_match: source, source_position: position };
+      return place(
+        draft,
+        target,
+        slot,
+        value,
+        (current) => current?.source_match === source && current.source_position === position
       );
     }
 
@@ -101,14 +103,16 @@ export function draftReducer(draft: Draft, action: DraftAction): Draft {
       return {
         ...draft,
         matches: draft.matches.map((match) =>
-          match.id === action.target ? { ...match, [action.slot]: null } : match
+          match.id === action.target
+            ? { ...match, slots: match.slots.map((slot, index) => (index + 1 === action.slot ? null : slot)) }
+            : match
         )
       };
 
     case "addMatch": {
       const id = Math.max(0, ...draft.matches.map((match) => match.id)) + 1;
       if (id > MAX_MATCH_ID || Math.abs(action.round) > MAX_ROUND) return draft;
-      const added: DraftMatch = { id, round: action.round, home: null, away: null };
+      const added: DraftMatch = { id, round: action.round, slots: [null, null] };
       // The final is the only match of the last positive round, so an upper
       // round added "at the end" is really added before it.
       const matches = action.beforeFinal
@@ -122,12 +126,12 @@ export function draftReducer(draft: Draft, action: DraftAction): Draft {
 
     case "deleteMatch": {
       const orphaned = (current: DraftSlot): DraftSlot =>
-        current?.winner_of === action.id || current?.loser_of === action.id ? null : current;
+        current?.source_match === action.id ? null : current;
       return {
         ...draft,
         matches: draft.matches
           .filter((match) => match.id !== action.id)
-          .map((match) => ({ ...match, home: orphaned(match.home), away: orphaned(match.away) }))
+          .map((match) => ({ ...match, slots: match.slots.map(orphaned) }))
       };
     }
 
@@ -168,25 +172,24 @@ export function draftFromTemplate(template: BracketTemplate): Draft {
     matches: template.matches.map((match) => ({
       id: match.id,
       round: match.round,
-      home: match.home,
-      away: match.away
+      slots: match.slots.map(({ slot: _slot, ...rest }) => rest)
     }))
   };
 }
 
 /** The PUT body, or `null` while any slot is still unwired. */
 export function draftToTemplate(draft: Draft): BracketTemplate | null {
-  const matches = draft.matches.map((match) =>
-    match.home && match.away
-      ? { id: match.id, round: match.round, home: match.home, away: match.away }
-      : null
-  );
-  if (matches.some((match) => match === null)) return null;
+  if (draft.matches.some((match) => match.slots.some((slot) => slot === null))) return null;
   return {
     version: 1,
     upper_seeds: draft.upper_seeds,
     lower_seeds: draft.lower_seeds,
-    matches: matches as BracketTemplate["matches"]
+    matches: draft.matches.map((match) => ({
+      id: match.id,
+      round: match.round,
+      // Every slot is wired (checked above); the card is numbered 1..n in order.
+      slots: match.slots.map((slot, index) => ({ ...(slot as TemplateSlot), slot: index + 1 }))
+    }))
   };
 }
 
@@ -199,23 +202,20 @@ export function draftToTemplate(draft: Draft): BracketTemplate | null {
  */
 export function draftToBracketMatches(draft: Draft): BracketMatch[] {
   return draft.matches.map((match) => {
-    const sources = (["home", "away"] as const).flatMap<EncounterSlotSource>((side) => {
-      const slot = match[side];
-      if (slot?.winner_of != null) return [{ encounter_id: slot.winner_of, role: "winner", slot: side }];
-      if (slot?.loser_of != null) return [{ encounter_id: slot.loser_of, role: "loser", slot: side }];
-      return [];
-    });
+    const sources = match.slots.flatMap<EncounterSlotSource>((slot, index) =>
+      slot?.source_match != null
+        ? [{ encounter_id: slot.source_match, source_position: slot.source_position, slot: index + 1 }]
+        : []
+    );
     return {
       id: match.id,
       round: match.round,
       status: "open",
-      score: { home: 0, away: 0 },
-      home_team_id: 0,
-      away_team_id: 0,
       // A seed slot names its placeholder; anything else is TBD, and a wired
       // one gets its "W M3" hint from `sources` above.
-      home_team: { name: match.home?.seed ?? "TBD" } as Team,
-      away_team: { name: match.away?.seed ?? "TBD" } as Team,
+      teams: match.slots.flatMap((slot, index) =>
+        slot?.seed != null ? [{ slot: index + 1, team_id: null, name: slot.seed, score: 0 }] : []
+      ),
       sources
     };
   });
@@ -230,7 +230,7 @@ export function draftToBracketMatches(draft: Draft): BracketMatch[] {
  */
 export function unusedSeeds(draft: Draft, round?: number): string[] {
   const placed = new Set(
-    draft.matches.flatMap((match) => [match.home?.seed, match.away?.seed].filter(Boolean))
+    draft.matches.flatMap((match) => match.slots.map((slot) => slot?.seed)).filter(Boolean)
   );
   const pool = round == null ? null : round < 0 ? "L" : "U";
   const all = [

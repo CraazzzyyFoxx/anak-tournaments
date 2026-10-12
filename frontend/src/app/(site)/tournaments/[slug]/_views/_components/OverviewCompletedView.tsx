@@ -6,7 +6,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
 import { useFormatter } from "@/lib/datetime/client";
-import type { Encounter } from "@/types/encounter.types";
+import { seatAt } from "@/lib/encounter/seats";
+import { getEncounterWinner } from "@/lib/encounter/status";
+import type { Encounter, EncounterTeam } from "@/types/encounter.types";
 import type { HeroPlaytime } from "@/types/hero.types";
 import type { Team } from "@/types/team.types";
 import type { StageSummary, Standings, Tournament } from "@/types/tournament.types";
@@ -17,8 +19,7 @@ import {
   findGrandFinal,
   findLowerFinal,
   rosterBattletags,
-  tournamentDaySpan,
-  winnerSide
+  tournamentDaySpan
 } from "../tournamentOverview.model";
 import { CardLink, OverviewCard } from "./OverviewCards";
 import { StatTile } from "./RegistrationSummary";
@@ -142,22 +143,30 @@ export function OverviewCompletedView({
       ? null
       : findLowerFinal(encounters, stageId);
 
-  const podiumTeam = (team: Team | null | undefined, note: string | null): PodiumTeam | null => {
-    if (!team) return null;
-    return { id: team.id, name: team.name, image_url: team.image_url, note };
+  const podiumTeam = (
+    seat: EncounterTeam | null | undefined,
+    note: string | null
+  ): PodiumTeam | null => {
+    if (!seat) return null;
+    return {
+      id: seat.team_id ?? seat.id,
+      name: seat.name,
+      image_url: seat.team?.image_url,
+      note
+    };
   };
 
   let podium: { first: PodiumTeam; second: PodiumTeam; third: PodiumTeam | null } | null = null;
 
   if (grandFinal) {
-    const side = winnerSide(grandFinal);
-    const championSide = side ?? "home";
-    const champion = championSide === "home" ? grandFinal.home_team : grandFinal.away_team;
-    const runnerUp = championSide === "home" ? grandFinal.away_team : grandFinal.home_team;
-    const championScore = championSide === "home" ? grandFinal.score.home : grandFinal.score.away;
-    const runnerUpScore = championSide === "home" ? grandFinal.score.away : grandFinal.score.home;
+    // A drawn final has no champion; slot 1 stands in, as it always led the card.
+    const championSlot = getEncounterWinner(grandFinal) ?? 1;
+    const champion = seatAt(grandFinal.teams, championSlot);
+    const runnerUp = seatAt(grandFinal.teams, championSlot === 1 ? 2 : 1);
+    const championScore = champion?.score ?? 0;
+    const runnerUpScore = runnerUp?.score ?? 0;
     // The roster comes off the teams read; the encounters read carries no players.
-    const roster = rosterBattletags(teamById.get(champion?.id ?? -1) ?? champion);
+    const roster = rosterBattletags(teamById.get(champion?.team_id ?? -1) ?? champion?.team);
     const first = podiumTeam(champion, roster.length > 0 ? roster : null);
     const second = podiumTeam(
       runnerUp,
@@ -167,10 +176,9 @@ export function OverviewCompletedView({
     );
     let third: PodiumTeam | null = null;
     if (lowerFinal) {
-      const lowerSide = winnerSide(lowerFinal);
-      const eliminated = lowerSide === "home" ? lowerFinal.away_team : lowerFinal.home_team;
+      const lowerWinner = getEncounterWinner(lowerFinal);
       third = podiumTeam(
-        eliminated,
+        seatAt(lowerFinal.teams, lowerWinner === 1 ? 2 : 1),
         t("tournamentDetail.overview.result.exitedIn", {
           round: roundLabel(lowerFinal.round, roundShape)
         })

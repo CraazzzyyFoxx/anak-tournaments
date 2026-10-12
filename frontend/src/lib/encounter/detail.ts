@@ -2,42 +2,36 @@ import type {
   Encounter,
   EncounterGameWithMap,
   Match,
-  MatchWithStats,
-  Score
+  MatchWithStats
 } from "@/types/encounter.types";
 import { acceptedScore, seriesMatchesByPosition } from "@/components/pick-ban/pick-ban-model";
 import type { PlayerWithStats, TeamWithStats } from "@/types/team.types";
 import { LogStatsName } from "@/types/stats.types";
-import { isEncounterCompleted } from "@/lib/encounter/status";
+import { duelSeats, duelWinner, type Duel, type DuelSlot } from "@/lib/encounter/seats";
+import { getEncounterWinner, isEncounterCompleted } from "@/lib/encounter/status";
 
 /**
  * Derivations for the encounter (series) detail page.
  *
  * Everything here reads the encounter payload the page already fetches, or the
  * per-map `MatchWithStats` responses the stats panel loads — no extra endpoint
- * knowledge lives in the components.
+ * knowledge lives in the components. A duel is read by slot: slot 1 is `one`,
+ * slot 2 is `two`.
  */
-
-export type SeriesSide = "home" | "away";
-
-/** Which side won a single map, or `null` when it was drawn / not played. */
-export function getMatchWinner(score: Score): SeriesSide | null {
-  if (score.home === score.away) return null;
-  return score.home > score.away ? "home" : "away";
-}
 
 /**
- * A parsed map's score from the encounter's side of the table. A log records
- * its own home/away, which is the encounter's flipped whenever the lobby put
- * the away team first — read raw, a 3–0 for the home side printed as 0–3.
+ * A parsed map's score from the encounter's seat order. A log records its own
+ * home/away (V4), which is the encounter's flipped whenever the lobby put the
+ * slot-2 team first — read raw, a 3–0 for slot 1 printed as 0–3.
  */
-export function encounterSideScore(
+export function encounterSeatScore(
   match: Pick<Match, "score" | "home_team_id">,
-  encounter: Pick<Encounter, "away_team_id">
-): Score {
-  return match.home_team_id === encounter.away_team_id
-    ? { home: match.score.away, away: match.score.home }
-    : match.score;
+  encounter: Pick<Encounter, "teams">
+): Duel<number> {
+  const [, two] = duelSeats(encounter.teams);
+  return two?.team_id != null && match.home_team_id === two.team_id
+    ? { one: match.score.away, two: match.score.home }
+    : { one: match.score.home, two: match.score.away };
 }
 
 /**
@@ -56,9 +50,9 @@ export interface SeriesSlot {
   /** The encounter's own result for this position; null on a pre-games payload. */
   game: EncounterGameWithMap | null;
   match: Match | null;
-  /** The parsed log's score, oriented to the encounter's sides. */
-  parsedScore: Score | null;
-  winner: SeriesSide | null;
+  /** The parsed log's score, in the encounter's seat order. */
+  parsedScore: Duel<number> | null;
+  winner: DuelSlot | null;
   /** The map the encounter says is being played right now. */
   isLive: boolean;
 }
@@ -77,13 +71,13 @@ export function buildSeriesSlots(encounter: Encounter): SeriesSlot[] {
   if (games.length === 0) {
     return positions.map((position) => {
       const match = matches[position - 1] ?? null;
-      const parsedScore = match ? encounterSideScore(match, encounter) : null;
+      const parsedScore = match ? encounterSeatScore(match, encounter) : null;
       return {
         index: position,
         game: null,
         match,
         parsedScore,
-        winner: parsedScore ? getMatchWinner(parsedScore) : null,
+        winner: parsedScore ? duelWinner(parsedScore) : null,
         isLive: live != null && live === position - 1
       };
     });
@@ -101,48 +95,42 @@ export function buildSeriesSlots(encounter: Encounter): SeriesSlot[] {
 
   return positions.map((position, index) => {
     const game = gameAt(position);
-    const accepted = acceptedScore(game);
+    const accepted = acceptedScore(game, encounter.teams);
     const match = byPosition[index];
     return {
       index: position,
       game,
       match,
-      parsedScore: match ? encounterSideScore(match, encounter) : null,
+      parsedScore: match ? encounterSeatScore(match, encounter) : null,
       // The accepted score decides the position; the parsed log is a separate
       // fact and never overrides it.
-      winner:
-        accepted == null
-          ? null
-          : accepted.home === accepted.away
-            ? null
-            : accepted.home > accepted.away
-              ? "home"
-              : "away",
+      winner: accepted == null ? null : duelWinner(accepted),
       isLive: live != null && live === index
     };
   });
 }
 
-/** Maps each side actually took, counted from the per-map results. */
-export function countMapWins(encounter: Encounter): { home: number; away: number; drawn: number } {
-  let home = 0;
-  let away = 0;
+/** Maps each seat actually took, counted from the per-map results. */
+export function countMapWins(encounter: Encounter): { one: number; two: number; drawn: number } {
+  let one = 0;
+  let two = 0;
   let drawn = 0;
   for (const match of encounter.matches ?? []) {
-    const winner = getMatchWinner(encounterSideScore(match, encounter));
-    if (winner === "home") home += 1;
-    else if (winner === "away") away += 1;
+    const winner = duelWinner(encounterSeatScore(match, encounter));
+    if (winner === 1) one += 1;
+    else if (winner === 2) two += 1;
     else drawn += 1;
   }
-  return { home, away, drawn };
+  return { one, two, drawn };
 }
 
 type SeriesOutcome = "win" | "draw" | "unplayed";
 
 export interface SeriesVerdict {
   outcome: SeriesOutcome;
-  winner: SeriesSide | null;
-  loser: SeriesSide | null;
+  /** Slot of the winning seat, or null on a draw / an unfinished series. */
+  winner: DuelSlot | null;
+  loser: DuelSlot | null;
 }
 
 /**
@@ -153,11 +141,9 @@ export function getSeriesVerdict(encounter: Encounter): SeriesVerdict {
   if (!isEncounterCompleted(encounter)) {
     return { outcome: "unplayed", winner: null, loser: null };
   }
-  if (encounter.score.home === encounter.score.away) {
-    return { outcome: "draw", winner: null, loser: null };
-  }
-  const winner: SeriesSide = encounter.score.home > encounter.score.away ? "home" : "away";
-  return { outcome: "win", winner, loser: winner === "home" ? "away" : "home" };
+  const winner = getEncounterWinner(encounter);
+  if (winner == null) return { outcome: "draw", winner: null, loser: null };
+  return { outcome: "win", winner, loser: winner === 1 ? 2 : 1 };
 }
 
 /** Total played time of the series, in seconds. `null` when no map reported one. */
@@ -375,8 +361,9 @@ interface SeriesPlayerMeta {
 }
 
 export interface SeriesAggregate {
-  home: TeamWithStats;
-  away: TeamWithStats;
+  /** Slot 1's team, folded over the series. */
+  one: TeamWithStats;
+  two: TeamWithStats;
   /** Keyed by player id, for both sides. */
   meta: Record<number, SeriesPlayerMeta>;
   /** Maps whose stats were folded in. */
@@ -449,51 +436,52 @@ function buildSide(
  * per-map stat components already consume, so the series view reuses them
  * instead of growing a parallel set of charts.
  *
- * Sides are resolved by team id against the encounter, not by each map's own
- * `home_team_id`, so a map recorded with the sides flipped still lands on the
- * correct series side.
+ * Sides are resolved by team id against the encounter's seats, not by each
+ * map's own `home_team_id` (V4), so a map recorded with the sides flipped still
+ * lands on the correct series seat.
  */
 export function aggregateSeriesStats(
   matches: MatchWithStats[],
-  encounter: Pick<Encounter, "home_team_id" | "away_team_id">
+  encounter: Pick<Encounter, "teams">
 ): SeriesAggregate | null {
-  const homeAcc = new Map<
+  const oneAcc = new Map<
     number,
     { player: PlayerWithStats; stats: StatRow; heroes: Map<number, unknown>; maps: number }
   >();
-  const awayAcc = new Map<
+  const twoAcc = new Map<
     number,
     { player: PlayerWithStats; stats: StatRow; heroes: Map<number, unknown>; maps: number }
   >();
-  let homeBase: TeamWithStats | null = null;
-  let awayBase: TeamWithStats | null = null;
+  let oneBase: TeamWithStats | null = null;
+  let twoBase: TeamWithStats | null = null;
+  const [seatOne, seatTwo] = duelSeats(encounter.teams);
   let mapsCounted = 0;
 
   for (const match of matches) {
     for (const team of [match.home_team, match.away_team]) {
       if (!team) continue;
-      const isHome = team.id === encounter.home_team_id;
-      const isAway = team.id === encounter.away_team_id;
-      if (!isHome && !isAway) continue;
-      if (isHome) homeBase ??= team;
-      else awayBase ??= team;
-      const accumulator = isHome ? homeAcc : awayAcc;
+      const isOne = team.id === seatOne?.team_id;
+      const isTwo = team.id === seatTwo?.team_id;
+      if (!isOne && !isTwo) continue;
+      if (isOne) oneBase ??= team;
+      else twoBase ??= team;
+      const accumulator = isOne ? oneAcc : twoAcc;
       for (const player of team.players ?? []) foldPlayer(accumulator, player);
     }
     mapsCounted += 1;
   }
 
-  if (!homeBase || !awayBase) return null;
+  if (!oneBase || !twoBase) return null;
 
-  const home = buildSide(homeBase, homeAcc);
-  const away = buildSide(awayBase, awayAcc);
+  const one = buildSide(oneBase, oneAcc);
+  const two = buildSide(twoBase, twoAcc);
 
   // Series MVP order spans both rosters, matching the per-map ranking.
-  const ranked = [...home.rows, ...away.rows]
+  const ranked = [...one.rows, ...two.rows]
     .filter((row) => row.maps > 0)
     .sort((a, b) => b.points - a.points);
   const meta: Record<number, SeriesPlayerMeta> = {};
-  for (const row of [...home.rows, ...away.rows]) {
+  for (const row of [...one.rows, ...two.rows]) {
     const position = ranked.findIndex((candidate) => candidate.id === row.id);
     meta[row.id] = {
       mapsPlayed: row.maps,
@@ -503,7 +491,7 @@ export function aggregateSeriesStats(
 
   // `performance` drives the shared MVP badge, so publish the series placement
   // under the same key the per-map rows use.
-  for (const team of [home.team, away.team]) {
+  for (const team of [one.team, two.team]) {
     for (const player of team.players) {
       const placement = meta[player.id]?.seriesPlacement;
       const row = player.stats[WHOLE_MAP_ROUND] as StatRow;
@@ -512,5 +500,5 @@ export function aggregateSeriesStats(
     }
   }
 
-  return { home: home.team, away: away.team, meta, mapsCounted, round: WHOLE_MAP_ROUND };
+  return { one: one.team, two: two.team, meta, mapsCounted, round: WHOLE_MAP_ROUND };
 }
