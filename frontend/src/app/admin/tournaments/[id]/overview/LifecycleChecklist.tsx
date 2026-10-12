@@ -1,33 +1,18 @@
 "use client";
 
-import type { ElementType } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, CheckCircle2, Circle, Lock, Minus } from "lucide-react";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EYEBROW_CLASS, type Tone } from "@/components/kit/tone";
-import type { ChecklistItem, ChecklistPhase, ChecklistState } from "@/components/admin/tournament-checklist";
+import type { ChecklistItem, ChecklistPhase } from "@/components/admin/tournament-checklist";
 
-const PHASE_TITLES: Record<ChecklistPhase, string> = {
-  setup: "Setup",
-  registration: "Registration",
-  formation: "Team formation",
-  bracket: "Bracket",
-  live: "Live",
-  finish: "Finish"
-};
+const PHASE_KEYS: ChecklistPhase[] = ["setup", "registration", "formation", "bracket", "live", "finish"];
 
-const STATE_META: Record<ChecklistState, { label: string; icon: ElementType; tone: Tone }> = {
-  done: { label: "Done", icon: CheckCircle2, tone: "accent" },
-  todo: { label: "To do", icon: Circle, tone: "neutral" },
-  warn: { label: "Attention", icon: AlertTriangle, tone: "warning" },
-  skipped: { label: "Skipped", icon: Minus, tone: "neutral" },
-  "no-access": { label: "No access", icon: Lock, tone: "neutral" }
-};
-
-function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
-  const meta = STATE_META[item.state];
+function ChecklistRow({ item, t }: Readonly<{ item: ChecklistItem; t: ReturnType<typeof useTranslations> }>) {
+  const meta = { done: { label: t("states.done"), icon: CheckCircle2, tone: "accent" as Tone }, todo: { label: t("states.todo"), icon: Circle, tone: "neutral" as Tone }, warn: { label: t("states.warn"), icon: AlertTriangle, tone: "warning" as Tone }, skipped: { label: t("states.skipped"), icon: Minus, tone: "neutral" as Tone }, "no-access": { label: t("states.noAccess"), icon: Lock, tone: "neutral" as Tone } }[item.state];
   const Icon = meta.icon;
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2 last:border-b-0">
@@ -62,7 +47,8 @@ export function LifecycleChecklist({
   items,
   isLoading
 }: Readonly<{ items: ChecklistItem[]; isLoading: boolean }>) {
-  const groups = (Object.keys(PHASE_TITLES) as ChecklistPhase[])
+  const t = useTranslations("adminTournament.lifecycle");
+  const groups = PHASE_KEYS
     .map((phase) => ({ phase, rows: items.filter((item) => item.phase === phase) }))
     .filter((group) => group.rows.length > 0);
 
@@ -70,10 +56,10 @@ export function LifecycleChecklist({
     <Card>
       <CardHeader>
         <CardTitle asChild>
-          <h2>Lifecycle checklist</h2>
+          <h2>{t("title")}</h2>
         </CardTitle>
         <CardDescription>
-          What the tournament still needs on its way to completion.
+          {t("description")}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -87,10 +73,10 @@ export function LifecycleChecklist({
           <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
             {groups.map((group) => (
               <section key={group.phase}>
-                <h3 className={EYEBROW_CLASS}>{PHASE_TITLES[group.phase]}</h3>
+                <h3 className={EYEBROW_CLASS}>{t(`phases.${group.phase}`)}</h3>
                 <div className="mt-1">
                   {group.rows.map((item) => (
-                    <ChecklistRow key={item.key} item={item} />
+                    <ChecklistRow key={item.key} item={item} t={t} />
                   ))}
                 </div>
               </section>

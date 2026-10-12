@@ -2,9 +2,13 @@
 
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { AnswerValue, RoleRankList } from "@/components/forms/AnswerValue";
-import { BUILTIN_ANSWER_LABELS } from "@/components/balancer/registrations/_components/registrationColumnCells";
+import {
+  admissionDecisionLabel,
+  builtinAnswerLabel
+} from "@/components/balancer/registrations/_components/registrationsTranslator";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Button } from "@/components/ui/button";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
@@ -16,7 +20,6 @@ import type { FormField } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
 
 import {
-  ADMISSION_LABELS,
   SUBSCRIPTION_LABELS,
   formatSubmittedAt
 } from "../registrationsTable.model";
@@ -68,6 +71,7 @@ export default function RegistrationInspectorBody({
   schemaKnown: boolean;
   t: AdmissionTranslator;
 }>) {
+  const i18n = useTranslations("registrationsAdmin");
   const format = useFormatter();
   // Answered questions of the CURRENT schema, then whatever the row still
   // carries that the current schema no longer asks. The second list is the
@@ -91,8 +95,8 @@ export default function RegistrationInspectorBody({
   return (
     <div className="space-y-5 text-sm">
       <section className="space-y-1.5">
-        <h3 className={EYEBROW_CLASS}>Admission</h3>
-        <p className="text-foreground">{ADMISSION_LABELS[registration.admission.decision]}</p>
+        <h3 className={EYEBROW_CLASS}>{i18n("inspector.admission")}</h3>
+        <p className="text-foreground">{admissionDecisionLabel(registration.admission.decision, i18n)}</p>
         {blockers.length > 0 ? (
           <ul className="space-y-1 text-xs text-muted-foreground">
             {blockers.map((reason) => (
@@ -102,24 +106,24 @@ export default function RegistrationInspectorBody({
         ) : null}
         {registration.subscription_outcome ? (
           <p className="text-xs text-muted-foreground">
-            Subscription: {SUBSCRIPTION_LABELS[registration.subscription_outcome]}
+            {i18n("inspector.subscription")}: {SUBSCRIPTION_LABELS[registration.subscription_outcome]}
           </p>
         ) : null}
       </section>
 
       <section className="space-y-1.5">
-        <h3 className={EYEBROW_CLASS}>Declared roles</h3>
+        <h3 className={EYEBROW_CLASS}>{i18n("inspector.declaredRoles")}</h3>
         <RolesCell roles={registration.roles} catalog={catalog} />
       </section>
 
       {asked.length > 0 || orphaned.length > 0 ? (
         <section className="space-y-1.5">
-          <h3 className={EYEBROW_CLASS}>Questionnaire</h3>
+          <h3 className={EYEBROW_CLASS}>{i18n("inspector.questionnaire")}</h3>
           <dl className="space-y-2 text-xs">
             {asked.map((field) => (
               <div key={field.key}>
                 <dt className="text-muted-foreground">
-                  {field.label || BUILTIN_ANSWER_LABELS[field.key] || field.key}
+                  {field.label || builtinAnswerLabel(field.key, i18n) || field.key}
                 </dt>
                 <dd className="mt-0.5 text-foreground">
                   <AnswerValue value={registration.answers?.[field.key]} kind={field.kind} />
@@ -129,9 +133,9 @@ export default function RegistrationInspectorBody({
             {orphaned.map(([key, value]) => (
               <div key={key}>
                 <dt className="text-muted-foreground">
-                  {BUILTIN_ANSWER_LABELS[key] || key}
+                  {builtinAnswerLabel(key, i18n) || key}
                   {schemaKnown ? (
-                    <span className="ml-1 text-[color:var(--aqt-fg-dim)]">· no longer asked</span>
+                    <span className="ml-1 text-[color:var(--aqt-fg-dim)]">· {i18n("inspector.noLongerAsked")}</span>
                   ) : null}
                 </dt>
                 <dd className="mt-0.5 text-foreground">
@@ -142,27 +146,26 @@ export default function RegistrationInspectorBody({
           </dl>
           {registration.form_version_stale ? (
             <p className="text-xs text-muted-foreground">
-              Answered on an older version of this form. Editing the registration re-files it
-              against the current one.
+              {i18n("inspector.olderForm")}
             </p>
           ) : null}
         </section>
       ) : null}
 
       <section className="space-y-1.5">
-        <h3 className={EYEBROW_CLASS}>Details</h3>
+        <h3 className={EYEBROW_CLASS}>{i18n("inspector.details")}</h3>
         <dl className="space-y-2 text-xs text-muted-foreground">
           <div className="flex justify-between gap-3">
-            <dt>Source</dt>
+            <dt>{i18n("inspector.source")}</dt>
             <dd className="text-right">{registration.source}</dd>
           </div>
           <div className="flex justify-between gap-3">
-            <dt>Submitted</dt>
+            <dt>{i18n("inspector.submitted")}</dt>
             <dd className="text-right">{formatSubmittedAt(format, registration.submitted_at)}</dd>
           </div>
           {registration.reviewed_at ? (
             <div className="flex justify-between gap-3">
-              <dt>Reviewed</dt>
+              <dt>{i18n("inspector.reviewed")}</dt>
               <dd className="text-right">
                 {formatSubmittedAt(format, registration.reviewed_at)}
                 {registration.reviewed_by_username ? ` · ${registration.reviewed_by_username}` : ""}
@@ -171,7 +174,7 @@ export default function RegistrationInspectorBody({
           ) : null}
           {registration.admin_notes ? (
             <div>
-              <dt>Admin notes</dt>
+              <dt>{i18n("inspector.adminNotes")}</dt>
               <dd className="mt-0.5">{registration.admin_notes}</dd>
             </div>
           ) : null}
@@ -183,7 +186,7 @@ export default function RegistrationInspectorBody({
       {registration.user_id != null ? (
         <Button asChild variant="outline" size="sm" className="w-fit">
           <Link href={`/admin/people/${registration.user_id}`}>
-            Open rank history
+            {i18n("inspector.openRankHistory")}
             <ArrowRight className="size-3.5" aria-hidden />
           </Link>
         </Button>

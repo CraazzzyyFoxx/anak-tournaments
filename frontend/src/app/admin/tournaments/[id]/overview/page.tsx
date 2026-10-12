@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { GitBranch, Link2, MessageSquare, ScrollText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,8 @@ import { LifecycleChecklist } from "./LifecycleChecklist";
 import { PhaseStepper } from "./PhaseStepper";
 
 export default function OverviewTabPage() {
+  const t = useTranslations("adminTournament.overview");
+  const checklistT = useTranslations("adminTournaments.checklist");
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const isValidTournamentId = Number.isFinite(tournamentId) && tournamentId > 0;
@@ -55,7 +58,7 @@ export default function OverviewTabPage() {
         basePath,
         schedule: tournament.phase_schedule.map((entry) => entry.status),
         hasChallongeSource: challongeSourced
-      })
+      }, checklistT)
     : [];
   const draftSessionStatus = readiness?.draft_session_status;
   const draftRunning = draftSessionStatus === "live" || draftSessionStatus === "paused";
@@ -87,10 +90,10 @@ export default function OverviewTabPage() {
     <div className="flex flex-col gap-4">
       {nextAction ? (
         <NextActionHero
-          eyebrow="Next action"
+          eyebrow={t("nextAction")}
           title={nextAction.detail ? `${nextAction.label} — ${nextAction.detail}` : nextAction.label}
           href={nextAction.href!}
-          cta="Open"
+          cta={t("open")}
         />
       ) : null}
       <PhaseStepper tournament={tournament} />
@@ -101,10 +104,10 @@ export default function OverviewTabPage() {
         <Card className="border-warning/40 bg-warning/10">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
             <p className="text-sm text-warning">
-              Team draft is {draftSessionStatus} — manage it from the draft board.
+              {t("teamDraft", { status: draftSessionStatus ?? "" })}
             </p>
             <Button asChild size="sm" variant="outline">
-              <Link href={`${basePath}/teams/draft`}>Open draft board</Link>
+              <Link href={`${basePath}/teams/draft`}>{t("openDraftBoard")}</Link>
             </Button>
           </CardContent>
         </Card>
@@ -112,49 +115,49 @@ export default function OverviewTabPage() {
       <LifecycleChecklist items={checklistItems} isLoading={readinessQuery.isLoading} />
       <StatTileGrid className="xl:grid-cols-4">
         <StatTile
-          label="Stages"
-          value={stages.length === 0 ? "None yet" : `${stages.length} configured`}
+          label={t("stages")}
+          value={stages.length === 0 ? t("noneYet") : t("configured", { count: stages.length })}
           detail={
             stages.length === 0
-              ? "Add a stage before match operations"
-              : `${structuredStagesCount}/${stages.length} with structure`
+              ? t("addStage")
+              : t("withStructure", { count: structuredStagesCount, total: stages.length })
           }
           tone={stagesTone}
           icon={GitBranch}
         />
         <StatTile
-          label="Challonge"
-          value={challongeSourced ? "Connected" : "Manual"}
+          label={t("challonge")}
+          value={challongeSourced ? t("connected") : t("manual")}
           detail={
             challongeSourced
-              ? `${linkedStagesCount} linked stage${linkedStagesCount === 1 ? "" : "s"}`
-              : "Brackets are managed in this workspace"
+              ? t("linkedStages", { count: linkedStagesCount })
+              : t("bracketsManaged")
           }
           tone={challongeSourced ? "success" : "neutral"}
           icon={Link2}
         />
         <StatTile
-          label="Discord"
+          label={t("discord")}
           value={
             discordChannelQuery.isLoading
-              ? "Checking…"
+              ? t("checking")
               : discordChannel?.is_active
-                ? "Monitoring"
+                ? t("monitoring")
                 : discordChannel
-                  ? "Paused"
-                  : "Not configured"
+                  ? t("paused")
+                  : t("notConfigured")
           }
-          detail={discordChannel?.channel_name ?? "Match log intake"}
+          detail={discordChannel?.channel_name ?? t("matchLogIntake")}
           tone={discordTone}
           icon={MessageSquare}
         />
         <StatTile
-          label="Log coverage"
+          label={t("logCoverage")}
           value={logCoverage === null ? "—" : `${logCoverage}%`}
           detail={
             logsTotal === 0
-              ? "No encounters yet"
-              : `${logsCovered}/${logsTotal} encounters with logs`
+              ? t("noEncounters")
+              : t("encountersWithLogs", { covered: logsCovered, total: logsTotal })
           }
           tone={logCoverage === null ? "neutral" : logCoverage >= 90 ? "success" : "warning"}
           icon={ScrollText}

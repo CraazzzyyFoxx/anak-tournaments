@@ -18,15 +18,11 @@ import type { SubroleCatalog } from "@/types/registration.types";
 /**
  * Labels for the builtin questions, shared by the columns and the row
  * inspector. A builtin carries no label of its own — the server owns its
- * wording and each client localises it — and this table is English throughout,
- * like every other header here.
+ * wording and each client localises it. Platform names stay as they are; the
+ * other builtins are named in the UI language (`builtinAnswerLabel`).
  */
 export const BUILTIN_ANSWER_LABELS: Record<string, string> = {
   identity_battlenet: "BattleTags",
-  stream_pov: "Stream POV",
-  reserve: "On call",
-  public_notes: "Notes",
-  organizer_notes: "Organizer Notes",
   identity_discord: "Discord",
   identity_twitch: "Twitch",
   identity_boosty: "Boosty",
@@ -114,6 +110,7 @@ export function ParticipantCell({
   registration,
   identityKeys,
 }: Readonly<{ registration: AdminRegistration; identityKeys: readonly string[] }>) {
+  const t = useTranslations("registrationsAdmin.columns");
   const primary =
     registration.primary_handle ??
     registration.display_name ??
@@ -145,8 +142,8 @@ export function ParticipantCell({
         {secondaryParts.length > 0
           ? secondaryParts.join(" · ")
           : registration.source === "google_sheets"
-            ? "Google Sheets import"
-            : "Manual registration"}
+            ? t("googleSheetsImport")
+            : t("manualRegistration")}
       </div>
     </div>
   );
@@ -159,6 +156,7 @@ export function RolesCell({
   roles: AdminRegistrationRole[];
   catalog?: SubroleCatalog;
 }>) {
+  const t = useTranslations("registrationsAdmin.columns");
   if (!roles || roles.length === 0) {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
@@ -186,8 +184,8 @@ export function RolesCell({
             title={[
               ROLE_LABELS[role.role] ?? role.role,
               subroleLabel,
-              role.rank_value != null ? `${role.rank_value}` : "No rank",
-              role.is_primary ? "Primary" : null,
+              role.rank_value != null ? `${role.rank_value}` : t("noRank"),
+              role.is_primary ? t("primary") : null,
             ]
               .filter(Boolean)
               .join(" · ")}
@@ -213,13 +211,14 @@ export function RolesCell({
 }
 
 export function SourceCell({ source }: Readonly<{ source: AdminRegistration["source"] }>) {
+  const t = useTranslations("registrationsAdmin.columns");
   const isSheets = source === "google_sheets";
   return (
     <Badge
       variant="outline"
       className={cn("font-medium", isSheets ? TONE_CLASS.info : TONE_CLASS.neutral)}
     >
-      {isSheets ? "Sheets" : "Manual"}
+      {isSheets ? t("sheets") : t("manual")}
     </Badge>
   );
 }
@@ -266,11 +265,12 @@ export function ReviewedCell({ registration }: Readonly<{ registration: AdminReg
 }
 
 export function ExclusionCell({ registration }: Readonly<{ registration: AdminRegistration }>) {
+  const t = useTranslations("registrationsAdmin.columns");
   if (registration.balancer_status !== "excluded") {
     return <span className="text-[color:var(--aqt-fg-dim)]">—</span>;
   }
 
-  const reason = registration.exclude_reason ?? "Excluded";
+  const reason = registration.exclude_reason ?? t("excluded");
   return (
     <StatusPill tone="warning" className="max-w-[220px]" title={reason}>
       <span className="truncate">{reason}</span>

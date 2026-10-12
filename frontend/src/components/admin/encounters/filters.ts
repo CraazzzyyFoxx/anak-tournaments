@@ -17,18 +17,20 @@ export function encounterFilterDefs({
   tournamentId,
   tournaments,
   stages,
-  stageItems
+  stageItems,
+  t
 }: Readonly<{
   tournamentId: number | null;
   tournaments: Array<{ id: number; name: string }>;
   stages: Stage[];
   stageItems: StageItem[];
+  t: (key: string) => string;
 }>): FilterDef[] {
   const list: FilterDef[] = [];
   if (tournamentId == null) {
     list.push({
       key: TOURNAMENT_QUERY_PARAM,
-      label: "Tournament",
+      label: t("tournament"),
       kind: "single",
       options: tournaments.map((entry) => ({ value: String(entry.id), label: entry.name }))
     });
@@ -36,7 +38,7 @@ export function encounterFilterDefs({
   if (stages.length > 0) {
     list.push({
       key: "stage",
-      label: "Stage",
+      label: t("stage"),
       kind: "single",
       options: stages.map((stage) => ({ value: String(stage.id), label: stage.name }))
     });
@@ -44,7 +46,7 @@ export function encounterFilterDefs({
   if (stageItems.length > 0) {
     list.push({
       key: "group",
-      label: "Group",
+      label: t("group"),
       kind: "single",
       options: stageItems.map((item) => ({ value: String(item.id), label: item.name }))
     });
@@ -52,21 +54,21 @@ export function encounterFilterDefs({
   list.push(
     {
       key: "status",
-      label: "Status",
+      label: t("status"),
       kind: "single",
       options: [
-        { value: "OPEN", label: "Open" },
-        { value: "PENDING", label: "Pending" },
-        { value: "COMPLETED", label: "Completed" }
+        { value: "OPEN", label: t("open") },
+        { value: "PENDING", label: t("pending") },
+        { value: "COMPLETED", label: t("completed") }
       ]
     },
     {
       key: "has_logs",
-      label: "Logs",
+      label: t("logs"),
       kind: "single",
       options: [
-        { value: "true", label: "Logs available" },
-        { value: "false", label: "No logs" }
+        { value: "true", label: t("logsAvailable") },
+        { value: "false", label: t("noLogs") }
       ]
     }
   );

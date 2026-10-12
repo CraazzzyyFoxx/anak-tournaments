@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Download,
   LibraryBig,
@@ -37,6 +38,7 @@ import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
 const emptyOverrideDraft: OverrideDraftState = { userName: "", action: "grant", reason: "" };
 
 export default function AchievementsPage() {
+  const t = useTranslations("adminAchievements");
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -82,12 +84,13 @@ export default function AchievementsPage() {
   // Validated on submit rather than by disabling the button, so the reader can
   // read what is missing instead of guessing why nothing happens.
   const handleOverrideSubmit = () => {
-    const missing: string[] = [];
-    if (!overrideDraft.userId) missing.push("a user");
-    if (!overrideDraft.ruleId) missing.push("an achievement");
-    if (!overrideDraft.reason.trim()) missing.push("a reason");
-    if (missing.length > 0) {
-      setOverrideFormError(`Pick ${missing.join(", ")} before saving the override.`);
+    const missingLabels = [
+      !overrideDraft.userId ? t("list.missingUser") : null,
+      !overrideDraft.ruleId ? t("list.missingAchievement") : null,
+      !overrideDraft.reason.trim() ? t("list.missingReason") : null,
+    ].filter((label): label is string => label !== null);
+    if (missingLabels.length > 0) {
+      setOverrideFormError(t("list.pickBeforeOverride", { items: missingLabels.join(", ") }));
       return;
     }
     setOverrideFormError(null);
@@ -104,11 +107,11 @@ export default function AchievementsPage() {
     return (
       <div className="space-y-6">
         <AdminPageHeader
-          title="Achievements"
-          description="Condition-tree rules, evaluation runs and manual overrides."
+          title={t("common.achievements")}
+          description={t("list.headerDescription")}
         />
         <EmptyNote>
-          Pick a workspace in the sidebar to load its achievement catalog.
+          {t("list.selectWorkspace")}
         </EmptyNote>
       </div>
     );
@@ -117,8 +120,8 @@ export default function AchievementsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Achievements"
-        description="Condition-tree rules, evaluation runs and manual overrides."
+        title={t("common.achievements")}
+        description={t("list.headerDescription")}
         actions={
           <div className="flex gap-2">
             <input
@@ -133,11 +136,11 @@ export default function AchievementsPage() {
             />
             <Button variant="outline" size="sm" onClick={() => void actions.exportRules()}>
               <Download className="mr-2 h-4 w-4" aria-hidden />
-              Export JSON
+              {t("list.exportJson")}
             </Button>
             <Button variant="outline" size="sm" onClick={() => setLibraryDialogOpen(true)}>
               <LibraryBig className="mr-2 h-4 w-4" aria-hidden />
-              Browse library
+              {t("list.browseLibrary")}
             </Button>
             {(canCreate || canUpdate) && (
               <Button
@@ -147,7 +150,7 @@ export default function AchievementsPage() {
                 disabled={actions.importMutation.isPending}
               >
                 <Upload className={`mr-2 h-4 w-4 ${actions.importMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
-                Import JSON
+              {t("list.importJson")}
               </Button>
             )}
             <Button
@@ -160,7 +163,7 @@ export default function AchievementsPage() {
               }}
             >
               <Play className="mr-2 h-4 w-4" aria-hidden />
-              Evaluate achievements
+              {t("list.evaluate")}
             </Button>
             <Button
               variant="outline"
@@ -172,7 +175,7 @@ export default function AchievementsPage() {
               }}
             >
               <UserPlus className="mr-2 h-4 w-4" aria-hidden />
-              Add manual override
+              {t("list.addOverride")}
             </Button>
             {canCreate && (
               <Button
@@ -182,7 +185,7 @@ export default function AchievementsPage() {
                 disabled={actions.seedMutation.isPending}
               >
                 <Sprout className={`mr-2 h-4 w-4 ${actions.seedMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
-                Seed defaults
+                {t("list.seedDefaults")}
               </Button>
             )}
             {canCreate && (
@@ -192,13 +195,13 @@ export default function AchievementsPage() {
                 disabled={actions.hardResetMutation.isPending}
               >
                 <RotateCcw className={`mr-2 h-4 w-4 ${actions.hardResetMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
-                Hard reset
+                {t("list.hardReset")}
               </Button>
             )}
             {canCreate && (
               <Button onClick={form.openCreate}>
                 <Plus className="mr-2 h-4 w-4" aria-hidden />
-                Create achievement
+                {t("list.create")}
               </Button>
             )}
           </div>
@@ -299,13 +302,13 @@ export default function AchievementsPage() {
           onConfirm={() => actions.deleteMutation.mutate(deletingRule.id)}
           pending={actions.deleteMutation.isPending}
           intent={{
-            title: "Delete achievement",
-            description: `“${deletingRule.name}” (${deletingRule.slug}) is removed from this workspace. Players keep nothing from it.`,
-            confirmLabel: actions.deleteMutation.isPending ? "Deleting…" : "Delete",
+            title: t("list.deleteAchievement"),
+            description: t("list.deleteDescription", { name: deletingRule.name, slug: deletingRule.slug }),
+            confirmLabel: actions.deleteMutation.isPending ? t("common.deleting") : t("common.delete"),
             tone: "danger",
             cascade: [
-              "Every evaluation result awarding this achievement",
-              "Manual grant and revoke overrides referencing it",
+              t("list.deleteCascadeResult"),
+              t("list.deleteCascadeOverride"),
             ],
           }}
         />
@@ -321,12 +324,11 @@ export default function AchievementsPage() {
           }}
           pending={actions.hardResetMutation.isPending}
           intent={{
-            title: "Hard reset achievements",
-            description:
-              "The rule catalog for this workspace is replaced with the defaults, every current result is cleared, and a full re-evaluation runs immediately.",
-            confirmLabel: actions.hardResetMutation.isPending ? "Resetting…" : "Hard reset",
+            title: t("list.resetTitle"),
+            description: t("list.resetDescription"),
+            confirmLabel: actions.hardResetMutation.isPending ? t("common.saving") : t("list.hardReset"),
             tone: "danger",
-            cascade: ["Custom achievements that are not part of the default set"],
+            cascade: [t("list.resetCascade")],
           }}
         />
       )}

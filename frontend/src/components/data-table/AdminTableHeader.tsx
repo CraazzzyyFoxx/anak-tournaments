@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import type { Row, SortingState, Table } from "@tanstack/react-table";
 
 import { TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -43,7 +44,10 @@ export function AdminTableHeader<TData>({
   onReorder,
   onArmDnd
 }: Readonly<AdminTableHeaderProps<TData>>) {
+  const t = useTranslations("kitTable.dataTableExtra");
+  const i18n = (key: string, values?: Record<string, unknown>) => t(key as never, values as never);
   const headCellContext = {
+    i18n,
     layout,
     density,
     sorting,
@@ -82,7 +86,7 @@ export function AdminTableHeader<TData>({
                   onCheckedChange={(checked) =>
                     selectableRows.forEach((row) => row.toggleSelected(checked === true))
                   }
-                  aria-label="Select visible selectable rows"
+                  aria-label={t("selectVisibleRows")}
                 />
               ) : null}
             </TableHead>

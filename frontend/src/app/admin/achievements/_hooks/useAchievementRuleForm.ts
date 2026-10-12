@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import adminService from "@/services/admin.service";
@@ -47,6 +48,7 @@ export interface AchievementRuleForm {
  * rather than in a second call site.
  */
 export function useAchievementRuleForm(workspaceId: number | null): AchievementRuleForm {
+  const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
   const listKey = achievementQueryKeys.adminList(workspaceId);
 
@@ -113,9 +115,7 @@ export function useAchievementRuleForm(workspaceId: number | null): AchievementR
 
   const pickImage = (file: File) => {
     if (file.size > MAX_ACHIEVEMENT_IMAGE_BYTES) {
-      setImageError(
-        `“${file.name}” is ${(file.size / 1024 / 1024).toFixed(1)} MB. Pick an image under 5 MB.`,
-      );
+      setImageError(t("form.imageTooLarge", { name: file.name, size: (file.size / 1024 / 1024).toFixed(1) }));
       return;
     }
     setImageError(null);

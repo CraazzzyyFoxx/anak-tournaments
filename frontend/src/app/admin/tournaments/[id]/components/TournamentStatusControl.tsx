@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -15,7 +16,6 @@ import {
 import { usePermissions } from "@/hooks/usePermissions";
 import {
   TOURNAMENT_PHASES,
-  TOURNAMENT_STATUS_LABELS,
   VALID_TRANSITIONS
 } from "@/lib/tournament/lifecycle";
 import adminService from "@/services/admin.service";
@@ -35,6 +35,8 @@ import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-
  * allows; a superuser additionally gets every other status, sent with `force`.
  */
 export function TournamentStatusControl({ tournament }: Readonly<{ tournament: Tournament }>) {
+  const t = useTranslations("adminTournament.status");
+  const tStatus = useTranslations("common.statusBadge");
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
   const [pendingStatus, setPendingStatus] = useState<TournamentStatus | null>(null);
@@ -62,7 +64,7 @@ export function TournamentStatusControl({ tournament }: Readonly<{ tournament: T
   return (
     <>
       <Label htmlFor={selectId} className="sr-only">
-        Tournament status
+        {t("title")}
       </Label>
       <Select
         value={tournament.status}
@@ -76,7 +78,7 @@ export function TournamentStatusControl({ tournament }: Readonly<{ tournament: T
         <SelectContent>
           {options.map((status) => (
             <SelectItem key={status} value={status}>
-              {TOURNAMENT_STATUS_LABELS[status]}
+              {tStatus(status)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -84,7 +86,7 @@ export function TournamentStatusControl({ tournament }: Readonly<{ tournament: T
 
       {mutation.isError && (
         <span role="alert" className="text-sm text-danger">
-          Unable to change the status: {(mutation.error as Error).message}
+          {t("errorWithDetails", { error: (mutation.error as Error).message })}
         </span>
       )}
 
@@ -93,15 +95,15 @@ export function TournamentStatusControl({ tournament }: Readonly<{ tournament: T
         onOpenChange={(open) => (open ? undefined : setPendingStatus(null))}
         intent={{
           title: pendingStatus
-            ? `Set status to ${TOURNAMENT_STATUS_LABELS[pendingStatus]}?`
-            : "Change status?",
+            ? t("setTo", { status: tStatus(pendingStatus) })
+            : t("change"),
           description:
             pendingStatus && !allowed.includes(pendingStatus)
-              ? `${TOURNAMENT_STATUS_LABELS[tournament.status]} does not normally lead to ${TOURNAMENT_STATUS_LABELS[pendingStatus]}; this bypasses the state machine. Automatic phase transitions are switched off either way.`
-              : "The public tournament page follows the status. Automatic phase transitions are switched off after a manual change.",
+              ? t("bypass", { current: tStatus(tournament.status), next: tStatus(pendingStatus) })
+              : t("manual"),
           confirmLabel: pendingStatus
-            ? `Set ${TOURNAMENT_STATUS_LABELS[pendingStatus]}`
-            : "Set status",
+            ? t("set", { status: tStatus(pendingStatus) })
+            : t("setStatus"),
           tone: pendingStatus && !allowed.includes(pendingStatus) ? "warning" : "neutral"
         }}
         pending={mutation.isPending}

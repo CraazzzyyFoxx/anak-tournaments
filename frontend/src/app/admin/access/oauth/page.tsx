@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { CheckCircle, Clock, Trash2, UserCog } from "lucide-react";
@@ -23,12 +23,9 @@ import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import type { OAuthConnectionAdmin, OAuthProvider } from "@/types/rbac.types";
 import { accessQueryKeys } from "@/lib/access/query-keys";
+import { useTranslations } from "next-intl";
 
 const PAGE_SIZE = 20;
-
-function providerLabel(provider: OAuthProvider): string {
-  return PROVIDER_META[provider]?.label ?? provider;
-}
 
 function isTokenExpired(expiresAt: string | null | undefined): boolean {
   if (!expiresAt) return false;
@@ -59,11 +56,17 @@ function Field({ label, children }: Readonly<{ label: string; children: React.Re
  * expiry, the auth account — moved from the row into the inspector.
  */
 export default function OAuthConnectionsAdminPage() {
+  const t = useTranslations("adminAccess.common");
+  const to = useTranslations("adminAccess.oauthUi");
   const format = useFormatter();
   const queryClient = useQueryClient();
   const { hasPermission } = usePermissions();
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
   const openId = searchParams?.get("id") ?? null;
+  const providerLabel = useCallback(
+    (provider: OAuthProvider): string => t(PROVIDER_META[provider]?.labelKey ?? "provider"),
+    [t]
+  );
 
   const canDeleteConnections = hasPermission("auth_user.update");
   const [pageRows, setPageRows] = useState<OAuthConnectionAdmin[]>([]);
@@ -73,7 +76,7 @@ export default function OAuthConnectionsAdminPage() {
     () => [
       {
         key: "provider",
-        label: "Provider",
+        label: t("provider"),
         kind: "single",
         options: (Object.keys(PROVIDER_META) as OAuthProvider[]).map((provider) => ({
           value: provider,
@@ -81,7 +84,7 @@ export default function OAuthConnectionsAdminPage() {
         }))
       }
     ],
-    []
+    [providerLabel, t]
   );
   const filters = useFilters(defs);
   const providerFilter = String(filters.values.provider ?? "");
@@ -96,7 +99,7 @@ export default function OAuthConnectionsAdminPage() {
       await queryClient.invalidateQueries({ queryKey: accessQueryKeys.oauthConnections() });
       setPendingDelete(null);
       if (removed && String(removed.id) === openId) setParams({ id: null });
-      notify.success("OAuth connection removed");
+      notify.success(to("removed"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -111,12 +114,12 @@ export default function OAuthConnectionsAdminPage() {
       },
       {
         accessorKey: "provider",
-        header: "Provider",
+        header: t("provider"),
         cell: ({ row }) => <ProviderBadge provider={row.original.provider} />
       },
       {
         id: "provider_user",
-        header: "Provider account",
+        header: t("providerAccount"),
         enableSorting: false,
         cell: ({ row }) => {
           const connection = row.original;
@@ -143,7 +146,7 @@ export default function OAuthConnectionsAdminPage() {
       },
       {
         id: "auth_user",
-        header: "Auth account",
+        header: t("authorization"),
         enableSorting: false,
         cell: ({ row }) => (
           <div className="min-w-0">
@@ -156,25 +159,25 @@ export default function OAuthConnectionsAdminPage() {
       },
       {
         id: "token_status",
-        header: "Token",
+        header: t("token"),
         enableSorting: false,
         meta: columnMeta({ align: "center" }),
         cell: ({ row }) => {
           const expiresAt = row.original.token_expires_at;
           if (!expiresAt) {
-            return <span className="text-xs text-muted-foreground">No token</span>;
+            return <span className="text-xs text-muted-foreground">{t("noToken")}</span>;
           }
           const expired = isTokenExpired(expiresAt);
           return expired ? (
-            <StatusIcon icon={Clock} label="Expired" variant="destructive" />
+            <StatusIcon icon={Clock} label={t("expired")} variant="destructive" />
           ) : (
-            <StatusIcon icon={CheckCircle} label="Active" variant="success" />
+            <StatusIcon icon={CheckCircle} label={t("active")} variant="success" />
           );
         }
       },
       {
         accessorKey: "created_at",
-        header: "Connected",
+        header: t("connected"),
         cell: ({ row }) => (
           <span className="text-sm tabular-nums text-muted-foreground">
             {format.dateTime(new Date(row.original.created_at), {
@@ -187,9 +190,9 @@ export default function OAuthConnectionsAdminPage() {
       },
       createKebabColumn<OAuthConnectionAdmin>(
         (row) => [
-          { label: "Open auth account", icon: UserCog, href: accountsHref(row) },
+          { label: t("openAuthAccount"), icon: UserCog, href: accountsHref(row) },
           {
-            label: "Remove connection",
+            label: t("removeConnection"),
             icon: Trash2,
             destructive: true,
             hidden: !canDeleteConnections,
@@ -201,7 +204,7 @@ export default function OAuthConnectionsAdminPage() {
         }
       )
     ],
-    [canDeleteConnections, format]
+    [canDeleteConnections, format, providerLabel, t]
   );
 
   return (
@@ -211,12 +214,12 @@ export default function OAuthConnectionsAdminPage() {
           columns={columns}
           initialPageSize={PAGE_SIZE}
           pageSizeOptions={[10, 20, 50, 100]}
-          searchPlaceholder="Search by username, email, or provider ID…"
+          searchPlaceholder={to("search")}
           filterKey={filters.filterKey}
           inspectorId={openId}
           getRowId={(row) => String(row.id)}
           toolbar={<FilterBar defs={defs} filters={filters} />}
-          emptyMessage="No OAuth connection matches. Clear the provider chip to see every connection."
+          emptyMessage={to("noMatches")}
           onRowClick={(row) => setParams({ id: String(row.original.id) })}
           renderMobileCard={(row) => (
             <div className="min-w-0 flex-1">
@@ -229,9 +232,9 @@ export default function OAuthConnectionsAdminPage() {
               <p className="truncate text-xs text-muted-foreground">
                 {row.original.token_expires_at
                   ? isTokenExpired(row.original.token_expires_at)
-                    ? "Token expired"
-                    : "Token active"
-                  : "No token"}
+                    ? to("tokenExpired")
+                    : to("tokenActive")
+                  : t("noToken")}
               </p>
             </div>
           )}
@@ -277,15 +280,15 @@ export default function OAuthConnectionsAdminPage() {
       >
         {openRow ? (
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Provider">
+            <Field label={t("provider")}>
               <ProviderBadge provider={openRow.provider} />
             </Field>
-            <Field label="Provider id">
+            <Field label={t("providerId")}>
               <span className="font-mono tabular-nums">{openRow.provider_user_id}</span>
             </Field>
-            <Field label="Provider username">{openRow.username}</Field>
-            <Field label="Provider email">{openRow.email ?? "Not shared"}</Field>
-            <Field label="Auth account">
+            <Field label={t("providerUsername")}>{openRow.username}</Field>
+            <Field label={t("providerEmail")}>{openRow.email ?? to("notShared")}</Field>
+            <Field label={t("authorization")}>
               <Link
                 href={accountsHref(openRow)}
                 className="text-primary hover:underline"
@@ -293,14 +296,16 @@ export default function OAuthConnectionsAdminPage() {
                 {openRow.auth_user_username ?? `#${openRow.auth_user_id}`}
               </Link>
             </Field>
-            <Field label="Auth email">{openRow.auth_user_email ?? "Unavailable"}</Field>
-            <Field label="Connected">
+            <Field label={t("authEmail")}>{openRow.auth_user_email ?? t("unavailable")}</Field>
+            <Field label={t("connected")}>
               <span className="tabular-nums">{openRow.created_at.slice(0, 10)}</span>
             </Field>
-            <Field label="Token">
+            <Field label={t("token")}>
               {openRow.token_expires_at
-                ? `${isTokenExpired(openRow.token_expires_at) ? "Expired" : "Valid until"} ${openRow.token_expires_at.slice(0, 10)}`
-                : "No stored token"}
+                ? isTokenExpired(openRow.token_expires_at)
+                  ? t("tokenExpiredOn", { date: openRow.token_expires_at.slice(0, 10) })
+                  : t("tokenValidUntil", { date: openRow.token_expires_at.slice(0, 10) })
+                : t("noStoredToken")}
             </Field>
           </div>
         ) : null}
@@ -313,11 +318,11 @@ export default function OAuthConnectionsAdminPage() {
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Remove OAuth connection",
+          title: to("removeTitle"),
           description: pendingDelete
-            ? `This detaches ${pendingDelete.display_name ?? pendingDelete.username} from auth account ${pendingDelete.auth_user_username ?? `#${pendingDelete.auth_user_id}`}. That account can no longer sign in with ${providerLabel(pendingDelete.provider)} until it reconnects the provider itself.`
+            ? to("removeDescription", { account: pendingDelete.display_name ?? pendingDelete.username, authAccount: pendingDelete.auth_user_username ?? `#${pendingDelete.auth_user_id}`, provider: providerLabel(pendingDelete.provider) })
             : "",
-          confirmLabel: "Remove connection",
+          confirmLabel: t("removeConnection"),
           tone: "danger"
         }}
         onConfirm={() => {

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Plus } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
@@ -63,12 +64,14 @@ function emptyPaginated<T>(): PaginatedResponse<T> {
 }
 
 export default function AdminDashboard() {
+  const t = useTranslations("adminShell.dashboard");
+  const tExtra = useTranslations("adminShell.dashboardExtra");
   const { canAccessPermission } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
   const { user } = useAuthProfile();
   const format = useFormatter();
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const greeting = hour < 12 ? t("greetingMorning") : hour < 18 ? t("greetingAfternoon") : t("greetingEvening");
   const today = format.dateTime(new Date(), { weekday: "long", month: "long", day: "numeric" });
 
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
@@ -127,7 +130,7 @@ export default function AdminDashboard() {
     const items: IssueItem[] = [
       canReadMatches && (issues?.encounters_pending_confirmation ?? 0) > 0
         ? {
-            label: "Results awaiting confirmation",
+            label: t("resultsAwaitingConfirmation"),
             count: issues!.encounters_pending_confirmation,
             href: "/admin/matches?view=encounters",
             tone: "critical" as const
@@ -135,7 +138,7 @@ export default function AdminDashboard() {
         : null,
       canReadMatches && (issues?.encounters_awaiting_result ?? 0) > 0
         ? {
-            label: "Overdue match results",
+            label: t("overdueMatchResults"),
             count: issues!.encounters_awaiting_result,
             href: "/admin/matches?view=encounters",
             tone: "critical" as const
@@ -145,7 +148,7 @@ export default function AdminDashboard() {
       // bracket, a missing log only blocks statistics.
       canReadMatches && (issues?.encounters_missing_logs ?? 0) > 0
         ? {
-            label: "Missing encounter logs",
+            label: t("missingEncounterLogs"),
             count: issues!.encounters_missing_logs,
             href: "/admin/matches?view=encounters",
             tone: "warning" as const
@@ -153,7 +156,7 @@ export default function AdminDashboard() {
         : null,
       canReadTournaments && (issues?.stage_slots_empty ?? 0) > 0
         ? {
-            label: "Empty bracket slots",
+            label: t("emptyBracketSlots"),
             count: issues!.stage_slots_empty,
             href: "/admin/tournaments",
             tone: "warning" as const
@@ -161,7 +164,7 @@ export default function AdminDashboard() {
         : null,
       canReadTeams && (issues?.teams_without_players ?? 0) > 0
         ? {
-            label: "Teams without rosters",
+            label: t("teamsWithoutRosters"),
             count: issues!.teams_without_players,
             href: "/admin/teams",
             tone: "warning" as const
@@ -169,7 +172,7 @@ export default function AdminDashboard() {
         : null,
       canReadTournaments && (issues?.tournaments_without_stages ?? 0) > 0
         ? {
-            label: "Tournaments missing stages",
+            label: t("tournamentsMissingStages"),
             count: issues!.tournaments_without_stages,
             href: "/admin/tournaments",
             tone: "warning" as const
@@ -177,7 +180,7 @@ export default function AdminDashboard() {
         : null,
       canReadUsers && (issues?.users_without_identities ?? 0) > 0
         ? {
-            label: "Unlinked player identities",
+            label: t("unlinkedPlayerIdentities"),
             count: issues!.users_without_identities,
             href: "/admin/people",
             tone: "info" as const
@@ -185,7 +188,7 @@ export default function AdminDashboard() {
         : null
     ].filter((item): item is IssueItem => item !== null);
     return items;
-  }, [stats, canReadMatches, canReadTeams, canReadTournaments, canReadUsers]);
+  }, [stats, canReadMatches, canReadTeams, canReadTournaments, canReadUsers, t]);
 
   if (statsQuery.isLoading || tournamentsQuery.isLoading) {
     return (
@@ -219,14 +222,14 @@ export default function AdminDashboard() {
     <div className="flex flex-col gap-4">
       {/* [1] HEADER — the same primitive every other admin screen opens with */}
       <AdminPageHeader
-        title="Dashboard"
-        description={`${greeting}, ${user?.username ?? "Admin"} · ${today}`}
+        title={t("dashboardTitle")}
+        description={tExtra("greetingDescription", { greeting, username: user?.username ?? t("defaultAdmin"), today })}
         actions={
           canCreateTournaments ? (
             <Button asChild size="sm">
               <Link href="/admin/tournaments/new">
                 <Plus className="size-3.5" aria-hidden />
-                Create tournament
+                {t("createTournament")}
               </Link>
             </Button>
           ) : null
@@ -237,14 +240,14 @@ export default function AdminDashboard() {
       {(statsFailed || tournamentsFailed) && (
         <Alert variant="destructive">
           <AlertTriangle className="size-4" aria-hidden />
-          <AlertTitle>Dashboard data failed to load</AlertTitle>
+          <AlertTitle>{t("loadFailed")}</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center gap-3">
             <span>
               {statsFailed && tournamentsFailed
-                ? "Counts, the issue list and the tournament cards are unavailable."
+                ? tExtra("failureBoth")
                 : statsFailed
-                  ? "Counts and the issue list are unavailable."
-                  : "The tournament cards are unavailable."}
+                  ? tExtra("failureStats")
+                  : tExtra("failureTournaments")}
             </span>
             <Button
               variant="outline"
@@ -254,7 +257,7 @@ export default function AdminDashboard() {
                 if (tournamentsFailed) void tournamentsQuery.refetch();
               }}
             >
-              Retry
+              {t("retry")}
             </Button>
           </AlertDescription>
         </Alert>

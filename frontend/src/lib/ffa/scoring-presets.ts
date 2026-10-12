@@ -14,6 +14,7 @@ import type { FfaColumn } from "@/types/ffa.types";
 export interface FfaScoringPreset {
   value: string;
   label: string;
+  labelKey: "score_only" | "battle_royale";
   columns: FfaColumn[];
   placementPoints: number[];
   formula: string;
@@ -61,6 +62,7 @@ export const FFA_SCORING_PRESETS: readonly FfaScoringPreset[] = [
   {
     value: "score_only",
     label: "Score only",
+    labelKey: "score_only",
     columns: [{ key: "score", label: "Score", public: true, better: "higher" }],
     placementPoints: [],
     formula: "score"
@@ -68,6 +70,7 @@ export const FFA_SCORING_PRESETS: readonly FfaScoringPreset[] = [
   {
     value: "battle_royale",
     label: "Battle royale",
+    labelKey: "battle_royale",
     columns: [{ key: "kills", label: "Kills", public: true, better: "higher" }],
     placementPoints: [10, 6, 5, 4, 3, 2, 1],
     formula: "place_pts + kills"

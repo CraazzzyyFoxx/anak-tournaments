@@ -23,6 +23,7 @@ import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { RbacRole } from "@/types/rbac.types";
 import { accessQueryKeys } from "@/lib/access/query-keys";
+import { useTranslations } from "next-intl";
 
 /** The `scope` chip's value for roles with `workspace_id IS NULL`. */
 const GLOBAL_SCOPE = "global";
@@ -37,6 +38,8 @@ const GLOBAL_SCOPE = "global";
  * in the editor.
  */
 export default function AccessAdminRolesPage() {
+  const t = useTranslations("adminAccess.rolesUi");
+  const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
   const { hasPermission, isSuperuser, canAccessPermission, canAccessAnyPermission } =
     usePermissions();
@@ -69,10 +72,10 @@ export default function AccessAdminRolesPage() {
     () => [
       {
         key: "scope",
-        label: "Scope",
+        label: tc("scope"),
         kind: "single",
         options: [
-          ...(canReadGlobalRoles ? [{ value: GLOBAL_SCOPE, label: "Global" }] : []),
+          ...(canReadGlobalRoles ? [{ value: GLOBAL_SCOPE, label: tc("global") }] : []),
           ...adminWorkspaces.map((workspace) => ({
             value: String(workspace.id),
             label: workspace.name
@@ -80,7 +83,7 @@ export default function AccessAdminRolesPage() {
         ]
       }
     ],
-    [canReadGlobalRoles, adminWorkspaces]
+    [canReadGlobalRoles, adminWorkspaces, tc]
   );
   const filters = useFilters(defs);
 
@@ -145,7 +148,7 @@ export default function AccessAdminRolesPage() {
       setCreateOpen(false);
       setCreateName("");
       setCreateDescription("");
-      notify.success("Role created", { description: "Now grant it the permissions it needs." });
+      notify.success(t("created"), { description: t("createdDescription") });
       setParams({ role: created.id });
     }
   });
@@ -159,9 +162,9 @@ export default function AccessAdminRolesPage() {
       ]);
       setPending(null);
       if (roleId === roleParam) setParams({ role: null });
-      notify.success("Role deleted");
+      notify.success(t("deleted"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not delete the role" })
+    onError: (error) => notify.apiError(error, { title: t("deleteError") })
   });
 
   // The role list is buttons, not links, because `MasterDetail`'s narrow-mode
@@ -179,9 +182,9 @@ export default function AccessAdminRolesPage() {
     return (
       <PageStateCard
         state="error"
-        title="Could not load the roles"
+        title={t("loadError")}
         onAction={() => void rolesQuery.refetch()}
-        actionLabel="Try again"
+        actionLabel={tc("tryAgain")}
       />
     );
   }
@@ -201,7 +204,7 @@ export default function AccessAdminRolesPage() {
               }}
             >
               <Plus aria-hidden className="size-4" />
-              Create role
+              {tc("createRole")}
             </Button>
           ) : undefined
         }
@@ -238,11 +241,11 @@ export default function AccessAdminRolesPage() {
           emptyDetail={
             <PageStateCard
               state="empty"
-              title={roles.length > 0 ? "No role selected" : "No roles in this scope"}
+              title={roles.length > 0 ? t("noSelected") : t("noScopeRoles")}
               description={
                 roles.length > 0
-                  ? "Pick a role on the left to see and change the permissions it bundles."
-                  : "Create a role to bundle the permissions a group of people needs."
+                  ? t("pickRole")
+                  : t("createForGroup")
               }
             />
           }
@@ -259,14 +262,14 @@ export default function AccessAdminRolesPage() {
             setCreateDescription("");
           }
         }}
-        title="Create role"
-        description={`Name the role, then grant its permissions in the editor. It is created in the ${
+        title={tc("createRole")}
+        description={t("createDescription", { scope: 
           workspaceId === null
-            ? "global"
-            : (workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? "workspace")
-        } scope.`}
-        submitLabel="Create role"
-        submittingLabel="Creating role…"
+            ? tc("global")
+            : (workspaces.find((workspace) => workspace.id === workspaceId)?.name ?? tc("workspace"))
+        })}
+        submitLabel={tc("createRole")}
+        submittingLabel={t("creating")}
         isSubmitting={createMutation.isPending}
         errorMessage={createMutation.error instanceof Error ? createMutation.error.message : undefined}
         isDirty={createName.trim().length > 0 || createDescription.length > 0}
@@ -278,7 +281,7 @@ export default function AccessAdminRolesPage() {
       >
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="create-role-name">Name</Label>
+            <Label htmlFor="create-role-name">{tc("name")}</Label>
             <Input
               id="create-role-name"
               required
@@ -288,11 +291,11 @@ export default function AccessAdminRolesPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="create-role-description">Description</Label>
+            <Label htmlFor="create-role-description">{tc("description")}</Label>
             <Input
               id="create-role-description"
               value={createDescription}
-              placeholder="Describe what this role is allowed to do"
+              placeholder={t("descriptionPlaceholder")}
               onChange={(event) => setCreateDescription(event.target.value)}
             />
           </div>
@@ -308,16 +311,15 @@ export default function AccessAdminRolesPage() {
         intent={
           pending?.kind === "switch"
             ? {
-                title: "Discard unsaved changes?",
-                description:
-                  "This role has unsaved changes. Open another role now and the current edits will be lost.",
-                confirmLabel: "Discard changes",
+                title: t("discardTitle"),
+                description: t("discardDescription"),
+                confirmLabel: t("discardChanges"),
                 tone: "warning"
               }
             : {
-                title: "Delete role",
-                description: `Deleting “${pending?.kind === "delete" ? pending.role.name : "this role"}” removes the definition permanently. Everyone assigned to it immediately loses the access it granted. This cannot be undone.`,
-                confirmLabel: "Delete role",
+                title: tc("deleteRole"),
+                description: t("deleteDescription", { name: pending?.kind === "delete" ? pending.role.name : t("thisRole") }),
+                confirmLabel: tc("deleteRole"),
                 tone: "danger"
               }
         }

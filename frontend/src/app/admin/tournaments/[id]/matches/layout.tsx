@@ -13,13 +13,14 @@ import { MATCHES_SUB_TABS, type MatchesSubTabKey } from "../tab-guards";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { PREGAME_ROOMS_REFETCH_MS } from "@/components/admin/pregame-rooms/model";
+import { useTranslations } from "next-intl";
 
-const SUB_TAB_LABELS: Record<MatchesSubTabKey, string> = {
-  encounters: "Encounters",
-  rooms: "Pre-game rooms",
-  reports: "Reports",
-  parsed: "Parsed maps",
-  logs: "Logs"
+const SUB_TAB_LABEL_KEYS: Record<MatchesSubTabKey, "encounters" | "rooms" | "reports" | "parsed" | "logs"> = {
+  encounters: "encounters",
+  rooms: "rooms",
+  reports: "reports",
+  parsed: "parsed",
+  logs: "logs"
 };
 
 /**
@@ -45,6 +46,7 @@ export default function MatchesLayout({ children }: Readonly<{ children: ReactNo
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { canAccessPermission } = usePermissions();
+  const t = useTranslations("adminTournament.matches");
 
   const basePath = `/admin/tournaments/${tournamentId}/matches`;
   const segment = pathname.startsWith(basePath)
@@ -97,7 +99,7 @@ export default function MatchesLayout({ children }: Readonly<{ children: ReactNo
 
   const items: LinkTabItem[] = MATCHES_SUB_TABS.map((key) => ({
     key,
-    label: SUB_TAB_LABELS[key],
+    label: t(`tabs.${SUB_TAB_LABEL_KEYS[key]}`),
     href: scopeQuery ? `${basePath}/${key}?${scopeQuery}` : `${basePath}/${key}`,
     badge:
       key === "reports"
@@ -111,7 +113,7 @@ export default function MatchesLayout({ children }: Readonly<{ children: ReactNo
 
   return (
     <div className="space-y-4">
-      <LinkTabs items={items} activeKey={segment} level={2} ariaLabel="Matches views" />
+      <LinkTabs items={items} activeKey={segment} level={2} ariaLabel={t("ariaLabel")} />
       {children}
     </div>
   );

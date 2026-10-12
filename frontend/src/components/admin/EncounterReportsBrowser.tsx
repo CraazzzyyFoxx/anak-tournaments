@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ClipboardCheck, Clock3, Gavel, ScrollText } from "lucide-react";
 
@@ -60,6 +61,7 @@ export function EncounterReportsBrowser({
   /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
   tournamentName?: string | null;
 }>) {
+  const t = useTranslations("adminMatches.reports");
   const queryClient = useQueryClient();
   // `id` is the inspector, not a filter: opening a row must not drop its page.
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
@@ -81,9 +83,10 @@ export function EncounterReportsBrowser({
       encounterReportFilterDefs({
         tournamentId,
         tournaments: scope.tournaments,
-        stages: scope.stages
+        stages: scope.stages,
+        t: t as unknown as (key: string) => string
       }),
-    [tournamentId, scope.tournaments, scope.stages]
+    [tournamentId, scope.tournaments, scope.stages, t]
   );
 
   const filters = useFilters(defs);
@@ -105,7 +108,7 @@ export function EncounterReportsBrowser({
   if (workspaceId == null) {
     return (
       <EmptyNote>
-        Captain reports are scoped to a workspace. Pick one to see what has been reported.
+        {t("scopePrompt")}
       </EmptyNote>
     );
   }
@@ -114,29 +117,29 @@ export function EncounterReportsBrowser({
     <div className="space-y-3">
       <StatTileGrid>
         <StatTile
-          label="Confirmed"
+          label={t("confirmed")}
           value={stats?.by_result_status.confirmed ?? 0}
           icon={ClipboardCheck}
           tone="success"
         />
         <StatTile
-          label="Disputed"
+          label={t("disputed")}
           value={stats?.by_result_status.disputed ?? 0}
-          detail="Recorded result state"
+          detail={t("recordedResult")}
           icon={AlertTriangle}
           tone="danger"
         />
         <StatTile
-          label="Reports disagree"
+          label={t("reportsDisagree")}
           value={stats?.mismatch_count ?? 0}
-          detail="Both captains reported, scores differ"
+          detail={t("scoresDiffer")}
           icon={ScrollText}
           tone="warning"
         />
         <StatTile
-          label="Awaiting second"
+          label={t("awaitingSecond")}
           value={stats?.awaiting_second_count ?? 0}
-          detail="One captain has reported"
+          detail={t("oneReported")}
           icon={Clock3}
           tone="info"
         />
@@ -151,7 +154,7 @@ export function EncounterReportsBrowser({
             filterKey={filters.filterKey}
             initialPageSize={PAGE_SIZE}
             columnsStorageKey="encounter-reports-table-columns"
-            searchPlaceholder="Search team or encounter"
+            searchPlaceholder={t("search")}
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
             toolbar={
@@ -170,14 +173,19 @@ export function EncounterReportsBrowser({
                 }
               />
             }
-            emptyMessage="No encounters match this filter."
+            emptyMessage={t("empty")}
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{row.original.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {seatsBySlot(row.original.participations).map((seat) => seat.name).join(" vs ")} ·{" "}
-                  {row.original.reported_count}/{row.original.participations.length} reported
+                  {t("teamsReported", {
+                    teams: seatsBySlot(row.original.participations)
+                      .map((seat) => seat.name)
+                      .join(` ${t("vs")} `),
+                    count: row.original.reported_count,
+                    total: row.original.participations.length
+                  })}
                 </p>
                 <p className="text-xs text-muted-foreground">{row.original.result_status}</p>
               </div>
@@ -226,7 +234,12 @@ export function EncounterReportsBrowser({
           title={openRow ? openRow.name : ""}
           subtitle={
             openRow
-              ? `${showTournament ? `${openRow.tournament_name ?? "Unknown tournament"} · ` : ""}${openRow.stage_name ?? "Unassigned"} · Round ${openRow.round} · BO${openRow.best_of}`
+              ? t(showTournament ? "detailSubtitleWithTournament" : "detailSubtitle", {
+                  tournament: openRow.tournament_name ?? t("unknownTournament"),
+                  stage: openRow.stage_name ?? t("unassigned"),
+                  round: openRow.round ?? "?",
+                  bestOf: openRow.best_of
+                })
               : undefined
           }
           onPrev={
@@ -242,7 +255,7 @@ export function EncounterReportsBrowser({
             openRow && canUpdateEncounter ? (
               <Button type="button" size="sm" variant="secondary" onClick={() => setResolving(openRow)}>
                 <Gavel aria-hidden className="size-3.5" />
-                {openRow.result_status === "confirmed" ? "Review result" : "Resolve result"}
+                {openRow.result_status === "confirmed" ? t("review") : t("resolve")}
               </Button>
             ) : null
           }

@@ -15,6 +15,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import TeamsRosterPage from "./page";
 
 declare global {
@@ -48,10 +49,15 @@ vi.mock("next/dynamic", async () => {
   const tab = await import("../../components/TournamentTeamsTab");
   return { default: () => tab.TournamentTeamsTab };
 });
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  useLocale: () => "en"
-}));
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never }),
+    useLocale: () => "en"
+  };
+});
 
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({

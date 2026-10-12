@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
@@ -26,10 +27,11 @@ import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 
 export default function GeneralSettingsPage() {
+  const t = useTranslations("adminTournament.general");
   return (
     <SettingsSectionPage
       section="general"
-      description="How this tournament is named and described, how teams form, and which division grid seeds them."
+      description={t("description")}
     >
       {({ tournament, tournamentId, workspaceId, canUpdateTournament }) => (
         <GeneralForm
@@ -54,6 +56,7 @@ function GeneralForm({
   workspaceId: number;
   disabled: boolean;
 }>) {
+  const t = useTranslations("adminTournament.general");
   const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
     tournament,
     tournamentId,
@@ -84,7 +87,7 @@ function GeneralForm({
       <Card>
         <CardContent className="flex flex-col gap-4 pt-6">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="settings-name">Tournament name</Label>
+            <Label htmlFor="settings-name">{t("name")}</Label>
             <Input
               id="settings-name"
               value={form.name}
@@ -94,7 +97,7 @@ function GeneralForm({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="settings-slug">Public URL slug</Label>
+            <Label htmlFor="settings-slug">{t("slug")}</Label>
             <Input
               id="settings-slug"
               value={form.slug}
@@ -102,45 +105,44 @@ function GeneralForm({
               onChange={(event) => patch({ slug: event.target.value })}
             />
             <p className="text-xs text-muted-foreground">
-              Used in the public tournament URL. Changing it keeps the previous link working via a
-              redirect.
+              {t("slugHint")}
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="settings-description">Description</Label>
+            <Label htmlFor="settings-description">{t("descriptionLabel")}</Label>
             <Textarea
               id="settings-description"
               rows={4}
               value={form.description}
               disabled={disabled}
-              placeholder="Optional tournament description…"
+              placeholder={t("descriptionPlaceholder")}
               onChange={(event) => patch({ description: event.target.value })}
             />
           </div>
 
           <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="settings-team-formation">Team formation</Label>
+              <Label htmlFor="settings-team-formation">{t("formation")}</Label>
               <Select
                 value={form.team_formation}
                 disabled={disabled}
                 onValueChange={(value) => patch({ team_formation: value })}
               >
                 <SelectTrigger id="settings-team-formation">
-                  <SelectValue placeholder="Select method" />
+                  <SelectValue placeholder={t("formationPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="balancer">Auto-balance (Balancer)</SelectItem>
-                  <SelectItem value="draft">Live draft</SelectItem>
-                  <SelectItem value="registration">Team registration</SelectItem>
+                  <SelectItem value="balancer">{t("balancer")}</SelectItem>
+                  <SelectItem value="draft">{t("liveDraft")}</SelectItem>
+                  <SelectItem value="registration">{t("teamRegistration")}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">How teams are formed for this tournament.</p>
+              <p className="text-xs text-muted-foreground">{t("formationHint")}</p>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="settings-division-grid-version">Division grid version</Label>
+              <Label htmlFor="settings-division-grid-version">{t("divisionGrid")}</Label>
               <Select
                 value={form.division_grid_version_id?.toString() ?? "none"}
                 disabled={disabled}
@@ -150,11 +152,11 @@ function GeneralForm({
               >
                 <SelectTrigger id="settings-division-grid-version">
                   <SelectValue
-                    placeholder={gridsQuery.isLoading ? "Loading division grids…" : "Select version"}
+                    placeholder={gridsQuery.isLoading ? t("loadingDivisionGrids") : t("selectVersion")}
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Workspace default</SelectItem>
+                  <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
                   {versions.map((version) => (
                     <SelectItem key={version.id} value={version.id.toString()}>
                       {version.label} (v{version.version}, {version.status})
@@ -187,6 +189,7 @@ function BrandingCard({
   tournamentId,
   disabled
 }: Readonly<{ tournament: Tournament; tournamentId: number; disabled: boolean }>) {
+  const t = useTranslations("adminTournament.general");
   const queryClient = useQueryClient();
 
   // Same invalidation the settings form uses: the cover also renders on the
@@ -196,14 +199,14 @@ function BrandingCard({
     mutationFn: ({ slot, file }: { slot: TournamentImageSlot; file: File }) =>
       adminService.uploadTournamentImage(tournamentId, slot, file),
     onSuccess: () => invalidateTournamentWorkspace(queryClient, tournamentId),
-    onError: (error) => notify.apiError(error, { title: "Could not upload this image" })
+    onError: (error) => notify.apiError(error, { title: t("uploadError") })
   });
 
   const remove = useMutation({
     mutationFn: (slot: TournamentImageSlot) =>
       adminService.deleteTournamentImage(tournamentId, slot),
     onSuccess: () => invalidateTournamentWorkspace(queryClient, tournamentId),
-    onError: (error) => notify.apiError(error, { title: "Could not remove this image" })
+    onError: (error) => notify.apiError(error, { title: t("removeImageError") })
   });
 
   const busy = upload.isPending || remove.isPending;
@@ -212,16 +215,15 @@ function BrandingCard({
     <Card>
       <CardContent className="flex flex-col gap-4 pt-6">
         <div className="flex flex-col gap-1.5">
-          <Label>Branding</Label>
+          <Label>{t("branding")}</Label>
           <p className="text-xs text-muted-foreground">
-            Shown on the public tournament page. Uploads apply immediately — they are not part of
-            the save bar below.
+            {t("brandingHint")}
           </p>
         </div>
 
         <div className="flex flex-wrap items-start gap-8">
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Cover banner</span>
+            <span className="text-xs font-medium text-muted-foreground">{t("cover")}</span>
             <EditableAvatar
               src={tournament.cover_image_url}
               name={tournament.name}
@@ -237,14 +239,12 @@ function BrandingCard({
               disabled={disabled}
             />
             <p className="text-xs text-muted-foreground">
-              16:9. Shown in full: large on the tournaments list, and as a 284×160 poster in the
-              tournament page&apos;s header, whose background also takes its colours. Another
-              ratio is not cropped — it just fits inside that box with margins.
+              {t("coverHint")}
             </p>
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">Logo</span>
+            <span className="text-xs font-medium text-muted-foreground">{t("logo")}</span>
             <EditableAvatar
               src={tournament.logo_url}
               name={tournament.name}
@@ -258,7 +258,7 @@ function BrandingCard({
               onError={(message) => notify.error(message)}
               disabled={disabled}
             />
-            <p className="text-xs text-muted-foreground">Square image, shown beside the name.</p>
+            <p className="text-xs text-muted-foreground">{t("logoHint")}</p>
           </div>
         </div>
       </CardContent>

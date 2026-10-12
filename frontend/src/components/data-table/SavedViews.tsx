@@ -2,6 +2,7 @@
 
 import { Bookmark, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -66,6 +67,8 @@ export function AdminSavedViews({
   storageKey: string;
   extra?: SavedViewsExtra;
 }) {
+  const t = useTranslations("kitTable.dataTableExtra");
+  const actionsT = useTranslations("kit.actions");
   const [views, setViews] = useState<SavedView[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -104,7 +107,7 @@ export function AdminSavedViews({
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="h-8">
             <Bookmark className="h-4 w-4" aria-hidden />
-            Views
+            {t("views")}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
@@ -117,7 +120,7 @@ export function AdminSavedViews({
               <span className="truncate">{view.name}</span>
               <button
                 type="button"
-                aria-label={`Delete view ${view.name}`}
+                aria-label={t("deleteView", { name: view.name })}
                 className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
                 // Only the click is stopped: swallowing pointerdown too would make
                 // Radix synthesize a select on pointerup.
@@ -131,7 +134,7 @@ export function AdminSavedViews({
             </DropdownMenuItem>
           ))}
           {views.length > 0 ? <DropdownMenuSeparator /> : null}
-          <DropdownMenuItem onSelect={() => setSaving(true)}>Save current view…</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setSaving(true)}>{t("saveViewPrompt")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {/* A Dialog rather than a Popover: the menu hands focus back to its
@@ -143,9 +146,9 @@ export function AdminSavedViews({
       <Dialog open onOpenChange={setSaving}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Save current view</DialogTitle>
+            <DialogTitle>{t("saveView")}</DialogTitle>
           </DialogHeader>
-          <Label htmlFor="admin-saved-view-name">View name</Label>
+          <Label htmlFor="admin-saved-view-name">{t("viewName")}</Label>
           <Input
             id="admin-saved-view-name"
             value={name}
@@ -159,7 +162,7 @@ export function AdminSavedViews({
             }}
           />
           <Button size="sm" disabled={name.trim() === ""} onClick={save}>
-            Save
+              {actionsT("save")}
           </Button>
         </DialogContent>
       </Dialog>

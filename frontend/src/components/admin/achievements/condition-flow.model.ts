@@ -19,58 +19,64 @@ export const STATS = [
   "HealingDealt", "DamageTaken", "DamageBlocked", "EnvironmentalKills",
   "EnvironmentalDeaths", "ScopedCriticalHitKills", "SoloKills", "CriticalHits",
   "HeroTimePlayed", "UltimatesEarned", "Performance", "KD", "KDA",
-];
+] as const;
+export type AchievementStat = (typeof STATS)[number];
+export const STAT_LABEL_KEYS: Record<AchievementStat, `stats.${AchievementStat}`> = Object.fromEntries(
+  STATS.map((stat) => [stat, `stats.${stat}`]),
+) as Record<AchievementStat, `stats.${AchievementStat}`>;
 
 // ─── Palette ─────────────────────────────────────────────────────────────────
 
-export const SIDEBAR_GROUPS: RulePaletteGroup[] = [
+export function createSidebarGroups(t: (key: string) => string): RulePaletteGroup[] {
+  return [
   {
-    label: "Logic",
+    label: t("logic"),
     items: [
-      { type: "logical", logicalOp: "AND", label: "AND", color: LOGICAL_COLORS.AND },
-      { type: "logical", logicalOp: "OR", label: "OR", color: LOGICAL_COLORS.OR },
-      { type: "logical", logicalOp: "NOT", label: "NOT", color: LOGICAL_COLORS.NOT },
+      { type: "logical", logicalOp: "AND", label: t("logicalAnd"), color: LOGICAL_COLORS.AND },
+      { type: "logical", logicalOp: "OR", label: t("logicalOr"), color: LOGICAL_COLORS.OR },
+      { type: "logical", logicalOp: "NOT", label: t("logicalNot"), color: LOGICAL_COLORS.NOT },
     ],
   },
   {
-    label: "Match",
+    label: t("match"),
     items: [
-      { type: "leaf", leafType: "stat_threshold", label: "Stat threshold" },
-      { type: "leaf", leafType: "match_criteria", label: "Match criteria" },
-      { type: "leaf", leafType: "match_win", label: "Match win" },
-      { type: "leaf", leafType: "hero_stat", label: "Hero stat" },
-      { type: "leaf", leafType: "match_mvp_check", label: "MVP check" },
+      { type: "leaf", leafType: "stat_threshold", label: t("statThreshold") },
+      { type: "leaf", leafType: "match_criteria", label: t("matchCriteria") },
+      { type: "leaf", leafType: "match_win", label: t("matchWin") },
+      { type: "leaf", leafType: "hero_stat", label: t("heroStat") },
+      { type: "leaf", leafType: "match_mvp_check", label: t("mvpCheck") },
     ],
   },
   {
-    label: "Tournament",
+    label: t("tournament"),
     items: [
-      { type: "leaf", leafType: "standing_position", label: "Position" },
-      { type: "leaf", leafType: "standing_record", label: "Record" },
-      { type: "leaf", leafType: "div_change", label: "Division change" },
-      { type: "leaf", leafType: "div_level", label: "Division level" },
-      { type: "leaf", leafType: "is_captain", label: "Is captain" },
-      { type: "leaf", leafType: "is_newcomer", label: "Is newcomer" },
-      { type: "leaf", leafType: "tournament_type", label: "Tournament type" },
-      { type: "leaf", leafType: "hero_kd_best", label: "Hero K/D best" },
-      { type: "leaf", leafType: "team_players_match", label: "Team players" },
-      { type: "leaf", leafType: "captain_property", label: "Captain property" },
-      { type: "leaf", leafType: "encounter_score", label: "Encounter score" },
-      { type: "leaf", leafType: "encounter_revenge", label: "Encounter revenge" },
-      { type: "leaf", leafType: "bracket_path", label: "Bracket path" },
-      { type: "leaf", leafType: "tournament_format", label: "Format" },
-      { type: "leaf", leafType: "stage_completed", label: "Stage completed" },
+      { type: "leaf", leafType: "standing_position", label: t("position") },
+      { type: "leaf", leafType: "standing_record", label: t("record") },
+      { type: "leaf", leafType: "div_change", label: t("divisionChange") },
+      { type: "leaf", leafType: "div_level", label: t("divisionLevel") },
+      { type: "leaf", leafType: "is_captain", label: t("isCaptain") },
+      { type: "leaf", leafType: "is_newcomer", label: t("isNewcomer") },
+      { type: "leaf", leafType: "tournament_type", label: t("tournamentType") },
+      { type: "leaf", leafType: "hero_kd_best", label: t("heroKdBest") },
+      { type: "leaf", leafType: "team_players_match", label: t("teamPlayers") },
+      { type: "leaf", leafType: "captain_property", label: t("captainProperty") },
+      { type: "leaf", leafType: "encounter_score", label: t("encounterScore") },
+      { type: "leaf", leafType: "encounter_revenge", label: t("encounterRevenge") },
+      { type: "leaf", leafType: "bracket_path", label: t("bracketPath") },
+      { type: "leaf", leafType: "tournament_format", label: t("format") },
+      { type: "leaf", leafType: "stage_completed", label: t("stageCompleted") },
     ],
   },
   {
-    label: "Global",
+    label: t("global"),
     items: [
-      { type: "leaf", leafType: "global_stat_sum", label: "Global stat sum" },
-      { type: "leaf", leafType: "tournament_count", label: "Tournament count" },
-      { type: "leaf", leafType: "global_winrate", label: "Global winrate" },
-      { type: "leaf", leafType: "distinct_count", label: "Distinct count" },
-      { type: "leaf", leafType: "consecutive", label: "Consecutive" },
-      { type: "leaf", leafType: "stable_streak", label: "Stable streak" },
+      { type: "leaf", leafType: "global_stat_sum", label: t("globalStatSum") },
+      { type: "leaf", leafType: "tournament_count", label: t("tournamentCount") },
+      { type: "leaf", leafType: "global_winrate", label: t("globalWinrate") },
+      { type: "leaf", leafType: "distinct_count", label: t("distinctCount") },
+      { type: "leaf", leafType: "consecutive", label: t("consecutive") },
+      { type: "leaf", leafType: "stable_streak", label: t("stableStreak") },
     ],
   },
-];
+  ];
+}

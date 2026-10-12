@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Check, ChevronsUpDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -31,8 +32,10 @@ export function HeaderCombobox({
   value,
   onChange,
   disabled,
-  placeholder = "Select column…",
+  placeholder,
 }: Readonly<HeaderComboboxProps>) {
+  const t = useTranslations("sheetsFeed.controls");
+  const resolvedPlaceholder = placeholder ?? t("selectColumn");
   const [open, setOpen] = useState(false);
 
   return (
@@ -46,17 +49,17 @@ export function HeaderCombobox({
           disabled={disabled || options.length === 0}
           className="h-9 w-full justify-between font-normal"
         >
-          <span className={cn("truncate", !value && "text-muted-foreground")} title={value ?? placeholder}>
-            {value ?? placeholder}
+          <span className={cn("truncate", !value && "text-muted-foreground")} title={value ?? resolvedPlaceholder}>
+            {value ?? resolvedPlaceholder}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="p-0" style={{ width: "var(--radix-popover-trigger-width)" }}>
         <Command>
-          <CommandInput placeholder="Search columns…" />
+          <CommandInput placeholder={t("searchColumns")} />
           <CommandList>
-            <CommandEmpty>No columns found.</CommandEmpty>
+            <CommandEmpty>{t("noColumns")}</CommandEmpty>
             <CommandGroup>
               {options.map((option) => (
                 <CommandItem
@@ -83,7 +86,7 @@ export function HeaderCombobox({
                       setOpen(false);
                     }}
                   >
-                    Clear selection
+                    {t("clearSelection")}
                   </CommandItem>
                 </CommandGroup>
               </>

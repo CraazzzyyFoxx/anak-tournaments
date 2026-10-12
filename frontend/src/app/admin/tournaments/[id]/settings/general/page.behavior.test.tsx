@@ -162,14 +162,14 @@ function button(label: string) {
  * order: reordering the cards must not silently repoint a case at the other
  * slot, which is the very mix-up the first branding case exists to catch.
  */
-function slot(caption: "Cover banner" | "Logo") {
+function slot(caption: "cover" | "logo") {
   const label = [...container.querySelectorAll("span")].find(
     (node) => node.textContent?.trim() === caption
   );
   const column = label?.parentElement ?? null;
   return {
     file: column?.querySelector<HTMLInputElement>('input[type="file"]') ?? null,
-    remove: column?.querySelector<HTMLButtonElement>('button[aria-label="Remove image"]') ?? null
+    remove: column?.querySelector<HTMLButtonElement>('button[aria-label="remove"]') ?? null
   };
 }
 
@@ -213,12 +213,12 @@ describe("Settings › General", () => {
     canUpdateTournament = false;
     await render();
 
-    expect(container.textContent).toContain("Not permitted");
+    expect(container.textContent).toContain("notPermitted");
     expect(container.querySelector("#settings-name")).toBeNull();
     // The branding editors are behind the same grant: a refused section must
     // not leave an upload surface behind, and no request may go out from it.
     expect(container.querySelectorAll('input[type="file"]').length).toBe(0);
-    expect(container.querySelectorAll('button[aria-label="Remove image"]').length).toBe(0);
+    expect(container.querySelectorAll('button[aria-label="remove"]').length).toBe(0);
     expect(uploadTournamentImage).not.toHaveBeenCalled();
     expect(deleteTournamentImage).not.toHaveBeenCalled();
   });
@@ -273,12 +273,12 @@ describe("Settings › General › Branding", () => {
     const cover = image("cover.png");
     const logo = image("logo.png");
 
-    await pick(slot("Cover banner").file!, cover);
+    await pick(slot("cover").file!, cover);
 
     expect(uploadTournamentImage).toHaveBeenCalledTimes(1);
     expect(uploadTournamentImage).toHaveBeenCalledWith(64, "cover", cover);
 
-    await pick(slot("Logo").file!, logo);
+    await pick(slot("logo").file!, logo);
 
     expect(uploadTournamentImage).toHaveBeenCalledTimes(2);
     expect(uploadTournamentImage).toHaveBeenLastCalledWith(64, "logo", logo);
@@ -296,10 +296,10 @@ describe("Settings › General › Branding", () => {
     } satisfies Tournament);
     await render();
 
-    expect(container.querySelectorAll('button[aria-label="Remove image"]').length).toBe(1);
-    expect(slot("Logo").remove).toBeNull();
+    expect(container.querySelectorAll('button[aria-label="remove"]').length).toBe(1);
+    expect(slot("logo").remove).toBeNull();
 
-    await click(slot("Cover banner").remove!);
+    await click(slot("cover").remove!);
 
     expect(deleteTournamentImage).toHaveBeenCalledTimes(1);
     expect(deleteTournamentImage).toHaveBeenCalledWith(64, "cover");
@@ -309,7 +309,7 @@ describe("Settings › General › Branding", () => {
     await render();
     const invalidate = vi.spyOn(client, "invalidateQueries");
 
-    await pick(slot("Cover banner").file!, image("cover.png"));
+    await pick(slot("cover").file!, image("cover.png"));
 
     const invalidated = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
     const keys = getTournamentWorkspaceQueryKeys(64);

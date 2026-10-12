@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { FileCheck2, FileX2, ListChecks, Pencil, Trash2 } from "lucide-react";
 
@@ -30,6 +31,8 @@ export function useEncounterColumns({
   onEdit: (encounter: Encounter) => void;
   onDelete: (encounter: Encounter) => void;
 }>): ColumnDef<Encounter>[] {
+  const t = useTranslations("adminMatches.encounters");
+  const commonT = useTranslations("adminMatches.common");
   return useMemo<ColumnDef<Encounter>[]>(
     () => [
       {
@@ -44,7 +47,7 @@ export function useEncounterColumns({
       },
       {
         accessorKey: "name",
-        header: "Encounter",
+        header: t("encounter"),
         cell: ({ row }) => (
           <div className="min-w-0 max-w-[18rem]">
             <p className="truncate font-medium text-foreground" title={row.original.name}>
@@ -52,12 +55,12 @@ export function useEncounterColumns({
             </p>
             <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
               {isLobby(row.original) ? (
-                <span>{row.original.teams.length}/{row.original.slot_count} teams</span>
+                <span>{t("teamsCount", { count: row.original.teams.length, total: row.original.slot_count })}</span>
               ) : (
                 <>
-                  <TeamName team={seatTeam(duelSeats(row.original.teams)[0])} fallback="TBD" size="xs" />
-                  <span>vs</span>
-                  <TeamName team={seatTeam(duelSeats(row.original.teams)[1])} fallback="TBD" size="xs" />
+                  <TeamName team={seatTeam(duelSeats(row.original.teams)[0])} fallback={commonT("tbd")} size="xs" />
+                  <span>{t("vs")}</span>
+                  <TeamName team={seatTeam(duelSeats(row.original.teams)[1])} fallback={commonT("tbd")} size="xs" />
                 </>
               )}
             </p>
@@ -66,7 +69,7 @@ export function useEncounterColumns({
       },
       {
         id: "stage",
-        header: "Stage / Round",
+        header: t("stageRound"),
         enableSorting: false,
         cell: ({ row }) => (
           <div className="text-sm">
@@ -78,13 +81,13 @@ export function useEncounterColumns({
       },
       {
         accessorKey: "scheduled_at",
-        header: "Scheduled",
+        header: t("scheduled"),
         size: 132,
         cell: ({ row }) => <ScheduledAtCell value={row.original.scheduled_at} />
       },
       {
         id: "score",
-        header: "Score",
+        header: t("score"),
         size: 92,
         enableSorting: false,
         cell: ({ row }) => (
@@ -95,46 +98,46 @@ export function useEncounterColumns({
       },
       {
         accessorKey: "status",
-        header: "Status",
+        header: t("status"),
         size: 132,
         meta: columnMeta<Encounter>({ align: "center" }),
         cell: ({ row }) => <EncounterStatusCell status={row.original.status} />
       },
       {
         id: "result",
-        header: "Result",
+        header: t("result"),
         size: 132,
         enableSorting: false,
         cell: ({ row }) => (
           <StatusPill tone={row.original.result_status === "disputed" ? "danger" : "neutral"}>
-            {row.original.result_status}
+            {t(`resultStatus.${row.original.result_status}`)}
           </StatusPill>
         )
       },
       {
         accessorKey: "has_logs",
-        header: "Logs",
+        header: t("logs"),
         size: 108,
         meta: columnMeta<Encounter>({ align: "center" }),
         cell: ({ row }) =>
           row.original.has_logs ? (
-            <StatusIcon icon={FileCheck2} label="Available" variant="success" />
+            <StatusIcon icon={FileCheck2} label={t("available")} variant="success" />
           ) : (
-            <StatusIcon icon={FileX2} label="Missing" variant="muted" />
+            <StatusIcon icon={FileX2} label={t("missing")} variant="muted" />
           )
       },
       createKebabColumn<Encounter>(
         (row) => [
           {
-            label: "Open pre-game room",
+            label: t("openRoom"),
             icon: ListChecks,
             // An FFA lobby has no captain room to open.
             hidden: isLobby(row),
             href: pregameRoomHref(row.tournament_id, row.id, returnTo)
           },
-          { label: "Edit encounter", icon: Pencil, hidden: !canUpdate, onSelect: () => onEdit(row) },
+          { label: t("edit"), icon: Pencil, hidden: !canUpdate, onSelect: () => onEdit(row) },
           {
-            label: "Delete encounter",
+            label: t("delete"),
             icon: Trash2,
             destructive: true,
             hidden: !canDelete,
@@ -146,6 +149,6 @@ export function useEncounterColumns({
     ],
     // `onEdit` was missing here once: the kebab's "Edit encounter" called
     // whichever closure the first render happened to build.
-    [canUpdate, canDelete, returnTo, onEdit, onDelete]
+    [canUpdate, canDelete, returnTo, onEdit, onDelete, t, commonT]
   );
 }

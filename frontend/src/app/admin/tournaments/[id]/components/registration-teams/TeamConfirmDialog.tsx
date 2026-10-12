@@ -43,6 +43,7 @@ export function TeamConfirmDialog({
   onConfirm: (decision: RejectDecision | null) => void;
 }>) {
   const t = useTranslations("registrationTeams");
+  const tAdmin = useTranslations("adminTournament.registrationTeams");
   const reasonId = useId();
 
   const [withdrawMembers, setWithdrawMembers] = useState(false);
@@ -83,7 +84,7 @@ export function TeamConfirmDialog({
     };
   } else if (confirm?.kind === "unlock") {
     intent = {
-      title: `${t("admin.unlock")} — ${confirm.team.name}`,
+      title: tAdmin("dialogTitle", { action: t("admin.unlock"), team: confirm.team.name }),
       confirmLabel: t("admin.unlock"),
       tone: "warning",
       description: inlineError

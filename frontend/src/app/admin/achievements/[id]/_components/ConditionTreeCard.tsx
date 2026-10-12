@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { Pencil } from "lucide-react";
 
@@ -44,17 +45,18 @@ export function ConditionTreeCard({
   isSaving: boolean;
   saveError?: string;
 }>) {
+  const t = useTranslations("adminAchievements");
   const [draft, setDraft] = useState<Record<string, unknown>>({});
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>Condition Tree</CardTitle>
+          <CardTitle>{t("detail.conditionTree")}</CardTitle>
           <CardDescription>
             {editing
-              ? "Edit the evaluation logic"
-              : "Visual representation of the evaluation logic"}
+              ? t("detail.editTree")
+              : t("detail.conditionTree")}
           </CardDescription>
         </div>
         {canUpdate && !editing && (
@@ -67,7 +69,7 @@ export function ConditionTreeCard({
             }}
           >
             <Pencil className="mr-2 h-4 w-4" />
-            Edit Tree
+            {t("detail.editTree")}
           </Button>
         )}
       </CardHeader>
@@ -78,10 +80,10 @@ export function ConditionTreeCard({
             <div className="flex items-center justify-end gap-2 pt-2 border-t">
               {saveError && <p className="text-sm text-destructive mr-auto">{saveError}</p>}
               <Button variant="outline" onClick={() => onEditingChange(false)} disabled={isSaving}>
-                Cancel
+                {t("detail.cancelEdit")}
               </Button>
               <Button onClick={() => onSave(draft)} disabled={isSaving}>
-                {isSaving ? "Saving…" : "Save condition tree"}
+                {isSaving ? t("common.saving") : t("detail.saveTree")}
               </Button>
             </div>
           </div>

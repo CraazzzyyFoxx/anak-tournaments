@@ -19,11 +19,12 @@ import { Badge } from "@/components/ui/badge";
  * any catalogue entity shape.
  */
 export function createAliasesColumn<T>(
-  getAliases: (row: T) => string[] | undefined
+  getAliases: (row: T) => string[] | undefined,
+  label: string
 ): ColumnDef<T> {
   return {
     id: "aliases",
-    header: "Aliases",
+    header: label,
     size: 96,
     enableSorting: false,
     cell: ({ row }) => {

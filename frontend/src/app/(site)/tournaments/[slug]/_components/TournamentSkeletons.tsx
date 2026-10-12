@@ -207,7 +207,7 @@ export function TournamentBracketSkeleton() {
   return (
     <SkeletonRegion variant="bracket" message={t("tournamentDetail.loading.pages.bracket")}>
       <TournamentPageSkeletonLayout>
-        
+
         <div className={styles.skeletonSurface}>
           <div
             className={styles.skeletonHeader}
@@ -238,21 +238,30 @@ export function TournamentBracketSkeleton() {
   );
 }
 
+/** Draws the default list view: one collapsed team row per slot, same grid. */
 export function TournamentTeamsSkeleton() {
   const t = useTranslations();
 
   return (
     <SkeletonRegion variant="teams" message={t("tournamentDetail.loading.pages.teams")}>
       <TournamentPageSkeletonLayout>
-        
         <ControlRowSkeleton />
-        <div className={styles.teamsSkeletonGrid}>
-          {Array.from({ length: 6 }, (_, card) => (
-            <div className={styles.skeletonCard} key={card}>
-              <SkeletonBlock style={{ width: "72%", height: "1.15rem" }} />
-              <SkeletonBlock style={{ width: "46%", height: "0.65rem" }} />
-              <SkeletonBlock style={{ width: "100%", height: "1px" }} />
-              <SkeletonBlock style={{ width: "88%", height: "2.5rem" }} />
+        <div className="space-y-2">
+          {Array.from({ length: 8 }, (_, row) => (
+            <div
+              key={row}
+              className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto_1rem] items-center gap-2.5 rounded-xl border border-[color:var(--aqt-overlay-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 pb-3 pt-2.5 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto_auto_1rem] sm:gap-5"
+            >
+              <SkeletonBlock style={{ width: "1.75rem", height: "1.25rem" }} />
+              <span className="grid gap-2">
+                <SkeletonBlock style={{ width: row % 2 ? "38%" : "52%", height: "1rem" }} />
+                <SkeletonBlock style={{ width: "78%", height: "0.8rem" }} />
+              </span>
+              <span className="hidden sm:block">
+                <SkeletonBlock style={{ width: "3rem", height: "2rem" }} />
+              </span>
+              <SkeletonBlock style={{ width: "2.5rem", height: "2rem" }} />
+              <span />
             </div>
           ))}
         </div>
@@ -276,7 +285,7 @@ export function TournamentParticipantsSkeleton() {
       message={t("tournamentDetail.loading.pages.participants")}
     >
       <TournamentPageSkeletonLayout>
-        
+
         <ControlRowSkeleton search />
         <div className={styles.skeletonSurface}>
           <div className={styles.skeletonRow}>
@@ -297,7 +306,7 @@ export function TournamentMatchesSkeleton() {
   return (
     <SkeletonRegion variant="matches" message={t("tournamentDetail.loading.pages.matches")}>
       <TournamentPageSkeletonLayout>
-        
+
         <div className={styles.skeletonControls}>
           <SkeletonBlock style={{ width: "min(18rem, 76vw)", height: "2.25rem" }} />
         </div>
@@ -323,7 +332,7 @@ export function TournamentHeroesSkeleton() {
   return (
     <SkeletonRegion variant="heroes" message={t("tournamentDetail.loading.pages.heroes")}>
       <TournamentPageSkeletonLayout>
-        
+
         <ControlRowSkeleton />
         <div className={styles.skeletonSurface}>
           {Array.from({ length: 8 }, (_, index) => (

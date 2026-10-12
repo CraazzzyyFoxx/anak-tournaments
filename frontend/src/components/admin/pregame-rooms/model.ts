@@ -23,13 +23,13 @@ import type {
 export const PREGAME_ROOMS_REFETCH_MS = 10_000;
 
 export const PHASE_LABEL: Record<PregameRoomPhase, string> = {
-  teams_unknown: "Teams unknown",
-  readiness: "Readiness",
-  map: "Map veto",
-  hero: "Hero bans",
-  report: "Reporting",
-  done: "Done",
-  idle: "Idle"
+  teams_unknown: "phase.teamsUnknown",
+  readiness: "phase.readiness",
+  map: "phase.mapVeto",
+  hero: "phase.heroBans",
+  report: "phase.reporting",
+  done: "phase.done",
+  idle: "phase.idle"
 };
 
 export const PHASE_TONE: Record<PregameRoomPhase, Tone> = {
@@ -43,11 +43,11 @@ export const PHASE_TONE: Record<PregameRoomPhase, Tone> = {
 };
 
 export const ATTENTION_LABEL: Record<PregameRoomAttention, string> = {
-  game_disputed: "Map disputed",
-  result_disputed: "Result disputed",
-  awaiting_choice: "Waiting on a choice",
-  overdue: "Turn overdue",
-  late_not_ready: "Late, not ready"
+  game_disputed: "attention.mapDisputed",
+  result_disputed: "attention.resultDisputed",
+  awaiting_choice: "attention.waitingChoice",
+  overdue: "attention.turnOverdue",
+  late_not_ready: "attention.lateNotReady"
 };
 
 export const ATTENTION_TONE: Record<PregameRoomAttention, Tone> = {
@@ -60,9 +60,9 @@ export const ATTENTION_TONE: Record<PregameRoomAttention, Tone> = {
 
 /** `ban`/`pick`/`protect` as a column reads it. Unknown actions pass through. */
 export function stepActionLabel(action: string | null): string {
-  if (action === "ban") return "Ban";
-  if (action === "pick") return "Pick";
-  if (action === "protect") return "Protect";
+  if (action === "ban") return "action.ban";
+  if (action === "pick") return "action.pick";
+  if (action === "protect") return "action.protect";
   return action ?? "—";
 }
 

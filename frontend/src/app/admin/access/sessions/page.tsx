@@ -17,23 +17,25 @@ import { cn } from "@/lib/utils";
 import { detectBrowser, detectPlatform } from "@/lib/user-agent";
 import { rbacService } from "@/services/rbac.service";
 import type { AdminAuthSession, AdminSessionStatus } from "@/types/rbac.types";
+import { useTranslations } from "next-intl";
 
 const PAGE_SIZE = 20;
 
-const STATUS_META: Record<AdminSessionStatus, { label: string; tone: Tone }> = {
-  active: { label: "Active", tone: "success" },
-  revoked: { label: "Revoked", tone: "warning" },
-  expired: { label: "Expired", tone: "neutral" }
+const STATUS_META: Record<AdminSessionStatus, { tone: Tone }> = {
+  active: { tone: "success" }, revoked: { tone: "warning" }, expired: { tone: "neutral" }
 };
 
-function formatTimestamp(format: DateFormatter, value: string | null | undefined): string {
-  if (!value) return "Unavailable";
+function formatTimestamp(format: DateFormatter, value: string | null | undefined, unavailable: string): string {
+  if (!value) return unavailable;
 
   return format.dateTime(new Date(value), { dateStyle: "medium", timeStyle: "short" });
 }
 
-function formatDeviceLabel(userAgent: string | null | undefined): string {
-  if (!userAgent) return "Unknown device";
+function formatDeviceLabel(
+  userAgent: string | null | undefined,
+  unknownDevice: string
+): string {
+  if (!userAgent) return unknownDevice;
 
   const browser = detectBrowser(userAgent);
   const platform = detectPlatform(userAgent);
@@ -50,6 +52,7 @@ function accountsHref(session: AdminAuthSession): string {
 }
 
 function StatusCell({ status }: Readonly<{ status: AdminSessionStatus }>) {
+  const t = useTranslations("adminAccess.common");
   const meta = STATUS_META[status];
 
   return (
@@ -57,7 +60,7 @@ function StatusCell({ status }: Readonly<{ status: AdminSessionStatus }>) {
       className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_TEXT[meta.tone])}
     >
       <StatusDot />
-      {meta.label}
+      {t(status)}
     </span>
   );
 }
@@ -81,6 +84,8 @@ function Field({ label, children }: Readonly<{ label: string; children: React.Re
  * truncated, because it is how a session is named in a report.
  */
 export default function AccessAdminSessionsPage() {
+  const t = useTranslations("adminAccess.common");
+  const ts = useTranslations("adminAccess.sessionsUi");
   const format = useFormatter();
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
   const openId = searchParams?.get("id") ?? null;
@@ -91,15 +96,15 @@ export default function AccessAdminSessionsPage() {
     () => [
       {
         key: "status",
-        label: "Status",
+        label: t("status"),
         kind: "single",
         options: (Object.keys(STATUS_META) as AdminSessionStatus[]).map((status) => ({
           value: status,
-          label: STATUS_META[status].label
+          label: t(status)
         }))
       }
     ],
-    []
+    [t]
   );
   const filters = useFilters(defs);
   const statusFilter = String(filters.values.status ?? "");
@@ -122,13 +127,13 @@ export default function AccessAdminSessionsPage() {
       },
       {
         id: "user",
-        header: "Account",
+        header: t("account"),
         enableSorting: false,
         accessorFn: (row) => row.email ?? row.username ?? `#${row.user_id}`,
         cell: ({ row }) => (
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">
-              {row.original.email ?? "Email unavailable"}
+              {row.original.email ?? t("emailUnavailable")}
             </p>
             <p className="truncate font-mono text-xs text-muted-foreground">
               {row.original.username
@@ -140,45 +145,47 @@ export default function AccessAdminSessionsPage() {
       },
       {
         id: "device",
-        header: "Device",
+        header: t("device"),
         enableSorting: false,
-        accessorFn: (row) => formatDeviceLabel(row.user_agent),
+        accessorFn: (row) => formatDeviceLabel(row.user_agent, t("unknownDevice")),
         cell: ({ row }) => (
           <span className="flex min-w-0 items-center gap-2">
             <MonitorSmartphone aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            <span className="truncate text-sm">{formatDeviceLabel(row.original.user_agent)}</span>
+            <span className="truncate text-sm">
+              {formatDeviceLabel(row.original.user_agent, t("unknownDevice"))}
+            </span>
           </span>
         )
       },
       {
         accessorKey: "status",
-        header: "Status",
+        header: t("status"),
         cell: ({ row }) => <StatusCell status={row.original.status} />
       },
       {
         accessorKey: "login_at",
-        header: "Signed in",
+        header: t("signedIn"),
         cell: ({ row }) => (
           <span className="text-sm tabular-nums text-muted-foreground">
-            {formatTimestamp(format, row.original.login_at)}
+            {formatTimestamp(format, row.original.login_at, t("unavailable"))}
           </span>
         )
       },
       {
         accessorKey: "last_seen_at",
-        header: "Last seen",
+        header: t("lastSeen"),
         cell: ({ row }) => (
           <span className="text-sm tabular-nums text-muted-foreground">
-            {formatTimestamp(format, row.original.last_seen_at)}
+            {formatTimestamp(format, row.original.last_seen_at, t("unavailable"))}
           </span>
         )
       },
       createKebabColumn<AdminAuthSession>(
-        (row) => [{ label: "Open auth account", icon: UserCog, href: accountsHref(row) }],
+        (row) => [{ label: t("openAuthAccount"), icon: UserCog, href: accountsHref(row) }],
         { rowLabel: (row) => `session of ${row.email ?? row.username ?? `#${row.user_id}`}` }
       )
     ],
-    [format]
+    [format, t]
   );
 
   return (
@@ -188,12 +195,12 @@ export default function AccessAdminSessionsPage() {
           columns={columns}
           initialPageSize={PAGE_SIZE}
           pageSizeOptions={[10, 20, 50, 100]}
-          searchPlaceholder="Search by email, username, IP, or user agent…"
+          searchPlaceholder={ts("search")}
           filterKey={filters.filterKey}
           inspectorId={openId}
           getRowId={(row) => row.session_id}
           toolbar={<FilterBar defs={defs} filters={filters} />}
-          emptyMessage="No session matches. Clear the status chip to see every session."
+          emptyMessage={ts("noMatches")}
           onRowClick={(row) => setParams({ id: row.original.session_id })}
           renderMobileCard={(row) => (
             <div className="min-w-0 flex-1">
@@ -201,13 +208,14 @@ export default function AccessAdminSessionsPage() {
                 {row.original.email ?? `account #${row.original.user_id}`}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {formatDeviceLabel(row.original.user_agent)}
+                {formatDeviceLabel(row.original.user_agent, t("unknownDevice"))}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {STATUS_META[row.original.status].label} ·{" "}
-                <span className="tabular-nums">
-                  {formatTimestamp(format, row.original.last_seen_at)}
-                </span>
+                {ts.rich("statusSummary", {
+                  status: t(row.original.status),
+                  time: formatTimestamp(format, row.original.last_seen_at, t("unavailable")),
+                  num: (chunks) => <span className="tabular-nums">{chunks}</span>
+                })}
               </p>
             </div>
           )}
@@ -240,7 +248,7 @@ export default function AccessAdminSessionsPage() {
         openId={openRow ? openId : null}
         onClose={() => setParams({ id: null })}
         title={openRow ? (openRow.email ?? `Account #${openRow.user_id}`) : ""}
-        subtitle={openRow ? formatDeviceLabel(openRow.user_agent) : undefined}
+        subtitle={openRow ? formatDeviceLabel(openRow.user_agent, t("unknownDevice")) : undefined}
         openHref={openRow ? accountsHref(openRow) : undefined}
         onPrev={
           openIndex > 0
@@ -256,38 +264,38 @@ export default function AccessAdminSessionsPage() {
         {openRow ? (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Status">
+              <Field label={t("status")}>
                 <StatusCell status={openRow.status} />
               </Field>
-              <Field label="Network">
+              <Field label={ts("network")}>
                 <span className="flex items-center gap-1.5">
                   <Globe aria-hidden className="size-3.5 text-muted-foreground" />
-                  <span className="tabular-nums">{openRow.ip_address ?? "Unavailable"}</span>
+                  <span className="tabular-nums">{openRow.ip_address ?? t("unavailable")}</span>
                 </span>
               </Field>
-              <Field label="Signed in">
-                <span className="tabular-nums">{formatTimestamp(format, openRow.login_at)}</span>
+              <Field label={t("signedIn")}>
+                <span className="tabular-nums">{formatTimestamp(format, openRow.login_at, t("unavailable"))}</span>
               </Field>
-              <Field label="Last seen">
+              <Field label={t("lastSeen")}>
                 <span className="tabular-nums">
-                  {formatTimestamp(format, openRow.last_seen_at)}
+                  {formatTimestamp(format, openRow.last_seen_at, t("unavailable"))}
                 </span>
               </Field>
-              <Field label="Expires">
-                <span className="tabular-nums">{formatTimestamp(format, openRow.expires_at)}</span>
+              <Field label={t("expires")}>
+                <span className="tabular-nums">{formatTimestamp(format, openRow.expires_at, t("unavailable"))}</span>
               </Field>
-              <Field label="Revoked">
+              <Field label={t("revoked")}>
                 <span className="tabular-nums">
-                  {openRow.revoked_at ? formatTimestamp(format, openRow.revoked_at) : "Not revoked"}
+                  {openRow.revoked_at ? formatTimestamp(format, openRow.revoked_at, t("unavailable")) : ts("notRevoked")}
                 </span>
               </Field>
             </div>
-            <Field label="Session id">
+            <Field label={ts("sessionId")}>
               <span className="font-mono text-xs tabular-nums">{openRow.session_id}</span>
             </Field>
-            <Field label="User agent">
+            <Field label={ts("userAgent")}>
               <span className="font-mono text-xs">
-                {openRow.user_agent ?? "User agent unavailable"}
+                {openRow.user_agent ?? t("userAgentUnavailable")}
               </span>
             </Field>
           </div>

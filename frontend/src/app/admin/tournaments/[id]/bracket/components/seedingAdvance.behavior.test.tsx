@@ -10,11 +10,13 @@
 // the stage again" — an explicit `null`, not an omitted key, which the API reads
 // as "leave it alone".
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Stage, StageItem } from "@/types/tournament.types";
+import en from "@/i18n/messages/en.json";
 
 import { buildStageUpdatePayload, stageFormFromStage, type StageForm } from "../stageForm";
 import { SeedingSection } from "./StageSettingsSections";
@@ -126,9 +128,11 @@ async function mount(stage: Stage, extras: { stages?: Stage[] } = {}) {
   }
   await act(async () => {
     root.render(
-      <QueryClientProvider client={client}>
-        <Harness />
-      </QueryClientProvider>
+      <NextIntlClientProvider locale="en" messages={en}>
+        <QueryClientProvider client={client}>
+          <Harness />
+        </QueryClientProvider>
+      </NextIntlClientProvider>
     );
   });
   await settle();

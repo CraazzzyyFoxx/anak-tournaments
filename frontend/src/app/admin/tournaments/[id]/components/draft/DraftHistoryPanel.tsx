@@ -34,6 +34,7 @@ const STATUS_TONE: Record<DraftStatus, Tone> = {
 
 export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<DraftHistoryPanelProps>) {
   const t = useTranslations("draftAdmin");
+  const tAdmin = useTranslations("adminTournament.draft");
   const format = useFormatter();
   const queryClient = useQueryClient();
   const [pendingDelete, setPendingDelete] = useState<DraftSession | null>(null);
@@ -129,16 +130,16 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
                 {t(`statuses.${session.status}`)}
               </StatusPill>
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground tabular-nums">
-                {session.created_at
-                  ? format.dateTime(new Date(session.created_at), {
-                      dateStyle: "medium",
-                      timeStyle: "short"
-                    })
-                  : "—"}
-                {" · "}
-                {t(`formats.${session.format}.title`)}
-                {" · "}
-                {t("roundsShort", { rounds: session.rounds })}
+                {tAdmin("sessionMeta", {
+                  date: session.created_at
+                    ? format.dateTime(new Date(session.created_at), {
+                        dateStyle: "medium",
+                        timeStyle: "short"
+                      })
+                    : "—",
+                  format: t(`formats.${session.format}.title`),
+                  rounds: t("roundsShort", { rounds: session.rounds })
+                })}
               </span>
               {/* Wraps rather than staying on one line: this panel now lives in
                   the wizard's 220px rail (F5 ·4), where three buttons abreast

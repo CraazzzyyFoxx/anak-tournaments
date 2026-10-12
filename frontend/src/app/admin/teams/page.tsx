@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Users } from "lucide-react";
@@ -48,8 +49,9 @@ function InspectorField({
 }
 
 function RosterList({ players }: Readonly<{ players: Player[] }>) {
+  const t = useTranslations("adminPeople.teams");
   if (players.length === 0) {
-    return <p className="mt-2 text-xs text-muted-foreground">Nobody here yet.</p>;
+    return <p className="mt-2 text-xs text-muted-foreground">{t("emptyRoster")}</p>;
   }
 
   return (
@@ -70,6 +72,7 @@ function RosterList({ players }: Readonly<{ players: Player[] }>) {
 
 /** What the inspector shows for a roster, before opening the editor page. */
 function RosterSummary({ team }: Readonly<{ team: Team }>) {
+  const t = useTranslations("adminPeople.teams");
   const players = team.players ?? [];
   const starters = players.filter((player) => !player.is_substitution);
   const substitutes = players.filter((player) => player.is_substitution);
@@ -80,23 +83,22 @@ function RosterSummary({ team }: Readonly<{ team: Team }>) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <InspectorField label="Captain">
+        <InspectorField label={t("labels.captain")}>
           {captain?.user?.name ??
             captain?.name ??
             (team.captain_id > 0 ? `User #${team.captain_id}` : "—")}
         </InspectorField>
-        <InspectorField label="Roster">
-          <span className="font-mono tabular-nums">{starters.length}</span> starters
-          {substitutes.length > 0 ? ` + ${substitutes.length} subs` : ""}
+        <InspectorField label={t("labels.roster")}>
+          {t("rosterCount", { starters: starters.length, substitutes: substitutes.length })}
         </InspectorField>
-        <InspectorField label="Average SR">
+        <InspectorField label={t("labels.averageSr")}>
           <span className="font-mono tabular-nums">{team.avg_sr.toFixed(0)}</span>
         </InspectorField>
-        <InspectorField label="Total SR">
+        <InspectorField label={t("labels.totalSr")}>
           <span className="font-mono tabular-nums">{team.total_sr}</span>
         </InspectorField>
-        <InspectorField label="Group">{team.group?.name ?? "—"}</InspectorField>
-        <InspectorField label="Placement">
+        <InspectorField label={t("labels.group")}>{team.group?.name ?? "—"}</InspectorField>
+        <InspectorField label={t("labels.placement")}>
           {team.placement != null ? (
             <span className="font-mono tabular-nums">#{team.placement}</span>
           ) : (
@@ -106,12 +108,12 @@ function RosterSummary({ team }: Readonly<{ team: Team }>) {
       </div>
 
       <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>Starters</p>
+        <p className={EYEBROW_CLASS}>{t("startersTitle")}</p>
         <RosterList players={starters} />
       </section>
 
       <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>Substitutes</p>
+        <p className={EYEBROW_CLASS}>{t("substitutes")}</p>
         <RosterList players={substitutes} />
       </section>
     </div>
@@ -127,6 +129,7 @@ function RosterSummary({ team }: Readonly<{ team: Team }>) {
  * the team editor, which is where a roster is actually changed.
  */
 export default function TeamsPage() {
+  const t = useTranslations("adminPeople.teams");
   const { canAccessPermission, isLoaded } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const queryClient = useQueryClient();
@@ -155,7 +158,7 @@ export default function TeamsPage() {
         // The URL keeps the `tournament` spelling the sibling admin browsers
         // already use, so a link that pins a tournament still opens pinned.
         key: TOURNAMENT_QUERY_PARAM,
-        label: "Tournament",
+        label: t("labels.tournament"),
         kind: "single",
         options: (tournamentsQuery.data?.results ?? []).map((tournament) => ({
           value: String(tournament.id),
@@ -163,7 +166,7 @@ export default function TeamsPage() {
         }))
       }
     ],
-    [tournamentsQuery.data]
+    [t, tournamentsQuery.data]
   );
 
   const filters = useFilters(defs);
@@ -186,37 +189,37 @@ export default function TeamsPage() {
       ]);
       setPendingDelete(null);
       if (removed && String(removed.id) === openId) setParams({ id: null });
-      notify.success("Team deleted successfully");
+      notify.success(t("deleted"));
     }
   });
 
   const createBlockedReason =
     canCreateTeam && selectedTournamentId == null
-      ? "Pick a tournament first — a roster belongs to one tournament."
+      ? t("pickTournament")
       : null;
 
   const columns = useMemo<ColumnDef<Team>[]>(
     () => [
       {
         accessorKey: "name",
-        header: "Name",
+        header: t("name"),
         cell: ({ row }) => <TeamName team={row.original} size="xs" nameClassName="font-medium" />
       },
       {
         accessorKey: "avg_sr",
-        header: "Avg SR",
+        header: t("avgSr"),
         cell: ({ row }) => (
           <div className="font-mono tabular-nums">{row.original.avg_sr.toFixed(0)}</div>
         )
       },
       {
         accessorKey: "total_sr",
-        header: "Total SR",
+        header: t("labels.totalSr"),
         cell: ({ row }) => <div className="font-mono tabular-nums">{row.original.total_sr}</div>
       },
       {
         accessorKey: "players",
-        header: "Players",
+        header: t("players"),
         enableSorting: false,
         cell: ({ row }) => (
           <div className="flex items-center gap-1 tabular-nums">
@@ -227,7 +230,7 @@ export default function TeamsPage() {
       },
       {
         accessorKey: "tournament",
-        header: "Tournament",
+        header: t("labels.tournament"),
         enableSorting: false,
         cell: ({ row }) =>
           row.original.tournament ? (
@@ -238,9 +241,9 @@ export default function TeamsPage() {
       },
       createKebabColumn<Team>(
         (row) => [
-          { label: "Open page", href: `/admin/teams/${row.id}` },
+          { label: t("open"), href: `/admin/teams/${row.id}` },
           {
-            label: "Delete team",
+            label: t("delete"),
             icon: Trash2,
             destructive: true,
             hidden: !canDeleteTeam,
@@ -250,7 +253,7 @@ export default function TeamsPage() {
         { rowLabel: (row) => row.name }
       )
     ],
-    [canDeleteTeam]
+    [canDeleteTeam, t]
   );
 
   if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
@@ -259,9 +262,9 @@ export default function TeamsPage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to read teams in this workspace.
+            {t("noPermission")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -274,8 +277,8 @@ export default function TeamsPage() {
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
-        title="Teams"
-        description="Open a team to edit its name, captain and roster."
+        title={t("title")}
+        description={t("description")}
       />
 
       <div
@@ -285,7 +288,7 @@ export default function TeamsPage() {
           <DataTable<Team>
             columns={columns}
             initialPageSize={PAGE_SIZE}
-            searchPlaceholder="Search teams…"
+            searchPlaceholder={t("search")}
             filterKey={filters.filterKey}
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
@@ -308,7 +311,7 @@ export default function TeamsPage() {
                         aria-describedby={createBlockedReason ? createHintId : undefined}
                       >
                         <Plus className="size-4" aria-hidden />
-                        Create team
+                          {t("create")}
                       </Button>
                     </>
                   ) : null
@@ -317,22 +320,22 @@ export default function TeamsPage() {
             }
             emptyMessage={
               selectedTournamentId
-                ? "No teams in this tournament yet. Use “Create team” to add the first roster."
-                : "No teams yet. Pick a tournament to see or create its rosters."
+                ? t("emptyFiltered")
+                : t("empty")
             }
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{row.original.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {row.original.tournament?.name ?? "No tournament"}
+                  {row.original.tournament?.name ?? t("noTournamentShort")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  <span className="font-mono tabular-nums">
-                    {row.original.players?.length ?? 0}
-                  </span>{" "}
-                  players · avg SR{" "}
-                  <span className="font-mono tabular-nums">{row.original.avg_sr.toFixed(0)}</span>
+                  {t.rich("mobileSummary", {
+                    count: row.original.players?.length ?? 0,
+                    avgSr: row.original.avg_sr.toFixed(0),
+                    num: (chunks) => <span className="font-mono tabular-nums">{chunks}</span>
+                  })}
                 </p>
               </div>
             )}
@@ -394,11 +397,11 @@ export default function TeamsPage() {
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Delete team",
-          description: `Deleting “${pendingDelete?.name ?? "this team"}” removes the roster from its tournament along with every player and match statistic below. This cannot be undone.`,
-          confirmLabel: "Delete team",
+          title: t("delete"),
+          description: t("deleteDescription", { name: pendingDelete?.name ?? t("teamName") }),
+          confirmLabel: t("delete"),
           tone: "danger",
-          cascade: ["All players in this team", "All related match statistics"]
+          cascade: [t("cascadePlayers"), t("cascadeStats")]
         }}
         onConfirm={() => {
           if (pendingDelete) deleteMutation.mutate(pendingDelete.id);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRightLeft } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -50,12 +51,18 @@ type FieldKey = keyof UserMergeFieldPolicy;
 // The backend reports affected-record counts under raw FK-path keys
 // (e.g. "tournament.player.workspace_member_id"). Map them to human-readable
 // labels for the admin preview; unknown keys fall back to the raw key.
-const AFFECTED_RECORD_LABELS: Record<string, string> = {
-  "tournament.player.workspace_member_id": "Tournament roster entries",
-  "balancer.registration.workspace_member_id": "Balancer registrations",
-  "achievements.evaluation_result.workspace_member_id": "Achievement results",
-  "achievements.override.workspace_member_id": "Achievement overrides",
-  "players.user.auth_user_id": "Linked account"
+type AffectedRecordLabel =
+  | "tournamentRosterEntries"
+  | "balancerRegistrations"
+  | "achievementResults"
+  | "achievementOverrides"
+  | "linkedAccount";
+const AFFECTED_RECORD_LABELS: Record<string, AffectedRecordLabel> = {
+  "tournament.player.workspace_member_id": "tournamentRosterEntries",
+  "balancer.registration.workspace_member_id": "balancerRegistrations",
+  "achievements.evaluation_result.workspace_member_id": "achievementResults",
+  "achievements.override.workspace_member_id": "achievementOverrides",
+  "players.user.auth_user_id": "linkedAccount"
 };
 
 function FieldChoiceButtons({
@@ -75,6 +82,7 @@ function FieldChoiceButtons({
   targetName: string;
   onChange: (value: UserMergeFieldChoice) => void;
 }>) {
+  const t = useTranslations("adminPeople.merge");
   const groupId = useId();
   const options = [
     ["source", sourceName, preview.field_options[fieldKey].source],
@@ -104,7 +112,7 @@ function FieldChoiceButtons({
                 <img src={raw} alt="" className="mt-1 h-8 w-8 rounded-full object-cover" />
               ) : (
                 <span className={cn("mt-0.5 block truncate text-sm", selected && "text-foreground")}>
-                  {raw || "None"}
+                  {raw || t("none")}
                 </span>
               )}
             </button>
@@ -126,6 +134,7 @@ function IdentitySelectionSection({
   selectedIds: number[];
   onToggle: (identityId: number, checked: boolean) => void;
 }>) {
+  const t = useTranslations("adminPeople.merge");
   const groupId = useId();
 
   if (items.length === 0) {
@@ -133,7 +142,7 @@ function IdentitySelectionSection({
       <div className="space-y-2">
         <p className="text-sm font-medium">{label}</p>
         <EmptyNote>
-          The source profile has no linked social accounts, so nothing moves across.
+          {t("noSocial")}
         </EmptyNote>
       </div>
     );
@@ -157,7 +166,7 @@ function IdentitySelectionSection({
                 checked={checked}
                 onCheckedChange={(state) => onToggle(item.id, state === true)}
                 className="mt-0.5"
-                aria-label={`Move the ${providerLabel} identity ${item.value} to the target profile`}
+                aria-label={t("move", { provider: providerLabel, value: item.value })}
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -166,7 +175,7 @@ function IdentitySelectionSection({
                   <span className="text-xs text-muted-foreground">{providerLabel}</span>
                   {item.duplicate_on_target ? (
                     <Badge variant="outline" className="text-xs">
-                      Duplicate on target
+                      {t("duplicate")}
                     </Badge>
                   ) : null}
                 </div>
@@ -189,6 +198,7 @@ function UserMergeDialogSession({
   onOpenChange,
   onMerged
 }: Readonly<UserMergeDialogProps>) {
+  const t = useTranslations("adminPeople.merge");
   const queryClient = useQueryClient();
   const [targetUser, setTargetUser] = useState<MinimizedUser | undefined>();
   const [fieldPolicy, setFieldPolicy] = useState<UserMergeFieldPolicy>({
@@ -251,7 +261,7 @@ function UserMergeDialogSession({
       const result = await adminService.previewUserMerge(submittedRequest);
       if (!alive.current || sequence !== previewSequence.current) return;
       if (result.source.id !== submittedRequest.source_user_id || result.target.id !== submittedRequest.target_user_id) {
-        setPreviewError("The preview does not match the selected profiles. Run Preview merge again.");
+        setPreviewError(t("previewMismatchSelected"));
         return;
       }
       const normalizedPolicy = result.auth_merge?.policy;
@@ -271,7 +281,7 @@ function UserMergeDialogSession({
           normalizedPolicy.membership_actions?.find((item) => item.workspace_id === action.workspace_id)?.action !== action.action
         )
       )) {
-        setPreviewError("The preview does not match the submitted account choices. Run Preview merge again.");
+        setPreviewError(t("previewMismatchSubmitted"));
         return;
       }
       setPreview(result);
@@ -290,7 +300,7 @@ function UserMergeDialogSession({
       resetConfirmations();
     } catch (error) {
       if (alive.current && sequence === previewSequence.current) {
-        setPreviewError(error instanceof Error ? error.message : "The preview could not be built.");
+        setPreviewError(error instanceof Error ? error.message : t("previewBuildFailed"));
       }
     } finally {
       if (alive.current && sequence === previewSequence.current) setPreviewPending(false);
@@ -371,38 +381,38 @@ function UserMergeDialogSession({
   const handleExecute = () => {
     if (!open || executePending.current) return;
     if (!targetUser) {
-      setSubmitError("Choose the target profile the source should merge into.");
+      setSubmitError(t("chooseTarget"));
       return;
     }
     if (!preview || !reviewed || previewPending) {
-      setSubmitError("Run “Preview merge” for the current account choices before confirming the merge.");
+      setSubmitError(t("previewBeforeConfirm"));
       return;
     }
     if (mergeBlocked) {
-      setSubmitError("Resolve the blocking issues and run Preview merge again.");
+      setSubmitError(t("resolveBlocked"));
       return;
     }
     if (preview.auth_merge?.data_conflicts.some((conflict) => !authPolicy?.conflict_choices[conflict.key])) {
-      setSubmitError("Choose Incoming or Existing for every resource conflict, then preview again.");
+      setSubmitError(t("chooseConflicts"));
       return;
     }
     if (preview.auth_merge && !confirmAuthChanges) {
-      setSubmitError("Acknowledge the reviewed sign-in and account ownership changes.");
+      setSubmitError(t("ackAuth"));
       document.getElementById(`${confirmId}-auth`)?.focus();
       return;
     }
     if (deletedAccount && !confirmAuthDeletion) {
-      setSubmitError(`Separately acknowledge deletion of ${deletedAccount.username} (#${deletedAccount.id}).`);
+      setSubmitError(t("ackDeletion", { username: deletedAccount.username, id: deletedAccount.id }));
       document.getElementById(`${confirmId}-auth-delete`)?.focus();
       return;
     }
     if (preview.auth_merge?.permission_changes && !confirmPermissionChanges) {
-      setSubmitError("Separately acknowledge the reviewed sign-in access, role, explicit-deny, and resource ownership changes.");
+      setSubmitError(t("ackPermissions"));
       document.getElementById(`${confirmId}-permissions`)?.focus();
       return;
     }
     if (!confirmDelete) {
-      setSubmitError("Tick the confirmation box to acknowledge that the source profile is deleted.");
+      setSubmitError(t("ackSourceDeletion"));
       document.getElementById(confirmId)?.focus();
       return;
     }
@@ -440,9 +450,9 @@ function UserMergeDialogSession({
     }}>
       <DialogContent className="flex max-h-[min(92dvh,52rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="space-y-1 px-6 pb-4 pr-12 pt-6">
-          <DialogTitle>Merge player profiles</DialogTitle>
+          <DialogTitle>{t("title")}</DialogTitle>
           <DialogDescription className="max-w-[62ch] text-sm leading-relaxed">
-            {sourceUser.name} is deleted after its records move onto the target. Sign-in accounts are chosen separately and are not combined.
+            {t("sourceDeletedDescription", { name: sourceUser.name })}
           </DialogDescription>
         </DialogHeader>
 
@@ -450,20 +460,20 @@ function UserMergeDialogSession({
           <fieldset disabled={executeMutation.isPending} className="min-w-0 space-y-6">
           <div className="grid items-end gap-3 sm:grid-cols-[1fr_auto_1fr]">
             <div className="rounded-md border border-destructive/40 px-3 py-2">
-              <p className="text-xs text-muted-foreground">Deleted after merge</p>
+              <p className="text-xs text-muted-foreground">{t("deletedBadge")}</p>
               <p className="truncate font-medium">{sourceUser.name}</p>
               <p className="text-xs tabular-nums text-muted-foreground">#{sourceUser.id}</p>
             </div>
             <ArrowRightLeft className="mx-auto hidden h-4 w-4 text-muted-foreground sm:mb-3 sm:block" aria-hidden />
             <div className="space-y-2">
-              <Label htmlFor="merge-target-user">Target</Label>
+              <Label htmlFor="merge-target-user">{t("target")}</Label>
               <UserSearchCombobox
                 id="merge-target-user"
                 value={targetUser?.id}
                 selectedName={targetUser?.name}
                 onSelect={handleTargetSelect}
-                placeholder="Select target profile"
-                searchPlaceholder="Search target user…"
+                placeholder={t("targetPlaceholder")}
+                searchPlaceholder={t("targetSearch")}
               />
               <Button
                 type="button"
@@ -475,10 +485,10 @@ function UserMergeDialogSession({
                 {previewPending ? (
                   <>
                     <Spinner className="mr-2" />
-                    Loading preview…
+                    {t("loading")}
                   </>
                 ) : (
-                  "Preview merge"
+                  t("preview")
                 )}
               </Button>
               {previewError ? (
@@ -492,9 +502,9 @@ function UserMergeDialogSession({
               {mergeBlocked ? (
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" aria-hidden />
-                  <AlertTitle>Merge blocked</AlertTitle>
+                  <AlertTitle>{t("blocked")}</AlertTitle>
                   <AlertDescription>
-                    {preview.conflicts.summary ?? "Resolve the auth issues below before merging."}
+                    {preview.conflicts.summary ?? t("resolveAuthIssues")}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -511,48 +521,48 @@ function UserMergeDialogSession({
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-4">
                   <FieldChoiceButtons
-                    label="Keep name from"
+                    label={t("keepName")}
                     fieldKey="name"
                     preview={preview}
                     value={fieldPolicy.name}
                     sourceName={sourceUser.name}
-                    targetName={targetUser?.name ?? "Target"}
+                    targetName={targetUser?.name ?? t("target")}
                     onChange={(value) => handleFieldChange("name", value)}
                   />
                   <FieldChoiceButtons
-                    label="Keep avatar from"
+                    label={t("keepAvatar")}
                     fieldKey="avatar_url"
                     preview={preview}
                     value={fieldPolicy.avatar_url}
                     sourceName={sourceUser.name}
-                    targetName={targetUser?.name ?? "Target"}
+                    targetName={targetUser?.name ?? t("target")}
                     onChange={(value) => handleFieldChange("avatar_url", value)}
                   />
                 </div>
 
                 <div className="space-y-3">
                   <p className="text-sm font-medium" id="merge-affected-records">
-                    Records moving to {targetUser?.name ?? "the target"}
+                    {t("moving")} {targetUser?.name ?? t("target")}
                   </p>
                   <div aria-labelledby="merge-affected-records">
                     {affectedEntries.length > 0 ? (
                       <div className="space-y-1.5 text-sm">
                         {affectedEntries.map(([key, count]) => (
                           <div key={key} className="flex items-baseline justify-between gap-3">
-                            <span className="text-muted-foreground">{AFFECTED_RECORD_LABELS[key] ?? key}</span>
+                            <span className="text-muted-foreground">{AFFECTED_RECORD_LABELS[key] ? t(AFFECTED_RECORD_LABELS[key]) : key}</span>
                             <span className="tabular-nums">{count}</span>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-sm text-muted-foreground">Nothing on the source profile needs to move.</p>
+                      <p className="text-sm text-muted-foreground">{t("nothing")}</p>
                     )}
                   </div>
                 </div>
               </div>
 
               <IdentitySelectionSection
-                label="Social identities to move"
+                label={t("socialToMove")}
                 items={preview.source.social_accounts}
                 selectedIds={identitySelection.social_account_ids}
                 onToggle={handleIdentityToggle}
@@ -560,15 +570,15 @@ function UserMergeDialogSession({
 
               <div className="space-y-3 border-t pt-4">
                 <div>
-                  <p className="text-sm font-medium">Before you merge</p>
+                  <p className="text-sm font-medium">{t("before")}</p>
                   <p className="mt-1 max-w-[68ch] text-sm text-muted-foreground">
-                    Sessions and API keys for both accounts are revoked, not moved. A retained account has to sign in again.
+                    {t("sessions")}
                   </p>
                 </div>
                 {!reviewed ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2">
                     <p className={previewError ? "text-sm text-danger" : "text-sm text-muted-foreground"}>
-                      {previewError ?? "Choices changed since the last preview. Preview the merge again to enable these confirmations."}
+                      {previewError ?? t("choicesChanged")}
                     </p>
                     <Button
                       type="button"
@@ -580,10 +590,10 @@ function UserMergeDialogSession({
                       {previewPending ? (
                         <>
                           <Spinner className="mr-2" />
-                          Loading preview…
+                          {t("loading")}
                         </>
                       ) : (
-                        "Preview merge"
+                        t("preview")
                       )}
                     </Button>
                   </div>
@@ -598,8 +608,9 @@ function UserMergeDialogSession({
                       className="mt-0.5"
                     />
                     <Label htmlFor={`${confirmId}-auth`} className="text-sm leading-snug">
-                      I reviewed the OAuth destinations and who owns the surviving player
-                      {authPolicy ? ` (account #${authPolicy.surviving_auth_user_id})` : ""}.
+                      {authPolicy
+                        ? t("reviewOauthWithAccount", { id: authPolicy.surviving_auth_user_id })
+                        : t("reviewOauth")}
                     </Label>
                   </div>
                 ) : null}
@@ -613,7 +624,10 @@ function UserMergeDialogSession({
                       className="mt-0.5"
                     />
                     <Label htmlFor={`${confirmId}-auth-delete`} className="text-sm leading-snug">
-                      I separately confirm permanent deletion of sign-in account {deletedAccount.username} (#{deletedAccount.id}).
+                      {t("confirmDeleteAccount", {
+                        username: deletedAccount.username,
+                        id: deletedAccount.id
+                      })}
                     </Label>
                   </div>
                 ) : null}
@@ -627,7 +641,7 @@ function UserMergeDialogSession({
                       className="mt-0.5"
                     />
                     <Label htmlFor={`${confirmId}-permissions`} className="text-sm leading-snug">
-                      I reviewed the roles and explicit denies this merge changes.
+                      {t("reviewRoles")}
                     </Label>
                   </div>
                 ) : null}
@@ -641,8 +655,13 @@ function UserMergeDialogSession({
                   />
                   <Label htmlFor={confirmId} className="text-sm leading-snug">
                     {targetUser
-                      ? `I understand that ${sourceUser.name} (#${sourceUser.id}) is deleted for good. Rosters, registrations, achievements and selected identities become part of ${targetUser.name} (#${targetUser.id}).`
-                      : `I understand that ${sourceUser.name} (#${sourceUser.id}) is deleted for good once the merge runs.`}
+                      ? t("confirmSourceWithTarget", {
+                          source: sourceUser.name,
+                          sourceId: sourceUser.id,
+                          target: targetUser.name,
+                          targetId: targetUser.id
+                        })
+                      : t("confirmSource", { source: sourceUser.name, sourceId: sourceUser.id })}
                   </Label>
                 </div>
               </div>
@@ -655,7 +674,7 @@ function UserMergeDialogSession({
           {submitError && <p role="alert" className="text-sm text-danger sm:mr-auto">{submitError}</p>}
           {executeMutation.error instanceof Error && (
             <p role="alert" className="text-sm text-danger sm:mr-auto">
-              The merge did not run: {executeMutation.error.message}
+              {t("failedWithMessage", { message: executeMutation.error.message })}
             </p>
           )}
           <Button type="button" variant="outline" disabled={executeMutation.isPending} onClick={() => {
@@ -664,7 +683,7 @@ function UserMergeDialogSession({
             resetConfirmations();
             onOpenChange(false);
           }}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button
             type="button"
@@ -672,7 +691,7 @@ function UserMergeDialogSession({
             onClick={handleExecute}
             disabled={mergeBlocked || previewPending || executeMutation.isPending}
           >
-            {executeMutation.isPending ? "Merging…" : "Merge and delete source"}
+            {executeMutation.isPending ? t("merging") : t("mergeAndDelete")}
           </Button>
         </DialogFooter>
       </DialogContent>

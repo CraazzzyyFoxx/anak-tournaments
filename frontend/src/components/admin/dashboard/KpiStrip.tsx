@@ -1,4 +1,5 @@
 import { ClipboardList, ScrollText, Swords, Trophy, type LucideIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
 import type { Tone } from "@/components/kit/tone";
@@ -32,6 +33,7 @@ interface KpiStripProps {
  * arrives with. Each tile now states where the current cycle stands.
  */
 export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Readonly<KpiStripProps>) {
+  const t = useTranslations("adminShell.dashboard");
   const items: {
     icon: LucideIcon;
     value: string | number;
@@ -44,8 +46,8 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
     items.push({
       icon: Trophy,
       value: tournaments.active,
-      label: "Active tournaments",
-      detail: `${tournaments.total} in total`,
+      label: t("activeTournaments"),
+      detail: t("inTotal", { count: tournaments.total }),
       tone: tournaments.active > 0 ? "accent" : "neutral",
     });
   }
@@ -54,8 +56,8 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
     items.push({
       icon: ClipboardList,
       value: registrationOpen,
-      label: "Registration open",
-      detail: registrationOpen > 0 ? "Accepting entries" : "Nothing open",
+      label: t("registrationOpen"),
+      detail: registrationOpen > 0 ? t("acceptingEntries") : t("nothingOpen"),
       tone: registrationOpen > 0 ? "info" : "neutral",
     });
   }
@@ -65,8 +67,8 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
     items.push({
       icon: Swords,
       value: `${matches.completed} / ${matches.total}`,
-      label: "Matches played",
-      detail: remaining > 0 ? `${remaining} still to play` : "Bracket complete",
+      label: t("matchesPlayed"),
+      detail: remaining > 0 ? t("stillToPlay", { count: remaining }) : t("bracketComplete"),
       tone: matches.total > 0 && remaining === 0 ? "success" : "neutral",
     });
   }
@@ -77,8 +79,8 @@ export function KpiStrip({ tournaments, registrationOpen, matches, logs }: Reado
     items.push({
       icon: ScrollText,
       value: `${percent}%`,
-      label: "Log coverage",
-      detail: missing > 0 ? `${missing} without logs` : "Every match covered",
+      label: t("logCoverage"),
+      detail: missing > 0 ? t("withoutLogs", { count: missing }) : t("everyMatchCovered"),
       tone: missing > 0 ? "warning" : "success",
     });
   }

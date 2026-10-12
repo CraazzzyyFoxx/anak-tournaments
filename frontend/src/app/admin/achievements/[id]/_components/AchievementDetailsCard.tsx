@@ -1,6 +1,7 @@
 "use client";
 
 import { Hash, Trophy, Users } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -13,42 +14,43 @@ export function AchievementDetailsCard({
   rule,
   totalUsers
 }: Readonly<{ rule: AchievementRule; totalUsers: number }>) {
+  const t = useTranslations("adminAchievements");
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Details</CardTitle>
+        <CardTitle>{t("common.achievement")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <div className="grid grid-cols-3 gap-2">
           <div className="flex items-center gap-2">
             <CategoryIcon category={rule.category} />
             <div>
-              <p className="text-muted-foreground text-xs">Category</p>
-              <p className="capitalize">{rule.category}</p>
+              <p className="text-muted-foreground text-xs">{t("common.category")}</p>
+              <p>{t(`common.categoryValues.${rule.category}`)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <ScopeIcon scope={rule.scope} />
             <div>
-              <p className="text-muted-foreground text-xs">Scope</p>
-              <p className="capitalize">{rule.scope}</p>
+              <p className="text-muted-foreground text-xs">{t("common.scope")}</p>
+              <p>{t(`common.scopeValues.${rule.scope}`)}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <GrainIcon grain={rule.grain} />
             <div>
-              <p className="text-muted-foreground text-xs">Grain</p>
-              <p>{rule.grain.replace("_", " + ")}</p>
+              <p className="text-muted-foreground text-xs">{t("common.grain")}</p>
+              <p>{t(`common.grainValues.${rule.grain}`)}</p>
             </div>
           </div>
         </div>
         <Separator />
         <div>
-          <p className="text-muted-foreground text-xs">Description (RU)</p>
+          <p className="text-muted-foreground text-xs">{t("common.descriptionRu")}</p>
           <p>{rule.description_ru}</p>
         </div>
         <div>
-          <p className="text-muted-foreground text-xs">Description (EN)</p>
+          <p className="text-muted-foreground text-xs">{t("common.descriptionEn")}</p>
           <p>{rule.description_en}</p>
         </div>
         <Separator />
@@ -56,21 +58,21 @@ export function AchievementDetailsCard({
           <div className="flex items-center gap-2">
             <Hash className="h-4 w-4 text-muted-foreground" />
             <div>
-              <p className="text-muted-foreground text-xs">Version</p>
+              <p className="text-muted-foreground text-xs">{t("common.version")}</p>
               <p>{rule.rule_version}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Trophy className="h-4 w-4 text-muted-foreground" />
             <div>
-              <p className="text-muted-foreground text-xs">Min Tournament</p>
+              <p className="text-muted-foreground text-xs">{t("common.minTournament")}</p>
               <p>{rule.min_tournament_id ?? "-"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-muted-foreground" />
             <div>
-              <p className="text-muted-foreground text-xs">Users Earned</p>
+              <p className="text-muted-foreground text-xs">{t("common.usersEarned")}</p>
               <p className="font-medium">{totalUsers}</p>
             </div>
           </div>

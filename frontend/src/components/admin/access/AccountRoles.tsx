@@ -13,6 +13,7 @@ import { notify } from "@/lib/notify";
 import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { RbacRole } from "@/types/rbac.types";
+import { useTranslations } from "next-intl";
 
 /**
  * The roles an account holds, as chips, and one picker to add another.
@@ -27,6 +28,8 @@ export function AccountRoles({
   roles,
   canEdit
 }: Readonly<{ userId: number; roles: RbacRole[]; canEdit: boolean }>) {
+  const t = useTranslations("adminAccess.accountRolesUi");
+  const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [open, setOpen] = useState(false);
@@ -49,7 +52,7 @@ export function AccountRoles({
     mutationFn: (roleId: number) => rbacService.assignRole({ user_id: userId, role_id: roleId }),
     onSuccess: async () => {
       await invalidateAccount(queryClient);
-      notify.success("Role assigned");
+      notify.success(t("assigned"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -58,7 +61,7 @@ export function AccountRoles({
     mutationFn: (roleId: number) => rbacService.removeRole({ user_id: userId, role_id: roleId }),
     onSuccess: async () => {
       await invalidateAccount(queryClient);
-      notify.success("Role removed");
+      notify.success(t("removed"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -68,7 +71,7 @@ export function AccountRoles({
   for (const role of catalogQuery.data ?? []) {
     if (assigned.has(role.id)) continue;
     const key = role.workspace_id == null ? "global" : String(role.workspace_id);
-    const group = groups.get(key) ?? { key, label: scopeName(role) ?? "Global", roles: [] };
+    const group = groups.get(key) ?? { key, label: scopeName(role) ?? tc("global"), roles: [] };
     group.roles.push(role);
     groups.set(key, group);
   }
@@ -79,7 +82,7 @@ export function AccountRoles({
 
   return (
     <AccountSection
-      title="Roles"
+      title={tc("roles")}
       summary={roles.length}
       action={
         canEdit ? (
@@ -89,18 +92,18 @@ export function AccountRoles({
             label={
               <span className="inline-flex items-center gap-1">
                 <Plus aria-hidden className="size-3.5" />
-                Add role
+                {tc("addRole")}
               </span>
             }
-            labelTitle="Add role"
-            triggerAriaLabel="Add a role to this account"
+            labelTitle={tc("addRole")}
+            triggerAriaLabel={t("addLabel")}
             triggerClassName="h-7 w-auto gap-1.5 px-2 text-xs"
             disabled={assign.isPending}
             searchValue={search}
             onSearchValueChange={setSearch}
-            searchPlaceholder="Search roles…"
+            searchPlaceholder={tc("searchRoles")}
             emptyMessage={
-              catalogQuery.isLoading ? "Loading roles…" : "No other role to assign."
+              catalogQuery.isLoading ? t("loading") : t("noOtherRole")
             }
           >
             {orderedGroups.map((group) => (
@@ -133,10 +136,10 @@ export function AccountRoles({
     >
       {roles.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No roles. This account only has what every signed-in user gets.
+          {tc("roleNone")}
         </p>
       ) : (
-        <ul className="flex flex-wrap gap-1.5" aria-label="Assigned roles">
+        <ul className="flex flex-wrap gap-1.5" aria-label={t("assignedLabel")}>
           {roles.map((role) => {
             const scope = scopeName(role);
             return (
@@ -151,7 +154,7 @@ export function AccountRoles({
                   {canEdit ? (
                     <button
                       type="button"
-                      aria-label={`Remove role ${role.name} from this account`}
+                      aria-label={t("removeLabel", { role: role.name })}
                       disabled={remove.isPending}
                       onClick={() => remove.mutate(role.id)}
                       className="-mr-1.5 inline-flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"

@@ -1,4 +1,5 @@
 import { CircleMinus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +18,8 @@ export function AdminTableEmptyState({
   hasFilters: boolean;
   onClear: () => void;
 }>) {
+  const t = useTranslations("kitTable.table");
+  const dataT = useTranslations("kitTable.dataTableExtra");
   const narrowed = hasSearch && hasFilters ? "search and filters" : hasSearch ? "search" : "filters";
   return (
     <div className="flex flex-col items-center justify-center gap-2">
@@ -24,9 +27,9 @@ export function AdminTableEmptyState({
       <p className="text-sm text-muted-foreground">{message}</p>
       {hasSearch || hasFilters ? (
         <>
-          <p className="text-xs text-muted-foreground">Nothing matches the current {narrowed}.</p>
+          <p className="text-xs text-muted-foreground">{t("nothingMatches", { noun: narrowed })}.</p>
           <Button type="button" variant="outline" size="sm" onClick={onClear}>
-            {hasSearch && hasFilters ? "Clear search and filters" : hasSearch ? "Clear search" : "Clear filters"}
+            {hasSearch && hasFilters ? dataT("clearSearchAndFilters") : hasSearch ? dataT("clearSearch") : dataT("clearFilters")}
           </Button>
         </>
       ) : null}

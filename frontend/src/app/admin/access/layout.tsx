@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -25,27 +26,27 @@ import { type AppPermission, usePermissions } from "@/hooks/usePermissions";
  */
 const ACCESS_TABS: {
   key: string;
-  label: string;
+  labelKey: "accounts" | "roles" | "permissions" | "apiKeys" | "oauth" | "sessions";
   permissions: AppPermission[];
   workspaceAdminVisible?: boolean;
   superuserOnly?: boolean;
 }[] = [
-  { key: "accounts", label: "Accounts", permissions: accessUsersPermissions },
+  { key: "accounts", labelKey: "accounts", permissions: accessUsersPermissions },
   {
     key: "roles",
-    label: "Roles",
+    labelKey: "roles",
     permissions: accessRolesPermissions,
     workspaceAdminVisible: true
   },
-  { key: "permissions", label: "Permissions", permissions: accessPermissionsPermissions },
+  { key: "permissions", labelKey: "permissions", permissions: accessPermissionsPermissions },
   {
     key: "api-keys",
-    label: "API keys",
+    labelKey: "apiKeys",
     permissions: accessApiKeysPermissions,
     workspaceAdminVisible: true
   },
-  { key: "oauth", label: "OAuth", permissions: accessUsersPermissions },
-  { key: "sessions", label: "Sessions", permissions: [], superuserOnly: true }
+  { key: "oauth", labelKey: "oauth", permissions: accessUsersPermissions },
+  { key: "sessions", labelKey: "sessions", permissions: [], superuserOnly: true }
 ];
 
 /**
@@ -57,6 +58,8 @@ const ACCESS_TABS: {
  * palette or a link.
  */
 export default function AccessAdminLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const t = useTranslations("adminAccess.access");
+  const tc = useTranslations("adminAccess.common");
   const pathname = usePathname();
   const { isSuperuser, hasAnyPermission, hasAnyWorkspacePermission, canManageAnyWorkspace } =
     usePermissions();
@@ -71,7 +74,7 @@ export default function AccessAdminLayout({ children }: Readonly<{ children: Rea
 
     return {
       key: tab.key,
-      label: tab.label,
+      label: tab.labelKey === "oauth" ? "OAuth" : tc(tab.labelKey),
       href: `/admin/access/${tab.key}`,
       hidden: !visible
     };
@@ -83,15 +86,15 @@ export default function AccessAdminLayout({ children }: Readonly<{ children: Rea
   return (
     <div className="space-y-4">
       <AdminPageHeader
-        title="Access"
-        description="Staff accounts, roles, permissions, API keys, OAuth connections and sessions."
+        title={t("title")}
+        description={t("description")}
       />
-      <LinkTabs items={items} activeKey={activeKey} level={1} ariaLabel="Access sections" />
+      <LinkTabs items={items} activeKey={activeKey} level={1} ariaLabel={t("sections")} />
       {items.every((item) => item.hidden) ? (
         <PageStateCard
           state="empty"
-          title="No Access section is open to you"
-          description="Reading accounts, roles or permissions needs a global RBAC grant; API keys need workspace admin."
+          title={t("noSection")}
+          description={t("noSectionDescription")}
         />
       ) : (
         children

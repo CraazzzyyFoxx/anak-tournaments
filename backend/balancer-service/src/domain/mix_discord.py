@@ -279,8 +279,8 @@ def lineup_picture(
     )
     averages = [team.average for team in teams if team.average is not None]
     pills = (
-        *([f"Разница средних {abs(averages[0] - averages[1])}"] if len(averages) == 2 else []),
-        *([f"+{points_per_win} за победу"] if points_per_win else []),
+        *([f"Разрыв по рангу {abs(averages[0] - averages[1])}"] if len(averages) == 2 else []),
+        *([f"Победа +{points_per_win}"] if points_per_win else []),
     )
     map_name, gamemode = next_map if next_map is not None else (None, None)
     return LineupPicture(
@@ -328,7 +328,7 @@ def lineup_card(
     map_line = _map_line(next_map)
     where = f"{emoji('map')} " + (_escape(map_line) if map_line else "Карта ещё не выбрана")
     if points_per_win:
-        where += f" · {emoji('points')} +{points_per_win} за победу"
+        where += f" · {emoji('points')} Победа: +{points_per_win}"
 
     return DiscordCard(
         accent_color=TEAL,
@@ -342,6 +342,6 @@ def lineup_card(
         if voice_target is None
         else [
             DiscordActionButton(label="Развести по войсам", action="voice.move", target=voice_target, style="primary"),
-            DiscordActionButton(label="Вернуть в общий", action="voice.return", target=voice_target),
+            DiscordActionButton(label="Вернуть в общий войс", action="voice.return", target=voice_target),
         ],
     )

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { BarChart3, CheckCircle2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export function TournamentHubActions({
   canUpdateTournament: boolean;
   canToggleFinished: boolean;
 }>) {
+  const t = useTranslations("adminTournament.hubActions");
   const queryClient = useQueryClient();
 
   const toggleFinishedMutation = useMutation({
@@ -41,7 +43,7 @@ export function TournamentHubActions({
     onSuccess: () => {
       invalidateTournamentWorkspace(queryClient, tournamentId);
       notify.success(
-        tournament.is_finished ? "Tournament reopened" : "Tournament marked as finished"
+        tournament.is_finished ? t("reopened") : t("finished")
       );
     }
   });
@@ -52,7 +54,7 @@ export function TournamentHubActions({
         <Button asChild variant="outline" size="sm">
           <Link href={`/tournaments/analytics?tournamentId=${tournament.id}`}>
             <BarChart3 className="size-4" aria-hidden />
-            Open analytics
+            {t("openAnalytics")}
           </Link>
         </Button>
       ) : null}
@@ -68,7 +70,7 @@ export function TournamentHubActions({
           ) : (
             <CheckCircle2 className="size-4" aria-hidden />
           )}
-          {tournament.is_finished ? "Reopen" : "Mark finished"}
+          {tournament.is_finished ? t("reopen") : t("markFinished")}
         </Button>
       ) : null}
     </>

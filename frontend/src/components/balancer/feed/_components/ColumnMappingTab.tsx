@@ -2,6 +2,7 @@
 
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -48,6 +49,7 @@ export function ColumnMappingTab({
   onParserChange,
   onIsListChange,
 }: Readonly<ColumnMappingTabProps>) {
+  const t = useTranslations("sheetsFeed.columnMapping");
   const grouped = targetsByGroup(catalog);
   const hasHeaders = headerKeys.length > 0;
 
@@ -68,11 +70,11 @@ export function ColumnMappingTab({
     <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="space-y-1.5">
-          <CardTitle>Column mapping</CardTitle>
+          <CardTitle>{t("title")}</CardTitle>
           <CardDescription>
             {hasHeaders
-              ? `${headerKeys.length} header${headerKeys.length === 1 ? "" : "s"} detected. Map each field to a sheet column, a constant, or disable it.`
-              : "Detect headers by running Auto-suggest or a sync."}
+              ? t("headersDetected", { count: headerKeys.length })
+              : t("detectHeaders")}
           </CardDescription>
         </div>
         <Button variant="outline" size="sm" onClick={onSuggest} disabled={isSuggesting}>
@@ -81,15 +83,14 @@ export function ColumnMappingTab({
           ) : (
             <Sparkles className="mr-2 size-4" />
           )}
-          Auto-suggest
+          {t("autoSuggest")}
         </Button>
       </CardHeader>
 
       <CardContent className="space-y-4">
         {!hasHeaders ? (
-          <EmptyNote title="No sheet headers detected yet.">
-            Set the sheet URL, then use Auto-suggest (above) or run a sync to read the header row.
-            Once headers are available you can map each field visually.
+          <EmptyNote title={t("noHeadersTitle")}>
+            {t("noHeadersDescription")}
           </EmptyNote>
         ) : (
           <>
@@ -103,14 +104,16 @@ export function ColumnMappingTab({
                     onClick={() => setActiveGroup(group)}
                     className="relative"
                   >
-                    {GROUP_LABELS[group]}
+                    {t(`groups.${GROUP_LABELS[group]}` as Parameters<typeof t>[0])}
                     {hasErrors(group) && (
                       <StatusDot tone="danger" className="ml-1.5" />
                     )}
                   </Button>
                 ))}
               </ButtonGroup>
-              <p className="text-xs text-muted-foreground">{GROUP_DESCRIPTIONS[safeActive]}</p>
+              <p className="text-xs text-muted-foreground">
+                {t(`groupDescriptions.${GROUP_DESCRIPTIONS[safeActive]}` as Parameters<typeof t>[0])}
+              </p>
             </div>
 
             <MappingGroupSection

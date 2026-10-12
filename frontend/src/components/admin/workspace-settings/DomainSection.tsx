@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle, Copy } from "lucide-react";
 
@@ -45,6 +46,7 @@ const domainStateOf = (ws: Workspace): DomainState => ({
  * says which of the three states the domain is in and what closes it.
  */
 export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.domain");
   const settings = useWorkspaceSettingsForm(workspaceId, "domain");
   const { patch, invalidate, workspace } = settings;
 
@@ -77,9 +79,9 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
     mutationFn: (value: string) => workspaceService.setCustomDomain(workspaceId as number, value),
     onSuccess: (updated) => {
       applyDomain(updated);
-      notify.success("Custom domain saved — add the DNS records below, then verify");
+      notify.success(t("saved"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not save the custom domain" })
+    onError: (error) => notify.apiError(error, { title: t("saveError") })
   });
 
   const verifyMutation = useMutation({
@@ -87,14 +89,14 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
     onSuccess: (updated) => {
       applyDomain(updated);
       if (updated.custom_domain_verified_at) {
-        notify.success("Custom domain verified");
+        notify.success(t("verified"));
       } else {
-        notify.warning("Verification record not found yet — DNS changes take time to propagate");
+        notify.warning(t("pendingWarning"));
       }
     },
     onError: (error) =>
       notify.apiError(error, {
-        title: "Verification record not found yet — DNS changes take time to propagate"
+        title: t("pendingWarning")
       })
   });
 
@@ -103,9 +105,9 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
     onSuccess: (updated) => {
       applyDomain(updated);
       setRemoveOpen(false);
-      notify.success("Custom domain removed");
+      notify.success(t("removed"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not remove the custom domain" })
+    onError: (error) => notify.apiError(error, { title: t("removeError") })
   });
 
   // While a domain is pending we re-check DNS quietly on an interval (no toast
@@ -130,15 +132,15 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
     // this cannot move into render.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     applyDomain(poll.data);
-    notify.success("Custom domain verified");
+    notify.success(t("verified"));
   }, [polledVerifiedAt]);
 
   const copy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      notify.success("Copied to clipboard");
+      notify.success(t("copied"));
     } catch {
-      notify.error("Could not copy to clipboard");
+      notify.error(t("copyError"));
     }
   };
 
@@ -153,7 +155,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
           <Card>
             <CardContent className="flex flex-col gap-4 pt-6">
               <div>
-                <Label htmlFor="workspace-subdomain">Subdomain</Label>
+                <Label htmlFor="workspace-subdomain">{t("subdomain")}</Label>
                 <Input
                   id="workspace-subdomain"
                   className="mt-1.5"
@@ -168,27 +170,27 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                 <p className="mt-1 text-xs text-muted-foreground">
                   {values.subdomain
                     ? `${values.subdomain}.${PLATFORM_ZONE}`
-                    : "Leave blank to use the platform URL only"}
+                    : t("platformUrlOnly")}
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="workspace-seo-title">SEO title</Label>
+                <Label htmlFor="workspace-seo-title">{t("seoTitle")}</Label>
                 <Input
                   id="workspace-seo-title"
                   className="mt-1.5"
                   value={values.seo_title ?? ""}
-                  placeholder="Displayed in browser tabs and search results"
+                  placeholder={t("seoTitlePlaceholder")}
                   onChange={(event) => patch({ seo_title: event.target.value })}
                 />
               </div>
               <div>
-                <Label htmlFor="workspace-seo-description">SEO description</Label>
+                <Label htmlFor="workspace-seo-description">{t("seoDescription")}</Label>
                 <Textarea
                   id="workspace-seo-description"
                   className="mt-1.5"
                   value={values.seo_description ?? ""}
-                  placeholder="Optional meta description shown in search results"
+                  placeholder={t("seoDescriptionPlaceholder")}
                   onChange={(event) => patch({ seo_description: event.target.value })}
                 />
               </div>
@@ -198,31 +200,31 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
           <Card>
             <CardContent className="flex flex-col gap-3 pt-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className={EYEBROW_CLASS}>Custom domain</h2>
+                <h2 className={EYEBROW_CLASS}>{t("customDomain")}</h2>
                 {domain.verifiedAt ? (
                   <StatusPill tone="success">
-                    <CheckCircle aria-hidden className="size-3" /> Verified · live
+                    <CheckCircle aria-hidden className="size-3" /> {t("verifiedLive")}
                   </StatusPill>
                 ) : domain.domain ? (
                   <StatusPill tone="warning">
                     <Spinner className="size-3" />{" "}
-                    Pending — checking DNS…
+                    {t("pending")}
                   </StatusPill>
                 ) : null}
               </div>
 
               <PhaseStrip
                 phases={[
-                  { key: "add", label: "Add domain", state: phaseState(0) },
-                  { key: "dns", label: "Add DNS records", state: phaseState(1) },
-                  { key: "verified", label: "Verified", state: phaseState(2) }
+                  { key: "add", label: t("addDomain"), state: phaseState(0) },
+                  { key: "dns", label: t("addDns"), state: phaseState(1) },
+                  { key: "verified", label: t("verifyLabel"), state: phaseState(2) }
                 ]}
               />
 
               <div className="flex flex-wrap gap-2">
                 <Input
                   id="workspace-custom-domain"
-                  aria-label="Custom domain"
+                  aria-label={t("domainLabel")}
                   className="min-w-[16rem] flex-1"
                   value={draftDomain}
                   placeholder="tourney.example.com"
@@ -237,7 +239,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     disabled={clearMutation.isPending}
                     onClick={() => setRemoveOpen(true)}
                   >
-                    Remove domain
+                    {t("removeDomain")}
                   </Button>
                 ) : (
                   <Button
@@ -246,34 +248,35 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     disabled={setDomainMutation.isPending}
                     onClick={() => {
                       if (!draftDomain) {
-                        notify.error("Enter a domain such as tourney.example.com first.");
+                        notify.error(t("enterDomain"));
                         return;
                       }
                       setDomainMutation.mutate(draftDomain);
                     }}
                   >
-                    {setDomainMutation.isPending ? "Saving…" : "Save domain"}
+                    {setDomainMutation.isPending ? t("saving") : t("saveDomain")}
                   </Button>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Your workspace goes live on this domain <strong>only after verification</strong>.
-                Leave blank to use the platform URL / subdomain only.
+                {t.rich("liveHelp", { strong: (chunks) => <strong>{chunks}</strong> })}
               </p>
 
               {pending ? (
                 <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3">
                   <div>
                     <h3 className="text-xs font-semibold text-foreground">
-                      How to connect your domain
+                      {t("howToConnect")}
                     </h3>
                     <ol className="mt-1 list-decimal space-y-1 pl-4 text-xs text-muted-foreground">
-                      <li>Open your DNS provider (Cloudflare, Namecheap, GoDaddy…).</li>
-                      <li>Add the two records below exactly as shown.</li>
+                      <li>{t("openProvider")}</li>
+                      <li>{t("addRecords")}</li>
                       <li>
-                        DNS can take a few minutes to propagate — we re-check automatically every{" "}
-                        <span className="tabular-nums">{VERIFY_POLL_MS / 1000}s</span>, or press{" "}
-                        <strong>Verify now</strong>.
+                        {t.rich("propagationHelp", {
+                          seconds: VERIFY_POLL_MS / 1000,
+                          num: (chunks) => <span className="tabular-nums">{chunks}</span>,
+                          strong: (chunks) => <strong>{chunks}</strong>,
+                        })}
                       </li>
                     </ol>
                   </div>
@@ -281,8 +284,8 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 font-mono">
                       <span className="text-muted-foreground">TXT</span>
                       <span className="break-all">{`_owt-verify.${domain.domain}`}</span>
-                      <span className="break-all text-muted-foreground">(ownership)</span>
-                      <span className="text-muted-foreground">value</span>
+                      <span className="break-all text-muted-foreground">{t("ownership")}</span>
+                      <span className="text-muted-foreground">{t("value")}</span>
                       <span className="break-all">{domain.token}</span>
                       {domain.token ? (
                         <Button
@@ -290,7 +293,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                           variant="ghost"
                           size="icon"
                           className="size-5"
-                          aria-label="Copy TXT value"
+                          aria-label={t("copyTxt")}
                           onClick={() => domain.token && copy(domain.token)}
                         >
                           <Copy aria-hidden className="size-3" />
@@ -303,7 +306,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                       <span className="text-muted-foreground">CNAME</span>
                       <span className="break-all">{domain.domain}</span>
                       <span className="break-all text-muted-foreground">
-                        points to {PLATFORM_ZONE}
+                        {t("pointsToZone", { zone: PLATFORM_ZONE })}
                       </span>
                     </div>
                   </div>
@@ -314,7 +317,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     disabled={verifyMutation.isPending}
                     onClick={() => verifyMutation.mutate()}
                   >
-                    {verifyMutation.isPending ? "Checking…" : "Verify now"}
+                    {verifyMutation.isPending ? t("saving") : t("verifyNow")}
                   </Button>
                 </div>
               ) : null}
@@ -334,9 +337,9 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
             onOpenChange={setRemoveOpen}
             pending={clearMutation.isPending}
             intent={{
-              title: "Remove custom domain",
-              description: `${domain.domain ?? "This domain"} stops serving ${ws.name} the moment you confirm — visitors land on the platform URL instead. You can add it back later, but the DNS records have to be verified again.`,
-              confirmLabel: "Remove domain",
+              title: t("removeTitle"),
+                description: t("removeDescription", { domain: domain.domain ?? t("thisDomain"), workspace: ws.name }),
+              confirmLabel: t("removeDomain"),
               tone: "danger"
             }}
             onConfirm={() => clearMutation.mutate()}

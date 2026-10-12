@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { CalendarIcon } from "lucide-react";
-import { type DateTimeFormatOptions } from "next-intl";
+import { type DateTimeFormatOptions, useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { type DateRange } from "react-day-picker";
 
@@ -67,9 +67,10 @@ export function DateRangePicker({
   startDate,
   endDate,
   onChange,
-  placeholder = "Pick a date range",
+  placeholder,
   id,
 }: Readonly<DateRangePickerProps>) {
+  const t = useTranslations("kit.datePicker");
   const format = useFormatter();
   const [open, setOpen] = React.useState(false);
 
@@ -98,7 +99,7 @@ export function DateRangePicker({
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {displayText || <span>{placeholder}</span>}
+          {displayText || <span>{placeholder ?? t("pickRange")}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">

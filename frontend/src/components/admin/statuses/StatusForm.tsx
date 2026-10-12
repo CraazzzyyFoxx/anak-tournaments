@@ -2,6 +2,7 @@
 
 import { createElement, useId, useMemo, useState } from "react";
 import { Check, ChevronsUpDown, Pipette } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
@@ -89,6 +90,7 @@ function StatusColorPicker({
   value: string;
   onChange: (next: string) => void;
 }>) {
+  const t = useTranslations("adminSettings.statuses.form");
   const [open, setOpen] = useState(false);
   const triggerId = useId();
   const hexId = useId();
@@ -98,7 +100,7 @@ function StatusColorPicker({
 
   return (
     <div className="space-y-2">
-      <Label htmlFor={triggerId}>Icon color</Label>
+      <Label htmlFor={triggerId}>{t("iconColor")}</Label>
       <Popover open={open} onOpenChange={setOpen} modal={false}>
         <PopoverTrigger asChild>
           <Button
@@ -115,7 +117,7 @@ function StatusColorPicker({
                 aria-hidden
               />
               <span className="truncate font-mono text-xs uppercase">
-                {normalizeHexColor(value) || "Default"}
+                {normalizeHexColor(value) || t("default")}
               </span>
             </span>
             <Pipette className="ml-2 size-4 shrink-0 opacity-60" aria-hidden />
@@ -127,7 +129,7 @@ function StatusColorPicker({
         >
           <div className="space-y-2">
             <p className={EYEBROW_CLASS} id={`${triggerId}-presets`}>
-              Presets
+              {t("presets")}
             </p>
             <div
               className="flex flex-wrap gap-2"
@@ -147,7 +149,7 @@ function StatusColorPicker({
                     style={{ backgroundColor: color }}
                     onClick={() => onChange(color)}
                     aria-pressed={selected}
-                    aria-label={`Use preset color ${color}`}
+                    aria-label={t("usePreset", { color })}
                   />
                 );
               })}
@@ -155,19 +157,19 @@ function StatusColorPicker({
           </div>
 
           <div className="space-y-2">
-            <p className={EYEBROW_CLASS}>Custom</p>
+            <p className={EYEBROW_CLASS}>{t("custom")}</p>
             <div className="flex items-center gap-2">
               <span className="flex h-10 w-12 items-center justify-center rounded-md border border-input bg-background shadow-sm">
                 <input
                   type="color"
                   className="size-6 cursor-pointer rounded-md border border-border bg-transparent p-0"
-                  aria-label="Pick a custom icon color"
+                  aria-label={t("pickCustom")}
                   value={normalizedValue}
                   onChange={(event) => onChange(event.target.value)}
                 />
               </span>
               <Label htmlFor={hexId} className="sr-only">
-                Icon color hex code
+                {t("hexCode")}
               </Label>
               {/* Placeholder shows the expected hex literal — it is example
                   input for a hex-typed field, not a colour this UI paints with. */}
@@ -205,6 +207,7 @@ export function StatusForm({
   /** True when editing a builtin-status override: pool-inclusion is fixed by the system, not admin-editable. */
   isBuiltin?: boolean;
 }>) {
+  const t = useTranslations("adminSettings.statuses.form");
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
   // Two dialogs mount this form, so the field ids have to be per-instance.
   const fieldId = useId();
@@ -220,12 +223,12 @@ export function StatusForm({
       can_reset: false,
       icon_slug: value.icon_slug || "BadgeHelp",
       icon_color: value.icon_color || null,
-      name: value.name || "Preview",
+      name: value.name || t("preview"),
       description: value.description || null,
       excludes_from_balancer: value.excludes_from_balancer,
       excludes_from_ready: value.excludes_from_ready
     }),
-    [value]
+    [t, value]
   );
   const selectedIconSlug = value.icon_slug || "BadgeHelp";
   // `icon_color` is workspace data, not a semantic tone, so it stays an inline
@@ -240,31 +243,31 @@ export function StatusForm({
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`${fieldId}-scope`}>Scope</Label>
+          <Label htmlFor={`${fieldId}-scope`}>{t("scope")}</Label>
           <Select
             value={value.scope}
             onValueChange={(nextScope) => onChange({ ...value, scope: nextScope as StatusScope })}
           >
             <SelectTrigger id={`${fieldId}-scope`} disabled={disableScope}>
-              <SelectValue placeholder="Select scope" />
+              <SelectValue placeholder={t("selectScope")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="registration">Registration</SelectItem>
-              <SelectItem value="balancer">Balancer</SelectItem>
+              <SelectItem value="registration">{t("registration")}</SelectItem>
+              <SelectItem value="balancer">{t("balancer")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${fieldId}-name`}>Name</Label>
+          <Label htmlFor={`${fieldId}-name`}>{t("name")}</Label>
           <Input
             id={`${fieldId}-name`}
             value={value.name}
             onChange={(event) => onChange({ ...value, name: event.target.value })}
-            placeholder="Awaiting captain"
+            placeholder={t("namePlaceholder")}
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`${fieldId}-icon`}>Icon</Label>
+          <Label htmlFor={`${fieldId}-icon`}>{t("icon")}</Label>
           <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen} modal={false}>
             <PopoverTrigger asChild>
               <Button
@@ -287,9 +290,9 @@ export function StatusForm({
               align="start"
             >
               <Command>
-                <CommandInput placeholder="Search icons…" />
+                <CommandInput placeholder={t("searchIcons")} />
                 <CommandList className="max-h-64">
-                  <CommandEmpty>No icon matches that name. Try a shorter word.</CommandEmpty>
+                  <CommandEmpty>{t("noIconMatches")}</CommandEmpty>
                   <CommandGroup>
                     {STATUS_ICON_OPTIONS.map(({ slug, Icon }) => (
                       <CommandItem
@@ -329,22 +332,19 @@ export function StatusForm({
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor={`${fieldId}-description`}>Description</Label>
+        <Label htmlFor={`${fieldId}-description`}>{t("description")}</Label>
         <Textarea
           id={`${fieldId}-description`}
           value={value.description}
           onChange={(event) => onChange({ ...value, description: event.target.value })}
-          placeholder="Used when a player is waiting for a captain confirmation."
+          placeholder={t("descriptionPlaceholder")}
         />
       </div>
       {value.scope === "balancer" && !isBuiltin ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
           <div className="space-y-0.5">
-            <Label htmlFor={`${fieldId}-excludes`}>Excludes from balancer pool</Label>
-            <p className="text-xs text-muted-foreground">
-              A registration holding this status is treated as removed from the balancer pool,
-              the same way the builtin &quot;Excluded&quot; status works.
-            </p>
+            <Label htmlFor={`${fieldId}-excludes`}>{t("excludesPool")}</Label>
+            <p className="text-xs text-muted-foreground">{t("excludesPoolHelp")}</p>
           </div>
           <Switch
             id={`${fieldId}-excludes`}
@@ -356,12 +356,8 @@ export function StatusForm({
       {value.scope === "balancer" && !isBuiltin ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
           <div className="space-y-0.5">
-            <Label htmlFor={`${fieldId}-blocks-ready`}>Blocks Ready</Label>
-            <p className="text-xs text-muted-foreground">
-              A registration holding this status never counts as ready for the balancer, even
-              once every role has a rank -- the same way the builtin &quot;Ready&quot; status is
-              always excluded from this.
-            </p>
+            <Label htmlFor={`${fieldId}-blocks-ready`}>{t("blocksReady")}</Label>
+            <p className="text-xs text-muted-foreground">{t("blocksReadyHelp")}</p>
           </div>
           <Switch
             id={`${fieldId}-blocks-ready`}
@@ -371,7 +367,7 @@ export function StatusForm({
         </div>
       ) : null}
       <div className="space-y-2">
-        <p className="text-sm font-medium">Preview</p>
+        <p className="text-sm font-medium">{t("preview")}</p>
         <div className="rounded-lg border p-3">
           <StatusMetaBadge meta={previewMeta} fallbackValue="preview" />
         </div>

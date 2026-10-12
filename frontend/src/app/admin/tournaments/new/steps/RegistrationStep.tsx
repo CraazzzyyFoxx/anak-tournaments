@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ExternalLink } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,27 +28,28 @@ type BooleanRegistrationKey = {
 
 const ROWS: Array<{
   key: BooleanRegistrationKey;
-  label: string;
-  description: string;
+  labelKey: "autoApprove" | "openProfile" | "subscription";
+  descriptionKey: "autoApproveDescription" | "openProfileDescription" | "subscriptionDescription";
 }> = [
   {
     key: "auto_approve",
-    label: "Auto-approve registrations",
-    description: "New registrations skip the manual review queue."
+    labelKey: "autoApprove",
+    descriptionKey: "autoApproveDescription"
   },
   {
     key: "require_open_profile",
-    label: "Require open profile",
-    description: "Players must keep their game profile public to register."
+    labelKey: "openProfile",
+    descriptionKey: "openProfileDescription"
   },
   {
     key: "require_subscription",
-    label: "Require an active subscription",
-    description: "Checked at check-in only; an undetermined verdict fails open."
+    labelKey: "subscription",
+    descriptionKey: "subscriptionDescription"
   }
 ];
 
 export function RegistrationStep({ value, onChange, draftId }: Readonly<RegistrationStepProps>) {
+  const t = useTranslations("adminTournaments.registration");
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-4 bg-muted/20 border border-border/50 rounded-lg p-3.5">
@@ -58,9 +60,9 @@ export function RegistrationStep({ value, onChange, draftId }: Readonly<Registra
                 htmlFor={`wizard-registration-${row.key}`}
                 className="cursor-pointer text-sm font-medium"
               >
-                {row.label}
+                {t(row.labelKey)}
               </Label>
-              <p className="text-xs text-muted-foreground">{row.description}</p>
+              <p className="text-xs text-muted-foreground">{t(row.descriptionKey)}</p>
             </div>
             <Switch
               id={`wizard-registration-${row.key}`}
@@ -73,25 +75,23 @@ export function RegistrationStep({ value, onChange, draftId }: Readonly<Registra
 
       {value.require_subscription && (
         <p className="text-xs text-muted-foreground bg-muted/20 border border-border/50 rounded-lg p-3.5">
-          Which providers and tiers count is configured once per workspace, in Admin →
-          Subscription collection → Providers. Every tournament in the workspace enforces the
-          same rule; this toggle only decides whether it is enforced here.
+          {t("subscriptionHelp")}
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          Custom fields and built-in field configuration live in the form builder.
+          {t("formHelp")}
         </p>
         {draftId ? (
           <Button asChild type="button" variant="outline" size="sm">
             <Link href={`/admin/tournaments/${draftId}/registration/form`}>
-              Open form builder
+              {t("openFormBuilder")}
               <ExternalLink className="ml-2 h-3.5 w-3.5" aria-hidden />
             </Link>
           </Button>
         ) : (
           <p className="text-xs text-muted-foreground">
-            The form builder opens once the draft is saved.
+            {t("formDraftHelp")}
           </p>
         )}
       </div>

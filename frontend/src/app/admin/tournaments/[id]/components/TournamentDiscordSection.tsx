@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { History, Pencil, Trash2 } from "lucide-react";
 
@@ -65,6 +66,8 @@ export function TournamentDiscordSection({
   discordChannel,
   discordChannelLoading
 }: Readonly<TournamentDiscordSectionProps>) {
+  const t = useTranslations("adminTournament.discord");
+  const tx = useTranslations("adminTournament.discordExtra");
   const queryClient = useQueryClient();
   const queryKeys = getTournamentWorkspaceQueryKeys(tournamentId);
 
@@ -81,7 +84,7 @@ export function TournamentDiscordSection({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.discordChannel });
       setDialogOpen(false);
-      notify.success("Discord channel saved");
+      notify.success(tx("saved"));
     }
   });
 
@@ -90,14 +93,14 @@ export function TournamentDiscordSection({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.discordChannel });
       setDeleteOpen(false);
-      notify.success("Discord channel removed");
+      notify.success(tx("removed"));
     }
   });
 
   const backfillMutation = useMutation({
     mutationFn: () => adminService.backfillDiscordChannel(tournamentId),
     onSuccess: () => {
-      notify.success("Backfill started — scanning channel history for match logs");
+      notify.success(tx("backfillStarted"));
     }
   });
 
@@ -116,22 +119,22 @@ export function TournamentDiscordSection({
 
   const tone: Tone = discordChannel?.is_active ? "success" : discordChannel ? "neutral" : "warning";
   const label = discordChannel?.is_active
-    ? "Monitoring"
+    ? tx("monitoring")
     : discordChannel
-      ? "Paused"
-      : "Not configured";
+      ? tx("paused")
+      : tx("notConfigured");
 
   return (
     <>
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h3 className={EYEBROW_CLASS}>Discord match logs</h3>
+          <h3 className={EYEBROW_CLASS}>{t("title")}</h3>
           <StatusPill tone={tone} className="shrink-0">
             {label}
           </StatusPill>
         </div>
         <p className="text-xs text-muted-foreground">
-          Route Discord match logs into this tournament workspace.
+          {t("description")}
         </p>
 
         {discordChannelLoading ? (
@@ -139,14 +142,14 @@ export function TournamentDiscordSection({
         ) : discordChannel ? (
           <div className="grid gap-3 rounded-lg border border-border bg-muted/10 p-3 sm:grid-cols-2">
             <DetailField
-              label="Channel"
-              value={discordChannel.channel_name ? `#${discordChannel.channel_name}` : "Unnamed"}
+              label={t("channel")}
+              value={discordChannel.channel_name ? `#${discordChannel.channel_name}` : tx("unnamed")}
             />
-            <DetailField label="Channel ID" value={discordChannel.channel_id} />
+            <DetailField label={t("channelId")} value={discordChannel.channel_id} />
           </div>
         ) : (
           <EmptyNote size="sm">
-            No channel yet. Add a channel to start pulling match logs in automatically.
+            {t("empty")}
           </EmptyNote>
         )}
 
@@ -154,19 +157,19 @@ export function TournamentDiscordSection({
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" size="sm" onClick={openDialog}>
               <Pencil className="mr-2 size-4" aria-hidden />
-              {discordChannel ? "Edit channel" : "Add channel"}
+              {discordChannel ? tx("editChannel") : tx("addChannel")}
             </Button>
             {discordChannel ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                title="Scans the last 500 messages in the channel for match-log attachments and queues them for parsing. Useful right after connecting a channel that already has logs in it."
+                title={tx("backfillTitle")}
                 disabled={backfillMutation.isPending}
                 onClick={() => backfillMutation.mutate()}
               >
                 <History className="mr-2 size-4" aria-hidden />
-                {backfillMutation.isPending ? "Importing…" : "Import channel history"}
+                {backfillMutation.isPending ? tx("importing") : tx("importHistory")}
               </Button>
             ) : null}
             {discordChannel ? (
@@ -177,7 +180,7 @@ export function TournamentDiscordSection({
                 onClick={() => setDeleteOpen(true)}
               >
                 <Trash2 className="mr-2 size-4" aria-hidden />
-                Remove channel
+                {t("remove")}
               </Button>
             ) : null}
           </div>
@@ -190,8 +193,8 @@ export function TournamentDiscordSection({
           setDialogOpen(open);
           if (!open) saveMutation.reset();
         }}
-        title="Discord match logs"
-        description={`Set the Discord channel for ${tournament.name}.`}
+        title={t("title")}
+        description={t("setDescription", { name: tournament.name })}
         onSubmit={(event) => {
           event.preventDefault();
           if (!form.channel_id) {
@@ -201,13 +204,13 @@ export function TournamentDiscordSection({
           saveMutation.mutate(form);
         }}
         isSubmitting={saveMutation.isPending}
-        submittingLabel="Saving…"
+        submittingLabel={tx("saving")}
         errorMessage={saveMutation.isError ? saveMutation.error.message : undefined}
         isDirty={hasUnsavedChanges(form, openedWith)}
       >
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="discord-channel-id">Channel</Label>
+            <Label htmlFor="discord-channel-id">{t("channel")}</Label>
             <DiscordChannelSelect
               id="discord-channel-id"
               workspaceId={tournament.workspace_id}
@@ -222,17 +225,16 @@ export function TournamentDiscordSection({
             />
             {channelMissing ? (
               <p className="text-xs font-medium text-destructive" role="alert">
-                Pick the channel the bot should read match logs from.
+                {t("pickChannel")}
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Channels come from the workspace&apos;s Discord server. Not listed? Switch to
-                manual entry and paste the channel ID.
+                {t("channelHint")}
               </p>
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="discord-channel-name">Display name (optional)</Label>
+            <Label htmlFor="discord-channel-name">{t("displayName")}</Label>
             <Input
               id="discord-channel-name"
               value={form.channel_name ?? ""}
@@ -242,7 +244,7 @@ export function TournamentDiscordSection({
                   channel_name: event.target.value || null
                 }))
               }
-              placeholder="#match-logs"
+              placeholder={tx("displayNamePlaceholder")}
             />
           </div>
           <div className="flex items-center gap-2">
@@ -253,7 +255,7 @@ export function TournamentDiscordSection({
                 setForm((current) => ({ ...current, is_active: Boolean(checked) }))
               }
             />
-            <Label htmlFor="discord-is-active">Monitor this channel</Label>
+            <Label htmlFor="discord-is-active">{t("monitor")}</Label>
           </div>
         </div>
       </EntityFormDialog>
@@ -264,10 +266,9 @@ export function TournamentDiscordSection({
         onConfirm={() => deleteMutation.mutate()}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Remove Discord channel",
-          description:
-            "The bot stops monitoring this channel and match logs will no longer arrive automatically. The tournament and its existing logs are untouched.",
-          confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+          title: t("removeTitle"),
+          description: t("removeDescription"),
+          confirmLabel: deleteMutation.isPending ? tx("deleting") : tx("delete"),
           tone: "danger"
         }}
       />

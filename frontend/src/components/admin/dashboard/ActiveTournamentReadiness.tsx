@@ -1,6 +1,7 @@
 "use client";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRight, CheckCircle2, Circle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -88,12 +89,15 @@ export function ActiveTournamentReadiness({
   isLoading,
   failed
 }: Readonly<ActiveTournamentReadinessProps>) {
+  const t = useTranslations("adminShell.dashboard");
+  const checklistT = useTranslations("adminTournaments.checklist");
+  const tExtra = useTranslations("adminShell.dashboardExtra");
   if (!canRead) {
     return (
       <Card>
         <CardContent className="pt-6">
           <PermissionHiddenNotice
-            title="Tournament readiness is hidden"
+            title={t("tournamentReadinessHidden")}
             permission="tournament read or team read"
           />
         </CardContent>
@@ -111,7 +115,7 @@ export function ActiveTournamentReadiness({
           basePath,
           schedule: tournament.phase_schedule.map((entry) => entry.status),
           hasChallongeSource: hasChallongeSource(tournament, tournament.stages ?? [])
-        })
+        }, checklistT)
       : [];
 
   // "skipped" (not applicable) and "no-access" (masked) items are neither work
@@ -131,7 +135,7 @@ export function ActiveTournamentReadiness({
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle asChild>
-            <h2>Next actions</h2>
+            <h2>{t("nextActions")}</h2>
           </CardTitle>
           <Button
             asChild
@@ -140,14 +144,14 @@ export function ActiveTournamentReadiness({
             className="-mt-1.5 shrink-0 text-muted-foreground"
           >
             <HoverPrefetchLink href={`${basePath}/overview`}>
-              Full checklist
+              {t("fullChecklist")}
               <ArrowRight className="size-3.5" aria-hidden />
             </HoverPrefetchLink>
           </Button>
         </div>
         {trackedCount > 0 && (
           <CardDescription className="tabular-nums">
-            {doneCount} of {trackedCount} steps done
+            {t("stepsDone", { done: doneCount, total: trackedCount })}
           </CardDescription>
         )}
       </CardHeader>
@@ -161,7 +165,7 @@ export function ActiveTournamentReadiness({
           </div>
         ) : failed ? (
           <p className="text-sm text-muted-foreground">
-            Readiness could not be loaded. Open the tournament to see its checklist.
+            {t("readinessLoadFailed")}
           </p>
         ) : actions.length > 0 ? (
           <div className="divide-y divide-border/50">
@@ -170,15 +174,14 @@ export function ActiveTournamentReadiness({
             ))}
             {open.length > actions.length && (
               <p className="pt-2.5 text-xs text-muted-foreground">
-                <span className="tabular-nums">{open.length - actions.length}</span> more in the
-                full checklist
+                {t("moreInChecklist", { count: open.length - actions.length })}
               </p>
             )}
           </div>
         ) : (
           <p className={cn("flex items-center gap-2 text-sm", TONE_TEXT.success)}>
             <CheckCircle2 className="size-4 shrink-0" aria-hidden />
-            Every applicable step is done.
+            {t("everyStepDone")}
           </p>
         )}
 
@@ -186,12 +189,12 @@ export function ActiveTournamentReadiness({
             tiles inside a framed card; the formation state sits in the same row. */}
         {teamAccess && readiness && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border/50 pt-4 sm:grid-cols-5">
-            <Figure label="Pending" value={readiness.registrations_pending ?? 0} warn />
-            <Figure label="Approved" value={readiness.registrations_approved ?? 0} />
-            <Figure label="Checked in" value={readiness.registrations_checked_in ?? 0} />
-            <Figure label="Ranked" value={readiness.registrations_ranked ?? 0} />
+            <Figure label={t("pending")} value={readiness.registrations_pending ?? 0} warn />
+            <Figure label={t("approved")} value={readiness.registrations_approved ?? 0} />
+            <Figure label={t("checkedIn")} value={readiness.registrations_checked_in ?? 0} />
+            <Figure label={t("ranked")} value={readiness.registrations_ranked ?? 0} />
             <div>
-              <dt className={EYEBROW_CLASS}>{draftFormation ? "Draft" : "Balancer"}</dt>
+              <dt className={EYEBROW_CLASS}>{draftFormation ? tExtra("draft") : tExtra("balancer")}</dt>
               <dd className="mt-1 flex flex-wrap gap-1.5">
                 {draftFormation ? (
                   <StatusPill
@@ -201,7 +204,7 @@ export function ActiveTournamentReadiness({
                         : "neutral"
                     }
                   >
-                    {readiness.draft_session_status ?? "No session"}
+                    {readiness.draft_session_status ?? tExtra("noSession")}
                   </StatusPill>
                 ) : (
                   <>
@@ -209,16 +212,16 @@ export function ActiveTournamentReadiness({
                       tone={(readiness.pool_need_fix ?? 0) > 0 ? "warning" : "success"}
                       className="tabular-nums"
                     >
-                      Pool {readiness.pool_ready ?? 0} ready
+                      {t("poolReady", { count: readiness.pool_ready ?? 0 })}
                       {(readiness.pool_need_fix ?? 0) > 0
-                        ? ` · ${readiness.pool_need_fix} need fixing`
+                        ? t("needFixing", { count: readiness.pool_need_fix ?? 0 })
                         : ""}
                     </StatusPill>
                     <StatusPill tone={readiness.balance_saved ? "success" : "neutral"}>
-                      {readiness.balance_saved ? "Balance saved" : "Balance not saved"}
+                      {readiness.balance_saved ? t("balanceSaved") : t("balanceNotSaved")}
                     </StatusPill>
                     {readiness.balance_exported_at && (
-                      <StatusPill tone="success">Exported</StatusPill>
+                      <StatusPill tone="success">{t("exported")}</StatusPill>
                     )}
                   </>
                 )}

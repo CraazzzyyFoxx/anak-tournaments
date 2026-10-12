@@ -28,7 +28,6 @@ const deleteTeam = vi.fn();
 
 let permitted = true;
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({
     canAccessPermission: () => permitted,

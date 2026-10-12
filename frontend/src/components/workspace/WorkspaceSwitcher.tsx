@@ -86,7 +86,7 @@ export default function WorkspaceSwitcher() {
                 <Globe className="size-3.5" />
               </span>
             )}
-            <span className="min-w-0 flex-1 truncate text-left">
+            <span className="hidden min-w-0 flex-1 truncate text-left sm:block">
               {workspace ? workspace.name : t("nav.allWorkspaces")}
             </span>
             <ChevronsUpDown className="size-3.5 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden />

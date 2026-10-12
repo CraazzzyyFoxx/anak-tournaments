@@ -34,83 +34,92 @@ export const BREADCRUMB_ENTITIES: Record<
  */
 export const SEGMENT_LABELS: Record<string, string> = {
   // Tournament hub
-  overview: "Overview",
-  registration: "Registration",
-  entries: "Entries",
-  form: "Form",
-  feed: "Sheets feed",
-  "rank-autofill": "Rank autofill",
-  teams: "Teams",
-  roster: "Roster",
-  draft: "Draft",
-  bracket: "Bracket",
-  matches: "Matches",
-  encounters: "Encounters",
-  standings: "Standings",
-  reports: "Reports",
-  parsed: "Parsed maps",
-  logs: "Logs",
+  overview: "breadcrumbOverview",
+  registration: "breadcrumbRegistration",
+  entries: "breadcrumbEntries",
+  form: "breadcrumbForm",
+  feed: "breadcrumbFeed",
+  "rank-autofill": "breadcrumbRankAutofill",
+  teams: "breadcrumbTeams",
+  roster: "breadcrumbRoster",
+  draft: "breadcrumbDraft",
+  bracket: "breadcrumbBracket",
+  matches: "breadcrumbMatches",
+  encounters: "breadcrumbEncounters",
+  standings: "breadcrumbStandings",
+  reports: "breadcrumbReports",
+  parsed: "breadcrumbParsed",
+  logs: "breadcrumbLogs",
   // Settings sections
-  settings: "Settings",
-  general: "General",
-  rules: "Rules & scoring",
-  schedule: "Schedule",
-  "pre-game": "Pre-game phase",
-  "report-form": "Match report form",
-  links: "Links",
-  challonge: "Challonge",
-  discord: "Discord",
-  preview: "Preview access",
-  danger: "Danger zone",
-  branding: "Branding",
+  settings: "breadcrumbSettings",
+  general: "breadcrumbGeneral",
+  rules: "breadcrumbRules",
+  schedule: "breadcrumbSchedule",
+  "pre-game": "breadcrumbPreGame",
+  "report-form": "breadcrumbReportForm",
+  links: "breadcrumbLinks",
+  challonge: "breadcrumbChallonge",
+  discord: "breadcrumbDiscord",
+  preview: "breadcrumbPreview",
+  danger: "breadcrumbDanger",
+  branding: "breadcrumbBranding",
   // "Visibility & SEO" no longer describes it: the SEO text now sits with the
   // subdomain and the custom domain, where "what does this workspace answer
   // on" is decided.
-  visibility: "Visibility",
-  domain: "Domain",
-  divisions: "Divisions",
+  visibility: "breadcrumbVisibility",
+  domain: "breadcrumbDomain",
+  divisions: "breadcrumbDivisions",
   // `/admin/settings/divisions/v/12` — the segment is `v` only because the
   // route is short enough to type; kebab→Title would render it as "V".
-  v: "Version",
+  v: "breadcrumbVersion",
   // Registration AND balancer scopes now live in one table, so the label cannot
   // name just one of them.
-  statuses: "Player statuses",
-  "sub-roles": "Sub-roles",
-  subscriptions: "Subscriptions",
-  import: "Import",
+  statuses: "breadcrumbStatuses",
+  "sub-roles": "breadcrumbSubRoles",
+  subscriptions: "breadcrumbSubscriptions",
+  import: "breadcrumbImport",
   // Platform
-  content: "Game content",
-  heroes: "Heroes",
-  maps: "Maps",
-  gamemodes: "Gamemodes",
-  unresolved: "Unresolved names",
-  collectors: "Collectors",
-  rank: "Rank",
-  streams: "Streams",
-  access: "Access",
-  accounts: "Accounts",
-  roles: "Roles",
-  permissions: "Permissions",
-  "api-keys": "API keys",
-  oauth: "OAuth",
-  sessions: "Sessions",
-  members: "Members",
-  people: "People",
-  workspaces: "Workspaces",
-  audit: "Audit log",
-  tournaments: "Tournaments",
-  achievements: "Achievements",
-  new: "New",
+  content: "breadcrumbContent",
+  heroes: "breadcrumbHeroes",
+  maps: "breadcrumbMaps",
+  gamemodes: "breadcrumbGamemodes",
+  unresolved: "breadcrumbUnresolved",
+  collectors: "breadcrumbCollectors",
+  rank: "breadcrumbRank",
+  streams: "breadcrumbStreams",
+  access: "breadcrumbAccess",
+  accounts: "breadcrumbAccounts",
+  roles: "breadcrumbRoles",
+  permissions: "breadcrumbPermissions",
+  "api-keys": "breadcrumbApiKeys",
+  oauth: "breadcrumbOauth",
+  sessions: "breadcrumbSessions",
+  members: "breadcrumbMembers",
+  people: "breadcrumbPeople",
+  workspaces: "breadcrumbWorkspaces",
+  audit: "breadcrumbAudit",
+  tournaments: "breadcrumbTournaments",
+  achievements: "breadcrumbAchievements",
+  announcements: "breadcrumbAnnouncements",
+  notifications: "breadcrumbNotifications",
+  ranks: "breadcrumbRanks",
+  quota: "breadcrumbQuota",
+  "registration-forms": "breadcrumbRegistrationForms",
+  scoring: "breadcrumbScoring",
+  admission: "breadcrumbAdmission",
+  "game-content": "breadcrumbContent",
+  new: "breadcrumbNew",
 };
 
 /** Label for one path segment: the dictionary first, kebab→Title as fallback. */
-export function breadcrumbSegmentLabel(segment: string): string {
+export function breadcrumbSegmentLabel(segment: string, translate?: (key: string) => string): string {
   const known = SEGMENT_LABELS[segment];
+  if (known && translate) return translate(known);
   if (known) return known;
-  if (/^\d+$/.test(segment)) return "Details";
+  if (/^\d+$/.test(segment)) return translate?.("breadcrumbDetails") ?? segment;
 
   const normalized = segment.replace(/-/g, " ");
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return translate?.("breadcrumbUnknown") ?? normalized;
 }
 
 /**

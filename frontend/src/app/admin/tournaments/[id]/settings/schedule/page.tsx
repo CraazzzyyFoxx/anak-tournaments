@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateTimePicker } from "@/components/ui/date-picker";
@@ -11,7 +13,6 @@ import { SaveBar } from "@/components/kit/SaveBar";
 import { getUtcOffsetLabel } from "@/lib/workspace/timezone";
 import {
   SCHEDULABLE_PHASES,
-  TOURNAMENT_STATUS_LABELS,
   type SchedulablePhase
 } from "@/lib/tournament/lifecycle";
 import type { Tournament } from "@/types/tournament.types";
@@ -19,10 +20,11 @@ import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 
 export default function ScheduleSettingsPage() {
+  const t = useTranslations("adminTournament.schedule");
   return (
     <SettingsSectionPage
       section="schedule"
-      description="Operational dates, the registration and check-in windows, and automatic phase transitions."
+      description={t("description")}
     >
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <ScheduleForm
@@ -40,6 +42,8 @@ function ScheduleForm({
   tournamentId,
   disabled
 }: Readonly<{ tournament: Tournament; tournamentId: number; disabled: boolean }>) {
+  const tStatus = useTranslations("common.statusBadge");
+  const t = useTranslations("adminTournament.schedule");
   const { form, patch, dirty, summary, saving, save, discard, timezone } =
     useTournamentSettingsForm(tournament, tournamentId, "schedule");
 
@@ -65,7 +69,7 @@ function ScheduleForm({
         <CardContent className="flex flex-col gap-5 pt-6">
           <Field>
             <FieldLabel htmlFor="settings-date-range" className="font-normal text-foreground">
-              Tournament duration range
+              {t("duration")}
             </FieldLabel>
             <DateRangePicker
               id="settings-date-range"
@@ -77,14 +81,12 @@ function ScheduleForm({
 
           <section className="flex flex-col gap-4 border-t border-border pt-4">
             <div>
-              <h2 className={EYEBROW_CLASS}>Phase schedule</h2>
+              <h2 className={EYEBROW_CLASS}>{t("title")}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Each phase starts automatically at its start time when automatic transitions are
-                enabled. An end time only closes that phase&apos;s action window early — it never
-                changes the tournament status.
+                {t("hint")}
               </p>
               <p className="mt-1 text-xs font-medium text-foreground/80">
-                Time zone: {timezone} ({getUtcOffsetLabel(timezone)})
+                {t("timezoneLabel", { label: t("timezone"), timezone, offset: getUtcOffsetLabel(timezone) })}
               </p>
             </div>
 
@@ -92,25 +94,25 @@ function ScheduleForm({
                 below lg, where each picker shows its own labels again. */}
             <div
               role="group"
-              aria-label="Phase schedule"
+              aria-label={t("aria")}
               className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(6rem,8rem)_1fr_1fr] lg:items-center lg:gap-x-4 lg:gap-y-3"
             >
               <div aria-hidden className="hidden lg:contents">
                 <span />
-                <span className={EYEBROW_CLASS}>Starts at</span>
-                <span className={EYEBROW_CLASS}>Ends at (optional)</span>
+                <span className={EYEBROW_CLASS}>{t("starts")}</span>
+                <span className={EYEBROW_CLASS}>{t("ends")}</span>
               </div>
 
               {visiblePhases.map((phase) => (
                 <div key={phase} className="flex flex-col gap-2 lg:contents">
                   <p className="text-xs font-medium text-foreground lg:py-1">
-                    {TOURNAMENT_STATUS_LABELS[phase]}
+                    {tStatus(phase)}
                   </p>
                   <DateTimePicker
                     id={`settings-phase-${phase}-starts`}
                     timeId={`settings-phase-${phase}-starts-time`}
-                    dateLabel={`${TOURNAMENT_STATUS_LABELS[phase]} starts at`}
-                    timeLabel={`${TOURNAMENT_STATUS_LABELS[phase]} start time`}
+                    dateLabel={`${tStatus(phase)} starts at`}
+                    timeLabel={`${tStatus(phase)} start time`}
                     labelClassName="lg:sr-only"
                     value={form.phase_schedule[phase].starts_at}
                     onChange={(next) => setPhaseField(phase, "starts_at", next)}
@@ -118,8 +120,8 @@ function ScheduleForm({
                   <DateTimePicker
                     id={`settings-phase-${phase}-ends`}
                     timeId={`settings-phase-${phase}-ends-time`}
-                    dateLabel={`${TOURNAMENT_STATUS_LABELS[phase]} ends at (optional)`}
-                    timeLabel={`${TOURNAMENT_STATUS_LABELS[phase]} end time`}
+                    dateLabel={`${tStatus(phase)} ends at (optional)`}
+                    timeLabel={`${tStatus(phase)} end time`}
                     labelClassName="lg:sr-only"
                     value={form.phase_schedule[phase].ends_at}
                     onChange={(next) => setPhaseField(phase, "ends_at", next)}
@@ -133,11 +135,10 @@ function ScheduleForm({
             <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="settings-auto-transitions" className="cursor-pointer">
-                  Automatic phase transitions
+                  {t("automatic")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Re-enabling immediately catches up any overdue phases. Manual status changes
-                  switch this off.
+                  {t("automaticHint")}
                 </p>
               </div>
               <Switch
@@ -151,17 +152,14 @@ function ScheduleForm({
             <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="settings-allow-late-registration" className="cursor-pointer">
-                  Allow late registration
+                  {t("late")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Keeps sign-ups open past the registration window&apos;s end time, so the
-                  advertised closing date stays on the page. Does not open registration that never
-                  started, and never reopens a finished tournament.
+                  {t("lateHint")}
                 </p>
                 {!form.phase_schedule.registration.ends_at && (
                   <p className="text-xs text-warning">
-                    No end time is set on the registration window above, so registration is already
-                    open-ended and this changes nothing.
+                    {t("noEnd")}
                   </p>
                 )}
               </div>

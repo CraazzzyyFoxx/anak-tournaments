@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ChevronsDown, ChevronsUp, ImagePlus, Scissors, Unlink } from "lucide-react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 import { DataTable, createKebabColumn } from "@/components/data-table";
 import { InlineEditText } from "@/components/kit/InlineEditText";
@@ -69,6 +70,7 @@ export function DivisionsTable({
   onScaleChange,
   canFollowLadder
 }: Readonly<DivisionsTableProps>) {
+  const t = useTranslations("adminSettings.divisions");
   const custom = scale === "custom";
 
   const columns = useMemo<ColumnDef<Band>[]>(() => {
@@ -81,7 +83,7 @@ export function DivisionsTable({
       },
       {
         id: "name",
-        header: "Name",
+        header: t("table.name"),
         cell: ({ row }) => {
           const band = row.original;
           return (
@@ -96,7 +98,7 @@ export function DivisionsTable({
               />
               <InlineEditText
                 value={band.name}
-                label={`name of division ${band.number}`}
+                label={t("table.divisionName", { number: band.number })}
                 canEdit={editable}
                 textClassName="text-sm font-medium"
                 onSave={(next) =>
@@ -104,7 +106,7 @@ export function DivisionsTable({
                 }
               />
               {band.icon_url === null ? (
-                <StatusPill tone="neutral">borrows crest</StatusPill>
+                <StatusPill tone="neutral">{t("table.borrowsCrest")}</StatusPill>
               ) : null}
             </div>
           );
@@ -112,7 +114,7 @@ export function DivisionsTable({
       },
       {
         id: "range",
-        header: "Rank range",
+        header: t("table.rankRange"),
         size: 150,
         cell: ({ row }) =>
           custom && editable ? (
@@ -123,7 +125,7 @@ export function DivisionsTable({
       },
       {
         id: "ow",
-        header: "OW ranks",
+        header: t("table.owRanks"),
         cell: ({ row }) => {
           const band = row.original;
           if (custom && editable) {
@@ -140,7 +142,7 @@ export function DivisionsTable({
           }
           return (
             <span className="font-mono text-sm">
-              <span className={band.ow ? undefined : "text-warning"}>{owRangeLabel(band)}</span>
+              <span className={band.ow ? undefined : "text-warning"}>{owRangeLabel(band) ?? t("ladder.notLinked")}</span>
               {band.ow ? (
                 <span className="ml-1.5 text-xs text-muted-foreground">· {owSize(band)}</span>
               ) : null}
@@ -150,12 +152,12 @@ export function DivisionsTable({
       },
       {
         id: "players",
-        header: "Players",
+        header: t("table.players"),
         size: 90,
         cell: () => (
           <span
             className="text-muted-foreground"
-            title="Player distribution per division is not exposed yet (backend gap G1)."
+            title={t("table.playerDistributionUnavailable")}
           >
             &mdash;
           </span>
@@ -163,7 +165,7 @@ export function DivisionsTable({
       },
       {
         id: "verdict",
-        header: "vs base",
+        header: t("table.vsBase"),
         size: 120,
         cell: ({ row }) => {
           const verdict = bandVerdict(base, row.original);
@@ -185,30 +187,30 @@ export function DivisionsTable({
             : owSize(band) >= 2;
           return [
             {
-              label: "Set crest…",
+              label: t("table.setCrest"),
               icon: ImagePlus,
               onSelect: () => onPickIcon(index)
             },
             {
-              label: "Split in two",
+              label: t("table.split"),
               icon: Scissors,
               hidden: !splittable,
               onSelect: () => dispatch({ type: "split", bandIndex: index })
             },
             {
-              label: "Merge into the division above",
+              label: t("table.mergeAbove"),
               icon: ChevronsUp,
               hidden: index === 0,
               onSelect: () => dispatch({ type: "merge", bandIndex: index, into: "up" })
             },
             {
-              label: "Merge into the division below",
+              label: t("table.mergeBelow"),
               icon: ChevronsDown,
               hidden: index === bands.length - 1,
               onSelect: () => dispatch({ type: "merge", bandIndex: index, into: "down" })
             },
             {
-              label: "Unlink OW ranks",
+              label: t("table.unlink"),
               icon: Unlink,
               hidden: !custom || band.ow === null,
               onSelect: () => dispatch({ type: "unlink", bandIndex: index })
@@ -218,19 +220,19 @@ export function DivisionsTable({
         { rowLabel: (band) => band.name }
       )
     ];
-  }, [bands, base, custom, dispatch, editable, onPickIcon]);
+  }, [bands, base, custom, dispatch, editable, onPickIcon, t]);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-3 py-2">
         <div className="flex min-w-0 max-w-prose flex-col gap-0.5">
-          <span className={EYEBROW_CLASS}>Rank scale</span>
+          <span className={EYEBROW_CLASS}>{t("table.rankScale")}</span>
           <p className="text-xs text-muted-foreground">
             {custom
-              ? "Floors are typed; each ceiling is the floor above minus one. OW ranks are linked per division."
-              : "Rank ranges are the OW ladder's own values, so cutting the ladder moves both at once."}
+              ? t("table.customScaleHint")
+              : t("table.ladderScaleHint")}
             {custom && editable && !canFollowLadder
-              ? " To follow the ladder, link every OW rank and every division first."
+              ? ` ${t("table.followLadderHint")}`
               : null}
           </p>
         </div>
@@ -240,13 +242,13 @@ export function DivisionsTable({
           size="sm"
           value={scale}
           onValueChange={(next) => onScaleChange(next as Scale)}
-          aria-label="Rank scale"
+          aria-label={t("table.rankScale")}
         >
           <ToggleGroupItem value="ladder" disabled={!editable || (custom && !canFollowLadder)}>
-            Follow OW ladder
+            {t("table.followLadder")}
           </ToggleGroupItem>
           <ToggleGroupItem value="custom" disabled={!editable}>
-            Custom
+            {t("table.custom")}
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -258,14 +260,14 @@ export function DivisionsTable({
         initialPageSize={50}
         inspectorId={selectedSlug}
         onRowClick={(row) => onSelect(row.original.slug)}
-        emptyMessage="This draft has no divisions."
+        emptyMessage={t("table.empty")}
         renderMobileCard={(row) => (
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">
               {row.original.number}. {row.original.name}
             </p>
             <p className="truncate font-mono text-xs text-muted-foreground">
-              {rankRangeLabel(row.original)} · {owRangeLabel(row.original)}
+              {rankRangeLabel(row.original)} · {owRangeLabel(row.original) ?? t("ladder.notLinked")}
             </p>
           </div>
         )}
@@ -273,8 +275,8 @@ export function DivisionsTable({
 
       <p className="text-xs text-muted-foreground">
         {custom
-          ? "A floor must sit between its neighbours' floors, so native ranges cannot overlap. OW runs stay in division order: taking ranks from a neighbour shortens it."
-          : "Bands are contiguous by construction — moving one boundary moves both neighbours, so a gap or an overlap cannot be entered."}
+          ? t("table.customScaleFooter")
+          : t("table.ladderScaleFooter")}
       </p>
     </div>
   );
@@ -286,6 +288,7 @@ function FloorField({
   bandIndex,
   dispatch
 }: Readonly<{ bands: Band[]; bandIndex: number; dispatch: (action: Action) => void }>) {
+  const t = useTranslations("adminSettings.divisions");
   const band = bands[bandIndex];
   const [draft, setDraft] = useState<string | null>(null);
   const error = draft === null ? null : floorError(bands, bandIndex, draft);
@@ -301,7 +304,7 @@ function FloorField({
       <div className="flex items-center gap-1.5 font-mono text-sm tabular-nums">
         <Input
           inputMode="numeric"
-          aria-label={`Floor of ${band.name}`}
+          aria-label={t("table.floor", { name: band.name })}
           aria-invalid={error ? true : undefined}
           value={draft ?? String(band.rankMin)}
           onChange={(event) => setDraft(event.target.value)}
@@ -321,7 +324,9 @@ function FloorField({
       </div>
       {error ? (
         <span role="alert" className="text-xs text-destructive">
-          {error}
+          {error.code === "notInteger"
+            ? t("table.floorErrors.notInteger")
+            : t(`table.floorErrors.${error.code}`, { name: error.name, rankMin: error.rankMin })}
         </span>
       ) : null}
     </div>

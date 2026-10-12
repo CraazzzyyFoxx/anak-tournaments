@@ -77,17 +77,17 @@ export function toFieldErrors(errors: MappingFieldError[]): Record<string, strin
 export const GROUP_ORDER: MappingTargetGroup[] = ["identity", "profile", "roles", "custom_fields"];
 
 export const GROUP_LABELS: Record<MappingTargetGroup, string> = {
-  identity: "Identity",
-  profile: "Profile",
-  roles: "Roles",
-  custom_fields: "Custom fields",
+  identity: "identity",
+  profile: "profile",
+  roles: "roles",
+  custom_fields: "customFields",
 };
 
 export const GROUP_DESCRIPTIONS: Record<MappingTargetGroup, string> = {
-  identity: "Who the player is — battle tag, smurfs, and source record key.",
-  profile: "Contact and stream details synced into the registration.",
-  roles: "How roles, ranks, and sub-roles are read from the sheet.",
-  custom_fields: "Extra registration-form fields populated from the sheet.",
+  identity: "identity",
+  profile: "profile",
+  roles: "roles",
+  custom_fields: "customFields",
 };
 
 // ---------------------------------------------------------------------------
@@ -100,10 +100,10 @@ export interface RoleSubgroup {
 }
 
 const ROLE_SUBGROUP_LABELS: Record<string, string> = {
-  source_roles: "Declared roles",
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
+  source_roles: "sourceRoles",
+  tank: "tank",
+  damage: "damage",
+  support: "support",
 };
 
 const ROLE_SUBGROUP_ORDER = ["source_roles", "tank", "damage", "support", "other"] as const;
@@ -123,7 +123,7 @@ export function roleSubgroupId(targetKey: string): string {
 }
 
 function roleSubgroupLabel(id: string): string {
-  return ROLE_SUBGROUP_LABELS[id] ?? "Other";
+  return ROLE_SUBGROUP_LABELS[id] ?? "other";
 }
 
 /** Ordered, de-duplicated list of role sub-groups present in the targets. */

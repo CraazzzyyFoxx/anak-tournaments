@@ -34,10 +34,6 @@ const getDivisionGridVersions = vi.fn();
 
 let permitted = true;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
-}));
 
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({

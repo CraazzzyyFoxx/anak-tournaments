@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { AchievementCombobox } from "@/components/admin/achievements/AchievementCombobox";
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
@@ -57,20 +59,20 @@ export function AchievementOverrideDialog({
   formError: string | null;
   saveError?: string;
 }>) {
+  const t = useTranslations("adminAchievements");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Manual achievement override</DialogTitle>
+          <DialogTitle>{t("overrideDialog.title")}</DialogTitle>
           <DialogDescription>
-            Grant or revoke an achievement for one player. The override survives future
-            evaluation runs, so record why it was needed.
+            {t("overrideDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="override-user">User</Label>
+            <Label htmlFor="override-user">{t("overrideDialog.user")}</Label>
             <UserSearchCombobox
               id="override-user"
               value={draft.userId}
@@ -83,7 +85,7 @@ export function AchievementOverrideDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="override-achievement">Achievement</Label>
+            <Label htmlFor="override-achievement">{t("overrideDialog.achievement")}</Label>
             <AchievementCombobox
               id="override-achievement"
               rules={rules}
@@ -95,7 +97,7 @@ export function AchievementOverrideDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="override-action">Action</Label>
+              <Label htmlFor="override-action">{t("overrideDialog.action")}</Label>
               <Select
                 value={draft.action}
                 onValueChange={(v) => onDraftChange({ ...draft, action: v as "grant" | "revoke" })}
@@ -104,51 +106,51 @@ export function AchievementOverrideDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="grant">Grant</SelectItem>
-                  <SelectItem value="revoke">Revoke</SelectItem>
+                  <SelectItem value="grant">{t("overrideDialog.grant")}</SelectItem>
+                  <SelectItem value="revoke">{t("overrideDialog.revoke")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="override-tournament">Tournament (optional)</Label>
+              <Label htmlFor="override-tournament">{t("overrideDialog.tournamentOptional")}</Label>
               <TournamentCombobox
                 id="override-tournament"
                 tournaments={tournaments}
                 value={draft.tournamentId}
                 onSelect={(t) => onDraftChange({ ...draft, tournamentId: t?.id })}
-                placeholder="None"
+                placeholder={t("overrideDialog.none")}
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="override-reason">Reason</Label>
+            <Label htmlFor="override-reason">{t("overrideDialog.reason")}</Label>
             <Textarea
               id="override-reason"
               value={draft.reason}
               onChange={(e) => onDraftChange({ ...draft, reason: e.target.value })}
-              placeholder="Why is this being granted or revoked by hand?"
+              placeholder={t("overrideDialog.reasonPlaceholder")}
             />
           </div>
 
           {formError && <p className="text-sm text-danger">{formError}</p>}
           {saveError && (
             <p className="text-sm text-danger">
-              The override could not be saved: {saveError}
+              {t("overrideDialog.saveError", { error: saveError })}
             </p>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("overrideDialog.cancel")}
           </Button>
           <Button onClick={onSubmit} disabled={isSaving}>
             {isSaving
-              ? "Saving…"
+              ? t("common.saving")
               : draft.action === "grant"
-                ? "Grant achievement"
-                : "Revoke achievement"}
+                ? t("overrideDialog.grantAchievement")
+                : t("overrideDialog.revokeAchievement")}
           </Button>
         </DialogFooter>
       </DialogContent>

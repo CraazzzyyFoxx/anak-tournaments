@@ -350,22 +350,6 @@
   border-bottom: 0;
 }
 
-.teamsSkeletonGrid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
-}
-
-.skeletonCard {
-  display: grid;
-  min-height: 9.5rem;
-  gap: 0.8rem;
-  padding: 1rem;
-  border: 1px solid var(--aqt-border);
-  border-radius: var(--aqt-radius-sm);
-  background: var(--aqt-card);
-}
-
 .bracketFrame {
   display: grid;
   grid-template-columns: repeat(3, minmax(12rem, 1fr));
@@ -1010,18 +994,6 @@
   .participantExpandedRegion {
     grid-template-columns: minmax(0, 1fr);
     padding: 0.85rem;
-  }
-}
-
-@media (min-width: 641px) {
-  .teamsSkeletonGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1280px) {
-  .teamsSkeletonGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

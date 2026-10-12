@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import { Plus, RefreshCw } from "lucide-react";
@@ -17,8 +18,9 @@ import { TOURNAMENT_QUERY_PARAM, parseTournamentQueryParam } from "@/components/
 import { Button } from "@/components/ui/button";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { bracketRoundLabelEn, UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
+import { UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
@@ -60,6 +62,8 @@ export function EncountersBrowser({
   tournamentId: number | null;
   workspaceId: number | null;
 }>) {
+  const t = useTranslations("adminMatches.encounters");
+  const formatRound = useBracketRoundLabel();
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   // `id` is the inspector, not a filter: opening a row must not drop the page
@@ -97,9 +101,10 @@ export function EncountersBrowser({
         tournamentId,
         tournaments: scope.tournaments,
         stages,
-        stageItems: scope.stageItems
+        stageItems: scope.stageItems,
+        t: t as unknown as (key: string) => string
       }),
-    [tournamentId, scope.tournaments, stages, scope.stageItems]
+    [tournamentId, scope.tournaments, stages, scope.stageItems, t]
   );
 
   const filters = useFilters(defs);
@@ -130,7 +135,7 @@ export function EncountersBrowser({
       invalidate();
       setPendingDelete(null);
       if (removed && String(removed.id) === openId) setParams({ id: null });
-      notify.success("Encounter deleted");
+      notify.success(t("deleted"));
     }
   });
 
@@ -138,7 +143,7 @@ export function EncountersBrowser({
     mutationFn: () => adminService.syncEncountersFromChallonge(scopeTournamentId!),
     onSuccess: () => {
       invalidate();
-      notify.success("Encounters synced from Challonge");
+      notify.success(t("synced"));
     }
   });
 
@@ -153,7 +158,7 @@ export function EncountersBrowser({
   if (workspaceId == null) {
     return (
       <EmptyNote>
-        Encounters are scoped to a workspace. Pick one to see what has been scheduled.
+        {t("scopePrompt")}
       </EmptyNote>
     );
   }
@@ -174,7 +179,7 @@ export function EncountersBrowser({
           onClick={() => syncMutation.mutate()}
         >
           <RefreshCw aria-hidden className="size-4" />
-          Sync from Challonge
+          {t("sync")}
         </Button>
       ) : null}
       {canCreate ? (
@@ -184,7 +189,7 @@ export function EncountersBrowser({
           onClick={form.openCreate}
         >
           <Plus aria-hidden className="size-4" />
-          Create encounter
+          {t("create")}
         </Button>
       ) : null}
     </>
@@ -201,7 +206,7 @@ export function EncountersBrowser({
         <DataTable<Encounter>
           columns={columns}
           initialPageSize={PAGE_SIZE}
-          searchPlaceholder="Search encounters…"
+          searchPlaceholder={t("search")}
           filterKey={filters.filterKey}
           inspectorId={openId}
           getRowId={(row) => String(row.id)}
@@ -215,7 +220,7 @@ export function EncountersBrowser({
                   ? [
                       {
                         key: TOURNAMENT_QUERY_PARAM,
-                        label: `Tournament: ${scope.tournament?.name ?? `#${tournamentId}`}`
+                        label: t("tournamentChip", { name: scope.tournament?.name ?? `#${tournamentId}` })
                       }
                     ]
                   : undefined
@@ -224,8 +229,8 @@ export function EncountersBrowser({
           }
           emptyMessage={
             scopeTournamentId == null
-              ? "No encounters yet. Pick a tournament to see its bracket."
-              : "No encounters match. Sync from Challonge or create the first one."
+              ? t("emptyTournament")
+              : t("empty")
           }
           onRowClick={(row) => setParams({ id: String(row.original.id) })}
           renderMobileCard={(row) => (
@@ -238,7 +243,7 @@ export function EncountersBrowser({
                 </span>
               </p>
               <p className="text-xs text-muted-foreground">
-                {row.original.status} · {row.original.has_logs ? "logs" : "no logs"}
+                {row.original.status} · {row.original.has_logs ? t("logsMobile") : t("noLogsMobile")}
               </p>
             </div>
           )}
@@ -279,10 +284,14 @@ export function EncountersBrowser({
       <Inspector
         openId={openRow ? openId : null}
         onClose={() => setParams({ id: null })}
-        title={openRow ? `Encounter #${openRow.id}` : ""}
+        title={openRow ? t("encounterNumber", { id: openRow.id }) : ""}
         subtitle={
           openRow
-            ? `${openRow.tournament?.name ?? "Unknown tournament"} · ${encounterScopeLabel(openRow)} · ${bracketRoundLabelEn(openRow.round, UNKNOWN_ROUND_SHAPE)}`
+            ? t("detailSubtitle", {
+                tournament: openRow.tournament?.name ?? t("unknownTournament"),
+                scope: encounterScopeLabel(openRow),
+                round: formatRound(openRow.round, UNKNOWN_ROUND_SHAPE)
+              })
             : undefined
         }
         onPrev={openIndex > 0 ? () => setParams({ id: String(pageRows[openIndex - 1].id) }) : undefined}
@@ -315,10 +324,10 @@ export function EncountersBrowser({
         onOpenChange={(next) => {
           if (!next) form.close();
         }}
-        title={form.mode === "edit" ? "Edit encounter" : "Create encounter"}
-        description="Create or update a tournament encounter."
+        title={form.mode === "edit" ? t("editTitle") : t("createTitle")}
+        description={t("createDescription")}
         isSubmitting={form.isSaving}
-        submittingLabel={form.mode === "edit" ? "Updating encounter…" : "Creating encounter…"}
+        submittingLabel={form.mode === "edit" ? t("updating") : t("creating")}
         errorMessage={form.error}
         isDirty={form.isDirty}
         onSubmit={(event) => {
@@ -342,11 +351,11 @@ export function EncountersBrowser({
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Delete encounter",
-          description: `Deleting “${pendingDelete?.name ?? "this encounter"}” removes the encounter and everything recorded under it. This cannot be undone.`,
-          confirmLabel: "Delete encounter",
+          title: t("delete"),
+          description: t("deleteDescription", { name: pendingDelete?.name ?? "this encounter" }),
+          confirmLabel: t("delete"),
           tone: "danger",
-          cascade: ["All matches in this encounter", "Attached match statistics and logs"]
+          cascade: [t("allMatches"), t("attachedStats")]
         }}
         onConfirm={() => {
           if (pendingDelete) deleteMutation.mutate(pendingDelete.id);

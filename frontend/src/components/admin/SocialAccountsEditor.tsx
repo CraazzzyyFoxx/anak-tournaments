@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Eye, EyeOff, Pencil, Plus, ShieldCheck, Star, Trash2, X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,7 @@ interface VisibilityControlsProps {
 }
 
 function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Readonly<VisibilityControlsProps>) {
+  const t = useTranslations("adminPeople.social");
   const queryClient = useQueryClient();
   const globalVisible = account.visible_global ?? true;
   const workspaceVisible = workspaceId != null && (account.visible_workspace_ids ?? []).includes(workspaceId);
@@ -68,7 +70,7 @@ function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Rea
           disabled={mutation.isPending}
           className="scale-75"
         />
-        <Eye className="h-3 w-3" /> Profile
+        <Eye className="h-3 w-3" /> {t("profile")}
       </label>
       {workspaceId != null && (
         <label className="flex cursor-pointer select-none items-center gap-1.5">
@@ -78,7 +80,7 @@ function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Rea
             disabled={mutation.isPending}
             className="scale-75"
           />
-          <EyeOff className="h-3 w-3" /> This workspace
+          <EyeOff className="h-3 w-3" /> {t("workspace")}
         </label>
       )}
       {mutation.isPending && <Spinner className="size-3" />}
@@ -98,6 +100,7 @@ interface AccountRowProps {
 }
 
 function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId, onUserUpdated }: Readonly<AccountRowProps>) {
+  const t = useTranslations("adminPeople.social");
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(account.username);
@@ -141,7 +144,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
       onUserUpdated(user);
     },
     onError: (error) =>
-      notify.apiError(error, { title: `Couldn't verify ${account.username}` }),
+      notify.apiError(error, { title: t("verifyFailed", { username: account.username }) }),
   });
 
   const handleSave = () => {
@@ -174,7 +177,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
           onClick={handleSave}
           disabled={updateMutation.isPending || !editValue.trim()}
-          aria-label="Save"
+          aria-label={t("save")}
         >
           {updateMutation.isPending ? <Spinner /> : <Check className="h-4 w-4" />}
         </Button>
@@ -184,7 +187,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           className="h-8 w-8 text-muted-foreground hover:text-foreground"
           onClick={() => setEditing(false)}
           disabled={updateMutation.isPending}
-          aria-label="Cancel"
+          aria-label={t("cancel")}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -203,7 +206,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           {account.is_verified ? (
             <Check
               className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-teal)]"
-              aria-label="Verified via OAuth"
+              aria-label={t("verified")}
             />
           ) : (
             canManage &&
@@ -214,8 +217,8 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
                 className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
                 onClick={() => verifyMutation.mutate()}
                 disabled={verifyMutation.isPending}
-                aria-label={`Verify ${account.username}`}
-                title="Manually verify (requires a matching OAuth connection)"
+                aria-label={t("verify", { username: account.username })}
+                title={t("verifyTitle")}
               >
                 {verifyMutation.isPending ? (
                   <Spinner className="size-3.5" />
@@ -228,7 +231,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           {account.is_primary ? (
             <Star
               className="h-3.5 w-3.5 shrink-0 fill-[color:var(--aqt-amber)] text-[color:var(--aqt-amber)]"
-              aria-label="Primary"
+              aria-label={t("primary")}
             />
           ) : (
             canManage && (
@@ -238,8 +241,8 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
                 className="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
                 onClick={() => primaryMutation.mutate()}
                 disabled={primaryMutation.isPending}
-                aria-label="Make primary"
-                title="Make primary"
+                aria-label={t("makePrimary")}
+                title={t("makePrimary")}
               >
                 {primaryMutation.isPending ? <Spinner className="size-3.5" /> : <Star className="h-3.5 w-3.5" />}
               </Button>
@@ -247,7 +250,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           )}
           {canManage && (
             <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditValue(account.username); setEditing(true); }} aria-label={`Edit ${account.username}`}>
+              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditValue(account.username); setEditing(true); }} aria-label={t("edit", { username: account.username })}>
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
               <Button
@@ -255,7 +258,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
                 variant="ghost"
                 className="h-7 w-7 text-destructive/70 hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setDeleteOpen(true)}
-                aria-label={`Delete ${account.username}`}
+                aria-label={t("delete", { username: account.username })}
               >
                 {deleteMutation.isPending ? <Spinner className="size-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
               </Button>
@@ -274,9 +277,9 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
         onConfirm={() => deleteMutation.mutate()}
         pending={deleteMutation.isPending}
         intent={{
-          title: `Remove ${account.username}?`,
-          description: `This will remove the ${config.label} identity "${account.username}" from this player.`,
-          confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+          title: t("removeTitle", { username: account.username }),
+          description: t("removeDescription", { provider: config.label, username: account.username }),
+          confirmLabel: deleteMutation.isPending ? t("deleting") : t("deleteAction"),
           tone: "danger"
         }}
       />
@@ -287,6 +290,7 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
 // ─── Add row (per provider) ──────────────────────────────────────────────────
 
 function AddAccountRow({ provider, userId, onUserUpdated }: Readonly<{ provider: SocialProvider; userId: number; onUserUpdated: (user: User) => void }>) {
+  const t = useTranslations("adminPeople.social");
   const queryClient = useQueryClient();
   const [value, setValue] = useState("");
   const config = getSocialProviderConfig(provider);
@@ -309,7 +313,7 @@ function AddAccountRow({ provider, userId, onUserUpdated }: Readonly<{ provider:
     <div className="space-y-1.5">
       <div className="flex items-center gap-2 px-1">
         <Input
-          placeholder={`Add ${config.placeholder}...`}
+          placeholder={t("add", { label: config.placeholder })}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
@@ -324,7 +328,7 @@ function AddAccountRow({ provider, userId, onUserUpdated }: Readonly<{ provider:
           className="h-9 w-9 shrink-0"
           onClick={handleAdd}
           disabled={!value.trim() || addMutation.isPending}
-          aria-label={`Add ${config.label}`}
+          aria-label={t("add", { label: config.label })}
         >
           {addMutation.isPending ? <Spinner /> : <Plus className="h-4 w-4" />}
         </Button>
@@ -348,6 +352,7 @@ export function SocialAccountsEditor({
   workspaceId,
   onUserUpdated,
 }: Readonly<SocialAccountsEditorProps>) {
+  const t = useTranslations("adminPeople.social");
   const countByProvider = useMemo(() => {
     const map = {} as Record<SocialProvider, number>;
     for (const provider of SOCIAL_PROVIDER_ORDER) map[provider] = socialAccountsForProvider(accounts, provider).length;
@@ -358,8 +363,8 @@ export function SocialAccountsEditor({
     SOCIAL_PROVIDER_ORDER.reduce((best, p) => (countByProvider[p] > countByProvider[best] ? p : best), SOCIAL_PROVIDER_ORDER[0])
   );
 
-  const config = getSocialProviderConfig(provider);
   const items = socialAccountsForProvider(accounts, provider);
+  const config = getSocialProviderConfig(provider);
 
   return (
     <div className="space-y-3">
@@ -388,7 +393,7 @@ export function SocialAccountsEditor({
 
       <div className={cn("space-y-1", items.length === 0 && "py-0")}>
         {items.length === 0 ? (
-          <p className="py-5 text-center text-sm text-muted-foreground">No {config.label} identities yet</p>
+          <p className="py-5 text-center text-sm text-muted-foreground">{t("noIdentities", { label: config.label })}</p>
         ) : (
           items.map((account) => (
             <AccountRow

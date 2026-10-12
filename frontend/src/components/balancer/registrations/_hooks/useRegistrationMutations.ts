@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useTranslations } from "next-intl";
 
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { notify } from "@/lib/notify";
@@ -34,6 +35,8 @@ export function useRegistrationMutations({
   onDeleted
 }: UseRegistrationMutationsInput) {
   const queryClient = useQueryClient();
+  const t = useTranslations("registrationsAdmin.mutations");
+  const tActions = useTranslations("registrationsAdmin.actions");
 
   // Patch a single row across every cached filter variant. The PATCH endpoints
   // already return the fully-serialized registration, so we never need to
@@ -68,7 +71,7 @@ export function useRegistrationMutations({
       balancerAdminService.createManualRegistration(tournamentId as number, payload),
     onSuccess: () => {
       onCreated();
-      notify.success("Manual registration created");
+      notify.success(t("created"));
       revalidateRegistrations();
     }
   });
@@ -83,7 +86,7 @@ export function useRegistrationMutations({
     onSuccess: (updated) => {
       patchRegistrationInCache(updated);
       onUpdated();
-      notify.success("Registration updated");
+      notify.success(t("updated"));
       revalidateRegistrations();
     }
   });
@@ -93,7 +96,7 @@ export function useRegistrationMutations({
       balancerAdminService.approveRegistration(registrationId),
     onSuccess: (updated) => {
       patchRegistrationInCache(updated);
-      notify.success("Registration approved");
+      notify.success(t("approved"));
       revalidateRegistrations();
     }
   });
@@ -102,7 +105,7 @@ export function useRegistrationMutations({
     mutationFn: (registrationId: number) => balancerAdminService.rejectRegistration(registrationId),
     onSuccess: (updated) => {
       patchRegistrationInCache(updated);
-      notify.success("Registration rejected");
+      notify.success(t("rejected"));
       revalidateRegistrations();
     }
   });
@@ -112,7 +115,7 @@ export function useRegistrationMutations({
       balancerAdminService.withdrawRegistration(registrationId),
     onSuccess: (updated) => {
       patchRegistrationInCache(updated);
-      notify.success("Registration withdrawn");
+      notify.success(t("withdrawn"));
       revalidateRegistrations();
     }
   });
@@ -122,7 +125,7 @@ export function useRegistrationMutations({
       balancerAdminService.restoreRegistration(registrationId),
     onSuccess: (updated) => {
       patchRegistrationInCache(updated);
-      notify.success("Registration restored");
+      notify.success(t("restored"));
       revalidateRegistrations();
     }
   });
@@ -132,7 +135,7 @@ export function useRegistrationMutations({
     onSuccess: (_, registrationId) => {
       removeRegistrationFromCache(registrationId);
       onDeleted();
-      notify.success("Registration deleted");
+      notify.success(t("deleted"));
       revalidateRegistrations();
     }
   });
@@ -141,10 +144,10 @@ export function useRegistrationMutations({
     mutationFn: (registrationIds: number[]) =>
       balancerAdminService.bulkApproveRegistrations(tournamentId as number, registrationIds),
     onSuccess: (result, registrationIds) => {
-      notify.success(`${result.approved} approved, ${result.skipped} skipped`, {
+      notify.success(t("bulkApproved", { approved: result.approved, skipped: result.skipped }), {
         duration: 8000,
         action: {
-          label: "Undo",
+          label: tActions("undo"),
           onClick: () => {
             // Only pending rows are selectable, so `pending` is the prior
             // status of every id in the batch.
@@ -155,7 +158,7 @@ export function useRegistrationMutations({
             )
               .then(() => {
                 revalidateRegistrations();
-                notify.success("Approval undone");
+                notify.success(t("approvalUndone"));
               })
               .catch((error: unknown) => notify.apiError(error));
           }
@@ -172,7 +175,7 @@ export function useRegistrationMutations({
         : balancerAdminService.setBalancerStatus(registrationId, "excluded", "manual_exclusion"),
     onSuccess: (updated) => {
       patchRegistrationInCache(updated);
-      notify.success("Balancer status updated");
+      notify.success(t("balancerUpdated"));
       revalidateRegistrations();
     }
   });
@@ -182,7 +185,7 @@ export function useRegistrationMutations({
       balancerAdminService.checkInRegistration(registrationId, checkedIn),
     onSuccess: (updated, variables) => {
       patchRegistrationInCache(updated);
-      notify.success(variables.checkedIn ? "Checked in" : "Check-in removed");
+      notify.success(variables.checkedIn ? t("checkedIn") : t("checkInRemoved"));
       revalidateRegistrations();
     }
   });
@@ -193,10 +196,10 @@ export function useRegistrationMutations({
     mutationFn: ({ ids }: { ids: number[]; previouslyExcluded: number[] }) =>
       balancerAdminService.bulkAddToBalancer(tournamentId as number, ids),
     onSuccess: (result, { previouslyExcluded }) => {
-      notify.success(`${result.updated} added to balancer, ${result.skipped} skipped`, {
+      notify.success(t("bulkAdded", { updated: result.updated, skipped: result.skipped }), {
         duration: 8000,
         action: {
-          label: "Undo",
+          label: tActions("undo"),
           onClick: () => {
             void (previouslyExcluded.length > 0
               ? balancerAdminService.bulkSetBalancerStatus(tournamentId as number, {
@@ -208,7 +211,7 @@ export function useRegistrationMutations({
             )
               .then(() => {
                 revalidateRegistrations();
-                notify.success("Balancer change undone");
+                notify.success(t("balancerUndone"));
               })
               .catch((error: unknown) => notify.apiError(error));
           }

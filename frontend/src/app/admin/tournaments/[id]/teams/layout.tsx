@@ -8,10 +8,11 @@ import { usePermissions } from "@/hooks/usePermissions";
 
 import { useHubTournamentQuery } from "../hubQueries";
 import { allowedTeamsSubTab, TEAMS_SUB_TABS, type TabAccess, type TeamsSubTab } from "../tab-guards";
+import { useTranslations } from "next-intl";
 
-const SUB_TAB_LABELS: Record<TeamsSubTab, string> = {
-  roster: "Roster",
-  draft: "Draft"
+const SUB_TAB_LABEL_KEYS: Record<TeamsSubTab, "roster" | "draft"> = {
+  roster: "roster",
+  draft: "draft"
 };
 
 const DEFAULT_SUB_TAB: TeamsSubTab = TEAMS_SUB_TABS[0];
@@ -35,6 +36,7 @@ export default function TeamsLayout({ children }: Readonly<{ children: ReactNode
   const pathname = usePathname();
   const router = useRouter();
   const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
+  const t = useTranslations("adminTournament.teams");
 
   const basePath = `/admin/tournaments/${tournamentId}/teams`;
   const segment = pathname.startsWith(basePath)
@@ -67,14 +69,14 @@ export default function TeamsLayout({ children }: Readonly<{ children: ReactNode
 
   const items: LinkTabItem[] = TEAMS_SUB_TABS.map((key) => ({
     key,
-    label: SUB_TAB_LABELS[key],
+    label: t(`tabs.${SUB_TAB_LABEL_KEYS[key]}`),
     href: `${basePath}/${key}`,
     hidden: !allowedTeamsSubTab(key, access)
   }));
 
   return (
     <div className="space-y-4">
-      <LinkTabs items={items} activeKey={active} level={2} ariaLabel="Teams sections" />
+      <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
       {activeAllowed ? children : null}
     </div>
   );

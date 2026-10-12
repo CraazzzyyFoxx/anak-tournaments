@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuditTrailProvider } from "@/components/kit/AuditTrailSheet";
+import en from "@/i18n/messages/en.json";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import { notify } from "@/lib/notify";
 import RegistrationsTable from "./RegistrationsTable";
@@ -21,6 +22,19 @@ const getRegistrationForm = vi.fn();
 const listStatusCatalog = vi.fn();
 const bulkApproveRegistrations = vi.fn();
 const updateRegistration = vi.fn();
+
+const MESSAGES = {
+  common: {
+    ...en.common,
+    reserve: "On call",
+    notReserve: "Not on call",
+    reserveHint: "Plays as usual, and is fine being called in"
+  },
+  kit: en.kit,
+  kitAudit: en.kitAudit,
+  kitTable: en.kitTable,
+  registrationsAdmin: en.registrationsAdmin
+};
 
 vi.mock("@/services/balancer-admin.service", () => ({
   default: {
@@ -73,17 +87,6 @@ vi.mock("@/hooks/usePermissions", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
-
-// Only the keys this suite asserts on. Everything else on this screen is an
-// English literal by design, so an empty catalogue was enough until the on-call
-// chip — which the organizer reads as a word, not as a key path.
-const MESSAGES = {
-  common: {
-    reserve: "On call",
-    notReserve: "Not on call",
-    reserveHint: "Plays as usual, and is fine being called in"
-  }
-};
 
 function statusMeta(
   value: string,

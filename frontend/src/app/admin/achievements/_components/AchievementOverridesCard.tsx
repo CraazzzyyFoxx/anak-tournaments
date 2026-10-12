@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,25 +32,26 @@ export function AchievementOverridesCard({
   onDelete: (id: number) => void;
   isDeleting: boolean;
 }>) {
+  const t = useTranslations("adminAchievements");
   return (
     <Card>
       <CardHeader>
         <CardTitle asChild>
-          <h2>Manual overrides</h2>
+          <h2>{t("overrides.title")}</h2>
         </CardTitle>
         <CardDescription>
-          Achievements granted or revoked by hand, outside the evaluation engine.
+          {t("overrides.description")}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Achievement</TableHead>
-              <TableHead>User</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead>Tournament</TableHead>
+              <TableHead>{t("common.achievement")}</TableHead>
+              <TableHead>{t("common.user")}</TableHead>
+              <TableHead>{t("common.action")}</TableHead>
+              <TableHead>{t("common.reason")}</TableHead>
+              <TableHead>{t("common.tournament")}</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -73,10 +75,11 @@ export function AchievementOverridesCard({
                     size="icon"
                     onClick={() => onDelete(ov.id)}
                     disabled={isDeleting}
-                    aria-label={`Remove the ${ov.action} override on ${
-                      rules?.find((r) => r.id === ov.achievement_rule_id)?.name ??
-                      `achievement #${ov.achievement_rule_id}`
-                    } for user #${ov.user_id}`}
+                    aria-label={t("overrides.removeLabel", {
+                      action: ov.action,
+                      achievement: rules?.find((r) => r.id === ov.achievement_rule_id)?.name ?? `#${ov.achievement_rule_id}`,
+                      userId: ov.user_id,
+                    })}
                   >
                     <Trash2 className="h-4 w-4 text-destructive" aria-hidden />
                   </Button>

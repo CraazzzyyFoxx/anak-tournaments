@@ -26,7 +26,7 @@ export default function RegistrationSettingsPage() {
   return (
     <SettingsSectionPage
       section="registration"
-      description="Whether entries are accepted automatically, and how much of the field the public page shows."
+      description={useTranslations("adminTournament.screenDescriptions")("registration")}
     >
       {({ tournamentId, canTeamCreate }) => (
         <RegistrationForm tournamentId={tournamentId} disabled={!canTeamCreate} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { useTranslations } from "next-intl";
 import { Trash2 } from "lucide-react";
 
 import { ffaErrorEntries, useFfaErrorMessage } from "@/components/admin/ffa/FfaGameResultsDialog";
@@ -56,6 +57,8 @@ export function FfaScoringSection({
   onChange: (patch: Partial<StageForm>) => void;
   saveError?: unknown;
 }>) {
+  const t = useTranslations("adminBracket.ffa");
+  const tRoot = useTranslations("adminBracket");
   const ids = useId();
   const describeError = useFfaErrorMessage();
   const columns = form.ffaColumns;
@@ -83,7 +86,7 @@ export function FfaScoringSection({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5 sm:max-w-xs">
-        <Label htmlFor={`${ids}-preset`}>Scoring preset</Label>
+        <Label htmlFor={`${ids}-preset`}>{t("preset")}</Label>
         <Select
           value={preset}
           onValueChange={(value) => {
@@ -102,19 +105,19 @@ export function FfaScoringSection({
           <SelectContent>
             {FFA_SCORING_PRESETS.map((option) => (
               <SelectItem key={option.value} value={option.value}>
-                {option.label}
+                {tRoot(`labels.ffaScoringPresets.${option.labelKey}` as never)}
               </SelectItem>
             ))}
             {/* Only reachable as a state, never as a choice: it IS the fields
                 below once a column, a place or the formula has been edited. */}
-            {preset === "custom" ? <SelectItem value="custom">Custom</SelectItem> : null}
+            {preset === "custom" ? <SelectItem value="custom">{t("custom")}</SelectItem> : null}
           </SelectContent>
         </Select>
       </div>
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className={EYEBROW_CLASS}>Game columns</h3>
+          <h3 className={EYEBROW_CLASS}>{t("columns")}</h3>
           <Button
             type="button"
             variant="link"
@@ -126,14 +129,13 @@ export function FfaScoringSection({
               })
             }
           >
-            Add column
+            {t("addColumn")}
           </Button>
         </div>
 
         {columns.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-            Nothing is entered per game: the lobby is scored on its places alone. Add a column to
-            record kills, damage or a penalty.
+            {t("noColumns")}
           </p>
         ) : (
           columns.map((column, index) => (
@@ -141,11 +143,11 @@ export function FfaScoringSection({
             // on removal — there is no stabler key, and no row state to carry.
             <div key={index} className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto_auto_auto]">
               <div className="flex min-w-0 flex-col gap-1.5">
-                <Label htmlFor={`${ids}-key-${index}`}>{`Column ${index + 1} key`}</Label>
+                <Label htmlFor={`${ids}-key-${index}`}>{t("columnKey", { number: index + 1 })}</Label>
                 <Input
                   id={`${ids}-key-${index}`}
                   maxLength={FFA_COLUMN_KEY_MAX}
-                  placeholder="kills"
+                  placeholder={t("keyPlaceholder")}
                   className="font-mono"
                   spellCheck={false}
                   value={column.key}
@@ -153,11 +155,11 @@ export function FfaScoringSection({
                 />
               </div>
               <div className="flex min-w-0 flex-col gap-1.5">
-                <Label htmlFor={`${ids}-label-${index}`}>{`Column ${index + 1} label`}</Label>
+                <Label htmlFor={`${ids}-label-${index}`}>{t("columnLabel", { number: index + 1 })}</Label>
                 <Input
                   id={`${ids}-label-${index}`}
                   maxLength={FFA_COLUMN_LABEL_MAX}
-                  placeholder="Kills"
+                  placeholder={t("labelPlaceholder")}
                   value={column.label}
                   onChange={(event) => setColumn(index, { label: event.target.value })}
                 />
@@ -165,13 +167,13 @@ export function FfaScoringSection({
               <span className="flex items-center gap-2 pb-2 text-xs text-muted-foreground">
                 <Checkbox
                   checked={column.public}
-                  aria-label={`Show column ${index + 1} in the table`}
+                  aria-label={t("showColumn", { number: index + 1 })}
                   onCheckedChange={(checked) => setColumn(index, { public: checked === true })}
                 />
-                <span>In the table</span>
+                <span>{t("inTable")}</span>
               </span>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor={`${ids}-better-${index}`}>{`Column ${index + 1} direction`}</Label>
+                <Label htmlFor={`${ids}-better-${index}`}>{t("direction", { number: index + 1 })}</Label>
                 <Select
                   value={column.better}
                   onValueChange={(value) => setColumn(index, { better: value as FfaColumn["better"] })}
@@ -180,8 +182,8 @@ export function FfaScoringSection({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="higher">Higher is better</SelectItem>
-                    <SelectItem value="lower">Lower is better</SelectItem>
+                    <SelectItem value="higher">{t("higher")}</SelectItem>
+                    <SelectItem value="lower">{t("lower")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -190,7 +192,7 @@ export function FfaScoringSection({
                 variant="ghost"
                 size="icon"
                 className="mb-0.5 text-muted-foreground hover:text-foreground"
-                aria-label={`Remove column ${index + 1}`}
+                aria-label={t("removeColumn", { number: index + 1 })}
                 onClick={() => onChange({ ffaColumns: columns.filter((_, at) => at !== index) })}
               >
                 <Trash2 className="size-4" aria-hidden />
@@ -206,22 +208,19 @@ export function FfaScoringSection({
         ) : null}
 
         <p className="text-xs text-muted-foreground">
-          The key is what the formula reads — lowercase letters, digits and underscores, up to{" "}
-          {FFA_COLUMN_KEY_MAX} characters. A column left out of the table is still entered and still
-          scored; the public lobby never shows its values. A column with values in it can be
-          relabelled, but not renamed or removed. At most {FFA_MAX_COLUMNS} columns.
+          {t("keyHelp", { max: FFA_COLUMN_KEY_MAX, maxColumns: FFA_MAX_COLUMNS })}
         </p>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor={`${ids}-formula`}>Points formula</Label>
+        <Label htmlFor={`${ids}-formula`}>{t("formula")}</Label>
         <Textarea
           id={`${ids}-formula`}
           rows={2}
           maxLength={FFA_FORMULA_MAX}
           className="font-mono text-sm"
           spellCheck={false}
-          placeholder="place_pts + kills * 2 - deaths"
+          placeholder={t("formulaPlaceholder")}
           value={form.ffaFormula}
           onChange={(event) => onChange({ ffaFormula: event.target.value })}
           aria-describedby={`${ids}-formula-hint`}
@@ -234,27 +233,23 @@ export function FfaScoringSection({
           </p>
         ) : null}
         <p id={`${ids}-formula-hint`} className="text-xs text-muted-foreground">
-          <span className="font-mono">
-            {[...columns.map((column) => column.key).filter(Boolean), ...FFA_FORMULA_VARIABLES].join(
-              ", "
-            )}
-          </span>{" "}
-          · functions <span className="font-mono">{FFA_FORMULA_FUNCTIONS.join(", ")}</span> ·
-          arithmetic, comparisons and <span className="font-mono">and / or / not</span>.
+          {t.rich("formulaHelp", {
+            variables: [...columns.map((column) => column.key).filter(Boolean), ...FFA_FORMULA_VARIABLES].join(", "),
+            functionList: FFA_FORMULA_FUNCTIONS.join(", "),
+            logic: t("logic"),
+            variablesCode: (chunks) => <span className="font-mono">{chunks}</span>,
+            functionCode: (chunks) => <span className="font-mono">{chunks}</span>,
+            logicCode: (chunks) => <span className="font-mono">{chunks}</span>
+          })}
         </p>
         <p className="text-xs text-muted-foreground">
-          <span className="font-mono">place</span> is the finishing place,{" "}
-          <span className="font-mono">place_pts</span> what that place pays in the table below, and{" "}
-          <span className="font-mono">teams</span> the size of the lobby. Reading{" "}
-          <span className="font-mono">place</span> or <span className="font-mono">place_pts</span> is
-          what makes a place REQUIRED when a game is entered; a formula that reads neither derives
-          the places from the points instead.
+          {t("placeHelp")}
         </p>
       </div>
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className={EYEBROW_CLASS}>Points per place</h3>
+          <h3 className={EYEBROW_CLASS}>{t("pointsPerPlace")}</h3>
           <Button
             type="button"
             variant="link"
@@ -262,14 +257,13 @@ export function FfaScoringSection({
             disabled={places.length >= FFA_MAX_PLACES}
             onClick={() => onChange({ ffaPlacementPoints: [...places, 0] })}
           >
-            Add place
+            {t("addPlace")}
           </Button>
         </div>
 
         {places.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-            No points for placement: <span className="font-mono">place_pts</span> is zero for
-            everyone. Add a place to pay for finishing position too.
+            {t("noPlacement")}
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -280,7 +274,7 @@ export function FfaScoringSection({
                 <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <Label
                     htmlFor={`${ids}-place-${index}`}
-                  >{`${ordinalPlace(index + 1)} place`}</Label>
+                  >{t("place", { ordinal: ordinalPlace(index + 1) })}</Label>
                   <NumberInput
                     id={`${ids}-place-${index}`}
                     min={0}
@@ -293,7 +287,7 @@ export function FfaScoringSection({
                   variant="ghost"
                   size="icon"
                   className="text-muted-foreground hover:text-foreground"
-                  aria-label={`Remove ${ordinalPlace(index + 1)} place`}
+                  aria-label={t("removePlace", { ordinal: ordinalPlace(index + 1) })}
                   onClick={() =>
                     onChange({ ffaPlacementPoints: places.filter((_, at) => at !== index) })
                   }
@@ -305,8 +299,7 @@ export function FfaScoringSection({
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          A place past the end of this table pays nothing, so a table shorter than the lobby is
-          legal — the tail scores on its columns alone.
+          {t("tail")}
         </p>
       </div>
     </div>

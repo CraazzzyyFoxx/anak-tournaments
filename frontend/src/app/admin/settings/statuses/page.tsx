@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { DataTable, type DataTableGroup, columnMeta, createKebabColumn } from "@/components/data-table";
@@ -38,23 +39,6 @@ import type {
 import type { StatusScope } from "@/types/registration.types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 
-const SCOPE_LABELS: Record<StatusScope, string> = {
-  registration: "Registration",
-  balancer: "Balancer"
-};
-
-const FILTER_DEFS: FilterDef[] = [
-  {
-    key: "scope",
-    label: "Scope",
-    kind: "single",
-    options: [
-      { value: "registration", label: "Registration" },
-      { value: "balancer", label: "Balancer" }
-    ]
-  }
-];
-
 /** `StatusMetaBadge` renders from the shared `StatusMeta` shape, which the
  *  catalog row nearly is: it carries no `value`, and its edit/delete grants are
  *  a property of the kind rather than of the row. */
@@ -88,10 +72,26 @@ function badgeMeta(row: BalancerCustomStatus) {
  * rather than something you could filter by.
  */
 export default function WorkspaceStatusesSettingsPage() {
+  const t = useTranslations("adminSettings.statuses");
+  const scopeLabels: Record<StatusScope, string> = useMemo(
+    () => ({ registration: t("scope.registration"), balancer: t("scope.balancer") }),
+    [t]
+  );
+  const filterDefs: FilterDef[] = [
+    {
+      key: "scope",
+      label: t("columns.scope"),
+      kind: "single",
+      options: [
+        { value: "registration", label: t("scope.registration") },
+        { value: "balancer", label: t("scope.balancer") }
+      ]
+    }
+  ];
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
-  const filters = useFilters(FILTER_DEFS);
+  const filters = useFilters(filterDefs);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingStatus, setEditingStatus] = useState<BalancerCustomStatus | null>(null);
   const [pendingStatus, setPendingStatus] = useState<BalancerCustomStatus | null>(null);
@@ -119,10 +119,10 @@ export default function WorkspaceStatusesSettingsPage() {
       await invalidateStatuses();
       setCreateOpen(false);
       setForm(EMPTY_STATUS_FORM);
-      notify.success("Custom status created");
+      notify.success(t("toast.customCreated"));
     },
     onError: (error) => {
-      notify.apiError(error, { title: "Could not create the status" });
+      notify.apiError(error, { title: t("errors.create") });
     }
   });
 
@@ -133,10 +133,10 @@ export default function WorkspaceStatusesSettingsPage() {
       await invalidateStatuses();
       setEditingStatus(null);
       setForm(EMPTY_STATUS_FORM);
-      notify.success("Custom status updated");
+      notify.success(t("toast.customUpdated"));
     },
     onError: (error) => {
-      notify.apiError(error, { title: "Could not save the status" });
+      notify.apiError(error, { title: t("errors.save") });
     }
   });
 
@@ -155,10 +155,10 @@ export default function WorkspaceStatusesSettingsPage() {
       await invalidateStatuses();
       setEditingStatus(null);
       setForm(EMPTY_STATUS_FORM);
-      notify.success("System status updated");
+      notify.success(t("toast.systemUpdated"));
     },
     onError: (error) => {
-      notify.apiError(error, { title: "Could not save the system status override" });
+      notify.apiError(error, { title: t("errors.systemSave") });
     }
   });
 
@@ -168,10 +168,10 @@ export default function WorkspaceStatusesSettingsPage() {
     onSuccess: async () => {
       await invalidateStatuses();
       setPendingStatus(null);
-      notify.success("Custom status deleted");
+      notify.success(t("toast.customDeleted"));
     },
     onError: (error) => {
-      notify.apiError(error, { title: "Could not delete the status" });
+      notify.apiError(error, { title: t("errors.delete") });
     }
   });
 
@@ -181,10 +181,10 @@ export default function WorkspaceStatusesSettingsPage() {
     onSuccess: async () => {
       await invalidateStatuses();
       setPendingStatus(null);
-      notify.success("System status reset");
+      notify.success(t("toast.systemReset"));
     },
     onError: (error) => {
-      notify.apiError(error, { title: "Could not reset the system status" });
+      notify.apiError(error, { title: t("errors.reset") });
     }
   });
 
@@ -212,7 +212,7 @@ export default function WorkspaceStatusesSettingsPage() {
       {
         id: "status",
         accessorFn: (row) => row.name,
-        header: "Status",
+        header: t("columns.status"),
         meta: columnMeta<BalancerCustomStatus>({
           category: "core",
           mandatory: true,
@@ -224,20 +224,20 @@ export default function WorkspaceStatusesSettingsPage() {
       },
       {
         id: "scope",
-        accessorFn: (row) => SCOPE_LABELS[row.scope],
-        header: "Scope",
+        accessorFn: (row) => scopeLabels[row.scope],
+        header: t("columns.scope"),
         meta: columnMeta<BalancerCustomStatus>({
           category: "core",
-          searchValue: (row) => SCOPE_LABELS[row.scope]
+          searchValue: (row) => scopeLabels[row.scope]
         }),
         cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">{SCOPE_LABELS[row.original.scope]}</span>
+          <span className="text-sm text-muted-foreground">{scopeLabels[row.original.scope]}</span>
         )
       },
       {
         id: "slug",
         accessorFn: (row) => row.slug,
-        header: "Slug",
+        header: t("columns.slug"),
         meta: columnMeta<BalancerCustomStatus>({
           category: "meta",
           searchValue: (row) => row.slug
@@ -247,17 +247,17 @@ export default function WorkspaceStatusesSettingsPage() {
       {
         id: "description",
         accessorFn: (row) => row.description ?? "",
-        header: "Description",
+        header: t("columns.description"),
         enableSorting: false,
         meta: columnMeta<BalancerCustomStatus>({ category: "core" }),
         cell: ({ row }) => (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span>{row.original.description ?? "—"}</span>
             {row.original.excludes_from_balancer ? (
-              <StatusPill tone="warning">Excludes pool</StatusPill>
+              <StatusPill tone="warning">{t("badges.excludesPool")}</StatusPill>
             ) : null}
             {row.original.excludes_from_ready ? (
-              <StatusPill tone="warning">Blocks ready</StatusPill>
+              <StatusPill tone="warning">{t("badges.blocksReady")}</StatusPill>
             ) : null}
           </div>
         )
@@ -265,19 +265,19 @@ export default function WorkspaceStatusesSettingsPage() {
       createKebabColumn<BalancerCustomStatus>(
         (row) => [
           {
-            label: "Edit",
+            label: t("actions.edit"),
             icon: Pencil,
             hidden: !canManageStatuses,
             onSelect: () => openEdit(row)
           },
           {
-            label: "Reset to default",
+            label: t("actions.resetDefault"),
             icon: RotateCcw,
             hidden: !canManageStatuses || row.kind !== "builtin" || !row.can_reset,
             onSelect: () => setPendingStatus(row)
           },
           {
-            label: "Delete",
+            label: t("actions.delete"),
             icon: Trash2,
             destructive: true,
             hidden: !canManageStatuses || row.kind === "builtin",
@@ -286,11 +286,14 @@ export default function WorkspaceStatusesSettingsPage() {
         ],
         {
           rowLabel: (row) =>
-            `the ${row.name} ${row.kind === "builtin" ? "system" : "custom"} status`
+            t("rowLabel", {
+              name: row.name,
+              kind: row.kind === "builtin" ? t("systemKind") : t("customKind")
+            })
         }
       )
     ],
-    [canManageStatuses]
+    [canManageStatuses, scopeLabels, t]
   );
 
   /** System first: those exist in every workspace, so they are the reference a
@@ -299,13 +302,13 @@ export default function WorkspaceStatusesSettingsPage() {
     pageRows: Row<BalancerCustomStatus>[]
   ): DataTableGroup<BalancerCustomStatus>[] =>
     [
-      { key: "builtin", label: "System", rows: pageRows.filter((r) => r.original.kind === "builtin") },
-      { key: "custom", label: "Custom", rows: pageRows.filter((r) => r.original.kind !== "builtin") }
+      { key: "builtin", label: t("system"), rows: pageRows.filter((r) => r.original.kind === "builtin") },
+      { key: "custom", label: t("custom"), rows: pageRows.filter((r) => r.original.kind !== "builtin") }
     ].filter((group) => group.rows.length > 0);
 
   const submitCreate = () => {
     if (!form.name.trim()) {
-      setFormError("Give the status a name before creating it.");
+      setFormError(t("validation.createName"));
       return;
     }
     setFormError(null);
@@ -323,7 +326,7 @@ export default function WorkspaceStatusesSettingsPage() {
   const submitEdit = () => {
     if (!editingStatus) return;
     if (!form.name.trim()) {
-      setFormError("Give the status a name before saving it.");
+      setFormError(t("validation.saveName"));
       return;
     }
     setFormError(null);
@@ -360,24 +363,24 @@ export default function WorkspaceStatusesSettingsPage() {
   const isReset = pendingStatus?.kind === "builtin";
   const confirmIntent: ConfirmIntent = isReset
     ? {
-        title: "Reset system status",
+        title: t("confirm.resetTitle"),
         tone: "warning",
-        confirmLabel: "Reset status",
-        description: `“${pendingStatus?.name}” goes back to its default built-in name, icon and color. The workspace override is discarded.`
+        confirmLabel: t("confirm.reset"),
+        description: t("confirm.resetDescription", { name: pendingStatus?.name ?? "" })
       }
     : {
-        title: "Delete custom status",
+        title: t("confirm.deleteTitle"),
         tone: "danger",
-        confirmLabel: "Delete status",
-        description: `“${pendingStatus?.name}” is removed from the catalog. Registrations already using it keep the raw slug, and the server refuses the delete if the status is still in use.`
+        confirmLabel: t("confirm.delete"),
+        description: t("confirm.deleteDescription", { name: pendingStatus?.name ?? "" })
       };
 
   if (workspaceId === null) {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace in the sidebar to manage its registration and balancer statuses."
+        title={t("noWorkspace.title")}
+        description={t("noWorkspace.description")}
       />
     );
   }
@@ -386,9 +389,9 @@ export default function WorkspaceStatusesSettingsPage() {
     return (
       <PageStateCard
         state="error"
-        title="Could not load the status catalog"
+        title={t("loadError.title")}
         onAction={() => void statusesQuery.refetch()}
-        actionLabel="Try again"
+        actionLabel={t("tryAgain")}
       />
     );
   }
@@ -402,13 +405,13 @@ export default function WorkspaceStatusesSettingsPage() {
         getRowId={(row) => `${row.kind}:${row.scope}:${row.slug}`}
         filterKey={filters.filterKey}
         groupRows={groupRows}
-        searchPlaceholder="Search statuses"
-        emptyMessage="No statuses match this scope."
+        searchPlaceholder={t("search")}
+        emptyMessage={t("empty")}
         initialPageSize={25}
         columnsStorageKey="workspace-statuses-table-columns"
         toolbar={
           <FilterBar
-            defs={FILTER_DEFS}
+            defs={filterDefs}
             filters={filters}
             trailing={
               canManageStatuses ? (
@@ -425,7 +428,7 @@ export default function WorkspaceStatusesSettingsPage() {
                   }}
                 >
                   <Plus className="mr-2 size-4" aria-hidden />
-                  Add status
+                  {t("add")}
                 </Button>
               ) : null
             }
@@ -434,9 +437,7 @@ export default function WorkspaceStatusesSettingsPage() {
       />
 
       <p className="text-xs text-muted-foreground">
-        System statuses stay system-controlled: an edit here is a workspace override of their
-        name, icon and color, and can be reset. Custom statuses add extra labels this workspace
-        owns.
+        {t("note")}
       </p>
 
       <Dialog
@@ -448,22 +449,22 @@ export default function WorkspaceStatusesSettingsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create custom status</DialogTitle>
+            <DialogTitle>{t("createTitle")}</DialogTitle>
             <DialogDescription>
-              The slug is generated automatically from the name and stays stable after edits.
+              {t("createDescription")}
             </DialogDescription>
           </DialogHeader>
           <StatusForm value={form} onChange={setForm} />
           {formError && <p className="text-sm text-danger">{formError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               onClick={submitCreate}
               disabled={createMutation.isPending || !canManageStatuses}
             >
-              {createMutation.isPending ? "Creating…" : "Create status"}
+              {createMutation.isPending ? t("creating") : t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -482,12 +483,12 @@ export default function WorkspaceStatusesSettingsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingStatus?.kind === "builtin" ? "Edit system status" : "Edit custom status"}
+              {editingStatus?.kind === "builtin" ? t("editSystemTitle") : t("editCustomTitle")}
             </DialogTitle>
             <DialogDescription>
               {editingStatus?.kind === "builtin"
-                ? "Save a workspace override for this system status without changing its slug or workflow."
-                : "Update visual metadata without changing the stored slug."}
+                ? t("editSystemDescription")
+                : t("editCustomDescription")}
             </DialogDescription>
           </DialogHeader>
           <StatusForm
@@ -499,7 +500,7 @@ export default function WorkspaceStatusesSettingsPage() {
           {formError && <p className="text-sm text-danger">{formError}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingStatus(null)}>
-              Cancel
+              {t("cancel")}
             </Button>
             <Button
               onClick={submitEdit}
@@ -508,8 +509,8 @@ export default function WorkspaceStatusesSettingsPage() {
               }
             >
               {updateMutation.isPending || updateBuiltinMutation.isPending
-                ? "Saving…"
-                : "Save changes"}
+                ? t("saving")
+                : t("save")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useTranslations } from "next-intl";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,7 +36,7 @@ function BrandColorField({
       <div className="mt-1 flex items-center gap-2">
         <input
           type="color"
-          aria-label={`${label} colour picker`}
+          aria-label={label}
           value={valid ? hex : "#000000"}
           onChange={(event) => onChange(event.target.value)}
           className="h-9 w-10 shrink-0 cursor-pointer rounded border border-input bg-transparent p-0.5"
@@ -57,6 +58,7 @@ function BrandColorField({
  * overrides, and a preview of what they derive to.
  */
 export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.branding");
   const settings = useWorkspaceSettingsForm(workspaceId, "branding");
   const { form, patch } = settings;
 
@@ -72,9 +74,9 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
             <CardContent className="flex flex-col gap-4 pt-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label htmlFor="branding-enabled">Site branding</Label>
+                  <Label htmlFor="branding-enabled">{t("siteBranding")}</Label>
                   <p className="text-xs text-muted-foreground">
-                    Custom palette for this workspace on the main public site
+                    {t("siteBrandingHelp")}
                   </p>
                 </div>
                 <Switch
@@ -85,29 +87,29 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
               </div>
 
               <div>
-                <h2 className={EYEBROW_CLASS}>Seed colours</h2>
+                <h2 className={EYEBROW_CLASS}>{t("seedColours")}</h2>
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <BrandColorField
                     id="brand-primary"
-                    label="Primary accent"
+                    label={t("primaryAccent")}
                     value={values.brand_primary}
                     onChange={(value) => patch({ brand_primary: value })}
                   />
                   <BrandColorField
                     id="brand-secondary"
-                    label="Secondary accent"
+                    label={t("secondaryAccent")}
                     value={values.brand_secondary}
                     onChange={(value) => patch({ brand_secondary: value })}
                   />
                   <BrandColorField
                     id="brand-background"
-                    label="Background"
+                    label={t("background")}
                     value={values.brand_background}
                     onChange={(value) => patch({ brand_background: value })}
                   />
                   <BrandColorField
                     id="brand-surface"
-                    label="Surface"
+                    label={t("surface")}
                     value={values.brand_surface}
                     onChange={(value) => patch({ brand_surface: value })}
                   />
@@ -115,44 +117,44 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
               </div>
 
               <div>
-                <h2 className={EYEBROW_CLASS}>Core palette · optional overrides</h2>
+                <h2 className={EYEBROW_CLASS}>{t("corePalette")}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Leave blank to derive from the seed colours above.
+                  {t("corePaletteHelp")}
                 </p>
                 <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <BrandColorField
                     id="brand-accent"
-                    label="Accent"
+                    label={t("accent")}
                     value={values.brand_accent}
                     onChange={(value) => patch({ brand_accent: value })}
                   />
                   <BrandColorField
                     id="brand-foreground"
-                    label="Foreground (text)"
+                    label={t("foreground")}
                     value={values.brand_foreground}
                     onChange={(value) => patch({ brand_foreground: value })}
                   />
                   <BrandColorField
                     id="brand-muted"
-                    label="Muted surface"
+                    label={t("mutedSurface")}
                     value={values.brand_muted}
                     onChange={(value) => patch({ brand_muted: value })}
                   />
                   <BrandColorField
                     id="brand-border"
-                    label="Border"
+                    label={t("border")}
                     value={values.brand_border}
                     onChange={(value) => patch({ brand_border: value })}
                   />
                   <BrandColorField
                     id="brand-ring"
-                    label="Focus ring"
+                    label={t("focusRing")}
                     value={values.brand_ring}
                     onChange={(value) => patch({ brand_ring: value })}
                   />
                   <BrandColorField
                     id="brand-destructive"
-                    label="Destructive"
+                    label={t("destructive")}
                     value={values.brand_destructive}
                     onChange={(value) => patch({ brand_destructive: value })}
                   />
@@ -165,7 +167,7 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
                   style={{ ...preview, background: "var(--aqt-bg)" } as CSSProperties}
                 >
                   <p className="text-xs font-medium" style={{ color: "var(--aqt-fg)" }}>
-                    Preview
+                    {t("preview")}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <span
@@ -175,7 +177,7 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
                         color: "hsl(var(--primary-foreground))"
                       }}
                     >
-                      Primary
+                      {t("primary")}
                     </span>
                     <span
                       className="rounded px-2 py-1 text-xs font-medium"
@@ -184,7 +186,7 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
                         color: "hsl(var(--secondary-foreground))"
                       }}
                     >
-                      Secondary
+                      {t("secondary")}
                     </span>
                     <span
                       className="rounded px-2 py-1 text-xs"
@@ -194,7 +196,7 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
                         border: "1px solid var(--aqt-border)"
                       }}
                     >
-                      Surface
+                      {t("surface")}
                     </span>
                     <span
                       className="rounded px-2 py-1 text-xs font-medium"
@@ -203,7 +205,7 @@ export function BrandingSection({ workspaceId }: Readonly<{ workspaceId: number 
                         color: "hsl(var(--destructive-foreground))"
                       }}
                     >
-                      Destructive
+                      {t("destructive")}
                     </span>
                   </div>
                 </div>

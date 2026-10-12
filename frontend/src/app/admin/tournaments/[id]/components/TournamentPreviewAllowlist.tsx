@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserMinus } from "lucide-react";
 import { Combobox } from "@/components/kit/Combobox";
@@ -27,6 +28,7 @@ export function TournamentPreviewAllowlist({
   tournamentId,
   workspaceId
 }: Readonly<TournamentPreviewAllowlistProps>) {
+  const t = useTranslations("adminTournament.preview");
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [candidateSearch, setCandidateSearch] = useState("");
@@ -61,7 +63,7 @@ export function TournamentPreviewAllowlist({
       adminService.addTournamentPreviewUser(tournamentId, authUserId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: accessQueryKey });
-      notify.success("Added to preview allowlist");
+      notify.success(t("added"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -71,7 +73,7 @@ export function TournamentPreviewAllowlist({
       adminService.removeTournamentPreviewUser(tournamentId, authUserId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: accessQueryKey });
-      notify.success("Removed from preview allowlist");
+      notify.success(t("removed"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -83,20 +85,20 @@ export function TournamentPreviewAllowlist({
       <Combobox
         open={pickerOpen}
         onOpenChange={setPickerOpen}
-        label="Add a user to the allowlist…"
+        label={t("addUser")}
         disabled={addMutation.isPending}
         searchValue={candidateSearch}
         onSearchValueChange={setCandidateSearch}
-        searchLabel="Search workspace users"
-        searchPlaceholder="Search user by name…"
+        searchLabel={t("searchUsers")}
+        searchPlaceholder={t("searchUser")}
         emptyMessage={
           candidatesLoading ? (
             <span className="flex items-center justify-center gap-2 text-muted-foreground">
               <Spinner className="size-3.5" />
-              Loading workspace users…
+              {t("loadingUsers")}
             </span>
           ) : (
-            "No matching users. Only workspace members can be added."
+            t("noMatchingUsers")
           )
         }
       >
@@ -120,11 +122,11 @@ export function TournamentPreviewAllowlist({
       {entriesLoading ? (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Spinner className="size-3.5" />
-          Loading allowlist…
+          {t("loadingAllowlist")}
         </div>
       ) : (entries ?? []).length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No preview users yet. Add accounts that may view this hidden tournament.
+          {t("empty")}
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5">
@@ -141,7 +143,7 @@ export function TournamentPreviewAllowlist({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  aria-label={`Remove ${displayName} from the preview allowlist`}
+                  aria-label={t("remove", { name: displayName })}
                   className="h-7 px-2 text-destructive hover:text-destructive"
                   onClick={() => removeMutation.mutate(entry.auth_user_id)}
                   disabled={removeMutation.isPending}

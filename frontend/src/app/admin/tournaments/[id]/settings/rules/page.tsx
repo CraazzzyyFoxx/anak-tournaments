@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { MarkdownEditor } from "@/components/admin/MarkdownEditor";
 import { SaveBar } from "@/components/kit/SaveBar";
@@ -23,10 +25,11 @@ const RULES_MAX_LENGTH = 32_000;
  * page is the editor at full height instead of a text box above two selects.
  */
 export default function RulesSettingsPage() {
+  const t = useTranslations("adminTournament.rules");
   return (
     <SettingsSectionPage
       section="rules"
-      description="The document published on the tournament's public Rules tab."
+      description={t("description")}
     >
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <RulesForm
@@ -44,6 +47,7 @@ function RulesForm({
   tournamentId,
   disabled
 }: Readonly<{ tournament: Tournament; tournamentId: number; disabled: boolean }>) {
+  const t = useTranslations("adminTournament.rules");
   const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
     tournament,
     tournamentId,
@@ -55,13 +59,10 @@ function RulesForm({
       <Card>
         <CardContent className="flex flex-col gap-3 pt-6">
           <p className="text-caption text-muted-foreground">
-            Markdown, shown to everyone on the tournament&apos;s Rules tab. The tab appears only
-            once this is not empty — clearing it unpublishes the document. Write sections as{" "}
-            <code>##</code> headings (<code>###</code> for subsections): two or more of them give
-            the public page a table of contents. Bold text on its own line does not.
+            {t("hint")} <code>##</code> {t("headings")} <code>###</code> {t("subsections")}
           </p>
           <MarkdownEditor
-            label="Tournament rules, Markdown"
+            label={t("label")}
             placeholder={"## Format\n\n- Best of 3, grand final best of 5\n\n## Tiebreakers\n\n1. Head-to-head\n2. Map difference"}
             value={form.rules}
             onChange={(rules) => patch({ rules })}
@@ -72,7 +73,7 @@ function RulesForm({
               pass, and a locale-grouped number there can disagree with the
               browser's and trip hydration. */}
           <p className="text-caption text-muted-foreground tabular-nums">
-            {form.rules.length} / {RULES_MAX_LENGTH} characters
+            {t("characterCount", { count: form.rules.length, max: RULES_MAX_LENGTH })}
           </p>
         </CardContent>
       </Card>

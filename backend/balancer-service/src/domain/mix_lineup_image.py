@@ -84,7 +84,7 @@ class LineupTeam:
 class LineupPicture:
     kicker: str
     title: str
-    #: The metric pills over the teams (``Разница средних 9``, ``+25 за победу``).
+    #: The metric pills over the teams (``Разрыв по рангу 9``, ``Победа +25``).
     pills: tuple[str, ...]
     teams: tuple[LineupTeam, ...]
     #: ``None`` before anyone rolled a map.
@@ -260,8 +260,8 @@ def _team(
     draw.text((right, head_y), average, font=average_font, fill=_FG, anchor="rm")
     eyebrow = _font("inter-600", 12)
     avg_x = right - draw.textlength(average, font=average_font) - 8
-    _label(draw, (avg_x, head_y + 1), "ср.", eyebrow, (*_FG_FAINT, 255), align="right")
-    name_room = avg_x - _tracked_width(draw, "СР.", eyebrow) - 16 - (left + 14)
+    _label(draw, (avg_x, head_y + 1), "средний", eyebrow, (*_FG_FAINT, 255), align="right")
+    name_room = avg_x - _tracked_width(draw, "СРЕДНИЙ", eyebrow) - 16 - (left + 14)
     name_font = _font("onest-700", 24)
     draw.text((left + 14, head_y), _fit(draw, team.name, name_font, name_room), font=name_font, fill=_FG, anchor="lm")
     rule_y = top + 46
@@ -285,7 +285,7 @@ def _team(
         draw.text((right - 16, middle), rating, font=rating_font, fill=_FG, anchor="rm")
         name_x = left + 96
         room = right - 16 - draw.textlength(rating, font=rating_font) - 16 - name_x
-        tag = "кап" if seat.captain else ""
+        tag = "капитан" if seat.captain else ""
         tag_width = _tracked_width(draw, tag.upper(), tag_font) + 14 if tag else 0
         name = _fit(draw, seat.name, seat_font, room - (tag_width + 10 if tag else 0))
         draw.text((name_x, middle), name, font=seat_font, fill=_FG, anchor="lm")

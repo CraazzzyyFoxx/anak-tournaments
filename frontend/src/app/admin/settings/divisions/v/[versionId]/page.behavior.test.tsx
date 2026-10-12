@@ -46,10 +46,6 @@ const putDivisionGridMapping = vi.fn();
 let canRead = true;
 let canUpdate = true;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
-}));
 
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({
@@ -353,11 +349,11 @@ describe("Divisions › draft editor", () => {
 
   it("cuts the ladder and surfaces the draft summary in the save bar", async () => {
     const container = await mount();
-    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
 
     await click(byLabel("Start a new division at Champion 2"));
 
-    const bar = container.querySelector('[aria-label="unsavedChanges"]');
+    const bar = container.querySelector('[aria-label="Unsaved changes"]');
     expect(bar).toBeTruthy();
     expect(bar!.textContent).toContain("4 divisions");
     expect(bar!.textContent).toContain("1 edit");
@@ -366,7 +362,7 @@ describe("Divisions › draft editor", () => {
 
     // Undo puts it back and takes the bar away with it.
     await click(button("Undo last change"));
-    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
   });
 
   it("saves the bands as tiers and the mappings alongside them", async () => {
@@ -438,7 +434,7 @@ describe("Divisions › draft editor", () => {
   it("stores a range of divisions picked in Mappings, without touching the tiers", async () => {
     window.history.replaceState(null, "", "/admin/settings/divisions/v/23?tab=mappings");
     const container = await mount();
-    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
 
     await click(document.querySelector('[aria-label^="Target divisions for Old rest:"]'));
     const picker = document.querySelector('[role="dialog"][aria-label="Target divisions for Old rest"]')!;
@@ -452,7 +448,7 @@ describe("Divisions › draft editor", () => {
     // …and the dot moves where they land.
     await click(byLabel("Players of Old rest land in Elite"));
 
-    const bar = container.querySelector('[aria-label="unsavedChanges"]');
+    const bar = container.querySelector('[aria-label="Unsaved changes"]');
     expect(bar?.textContent).toContain("1 mapping pick");
     await click(button("Save draft"));
 

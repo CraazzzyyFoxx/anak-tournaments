@@ -2,6 +2,8 @@
 
 import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { EYEBROW_CLASS } from "@/components/kit/tone";
@@ -41,6 +43,7 @@ import {
   qualifyingSourceStage,
   RANKING_PRESETS,
   SEED_RANKING_LABELS,
+  SEED_RANKING_LABEL_KEYS,
   STAGE_TYPE_LABELS,
   tiebreakOrderForPreset,
   type StageProjection
@@ -77,13 +80,15 @@ export function GeneralSection({
   /** Named on the preview's cards, so their logos and full names resolve. */
   teams: Team[];
 }) {
+  const t = useTranslations("adminBracket.settings");
+  const tRoot = useTranslations("adminBracket");
   const ids = useId();
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-name`}>Name</Label>
+          <Label htmlFor={`${ids}-name`}>{t("name")}</Label>
           <Input
             id={`${ids}-name`}
             value={form.name}
@@ -92,7 +97,7 @@ export function GeneralSection({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-phase`}>Phase</Label>
+          <Label htmlFor={`${ids}-phase`}>{t("phase")}</Label>
           <NumberInput
             id={`${ids}-phase`}
             integer
@@ -101,13 +106,12 @@ export function GeneralSection({
             onValueChange={(next) => onChange({ order: next ?? 0 })}
           />
           <p className="text-xs text-muted-foreground">
-            Stages sharing a number run in parallel — give the High and Low divisions the
-            same one. A higher number is a later wave, fed by the ones before it.
+            {t("phaseHelp")}
           </p>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-type`}>Format</Label>
+          <Label htmlFor={`${ids}-type`}>{t("format")}</Label>
           <Select
             value={form.stageType}
             onValueChange={(value) => {
@@ -140,28 +144,28 @@ export function GeneralSection({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(STAGE_TYPE_LABELS).map(([value, label]) => (
+              {Object.keys(STAGE_TYPE_LABELS).map((value) => (
                 <SelectItem key={value} value={value}>
-                  {label}
+                  {tRoot(`labels.types.${value}` as never)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {stage.has_custom_bracket ? (
             <p className="text-xs text-muted-foreground">
-              Reset the custom bracket (Bracket layout) to change the format.
+              {t("resetCustom")}
             </p>
           ) : null}
           {isSuperuser ? null : (
             <p className="text-xs text-muted-foreground">
-              Only superusers can modify stage type after creation.
+              {t("superuserOnly")}
             </p>
           )}
         </div>
 
         {form.stageType === "swiss" ? (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-rounds`}>Swiss max rounds</Label>
+            <Label htmlFor={`${ids}-rounds`}>{t("swissRounds")}</Label>
             <NumberInput
               id={`${ids}-rounds`}
               integer
@@ -174,7 +178,7 @@ export function GeneralSection({
 
         {form.stageType === "double_elimination" ? (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-grand-final`}>Grand final</Label>
+            <Label htmlFor={`${ids}-grand-final`}>{t("grandFinal")}</Label>
             <Select
               value={form.deGrandFinalType}
               onValueChange={(value) =>
@@ -185,8 +189,8 @@ export function GeneralSection({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="no_reset">No reset</SelectItem>
-                <SelectItem value="with_reset">With reset</SelectItem>
+                <SelectItem value="no_reset">{t("noReset")}</SelectItem>
+                <SelectItem value="with_reset">{t("withReset")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -206,6 +210,8 @@ export function SeedingSection({
   onChanged,
   stages = []
 }: SectionProps & { onChanged: () => void; stages?: Stage[] }) {
+  const t = useTranslations("adminBracket.settings");
+  const tRoot = useTranslations("adminBracket");
   const ids = useId();
   const isBracket = BRACKET_STAGE_TYPES.includes(form.stageType);
   const isGroups = !isBracket;
@@ -232,10 +238,10 @@ export function SeedingSection({
     mutationFn: (sourceStageId: number) => adminService.autoWireStage(stage.id, sourceStageId),
     onSuccess: () => {
       onChanged();
-      notify.success("Wired playoff seeds from the selected stage");
+      notify.success(t("wireSuccess"));
     },
     onError: (error) =>
-      notify.apiError(error, { title: "Could not wire this stage from groups" })
+      notify.apiError(error, { title: t("wireError") })
   });
 
   // Per-group overrides are stage_item rows, not stage form fields: they PATCH
@@ -255,7 +261,7 @@ export function SeedingSection({
       onChanged();
     },
     onError: (error) =>
-      notify.apiError(error, { title: "Could not change how many teams advance" })
+      notify.apiError(error, { title: t("advanceError") })
   });
   const upperMutation = useMutation({
     mutationFn: ({ stageItemId, upperCount }: { stageItemId: number; upperCount: number | null }) =>
@@ -269,7 +275,7 @@ export function SeedingSection({
       onChanged();
     },
     onError: (error) =>
-      notify.apiError(error, { title: "Could not change this group's upper-bracket share" })
+      notify.apiError(error, { title: t("upperError") })
   });
 
   const commitAdvance = (item: StageItem) => {
@@ -329,11 +335,11 @@ export function SeedingSection({
     <div className="flex flex-col gap-4">
       {isBracket && sources.length > 0 ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-feed`}>Wire seeds from</Label>
+          <Label htmlFor={`${ids}-feed`}>{t("wireFrom")}</Label>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={sourceId} onValueChange={setPickedSourceId}>
               <SelectTrigger id={`${ids}-feed`} className="sm:w-[280px]">
-                <SelectValue placeholder="Group stage" />
+                <SelectValue placeholder={t("groupStage")} />
               </SelectTrigger>
               <SelectContent>
                 {sources.map((source) => (
@@ -353,18 +359,18 @@ export function SeedingSection({
               {wireMutation.isPending ? (
                 <Spinner />
               ) : null}
-              Wire
+              {t("wire")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Which group stage feeds this bracket. Required when two divisions run in parallel.
+            {t("wireHelp")}
           </p>
         </div>
       ) : null}
 
       {isBracket ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-seed-ranking`}>Bracket seeds</Label>
+          <Label htmlFor={`${ids}-seed-ranking`}>{t("bracketSeeds")}</Label>
           <Select
             value={form.seedRanking}
             onValueChange={(value) => onChange({ seedRanking: value as SeedRanking })}
@@ -375,41 +381,41 @@ export function SeedingSection({
             <SelectContent>
               {(Object.keys(SEED_RANKING_LABELS) as SeedRanking[]).map((value) => (
                 <SelectItem key={value} value={value}>
-                  {SEED_RANKING_LABELS[value]}
+                  {tRoot(`labels.seedRanking.${SEED_RANKING_LABEL_KEYS[value]}` as never)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Who is seed 1 in the generated bracket. Slot order keeps standings wiring.
+            {t("seedHelp")}
           </p>
         </div>
       ) : null}
 
       {isGroups ? (
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-advance`}>Teams advancing to playoff (per group)</Label>
+          <Label htmlFor={`${ids}-advance`}>{t("advanceLabel")}</Label>
           <NumberInput
             id={`${ids}-advance`}
             integer
             min={1}
-            placeholder="Auto (derive from bracket)"
+            placeholder={t("advancePlaceholder")}
             className="sm:w-[280px]"
             value={form.advanceCount === "" ? null : Number(form.advanceCount)}
             onValueChange={(next) => onChange({ advanceCount: next == null ? "" : String(next) })}
           />
           <p className="text-xs text-muted-foreground">
-            Top N from each group advance. Leave empty to auto-derive from the bracket wiring.
+            {t("advanceHelp")}
           </p>
 
           <Label htmlFor={`${ids}-advance-upper`} className="mt-2">
-            Of them to upper bracket (per group)
+            {t("advanceUpperLabel")}
           </Label>
           <NumberInput
             id={`${ids}-advance-upper`}
             integer
             min={0}
-            placeholder="All"
+            placeholder={t("all")}
             className="sm:w-[280px]"
             value={form.advanceUpperCount === "" ? null : Number(form.advanceUpperCount)}
             onValueChange={(next) =>
@@ -417,15 +423,14 @@ export function SeedingSection({
             }
           />
           <p className="text-xs text-muted-foreground">
-            The rest are seeded straight into the playoff&apos;s Lower bracket. Empty sends every
-            advancing team to the upper bracket. Applies to a double-elimination playoff.
+            {t("advanceUpperHelp")}
           </p>
         </div>
       ) : null}
 
       {isGroups && groups.length > 0 ? (
         <div className="flex flex-col gap-1.5 border-t border-border pt-3">
-          <p className={EYEBROW_CLASS}>Advance count per group</p>
+          <p className={EYEBROW_CLASS}>{t("advancePerGroup")}</p>
           {groups.map((item) => (
             <div key={item.id} className="flex items-center gap-2">
               <Label
@@ -439,7 +444,7 @@ export function SeedingSection({
                 integer
                 min={1}
                 className="h-8 w-28 text-xs tabular-nums"
-                placeholder={`Inherit (${stage.advance_count ?? "—"})`}
+                placeholder={tRoot("extra.inherit", { value: stage.advance_count ?? "—" })}
                 value={item.id in advanceDrafts ? advanceDrafts[item.id] : item.advance_count ?? null}
                 onValueChange={(next) =>
                   setAdvanceDrafts((current) => ({ ...current, [item.id]: next }))
@@ -450,14 +455,14 @@ export function SeedingSection({
                 htmlFor={`${ids}-upper-${item.id}`}
                 className="shrink-0 text-xs text-muted-foreground"
               >
-                upper
+                {t("upper")}
               </Label>
               <NumberInput
                 id={`${ids}-upper-${item.id}`}
                 integer
                 min={0}
                 className="h-8 w-28 text-xs tabular-nums"
-                placeholder={`Inherit (${stage.advance_upper_count ?? "all"})`}
+                placeholder={tRoot("extra.inherit", { value: stage.advance_upper_count ?? t("all") })}
                 value={
                   item.id in upperDrafts ? upperDrafts[item.id] : item.advance_upper_count ?? null
                 }
@@ -469,21 +474,19 @@ export function SeedingSection({
             </div>
           ))}
           <p className="text-xs text-muted-foreground">
-            Overrides the number above for one group — set it when groups are uneven. Empty
-            inherits. Saved on blur, not by &quot;Save changes&quot;.
+            {t("overrideHelp")}
           </p>
         </div>
       ) : null}
 
       {isGroups && seeds && seeds.lower > 0 ? (
         <p className="text-xs text-muted-foreground">
-          {nextPlayoff?.name}: → {seeds.upper} upper, {seeds.lower} lower
+          {t("seedSplit", { name: nextPlayoff?.name, upper: seeds.upper, lower: seeds.lower })}
         </p>
       ) : null}
 
       <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-        Filling the slots themselves is «Seed by SR» and «Auto-wire from groups» in the stage
-        actions menu, or the Items section one team at a time.
+        {t("fillHelp")}
       </p>
     </div>
   );
@@ -500,6 +503,8 @@ export function TiebreakersSection({
   drawPointsDefault: number;
   lossPointsDefault: number;
 }) {
+  const t = useTranslations("adminBracket.settings");
+  const tRoot = useTranslations("adminBracket");
   const ids = useId();
   // Which metrics the engine can compute here at all: a lobby has no opponent
   // pairing (no head-to-head, no Buchholz), a duel has no placement or score.
@@ -535,7 +540,7 @@ export function TiebreakersSection({
     <div className="flex flex-col gap-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-preset`}>Standings preset</Label>
+          <Label htmlFor={`${ids}-preset`}>{t("standingsPreset")}</Label>
           <Select
             value={form.rankingPreset}
             onValueChange={(value) =>
@@ -546,7 +551,7 @@ export function TiebreakersSection({
             }
           >
             <SelectTrigger id={`${ids}-preset`}>
-              <SelectValue placeholder="System default" />
+              <SelectValue placeholder={t("systemDefault")} />
             </SelectTrigger>
             <SelectContent>
               {(FFA_STAGE_TYPES.includes(form.stageType)
@@ -554,7 +559,7 @@ export function TiebreakersSection({
                 : RANKING_PRESETS
               ).map((preset) => (
                 <SelectItem key={preset.value} value={preset.value}>
-                  {preset.label}
+                  {tRoot(`labels.rankingPresets.${preset.labelKey}` as never)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -563,7 +568,7 @@ export function TiebreakersSection({
 
         {form.stageType === "swiss" ? (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-bye`}>Swiss bye points</Label>
+            <Label htmlFor={`${ids}-bye`}>{t("byePoints")}</Label>
             <NumberInput
               id={`${ids}-bye`}
               placeholder={String(form.scoringWin || winPointsDefault)}
@@ -581,7 +586,7 @@ export function TiebreakersSection({
       {isGroups ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-win`}>Win points override</Label>
+            <Label htmlFor={`${ids}-win`}>{t("winOverride")}</Label>
             <NumberInput
               id={`${ids}-win`}
               placeholder={String(winPointsDefault)}
@@ -590,7 +595,7 @@ export function TiebreakersSection({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-draw`}>Draw points override</Label>
+            <Label htmlFor={`${ids}-draw`}>{t("drawOverride")}</Label>
             <NumberInput
               id={`${ids}-draw`}
               placeholder={String(drawPointsDefault)}
@@ -599,7 +604,7 @@ export function TiebreakersSection({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-loss`}>Loss points override</Label>
+            <Label htmlFor={`${ids}-loss`}>{t("lossOverride")}</Label>
             <NumberInput
               id={`${ids}-loss`}
               placeholder={String(lossPointsDefault)}
@@ -612,7 +617,7 @@ export function TiebreakersSection({
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className={EYEBROW_CLASS}>Tiebreaker evaluation order</h3>
+          <h3 className={EYEBROW_CLASS}>{t("tiebreakOrder")}</h3>
           <Button
             type="button"
             variant="link"
@@ -627,7 +632,7 @@ export function TiebreakersSection({
               })
             }
           >
-            Reset to preset defaults
+            {t("resetDefaults")}
           </Button>
         </div>
         <ol className="flex flex-col gap-1 rounded-lg border border-border bg-card p-2">
@@ -645,13 +650,13 @@ export function TiebreakersSection({
                   <Checkbox
                     checked
                     disabled={isRankingMetric}
-                    aria-label={`Use ${metricLabel}`}
+                    aria-label={t("useMetric", { metric: metricLabel })}
                     onCheckedChange={() => toggleMetric(metricId, false)}
                   />
                   <span className="tabular-nums">{index + 1}.</span>
                   <span className="text-foreground">{metricLabel}</span>
                   {isRankingMetric ? (
-                    <span className="text-label uppercase tracking-wide">ranking metric</span>
+                    <span className="text-label uppercase tracking-wide">{t("rankingMetric")}</span>
                   ) : null}
                 </span>
                 <span className="flex items-center gap-0.5">
@@ -660,7 +665,7 @@ export function TiebreakersSection({
                     variant="ghost"
                     size="icon"
                     className="size-6 text-muted-foreground hover:text-foreground"
-                    aria-label={`Move ${metricLabel} up`}
+                    aria-label={t("moveUp", { metric: metricLabel })}
                     disabled={index === 0 || isPinned(index) || isPinned(index - 1)}
                     onClick={() => moveMetric(index, -1)}
                   >
@@ -671,7 +676,7 @@ export function TiebreakersSection({
                     variant="ghost"
                     size="icon"
                     className="size-6 text-muted-foreground hover:text-foreground"
-                    aria-label={`Move ${metricLabel} down`}
+                    aria-label={t("moveDown", { metric: metricLabel })}
                     disabled={
                       index === active.length - 1 || isPinned(index) || isPinned(index + 1)
                     }
@@ -686,12 +691,12 @@ export function TiebreakersSection({
         </ol>
         {inactive.length > 0 ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-dashed border-border px-3 py-2">
-            <span className={EYEBROW_CLASS}>Not evaluated</span>
+            <span className={EYEBROW_CLASS}>{t("notEvaluated")}</span>
             {inactive.map((metric) => (
               <span key={metric.id} className="flex items-center gap-2 text-xs opacity-70">
                 <Checkbox
                   checked={false}
-                  aria-label={`Use ${metric.label}`}
+                  aria-label={t("useMetric", { metric: metric.label })}
                   onCheckedChange={() => toggleMetric(metric.id, true)}
                 />
                 <span className="text-muted-foreground">{metric.label}</span>
@@ -721,6 +726,9 @@ export function BestOfSection({
   onApplyToExisting: () => void;
   applying: boolean;
 }) {
+  const t = useTranslations("adminBracket.settings");
+  const tRoot = useTranslations("adminBracket");
+  const formatRound = useBracketRoundLabel();
   const ids = useId();
   const isDoubleElimination = form.stageType === "double_elimination";
   // An FFA lobby plays games, not a series: `best_of` is how many games it
@@ -749,31 +757,32 @@ export function BestOfSection({
         lowerBracketTeamCount:
           form.stageType === "double_elimination" ? lowerBracketTeamCount : 0,
         plannedRounds,
-        configuredRounds: Object.keys(form.bestOf.by_round).map(Number)
+        configuredRounds: Object.keys(form.bestOf.by_round).map(Number),
+        formatRound
       });
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">
-          {isFfa ? "Lobby length" : "Best-of per round"}
+          {isFfa ? t("lobbyLength") : t("bestOfRound")}
         </h3>
         <Button size="sm" variant="ghost" disabled={applying} onClick={onApplyToExisting}>
           {applying ? <Spinner /> : null}
-          Apply to existing matches
+          {t("applyExisting")}
         </Button>
       </div>
       {/* One expression, not JSX text: Next's SWC transform drops the leading
           space of a multi-line text node that follows an expression and carries
           an HTML entity, which read as "Baked into lobbieson (re)generation". */}
       <p className="text-xs text-muted-foreground">
-        {`Baked into ${isFfa ? "lobbies" : "matches"} on (re)generation. Use "Apply to existing matches" to backfill without regenerating.`}
-        {isDoubleElimination ? " Upper and lower bracket rounds are configured separately." : ""}
+        {t("baked", { target: isFfa ? t("lobbies") : t("matches") })}
+        {isDoubleElimination ? ` ${t("separateBrackets")}` : ""}
       </p>
 
       <div className={isFfa ? "grid gap-3" : "grid grid-cols-2 gap-3"}>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-default`}>{isFfa ? "Games per lobby" : "Default"}</Label>
+          <Label htmlFor={`${ids}-default`}>{isFfa ? t("gamesPerLobby") : t("default")}</Label>
           <Select
             value={String(form.bestOf.default)}
             onValueChange={(value) => patchBestOf({ default: Number(value) })}
@@ -784,7 +793,7 @@ export function BestOfSection({
             <SelectContent>
               {BEST_OF_OPTIONS.map((n) => (
                 <SelectItem key={n} value={String(n)}>
-                  {isFfa ? `${n} games` : `Bo${n}`}
+                  {isFfa ? t("games", { count: n }) : `Bo${n}`}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -792,7 +801,7 @@ export function BestOfSection({
         </div>
         {isFfa ? null : (
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-final`}>{isDoubleElimination ? "Grand Final" : "Final"}</Label>
+            <Label htmlFor={`${ids}-final`}>{isDoubleElimination ? t("grandFinalCap") : t("final")}</Label>
             <Select
               value={form.bestOf.final != null ? String(form.bestOf.final) : "none"}
               onValueChange={(value) =>
@@ -804,7 +813,7 @@ export function BestOfSection({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">
-                  {isDoubleElimination ? "Same as upper bracket" : "Same as rounds"}
+                  {isDoubleElimination ? t("sameUpper") : t("sameRounds")}
                 </SelectItem>
                 {BEST_OF_OPTIONS.map((n) => (
                   <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
@@ -818,7 +827,9 @@ export function BestOfSection({
       {sections.map((section) => (
         <div key={section.key} className="flex flex-col gap-2">
           {section.label ? (
-            <h4 className="text-xs font-medium text-muted-foreground">{section.label}</h4>
+            <h4 className="text-xs font-medium text-muted-foreground">
+              {tRoot(`bestOfSections.${section.key}` as never)}
+            </h4>
           ) : null}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {section.rounds.map(({ round, label }) => (
@@ -838,7 +849,7 @@ export function BestOfSection({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="inherit">Default</SelectItem>
+                    <SelectItem value="inherit">{t("default")}</SelectItem>
                     {BEST_OF_OPTIONS.map((n) => (
                       <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
                     ))}

@@ -2,6 +2,7 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import {
   closestCenter,
@@ -44,12 +45,25 @@ import type { Team } from "@/types/team.types";
 import {
   getAssignedTeamIds,
   getDefaultStageItemType,
-  getInputDisplayLabel,
+  getInputDisplayLabelInfo,
   STAGE_ITEM_TYPE_LABELS,
+  type InputDisplayLabelInfo,
   type StageProgress
 } from "@/lib/bracket/projection";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Spinner } from "@/components/ui/spinner";
+
+/** What a seed slot shows: the team, the group placement feeding it, or nothing yet. */
+function inputLabel(
+  info: InputDisplayLabelInfo,
+  t: ReturnType<typeof useTranslations<"adminBracket">>
+): string {
+  if (info.key === "team") return info.label;
+  if (info.key === "winnerOf") {
+    return t("labels.winnerOf", { groupName: info.groupName, position: info.position });
+  }
+  return t("labels.emptySlot");
+}
 
 /** One item's inputs in seed order. */
 function seedOrder(item: StageItem): StageItemInput[] {
@@ -82,6 +96,7 @@ function SeedSlotRow({
   dragDisabled: boolean;
   children: ReactNode;
 }>) {
+  const t = useTranslations("adminBracket.items");
   const {
     attributes,
     listeners,
@@ -127,7 +142,7 @@ function SeedSlotRow({
           {...attributes}
           {...listeners}
           disabled={dragDisabled}
-          aria-label={`Drag ${label} to another slot`}
+          aria-label={t("drag", { label })}
           className="shrink-0 cursor-grab rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
         >
           <GripVertical className="size-3.5" aria-hidden />
@@ -200,6 +215,8 @@ export function StageItemsSection({
   onRequestDeleteItem,
   onRequestRemoveInput
 }: Readonly<StageItemsSectionProps>) {
+  const t = useTranslations("adminBracket.items");
+  const tRoot = useTranslations("adminBracket");
   const [draftName, setDraftName] = useState("");
   const [draftType, setDraftType] = useState<StageItemType>(
     getDefaultStageItemType(stage.stage_type)
@@ -221,7 +238,8 @@ export function StageItemsSection({
 
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const assignedTeamIds = getAssignedTeamIds(stage);
-  const nextItemName = draftType === "group" ? `Group ${stage.items.length + 1}` : "Bracket";
+  const nextItemName =
+    draftType === "group" ? t("group", { number: stage.items.length + 1 }) : t("bracket");
 
   const createItemMutation = useMutation({
     mutationFn: () =>
@@ -249,7 +267,7 @@ export function StageItemsSection({
     mutationFn: ({ stageItemId, name }: { stageItemId: number; name: string }) =>
       adminService.updateStageItem(stageItemId, { name }),
     onSuccess: () => onChanged(),
-    onError: (error) => notify.apiError(error, { title: "Could not rename this structure item" })
+    onError: (error) => notify.apiError(error, { title: t("renameError") })
   });
 
   const updateInputMutation = useMutation({
@@ -300,7 +318,7 @@ export function StageItemsSection({
     onSuccess: () => onChanged(),
     onError: (error) => {
       setDragLists(null);
-      notify.apiError(error, { title: "Could not move this team" });
+      notify.apiError(error, { title: t("moveError") });
     }
   });
 
@@ -378,11 +396,11 @@ export function StageItemsSection({
     <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          Groups, bracket lanes and the teams in their slots.
+          {t("description")}
         </p>
         <Button asChild variant="outline" size="sm">
           <Link href={encountersHref}>
-            Edit matches in Matches › Encounters
+            {t("encounters")}
             <ArrowUpRight className="size-4" aria-hidden />
           </Link>
         </Button>
@@ -415,7 +433,7 @@ export function StageItemsSection({
         >
           {hasSeededSlot ? (
             <p className="text-xs text-muted-foreground">
-              Drag a team by its handle to re-seed it in its group or move it to another one.
+              {t("dragHelp")}
             </p>
           ) : null}
 
@@ -431,14 +449,14 @@ export function StageItemsSection({
                     <div className="min-w-0">
                       <InlineEditText
                         value={item.name}
-                        label="structure item name"
+                        label={t("name")}
                         textClassName="text-sm font-medium"
                         onSave={(name) =>
                           updateItemNameMutation.mutateAsync({ stageItemId: item.id, name })
                         }
                       />
                       <p className="text-xs tabular-nums text-muted-foreground">
-                        {inputs.length} slot(s)
+                        {t("slotCount", { count: inputs.length })}
                       </p>
                     </div>
 
@@ -454,15 +472,15 @@ export function StageItemsSection({
                           }
                         >
                           <SelectTrigger
-                            aria-label={`Structure type for ${item.name}`}
+                            aria-label={t("type", { name: item.name })}
                             className="h-8 w-36 text-xs"
                           >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value, label]) => (
+                            {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value]) => (
                               <SelectItem key={value} value={value} className="text-xs">
-                                {label}
+                                {tRoot(`labels.itemTypes.${value}` as never)}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -471,7 +489,7 @@ export function StageItemsSection({
                           size="icon"
                           variant="ghost"
                           className="size-8"
-                          aria-label="Cancel item type edit"
+                          aria-label={t("cancelType")}
                           onClick={() => setEditingItemTypeId(null)}
                         >
                           <X className="size-4" aria-hidden />
@@ -482,9 +500,9 @@ export function StageItemsSection({
                         type="button"
                         className="flex shrink-0 items-center gap-1 rounded-md border border-transparent px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         onClick={() => setEditingItemTypeId(item.id)}
-                        aria-label={`Change structure type of ${item.name}`}
+                        aria-label={t("changeType", { name: item.name })}
                       >
-                        {STAGE_ITEM_TYPE_LABELS[item.type]}
+                        {tRoot(`labels.itemTypes.${item.type}` as never)}
                         <Pencil className="size-3.5" aria-hidden />
                       </button>
                     )}
@@ -493,7 +511,7 @@ export function StageItemsSection({
                       size="icon"
                       variant="ghost"
                       className="size-8 shrink-0 text-danger hover:text-danger"
-                      aria-label={`Delete ${item.name}`}
+                      aria-label={t("delete", { name: item.name })}
                       onClick={() => onRequestDeleteItem(item)}
                     >
                       <Trash2 className="size-4" aria-hidden />
@@ -507,7 +525,10 @@ export function StageItemsSection({
                           // The position, not the stored slot: it is what the team is
                           // seeded as, gaps an older delete left included.
                           const seed = index + 1;
-                          const label = getInputDisplayLabel(input, stages, teamById);
+                          const label = inputLabel(
+                            getInputDisplayLabelInfo(input, stages, teamById),
+                            tRoot
+                          );
                           const isEditing = editingInputId === input.id;
                           const canSwapAssignedTeams = input.team_id != null;
 
@@ -528,21 +549,21 @@ export function StageItemsSection({
                                     onSelect={(team) =>
                                       setEditingInputTeamDraft(team ? String(team.id) : "")
                                     }
-                                    placeholder="Pick team"
+                                    placeholder={t("pickTeam")}
                                     allowClear={false}
                                     isTeamDisabled={(team) =>
                                       assignedTeamIds.has(team.id) &&
                                       team.id !== input.team_id &&
                                       !canSwapAssignedTeams
                                     }
-                                    triggerAriaLabel={`Team for slot ${seed} of ${item.name}`}
+                                    triggerAriaLabel={t("teamForSlot", { seed, name: item.name })}
                                     triggerClassName="h-7 w-48 text-xs"
                                   />
                                   <Button
                                     size="icon"
                                     variant="ghost"
                                     className="size-8 shrink-0"
-                                    aria-label="Save team assignment"
+                                    aria-label={t("saveTeam")}
                                     disabled={
                                       !editingInputTeamDraft ||
                                       (updateInputMutation.isPending &&
@@ -566,7 +587,7 @@ export function StageItemsSection({
                                     size="icon"
                                     variant="ghost"
                                     className="size-8 shrink-0"
-                                    aria-label="Cancel team assignment edit"
+                                    aria-label={t("cancelTeam")}
                                     onClick={() => {
                                       setEditingInputId(null);
                                       setEditingInputTeamDraft("");
@@ -588,11 +609,12 @@ export function StageItemsSection({
                                       <button
                                         type="button"
                                         className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                        aria-label={
+                                        aria-label={t(
                                           input.input_type === "tentative"
-                                            ? `Override team in slot ${seed} of ${item.name}`
-                                            : `Change team in slot ${seed} of ${item.name}`
-                                        }
+                                            ? "overrideTeam"
+                                            : "changeTeam",
+                                          { seed, name: item.name }
+                                        )}
                                         onClick={() => {
                                           setEditingInputId(input.id);
                                           setEditingInputTeamDraft(input.team_id?.toString() ?? "");
@@ -604,7 +626,7 @@ export function StageItemsSection({
                                         size="icon"
                                         variant="ghost"
                                         className="size-8 shrink-0 text-danger hover:text-danger"
-                                        aria-label={`Remove slot ${seed} of ${item.name}`}
+                                        aria-label={t("removeSlot", { seed, name: item.name })}
                                         onClick={() =>
                                           onRequestRemoveInput(input, `${label} (#${seed})`)
                                         }
@@ -621,7 +643,7 @@ export function StageItemsSection({
                       </ul>
                     ) : (
                       <EmptyNote size="sm">
-                        No teams assigned yet. Pick a team below to fill the first slot.
+                        {t("empty")}
                       </EmptyNote>
                     )}
                   </SeedList>
@@ -636,11 +658,11 @@ export function StageItemsSection({
                           [item.id]: team ? String(team.id) : ""
                         }))
                       }
-                      placeholder={isTeamsLoading ? "Loading teams…" : "Select team"}
+                                      placeholder={isTeamsLoading ? t("loadingTeams") : t("selectTeam")}
                       allowClear={false}
                       disabled={isTeamsLoading || teams.length === 0}
                       isTeamDisabled={(team) => assignedTeamIds.has(team.id)}
-                      triggerAriaLabel={`Team to add to ${item.name}`}
+                      triggerAriaLabel={t("teamToAdd", { name: item.name })}
                       triggerClassName="h-9"
                     />
                     <Button
@@ -666,7 +688,7 @@ export function StageItemsSection({
                       ) : (
                         <Plus className="size-4" aria-hidden />
                       )}
-                      Add team
+                      {t("addTeam")}
                     </Button>
                   </div>
                 </div>
@@ -677,21 +699,21 @@ export function StageItemsSection({
           <DragOverlay>
             {activeDragInput ? (
               <span className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs shadow-lg">
-                {getInputDisplayLabel(activeDragInput, stages, teamById)}
+                {inputLabel(getInputDisplayLabelInfo(activeDragInput, stages, teamById), tRoot)}
               </span>
             ) : null}
           </DragOverlay>
         </DndContext>
       ) : (
         <EmptyNote>
-          This stage has no structure items yet. Add a group or bracket lane below.
+          {t("noItems")}
         </EmptyNote>
       )}
 
       <div className="grid gap-2 border-t border-border pt-3 lg:grid-cols-[minmax(0,1fr)_200px_auto] lg:items-end">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="stage-item-name" className="text-xs">
-            Structure item name
+            {t("itemName")}
           </Label>
           <Input
             id="stage-item-name"
@@ -704,16 +726,16 @@ export function StageItemsSection({
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="stage-item-type" className="text-xs">
-            Type
+            {t("typeLabel")}
           </Label>
           <Select value={draftType} onValueChange={(value) => setDraftType(value as StageItemType)}>
             <SelectTrigger id="stage-item-type" className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value, label]) => (
+              {Object.entries(STAGE_ITEM_TYPE_LABELS).map(([value]) => (
                 <SelectItem key={value} value={value}>
-                  {label}
+                  {tRoot(`labels.itemTypes.${value}` as never)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -731,7 +753,7 @@ export function StageItemsSection({
           ) : (
             <Plus className="size-4" aria-hidden />
           )}
-          {createItemMutation.isPending ? "Adding…" : "Add structure"}
+          {createItemMutation.isPending ? t("adding") : t("addStructure")}
         </Button>
       </div>
     </section>

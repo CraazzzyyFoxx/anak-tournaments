@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -16,10 +18,11 @@ import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
  * authored document with a points table nobody edits in the same sitting.
  */
 export default function ScoringSettingsPage() {
+  const t = useTranslations("adminTournament.scoring");
   return (
     <SettingsSectionPage
       section="scoring"
-      description="The points a match outcome is worth in the standings, and how this tournament is counted."
+      description={t("description")}
     >
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <ScoringForm
@@ -37,6 +40,7 @@ function ScoringForm({
   tournamentId,
   disabled
 }: Readonly<{ tournament: Tournament; tournamentId: number; disabled: boolean }>) {
+  const t = useTranslations("adminTournament.scoring");
   const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
     tournament,
     tournamentId,
@@ -48,13 +52,13 @@ function ScoringForm({
       <Card>
         <CardContent className="flex flex-col gap-5 pt-6">
           <section className="flex flex-col gap-2">
-            <h2 className={EYEBROW_CLASS}>Scoring points</h2>
+            <h2 className={EYEBROW_CLASS}>{t("points")}</h2>
             <p className="text-xs text-muted-foreground">
-              Points awarded in standings logic for match outcomes.
+              {t("hint")}
             </p>
             <div className="grid grid-cols-3 gap-3 pt-1">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="settings-win-points">Win</Label>
+                <Label htmlFor="settings-win-points">{t("win")}</Label>
                 <NumberInput
                   id="settings-win-points"
                   value={form.win_points}
@@ -63,7 +67,7 @@ function ScoringForm({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="settings-draw-points">Draw</Label>
+                <Label htmlFor="settings-draw-points">{t("draw")}</Label>
                 <NumberInput
                   id="settings-draw-points"
                   value={form.draw_points}
@@ -72,7 +76,7 @@ function ScoringForm({
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="settings-loss-points">Loss</Label>
+                <Label htmlFor="settings-loss-points">{t("loss")}</Label>
                 <NumberInput
                   id="settings-loss-points"
                   value={form.loss_points}
@@ -92,7 +96,7 @@ function ScoringForm({
                 onCheckedChange={(checked) => patch({ is_league: checked === true })}
               />
               <Label htmlFor="settings-is-league" className="cursor-pointer">
-                Treat as league season
+                {t("league")}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -103,7 +107,7 @@ function ScoringForm({
                 onCheckedChange={(checked) => patch({ is_finished: checked === true })}
               />
               <Label htmlFor="settings-is-finished" className="cursor-pointer">
-                Mark tournament as finished
+                {t("finished")}
               </Label>
             </div>
           </div>

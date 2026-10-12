@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 
 import {
   AdminDetailTableShell,
@@ -133,7 +134,8 @@ export function RoundScheduleSection({
   plannedRounds,
   onChanged
 }: Readonly<RoundScheduleSectionProps>) {
-  const t = useTranslations("admin.roundSchedule");
+  const t = useTranslations("adminBracket.roundSchedule");
+  const formatRound = useBracketRoundLabel();
   const styles = getAdminDetailTableStyles("compact");
   const encountersQuery = useHubEncountersQuery(stage.tournament_id);
   // An FFA stage's lobbies are NOT in that list — `encounterService.getAll`
@@ -195,7 +197,8 @@ export function RoundScheduleSection({
       bracketTeamCount,
       lowerBracketTeamCount,
       plannedRounds,
-      configuredRounds: [...byRound.keys()]
+      configuredRounds: [...byRound.keys()],
+      formatRound
     }).flatMap((section) => section.rounds);
 
     return offered
@@ -210,6 +213,7 @@ export function RoundScheduleSection({
     lowerBracketTeamCount,
     bracketTeamCount,
     plannedRounds,
+    formatRound,
     t
   ]);
 

@@ -19,6 +19,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AuditTrailProvider } from "@/components/kit/AuditTrailSheet";
+import en from "@/i18n/messages/en.json";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import RegistrationLayout from "../layout";
 import RegistrationEntriesPage from "./page";
@@ -209,7 +210,7 @@ async function mount(search = "", expectTable = true) {
   mounted.push(root);
   await act(async () => {
     root.render(
-      <NextIntlClientProvider locale="en" messages={{}}>
+      <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
           <AuditTrailProvider>
             <Harness />
@@ -247,6 +248,22 @@ function commandItem(label: string) {
   return [...document.querySelectorAll('[cmdk-item=""]')].find((item) =>
     item.textContent?.trim().startsWith(label)
   );
+}
+
+/** Popovers and toolbars mount a few ticks late; under a loaded runner one tick is not enough. */
+async function eventually<T>(find: () => T | null | undefined): Promise<T | undefined> {
+  for (let turn = 0; turn < 50; turn += 1) {
+    const found = find();
+    if (found) return found;
+    await act(async () => {
+      await tick(5);
+    });
+  }
+  return undefined;
+}
+
+function findCommandItem(label: string) {
+  return eventually(() => commandItem(label));
 }
 
 beforeEach(() => {
@@ -331,9 +348,9 @@ describe("Registration entries", () => {
   it("writes a picked chip into the URL", async () => {
     const scope = await mount();
 
-    await click(scope.querySelector("button[aria-label='Add filter']"));
-    await click(commandItem("Admission"));
-    await click(commandItem("Admitted"));
+    await click(await eventually(() => scope.querySelector("button[aria-label='Add filter']")));
+    await click(await findCommandItem("Admission"));
+    await click(await findCommandItem("Admitted"));
 
     expect(new URL(replace.mock.calls.at(-1)![0], "http://x").searchParams.get("admission")).toBe(
       "admitted"
@@ -343,7 +360,9 @@ describe("Registration entries", () => {
   it("restores the chip from the URL and narrows the rows", async () => {
     const scope = await mount("?admission=admitted");
 
-    expect(scope.querySelector("button[aria-label='Remove filter Admission: Admitted']")).not.toBeNull();
+    expect(
+      await eventually(() => scope.querySelector("button[aria-label='Remove filter Admission: Admitted']"))
+    ).toBeDefined();
     expect(scope.querySelectorAll("tbody tr[data-row-id]").length).toBe(1);
   });
 

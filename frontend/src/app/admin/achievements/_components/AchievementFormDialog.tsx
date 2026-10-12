@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { Upload, X } from "lucide-react";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
@@ -36,6 +37,7 @@ import type { AchievementRuleForm } from "../_hooks/useAchievementRuleForm";
  * not here — it is edited on the rule's own page, where there is room for it.
  */
 export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRuleForm }>) {
+  const t = useTranslations("adminAchievements");
   const {
     open,
     editingRule,
@@ -59,15 +61,15 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
       onOpenChange={(next) => {
         if (!next) reset();
       }}
-      title={editingRule ? `Edit ${editingRule.slug}` : "Create achievement"}
+      title={editingRule ? t("form.editTitle", { slug: editingRule.slug }) : t("form.createTitle")}
       description={
         editingRule
-          ? "Update the achievement metadata. The condition tree is edited on its detail page."
-          : "Define a new achievement. Add its condition tree once it exists."
+          ? t("form.editDescription")
+          : t("form.createDescription")
       }
       onSubmit={submit}
       isSubmitting={isSubmitting}
-      submittingLabel={editingRule ? "Updating…" : "Creating…"}
+      submittingLabel={editingRule ? t("common.updating") : t("common.creating")}
       errorMessage={error}
       isDirty={isDirty}
     >
@@ -75,23 +77,23 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
         <div className="space-y-4 pr-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="slug">Slug</Label>
+              <Label htmlFor="slug">{t("common.slug")}</Label>
               <Input
                 id="slug"
                 value={(formData as AchievementRuleCreateInput).slug ?? ""}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
-                placeholder="my-achievement"
+                placeholder={t("form.slugPlaceholder")}
                 required
                 disabled={!!editingRule}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">{t("common.name")}</Label>
               <Input
                 id="name"
                 value={formData.name ?? ""}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Achievement name"
+                placeholder={t("form.achievementName")}
                 required
               />
             </div>
@@ -99,7 +101,7 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="desc_ru">Description (RU)</Label>
+              <Label htmlFor="desc_ru">{t("common.descriptionRu")}</Label>
               <Textarea
                 id="desc_ru"
                 value={formData.description_ru ?? ""}
@@ -108,7 +110,7 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="desc_en">Description (EN)</Label>
+              <Label htmlFor="desc_en">{t("common.descriptionEn")}</Label>
               <Textarea
                 id="desc_en"
                 value={formData.description_en ?? ""}
@@ -120,38 +122,38 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="rule-category">Category</Label>
+              <Label htmlFor="rule-category">{t("common.category")}</Label>
               <Select
                 value={formData.category ?? "overall"}
                 onValueChange={(v) => setFormData({ ...formData, category: v as AchievementCategory })}
               >
                 <SelectTrigger id="rule-category"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{t(`common.categoryValues.${c}`)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rule-scope">Scope</Label>
+              <Label htmlFor="rule-scope">{t("common.scope")}</Label>
               <Select
                 value={formData.scope ?? "global"}
                 onValueChange={(v) => setFormData({ ...formData, scope: v as AchievementScope })}
               >
                 <SelectTrigger id="rule-scope"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {SCOPES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {SCOPES.map((s) => <SelectItem key={s} value={s}>{t(`common.scopeValues.${s}`)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="rule-grain">Grain</Label>
+              <Label htmlFor="rule-grain">{t("common.grain")}</Label>
               <Select
                 value={formData.grain ?? "user"}
                 onValueChange={(v) => setFormData({ ...formData, grain: v as AchievementGrain })}
               >
                 <SelectTrigger id="rule-grain"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {GRAINS.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
+                  {GRAINS.map((g) => <SelectItem key={g} value={g}>{t(`common.grainValues.${g}`)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -159,12 +161,12 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
 
           {/* Image upload */}
           <div className="space-y-2">
-            <p className="text-sm font-medium">Image</p>
+            <p className="text-sm font-medium">{t("common.image")}</p>
             <div className="flex items-center gap-4">
               {(imagePreview || formData.image_url) && (
                 <Image
                   src={imagePreview ?? (formData.image_url as string) ?? ""}
-                  alt={formData.name ? `${formData.name} badge` : "Achievement badge"}
+                  alt={formData.name ? t("form.namedBadge", { name: formData.name }) : t("form.badgeAlt")}
                   width={64}
                   height={64}
                   className={ACHIEVEMENT_IMAGE_PREVIEW_CLASS}
@@ -188,7 +190,7 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                   onClick={() => imageInputRef.current?.click()}
                 >
                   <Upload className="mr-2 h-4 w-4" aria-hidden />
-                  {imagePreview ? "Change image" : "Upload image"}
+                  {imagePreview ? t("form.changeImage") : t("form.uploadImage")}
                 </Button>
                 {imagePreview && (
                   <Button
@@ -198,7 +200,7 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                     onClick={clearImage}
                   >
                     <X className="mr-2 h-4 w-4" aria-hidden />
-                    Remove image
+                    {t("form.removeImage")}
                   </Button>
                 )}
               </div>

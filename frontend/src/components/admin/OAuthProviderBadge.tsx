@@ -1,18 +1,19 @@
 import Image from "next/image";
 import { Globe } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import type { OAuthProvider } from "@/types/rbac.types";
 
 export const PROVIDER_META: Record<
   OAuthProvider,
-  { label: string; icon: string | null; iconClass?: string }
+  { labelKey: "providerDiscord" | "providerTwitch" | "providerBattleNet" | "providerGoogle" | "providerGitHub"; icon: string | null; iconClass?: string }
 > = {
-  discord: { label: "Discord", icon: "/discord.png" },
-  twitch: { label: "Twitch", icon: "/twitch.png" },
-  battlenet: { label: "Battle.net", icon: "/battlenet.svg", iconClass: "invert grayscale" },
-  google: { label: "Google", icon: null },
-  github: { label: "GitHub", icon: null }
+  discord: { labelKey: "providerDiscord", icon: "/discord.png" },
+  twitch: { labelKey: "providerTwitch", icon: "/twitch.png" },
+  battlenet: { labelKey: "providerBattleNet", icon: "/battlenet.svg", iconClass: "invert grayscale" },
+  google: { labelKey: "providerGoogle", icon: null },
+  github: { labelKey: "providerGitHub", icon: null }
 };
 
 /**
@@ -35,8 +36,10 @@ const PROVIDER_COLOR: Record<OAuthProvider, { hue: string; label: string }> = {
 };
 
 export function ProviderBadge({ provider }: Readonly<{ provider: OAuthProvider }>) {
+  const t = useTranslations("adminAccess.common");
   const meta = PROVIDER_META[provider];
   const color = PROVIDER_COLOR[provider];
+  const label = meta ? t(meta.labelKey) : provider;
   return (
     <Badge
       variant="outline"
@@ -51,7 +54,7 @@ export function ProviderBadge({ provider }: Readonly<{ provider: OAuthProvider }
       {meta?.icon ? (
         <Image
           src={meta.icon}
-          alt={meta.label}
+          alt={label}
           width={14}
           height={14}
           className={meta.iconClass ?? ""}
@@ -59,7 +62,7 @@ export function ProviderBadge({ provider }: Readonly<{ provider: OAuthProvider }
       ) : (
         <Globe aria-hidden className="h-3.5 w-3.5" />
       )}
-      {meta?.label ?? provider}
+      {label}
     </Badge>
   );
 }

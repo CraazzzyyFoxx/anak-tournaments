@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { flexRender, type Column, type Row } from "@tanstack/react-table";
 
 import { cn } from "@/components/data-table/host";
@@ -25,10 +26,11 @@ export function AdminTableMobileList<TData>({
   inspectorId?: string | null;
   onRowClick?: (row: Row<TData>) => void;
 }>) {
+  const t = useTranslations("kitTable.table");
   const cardColumns = visibleColumns.filter((column) => column.id !== ADMIN_ACTION_COLUMN_ID).slice(0, 3);
 
   return (
-    <ul aria-label="Rows">
+    <ul aria-label={t("rows")}>
       {rows.map((row) => {
         const cells = row.getVisibleCells();
         const actionCell = cells.find((cell) => cell.column.id === ADMIN_ACTION_COLUMN_ID);

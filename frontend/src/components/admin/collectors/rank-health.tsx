@@ -39,6 +39,7 @@ const RANK_SETTING_KEY = "parser.rank_collection";
  * as `<status> <count>` text, so the state is never carried by colour alone.
  */
 function StatusBar({ stats }: Readonly<{ stats: RankCollectionStats }>) {
+  const tDashboard = useTranslations("adminShell.dashboardExtra");
   const labels = useRankStatusLabels();
   const total = stats.total || 1;
   const counts = stats.by_status || {};
@@ -51,7 +52,7 @@ function StatusBar({ stats }: Readonly<{ stats: RankCollectionStats }>) {
               key={s}
               className={cn("h-full", STATUS_BAR[s])}
               style={{ width: `${(counts[s] / total) * 100}%` }}
-              title={`${labels[s]}: ${counts[s]}`}
+              title={tDashboard("statusCountTitle", { label: labels[s], count: counts[s] })}
             />
           ) : null
         )}

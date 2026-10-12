@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronDown, History } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
@@ -37,6 +38,7 @@ import { seatsBySlot } from "@/lib/encounter/seats";
  * stores — the two must not drift.
  */
 type Mode = string;
+const BEST_OF_LABEL = "BO";
 
 export interface ResolveResultDialogProps {
   row: EncounterReportsRow | null;
@@ -61,6 +63,7 @@ export function ResolveResultDialog({
   onOpenChange,
   onResolved
 }: Readonly<ResolveResultDialogProps>) {
+  const t = useTranslations("adminTournaments.resolve");
   const format = useFormatter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
@@ -84,23 +87,23 @@ export function ResolveResultDialog({
   const resolveMutation = useMutation({
     mutationFn: (payload: EncounterSetResultInput) => adminService.setEncounterResult(row!.id, payload),
     onSuccess: () => {
-      notify.success("Result confirmed");
+      notify.success(t("confirmed"));
       onOpenChange(false);
       onResolved?.();
     },
-    onError: (error: unknown) => notify.apiError(error, { title: "Could not confirm the result" })
+    onError: (error: unknown) => notify.apiError(error, { title: t("confirmError") })
   });
 
   const reopenMutation = useMutation({
     mutationFn: () => adminService.reopenEncounterResult(row!.id, reopenReason.trim()),
     onSuccess: () => {
-      notify.success("Result reopened");
+      notify.success(t("reopened"));
       setReopenDraft({ rowId: null, text: "" });
       setReopenOpen(false);
       onOpenChange(false);
       onResolved?.();
     },
-    onError: (error: unknown) => notify.apiError(error, { title: "Could not reopen the result" })
+    onError: (error: unknown) => notify.apiError(error, { title: t("reopenError") })
   });
 
   if (!row) return null;
@@ -118,9 +121,9 @@ export function ResolveResultDialog({
       >
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{isConfirmed ? "Result confirmed" : "Resolve result"}</DialogTitle>
+            <DialogTitle>{isConfirmed ? t("confirmed") : t("resolve")}</DialogTitle>
             <DialogDescription>
-              {row.name} &middot; {row.stage_name ?? "Unassigned"} &middot; BO{row.best_of}
+              {row.name} {"·"} {row.stage_name ?? t("unassigned")} {"·"} {BEST_OF_LABEL}{row.best_of}
             </DialogDescription>
           </DialogHeader>
 
@@ -133,7 +136,7 @@ export function ResolveResultDialog({
 
           {row.replay_codes.length > 0 ? (
             <div className="rounded-lg border border-border/60 p-3">
-              <p className={EYEBROW_CLASS}>Replay codes</p>
+              <p className={EYEBROW_CLASS}>{t("replayCodes")}</p>
               <ul className="mt-2 space-y-1">
                 {row.replay_codes.map((entry) => (
                   <li
@@ -141,9 +144,12 @@ export function ResolveResultDialog({
                     className="flex gap-2 text-xs"
                   >
                     <span className="text-muted-foreground">
-                      {row.participations.find((seat) => seat.encounter_team_id === entry.encounter_team_id)?.name ??
-                        "Retired seat"}{" "}
-                      &middot; Map {entry.position}
+                      {t("replayMap", {
+                        seat:
+                          row.participations.find((seat) => seat.encounter_team_id === entry.encounter_team_id)
+                            ?.name ?? t("retiredSeat"),
+                        mapIndex: entry.position
+                      })}
                     </span>
                     <span className="font-mono">{entry.code}</span>
                   </li>
@@ -154,16 +160,14 @@ export function ResolveResultDialog({
 
           {isConfirmed ? (
             <div className="space-y-1">
-              <p className="text-sm text-muted-foreground">
-                This result is already confirmed. Reopen it to replay or re-report the encounter.
-              </p>
-              <Label htmlFor="reopen-reason">Reason to reopen</Label>
+              <p className="text-sm text-muted-foreground">{t("alreadyConfirmed")}</p>
+              <Label htmlFor="reopen-reason">{t("reopenReason")}</Label>
               <Input
                 id="reopen-reason"
                 value={reopenReason}
                 maxLength={500}
                 onChange={(event) => setReopenReason(event.target.value)}
-                placeholder="Why this result is reopened"
+                placeholder={t("reopenReasonPlaceholder")}
               />
             </div>
           ) : (
@@ -186,7 +190,7 @@ export function ResolveResultDialog({
               onClick={() => setHistoryOpen((current) => !current)}
             >
               <History className="size-3.5" aria-hidden />
-              Change history
+              {t("history")}
               <ChevronDown
                 className={`ml-auto size-3.5 transition-transform ${historyOpen ? "rotate-180" : ""}`}
                 aria-hidden
@@ -195,21 +199,24 @@ export function ResolveResultDialog({
             {historyOpen ? (
               <div className="border-t border-border/60 p-2">
                 {auditQuery.isLoading ? (
-                  <p className="text-xs text-muted-foreground">Loading&hellip;</p>
+                  <p className="text-xs text-muted-foreground">{t("loading")}</p>
                 ) : (auditQuery.data?.length ?? 0) === 0 ? (
                   // Encounters that predate the audit trail have nothing to
                   // show; saying so beats an empty box that reads as a failure.
-                  <p className="text-xs text-muted-foreground">No recorded changes.</p>
+                  <p className="text-xs text-muted-foreground">{t("noChanges")}</p>
                 ) : (
                   <ul className="space-y-1">
                     {auditQuery.data!.map((entry) => (
                       <li key={entry.id} className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">{entry.action}</span> by{" "}
-                        {entry.actor_name ?? "an automated process"} &middot;{" "}
+                        {t.rich("historyEntry", {
+                          actionText: entry.action,
+                          action: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
+                          actor: entry.actor_name ?? t("automatedProcess")
+                        })} {"·"} {" "}
                         <span className="font-mono tabular-nums">
                           {scoreline(entry.after, seatIds)}
                         </span>{" "}
-                        &middot;{" "}
+                        {"·"} {" "}
                         {format.dateTime(new Date(entry.created_at), {
                           dateStyle: "medium",
                           timeStyle: "short"
@@ -225,7 +232,7 @@ export function ResolveResultDialog({
           {isConfirmed ? (
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Close
+                {t("close")}
               </Button>
               <Button
                 type="button"
@@ -233,7 +240,7 @@ export function ResolveResultDialog({
                 disabled={reopenReason.trim() === ""}
                 onClick={() => setReopenOpen(true)}
               >
-                Reopen
+                {t("reopen")}
               </Button>
             </DialogFooter>
           ) : null}
@@ -244,10 +251,10 @@ export function ResolveResultDialog({
         open={reopenOpen}
         onOpenChange={setReopenOpen}
         intent={{
-          title: "Reopen this result?",
+          title: t("reopenTitle"),
           description:
-            "The encounter leaves the confirmed state and stops counting toward standings until it is confirmed again. Any bracket progression it drove is reset.",
-          confirmLabel: "Reopen",
+            t("reopenDescription"),
+          confirmLabel: t("reopen"),
           tone: "warning"
         }}
         pending={reopenMutation.isPending}
@@ -271,6 +278,7 @@ function ResolveForm({
   pending: boolean;
   onConfirm: (payload: EncounterSetResultInput) => void;
 }>) {
+  const t = useTranslations("adminTournaments.resolve");
   const modeFieldId = useId();
   const seats = seatsBySlot(row.participations);
   const seatIds = seats.map((seat) => seat.encounter_team_id);
@@ -329,12 +337,12 @@ function ResolveForm({
       const report = reportOf(row.reports, seat.encounter_team_id);
       return {
         value: String(seat.encounter_team_id),
-        label: `Adopt ${seat.name} report`,
+        label: t("adoptReport", { name: seat.name }),
         disabled: report == null,
-        detail: report ? scoreline(report.results, seatIds) : "no report filed"
+        detail: report ? scoreline(report.results, seatIds) : t("noReport")
       };
     }),
-    { value: "manual", label: "Enter the score manually", disabled: false, detail: "" }
+    { value: "manual", label: t("manualScore"), disabled: false, detail: "" }
   ];
 
   function submit() {
@@ -364,7 +372,7 @@ function ResolveForm({
           id={`${modeFieldId}-legend`}
           className={EYEBROW_CLASS}
         >
-          Which score is right?
+          {t("whichScore")}
         </legend>
         {/* `aria-labelledby` rather than a repeated `aria-label`: the legend is
             already on screen, and duplicating it would announce it twice. */}
@@ -419,50 +427,54 @@ function ResolveForm({
         ) : null}
 
         <div className="space-y-1 pt-1">
-          <Label htmlFor="resolve-closeness">Closeness override (1&ndash;10, optional)</Label>
+          <Label htmlFor="resolve-closeness">{t("closeness")}</Label>
           <Input
             id="resolve-closeness"
             inputMode="numeric"
             className="h-8 w-20"
             value={closeness}
             onChange={(event) => setCloseness(event.target.value)}
-            placeholder="auto"
+            placeholder={t("auto")}
             aria-invalid={closenessInvalid}
           />
           <p className="text-xs text-muted-foreground">
-            Left blank, the encounter takes the average of the filed reports.
+            {t("closenessHelp")}
           </p>
         </div>
 
         <div className="space-y-1 pt-1">
-          <Label htmlFor={`${modeFieldId}-reason`}>Reason</Label>
+          <Label htmlFor={`${modeFieldId}-reason`}>{t("reason")}</Label>
           <Input
             id={`${modeFieldId}-reason`}
             value={reason}
             maxLength={500}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Why this result is set"
+            placeholder={t("reasonPlaceholder")}
           />
-          <p className="text-xs text-muted-foreground">Required. Recorded in the result journal.</p>
+          <p className="text-xs text-muted-foreground">{t("reasonHelp")}</p>
         </div>
       </fieldset>
 
       <p className="text-sm" aria-live="polite">
         {preview ? (
           <>
-            Will record{" "}
-            <span className="font-mono font-semibold tabular-nums">{preview.join(" \u2013 ")}</span>
+            {t.rich("willRecordScore", {
+              standing: preview.join(" \u2013 "),
+              score: (chunks) => (
+                <span className="font-mono font-semibold tabular-nums">{chunks}</span>
+              )
+            })}
           </>
         ) : (
-          <span className="text-muted-foreground">No score selected yet.</span>
+          <span className="text-muted-foreground">{t("noScore")}</span>
         )}
         {drawBlocked ? (
           <span className="block text-danger">
-            An elimination bracket needs a winner &mdash; a draw cannot be recorded here.
+            {t("drawBlocked")}
           </span>
         ) : null}
         {closenessInvalid ? (
-          <span className="block text-danger">Closeness must be a whole number from 1 to 10.</span>
+          <span className="block text-danger">{t("closenessInvalid")}</span>
         ) : null}
       </p>
 
@@ -475,7 +487,7 @@ function ResolveForm({
           onClick={submit}
         >
           {pending ? <Spinner /> : null}
-          Confirm result
+          {t("confirm")}
         </Button>
       </DialogFooter>
     </>

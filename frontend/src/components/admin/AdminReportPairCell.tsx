@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Check, Minus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { TONE_CLASS, TONE_TEXT } from "@/components/kit/tone";
 import { reportOf, scoreline } from "@/lib/encounter/reports";
@@ -22,8 +23,14 @@ interface AdminReportPairCellProps {
 function ReportSeat({
   label,
   report,
-  standing
-}: Readonly<{ label: string; report: AdminCaptainReport | null; standing: string }>) {
+  standing,
+  t
+}: Readonly<{
+  label: string;
+  report: AdminCaptainReport | null;
+  standing: string;
+  t: (key: "unknown" | "noRating" | "noReport") => string;
+}>) {
   return (
     <div className="min-w-0">
       <p className="truncate text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
@@ -33,10 +40,10 @@ function ReportSeat({
         <>
           <p className="font-mono text-sm font-semibold tabular-nums">{standing}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {report.reporter_name ?? "unknown"} &middot;{" "}
+            {report.reporter_name ?? t("unknown")} &middot;{" "}
             {/* Match quality is configurable per tournament, so an absent rating
                 is a legitimate report — not a missing number to render as NaN. */}
-            {report.closeness == null ? "no rating" : `${report.closeness}/10`}
+            {report.closeness == null ? t("noRating") : `${report.closeness}/10`}
           </p>
           {report.comment ? (
             // Clamped rather than hidden: an organizer settling a dispute needs
@@ -52,7 +59,7 @@ function ReportSeat({
       ) : (
         <p className="flex items-center gap-1 text-xs italic text-muted-foreground">
           <Minus className="size-3" aria-hidden />
-          no report
+          {t("noReport")}
         </p>
       )}
     </div>
@@ -77,14 +84,16 @@ export function AdminReportPairCell({
   seriesScoreValid,
   className
 }: Readonly<AdminReportPairCellProps>) {
+  const t = useTranslations("adminMatches.common");
+  const reportsT = useTranslations("adminMatches.reports");
   const seats = seatsBySlot(participations);
   const seatIds = seats.map((seat) => seat.encounter_team_id);
   const verdict =
     standingsMatch === null
-      ? { tone: "neutral" as const, icon: Minus, label: "Awaiting remaining reports" }
+      ? { tone: "neutral" as const, icon: Minus, label: reportsT("awaitingRemaining") }
       : standingsMatch
-        ? { tone: "success" as const, icon: Check, label: "Reports agree" }
-        : { tone: "danger" as const, icon: AlertTriangle, label: "Reports disagree" };
+        ? { tone: "success" as const, icon: Check, label: reportsT("reportsAgree") }
+        : { tone: "danger" as const, icon: AlertTriangle, label: reportsT("reportsDisagree") };
   const VerdictIcon = verdict.icon;
 
   return (
@@ -98,6 +107,7 @@ export function AdminReportPairCell({
               label={seat.name}
               report={report}
               standing={report ? scoreline(report.results, seatIds) : ""}
+              t={t}
             />
           );
         })}
@@ -117,10 +127,10 @@ export function AdminReportPairCell({
             className={cn("inline-flex items-center gap-1 text-xs", TONE_TEXT.warning)}
             // Advisory, not an error: reports predate per-round best-of, so this
             // flags something worth a look rather than something that is wrong.
-            title="A reported score is impossible for this encounter's best-of"
+            title={reportsT("outsideBoTitle")}
           >
             <AlertTriangle className="size-3" aria-hidden />
-            Score outside best-of
+            {t("scoreOutside")}
           </span>
         ) : null}
       </div>

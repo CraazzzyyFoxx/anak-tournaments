@@ -8,6 +8,7 @@ import type {
   MappingTargetState,
 } from "@/types/balancer-admin.types";
 import type { SubroleCatalog } from "@/types/registration.types";
+import { useTranslations } from "next-intl";
 
 import { MappingFieldRow } from "./MappingFieldRow";
 import { orderedRoleSubgroups, roleSubgroupId } from "./mappingConfig";
@@ -50,6 +51,7 @@ export function MappingGroupSection({
   onParserChange,
   onIsListChange,
 }: Readonly<MappingGroupSectionProps>) {
+  const t = useTranslations("sheetsFeed.columnMapping");
   if (targets.length === 0) {
     return null;
   }
@@ -92,7 +94,7 @@ export function MappingGroupSection({
           return (
             <div key={subgroup.id} className="overflow-hidden rounded-lg border">
               <div className={cn(EYEBROW_CLASS, "border-b bg-muted/40 px-4 py-2")}>
-                {subgroup.label}
+                {t(`roleGroups.${subgroup.label}` as Parameters<typeof t>[0])}
               </div>
               <div className="divide-y">{subTargets.map(renderRow)}</div>
             </div>

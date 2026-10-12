@@ -1,15 +1,8 @@
 "use client";
 
-import { useId } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter } from "next/navigation";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import {
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem
-} from "@/components/ui/dropdown-menu";
 import { setUserLocale } from "@/i18n/locale-actions";
 import type { Locale } from "@/i18n/resolve-locale";
 import { cn } from "@/lib/utils";
@@ -33,37 +26,6 @@ function useLocaleSwitch() {
   };
 
   return { active, switchTo };
-}
-
-/**
- * The language choice inside a dropdown menu: real `menuitemradio` rows, so it
- * joins the menu's arrow-key navigation (a plain button inside `role="menu"`
- * is unreachable — Radix blocks Tab there). Selecting keeps the menu open so
- * the re-rendered labels confirm the switch.
- */
-export function LanguageMenuRadioGroup() {
-  const t = useTranslations();
-  const labelId = useId();
-  const { active, switchTo } = useLocaleSwitch();
-
-  return (
-    <>
-      <DropdownMenuLabel id={labelId} className={EYEBROW_CLASS}>
-        {t("common.language")}
-      </DropdownMenuLabel>
-      <DropdownMenuRadioGroup
-        aria-labelledby={labelId}
-        value={active}
-        onValueChange={(next) => switchTo(next as Locale)}
-      >
-        {ORDER.map((loc) => (
-          <DropdownMenuRadioItem key={loc} value={loc} lang={loc} onSelect={(e) => e.preventDefault()}>
-            {LANGUAGE_NAME[loc]}
-          </DropdownMenuRadioItem>
-        ))}
-      </DropdownMenuRadioGroup>
-    </>
-  );
 }
 
 /**

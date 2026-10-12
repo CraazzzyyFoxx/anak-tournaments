@@ -1,9 +1,9 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { PhaseStrip, type Phase } from "@/components/kit/PhaseStrip";
-import { TOURNAMENT_STATUS_LABELS } from "@/lib/tournament/lifecycle";
 import type { Tournament } from "@/types/tournament.types";
 import { effectivePhases } from "./effective-phases";
 
@@ -20,6 +20,8 @@ import { effectivePhases } from "./effective-phases";
  * appended after the terminal phase, which would read as normal progress.
  */
 export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }>) {
+  const t = useTranslations("adminTournament.lifecycle");
+  const tStatus = useTranslations("common.statusBadge");
   const phases = effectivePhases({
     teamFormation: tournament.team_formation,
     schedule: tournament.phase_schedule.map((entry) => entry.status),
@@ -30,7 +32,7 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
     .filter((phase) => !phase.drifted)
     .map((phase) => ({
       key: phase.key,
-      label: TOURNAMENT_STATUS_LABELS[phase.key] ?? phase.key,
+      label: tStatus(phase.key),
       state:
         !drifted && phase.key === tournament.status
           ? "current"
@@ -45,7 +47,7 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
       {drifted ? (
         <p className="inline-flex items-center gap-1.5 text-xs font-medium text-warning">
           <AlertTriangle className="size-3.5" aria-hidden />
-          Off track: {TOURNAMENT_STATUS_LABELS[drifted.key] ?? drifted.key}
+          {t("offTrack")} {tStatus(drifted.key)}
         </p>
       ) : null}
     </div>

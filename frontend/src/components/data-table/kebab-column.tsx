@@ -2,6 +2,7 @@
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { MoreHorizontal, type LucideIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Link } from "@/components/data-table/host";
 
 import {
@@ -33,6 +34,59 @@ export interface KebabColumnOptions<T> {
   rowLabel?: (row: T) => string;
 }
 
+function KebabCell({ actions, label, rowId }: Readonly<{ actions: KebabAction[]; label?: string; rowId: string }>) {
+  const t = useTranslations("kitTable.dataTableExtra");
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={t("actionsFor", { label: label ?? t("rowFallback", { id: rowId }) })}
+        className={cn(
+          "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,opacity]",
+          // Quiet until the row is hovered or holds focus; the right-click
+          // menu covers the pointer path, this covers discoverability.
+          // Touch has neither hover nor focus-within, so it is always shown.
+          "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100",
+          "hover:bg-accent/40 hover:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        )}
+      >
+        <MoreHorizontal aria-hidden className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          const content = (
+            <>
+              {Icon ? <Icon aria-hidden className="size-3.5" /> : null}
+              {action.label}
+            </>
+          );
+
+          return (
+            <DropdownMenuItem
+              key={action.label}
+              asChild={action.href !== undefined}
+              onSelect={action.onSelect}
+              className={cn("gap-2", action.destructive && "text-danger focus:text-danger")}
+            >
+              {action.href !== undefined ? (
+                <Link href={action.href}>{content}</Link>
+              ) : (
+                content
+              )}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function KebabHeader() {
+  const t = useTranslations("kitTable.dataTableExtra");
+  return <span className="sr-only">{t("actions")}</span>;
+}
+
 /**
  * The single row-actions convention for the admin panel: one always-visible
  * `⋯` menu.
@@ -50,7 +104,7 @@ export function createKebabColumn<T>(
 ): ColumnDef<T> {
   return {
     id: "actions",
-    header: () => <span className="sr-only">Actions</span>,
+    header: () => <KebabHeader />,
     enableSorting: false,
     enableResizing: false,
     size: 56,
@@ -59,52 +113,7 @@ export function createKebabColumn<T>(
       const actions = items(row.original).filter((action) => !action.hidden);
       if (actions.length === 0) return null;
 
-      const label = options?.rowLabel?.(row.original) ?? `row ${row.id}`;
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            aria-label={`Actions for ${label}`}
-            className={cn(
-              "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color,opacity]",
-              // Quiet until the row is hovered or holds focus; the right-click
-              // menu covers the pointer path, this covers discoverability.
-              // Touch has neither hover nor focus-within, so it is always shown.
-              "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100",
-              "hover:bg-accent/40 hover:text-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            )}
-          >
-            <MoreHorizontal aria-hidden className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            {actions.map((action) => {
-              const Icon = action.icon;
-              const content = (
-                <>
-                  {Icon ? <Icon aria-hidden className="size-3.5" /> : null}
-                  {action.label}
-                </>
-              );
-
-              return (
-                <DropdownMenuItem
-                  key={action.label}
-                  asChild={action.href !== undefined}
-                  onSelect={action.onSelect}
-                  className={cn("gap-2", action.destructive && "text-danger focus:text-danger")}
-                >
-                  {action.href !== undefined ? (
-                    <Link href={action.href}>{content}</Link>
-                  ) : (
-                    content
-                  )}
-                </DropdownMenuItem>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      );
+      return <KebabCell actions={actions} label={options?.rowLabel?.(row.original)} rowId={row.id} />;
     }
   };
 }

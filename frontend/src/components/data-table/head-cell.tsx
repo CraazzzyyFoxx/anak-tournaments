@@ -9,6 +9,7 @@ import type { AdminTableDensity } from "@/components/data-table/useTablePreferen
 import type { ColumnDndModule } from "@/components/data-table/ColumnDnd";
 
 export interface HeadCellContext<TData> {
+  i18n: (key: string, values?: Record<string, unknown>) => string;
   layout: ColumnLayout<TData>;
   density: AdminTableDensity;
   sorting: SortingState;
@@ -24,7 +25,7 @@ export function renderHeadCell<TData>(
   header: Header<TData, unknown>,
   index: number,
   count: number,
-  { layout, density, sorting, isClientMode, hasLeadingColumn, HeadCell }: HeadCellContext<TData>
+  { i18n, layout, density, sorting, isClientMode, hasLeadingColumn, HeadCell }: HeadCellContext<TData>
 ) {
   const isActionColumn = header.column.id === ADMIN_ACTION_COLUMN_ID;
   const isFirstColumn = index === 0 && !hasLeadingColumn;
@@ -60,7 +61,7 @@ export function renderHeadCell<TData>(
             <button
               type="button"
               onClick={header.column.getToggleSortingHandler()}
-              title={isClientMode ? "Click to sort, Shift+click to add a second sort" : undefined}
+              title={isClientMode ? i18n("sortHint") : undefined}
               className={cn(
                 "inline-flex items-center gap-1 rounded transition-colors hover:text-foreground",
                 sorted ? "text-foreground" : "text-muted-foreground",
@@ -75,7 +76,7 @@ export function renderHeadCell<TData>(
                 <ArrowUpDown aria-hidden className="size-3 shrink-0 opacity-30" />
               )}
               {sortIndex >= 0 ? (
-                <span aria-label={`Sort priority ${sortIndex + 1}`} className="font-mono text-[10px] tabular-nums opacity-70">{sortIndex + 1}</span>
+                <span aria-label={i18n("sortPriority", { index: sortIndex + 1 })} className="font-mono text-[10px] tabular-nums opacity-70">{sortIndex + 1}</span>
               ) : null}
             </button>
           ) : (

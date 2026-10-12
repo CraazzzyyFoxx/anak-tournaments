@@ -25,6 +25,7 @@ import { notify } from "@/lib/notify";
 import { ROLES, type RoleCode } from "@/lib/roster/roles";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
+import { BUILTIN_STATUS_MESSAGE_KEYS } from "@/lib/registration/balancer-statuses";
 import registrationService from "@/services/registration.service";
 import { rbacService } from "@/services/rbac.service";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
@@ -119,20 +120,9 @@ interface StoredRole {
   top_heroes?: string[] | null;
 }
 
-const STATUS_OPTIONS = [
-  { value: "pending", name: "Pending" },
-  { value: "approved", name: "Approved" },
-  { value: "rejected", name: "Rejected" },
-  { value: "withdrawn", name: "Withdrawn" },
-  { value: "banned", name: "Banned" },
-  { value: "insufficient_data", name: "Incomplete" }
-];
+const STATUS_OPTIONS = ["pending", "approved", "rejected", "withdrawn", "banned", "insufficient_data"];
 
-const BALANCER_STATUS_OPTIONS = [
-  { value: "not_in_balancer", name: "Not Added" },
-  { value: "incomplete", name: "Incomplete" },
-  { value: "ready", name: "Ready" }
-];
+const BALANCER_STATUS_OPTIONS = ["not_in_balancer", "incomplete", "ready"];
 
 /**
  * NOTE ON `visibility`: it decides who may READ an answer, never who is ASKED
@@ -279,6 +269,7 @@ export default function RegistrationSchemaForm({
 }: Readonly<RegistrationSchemaFormProps>) {
   const t = useTranslations();
   const tErrors = useTranslations("forms.errors");
+  const tOrganizer = useTranslations("registrationOrganizer");
   const queryClient = useQueryClient();
   const openAccountSettings = useAccountSettingsModalStore((s) => s.open);
   const isAdmin = mode === "admin";
@@ -556,26 +547,25 @@ export default function RegistrationSchemaForm({
   const organizerPanel = (
     <section className="grid gap-4 rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4">
       <h3 className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-        Organizer
+        {t("registrationOrganizer.form.organizer")}
       </h3>
 
       <div className="space-y-2">
-        <FieldLabel label="Linked Site Account" />
+        <FieldLabel label={t("registrationOrganizer.form.linkedAccount")} />
         <AuthUserSearchCombobox
           value={authUserId}
           selectedLabel={authUserLabel}
           onSelect={handleSelectAuthUser}
         />
         <p className="text-xs leading-5 text-[color:var(--aqt-fg-muted)]">
-          Optional. Anchors this registration on the selected account; empty handles are prefilled
-          from its verified logins.
+          {t("registrationOrganizer.form.linkedAccountHint")}
         </p>
       </div>
 
       <TextField
-        label="Display Name"
+        label={t("registrationOrganizer.form.displayName")}
         icon={<UserRound className="size-3.5 opacity-50" />}
-        placeholder="Display name"
+        placeholder={t("registrationOrganizer.form.displayNamePlaceholder")}
         value={displayName}
         onChange={setDisplayName}
       />
@@ -584,7 +574,7 @@ export default function RegistrationSchemaForm({
         {ROLES.map((role) => (
           <TextField
             key={role.code}
-            label={`${role.display} rank`}
+            label={t("registrationOrganizer.form.rank", { role: role.display })}
             type="number"
             placeholder="—"
             value={ranks[role.code] ?? ""}
@@ -601,15 +591,16 @@ export default function RegistrationSchemaForm({
 
       <TextField
         multiline
-        label="Admin Notes"
+        label={t("registrationOrganizer.form.adminNotes")}
         icon={<BadgeInfo className="size-3.5 opacity-50" />}
-        placeholder="Internal notes for admins only"
+        placeholder={t("registrationOrganizer.form.adminNotesPlaceholder")}
         value={adminNotes}
         onChange={setAdminNotes}
       />
 
       <AdminStatusSelect
-        label="Registration Status"
+        t={tOrganizer}
+        label={t("registrationOrganizer.form.registrationStatus")}
         value={status}
         onChange={setStatus}
         options={STATUS_OPTIONS}
@@ -620,7 +611,8 @@ export default function RegistrationSchemaForm({
         }
       />
       <AdminStatusSelect
-        label="Balancer Status"
+        t={tOrganizer}
+        label={t("registrationOrganizer.form.balancerStatus")}
         value={balancerStatus}
         onChange={setBalancerStatus}
         options={BALANCER_STATUS_OPTIONS}
@@ -675,10 +667,10 @@ export default function RegistrationSchemaForm({
           {state.canGoBack && <ArrowLeft className="size-3.5" aria-hidden />}
           {state.canGoBack
             ? isAdmin
-              ? "Back"
+              ? t("registrationOrganizer.form.back")
               : t("common.back")
-            : isAdmin
-              ? "Cancel"
+              : isAdmin
+                ? t("registrationOrganizer.form.cancel")
               : t("common.cancel")}
         </button>
 
@@ -690,7 +682,7 @@ export default function RegistrationSchemaForm({
               disabled={submitPending}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
             >
-              {initial ? "Save" : "Create"}
+              {initial ? t("registrationOrganizer.form.save") : t("registrationOrganizer.form.create")}
             </button>
           )}
 
@@ -704,16 +696,16 @@ export default function RegistrationSchemaForm({
             {state.isLast ? (
               isAdmin ? (
                 initial ? (
-                  "Save"
+                  t("registrationOrganizer.form.save")
                 ) : (
-                  "Create"
+                  t("registrationOrganizer.form.create")
                 )
               ) : (
                 t("common.submit")
               )
             ) : (
               <>
-                {isAdmin ? "Next" : t("common.next")}
+                {isAdmin ? t("registrationOrganizer.form.next") : t("common.next")}
                 <ArrowRight className="size-3.5" aria-hidden />
               </>
             )}
@@ -793,30 +785,36 @@ function AdminStatusSelect({
   value,
   onChange,
   options,
-  custom
+  custom,
+  t
 }: Readonly<{
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: Array<{ value: string; name: string }>;
+  options: string[];
   custom: Array<{ value: string; name: string }>;
+  t: ReturnType<typeof useTranslations<"registrationOrganizer">>;
 }>) {
+  const statusName = (status: string) => {
+    const key = BUILTIN_STATUS_MESSAGE_KEYS[status]?.label;
+    return key ? t(`status.${key}` as Parameters<typeof t>[0]) : status;
+  };
   return (
     <div className="space-y-2">
       <FieldLabel label={label} icon={<BadgeInfo className="size-3.5 opacity-50" />} />
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className={cn(fieldControlClass, "h-9")}>
-          <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
+          <SelectValue placeholder={t("form.select", { label: label.toLowerCase() })} />
         </SelectTrigger>
         <SelectContent>
           {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.name} · System
+            <SelectItem key={option} value={option}>
+              {statusName(option)} · {t("form.system")}
             </SelectItem>
           ))}
           {custom.map((option) => (
             <SelectItem key={option.value} value={option.value}>
-              {option.name} · Custom
+              {option.name} · {t("form.custom")}
             </SelectItem>
           ))}
         </SelectContent>

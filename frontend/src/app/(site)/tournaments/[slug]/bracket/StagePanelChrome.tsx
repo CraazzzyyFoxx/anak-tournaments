@@ -68,7 +68,7 @@ export function StagePanelHeader({
   const hasRail = bracketTabs !== undefined && bracketTabs.length > 1;
 
   return (
-    <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:items-center">
       {hasRail ? (
         <div className="flex min-w-0 flex-col items-start gap-2">
           <div className="flex flex-wrap items-center gap-3">

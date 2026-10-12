@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -36,14 +37,15 @@ export function WorkspaceSettingsFrame({
   settings,
   children
 }: Readonly<WorkspaceSettingsFrameProps>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.frame");
   const { isLoaded, isSuperuser, isWorkspaceAdmin } = usePermissions();
 
   if (workspaceId === null) {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace in the header to edit its settings."
+        title={t("noSelectedTitle")}
+        description={t("noSelectedDescription")}
       />
     );
   }
@@ -51,7 +53,7 @@ export function WorkspaceSettingsFrame({
   if (!isLoaded || settings.isLoading) {
     return (
       <div className="flex items-center justify-center py-24 text-muted-foreground">
-        <Spinner className="mr-2 size-5" /> Loading workspace…
+        <Spinner className="mr-2 size-5" /> {t("loading")}
       </div>
     );
   }
@@ -60,8 +62,8 @@ export function WorkspaceSettingsFrame({
     return (
       <PageStateCard
         state="error"
-        title="Not your workspace"
-        description="You don't have permission to manage this workspace's settings."
+        title={t("notYourTitle")}
+        description={t("notYourDescription")}
       />
     );
   }
@@ -70,8 +72,8 @@ export function WorkspaceSettingsFrame({
     return (
       <PageStateCard
         state="error"
-        title="Could not load the workspace"
-        description="The workspace record failed to load. Retry, or reload the page."
+        title={t("loadErrorTitle")}
+        description={t("loadErrorDescription")}
       />
     );
   }
@@ -80,8 +82,8 @@ export function WorkspaceSettingsFrame({
     return (
       <PageStateCard
         state="not-found"
-        title="Workspace not found"
-        description="This workspace no longer exists, or you cannot see it."
+        title={t("notFoundTitle")}
+        description={t("notFoundDescription")}
       />
     );
   }

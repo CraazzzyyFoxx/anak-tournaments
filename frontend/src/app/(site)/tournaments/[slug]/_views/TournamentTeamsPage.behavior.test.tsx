@@ -406,6 +406,15 @@ describe("the toolbar orders both views", () => {
 
     expect(listRows()).toEqual(["Freak deck"]);
   });
+
+  it("offers no group filter or group chips when one group holds every team", async () => {
+    getTeams.mockResolvedValue({ results: TEAMS.map((t) => ({ ...t, group: GROUP_A })) });
+    await render();
+
+    expect(container.querySelectorAll("button[aria-pressed]")).toHaveLength(0);
+    expect(container.querySelectorAll(".group-chip")).toHaveLength(0);
+    expect(listRows()).toEqual(["Emerald and a dot", "Ban kota", "Freak deck"]);
+  });
 });
 
 describe("the podium badge", () => {

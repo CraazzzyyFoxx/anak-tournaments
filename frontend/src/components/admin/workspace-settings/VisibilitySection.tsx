@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { useTranslations } from "next-intl";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -23,6 +24,7 @@ import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
  * considers itself part of — and it has no other home.
  */
 export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.visibility");
   const settings = useWorkspaceSettingsForm(workspaceId, "visibility");
   const { patch } = settings;
 
@@ -34,11 +36,9 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
             <CardContent className="flex flex-col gap-4 pt-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <Label htmlFor="workspace-is-hidden">Hidden</Label>
+                  <Label htmlFor="workspace-is-hidden">{t("hidden")}</Label>
                   <p className="max-w-prose text-xs text-muted-foreground">
-                    Removed from the home page and from other members&apos; workspace picker.
-                    Members of this workspace still see it; direct links (slug page, subdomain,
-                    custom domain) keep working.
+                    {t("hiddenHelp")}
                   </p>
                 </div>
                 <Switch
@@ -49,7 +49,7 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
               </div>
 
               <div>
-                <Label htmlFor="workspace-newcomer-scope">Newcomer scope</Label>
+                <Label htmlFor="workspace-newcomer-scope">{t("newcomerScope")}</Label>
                 <Select
                   value={values.newcomer_scope}
                   onValueChange={(value) =>
@@ -57,18 +57,15 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
                   }
                 >
                   <SelectTrigger id="workspace-newcomer-scope" className="mt-1.5 w-full">
-                    <SelectValue placeholder="Select scope" />
+                    <SelectValue placeholder={t("selectScope")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="global">Platform-wide</SelectItem>
-                    <SelectItem value="workspace">This workspace only</SelectItem>
+                    <SelectItem value="global">{t("platformWide")}</SelectItem>
+                    <SelectItem value="workspace">{t("workspaceOnly")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-                  Decides who counts as a &ldquo;newcomer&rdquo; (rating confidence, achievements)
-                  when a roster is created: platform-wide counts a player&apos;s history in any
-                  workspace, this-workspace-only ignores it — a veteran of another workspace will
-                  show as a newcomer the first time they join this one.
+                  {t("scopeHelp")}
                 </p>
               </div>
             </CardContent>

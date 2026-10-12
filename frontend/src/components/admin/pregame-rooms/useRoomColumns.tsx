@@ -4,6 +4,7 @@ import { useMemo, useSyncExternalStore } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 import { columnMeta } from "@/components/data-table";
 import { ScheduledAtCell } from "@/components/admin/encounters/EncounterCells";
@@ -22,6 +23,8 @@ import {
   currentStep,
   stepActionLabel
 } from "./model";
+
+type PregameTranslator = ReturnType<typeof useTranslations<"adminMatches.pregame">>;
 
 function ReadinessCell({ room }: Readonly<{ room: PregameRoomRow }>) {
   return (
@@ -43,7 +46,7 @@ function ReadinessCell({ room }: Readonly<{ room: PregameRoomRow }>) {
  * of the series, how far through its order, what the acting side has to do —
  * or, when an organizer stepped in, that the session is paused or cancelled.
  */
-function StepCell({ room }: Readonly<{ room: PregameRoomRow }>) {
+function StepCell({ room, t }: Readonly<{ room: PregameRoomRow; t: PregameTranslator }>) {
   const step = currentStep(room);
   if (!step) return <span className="text-muted-foreground">—</span>;
   const { kind, summary } = step;
@@ -52,7 +55,7 @@ function StepCell({ room }: Readonly<{ room: PregameRoomRow }>) {
   return (
     <div className="min-w-0 text-sm">
       <p className="flex min-w-0 items-center gap-1.5 truncate">
-        <span className="text-muted-foreground">{kind === "map" ? "Maps" : "Heroes"}</span>
+        <span className="text-muted-foreground">{kind === "map" ? t("maps") : t("heroes")}</span>
         {summary.current_round != null ? (
           <span className="text-muted-foreground">· R{summary.current_round}</span>
         ) : null}
@@ -61,22 +64,25 @@ function StepCell({ room }: Readonly<{ room: PregameRoomRow }>) {
             · {summary.step_index + 1}/{summary.step_count}
           </span>
         ) : null}
-        {cancelled ? <StatusPill tone="danger">Cancelled</StatusPill> : null}
-        {summary.paused_at != null ? <StatusPill tone="warning">Paused</StatusPill> : null}
+        {cancelled ? <StatusPill tone="danger">{t("cancelled")}</StatusPill> : null}
+        {summary.paused_at != null ? <StatusPill tone="warning">{t("paused")}</StatusPill> : null}
       </p>
       {cancelled ? (
-        <p className="truncate text-xs text-muted-foreground">Cancelled by an organizer</p>
+        <p className="truncate text-xs text-muted-foreground">{t("cancelledByOrganizer")}</p>
       ) : summary.awaiting_choice ? (
-        <p className="truncate text-xs text-warning">Waiting on who opens the round</p>
+        <p className="truncate text-xs text-warning">{t("waitingOpener")}</p>
       ) : (
         <p className="truncate text-xs text-muted-foreground">
-          {stepActionLabel(summary.step_action)}
-          {summary.step_blind ? " (blind)" : ""}
-          {summary.acting_team_ids.length > 0
-            ? ` · ${summary.acting_team_ids
-                .map((id) => room.teams.find((seat) => seat.encounter_team_id === id)?.name ?? "?")
-                .join(" & ")}`
-            : ""}
+          {t("stepSummary", {
+            action: t(stepActionLabel(summary.step_action) as Parameters<PregameTranslator>[0]),
+            blind: summary.step_blind ? t("blind") : "",
+            sides:
+              summary.acting_team_ids.length > 0
+                ? ` · ${summary.acting_team_ids
+                    .map((id) => room.teams.find((seat) => seat.encounter_team_id === id)?.name ?? "?")
+                    .join(" & ")}`
+                : ""
+          })}
         </p>
       )}
     </div>
@@ -104,7 +110,7 @@ function subscribeNever(): () => void {
  * agree, and its server snapshot is `null`: rendering a remaining time on the
  * server would hydrate against a different second.
  */
-function DeadlineCell({ summary }: Readonly<{ summary: PregameKindSummary | null }>) {
+function DeadlineCell({ summary, t }: Readonly<{ summary: PregameKindSummary | null; t: PregameTranslator }>) {
   const deadline = summary?.deadline_at ? Date.parse(summary.deadline_at) : null;
   const nowSecond = useSyncExternalStore<number | null>(
     deadline == null ? subscribeNever : subscribeEverySecond,
@@ -118,7 +124,7 @@ function DeadlineCell({ summary }: Readonly<{ summary: PregameKindSummary | null
   if (nowSecond == null) return <span className="text-muted-foreground tabular-nums">--:--</span>;
 
   const left = Math.round(deadline / 1000) - nowSecond;
-  if (left <= 0) return <StatusPill tone="danger">Overdue</StatusPill>;
+  if (left <= 0) return <StatusPill tone="danger">{t("overdue")}</StatusPill>;
 
   const minutes = Math.floor(left / 60);
   return (
@@ -140,11 +146,12 @@ export function useRoomColumns({
   /** Where "Open room" sends the organizer back to — this very screen. */
   returnTo: string;
 }>): ColumnDef<PregameRoomRow>[] {
+  const t = useTranslations("adminMatches.pregame");
   return useMemo<ColumnDef<PregameRoomRow>[]>(
     () => [
       {
         accessorKey: "name",
-        header: "Match",
+        header: t("match"),
         meta: columnMeta<PregameRoomRow>({
           mandatory: true,
           searchValue: (row) =>
@@ -156,13 +163,17 @@ export function useRoomColumns({
               {row.original.name}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {row.original.stage_name ?? "Unassigned"} · R{row.original.round} · Bo
-              {row.original.best_of}
+              {t("matchDetails", {
+                stage: row.original.stage_name ?? t("unassigned"),
+                round: row.original.round,
+                bestOf: t("bestOfShort"),
+                bestOfValue: row.original.best_of
+              })}
             </p>
             <p className="truncate text-xs text-muted-foreground">
               {seatsBySlot(row.original.teams)
                 .map((seat) => seat.name)
-                .join(" vs ") || "TBD"}
+                .join(` ${t("vs")} `) || t("tbd")}
               {row.original.teams.some((seat) => seat.score > 0) ? (
                 <span className="font-mono tabular-nums">
                   {" "}
@@ -175,14 +186,14 @@ export function useRoomColumns({
       },
       {
         accessorKey: "scheduled_at",
-        header: "Scheduled",
+        header: t("scheduled"),
         size: 132,
         meta: columnMeta<PregameRoomRow>({ category: "core" }),
         cell: ({ row }) => <ScheduledAtCell value={row.original.scheduled_at} />
       },
       {
         id: "readiness",
-        header: "Ready",
+        header: t("ready"),
         size: 148,
         enableSorting: false,
         meta: columnMeta<PregameRoomRow>({ category: "core" }),
@@ -190,33 +201,33 @@ export function useRoomColumns({
       },
       {
         accessorKey: "phase",
-        header: "Phase",
+        header: t("phaseColumn"),
         size: 128,
         meta: columnMeta<PregameRoomRow>({ category: "core" }),
         cell: ({ row }) => (
           <StatusPill tone={PHASE_TONE[row.original.phase]}>
-            {PHASE_LABEL[row.original.phase]}
+            {t(PHASE_LABEL[row.original.phase] as Parameters<PregameTranslator>[0])}
           </StatusPill>
         )
       },
       {
         id: "step",
-        header: "Current step",
+        header: t("currentStep"),
         enableSorting: false,
         meta: columnMeta<PregameRoomRow>({ category: "core" }),
-        cell: ({ row }) => <StepCell room={row.original} />
+        cell: ({ row }) => <StepCell room={row.original} t={t} />
       },
       {
         id: "timer",
-        header: "Timer",
+        header: t("timer"),
         size: 96,
         enableSorting: false,
         meta: columnMeta<PregameRoomRow>({ category: "core", align: "center" }),
-        cell: ({ row }) => <DeadlineCell summary={currentStep(row.original)?.summary ?? null} />
+        cell: ({ row }) => <DeadlineCell summary={currentStep(row.original)?.summary ?? null} t={t} />
       },
       {
         id: "games",
-        header: "Maps",
+        header: t("maps"),
         size: 112,
         enableSorting: false,
         meta: columnMeta<PregameRoomRow>({ category: "meta", align: "center" }),
@@ -226,14 +237,14 @@ export function useRoomColumns({
               {row.original.games.confirmed}/{row.original.games.total}
             </span>
             {row.original.games.disputed > 0 ? (
-              <p className="text-xs text-danger">{row.original.games.disputed} disputed</p>
+              <p className="text-xs text-danger">{t("disputedCount", { count: row.original.games.disputed })}</p>
             ) : null}
           </div>
         )
       },
       {
         id: "attention",
-        header: "Attention",
+        header: t("attentionColumn"),
         enableSorting: false,
         meta: columnMeta<PregameRoomRow>({ category: "core" }),
         cell: ({ row }) =>
@@ -243,7 +254,7 @@ export function useRoomColumns({
             <div className="flex flex-wrap gap-1">
               {row.original.attention.map((flag) => (
                 <StatusPill key={flag} tone={ATTENTION_TONE[flag]}>
-                  {ATTENTION_LABEL[flag]}
+                  {t(ATTENTION_LABEL[flag] as Parameters<PregameTranslator>[0])}
                 </StatusPill>
               ))}
             </div>
@@ -260,12 +271,12 @@ export function useRoomColumns({
           <Button asChild variant="outline" size="sm">
             <Link href={pregameRoomHref(tournamentId, row.original.encounter_id, returnTo)}>
               <ExternalLink aria-hidden className="size-3.5" />
-              Open room
+              {t("openRoom")}
             </Link>
           </Button>
         )
       }
     ],
-    [tournamentId, returnTo]
+    [tournamentId, returnTo, t]
   );
 }

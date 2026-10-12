@@ -10,6 +10,7 @@ import { TONE_TEXT } from "@/components/kit/tone";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import type { AdminCaptainReport, EncounterReportsRow } from "@/types/admin.types";
 import type { ReplayCode, ReportCustomFieldDefinition } from "@/types/encounter.types";
 
@@ -98,12 +99,13 @@ export function useEncounterReportColumns({
   customFields: ReportCustomFieldDefinition[];
 }>): ColumnDef<EncounterReportsRow>[] {
   const format: DateFormatter = useFormatter();
+  const t = useTranslations("adminMatches.reports");
 
   return useMemo<ColumnDef<EncounterReportsRow>[]>(
     () => [
       {
         id: "encounter",
-        header: "Encounter",
+        header: t("encounter"),
         // The server sorts none of these, so offering a sort control would be a
         // lie the header cannot honour.
         enableSorting: false,
@@ -113,9 +115,12 @@ export function useEncounterReportColumns({
               {row.original.name}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {showTournament ? `${row.original.tournament_name ?? "Unknown tournament"} · ` : ""}
-              {row.original.stage_name ?? "Unassigned"} · Round {row.original.round} · BO
-              {row.original.best_of}
+              {t(showTournament ? "rowSubtitleWithTournament" : "rowSubtitle", {
+                tournament: row.original.tournament_name ?? t("unknownTournament"),
+                stage: row.original.stage_name ?? t("unassigned"),
+                round: row.original.round ?? "?",
+                bestOf: row.original.best_of
+              })}
             </p>
           </div>
         ),
@@ -125,20 +130,20 @@ export function useEncounterReportColumns({
       },
       {
         id: "teams",
-        header: "Recorded teams",
+        header: t("recordedTeams"),
         enableSorting: false,
         cell: ({ row }) => (
           <p className="max-w-[16rem] truncate text-xs text-muted-foreground">
             {seatsBySlot(row.original.participations)
               .map((seat) => seat.name)
-              .join(" vs ")}
+              .join(` ${t("vs")} `)}
           </p>
         ),
         meta: columnMeta<EncounterReportsRow>({ category: "core" })
       },
       {
         id: "reports",
-        header: "Captain reports",
+        header: t("captainReports"),
         size: 320,
         enableSorting: false,
         cell: ({ row }) => (
@@ -156,14 +161,14 @@ export function useEncounterReportColumns({
       // this table at all is often "how close were these".
       sidesColumn(
         "closeness",
-        "Closeness",
+        t("closeness"),
         (report) =>
           report == null || report.closeness == null ? "" : `${report.closeness}/10`,
         { category: "core", numeric: true, className: "min-w-[86px]" }
       ),
       {
         id: "result",
-        header: "Result",
+        header: t("result"),
         size: 132,
         enableSorting: false,
         cell: ({ row }) => (
@@ -173,8 +178,10 @@ export function useEncounterReportColumns({
             </StatusPill>
             {row.original.last_resolution ? (
               <p className="text-xs text-muted-foreground">
-                {row.original.last_resolution.action} by{" "}
-                {row.original.last_resolution.actor_name ?? "an automated process"}
+                {t("resolutionBy", {
+                  action: row.original.last_resolution.action,
+                  actor: row.original.last_resolution.actor_name ?? t("automatedProcess")
+                })}
               </p>
             ) : null}
           </div>
@@ -183,7 +190,7 @@ export function useEncounterReportColumns({
       },
       {
         id: "reported_count",
-        header: "Filed",
+        header: t("filed"),
         enableSorting: false,
         cell: ({ row }) => (
           <span className="text-xs tabular-nums">
@@ -199,7 +206,7 @@ export function useEncounterReportColumns({
       },
       {
         id: "scheduled_at",
-        header: "Scheduled",
+        header: t("scheduled"),
         enableSorting: false,
         cell: ({ row }) => (
           <span className="text-xs tabular-nums">{fmtDate(format, row.original.scheduled_at)}</span>
@@ -211,13 +218,13 @@ export function useEncounterReportColumns({
           className: "min-w-[150px]"
         })
       },
-      sidesColumn("reporters", "Reported by", (report) => report?.reporter_name ?? "", {
+      sidesColumn("reporters", t("reportedBy"), (report) => report?.reporter_name ?? "", {
         category: "meta",
         defaultHidden: true,
         responsive: "lg",
         className: "min-w-[140px]"
       }),
-      sidesColumn("submitted", "Submitted", (report) => {
+      sidesColumn("submitted", t("submitted"), (report) => {
         const at = submittedAt(report);
         return at ? format.dateTime(new Date(at), { dateStyle: "medium", timeStyle: "short" }) : "";
       }, {
@@ -229,17 +236,17 @@ export function useEncounterReportColumns({
       }),
       sidesColumn(
         "scores",
-        "Reported score",
+        t("reportedScore"),
         (report, seatIds) => (report ? scoreline(report.results, seatIds) : ""),
         { category: "meta", defaultHidden: true, numeric: true, className: "min-w-[100px]" }
       ),
-      sidesColumn("map_codes", "Lobby codes", (_report, _seatIds, codes) => replayCodesText(codes), {
+      sidesColumn("map_codes", t("lobbyCodes"), (_report, _seatIds, codes) => replayCodesText(codes), {
         category: "meta",
         defaultHidden: true,
         responsive: "lg",
         className: "min-w-[180px] max-w-[240px]"
       }),
-      sidesColumn("comments", "Comments", (report) => report?.comment ?? "", {
+      sidesColumn("comments", t("comments"), (report) => report?.comment ?? "", {
         category: "meta",
         defaultHidden: true,
         responsive: "lg",
@@ -247,32 +254,32 @@ export function useEncounterReportColumns({
       }),
       {
         id: "series_score_valid",
-        header: "Series check",
+        header: t("seriesCheck"),
         enableSorting: false,
         cell: ({ row }) =>
           row.original.series_score_valid ? (
-            <span className="text-xs text-muted-foreground">ok</span>
+            <span className="text-xs text-muted-foreground">{t("ok")}</span>
           ) : (
             // Advisory, not an error: reports predate per-round best-of.
-            <span className={cn("text-xs", TONE_TEXT.warning)} title="A reported score is impossible for this encounter's best-of">
-              outside BO
+            <span className={cn("text-xs", TONE_TEXT.warning)} title={t("outsideBoTitle")}>
+              {t("outsideBo")}
             </span>
           ),
         meta: columnMeta<EncounterReportsRow>({ category: "meta", defaultHidden: true })
       },
       {
         id: "status",
-        header: "Encounter status",
+        header: t("status"),
         enableSorting: false,
         cell: ({ row }) => <span className="text-xs">{row.original.status}</span>,
         meta: columnMeta<EncounterReportsRow>({ category: "meta", defaultHidden: true })
       },
       {
         id: "stage",
-        header: "Stage",
+        header: t("stage"),
         enableSorting: false,
         cell: ({ row }) => (
-          <span className="text-xs">{row.original.stage_name ?? "Unassigned"}</span>
+          <span className="text-xs">{row.original.stage_name ?? t("unassigned")}</span>
         ),
         meta: columnMeta<EncounterReportsRow>({
           category: "meta",
@@ -282,7 +289,7 @@ export function useEncounterReportColumns({
       },
       {
         id: "round",
-        header: "Round",
+        header: t("round"),
         enableSorting: false,
         cell: ({ row }) => <span className="text-xs tabular-nums">{row.original.round}</span>,
         meta: columnMeta<EncounterReportsRow>({
@@ -294,7 +301,7 @@ export function useEncounterReportColumns({
       },
       {
         id: "best_of",
-        header: "Best of",
+        header: t("bestOfFull"),
         enableSorting: false,
         cell: ({ row }) => <span className="text-xs tabular-nums">{row.original.best_of}</span>,
         meta: columnMeta<EncounterReportsRow>({
@@ -306,7 +313,7 @@ export function useEncounterReportColumns({
       },
       {
         id: "tournament",
-        header: "Tournament",
+        header: t("tournament"),
         enableSorting: false,
         cell: ({ row }) => (
           <span className="text-xs">{row.original.tournament_name ?? `#${row.original.tournament_id}`}</span>
@@ -321,7 +328,7 @@ export function useEncounterReportColumns({
       },
       {
         id: "resolution",
-        header: "Last resolution",
+        header: t("lastResolution"),
         enableSorting: false,
         cell: ({ row }) => {
           const resolution = row.original.last_resolution;
@@ -329,7 +336,10 @@ export function useEncounterReportColumns({
           return (
             <div className="text-xs">
               <p className="truncate">
-                {resolution.action} by {resolution.actor_name ?? "an automated process"}
+                {t("resolutionBy", {
+                  action: resolution.action,
+                  actor: resolution.actor_name ?? t("automatedProcess")
+                })}
               </p>
               <p className="tabular-nums text-muted-foreground">{fmtDate(format, resolution.created_at)}</p>
             </div>
@@ -370,6 +380,6 @@ export function useEncounterReportColumns({
         )
       )
     ],
-    [showTournament, customFields, format]
+        [showTournament, customFields, format, t]
   );
 }

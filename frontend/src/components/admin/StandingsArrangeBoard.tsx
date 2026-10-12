@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
 import { Lock, LockOpen, RotateCcw } from "lucide-react";
 
@@ -87,17 +88,17 @@ export function StandingsArrangeBoard({
   canUpdate: boolean;
   onChanged: () => void;
 }>) {
+  const t = useTranslations("adminTournaments.arrange");
   const tables = useMemo(() => tablesOf(rows, stages), [rows, stages]);
 
   if (tables.length === 0) {
-    return <EmptyNote>No standings to arrange yet. Recalculate to build them first.</EmptyNote>;
+    return <EmptyNote>{t("empty")}</EmptyNote>;
   }
 
   return (
     <div className="space-y-3">
       <p className="text-pretty text-sm text-muted-foreground">
-        Drag a team to a place to pin it there. Pinned places hold through any later result or
-        recalculation; the other teams keep following results.
+        {t("description")}
       </p>
       {tables.map((table) => (
         <ArrangeCard key={table.key} table={table} canUpdate={canUpdate} onChanged={onChanged} />
@@ -117,6 +118,7 @@ function ArrangeCard({
   canUpdate,
   onChanged
 }: Readonly<{ table: StandingsTableScope; canUpdate: boolean; onChanged: () => void }>) {
+  const t = useTranslations("adminTournaments.arrange");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
 
@@ -185,7 +187,7 @@ function ArrangeCard({
             onClick={() => setConfirmClear(true)}
           >
             <RotateCcw aria-hidden className="size-4" />
-            Clear pins
+            {t("clearPins")}
           </Button>
         ) : null}
       </CardHeader>
@@ -201,7 +203,7 @@ function ArrangeCard({
                   order: next.map((row) => row.team_id),
                   pinned: [...pinned, moved.team_id]
                 },
-                "Place pinned — standings recalculated"
+                t("placePinned")
               )
             }
           >
@@ -218,7 +220,7 @@ function ArrangeCard({
                 onUnpin={() =>
                   commit(
                     { order, pinned: [...pinned].filter((teamId) => teamId !== row.team_id) },
-                    "Place unpinned — standings recalculated"
+                    t("placeUnpinned")
                   )
                 }
               />
@@ -237,12 +239,12 @@ function ArrangeCard({
         onOpenChange={setConfirmClear}
         pending={busy}
         intent={{
-          title: "Clear pins?",
-          description: `Every pinned place in ${table.title} is released, and the table follows the results again.`,
-          confirmLabel: "Clear pins",
+          title: t("clearPinsTitle"),
+          description: t("clearPinsDescription", { table: table.title }),
+          confirmLabel: t("clearPins"),
           tone: "warning"
         }}
-        onConfirm={() => commit({ order, pinned: [] }, "Pins cleared — standings recalculated")}
+        onConfirm={() => commit({ order, pinned: [] }, t("pinsCleared"))}
       />
     </Card>
   );
@@ -264,6 +266,7 @@ function ArrangeRow({
   disabled: boolean;
   onUnpin: () => void;
 }>) {
+  const t = useTranslations("adminTournaments.arrange");
   const name = row.team?.name ?? `team #${row.team_id}`;
   const { ref, style, handleProps } = useSortableRow(String(row.team_id), !canUpdate || disabled);
 
@@ -279,7 +282,7 @@ function ArrangeRow({
       {canUpdate ? (
         <SortableGrip
           handleProps={handleProps}
-          label={`Drag ${name} to a new place`}
+          label={t("drag", { name })}
           disabled={disabled}
         />
       ) : null}
@@ -292,21 +295,20 @@ function ArrangeRow({
         </span>
       )}
       {row.tie_group != null && !pinned ? (
-        <StatusPill tone="warning" title="Equal on every tiebreaker — pin a place to decide it">
-          Tied
+        <StatusPill tone="warning" title={t("tiedTitle")}>
+          {t("tied")}
         </StatusPill>
       ) : null}
-      <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title="Wins · draws · losses">
+      <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title={t("recordTitle")}>
         {row.win}·{row.draw}·{row.lose}
       </span>
       <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-        {row.points.toFixed(1)}
-        {"\u00a0"}pts
+        {t("pointsValue", { points: row.points.toFixed(1) })}
       </span>
       {pinned ? (
-        <span className="flex shrink-0 items-center text-foreground" title="Pinned place">
+        <span className="flex shrink-0 items-center text-foreground" title={t("pinnedPlace")}>
           <Lock aria-hidden className="size-3.5" />
-          <span className="sr-only">Pinned place</span>
+          <span className="sr-only">{t("pinnedPlace")}</span>
         </span>
       ) : (
         <span aria-hidden className="size-3.5 shrink-0" />
@@ -317,7 +319,7 @@ function ArrangeRow({
           variant="ghost"
           size="icon"
           className="size-7 shrink-0"
-          aria-label={`Unpin ${name}`}
+          aria-label={t("unpin", { name })}
           disabled={disabled}
           onClick={onUnpin}
         >

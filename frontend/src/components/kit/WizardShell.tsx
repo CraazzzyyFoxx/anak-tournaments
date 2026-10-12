@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { Check, ChevronLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ export interface WizardShellProps {
  * "Conflicts" does not silently renumber the steps after it.
  */
 export function WizardShell({ steps, children, footer, aside }: Readonly<WizardShellProps>) {
+  const t = useTranslations("kit.actions");
   // Numbering is resolved up front rather than accumulated inside the `map`
   // callback: a counter mutated from a render callback is a side effect the
   // compiler cannot reason about (it depends on how many times the callback
@@ -48,7 +50,7 @@ export function WizardShell({ steps, children, footer, aside }: Readonly<WizardS
   return (
     <div className="flex flex-col gap-6 lg:flex-row">
       <div className="w-full shrink-0 lg:w-[220px]">
-        <ol aria-label="Steps" className="space-y-0.5">
+        <ol aria-label={t("steps")} className="space-y-0.5">
           {steps.map((step, index) => {
             const isSkipped = step.state === "skipped";
             const number = numbers[index];
@@ -83,7 +85,7 @@ export function WizardShell({ steps, children, footer, aside }: Readonly<WizardS
                     )}
                   </span>
                   <span className="truncate">{step.label}</span>
-                  {isSkipped ? <span className="sr-only">(skipped)</span> : null}
+                  {isSkipped ? <span className="sr-only">{t("skipped")}</span> : null}
                 </div>
               </li>
             );
@@ -99,7 +101,7 @@ export function WizardShell({ steps, children, footer, aside }: Readonly<WizardS
           {footer.back ? (
             <Button type="button" variant="outline" size="sm" onClick={footer.back}>
               <ChevronLeft aria-hidden className="size-4" />
-              Back
+              {t("back")}
             </Button>
           ) : null}
           <div className="ml-auto flex items-center gap-2">

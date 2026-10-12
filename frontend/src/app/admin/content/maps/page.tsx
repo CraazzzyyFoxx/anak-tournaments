@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 import { Gamepad2, Pencil, Swords, Trash2 } from "lucide-react";
@@ -59,6 +60,7 @@ function getMapForm(map: MapRead | null): MapCreateInput | MapUpdateInput {
 }
 
 export default function MapsAdminPage() {
+  const t = useTranslations("adminWorkspace.content");
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
@@ -107,7 +109,7 @@ export default function MapsAdminPage() {
     () => [
       {
         key: "gamemode_id",
-        label: "Gamemode",
+        label: t("filters.gamemode"),
         kind: "single",
         options: (gamemodesData ?? []).map((gamemode) => ({
           value: gamemode.id.toString(),
@@ -116,15 +118,15 @@ export default function MapsAdminPage() {
       },
       {
         key: "in_competitive",
-        label: "Mode pool",
+        label: t("filters.modePool"),
         kind: "single",
         options: [
-          { value: "true", label: "Competitive" },
-          { value: "false", label: "Casual" },
+          { value: "true", label: t("catalog.competitive") },
+          { value: "false", label: t("catalog.casual") },
         ],
       },
     ],
-    [gamemodesData]
+    [gamemodesData, t]
   );
   const filters = useFilters(filterDefs);
   const gamemodeFilter = String(filters.values.gamemode_id ?? "");
@@ -133,13 +135,13 @@ export default function MapsAdminPage() {
   const columns: ColumnDef<MapRead>[] = [
     {
       accessorKey: "id",
-      header: "ID",
+      header: t("columns.id"),
       size: 44,
       cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
     },
     {
       id: "image",
-      header: "Image",
+      header: t("columns.image"),
       size: 96,
       meta: columnMeta<MapRead>({ align: "center" }),
       cell: ({ row }) => {
@@ -148,7 +150,7 @@ export default function MapsAdminPage() {
           <AssetPreview
             imagePath={map.image_path}
             name={map.name}
-            assetLabel="map image"
+            assetLabel={t("columns.image")}
             className="mx-auto h-12 w-24"
           />
         );
@@ -156,12 +158,12 @@ export default function MapsAdminPage() {
     },
     {
       accessorKey: "name",
-      header: "Name",
+      header: t("columns.name"),
       size: 144,
     },
     {
       accessorKey: "gamemode",
-      header: "Gamemode",
+      header: t("columns.gamemode"),
       size: 112,
       enableSorting: false,
       cell: ({ row }) => {
@@ -169,35 +171,35 @@ export default function MapsAdminPage() {
         return map.gamemode ? (
           <Badge variant="outline">{map.gamemode.name}</Badge>
         ) : (
-          <span className="text-sm text-muted-foreground">Unknown</span>
+          <span className="text-sm text-muted-foreground">{t("catalog.unknown")}</span>
         );
       },
     },
     {
       accessorKey: "in_competitive",
-      header: "Mode Pool",
+      header: t("columns.modePool"),
       size: 120,
       meta: columnMeta<MapRead>({ align: "center" }),
       cell: ({ row }) => {
         const map = row.original;
         return map.in_competitive !== false ? (
-          <StatusIcon icon={Swords} label="Competitive" variant="success" />
+          <StatusIcon icon={Swords} label={t("catalog.competitive")} variant="success" />
         ) : (
-          <StatusIcon icon={Gamepad2} label="Casual" variant="muted" />
+          <StatusIcon icon={Gamepad2} label={t("catalog.casual")} variant="muted" />
         );
       },
     },
-    createAliasesColumn<MapRead>((map) => map.aliases),
+    createAliasesColumn<MapRead>((map) => map.aliases, t("columns.aliases")),
     createKebabColumn<MapRead>(
       (map) => [
         {
-          label: "Edit map",
+          label: t("actions.editMap"),
           icon: Pencil,
           hidden: !isSuperuser,
           onSelect: () => openEdit(map),
         },
         {
-          label: "Delete map",
+          label: t("actions.deleteMap"),
           icon: Trash2,
           destructive: true,
           hidden: !isSuperuser,
@@ -234,19 +236,19 @@ export default function MapsAdminPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search maps…"
+        searchPlaceholder={t("catalog.map.search")}
         filterKey={filters.filterKey}
         toolbar={<FilterBar defs={filterDefs} filters={filters} />}
-        emptyMessage="No maps yet. Use “Create map” to add the first one."
+        emptyMessage={t("catalog.map.empty")}
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
         actions={
           <CatalogToolbarActions
             canSync={isSuperuser}
             isSyncing={syncMutation.isPending}
             onSync={() => syncMutation.mutate()}
-            syncLabel="Sync maps from game"
+            syncLabel={t("catalog.map.sync")}
             onCreate={openCreate}
-            createLabel="Create map"
+            createLabel={t("catalog.map.create")}
           />
         }
       />
@@ -255,16 +257,17 @@ export default function MapsAdminPage() {
       <EntityFormDialog
         open={isDialogOpen}
         onOpenChange={onEntityDialogClose(closeForm)}
-        title={editingMap ? "Edit map" : "Create map"}
-        description={editingMap ? "Update map information" : "Create a new map in the game"}
+        title={editingMap ? t("catalog.map.updateTitle") : t("catalog.map.createTitle")}
+        description={editingMap ? t("catalog.map.descriptionUpdate") : t("catalog.map.descriptionCreate")}
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
-        submittingLabel={editingMap ? "Updating map…" : "Creating map…"}
+        submittingLabel={editingMap ? t("catalog.map.updating") : t("catalog.map.creating")}
         errorMessage={entityFormError(
           "map",
           !!editingMap,
           updateMutation.error,
-          createMutation.error
+          createMutation.error,
+          (key, values) => t(key, values)
         )}
         isDirty={isFormDirty}
       >
@@ -273,11 +276,11 @@ export default function MapsAdminPage() {
             id={nameFieldId}
             value={formData.name}
             onChange={(name) => setFormData({ ...formData, name })}
-            placeholder="Map name"
+            placeholder={t("catalog.map.namePlaceholder")}
           />
 
           <div className="space-y-2">
-            <Label htmlFor={gamemodeFieldId}>Gamemode *</Label>
+            <Label htmlFor={gamemodeFieldId}>{t("catalog.map.gamemodeRequired")}</Label>
             <Select
               value={formData.gamemode_id?.toString() || ""}
               onValueChange={(value) =>
@@ -285,7 +288,7 @@ export default function MapsAdminPage() {
               }
             >
               <SelectTrigger id={gamemodeFieldId}>
-                <SelectValue placeholder="Select gamemode" />
+                <SelectValue placeholder={t("catalog.map.selectGamemode")} />
               </SelectTrigger>
               <SelectContent>
                 {gamemodesData?.map((gamemode) => (
@@ -302,7 +305,7 @@ export default function MapsAdminPage() {
             aliases={formData.aliases}
             onChange={(aliases) => setFormData({ ...formData, aliases })}
             placeholder={"Илиос\nHollywood (Halloween)"}
-            helperText="One alias per line — names as they appear in match logs."
+            helperText={t("fields.aliasesHelp")}
           />
 
           <div className="flex items-center gap-2 pt-2">
@@ -314,7 +317,7 @@ export default function MapsAdminPage() {
               }
             />
             <Label htmlFor={`${formId}-in-competitive`} className="cursor-pointer font-medium text-sm">
-              Competitive map (Входит в соревновательный пул)
+              {t("catalog.map.competitiveMap")}
             </Label>
           </div>
         </div>
@@ -328,9 +331,9 @@ export default function MapsAdminPage() {
           onConfirm={() => deleteMutation.mutate(deletingMap.id)}
           pending={deleteMutation.isPending}
           intent={{
-            title: "Delete map",
-            description: `“${deletingMap.name}” will be permanently removed from the map catalogue. This cannot be undone.`,
-            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            title: t("catalog.map.deleteTitle"),
+            description: t("catalog.map.deleteDescription", { name: deletingMap.name }),
+            confirmLabel: t("actions.delete"),
             tone: "danger",
           }}
         />

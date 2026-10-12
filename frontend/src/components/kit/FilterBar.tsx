@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { ChevronLeft, ListFilter, Plus, X } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
@@ -66,6 +67,7 @@ export function FilterBar({
   presets,
   trailing
 }: Readonly<FilterBarProps>) {
+  const t = useTranslations("kit.actions");
   const [open, setOpen] = useState(false);
   const [pickerKey, setPickerKey] = useState<string | null>(null);
   const [entityQuery, setEntityQuery] = useState("");
@@ -168,7 +170,7 @@ export function FilterBar({
         />
       ) : null}
 
-      <div role="group" aria-label="Active filters" className="flex flex-wrap items-center gap-2">
+      <div role="group" aria-label={t("activeFilters")} className="flex flex-wrap items-center gap-2">
         {(pinned ?? []).map((chip) => (
           <span
             key={chip.key}
@@ -183,7 +185,7 @@ export function FilterBar({
           <FilterChip
             key={chip.id}
             active
-            aria-label={`Remove filter ${chip.label}`}
+            aria-label={t("removeFilter", { label: chip.label })}
             onClick={chip.onRemove}
           >
             {chip.label}
@@ -196,17 +198,17 @@ export function FilterBar({
           onOpenChange={(next) => (next ? setOpen(true) : closePicker())}
         >
           <PopoverTrigger asChild>
-            <button type="button" className="aqt-filter-chip" aria-label="Add filter">
+            <button type="button" className="aqt-filter-chip" aria-label={t("addFilter")}>
               <Plus aria-hidden className="size-3" />
-              Filter
+              {t("filter")}
             </button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-72 p-0">
             {picker === null ? (
               <Command>
-                <CommandInput placeholder="Filter by…" />
+                <CommandInput placeholder={t("filterBy")} />
                 <CommandList>
-                  <CommandEmpty>No filters available.</CommandEmpty>
+                  <CommandEmpty>{t("noFilters")}</CommandEmpty>
                   <CommandGroup>
                     {available.map((def) => (
                       <CommandItem
@@ -234,7 +236,7 @@ export function FilterBar({
                   <button
                     type="button"
                     onClick={() => setPickerKey(null)}
-                    aria-label="Back to filter list"
+                    aria-label={t("backToFilterList")}
                     className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
                   >
                     <ChevronLeft aria-hidden className="size-4" />
@@ -242,12 +244,12 @@ export function FilterBar({
                   <span className="text-xs font-medium text-foreground">{picker.label}</span>
                 </div>
                 <CommandInput
-                  placeholder={`Search ${picker.label.toLowerCase()}…`}
+                  placeholder={t("searchPicker", { label: picker.label.toLowerCase() })}
                   value={picker.kind === "entity" ? entityQuery : undefined}
                   onValueChange={picker.kind === "entity" ? setEntityQuery : undefined}
                 />
                 <CommandList>
-                  <CommandEmpty>Nothing matches.</CommandEmpty>
+                  <CommandEmpty>{t("nothingMatchesShort")}</CommandEmpty>
                   <CommandGroup>
                     {pickerOptions.map((option) => (
                       <CommandItem
@@ -292,7 +294,7 @@ export function FilterBar({
               "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             )}
           >
-            Clear all
+            {t("clearAll")}
           </button>
         ) : null}
       </div>
