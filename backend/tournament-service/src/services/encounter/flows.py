@@ -209,10 +209,21 @@ class EncounterFlowsService:
                 read = team_cache[seat.team_id]
             else:
                 # The team's own nested entities (``tournament``, ``players``,
-                # ``captain``) have to be eager-loaded here: a bare ``get`` would
-                # leave ``to_pydantic`` touching unloaded relationships, which is
-                # implicit IO and ``MissingGreenlet`` under async SQLAlchemy.
-                source = await session.get(models.Team, seat.team_id, options=TeamRepository.team_entities(nested))
+                # ``captain``) have to be eager-loaded here: a bare ``get``
+                # would leave ``to_pydantic`` touching unloaded relationships,
+                # which is implicit IO and ``MissingGreenlet`` under async
+                # SQLAlchemy. ``populate_existing`` is what makes the options
+                # actually apply: ``session.get`` returns an identity-mapped row
+                # exactly as it was FIRST loaded and silently ignores them, so a
+                # read that reached the same team through a shallower path
+                # earlier -- ``matches.teams`` loads ``Match.home_team`` with no
+                # team options at all -- would hand this loop a bare instance.
+                source = await session.get(
+                    models.Team,
+                    seat.team_id,
+                    options=TeamRepository.team_entities(nested),
+                    populate_existing=True,
+                )
                 if source is None:
                     continue
                 read = await self._cached_team_read(session, source, nested, team_cache)

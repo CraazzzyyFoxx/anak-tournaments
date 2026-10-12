@@ -694,3 +694,22 @@ class ReadPathTests(ResultFlowCase):
         # ``players`` is a to-many on the team: reaching it at all proves the
         # seat's team was loaded with its nested entities, not bare.
         self.assertEqual([], read.home_team.players)
+
+    async def test_a_team_already_in_the_identity_map_is_reloaded_with_its_entities(self) -> None:
+        """``session.get`` hands back an identity-mapped row as it was FIRST
+        loaded and ignores the options, so a read that reached the same team
+        through a shallower path earlier would otherwise get a bare instance and
+        lazy-load its collections -- ``MissingGreenlet`` under async."""
+        async with self.Session() as s:
+            # The shallower path, reproduced: the team enters the identity map
+            # with no team options on it at all.
+            bare = await s.get(Team, self.ids["team0"])
+            self.assertIn("players", sa.inspect(bare).unloaded)
+            encounter = await encounter_service.get_encounter(s, self.ids["e"], ["teams", "teams.players"])
+            read = await flows_service.to_pydantic(s, encounter, ["teams", "teams.players"])
+            # The SAME instance, now carrying its roster: without
+            # ``populate_existing`` the read hands back the bare one and the
+            # next consumer of it lazy-loads.
+            self.assertNotIn("players", sa.inspect(bare).unloaded)
+        self.assertEqual("T0", read.home_team.name)
+        self.assertEqual([], read.home_team.players)
