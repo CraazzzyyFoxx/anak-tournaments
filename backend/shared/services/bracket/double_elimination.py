@@ -15,12 +15,12 @@ an 6- or 12-team bracket from stranding the top seeds in a half-empty match
 they can never play.
 
 Returns a :class:`BracketSkeleton` with complete advancement edges:
-- Every UB match produces an edge (winner → next UB match).
-- Every UB loser produces an edge to the appropriate LB match
-  (cross-drop: dropouts are reversed so a loser does not immediately
-  rematch the opponent that just beat them) — or, when the LB slot it
+- Every UB match produces an edge (position 1 → next UB match).
+- Every UB match's position 2 produces an edge to the appropriate LB match
+  (cross-drop: dropouts are reversed so a second place does not immediately
+  rematch the team that just beat them) — or, when the LB slot it
   would have played in is empty, to the first LB match that has an opponent.
-- LB reduction rounds produce winner-edges to the next LB round.
+- LB reduction rounds produce position-1 edges to the next LB round.
 - UB final and LB final both feed the Grand Final.
 
 The Grand Final Reset is NEVER materialised on generation — it is created on
@@ -36,14 +36,15 @@ from collections.abc import Callable
 from .seeding_order import seeding_order
 from .types import AdvancementEdge, BracketSkeleton, Pairing
 
-# Origin kinds. WINNER/LOSER carry a pairing's ``local_id``; TEAM carries a
-# team id. WINNER/LOSER double as ``AdvancementEdge.role`` values.
-_TEAM = "team"
-_WINNER = "winner"
-_LOSER = "loser"
+# Where the team occupying a bracket slot comes from: ``(source, value)``.
+# ``_TEAM`` is not a place at all -- ``value`` is then a team id. The other two
+# are places in the standing of the pairing ``value``, and they double as
+# ``AdvancementEdge.source_position``.
+_TEAM = 0
+_WINNER = 1
+_LOSER = 2
 
-# Where the team occupying a bracket slot comes from: ``(kind, value)``.
-Origin = tuple[str, int]
+Origin = tuple[int, int]
 
 
 def generate(
@@ -74,15 +75,15 @@ def generate(
     next_local_id = 0
 
     def play(
-        home: Origin | None,
-        away: Origin | None,
+        first: Origin | None,
+        second: Origin | None,
         round_number: int,
         label: Callable[[int], str],
         *,
         match_index: int,
         force: bool = False,
     ) -> tuple[Origin | None, Origin | None]:
-        """Materialise the match between two slot origins.
+        """Materialise the match between the origins of slot 1 and slot 2.
 
         Returns ``(winner_origin, loser_origin)``: what the slot passes on, and
         what drops to the lower bracket. With only one origin present there is
@@ -91,28 +92,29 @@ def generate(
         Final) even when one side is still unreachable.
         """
         nonlocal next_local_id
-        if (home is None or away is None) and not force:
-            return (home or away), None
+        if (first is None or second is None) and not force:
+            return (first or second), None
 
         local_id = next_local_id
         next_local_id += 1
         pairings.append(
             Pairing(
-                home_team_id=home[1] if home is not None and home[0] == _TEAM else None,
-                away_team_id=away[1] if away is not None and away[0] == _TEAM else None,
+                team_ids=tuple(
+                    origin[1] if origin is not None and origin[0] == _TEAM else None for origin in (first, second)
+                ),
                 round_number=round_number,
                 name=label(match_index),
                 local_id=local_id,
             )
         )
-        for origin, slot in ((home, "home"), (away, "away")):
+        for origin, slot in ((first, 1), (second, 2)):
             if origin is None or origin[0] == _TEAM:
                 continue
             edges.append(
                 AdvancementEdge(
                     source_local_id=origin[1],
+                    source_position=origin[0],
                     target_local_id=local_id,
-                    role=origin[0],
                     target_slot=slot,
                 )
             )
@@ -132,11 +134,11 @@ def generate(
         losers: list[Origin | None] = []
         match_index = 0
         for index in range(0, len(origins), 2):
-            home = origins[index]
-            away = origins[index + 1] if index + 1 < len(origins) else None
-            if home is not None and away is not None:
+            first = origins[index]
+            second = origins[index + 1] if index + 1 < len(origins) else None
+            if first is not None and second is not None:
                 match_index += 1
-            winner, loser = play(home, away, round_number, label, match_index=match_index)
+            winner, loser = play(first, second, round_number, label, match_index=match_index)
             winners.append(winner)
             losers.append(loser)
         return winners, losers
@@ -212,7 +214,7 @@ def generate(
 
     total_rounds = gf_round
 
-    seeded = {tid for pairing in pairings for tid in (pairing.home_team_id, pairing.away_team_id)}
+    seeded = {team_id for pairing in pairings for team_id in pairing.team_ids}
     dropped = [tid for tid in (*team_ids, *lb_seeds) if tid not in seeded]
     if dropped:
         raise ValueError(f"double elimination dropped teams: {dropped}")

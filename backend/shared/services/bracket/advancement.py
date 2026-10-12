@@ -1,65 +1,96 @@
-"""Advancement service: materialises winner/loser edges in the DB
-(``EncounterLink`` rows) and auto-fills target encounter slots when an
-encounter's score is finalised.
+"""Advancement: a bracket moves PLACES into SEATS (D13, D55, D65).
 
-Called from:
-- Bracket generation (``admin/stage.py::generate_encounters``) — after
-  creating encounters, the service wires up links using local_id → encounter.id
-  mapping returned from :func:`shared.services.bracket.engine.generate_bracket`.
-- Encounter score update hooks (captain submission, admin override, logs
-  parser) — when ``status`` transitions to COMPLETED and a winner is
-  determinable, propagate to every linked target.
+An ``EncounterLink`` says "whoever finished at ``source_position`` of this
+encounter takes ``target_slot`` of that one". There is no winner/loser enum and
+no home/away: a lobby that pays out four places wires up exactly like a duel.
+
+Two entry points, and the split between them is the point:
+
+* :func:`advance_after_result` only ever FILLS empty seats. It reads the
+  standing the result writer materialised on the participations, resolves each
+  linked position, and seats the team. A position two teams share blocks: it is
+  reported, not guessed.
+* :func:`reset_downstream` is the destructive half. It retires the seats this
+  encounter filled, cancels the games those seats had not played, and
+  re-materialises each target's standing -- recursively, because a correction
+  three rounds up invalidates everything below it. It takes the admin's id,
+  because taking a decided result off an encounter is :func:`reopen`, and that
+  is a human act.
+
+A correction is therefore the two of them in order: reopen, reset downstream,
+write the new result, advance. Calling :func:`advance_after_result` into a seat
+another team still holds is a 409 from the participation writer, which is the
+caller being told it skipped the reset.
+
+Nothing here commits; every change rides the caller's transaction.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
 
 import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import enums
-from shared.domain.encounter_naming import build_encounter_name_from_ids
+from shared.domain.encounter_naming import build_encounter_name
 from shared.models.encounter.encounter import Encounter
-from shared.models.encounter.game import EncounterGame
-from shared.models.encounter.report import EncounterTeamReport
+from shared.models.encounter.team import EncounterTeam, EncounterTeamMember, EncounterTeamMemberRole
+from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage
-from shared.models.tournament.team import Team
 from shared.services.bracket.types import AdvancementEdge
-from shared.services.encounter.game_audit import cancel_games
-from shared.services.encounter.result_audit import record_result_transition
+from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
+from shared.services.encounter.result import lock_encounter, refresh_from_games, reopen
 
 __all__ = (
-    "persist_advancement_edges",
-    "advance_winner",
-    "reset_encounter_result",
+    "AdvanceOutcome",
     "SlotSource",
+    "advance_after_result",
+    "persist_advancement_edges",
+    "reset_downstream",
     "resolve_slot_sources",
 )
+
+#: What a bracket cascade writes into the result journal.
+_AUDIT_SOURCE = "bracket"
 
 
 @dataclass(frozen=True)
 class SlotSource:
     """One incoming advancement edge, from the target's point of view: ``slot``
-    is filled by the ``role`` ("winner"/"loser") of ``encounter_id``."""
+    is filled by whoever finishes at ``source_position`` of ``encounter_id``."""
 
     encounter_id: int
-    role: str
-    slot: str
+    source_position: int
+    slot: int
+
+
+@dataclass(frozen=True)
+class AdvanceOutcome:
+    """What one advancement pass did.
+
+    ``placed`` is ``(target encounter id, slot)`` per seat filled.
+    ``blocked_positions`` are the linked positions this encounter's standing
+    does not resolve to exactly one team -- a draw shares a place, so nobody
+    advances out of it until an admin breaks the tie.
+    """
+
+    placed: list[tuple[int, int]] = field(default_factory=list)
+    blocked_positions: list[int] = field(default_factory=list)
 
 
 async def resolve_slot_sources(session: AsyncSession, encounter_ids: Iterable[int]) -> dict[int, list[SlotSource]]:
     """Incoming advancement edges, keyed by TARGET encounter id.
 
-    ``EncounterLink`` is the bracket's real topology, but until now only the
-    engine read it: a reader had to infer where an empty slot's team would come
-    from out of round numbers and match counts. That inference cannot tell a
-    lower bracket seeded straight from the group stage — whose round 1 holds
-    seeds, so its slots really are TBD — from a standard one whose round 1 holds
-    the upper bracket's first losers. Handing the edges out removes the guess.
+    ``EncounterLink`` is the bracket's real topology, but a reader used to have
+    to infer where an empty slot's team would come from out of round numbers
+    and match counts. That inference cannot tell a lower bracket seeded
+    straight from the group stage -- whose round 1 holds seeds, so its slots
+    really are TBD -- from a standard one whose round 1 holds the upper
+    bracket's first losers. Handing the edges out removes the guess.
     """
     targets = {encounter_id for encounter_id in encounter_ids if encounter_id is not None}
     if not targets:
@@ -69,7 +100,7 @@ async def resolve_slot_sources(session: AsyncSession, encounter_ids: Iterable[in
         sa.select(
             EncounterLink.target_encounter_id,
             EncounterLink.source_encounter_id,
-            EncounterLink.role,
+            EncounterLink.source_position,
             EncounterLink.target_slot,
         )
         .where(EncounterLink.target_encounter_id.in_(targets))
@@ -77,8 +108,10 @@ async def resolve_slot_sources(session: AsyncSession, encounter_ids: Iterable[in
     )
 
     sources: dict[int, list[SlotSource]] = {}
-    for target_id, source_id, role, slot in rows.all():
-        sources.setdefault(target_id, []).append(SlotSource(encounter_id=source_id, role=role.value, slot=slot.value))
+    for target_id, source_id, position, slot in rows.all():
+        sources.setdefault(target_id, []).append(
+            SlotSource(encounter_id=source_id, source_position=position, slot=slot)
+        )
     return sources
 
 
@@ -86,27 +119,31 @@ async def persist_advancement_edges(
     session: AsyncSession,
     *,
     edges: Iterable[AdvancementEdge],
-    local_to_encounter_id: dict[int, int],
+    encounters_by_local_id: dict[int, Encounter],
 ) -> list[EncounterLink]:
-    """Create EncounterLink rows from bracket-engine AdvancementEdges.
+    """Create ``EncounterLink`` rows from a skeleton's advancement edges.
 
-    Silently skips edges referencing an unknown local_id (can happen if a
-    pairing was not persisted — e.g. bye-induced matches).
+    Silently skips an edge whose local_id was not persisted (a bye-induced
+    match). An edge aimed past the target's card is a generator bug, not a
+    skippable one: the seat it names can never be filled, so it raises.
     """
     links: list[EncounterLink] = []
     for edge in edges:
-        source_id = local_to_encounter_id.get(edge.source_local_id)
-        target_id = local_to_encounter_id.get(edge.target_local_id)
-        if source_id is None or target_id is None:
+        source = encounters_by_local_id.get(edge.source_local_id)
+        target = encounters_by_local_id.get(edge.target_local_id)
+        if source is None or target is None:
             continue
-
-        role = enums.EncounterLinkRole.WINNER if edge.role == "winner" else enums.EncounterLinkRole.LOSER
-        slot = enums.EncounterLinkSlot.HOME if edge.target_slot == "home" else enums.EncounterLinkSlot.AWAY
+        if not 1 <= edge.target_slot <= target.slot_count:
+            raise ValueError(
+                f"Advancement edge targets slot {edge.target_slot} of encounter {target.id}, "
+                f"which seats {target.slot_count}"
+            )
         link = EncounterLink(
-            source_encounter_id=source_id,
-            target_encounter_id=target_id,
-            role=role,
-            target_slot=slot,
+            tournament_id=target.tournament_id,
+            source_encounter_id=source.id,
+            source_position=edge.source_position,
+            target_encounter_id=target.id,
+            target_slot=edge.target_slot,
         )
         session.add(link)
         links.append(link)
@@ -116,364 +153,276 @@ async def persist_advancement_edges(
     return links
 
 
-async def advance_winner(
-    session: AsyncSession,
-    encounter: Encounter,
-) -> list[Encounter]:
-    """Propagate the winner/loser of an encounter into every linked target.
+async def advance_after_result(session: AsyncSession, encounter: Encounter) -> AdvanceOutcome:
+    """Seat this encounter's standing into every slot its links name.
 
-    Additionally, if this encounter is a Grand Final in a double-elimination
-    bracket AND the LB champion (the team that came via the "LB final winner"
-    edge) won it, lazily materialise a Grand Final Reset match.
-
-    Returns the list of target encounters that were created or updated.
-    Callers should commit the session; this function only flushes.
+    Does nothing until the result stands: a pending or disputed submission has
+    decided nothing. A double elimination's Grand Final additionally
+    materialises -- or drops -- its Reset here, because whether a second Grand
+    Final exists is exactly the question "did the lower bracket's champion win
+    the first one".
     """
-    if (
-        encounter.home_team_id is None
-        or encounter.away_team_id is None
-        or encounter.status != enums.EncounterStatus.COMPLETED
-    ):
-        return []
-    if encounter.home_score == encounter.away_score:
-        return []
+    outcome = AdvanceOutcome()
+    if encounter.result_status != enums.EncounterResultStatus.CONFIRMED:
+        return outcome
 
-    winner_id = encounter.home_team_id if encounter.home_score > encounter.away_score else encounter.away_team_id
-    loser_id = encounter.away_team_id if encounter.home_score > encounter.away_score else encounter.home_team_id
+    seats = await active_teams(session, encounter.id)
+    by_position: dict[int, list[EncounterTeam]] = {}
+    for seat in seats:
+        if seat.placement is not None:
+            by_position.setdefault(seat.placement, []).append(seat)
 
-    links = (
-        (await session.execute(sa.select(EncounterLink).where(EncounterLink.source_encounter_id == encounter.id)))
-        .scalars()
-        .all()
-    )
-
-    updated: list[Encounter] = []
+    links = await _resolve_grand_final_reset(session, encounter, by_position)
     for link in links:
-        target = await session.get(
-            Encounter,
-            link.target_encounter_id,
-            with_for_update=True,
-        )
-        if target is None:
-            logger.warning(
-                "EncounterLink {} points to missing target encounter {}",
-                link.id,
-                link.target_encounter_id,
-            )
+        holders = by_position.get(link.source_position, [])
+        if len(holders) != 1:
+            # Either two teams share the place or the standing never reached
+            # it; both mean this edge has nobody to move.
+            outcome.blocked_positions.append(link.source_position)
             continue
+        if await _seat(session, link, holders[0]):
+            outcome.placed.append((link.target_encounter_id, link.target_slot))
 
-        team_id = winner_id if link.role == enums.EncounterLinkRole.WINNER else loser_id
-        current_team_id = (
-            target.home_team_id if link.target_slot == enums.EncounterLinkSlot.HOME else target.away_team_id
-        )
-        if current_team_id == team_id:
-            # Idempotent re-finalisation (e.g. admin corrected the score but
-            # the winner did not change) — nothing to propagate.
-            continue
-
-        if link.target_slot == enums.EncounterLinkSlot.HOME:
-            target.home_team_id = team_id
-        else:
-            target.away_team_id = team_id
-        target.name = await _build_encounter_name_for_ids(
-            session,
-            home_team_id=target.home_team_id,
-            away_team_id=target.away_team_id,
-        )
-        updated.append(target)
-
-        # The slot previously held a DIFFERENT team (an upstream result was
-        # corrected): any result already recorded on the target — and anything
-        # that result had advanced further down the bracket — is stale now.
-        updated.extend(await reset_encounter_result(session, target))
-
-    reset_match, dropped = await _maybe_create_grand_final_reset(session, encounter, winner_id)
-    if dropped:
-        # The link loop above filled the leftover Reset's slots before it was
-        # dropped; a deleted row must not reach the caller's post-advance hooks.
-        dropped_ids = {id(encounter) for encounter in dropped}
-        updated = [target for target in updated if id(target) not in dropped_ids]
-    if reset_match is not None:
-        updated.append(reset_match)
-
-    if updated:
-        await session.flush()
-    return updated
+    outcome.blocked_positions.sort()
+    return outcome
 
 
-async def reset_encounter_result(
-    session: AsyncSession,
-    encounter: Encounter,
-    *,
-    action: enums.EncounterResultAuditAction = enums.EncounterResultAuditAction.CASCADE_RESET,
-    actor_user_id: int | None = None,
-    source: str = "admin",
-) -> list[Encounter]:
-    """Un-play an encounter and clear whatever its old result advanced.
+async def reset_downstream(session: AsyncSession, encounter: Encounter, *, actor_user_id: int) -> None:
+    """Empty every seat this encounter filled, and everything they filled.
 
-    Two callers, one behaviour. The bracket calls it with the defaults when a
-    corrected upstream result rewired this encounter's team slots: any score
-    recorded for the OLD matchup is void. An admin reopening a result calls it
-    with ``action=REOPEN`` and their own id, so the initiating transition is
-    attributed while the downstream fan-out stays ``cascade_reset``.
-
-    Returns every *additional* encounter that was modified. Only flushes are
-    left to the caller (``advance_winner``).
+    Each target loses the occupant, its unplayed positions (``vacate_slot``
+    cancels them) and its standing: a decided result is reopened, then the
+    standing is re-materialised from the games the LIVE seats still cover --
+    which is how an encounter that was complete goes back to OPEN after the
+    line-up that played it was retired.
     """
-    had_advanced = encounter.status == enums.EncounterStatus.COMPLETED
-    has_recorded_result = (
-        had_advanced
-        or encounter.result_status != enums.EncounterResultStatus.NONE
-        or encounter.home_score != 0
-        or encounter.away_score != 0
+    for link in await _outgoing(session, encounter.id):
+        target = await lock_encounter(session, link.target_encounter_id)
+        if await vacate_slot(session, target, slot=link.target_slot) is None:
+            continue
+        await _rename(session, target)
+        await reset_downstream(session, target, actor_user_id=actor_user_id)
+        await _restate(session, target, actor_user_id=actor_user_id)
+
+
+async def _seat(session: AsyncSession, link: EncounterLink, holder: EncounterTeam) -> bool:
+    """Put ``holder``'s team in the slot ``link`` names; ``False`` if it is
+    already there (a re-advance of an unchanged result)."""
+    target = await lock_encounter(session, link.target_encounter_id)
+    seated = await _active_slot(session, target.id, link.target_slot)
+    if seated is not None and seated.team_id == holder.team_id:
+        return False
+    await place_team(
+        session,
+        target,
+        slot=link.target_slot,
+        team_id=holder.team_id,
+        name=holder.name,
+        seed=holder.seed,
+        members=await _roster(session, holder),
     )
-    if not has_recorded_result:
-        return []
+    await _rename(session, target)
+    return True
 
-    from_result_status = encounter.result_status
-    home_score_before = encounter.home_score
-    away_score_before = encounter.away_score
 
-    encounter.home_score = 0
-    encounter.away_score = 0
-    encounter.status = enums.EncounterStatus.OPEN
-    encounter.result_status = enums.EncounterResultStatus.NONE
-    encounter.confirmed_at = None
-    # The old matchup's intensity rating is void with the rest of the result;
-    # tournament closeness averages this column, so a stale value would leak
-    # the previous pairing into the tournament's numbers.
-    encounter.closeness = None
-    if action == enums.EncounterResultAuditAction.CASCADE_RESET:
-        # A cascade means the MATCHUP changed, not just the score: every artefact
-        # of the old pairing is void. Series reports above all — a surviving
-        # report from the replaced opponent would pair with the new team's report
-        # and auto-confirm a series that was never played (review item 7). The
-        # series' games go the same way: a position played by the REPLACED team
-        # is not a position of this encounter any more, and leaving one confirmed
-        # would re-materialise its win onto the new pairing.
-        await session.execute(sa.delete(EncounterTeamReport).where(EncounterTeamReport.encounter_id == encounter.id))
-        live_games = (
-            (
-                await session.execute(
-                    sa.select(EncounterGame).where(
-                        EncounterGame.encounter_id == encounter.id,
-                        EncounterGame.state != enums.EncounterGameState.CANCELLED,
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        cancel_games(session, encounter, live_games, actor_user_id=actor_user_id, reason="cascade_reset")
-        encounter.ended_at = None
-        encounter.current_map_index = None
-    else:
-        # A REOPEN keeps the same two teams and their games: the encounter drops
-        # back to the LIVE score its confirmed positions still add up to, not to
-        # 0:0. Zeroing it would make the room disagree with every game row it
-        # renders, and the next captain claim would count from the wrong base.
-        rows = (
-            await session.execute(
-                sa.select(EncounterGame.accepted_home_score, EncounterGame.accepted_away_score).where(
-                    EncounterGame.encounter_id == encounter.id,
-                    EncounterGame.state == enums.EncounterGameState.CONFIRMED,
-                )
-            )
-        ).all()
-        # A drawn map is played and won by nobody, so the two counts need not
-        # add up to the number of rows (spec §6.3).
-        encounter.home_score = sum(1 for home, away in rows if home > away)
-        encounter.away_score = sum(1 for home, away in rows if away > home)
-    record_result_transition(
+async def _restate(session: AsyncSession, encounter: Encounter, *, actor_user_id: int) -> None:
+    """Make the standing agree with the live seats again."""
+    if encounter.result_source is not None and encounter.result_source != enums.EncounterResultSource.GAMES.value:
+        # A decided result survives a recalculation by design, so it has to be
+        # taken off first -- the line-up it was decided about is gone.
+        await reopen(session, encounter, actor_user_id=actor_user_id, reason="bracket_reset")
+    await refresh_from_games(
         session,
         encounter,
-        action=action,
-        source=source,
+        action=enums.EncounterResultAuditAction.CASCADE_RESET,
+        audit_source=_AUDIT_SOURCE,
         actor_user_id=actor_user_id,
-        from_result_status=from_result_status,
-        home_score_before=home_score_before,
-        away_score_before=away_score_before,
-    )
-    logger.info(
-        "Reset result on encounter {} ({})",
-        encounter.id,
-        action.value,
     )
 
-    if not had_advanced:
-        # A pending/disputed submission never advanced anyone — no fan-out.
-        return []
 
-    links = (
-        (await session.execute(sa.select(EncounterLink).where(EncounterLink.source_encounter_id == encounter.id)))
+async def _outgoing(session: AsyncSession, encounter_id: int) -> list[EncounterLink]:
+    rows = await session.execute(
+        sa.select(EncounterLink)
+        .where(EncounterLink.source_encounter_id == encounter_id)
+        .order_by(EncounterLink.source_position, EncounterLink.id)
+    )
+    return list(rows.scalars().all())
+
+
+async def _active_slot(session: AsyncSession, encounter_id: int, slot: int) -> EncounterTeam | None:
+    return await session.scalar(
+        sa.select(EncounterTeam).where(
+            EncounterTeam.encounter_id == encounter_id,
+            EncounterTeam.slot == slot,
+            EncounterTeam.active.is_(True),
+        )
+    )
+
+
+async def _rename(session: AsyncSession, encounter: Encounter) -> None:
+    """The display name is the live seats in slot order; an empty seat is TBD."""
+    seated = {seat.slot: seat.name for seat in await active_teams(session, encounter.id)}
+    encounter.name = build_encounter_name([seated.get(slot) for slot in range(1, encounter.slot_count + 1)])
+
+
+async def _roster(session: AsyncSession, participation: EncounterTeam) -> list[MemberSnapshot]:
+    """The line-up as the next encounter should remember it.
+
+    Carried forward rather than re-read from the tournament team: the snapshot
+    is what the team actually fielded, and a roster change between rounds must
+    not rewrite the round that was already played.
+    """
+    members = (
+        (
+            await session.execute(
+                sa.select(EncounterTeamMember)
+                .where(EncounterTeamMember.encounter_team_id == participation.id)
+                .order_by(EncounterTeamMember.id)
+            )
+        )
         .scalars()
         .all()
     )
-    cleared: list[Encounter] = []
-    for link in links:
-        target = await session.get(
-            Encounter,
-            link.target_encounter_id,
-            with_for_update=True,
+    if not members:
+        return []
+    roles: dict[int, list[tuple[str, str]]] = {}
+    rows = await session.execute(
+        sa.select(EncounterTeamMemberRole)
+        .where(EncounterTeamMemberRole.team_member_id.in_([member.id for member in members]))
+        .order_by(EncounterTeamMemberRole.dimension, EncounterTeamMemberRole.role)
+    )
+    for row in rows.scalars().all():
+        roles.setdefault(row.team_member_id, []).append((row.dimension, row.role))
+    return [
+        MemberSnapshot(
+            workspace_member_id=member.workspace_member_id,
+            display_name=member.display_name_snapshot,
+            rank=member.rank,
+            is_substitute=member.is_substitute,
+            roles=tuple(roles.get(member.id, ())),
         )
-        if target is None:
-            continue
-
-        if link.target_slot == enums.EncounterLinkSlot.HOME:
-            if target.home_team_id is None:
-                continue
-            target.home_team_id = None
-        else:
-            if target.away_team_id is None:
-                continue
-            target.away_team_id = None
-        target.name = await _build_encounter_name_for_ids(
-            session,
-            home_team_id=target.home_team_id,
-            away_team_id=target.away_team_id,
-        )
-        cleared.append(target)
-        cleared.extend(await reset_encounter_result(session, target))
-    return cleared
+        for member in members
+    ]
 
 
-async def _maybe_create_grand_final_reset(
+async def _resolve_grand_final_reset(
     session: AsyncSession,
-    gf_encounter: Encounter,
-    gf_winner_id: int,
-) -> tuple[Encounter | None, list[Encounter]]:
-    """Lazily create a Grand Final Reset match when the LB champion wins GF.
+    encounter: Encounter,
+    by_position: dict[int, list[EncounterTeam]],
+) -> list[EncounterLink]:
+    """The links :func:`advance_after_result` should seat, Reset included.
 
     Rules:
-    - Stage is double-elimination AND configured ``de_grand_final_type ==
+    - The stage is double elimination AND ``de_grand_final_type ==
       "with_reset"``; a ``no_reset`` stage ends at the Grand Final.
-    - The encounter is a Grand Final iff it has an incoming WINNER
-      ``EncounterLink`` whose SOURCE sits in a negative (lower-bracket) round.
-      That link's ``target_slot`` is where the LB champion plays. Round numbers
-      cannot say this: the Reset itself and the UB Final are positive rounds too,
-      and a materialised Reset is the highest of them (review items 2, 3).
-    - The Reset is fed by two links from the GF (WINNER -> the LB champion's
-      slot, LOSER -> the other), so it is a normal advancement target: it fills
-      itself and ``reset_encounter_result(GF)`` un-plays it again. Its own
-      incoming links all come from a positive round, so completing it never
-      spawns a second Reset.
-    - The GF winner must be the team in the LB champion's slot; a home/away swap
-      moves the link with the team, so the answer survives it (review item 4).
-
-    Returns ``(created_reset, dropped_leftovers)``.
+    - The encounter is a Grand Final iff it has an incoming link from a source
+      in a negative (lower-bracket) round taking position 1. That link's
+      ``target_slot`` is the seat the lower bracket's champion plays in. Round
+      numbers cannot say this: a materialised Reset is a positive round too.
+    - The Reset is fed by two links from the Grand Final, so it fills itself
+      through the ordinary loop and ``reset_downstream`` empties it again.
+    - The upper bracket's champion winning ends the tournament: an untouched
+      leftover Reset is dropped.
     """
-    if gf_encounter.stage_id is None or gf_encounter.round <= 0:
-        return None, []
-
-    stage = await session.get(Stage, gf_encounter.stage_id)
+    links = await _outgoing(session, encounter.id)
+    position = await session.get(BracketEncounter, encounter.id)
+    if position is None or position.round <= 0 or position.stage_id is None:
+        return links
+    stage = await session.get(Stage, position.stage_id)
     if stage is None or stage.stage_type != enums.StageType.DOUBLE_ELIMINATION:
-        return None, []
+        return links
     if stage.de_grand_final_type != "with_reset":
-        return None, []
+        return links
 
-    lb_slot = await session.scalar(
+    lower_slot = await session.scalar(
         sa.select(EncounterLink.target_slot)
-        .join(Encounter, Encounter.id == EncounterLink.source_encounter_id)
+        .join(BracketEncounter, BracketEncounter.encounter_id == EncounterLink.source_encounter_id)
         .where(
-            EncounterLink.target_encounter_id == gf_encounter.id,
-            EncounterLink.role == enums.EncounterLinkRole.WINNER,
-            Encounter.round < 0,
+            EncounterLink.target_encounter_id == encounter.id,
+            EncounterLink.source_position == 1,
+            BracketEncounter.round < 0,
         )
     )
-    if lb_slot is None:
-        return None, []
+    if lower_slot is None:
+        return links
 
-    outgoing = (
-        (await session.execute(sa.select(EncounterLink).where(EncounterLink.source_encounter_id == gf_encounter.id)))
-        .scalars()
-        .all()
-    )
+    champions = by_position.get(1, [])
+    if len(champions) == 1 and champions[0].slot == lower_slot:
+        if links:
+            # The Reset already exists; the ordinary loop refills it.
+            return links
+        return await _create_grand_final_reset(session, encounter, position, lower_slot)
 
-    lb_champion_id = gf_encounter.home_team_id if lb_slot == enums.EncounterLinkSlot.HOME else gf_encounter.away_team_id
-    if lb_champion_id != gf_winner_id:
-        # UB champion won — the tournament ends at the Grand Final. Drop an
-        # untouched Reset left over from an earlier LB-champion result (or from a
-        # generator that pre-created one); a played one is an admin's problem.
-        dropped: list[Encounter] = []
-        for reset_id in {link.target_encounter_id for link in outgoing}:
-            leftover = await session.get(Encounter, reset_id, with_for_update=True)
-            if (
-                leftover is not None
-                and leftover.status == enums.EncounterStatus.OPEN
-                and leftover.home_score == 0
-                and leftover.away_score == 0
-                and leftover.result_status == enums.EncounterResultStatus.NONE
-            ):
-                await session.delete(leftover)
-                dropped.append(leftover)
-        return None, dropped
+    return await _drop_leftover_reset(session, links)
 
-    if outgoing:
-        # The Reset already exists and ``advance_winner``'s link loop just filled
-        # its slots from these very links.
-        return None, []
 
+async def _create_grand_final_reset(
+    session: AsyncSession,
+    encounter: Encounter,
+    position: BracketEncounter,
+    lower_slot: int,
+) -> list[EncounterLink]:
     reset = Encounter(
-        name=await _build_encounter_name_for_ids(
-            session,
-            home_team_id=gf_encounter.home_team_id,
-            away_team_id=gf_encounter.away_team_id,
-        ),
-        home_team_id=gf_encounter.home_team_id,
-        away_team_id=gf_encounter.away_team_id,
-        home_score=0,
-        away_score=0,
-        # The reset is the same series as the Grand Final it continues; without
-        # this it took the column default (Bo3) no matter what the stage's
-        # best-of config said, because it is materialised here rather than by
-        # the generator that resolves best-of.
-        best_of=gf_encounter.best_of,
-        round=gf_encounter.round + 1,
-        tournament_id=gf_encounter.tournament_id,
-        stage_id=gf_encounter.stage_id,
-        stage_item_id=gf_encounter.stage_item_id,
+        workspace_id=encounter.workspace_id,
+        discipline=encounter.discipline,
+        tournament_id=encounter.tournament_id,
+        scoring_rule_id=encounter.scoring_rule_id,
+        name=build_encounter_name([None] * encounter.slot_count),
+        slot_count=encounter.slot_count,
+        # The Reset continues the Grand Final's series, so it is the same
+        # length; it is materialised here rather than by the generator that
+        # resolves best-of, and would otherwise take the column default.
+        best_of=encounter.best_of,
         status=enums.EncounterStatus.OPEN,
     )
     session.add(reset)
     await session.flush()
-    other_slot = (
-        enums.EncounterLinkSlot.AWAY if lb_slot == enums.EncounterLinkSlot.HOME else enums.EncounterLinkSlot.HOME
-    )
-    for role, slot in (
-        (enums.EncounterLinkRole.WINNER, lb_slot),
-        (enums.EncounterLinkRole.LOSER, other_slot),
-    ):
-        session.add(
-            EncounterLink(
-                source_encounter_id=gf_encounter.id,
-                target_encounter_id=reset.id,
-                role=role,
-                target_slot=slot,
-            )
+    session.add(
+        BracketEncounter(
+            encounter_id=reset.id,
+            tournament_id=encounter.tournament_id,
+            stage_id=position.stage_id,
+            stage_item_id=position.stage_item_id,
+            round=position.round + 1,
         )
+    )
+    other_slot = next(slot for slot in range(1, encounter.slot_count + 1) if slot != lower_slot)
+    links = [
+        EncounterLink(
+            tournament_id=encounter.tournament_id,
+            source_encounter_id=encounter.id,
+            source_position=source_position,
+            target_encounter_id=reset.id,
+            target_slot=target_slot,
+        )
+        for source_position, target_slot in ((1, lower_slot), (2, other_slot))
+    ]
+    session.add_all(links)
     await session.flush()
     logger.info(
-        "Created Grand Final Reset for tournament={} stage={} (LB champion won GF)",
-        gf_encounter.tournament_id,
-        gf_encounter.stage_id,
+        "Created Grand Final Reset {} for tournament={} stage={} (lower bracket won the Grand Final)",
+        reset.id,
+        encounter.tournament_id,
+        position.stage_id,
     )
-    return reset, []
+    return links
 
 
-async def _build_encounter_name_for_ids(
-    session: AsyncSession,
-    *,
-    home_team_id: int | None,
-    away_team_id: int | None,
-) -> str:
-    team_ids = {team_id for team_id in (home_team_id, away_team_id) if team_id is not None}
-    if not team_ids:
-        return build_encounter_name_from_ids(home_team_id, away_team_id, {})
+async def _drop_leftover_reset(session: AsyncSession, links: Sequence[EncounterLink]) -> list[EncounterLink]:
+    """Remove a Reset left over from an earlier lower-bracket result.
 
-    result = await session.execute(sa.select(Team.id, Team.name).where(Team.id.in_(team_ids)))
-    team_names_by_id = dict(result.all())
-    return build_encounter_name_from_ids(
-        home_team_id,
-        away_team_id,
-        team_names_by_id,
-    )
+    Only an untouched one: a Reset somebody played is an admin's problem, not
+    this function's, and deleting it would take its games with it.
+    """
+    kept = list(links)
+    for reset_id in {link.target_encounter_id for link in links}:
+        leftover = await lock_encounter(session, reset_id)
+        if leftover.status != enums.EncounterStatus.OPEN or leftover.result_status != enums.EncounterResultStatus.NONE:
+            continue
+        for link in links:
+            if link.target_encounter_id == reset_id:
+                await session.delete(link)
+        await session.delete(leftover)
+        kept = [link for link in kept if link.target_encounter_id != reset_id]
+    await session.flush()
+    return kept
