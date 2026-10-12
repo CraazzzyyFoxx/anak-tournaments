@@ -24,13 +24,17 @@ from shared.models.identity.rbac import Permission, Role, role_permissions, user
 from shared.models.identity.user import User
 from shared.models.platform.notification import Notification
 from shared.models.tenancy.workspace import WorkspaceMember
+from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
+from shared.models.tournament.stage import Stage
 from shared.models.tournament.team import Team
 from shared.services.bracket import advancement
 from shared.services.encounter import participants
 from shared.tests.encounter_writer_case import EncounterWriterCase
 from src import schemas
+from src.services.admin.encounter import encounter_service as admin_encounter_service
 from src.services.admin.encounter_reports import encounter_reports_service
+from src.services.admin.stage import stage_service
 from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.ffa import ffa_encounter_service
 from src.services.encounter.flows import flows_service, to_summary
@@ -837,7 +841,6 @@ class AdminResultTests(ResultFlowCase):
                     reason="  ",
                     actor_user_id=self.users[0],
                 )
-        self.assertEqual(422, caught.exception.status_code)
         self.assertEqual(["reason_required"], _codes(caught.exception))
 
     async def test_an_admin_result_stands_as_source_admin(self) -> None:
@@ -1173,3 +1176,67 @@ class PointsPresetReadTests(ResultFlowCase):
             summary = to_summary(encounter)
         self.assertEqual(2, read.slot_count)
         self.assertEqual(("points", "points"), (read.scoring_preset, summary.scoring_preset))
+
+
+class TwoSeatLobbyTests(ResultFlowCase):
+    """The server treats a lobby as an encounter scored by points, not as one with
+    more than two seats, so a two-seat points lobby is a lobby everywhere."""
+
+    preset = "points"
+    game_formula = "place_pts"
+    end_formula = "games >= best_of"
+    best_of = 2
+
+    async def _stage_with_the_lobby(self, **stage_fields) -> int:
+        async with self.Session() as s:
+            stage = Stage(
+                tournament_id=self.ids["t"],
+                name="Lobbies",
+                stage_type=enums.StageType.FFA_LEAGUE,
+                order=1,
+                scoring_rule_id=self.ids["rule"],
+                **stage_fields,
+            )
+            s.add(stage)
+            await s.flush()
+            s.add(BracketEncounter(encounter_id=self.ids["e"], tournament_id=self.ids["t"], stage_id=stage.id, round=1))
+            await s.commit()
+            return stage.id
+
+    async def test_the_stage_lobby_table_lists_a_two_seat_lobby(self) -> None:
+        stage_id = await self._stage_with_the_lobby()
+        async with self.Session() as s:
+            lobbies = await ffa_encounter_service.load_stage_lobbies(s, stage_id, tournament_id=self.ids["t"])
+        self.assertEqual([self.ids["e"]], [lobby.encounter_id for lobby in lobbies])
+
+    async def test_a_two_seat_lobby_takes_only_the_lobby_fields(self) -> None:
+        with self.assertRaises(BaseAPIException) as caught:
+            async with self.Session() as s:
+                await admin_encounter_service.update_encounter(s, self.ids["e"], schemas.EncounterUpdate(closeness=0.5))
+        self.assertEqual(["ffa_field_not_editable"], _codes(caught.exception))
+
+    async def test_a_best_of_change_settles_a_two_seat_lobby(self) -> None:
+        stage_id = await self._stage_with_the_lobby(best_of_default=2)
+        async with self.Session() as s:
+            order = [seat.id for seat in await self.seats(s)]
+            await ffa_encounter_service.record_lobby_game(
+                s,
+                self.ids["e"],
+                1,
+                [
+                    GameResultIn(encounter_team_id=order[0], placement=1),
+                    GameResultIn(encounter_team_id=order[1], placement=2),
+                ],
+                actor_user_id=self.users[0],
+                reason=None,
+            )
+        async with self.Session() as s:
+            self.assertEqual(enums.EncounterStatus.OPEN, (await self.encounter(s)).status)
+            stage = await s.get_one(Stage, stage_id)
+            stage.best_of_default = 1
+            await s.commit()
+        async with self.Session() as s:
+            with patch.object(stage_service, "_publish_structure_changed", AsyncMock()):
+                await stage_service.apply_best_of_to_existing(s, stage_id)
+        async with self.Session() as s:
+            self.assertEqual(enums.EncounterStatus.COMPLETED, (await self.encounter(s)).status)

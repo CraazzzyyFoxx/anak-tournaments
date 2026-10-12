@@ -2755,7 +2755,7 @@ class AdminStageService:
             # A lobby's completion is derived from "confirmed games >= best_of",
             # so moving the bar here settles or reopens it (plan §5.4). A duel's
             # is decided by its series score, which this does not touch.
-            if encounter.slot_count > 2:
+            if encounter.scoring_preset == "points":
                 await ffa_encounter_service.refresh_completion(session, encounter, actor_user_id=None)
 
         if changed:

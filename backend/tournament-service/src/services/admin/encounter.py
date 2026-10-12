@@ -341,7 +341,7 @@ class AdminEncounterService:
 
         # Update fields
         update_data = data.model_dump(exclude_unset=True)
-        if encounter.slot_count > 2:
+        if encounter.scoring_preset == "points":
             refused = sorted(set(update_data) - _FFA_EDITABLE_FIELDS)
             if refused:
                 raise HTTPException(

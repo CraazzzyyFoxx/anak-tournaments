@@ -388,7 +388,7 @@ class FfaEncounterService:
             sa.select(Encounter)
             .join(BracketEncounter, BracketEncounter.encounter_id == Encounter.id)
             .outerjoin(models.StageItem, models.StageItem.id == BracketEncounter.stage_item_id)
-            .where(BracketEncounter.stage_id == stage_id, Encounter.slot_count > 2)
+            .where(BracketEncounter.stage_id == stage_id, Encounter.scoring_preset == "points")
             .order_by(models.StageItem.order.nulls_last(), Encounter.id)
         )
         return await self._read_lobbies(session, list(rows.scalars()))
