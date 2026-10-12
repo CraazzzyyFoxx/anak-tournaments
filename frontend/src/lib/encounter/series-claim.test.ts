@@ -71,6 +71,33 @@ describe("seriesClaimErrors", () => {
     expect(errors(claim(3, 2, 1), [game(1, 5, 1)])).toEqual([]);
   });
 
+  it("counts only the games the live seats played after a participation takeover", () => {
+    // Seat A was taken over by C: the two confirmed games it played were
+    // retired with it, so the server counts none of them (`confirmed_game_lines`).
+    const C = 12;
+    const retired = [game(1, 5, 1), game(2, 5, 1)];
+    const live = (gamesPlayed: number, c: number, b: number) =>
+      seriesClaimErrors({
+        preset: "wins",
+        bestOf: 3,
+        teamIds: [C, B],
+        games: retired,
+        claim: { gamesPlayed, totals: { [C]: c, [B]: b }, wins: { [C]: c, [B]: b } }
+      });
+    // Not "fewer games than are confirmed", not "fewer wins than A won", not a
+    // totals mismatch against games nobody on the card played.
+    expect(live(2, 0, 2)).toEqual([]);
+    expect(live(2, 2, 0)).toEqual([]);
+  });
+
+  it("credits a win only to a sole first place", () => {
+    const placed = game(1, 5, 1);
+    placed.teams[0].placement = 2;
+    placed.teams[1].placement = 3;
+    expect(errors(claim(2, 0, 2), [placed])).not.toContain("series_claim_wins");
+    expect(errors(claim(2, 0, 2), [placed, game(2, 5, 1)])).toContain("series_claim_wins");
+  });
+
   it("names the encounter's teams", () => {
     expect(
       seriesClaimErrors({

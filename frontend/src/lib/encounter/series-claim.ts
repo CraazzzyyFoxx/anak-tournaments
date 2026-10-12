@@ -49,6 +49,8 @@ function soleWinner(game: EncounterGame): number | null {
     placed ? -(line.placement as number) : (line.score ?? 0);
   if (!placed && lines.every((line) => line.score == null)) return null;
   const best = Math.max(...lines.map(rank));
+  // A place is a win only as the sole first place (the server's `win` variable).
+  if (placed && best !== -1) return null;
   const first = lines.filter((line) => rank(line) === best);
   return first.length === 1 ? first[0].encounter_team_id : null;
 }
@@ -74,7 +76,11 @@ export function seriesClaimErrors({
     (Object.keys(mapping).length === teams.size && Object.keys(mapping).every((id) => teams.has(Number(id))));
   if (!sameTeams(claim.totals) || !sameTeams(claim.wins)) errors.push("series_claim_teams");
 
-  const confirmed = games.filter((game) => game.state === "confirmed");
+  // Only the games the LIVE seats played count (a participation taken over
+  // retires its games' lines): the server's `confirmed_game_lines`.
+  const confirmed = games.filter(
+    (game) => game.state === "confirmed" && game.teams.every((line) => teams.has(line.encounter_team_id))
+  );
   if (!(confirmed.length <= claim.gamesPlayed && claim.gamesPlayed <= bestOf)) {
     errors.push("series_claim_games_played");
   }
