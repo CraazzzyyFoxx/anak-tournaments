@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import typing
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKeyConstraint, Index, Integer, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKeyConstraint, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -28,8 +28,6 @@ __all__ = ("EncounterLink",)
 class EncounterLink(db.TimeStampIntegerMixin):
     __tablename__ = "encounter_link"
     __table_args__ = (
-        Index("ix_encounter_link_source", "source_encounter_id"),
-        Index("ix_encounter_link_target", "target_encounter_id"),
         UniqueConstraint("source_encounter_id", "source_position", name="uq_link_source_position"),
         UniqueConstraint("target_encounter_id", "target_slot", name="uq_link_target_slot"),
         ForeignKeyConstraint(

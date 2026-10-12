@@ -48,10 +48,15 @@ class TestAuditTableDDL:
         assert "id BIGSERIAL NOT NULL" in _ddl(models.EncounterResultAudit)
 
     def test_actor_and_adopted_team_survive_deletion(self):
-        """A deleted account or team must not erase the trail."""
+        """A deleted account or participation must not erase the trail."""
         ddl = _ddl(models.EncounterResultAudit)
         assert 'FOREIGN KEY(actor_user_id) REFERENCES players."user" (id) ON DELETE SET NULL' in ddl
-        assert "FOREIGN KEY(adopted_team_id) REFERENCES tournament.team (id) ON DELETE SET NULL" in ddl
+        # The adopted side is a participation now, scoped to the encounter, and
+        # only that one column is emptied when it goes.
+        assert (
+            "FOREIGN KEY(adopted_team_id, encounter_id) REFERENCES encounter.team (id, encounter_id) "
+            "ON DELETE SET NULL (adopted_team_id)" in ddl
+        )
 
     def test_actor_is_nullable_for_machine_decisions(self):
         """Challonge import and the bracket cascade have no human actor, and

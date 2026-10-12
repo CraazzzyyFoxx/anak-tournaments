@@ -25,8 +25,8 @@ from shared.domain import pick_ban_engine as engine
 from shared.domain.encounter_naming import build_encounter_name_from_ids
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
+from shared.models.encounter.report import EncounterTeamReport
 from shared.models.tournament.encounter_link import EncounterLink
-from shared.models.tournament.encounter_report import EncounterCaptainReport
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.team import Team
 from shared.services.bracket.types import AdvancementEdge
@@ -246,15 +246,13 @@ async def reset_encounter_result(
     encounter.closeness = None
     if action == enums.EncounterResultAuditAction.CASCADE_RESET:
         # A cascade means the MATCHUP changed, not just the score: every artefact
-        # of the old pairing is void. Captain reports above all — a surviving
+        # of the old pairing is void. Series reports above all — a surviving
         # report from the replaced opponent would pair with the new team's report
         # and auto-confirm a series that was never played (review item 7). The
         # series' games go the same way: a position played by the REPLACED team
         # is not a position of this encounter any more, and leaving one confirmed
         # would re-materialise its win onto the new pairing.
-        await session.execute(
-            sa.delete(EncounterCaptainReport).where(EncounterCaptainReport.encounter_id == encounter.id)
-        )
+        await session.execute(sa.delete(EncounterTeamReport).where(EncounterTeamReport.encounter_id == encounter.id))
         live_games = (
             (
                 await session.execute(

@@ -39,12 +39,20 @@ RETRYABLE_SQLSTATES = frozenset({"55P03", "40P01"})
 LOCK_TIMEOUT = "3s"
 LOCK_ATTEMPTS = 40
 LOCK_BACKOFF_SECONDS = 6.0
+#: Every table this revision ALTERS, which is every table it needs ACCESS
+#: EXCLUSIVE on -- including the four ``matches.*`` tables whose team foreign
+#: keys are rewritten at the end. Taking them all here, under the retry, is the
+#: point: a lock upgraded mid-migration has no attempt left to give back, and a
+#: 3s timeout against an unlocked 27M-row table aborts the whole revision.
 _EXCLUSIVE = (
     "tournament.encounter, tournament.encounter_game, tournament.encounter_result_audit, "
     "tournament.encounter_room_event, tournament.encounter_link, tournament.pick_ban_session, "
-    "tournament.pick_ban_entry, tournament.pick_ban_submission"
+    "tournament.pick_ban_entry, tournament.pick_ban_submission, "
+    "tournament.tournament, tournament.team, tournament.stage, tournament.stage_item, workspace_member, "
+    "matches.match, matches.statistics, matches.kill_feed, matches.event"
 )
-_REFERENCED = "tournament.tournament, tournament.team, tournament.stage, tournament.stage_item, workspace_member"
+#: Only referenced by the new tables' foreign keys, never altered.
+_REFERENCED = 'workspace, players."user"'
 
 
 def _take_locks() -> None:
@@ -432,6 +440,8 @@ _RESHAPE = (
     ALTER TABLE encounter.encounter
       ADD CONSTRAINT ck_encounter_best_of CHECK (best_of >= 1) NOT VALID,
       ADD CONSTRAINT ck_encounter_slot_count CHECK (slot_count >= 2) NOT VALID,
+      -- The column is new and defaulted to 0, so no existing row can fail it.
+      ADD CONSTRAINT ck_encounter_result_version CHECK (result_version >= 0),
       ADD CONSTRAINT ck_encounter_result_source
         CHECK (result_source IN ('games', 'series_claim', 'admin', 'import')) NOT VALID,
       ADD CONSTRAINT ck_encounter_confirmed_source

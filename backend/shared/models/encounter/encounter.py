@@ -100,6 +100,7 @@ class Encounter(db.TimeStampIntegerMixin):
         ),
         CheckConstraint("best_of >= 1", name="ck_encounter_best_of"),
         CheckConstraint("slot_count >= 2", name="ck_encounter_slot_count"),
+        CheckConstraint("result_version >= 0", name="ck_encounter_result_version"),
         CheckConstraint(
             "result_source IN ('games', 'series_claim', 'admin', 'import')", name="ck_encounter_result_source"
         ),
