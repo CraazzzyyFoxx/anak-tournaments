@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Link2, UserRound } from "lucide-react";
@@ -59,6 +60,7 @@ function Panel({ children }: Readonly<{ children: React.ReactNode }>) {
 }
 
 function LinkAccount({ personId }: Readonly<{ personId: number }>) {
+  const t = useTranslations("adminPeople.account");
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<AuthUserOption | null>(null);
 
@@ -67,7 +69,7 @@ function LinkAccount({ personId }: Readonly<{ personId: number }>) {
       rbacService.assignLinkedPlayer(authUserId, { player_id: personId, is_primary: true }),
     onSuccess: async () => {
       await invalidateAccount(queryClient);
-      notify.success("Account linked");
+      notify.success(t("linked"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -78,7 +80,7 @@ function LinkAccount({ personId }: Readonly<{ personId: number }>) {
         <AuthUserSearchCombobox
           value={picked?.id}
           selectedLabel={picked?.label}
-          placeholder="Find the login…"
+          placeholder={t("find")}
           onSelect={(option) => setPicked(option ?? null)}
         />
       </div>
@@ -89,7 +91,7 @@ function LinkAccount({ personId }: Readonly<{ personId: number }>) {
         onClick={() => picked && link.mutate(picked.id)}
       >
         <Link2 aria-hidden className="size-3.5" />
-        Link
+        {t("link")}
       </Button>
     </div>
   );
@@ -104,6 +106,7 @@ export function PersonAccountTab({
   personId,
   canReadAuth
 }: Readonly<{ personId: number; canReadAuth: boolean }>) {
+  const t = useTranslations("adminPeople.account");
   const { hasPermission } = usePermissions();
   const canAssignRoles = hasPermission("role.update") && hasPermission("role.read");
   const canUpdateAccount = hasPermission("auth_user.update");
@@ -119,8 +122,8 @@ export function PersonAccountTab({
     return (
       <PageStateCard
         state="empty"
-        title="Accounts are not visible to you"
-        description="Reading auth accounts needs the global auth_user.read grant."
+        title={t("notVisible")}
+        description={t("grant")}
       />
     );
   }
@@ -129,9 +132,9 @@ export function PersonAccountTab({
     return (
       <PageStateCard
         state="error"
-        title="Could not load accounts"
+        title={t("loadError")}
         onAction={() => void accountsQuery.refetch()}
-        actionLabel="Try again"
+        actionLabel={t("retry")}
       />
     );
   }
@@ -144,7 +147,7 @@ export function PersonAccountTab({
     return (
       <EmptyNote
         icon={UserRound}
-        title="No account signs in as this player"
+        title={t("none")}
         action={
           canUpdateAccount ? (
             <LinkAccount personId={personId} />
@@ -152,14 +155,13 @@ export function PersonAccountTab({
             <Button asChild variant="outline" size="sm">
               <Link href="/admin/access/accounts">
                 <ExternalLink aria-hidden className="size-3.5" />
-                Open Access accounts
+                {t("open")}
               </Link>
             </Button>
           )
         }
       >
-        Link the login this player uses — its roles, restrictions and notifications then show up
-        here.
+        {t("description")}
       </EmptyNote>
     );
   }
@@ -179,15 +181,15 @@ export function PersonAccountTab({
           <p className="text-sm text-muted-foreground">
             <span className="font-mono tabular-nums">#{linked.id}</span>
             {" · "}
-            {email ?? "No email — signed up through OAuth"}
+            {email ?? t("noEmail")}
             {" · "}
-            <span className="tabular-nums">Joined {linked.created_at.slice(0, 10)}</span>
+            <span className="tabular-nums">{t("joinedOn", { date: linked.created_at.slice(0, 10) })}</span>
           </p>
         </div>
         <Button asChild variant="outline" size="sm">
           <Link href={accessHref}>
             <ExternalLink aria-hidden className="size-3.5" />
-            Open in Access
+            {t("openInAccess")}
           </Link>
         </Button>
       </div>

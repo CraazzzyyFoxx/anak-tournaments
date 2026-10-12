@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 import { Globe, Lock } from "lucide-react";
@@ -21,6 +22,7 @@ import {
   formatAuditTarget,
   formatAuditTimestamp,
   isMachineActor,
+  useAuditTranslator
 } from "@/components/kit/audit-log";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
@@ -72,6 +74,8 @@ const ALL_WORKSPACES = "all";
  * and the table keeps its own five names. Nothing else touches the URL.
  */
 export default function AdminAuditPage() {
+  const t = useTranslations("adminMatches.audit");
+  const auditT = useAuditTranslator();
   const { isSuperuser, canAccessPermission, isLoaded } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const format = useFormatter();
@@ -94,11 +98,11 @@ export default function AdminAuditPage() {
     const list: FilterDef[] = [
       {
         key: "entity_type",
-        label: "Entity",
+        label: t("entity"),
         kind: "single",
         options: AUDIT_ENTITY_TYPES.map((entityType) => ({
           value: entityType,
-          label: auditEntityLabel(entityType) ?? entityType,
+          label: auditEntityLabel(entityType, auditT) ?? entityType,
         })),
       },
     ];
@@ -107,15 +111,15 @@ export default function AdminAuditPage() {
       // workspace plus the platform-level rows that belong to none.
       list.push({
         key: SCOPE_PARAM,
-        label: "Scope",
+        label: t("scope"),
         kind: "single",
-        options: [{ value: ALL_WORKSPACES, label: "Every workspace + platform" }],
+        options: [{ value: ALL_WORKSPACES, label: t("everyWorkspacePlatform") }],
       });
     }
     if (entityIdParam) {
       list.push({
         key: "entity_id",
-        label: "Record",
+        label: t("record"),
         kind: "single",
         options: [{ value: entityIdParam, label: `#${entityIdParam}` }],
       });
@@ -127,23 +131,23 @@ export default function AdminAuditPage() {
       const named = pageRows.find((row) => String(row.actor_auth_user_id) === actorParam);
       list.push({
         key: "actor_user_id",
-        label: "Actor",
+        label: t("actor"),
         kind: "single",
         options: [
-          { value: actorParam, label: named ? formatAuditActor(named) : `#${actorParam}` },
+          { value: actorParam, label: named ? formatAuditActor(named, auditT) : `#${actorParam}` },
         ],
       });
     }
     if (actionParam) {
       list.push({
         key: "action",
-        label: "Action",
+        label: t("action"),
         kind: "single",
-        options: [{ value: actionParam, label: describeAuditAction(actionParam).label }],
+        options: [{ value: actionParam, label: describeAuditAction(actionParam, auditT).label }],
       });
     }
     return list;
-  }, [isSuperuser, entityIdParam, actorParam, actionParam, pageRows]);
+  }, [isSuperuser, entityIdParam, actorParam, actionParam, pageRows, t, auditT]);
 
   const filters = useFilters(defs);
   // `filters` is a fresh object every render; its two writers are not. Pulled
@@ -191,21 +195,23 @@ export default function AdminAuditPage() {
    */
   const emptyMessage = (() => {
     if (isNarrowed) {
-      return "No entries match these filters. Clear one of the chips above to widen the feed.";
+      return t("noEntriesMatchFilters");
     }
     if (historyStart.data == null) {
       return allWorkspaces
-        ? "The audit log has no entries yet. It records admin actions from the moment it was switched on, so history begins with the next change."
-        : "The audit log has no entries in this workspace yet. It records admin actions from the moment it was switched on, so history begins with the next change.";
+        ? t("noEntriesYetAll")
+        : t("noEntriesYetWorkspace");
     }
-    return `No activity recorded${allWorkspaces ? "" : " in this workspace"} since the audit log started on ${formatAuditDate(format, historyStart.data)}. Anything done before that date left no trail — there is no backfill.`;
+    return allWorkspaces
+      ? t("noActivitySinceAll", { date: formatAuditDate(format, historyStart.data) })
+      : t("noActivitySinceWorkspace", { date: formatAuditDate(format, historyStart.data) });
   })();
 
   const columns = useMemo<ColumnDef<AuditLogRead>[]>(
     () => [
       {
         accessorKey: "created_at",
-        header: "When",
+        header: t("when"),
         size: 180,
         cell: ({ row }) => (
           <time
@@ -218,9 +224,9 @@ export default function AdminAuditPage() {
       },
       {
         accessorKey: "action",
-        header: "Action",
+        header: t("action"),
         cell: ({ row }) => {
-          const described = describeAuditAction(row.original.action);
+          const described = describeAuditAction(row.original.action, auditT);
           return (
             <div className="flex min-w-0 flex-wrap items-baseline gap-1.5">
               <span
@@ -234,7 +240,7 @@ export default function AdminAuditPage() {
                 // curated one: `action` is written from every service on the
                 // platform, so this dictionary will always trail new call sites.
                 <Badge tone="neutral" className="font-normal">
-                  unrecognised
+                  {t("unrecognised")}
                 </Badge>
               )}
             </div>
@@ -243,7 +249,7 @@ export default function AdminAuditPage() {
       },
       {
         accessorKey: "actor_label",
-        header: "Actor",
+        header: t("actor"),
         cell: ({ row }) => (
           <div className="min-w-0">
             {/* A machine actor is a fact, not a missing name (FR3), so it reads as
@@ -254,7 +260,7 @@ export default function AdminAuditPage() {
                 isMachineActor(row.original) ? "italic text-muted-foreground" : "font-medium",
               )}
             >
-              {formatAuditActor(row.original)}
+              {formatAuditActor(row.original, auditT)}
             </p>
             {row.original.actor_auth_user_id != null ? (
               <button
@@ -262,7 +268,7 @@ export default function AdminAuditPage() {
                 className="text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 onClick={() => setFilter("actor_user_id", String(row.original.actor_auth_user_id))}
               >
-                only this actor
+                {t("onlyActor")}
               </button>
             ) : null}
           </div>
@@ -270,9 +276,9 @@ export default function AdminAuditPage() {
       },
       {
         accessorKey: "entity_type",
-        header: "Target",
+        header: t("target"),
         cell: ({ row }) => {
-          const target = formatAuditTarget(row.original);
+          const target = formatAuditTarget(row.original, auditT);
           if (!target) {
             return <span className="text-sm text-muted-foreground">&mdash;</span>;
           }
@@ -295,7 +301,7 @@ export default function AdminAuditPage() {
                     })
                   }
                 >
-                  only this record
+                  {t("onlyRecord")}
                 </button>
               ) : null}
             </div>
@@ -304,20 +310,20 @@ export default function AdminAuditPage() {
       },
       {
         accessorKey: "source",
-        header: "Source",
+        header: t("source"),
         size: 132,
         cell: ({ row }) => (
           <span className="whitespace-nowrap text-sm text-muted-foreground">
-            {auditSourceLabel(row.original.source)}
+            {auditSourceLabel(row.original.source, auditT)}
           </span>
         ),
       },
       {
         id: "changes",
-        header: "Changes",
+        header: t("changes"),
         enableSorting: false,
         cell: ({ row }) => {
-          const rows = auditDiffRows(row.original.before_json, row.original.after_json);
+          const rows = auditDiffRows(row.original.before_json, row.original.after_json, auditT);
           if (rows.length === 0) {
             return (
               <span className="text-xs text-muted-foreground">
@@ -332,13 +338,13 @@ export default function AdminAuditPage() {
               title={rows.map((diff) => diff.field).join(", ")}
             >
               <span className="font-mono">{named.join(", ")}</span>
-              {rows.length > named.length ? ` +${rows.length - named.length} more` : ""}
+              {rows.length > named.length ? ` ${t("moreFields", { count: rows.length - named.length })}` : ""}
             </span>
           );
         },
       },
     ],
-    [format, setFilter, setFilters],
+    [format, setFilter, setFilters, t, auditT],
   );
 
   if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
@@ -350,10 +356,9 @@ export default function AdminAuditPage() {
   if (!isSuperuser && workspaceId == null) {
     return (
       <div className="space-y-6">
-        <AdminPageHeader title="Audit log" description="Who changed what, and when." />
+        <AdminPageHeader title={t("title")} description={t("description")} />
         <EmptyNote className="text-center">
-          Pick a workspace to read its audit log. The feed is scoped to one workspace at a time —
-          the same scope the actions in it were authorized against.
+          {t("scopeDescription")}
         </EmptyNote>
       </div>
     );
@@ -366,10 +371,9 @@ export default function AdminAuditPage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to read the audit log
-            {allWorkspaces ? " across every workspace" : " in this workspace"}.
+            {t("noPermission")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -378,37 +382,37 @@ export default function AdminAuditPage() {
 
   const openRow = pageRows.find((row) => String(row.id) === openId) ?? null;
   const openIndex = openRow ? pageRows.indexOf(openRow) : -1;
-  const openAction = openRow ? describeAuditAction(openRow.action) : null;
-  const openTarget = openRow ? formatAuditTarget(openRow) : null;
+  const openAction = openRow ? describeAuditAction(openRow.action, auditT) : null;
+  const openTarget = openRow ? formatAuditTarget(openRow, auditT) : null;
   const openMeta: Array<{ label: string; value: string }> = openRow
     ? [
-        { label: "Source", value: auditSourceLabel(openRow.source) },
+        { label: t("source"), value: auditSourceLabel(openRow.source, auditT) },
         {
-          label: "Workspace",
+          label: t("workspace"),
           value:
             openRow.workspace_id == null
-              ? "Platform-level (no workspace)"
+              ? t("everyWorkspace")
               : `#${openRow.workspace_id}`,
         },
-        ...(openRow.ip_address ? [{ label: "IP address", value: openRow.ip_address }] : []),
-        ...(openRow.user_agent ? [{ label: "User agent", value: openRow.user_agent }] : []),
+        ...(openRow.ip_address ? [{ label: t("ipAddress"), value: openRow.ip_address }] : []),
+        ...(openRow.user_agent ? [{ label: t("userAgent"), value: openRow.user_agent }] : []),
         ...(openRow.correlation_id
-          ? [{ label: "Correlation ID", value: openRow.correlation_id }]
+          ? [{ label: t("correlationId"), value: openRow.correlation_id }]
           : []),
-        { label: "Entry", value: `#${openRow.id}` },
+        { label: t("entry"), value: `#${openRow.id}` },
       ]
     : [];
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Audit log"
-        description="Who changed what, and when. Read-only and append-only."
+        title={t("title")}
+        description={t("readOnlyDescription")}
         meta={
           allWorkspaces ? (
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <Globe aria-hidden className="size-3.5" />
-              Every workspace
+              {t("everyWorkspace")}
             </span>
           ) : null
         }
@@ -426,18 +430,18 @@ export default function AdminAuditPage() {
             filterKey={`${filters.filterKey}|${allWorkspaces}|${workspaceId}`}
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
-            searchPlaceholder="Search actor, action, source, or target…"
+            searchPlaceholder={t("search")}
             emptyMessage={emptyMessage}
             toolbar={<FilterBar defs={defs} filters={filters} />}
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">
-                  {describeAuditAction(row.original.action).label}
+                  {describeAuditAction(row.original.action, auditT).label}
                 </p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {formatAuditActor(row.original)}
-                  {formatAuditTarget(row.original) ? ` · ${formatAuditTarget(row.original)}` : ""}
+                  {formatAuditActor(row.original, auditT)}
+                  {formatAuditTarget(row.original, auditT) ? ` · ${formatAuditTarget(row.original, auditT)}` : ""}
                 </p>
                 <p className="text-xs tabular-nums text-muted-foreground">
                   {formatAuditTimestamp(format, row.original.created_at)}
@@ -489,7 +493,7 @@ export default function AdminAuditPage() {
           title={openAction?.label ?? ""}
           subtitle={
             openRow
-              ? `${formatAuditTimestamp(format, openRow.created_at)} · by ${formatAuditActor(openRow)}${openTarget ? ` · ${openTarget}` : ""}`
+              ? `${formatAuditTimestamp(format, openRow.created_at)} · by ${formatAuditActor(openRow, auditT)}${openTarget ? ` · ${openTarget}` : ""}`
               : undefined
           }
           onPrev={
@@ -505,13 +509,13 @@ export default function AdminAuditPage() {
             <div className="space-y-4">
               {openRow.reason ? (
                 <div className="space-y-1">
-                  <h3 className={EYEBROW_CLASS}>Reason</h3>
+                  <h3 className={EYEBROW_CLASS}>{t("reason")}</h3>
                   <p className="text-sm">{openRow.reason}</p>
                 </div>
               ) : null}
 
               <div className="space-y-1.5">
-                <h3 className={EYEBROW_CLASS}>Changes</h3>
+                <h3 className={EYEBROW_CLASS}>{t("changes")}</h3>
                 <AuditFieldDiff before={openRow.before_json} after={openRow.after_json} />
               </div>
 
@@ -541,16 +545,9 @@ export default function AdminAuditPage() {
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <Lock aria-hidden className="mt-px size-3.5 shrink-0" />
         {allWorkspaces ? (
-          <span>
-            Showing every workspace plus platform-level rows — global roles and permissions, and
-            account-level changes. Rows with no workspace are visible to superusers only.
-          </span>
+          <span>{t("allWorkspaceRows")}</span>
         ) : (
-          <span>
-            Showing actions in this workspace. Platform-level actions — global roles and
-            permissions, and account-level changes such as deleting an account or unlinking a
-            player — are not part of a workspace journal, even when their effect reaches inside one.
-          </span>
+          <span>{t("workspaceRows")}</span>
         )}
       </p>
     </div>

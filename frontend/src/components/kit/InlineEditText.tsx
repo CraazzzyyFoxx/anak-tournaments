@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type KeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import { Check, Pencil, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ export function InlineEditText({
   textClassName,
   inputClassName
 }: Readonly<InlineEditTextProps>) {
+  const t = useTranslations("kit.inlineEdit");
   const [draft, setDraft] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export function InlineEditText({
   const commit = async () => {
     const next = draft?.trim() ?? "";
     if (!next) {
-      setError(`Enter a ${label.toLowerCase()}.`);
+      setError(t("required", { label: label.toLowerCase() }));
       return;
     }
     if (next === value) {
@@ -80,8 +82,8 @@ export function InlineEditText({
             size="icon"
             variant="ghost"
             className="size-7 shrink-0 text-muted-foreground [&_svg]:size-3.5"
-            aria-label={`Edit ${label}`}
-            title={`Edit ${label}`}
+            aria-label={t("edit", { label })}
+            title={t("edit", { label })}
             onClick={() => setDraft(value)}
           >
             <Pencil aria-hidden />
@@ -110,7 +112,7 @@ export function InlineEditText({
         size="icon"
         variant="ghost"
         className="size-7 shrink-0 [&_svg]:size-3.5"
-        aria-label={`Save ${label}`}
+        aria-label={t("save", { label })}
         disabled={isSaving}
         onClick={() => void commit()}
       >
@@ -120,7 +122,7 @@ export function InlineEditText({
         size="icon"
         variant="ghost"
         className="size-7 shrink-0 text-muted-foreground [&_svg]:size-3.5"
-        aria-label={`Cancel ${label} edit`}
+        aria-label={t("cancel", { label })}
         disabled={isSaving}
         onClick={() => {
           setDraft(null);

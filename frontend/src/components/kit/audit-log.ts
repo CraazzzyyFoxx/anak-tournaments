@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import type { DateFormatter } from "@/components/kit/format-time";
 
 import adminService from "@/services/admin.service";
@@ -28,40 +30,40 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
  * `entity_type` nobody writes — whose empty state would then assert this entity
  * was never touched, the one claim the journal exists to be able to make truthfully.
  */
-const ENTITY_LABELS = {
-  api_key: "API key",
-  auth_user: "Account",
-  division_grid: "Division grid",
-  encounter: "Encounter",
-  gamemode: "Gamemode",
-  hero: "Hero",
-  map: "Map",
-  match_log: "Match log",
-  oauth_connection: "OAuth connection",
-  permission: "Permission",
-  pick_ban: "Pick/ban",
-  player: "Player",
-  player_sub_role: "Sub-role",
-  registration: "Registration",
-  registration_status: "Registration status",
-  registration_team: "Registered team",
-  report_form: "Report form",
-  role: "Role",
-  session: "Session",
-  setting: "Setting",
-  social_account: "Social account",
-  stage: "Stage",
-  stage_item: "Stage item",
-  stage_item_input: "Stage item input",
-  standing: "Standing",
-  team: "Team",
-  tournament: "Tournament",
-  user: "User",
-  workspace: "Workspace",
-} as const satisfies Record<string, string>;
+const ENTITY_TYPES = [
+  "api_key",
+  "auth_user",
+  "division_grid",
+  "encounter",
+  "gamemode",
+  "hero",
+  "map",
+  "match_log",
+  "oauth_connection",
+  "permission",
+  "pick_ban",
+  "player",
+  "player_sub_role",
+  "registration",
+  "registration_status",
+  "registration_team",
+  "report_form",
+  "role",
+  "session",
+  "setting",
+  "social_account",
+  "stage",
+  "stage_item",
+  "stage_item_input",
+  "standing",
+  "team",
+  "tournament",
+  "user",
+  "workspace",
+] as const;
 
 /** The `entity_type` values a per-entity trail may be opened for. */
-export type AuditEntityType = keyof typeof ENTITY_LABELS;
+export type AuditEntityType = (typeof ENTITY_TYPES)[number];
 
 /**
  * Every entity the feed can be narrowed to, in the order the chip offers them.
@@ -70,15 +72,15 @@ export type AuditEntityType = keyof typeof ENTITY_LABELS;
  * that starts recording a new entity gets its label and its filter option from
  * the same edit, so the two cannot drift.
  */
-export const AUDIT_ENTITY_TYPES = Object.keys(ENTITY_LABELS) as AuditEntityType[];
+export const AUDIT_ENTITY_TYPES: readonly AuditEntityType[] = ENTITY_TYPES;
 
 /**
- * `Object.hasOwn`, not `in`: `"toString" in ENTITY_LABELS` is true through the
+ * A list lookup, not `in` on an object: `"toString" in {}` is true through the
  * prototype, and a URL carrying `?history=toString:1:1` must not pass for a real
  * entity type.
  */
 export function isAuditEntityType(value: string | undefined | null): value is AuditEntityType {
-  return value != null && Object.hasOwn(ENTITY_LABELS, value);
+  return value != null && (ENTITY_TYPES as readonly string[]).includes(value);
 }
 
 /**
@@ -86,11 +88,7 @@ export function isAuditEntityType(value: string | undefined | null): value is Au
  * as a verb map rather than 26 spelled-out entries so `tournament.delete` and
  * `stage_item_input.update` cannot drift apart in wording.
  */
-const VERB_LABELS: Record<string, string> = {
-  create: "created",
-  update: "updated",
-  delete: "deleted",
-};
+const CRUD_VERBS = new Set(["create", "update", "delete"]);
 
 /**
  * Actions whose phrase is not `<entity> <verb>`: the identity flows and the
@@ -98,117 +96,24 @@ const VERB_LABELS: Record<string, string> = {
  * A phrase for an action nobody writes is worse than none, because the next
  * reader takes its presence as evidence the event is recorded somewhere.
  */
-const ACTION_PHRASES: Record<string, string> = {
-  "api_key.revoke": "API key revoked",
-  "auth_user.delete": "Account deleted",
-  "challonge.create": "Tournament created from Challonge",
-  "challonge.export": "Tournament exported to Challonge",
-  "challonge.import": "Challonge tournament imported",
-  "challonge.push_result": "Result pushed to Challonge",
-  "challonge.team_apply": "Challonge team mapping applied",
-  "division_grid.import": "Division grid imported",
-  "division_grid.mapping_put": "Division grid mapping saved",
-  "division_grid.save": "Division grid saved",
-  "division_grid.version_activate": "Division grid version activated",
-  "division_grid.version_clone": "Division grid version cloned",
-  "division_grid.version_create": "Division grid version created",
-  "division_grid.version_delete": "Division grid version deleted",
-  "division_grid.version_publish": "Division grid version published",
-  "division_grid.version_update": "Division grid version updated",
-  "encounter.reopen_result": "Encounter result reopened",
-  "encounter.set_result": "Encounter result set",
-  "encounter.update_match": "Match updated",
-  "linked_player.assign": "Player linked to an account",
-  "linked_player.remove": "Player unlinked from an account",
-  "match_log.process_tournament": "Tournament logs reprocessed",
-  "match_log.retry": "Match log retried",
-  "match_log.upload": "Match log uploaded",
-  "oauth_connection.delete": "OAuth connection removed",
-  "permission_deny.add": "Permission denied to a user",
-  "permission_deny.remove": "Permission deny lifted",
-  "pick_ban.act": "Pick/ban taken as captain",
-  "pick_ban.config_delete": "Pick/ban config deleted",
-  "pick_ban.config_upsert": "Pick/ban config saved",
-  "pick_ban.elect_opener": "Pick/ban opener overridden",
-  "pick_ban.session_reset": "Pick/ban session reset",
-  // Soft deactivation, not a hard delete (`deactivate_sub_role`): a reader who
-  // acts on "deleted" would go looking for a row that is still there.
-  "player_sub_role.delete": "Sub-role deactivated",
-  "registration.approve": "Registration approved",
-  "registration.balancer_include": "Registration added to the balancer pool",
-  "registration.balancer_status": "Registration balancer status changed",
-  "registration.bulk_approve": "Registrations approved in bulk",
-  "registration.bulk_balancer_include": "Registrations added to the balancer pool in bulk",
-  "registration.bulk_balancer_status": "Registration balancer statuses changed in bulk",
-  "registration.check_in": "Registration checked in",
-  "registration.check_in_undo": "Registration check-in undone",
-  "registration.rank_autofill": "Registration ranks autofilled",
-  "registration.reject": "Registration rejected",
-  "registration.restore": "Registration restored",
-  "registration.sheet_sync": "Google Sheet feed synced",
-  "registration.sheet_upsert": "Google Sheet feed saved",
-  "registration.withdraw": "Registration withdrawn",
-  "registration_status.builtin_reset": "Built-in registration status reset",
-  "registration_status.builtin_upsert": "Built-in registration status overridden",
-  "registration_team.image_clear": "Registered team image removed",
-  "registration_team.image_set": "Registered team image changed",
-  "registration_team.invite_cap_reset": "Team invite cap reset",
-  "registration_team.invite_revoke": "Team invite revoked",
-  "registration_team.reject": "Registered team rejected",
-  "report_form.upsert": "Match report form saved",
-  "role.assign": "Role granted to a user",
-  "role.remove": "Role taken from a user",
-  "session.revoke": "Session revoked",
-  "setting.upsert": "Platform setting updated",
-  "social_account.set_primary": "Social account set as primary",
-  "social_account.set_visibility": "Social account visibility changed",
-  "social_account.verify": "Social account verified",
-  "stage.activate": "Stage activated",
-  "stage.activate_and_generate": "Stage activated and bracket generated",
-  "stage.apply_best_of": "Stage best-of applied",
-  "stage.auto_wire": "Stage auto-wired",
-  "stage.deactivate": "Stage deactivated",
-  "stage.generate": "Bracket generated",
-  "stage.merge": "Group stages merged",
-  "stage.seed": "Stage seeded",
-  "stage.wire": "Stage wired from groups",
-  "standing.recalculate": "Standings recalculated",
-  "subscription.config_upsert": "Subscription provider config saved",
-  "subscription.requirement_upsert": "Subscription requirement saved",
-  "team.image_clear": "Team image removed",
-  "team.image_set": "Team image changed",
-  "tournament.cover_clear": "Tournament cover removed",
-  "tournament.cover_set": "Tournament cover changed",
-  "tournament.finish": "Tournament finish flag toggled",
-  "tournament.logo_clear": "Tournament logo removed",
-  "tournament.logo_set": "Tournament logo changed",
-  "tournament.preview_access.add": "Preview access granted",
-  "tournament.preview_access.remove": "Preview access revoked",
-  "tournament.schedule": "Tournament schedule replaced",
-  "tournament.status": "Tournament status changed",
-  "user.avatar_clear": "User avatar removed",
-  "user.avatar_set": "User avatar changed",
-  "user.merge": "Accounts merged",
-  "workspace.branding_update": "Workspace branding changed",
-  "workspace.discord_guild_cleared": "Discord server unlinked",
-  "workspace.discord_guild_verified": "Discord server linked",
-  "workspace.domain_clear": "Custom domain removed",
-  "workspace.domain_set": "Custom domain set",
-  "workspace.domain_verified": "Custom domain verified",
-  "workspace.member_add": "Workspace member added",
-  "workspace.member_remove": "Workspace member removed",
-  "workspace.member_roles_backfill": "Workspace member roles backfilled",
-  "workspace.member_update": "Workspace member roles changed",
-};
+/**
+ * The `kitAudit.auditLog` messages. A plain call signature rather than next-intl's
+ * typed one: action keys are derived from wire values at runtime, and `has`
+ * is what tells a known action from a call site this build has never heard of.
+ */
+export interface AuditTranslator {
+  (key: string, values?: Record<string, string | number>): string;
+  has(key: string): boolean;
+}
 
-const AUDIT_SOURCE_LABELS: Record<AuditSource, string> = {
-  admin: "Admin panel",
-  api_key: "API key",
-  challonge: "Challonge sync",
-  discord: "Discord",
-  scheduler: "Scheduler",
-  system: "System",
-};
+export function useAuditTranslator(): AuditTranslator {
+  return useTranslations("kitAudit.auditLog") as unknown as AuditTranslator;
+}
+
+/** `tournament.preview_access.add` → `actions.tournament_preview_access_add`: message keys cannot hold dots. */
+function actionKey(action: string): string {
+  return `actions.${action.replace(/\./g, "_")}`;
+}
 
 export interface AuditActionDescription {
   /** Human phrase to render. Never empty. */
@@ -230,9 +135,8 @@ function humanizeToken(token: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function describeAuditAction(action: string): AuditActionDescription {
-  const phrase = ACTION_PHRASES[action];
-  if (phrase) return { label: phrase, raw: action, recognised: true };
+export function describeAuditAction(action: string, t: AuditTranslator): AuditActionDescription {
+  if (action && t.has(actionKey(action))) return { label: t(actionKey(action)), raw: action, recognised: true };
 
   // Split on the LAST dot: `stage_item_input.update` has a dotless entity, but a
   // future `workspace.discord.unlink` would put the verb last all the same.
@@ -240,23 +144,24 @@ export function describeAuditAction(action: string): AuditActionDescription {
   const subject = separator === -1 ? action : action.slice(0, separator);
   const verb = separator === -1 ? "" : action.slice(separator + 1);
 
-  const noun = isAuditEntityType(subject) ? ENTITY_LABELS[subject] : undefined;
-  const verbLabel = VERB_LABELS[verb];
+  const noun = isAuditEntityType(subject) ? t(`entities.${subject}`) : undefined;
 
-  if (noun && verbLabel) return { label: `${noun} ${verbLabel}`, raw: action, recognised: true };
+  if (noun && CRUD_VERBS.has(verb)) return { label: t(`crud.${verb}`, { entity: noun }), raw: action, recognised: true };
   if (noun) return { label: `${noun} — ${humanizeToken(verb).toLowerCase()}`, raw: action, recognised: false };
 
   const derived = [humanizeToken(subject), humanizeToken(verb).toLowerCase()].filter(Boolean).join(" — ");
-  return { label: derived || action || "Unknown action", raw: action, recognised: false };
+  return { label: derived || action || t("unknownAction"), raw: action, recognised: false };
 }
 
-export function auditEntityLabel(entityType: string | null): string | null {
+export function auditEntityLabel(entityType: string | null, t: AuditTranslator): string | null {
   if (!entityType) return null;
-  return isAuditEntityType(entityType) ? ENTITY_LABELS[entityType] : humanizeToken(entityType);
+  return isAuditEntityType(entityType) ? t(`entities.${entityType}`) : humanizeToken(entityType);
 }
 
-export function auditSourceLabel(source: string): string {
-  return AUDIT_SOURCE_LABELS[source as AuditSource] ?? humanizeToken(source);
+const AUDIT_SOURCES: readonly AuditSource[] = ["admin", "api_key", "challonge", "discord", "scheduler", "system"];
+
+export function auditSourceLabel(source: string, t: AuditTranslator): string {
+  return (AUDIT_SOURCES as readonly string[]).includes(source) ? t(`sources.${source}`) : humanizeToken(source);
 }
 
 /**
@@ -269,19 +174,21 @@ export function isMachineActor(entry: Pick<AuditLogRead, "actor_auth_user_id">):
 
 export function formatAuditActor(
   entry: Pick<AuditLogRead, "actor_auth_user_id" | "actor_label" | "source">,
+  t: AuditTranslator,
 ): string {
-  if (isMachineActor(entry)) return `${auditSourceLabel(entry.source)} (automated)`;
-  return entry.actor_label ?? `User #${entry.actor_auth_user_id}`;
+  if (isMachineActor(entry)) return t("automated", { source: auditSourceLabel(entry.source, t) });
+  return entry.actor_label ?? t("userId", { id: entry.actor_auth_user_id ?? "" });
 }
 
 /** The entity a row is about, named as well as the snapshot allows. */
 export function formatAuditTarget(
   entry: Pick<AuditLogRead, "entity_type" | "entity_id" | "entity_label">,
+  t: AuditTranslator,
 ): string | null {
-  const noun = auditEntityLabel(entry.entity_type);
+  const noun = auditEntityLabel(entry.entity_type, t);
   if (!noun) return null;
-  if (entry.entity_label) return `${noun} “${entry.entity_label}”`;
-  if (entry.entity_id != null) return `${noun} #${entry.entity_id}`;
+  if (entry.entity_label) return t("target", { entity: noun, label: entry.entity_label });
+  if (entry.entity_id != null) return t("targetId", { entity: noun, id: entry.entity_id });
   return noun;
 }
 
@@ -327,14 +234,14 @@ function isAuditRecord(value: unknown): value is AuditRecord {
 }
 
 /** Compact, readable rendering. Strings stay bare so they are not double-quoted. */
-function formatAuditValue(value: unknown): string {
+function formatAuditValue(value: unknown, t: AuditTranslator): string {
   if (value === null) return "null";
   if (value === undefined) return "—";
-  if (typeof value === "string") return value.length > 0 ? value : "(empty)";
+  if (typeof value === "string") return value.length > 0 ? value : t("emptyValue");
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   // Tag lists and the like: `a, b` reads, `["a","b"]` is wire format.
   if (Array.isArray(value) && value.every((item) => typeof item !== "object" || item === null)) {
-    return value.length > 0 ? value.map(formatAuditValue).join(", ") : "(none)";
+    return value.length > 0 ? value.map((item) => formatAuditValue(item, t)).join(", ") : t("noValues");
   }
   try {
     return JSON.stringify(value);
@@ -406,17 +313,23 @@ function nestedPair(before: unknown, after: unknown): [AuditRecord, AuditRecord]
 }
 
 /** `undefined` is a side that does not carry the field. */
-function diffRow(field: string, kind: AuditDiffKind, before: unknown, after: unknown): AuditDiffRow {
+function diffRow(
+  field: string,
+  kind: AuditDiffKind,
+  before: unknown,
+  after: unknown,
+  t: AuditTranslator,
+): AuditDiffRow {
   const pair = nestedPair(before, after);
   // A `set` parent has no before-image, and neither do its parts.
-  const children = pair ? auditDiffRows(kind === "set" ? null : pair[0], pair[1]) : [];
+  const children = pair ? auditDiffRows(kind === "set" ? null : pair[0], pair[1], t) : [];
   // Empty only when the parts match and the order alone moved: say it whole.
   if (children.length > 0) return { field, kind, before: null, after: null, children };
   return {
     field,
     kind,
-    before: before === undefined ? null : formatAuditValue(before),
-    after: after === undefined ? null : formatAuditValue(after),
+    before: before === undefined ? null : formatAuditValue(before, t),
+    after: after === undefined ? null : formatAuditValue(after, t),
   };
 }
 
@@ -430,6 +343,7 @@ function diffRow(field: string, kind: AuditDiffKind, before: unknown, after: unk
 export function auditDiffRows(
   before: Record<string, unknown> | null,
   after: Record<string, unknown> | null,
+  t: AuditTranslator,
 ): AuditDiffRow[] {
   // Numeric-aware so `#10` and id `10` land after `9`.
   const fields = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].sort(
@@ -445,12 +359,12 @@ export function auditDiffRows(
 
     if (inBefore && inAfter) {
       if (sameValue(beforeValue, afterValue)) continue;
-      rows.push(diffRow(field, "changed", beforeValue, afterValue));
+      rows.push(diffRow(field, "changed", beforeValue, afterValue, t));
     } else if (inAfter) {
       // No before-image at all versus a before-image that simply lacked this key.
-      rows.push(diffRow(field, before == null ? "set" : "added", undefined, afterValue));
+      rows.push(diffRow(field, before == null ? "set" : "added", undefined, afterValue, t));
     } else {
-      rows.push(diffRow(field, "removed", beforeValue, undefined));
+      rows.push(diffRow(field, "removed", beforeValue, undefined, t));
     }
   }
   return rows;

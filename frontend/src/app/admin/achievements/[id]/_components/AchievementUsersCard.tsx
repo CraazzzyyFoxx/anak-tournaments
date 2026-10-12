@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp, UserPlus } from "lucide-react";
 
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
@@ -78,6 +79,7 @@ export function AchievementUsersCard({
   fetchNextPage: () => void;
   isError: boolean;
 }>) {
+  const t = useTranslations("adminAchievements");
   const format = useFormatter();
 
   // Clicking the active column flips its direction; a new column starts descending.
@@ -94,8 +96,8 @@ export function AchievementUsersCard({
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
-          <CardTitle>Users ({totalUsers})</CardTitle>
-          <CardDescription>Players who earned this achievement</CardDescription>
+          <CardTitle>{t("detail.userCount", { count: totalUsers })}</CardTitle>
+          <CardDescription>{t("detail.playersEarned")}</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-64">
@@ -103,12 +105,12 @@ export function AchievementUsersCard({
               tournaments={tournaments}
               value={view.tournamentId}
               onSelect={(t) => onViewChange({ ...view, tournamentId: t?.id })}
-              placeholder="All tournaments"
+              placeholder={t("detail.allTournaments")}
             />
           </div>
           <Button variant="outline" size="sm" onClick={onAddOverride}>
             <UserPlus className="mr-2 h-4 w-4" />
-            Manual Override
+            {t("detail.manualOverride")}
           </Button>
         </div>
       </CardHeader>
@@ -116,17 +118,17 @@ export function AchievementUsersCard({
         <Table>
           <TableHeader>
             <TableRow>
-              <SortableHead field="user_name" label="User" view={view} onSort={handleSort} />
-              <SortableHead field="count" label="Count" view={view} onSort={handleSort} />
+              <SortableHead field="user_name" label={t("common.user")} view={view} onSort={handleSort} />
+              <SortableHead field="count" label={t("common.count")} view={view} onSort={handleSort} />
               <SortableHead
                 field="last_tournament_id"
-                label="Last Tournament"
+                label={t("common.lastTournament")}
                 view={view}
                 onSort={handleSort}
               />
               <SortableHead
                 field="first_qualified"
-                label="First Earned"
+                label={t("common.firstEarned")}
                 view={view}
                 onSort={handleSort}
               />
@@ -165,7 +167,7 @@ export function AchievementUsersCard({
             {totalUsers === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                  No users have earned this achievement yet
+                  {t("detail.noUsers")}
                 </TableCell>
               </TableRow>
             )}

@@ -59,14 +59,14 @@ const EMPTY_COUNTS: AccountApiKeyStatusCounts = { total: 0, active: 0, expired: 
 
 type ApiKeyStatus = "active" | "expired" | "revoked";
 
-const STATUS_META: Record<ApiKeyStatus, { label: string; tone: Tone }> = {
-  active: { label: "Active", tone: "success" },
-  expired: { label: "Expired", tone: "neutral" },
-  revoked: { label: "Revoked", tone: "warning" }
+const STATUS_META: Record<ApiKeyStatus, { tone: Tone }> = {
+  active: { tone: "success" },
+  expired: { tone: "neutral" },
+  revoked: { tone: "warning" }
 };
 
-function formatTimestamp(format: DateFormatter, value: string | null | undefined): string {
-  if (!value) return "Never";
+function formatTimestamp(format: DateFormatter, value: string | null | undefined, neverLabel: string): string {
+  if (!value) return neverLabel;
 
   return format.dateTime(new Date(value), { dateStyle: "medium", timeStyle: "short" });
 }
@@ -79,6 +79,7 @@ function getApiKeyStatus(apiKey: AccountApiKey): ApiKeyStatus {
 }
 
 function StatusCell({ status }: Readonly<{ status: ApiKeyStatus }>) {
+  const t = useTranslations("adminAccess.common");
   const meta = STATUS_META[status];
 
   return (
@@ -86,7 +87,7 @@ function StatusCell({ status }: Readonly<{ status: ApiKeyStatus }>) {
       className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_TEXT[meta.tone])}
     >
       <StatusDot />
-      {meta.label}
+      {t(status)}
     </span>
   );
 }
@@ -97,13 +98,14 @@ function StatusCell({ status }: Readonly<{ status: ApiKeyStatus }>) {
  * check, so it is flagged in the danger tone rather than shown as empty.
  */
 function ScopesCell({ scopes }: Readonly<{ scopes: readonly string[] }>) {
+  const t = useTranslations("adminAccess.apiKeysUi");
   if (scopes.length === 0) {
     return (
       <span
         className={cn("inline-flex items-center gap-1.5 text-xs font-medium", TONE_TEXT.danger)}
       >
         <StatusDot />
-        No scopes — inert
+        {t("noScopes")}
       </span>
     );
   }
@@ -162,6 +164,8 @@ function ScopesCell({ scopes }: Readonly<{ scopes: readonly string[] }>) {
  * in the same breath, which no row control can hold.
  */
 export default function AccessAdminApiKeysPage() {
+  const t = useTranslations("adminAccess.common");
+  const ta = useTranslations("adminAccess.apiKeysUi");
   const format = useFormatter();
   const tQuota = useTranslations("quota");
   const workspaces = useWorkspaceStore((state) => state.workspaces);
@@ -201,7 +205,7 @@ export default function AccessAdminApiKeysPage() {
     () => [
       {
         key: "workspace",
-        label: "Workspace",
+        label: t("workspace"),
         kind: "single",
         options: manageableWorkspaces.map((workspace) => ({
           value: String(workspace.id),
@@ -209,7 +213,7 @@ export default function AccessAdminApiKeysPage() {
         }))
       }
     ],
-    [manageableWorkspaces]
+    [manageableWorkspaces, t]
   );
   const filters = useFilters(defs);
 
@@ -246,7 +250,7 @@ export default function AccessAdminApiKeysPage() {
     () => [
       {
         accessorKey: "name",
-        header: "Name",
+        header: t("name"),
         cell: ({ row }) => {
           const apiKey = row.original;
           return (
@@ -257,20 +261,20 @@ export default function AccessAdminApiKeysPage() {
               <div className="min-w-0">
                 <InlineEditText
                   value={apiKey.name}
-                  label={`name of API key ${apiKey.name}`}
+                  label={ta("nameLabel", { name: apiKey.name })}
                   canEdit={getApiKeyStatus(apiKey) === "active"}
                   textClassName="text-sm font-medium"
                   onSave={(next) =>
                     renameMutation.mutateAsync(
                       { id: apiKey.id, name: next },
-                      { onSuccess: () => notify.success("API key renamed") }
+                      { onSuccess: () => notify.success(ta("renamed")) }
                     )
                   }
                 />
                 <p className="flex items-center gap-1.5 truncate font-mono text-xs text-muted-foreground">
                   owt_sk_{apiKey.public_id}_…
                   {apiKey.is_superuser ? (
-                    <StatusIcon icon={ShieldAlert} label="Superuser" variant="destructive" />
+                    <StatusIcon icon={ShieldAlert} label={t("superuser")} variant="destructive" />
                   ) : null}
                 </p>
               </div>
@@ -280,7 +284,7 @@ export default function AccessAdminApiKeysPage() {
       },
       {
         id: "owner",
-        header: "Owner",
+        header: t("owner"),
         enableSorting: false,
         cell: ({ row }) => (
           <span className="truncate text-sm">{row.original.owner_username}</span>
@@ -288,40 +292,40 @@ export default function AccessAdminApiKeysPage() {
       },
       {
         id: "status",
-        header: "Status",
+        header: t("status"),
         enableSorting: false,
         cell: ({ row }) => <StatusCell status={getApiKeyStatus(row.original)} />
       },
       {
         id: "scopes",
-        header: "Scopes",
+        header: t("scopes"),
         enableSorting: false,
         cell: ({ row }) => <ScopesCell scopes={row.original.scopes} />
       },
       {
         accessorKey: "created_at",
-        header: "Created",
+        header: t("created"),
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatTimestamp(format, row.original.created_at)}
+            {formatTimestamp(format, row.original.created_at, t("never"))}
           </span>
         )
       },
       {
         accessorKey: "last_used_at",
-        header: "Last used",
+        header: t("lastUsed"),
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatTimestamp(format, row.original.last_used_at)}
+            {formatTimestamp(format, row.original.last_used_at, t("never"))}
           </span>
         )
       },
       {
         accessorKey: "expires_at",
-        header: "Expires",
+        header: t("expires"),
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatTimestamp(format, row.original.expires_at)}
+            {formatTimestamp(format, row.original.expires_at, t("never"))}
           </span>
         )
       },
@@ -333,7 +337,7 @@ export default function AccessAdminApiKeysPage() {
             onSelect: () => setPendingQuota(row)
           },
           {
-            label: "Revoke key",
+            label: t("revokeKey"),
             icon: Trash2,
             destructive: true,
             hidden: getApiKeyStatus(row) !== "active",
@@ -343,15 +347,15 @@ export default function AccessAdminApiKeysPage() {
         { rowLabel: (row) => `API key ${row.name}` }
       )
     ],
-    [format, renameMutation, tQuota]
+    [format, renameMutation, tQuota, t, ta]
   );
 
   if (manageableWorkspaces.length === 0) {
     return (
       <PageStateCard
         state="empty"
-        title="You do not administer a workspace yet"
-        description="API keys are scoped to a workspace. Ask a superuser for workspace admin rights, then reload this page."
+        title={ta("noWorkspaceAdmin")}
+        description={ta("noWorkspaceAdminDescription")}
       />
     );
   }
@@ -360,14 +364,14 @@ export default function AccessAdminApiKeysPage() {
     <div className="space-y-4">
       <StatTileGrid>
         <StatTile
-          label="Total keys"
+          label={t("totalKeys")}
           value={counts.total}
-          detail={workspace ? `In ${workspace.name}` : undefined}
+          detail={workspace ? ta("inWorkspace", { workspace: workspace.name }) : undefined}
           icon={KeyRound}
         />
-        <StatTile label="Active" value={counts.active} tone="success" />
-        <StatTile label="Expired" value={counts.expired} tone="neutral" />
-        <StatTile label="Revoked" value={counts.revoked} tone="warning" />
+        <StatTile label={t("active")} value={counts.active} tone="success" />
+        <StatTile label={t("expired")} value={counts.expired} tone="neutral" />
+        <StatTile label={t("revoked")} value={counts.revoked} tone="warning" />
       </StatTileGrid>
 
       {oneTimeKey ? (
@@ -375,11 +379,10 @@ export default function AccessAdminApiKeysPage() {
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0 flex-1">
               <Label htmlFor={secretId} className="text-sm font-medium text-foreground">
-                One-time secret
+                {ta("oneTime")}
               </Label>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                This full API key is visible only once. Copy it now — reopening this page will not
-                show it again.
+                {ta("oneTimeDescription")}
               </p>
               <Input
                 id={secretId}
@@ -394,28 +397,28 @@ export default function AccessAdminApiKeysPage() {
                 {copiedSecret ? (
                   <span className="inline-flex items-center gap-1">
                     <Check aria-hidden className="size-3.5" />
-                    Copied to clipboard
+                    {t("copied")}
                   </span>
                 ) : null}
               </output>
               <Button
                 variant="outline"
                 size="sm"
-                aria-label="Copy the API key secret to the clipboard"
+                aria-label={t("copyApiSecret")}
                 onClick={async () => {
                   await navigator.clipboard.writeText(oneTimeKey);
                   setCopiedSecret(true);
-                  notify.success("API key copied");
+                  notify.success(ta("copied"));
                 }}
               >
                 <Clipboard aria-hidden className="size-4" />
-                Copy secret
+                {t("copySecret")}
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 className="size-8"
-                aria-label="Dismiss the one-time secret"
+                aria-label={t("dismissSecret")}
                 onClick={() => {
                   setOneTimeKey(null);
                   setCopiedSecret(false);
@@ -432,10 +435,10 @@ export default function AccessAdminApiKeysPage() {
         columns={columns}
         initialPageSize={PAGE_SIZE}
         pageSizeOptions={[10, 20, 50, 100]}
-        searchPlaceholder="Search by name…"
+        searchPlaceholder={t("searchByName")}
         filterKey={filters.filterKey}
         getRowId={(row) => String(row.id)}
-        emptyMessage="No API keys in this workspace yet. Create one to call the balancer public API."
+        emptyMessage={ta("noKeys")}
         toolbar={
           <FilterBar
             defs={defs}
@@ -452,7 +455,7 @@ export default function AccessAdminApiKeysPage() {
                 }}
               >
                 <Plus aria-hidden className="size-4" />
-                Create key
+                {t("createKey")}
               </Button>
             }
           />
@@ -464,9 +467,10 @@ export default function AccessAdminApiKeysPage() {
               owt_sk_{row.original.public_id}_…
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {STATUS_META[getApiKeyStatus(row.original)].label} ·{" "}
-              {row.original.scopes.length} scope
-              {row.original.scopes.length === 1 ? "" : "s"}
+              {ta("scopeSummary", {
+                status: t(getApiKeyStatus(row.original)),
+                count: row.original.scopes.length
+              })}
             </p>
           </div>
         )}
@@ -506,33 +510,33 @@ export default function AccessAdminApiKeysPage() {
           setCreateOpen(open);
           if (!open) createMutation.reset();
         }}
-        title="Create API key"
-        description={`The key lives in ${workspace?.name ?? "this workspace"} and carries only the permissions you grant it here — never more than you hold yourself.`}
-        submitLabel="Create key"
-        submittingLabel="Creating…"
+        title={ta("createTitle")}
+        description={ta("createDescription", { workspace: workspace?.name ?? t("thisWorkspace") })}
+        submitLabel={t("createKey")}
+        submittingLabel={ta("creating")}
         isSubmitting={createMutation.isPending}
         isDirty={createName.trim().length > 0 || createScopes.size > 0 || createSuperuser}
         contentClassName="!max-w-2xl"
         onSubmit={(event: FormEvent) => {
           event.preventDefault();
           if (createName.trim().length === 0) {
-            notify.error("Name the key before creating it.", {
-              description: "Use something that says where it is used, such as a bot or CI job."
+            notify.error(ta("nameValidation"), {
+              description: ta("nameHint")
             });
             return;
           }
           if (workspaceId === null) return;
           if (createSuperuser && !createExpiresAt) {
-            notify.error("Set an expiry for a superuser key.", {
-              description: "A superuser key bypasses every permission check, so it cannot live forever."
+            notify.error(ta("expiryValidation"), {
+              description: ta("expiryHint")
             });
             return;
           }
           if (createScopes.size === 0 && !createSuperuser) {
             // Not a blocker: a scope-less key is a legitimate placeholder. It
             // is only worth saying out loud, because it will 403 on everything.
-            notify.warning("Creating a key with no scopes.", {
-              description: "It will authenticate but every permission check rejects it."
+            notify.warning(ta("noScopesWarning"), {
+              description: ta("noScopesHint")
             });
           }
 
@@ -555,8 +559,8 @@ export default function AccessAdminApiKeysPage() {
                 setCreateExpiresAt("");
                 setCreateScopes(new Set());
                 setCreateSuperuser(false);
-                notify.success("API key created", {
-                  description: "Copy the secret now. It will not be shown again."
+                notify.success(ta("created"), {
+                  description: ta("createdDescription")
                 });
               }
             }
@@ -565,7 +569,7 @@ export default function AccessAdminApiKeysPage() {
       >
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor={createNameId}>Name</Label>
+            <Label htmlFor={createNameId}>{t("name")}</Label>
             <Input
               id={createNameId}
               required
@@ -578,12 +582,12 @@ export default function AccessAdminApiKeysPage() {
           <DateTimePicker
             id="create-api-key-expires-date"
             timeId="create-api-key-expires-time"
-            dateLabel="Expires"
-            timeLabel="Time"
+            dateLabel={t("expires")}
+            timeLabel={t("time")}
             value={createExpiresAt}
             onChange={setCreateExpiresAt}
-            placeholder="Never"
-            clearLabel="Never"
+            placeholder={t("never")}
+            clearLabel={t("never")}
             minDate={new Date()}
             disabled={createMutation.isPending}
           />
@@ -591,10 +595,9 @@ export default function AccessAdminApiKeysPage() {
           {isSuperuser ? (
             <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5">
               <div className="space-y-0.5">
-                <Label htmlFor={superuserId}>Superuser access</Label>
+                <Label htmlFor={superuserId}>{t("superuserAccess")}</Label>
                 <p className="text-xs text-muted-foreground">
-                  The key passes every permission check, not only the scopes below. It stops
-                  working once you lose superuser rights. Requires an expiry.
+                  {ta("superuserDescription")}
                 </p>
               </div>
               <Switch
@@ -608,8 +611,7 @@ export default function AccessAdminApiKeysPage() {
 
           {availableScopes.length === 0 ? (
             <EmptyNote size="sm">
-              You hold no delegatable permissions in this workspace, so every key created here
-              would be inert. Ask a workspace admin to grant you the permissions first.
+              {ta("inertDescription")}
             </EmptyNote>
           ) : (
             <PermissionPicker
@@ -631,9 +633,9 @@ export default function AccessAdminApiKeysPage() {
         }}
         pending={revokeMutation.isPending}
         intent={{
-          title: "Revoke API key",
-          description: `Revoking “${pendingRevoke?.name ?? "this key"}” stops every request that uses it immediately, so any integration still sending it starts failing with 401. The key cannot be restored — issue a new one instead.`,
-          confirmLabel: "Revoke key",
+          title: ta("revokeTitle"),
+          description: ta("revokeDescription", { name: pendingRevoke?.name ?? ta("thisKey") }),
+          confirmLabel: t("revokeKey"),
           tone: "danger"
         }}
         onConfirm={() => {
@@ -641,7 +643,7 @@ export default function AccessAdminApiKeysPage() {
           revokeMutation.mutate(pendingRevoke.id, {
             onSuccess: () => {
               setPendingRevoke(null);
-              notify.success("API key revoked");
+              notify.success(ta("revoked"));
             }
           });
         }}

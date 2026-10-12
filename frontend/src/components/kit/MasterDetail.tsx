@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { ChevronLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export function MasterDetail({
   listWidth = 280,
   emptyDetail
 }: Readonly<MasterDetailProps>) {
+  const t = useTranslations("kit.actions");
   const hasSelection = detail !== null && detail !== undefined && detail !== false;
 
   return (
@@ -53,7 +55,7 @@ export function MasterDetail({
                 onClick={() => window.history.back()}
               >
                 <ChevronLeft aria-hidden className="size-4" />
-                Back to list
+        {t("backToList")}
               </Button>
             </div>
             {detail}

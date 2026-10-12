@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import {
   Select,
@@ -43,6 +44,7 @@ export interface SectionNavProps {
  * still one URL per section, so a link to "Danger zone" is shareable.
  */
 export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
+  const t = useTranslations("kit.actions");
   const router = useRouter();
   const visibleGroups = groups
     .map((group) => ({ ...group, items: group.items.filter((item) => !item.hidden) }))
@@ -60,8 +62,8 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
             if (target) router.push(target.href);
           }}
         >
-          <SelectTrigger aria-label="Settings section">
-            <SelectValue placeholder="Choose a section" />
+          <SelectTrigger aria-label={t("settingsSection")}>
+            <SelectValue placeholder={t("selectSection")} />
           </SelectTrigger>
           <SelectContent>
             {visibleGroups.map((group) => (
@@ -78,7 +80,7 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
         </Select>
       </div>
 
-      <nav aria-label="Settings sections" className="hidden w-[200px] shrink-0 md:block">
+      <nav aria-label={t("settingsSections")} className="hidden w-[200px] shrink-0 md:block">
         {visibleGroups.map((group) => (
           <div key={group.label ?? "ungrouped"} className="mb-4 last:mb-0">
             {group.label ? <p className={cn(EYEBROW_CLASS, "mb-1.5 px-2")}>{group.label}</p> : null}

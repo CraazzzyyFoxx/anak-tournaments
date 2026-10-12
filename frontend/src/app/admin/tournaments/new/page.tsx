@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, PenLine } from "lucide-react";
 
@@ -56,34 +57,34 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
 
-const STEP_META: Record<WizardStep, { label: string; description: string }> = {
+const STEP_META: Record<WizardStep, { labelKey: WizardStep; descriptionKey: WizardStep }> = {
   basics: {
-    label: "Basics",
-    description: "Name the tournament and pick its dates."
+    labelKey: "basics",
+    descriptionKey: "basics"
   },
   schedule: {
-    label: "Schedule",
-    description: "Optional phase schedule and automatic transitions."
+    labelKey: "schedule",
+    descriptionKey: "schedule"
   },
   rules: {
-    label: "Rules",
-    description: "Team formation, division grid, and scoring points."
+    labelKey: "rules",
+    descriptionKey: "rules"
   },
   registration: {
-    label: "Registration",
-    description: "How players sign up. The full form builder opens after creation."
+    labelKey: "registration",
+    descriptionKey: "registration"
   },
   review: {
-    label: "Review & create",
-    description: "Check the configuration and create the tournament."
+    labelKey: "review",
+    descriptionKey: "review"
   }
 };
 
 /** `validateWizardStep` returns codes; the wizard turns them into a fix. */
 const BASICS_ERRORS: Record<string, string> = {
-  name_required: "Enter a tournament name.",
-  challonge_slug_required: "Enter a Challonge URL or slug.",
-  dates_required: "Pick a start and an end date."
+  name_required: "nameRequired",
+  challonge_slug_required: "challongeRequired",
+  dates_required: "datesRequired"
 };
 
 const emptyForm: WizardFormData = {
@@ -107,6 +108,12 @@ const emptySchedule: WizardScheduleState = {
 };
 
 export default function NewTournamentPage() {
+  const t = useTranslations("adminTournaments.new");
+  const validationMessages: Record<string, string> = {
+    nameRequired: t("validation.nameRequired"),
+    challongeRequired: t("validation.challongeRequired"),
+    datesRequired: t("validation.datesRequired")
+  };
   const router = useRouter();
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
@@ -213,7 +220,7 @@ export default function NewTournamentPage() {
     if (!draftPromiseRef.current) {
       const workspaceId = currentWorkspaceId;
       draftPromiseRef.current = (async () => {
-        if (!workspaceId) throw new Error("Select a workspace first");
+        if (!workspaceId) throw new Error(t("selectWorkspace"));
         let created: Tournament;
         if (source === "challonge") {
           const imported = await adminService.createTournamentWithGroups({
@@ -233,10 +240,7 @@ export default function NewTournamentPage() {
             try {
               created = await adminService.updateTournament(imported.id, { is_hidden: true });
             } catch {
-              notify.warning("Imported from Challonge, but hiding it failed", {
-                description:
-                  "The tournament is temporarily public — hide it from Settings → Visibility if needed."
-              });
+              notify.warning(t("importHideWarning"), { description: t("importHideDescription") });
               created = imported;
             }
           }
@@ -275,14 +279,14 @@ export default function NewTournamentPage() {
     onSuccess: ({ id, publish }) => {
       void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.list() });
       void queryClient.invalidateQueries({ queryKey: adminQueryKeys.tournamentWizardResumeAll() });
-      notify.success(publish ? "Tournament created" : "Draft created", {
+      notify.success(publish ? t("created") : t("draftCreated"), {
         description: publish
           ? undefined
-          : "It stays Unpublished until you publish it from Review or Settings."
+          : t("draftDescription")
       });
       router.push(`/admin/tournaments/${id}/overview`);
     },
-    onError: (error) => notify.apiError(error, { title: "Could not create the tournament" })
+    onError: (error) => notify.apiError(error, { title: t("createError") })
   });
 
   /** Validation runs on submit, so every action stays reachable and explains
@@ -291,7 +295,7 @@ export default function NewTournamentPage() {
   const createTournament = (publish: boolean) => {
     const problems = validateWizardStep("basics", basics);
     if (problems.length > 0) {
-      notify.warning(problems.map((code) => BASICS_ERRORS[code] ?? code).join(" "));
+      notify.warning(problems.map((code) => validationMessages[BASICS_ERRORS[code] ?? code] ?? code).join(" "));
       return;
     }
     finishMutation.mutate(publish);
@@ -300,7 +304,7 @@ export default function NewTournamentPage() {
   const next = () => {
     const problems = validateWizardStep(activeStep, basics);
     if (problems.length > 0) {
-      notify.warning(problems.map((code) => BASICS_ERRORS[code] ?? code).join(" "));
+      notify.warning(problems.map((code) => validationMessages[BASICS_ERRORS[code] ?? code] ?? code).join(" "));
       return;
     }
     const target = nextWizardStep(steps, activeStep);
@@ -308,7 +312,7 @@ export default function NewTournamentPage() {
     // need the draft; create it in the background on entry.
     if (stepEntryRequiresDraft(target)) {
       ensureDraft().catch((error) =>
-        notify.apiError(error, { title: "Could not create the draft" })
+        notify.apiError(error, { title: t("draftError") })
       );
     }
     goToStep(target);
@@ -316,7 +320,7 @@ export default function NewTournamentPage() {
 
   const rail: WizardRailStep[] = steps.map((entry, index) => ({
     key: entry,
-    label: STEP_META[entry].label,
+    label: t(`steps.${STEP_META[entry].labelKey}.label`),
     state: index === activeIndex ? "current" : index < activeIndex ? "done" : "todo"
   }));
 
@@ -333,9 +337,9 @@ export default function NewTournamentPage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to create tournaments in this workspace.
+            {t("unauthorizedDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -345,8 +349,8 @@ export default function NewTournamentPage() {
   return (
     <div className="space-y-5">
       <AdminPageHeader
-        title="New tournament"
-        description="Set up a tournament step by step. Only the basics are required."
+        title={t("title")}
+        description={t("description")}
       />
 
       <ConfirmDialog
@@ -355,9 +359,9 @@ export default function NewTournamentPage() {
           if (!open) setResumeDismissed(true);
         }}
         intent={{
-          title: "Resume draft?",
-          description: `“${resumable?.name}” is an Unpublished draft you started earlier. Resume it where you left off, or start a new tournament from scratch.`,
-          confirmLabel: "Resume draft",
+          title: t("resumeTitle"),
+          description: t("resumeDescription", { name: resumable?.name ?? "" }),
+          confirmLabel: t("resume"),
           tone: "neutral"
         }}
         onConfirm={() => {
@@ -378,8 +382,8 @@ export default function NewTournamentPage() {
               <Download aria-hidden className="size-4 shrink-0" />
             )}
             {source === "challonge"
-              ? "Enter the details manually instead"
-              : "Import from Challonge instead"}
+              ? t("manualInstead")
+              : t("importInstead")}
           </Link>
         }
         footer={{
@@ -393,28 +397,28 @@ export default function NewTournamentPage() {
                 disabled={finishMutation.isPending}
                 onClick={() => createTournament(false)}
               >
-                {finishMutation.isPending ? "Saving…" : "Save as draft"}
+                {finishMutation.isPending ? t("saving") : t("saveDraft")}
               </Button>
             ),
           next:
             activeStep === "review"
               ? {
-                  label: finishMutation.isPending ? "Creating…" : "Create tournament",
+                  label: finishMutation.isPending ? t("creating") : t("create"),
                   onClick: () => createTournament(true),
                   disabled: finishMutation.isPending
                 }
-              : { label: "Continue", onClick: next }
+              : { label: t("continue"), onClick: next }
         }}
       >
         <div className="space-y-1">
           <p className={`${EYEBROW_CLASS} tabular-nums`}>
-            Step {activeIndex + 1} of {steps.length}
+            {t("stepOf", { current: activeIndex + 1, total: steps.length })}
           </p>
           <h2 className="font-display text-xl font-semibold text-foreground">
-            {STEP_META[activeStep].label}
+            {t(`steps.${STEP_META[activeStep].labelKey}.label`)}
           </h2>
           <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            {STEP_META[activeStep].description}
+            {t(`steps.${STEP_META[activeStep].descriptionKey}.description`)}
           </p>
         </div>
 

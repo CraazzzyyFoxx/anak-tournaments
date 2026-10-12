@@ -2,18 +2,14 @@
 
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 
 import { useOpenMissCount } from "./miss-queue";
 
-const TABS = [
-  { key: "heroes", label: "Heroes" },
-  { key: "maps", label: "Maps" },
-  { key: "gamemodes", label: "Gamemodes" },
-  { key: "unresolved", label: "Unresolved names" }
-] as const;
+const TABS = ["heroes", "maps", "gamemodes", "unresolved"] as const;
 
 /**
  * Game content (F13): three catalogues the log parser reads, plus the triage
@@ -28,26 +24,27 @@ const TABS = [
  */
 export default function GameContentLayout({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
+  const t = useTranslations("adminWorkspace.content");
   // `/admin/content/<tab>` — the bare root redirects, so the fallback only
   // covers the frame between navigation and that redirect landing.
-  const activeKey = pathname.split("/")[3] ?? TABS[0].key;
+  const activeKey = pathname.split("/")[3] ?? TABS[0];
   const openMisses = useOpenMissCount();
 
   const items: LinkTabItem[] = TABS.map((tab) => ({
-    key: tab.key,
-    label: tab.label,
-    href: `/admin/content/${tab.key}`,
+    key: tab,
+    label: t(`tabs.${tab}`),
+    href: `/admin/content/${tab}`,
     // An empty queue is not news: no badge rather than a zero.
-    badge: tab.key === "unresolved" ? openMisses || undefined : undefined
+    badge: tab === "unresolved" ? openMisses || undefined : undefined
   }));
 
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
-        title="Game content"
-        description="Heroes, maps and gamemodes used by the log parser and analytics."
+        title={t("header")}
+        description={t("description")}
       />
-      <LinkTabs items={items} activeKey={activeKey} level={1} ariaLabel="Game content sections" />
+      <LinkTabs items={items} activeKey={activeKey} level={1} ariaLabel={t("sectionsLabel")} />
       {children}
     </div>
   );

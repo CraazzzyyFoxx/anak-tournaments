@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 
 import userService from "@/services/user.service";
 import { MinimizedUser } from "@/types/user.types";
@@ -24,11 +25,14 @@ export function UserSearchCombobox({
   value,
   selectedName,
   onSelect,
-  placeholder = "Select user",
-  searchPlaceholder = "Search user…",
+  placeholder,
+  searchPlaceholder,
   disabled = false,
   allowClear = true,
 }: Readonly<UserSearchComboboxProps>) {
+  const t = useTranslations("adminPeople.userSearch");
+  const resolvedPlaceholder = placeholder ?? t("select");
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("search");
   const {
     open,
     setOpen,
@@ -42,10 +46,10 @@ export function UserSearchCombobox({
     fetchResults: ({ query, signal }) => userService.searchUsers(query, signal),
     onSelect,
     messages: {
-      loading: "Loading users…",
-      error: "Could not load users. Try again.",
-      minChars: "Type at least 2 characters to search.",
-      empty: "No users match that search. Try a shorter name."
+      loading: t("loading"),
+      error: t("loadError"),
+      minChars: t("minChars"),
+      empty: t("empty")
     }
   });
 
@@ -64,8 +68,8 @@ export function UserSearchCombobox({
       return `User #${value}`;
     }
 
-    return placeholder;
-  }, [placeholder, results, selectedName, value]);
+    return resolvedPlaceholder;
+  }, [resolvedPlaceholder, results, selectedName, value]);
 
   return (
     <Combobox
@@ -76,12 +80,12 @@ export function UserSearchCombobox({
       disabled={disabled}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}
-      searchPlaceholder={searchPlaceholder}
+      searchPlaceholder={resolvedSearchPlaceholder}
       emptyMessage={emptyMessage}
       clear={
         allowClear && typeof value === "number" && value > 0
           ? {
-              label: "Clear selection",
+              label: t("clear"),
               value: "clear-user-selection",
               onSelect: () => handleSelect(undefined)
             }

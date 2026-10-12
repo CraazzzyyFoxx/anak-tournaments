@@ -3,6 +3,7 @@ import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
+import en from "@/i18n/messages/en.json";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -40,7 +41,7 @@ async function mount(node: ReactNode) {
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      <NextIntlClientProvider locale="en" messages={{}}>
+      <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>{node}</QueryClientProvider>
       </NextIntlClientProvider>,
     );

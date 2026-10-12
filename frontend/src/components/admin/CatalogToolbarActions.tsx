@@ -63,14 +63,15 @@ export function entityFormError(
   entity: string,
   isEditing: boolean,
   updateError: unknown,
-  createError: unknown
+  createError: unknown,
+  t: (key: "formError", values: { entity: string }) => string
 ): string | undefined {
   const error = isEditing ? updateError : createError;
   if (!error) {
     return undefined;
   }
 
-  const advice = `Check the ${entity} details and try again.`;
+  const advice = t("formError", { entity });
   const detail = error instanceof Error ? error.message.trim() : "";
 
   return detail ? `${advice} (${detail})` : advice;

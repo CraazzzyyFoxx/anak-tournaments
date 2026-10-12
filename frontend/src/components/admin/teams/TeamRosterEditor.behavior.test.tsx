@@ -27,7 +27,15 @@ vi.mock("@/services/admin.service", () => ({
     deletePlayer: (...args: unknown[]) => deletePlayer(...args)
   }
 }));
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  const { default: en } = await import("@/i18n/messages/en.json");
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never })
+  };
+});
 vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
   default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} />

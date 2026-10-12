@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 
@@ -42,10 +43,10 @@ const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
  * different query parameter, which is why it is a chip of its own below.
  */
 const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: string }[] = [
-  { value: "pending", label: "Pending" },
-  { value: "processing", label: "Processing" },
-  { value: "done", label: "Done" },
-  { value: "failed", label: "Failed" }
+  { value: "pending", label: "pending" },
+  { value: "processing", label: "processing" },
+  { value: "done", label: "done" },
+  { value: "failed", label: "failed" }
 ];
 
 /**
@@ -71,6 +72,7 @@ export function ParsedMatchesBrowser({
   /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
   tournamentName?: string | null;
 }>) {
+  const t = useTranslations("adminMatches.parsed");
   // `id` is the inspector, not a filter: opening a map must not drop the page
   // it sits on.
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
@@ -103,7 +105,7 @@ export function ParsedMatchesBrowser({
     if (tournamentId == null) {
       list.push({
         key: TOURNAMENT_QUERY_PARAM,
-        label: "Tournament",
+        label: t("tournament"),
         kind: "single",
         options: (tournamentsQuery.data?.results ?? []).map((entry) => ({
           value: String(entry.id),
@@ -114,7 +116,7 @@ export function ParsedMatchesBrowser({
     list.push(
       {
         key: "map_id",
-        label: "Map",
+        label: t("map"),
         kind: "single",
         options: (mapsQuery.data ?? []).map((entry) => ({
           value: String(entry.id),
@@ -123,17 +125,20 @@ export function ParsedMatchesBrowser({
       },
       {
         key: "log_status",
-        label: "Ingestion status",
+        label: t("ingestionStatus"),
         kind: "multi",
-        options: LOG_STATUS_OPTIONS.map((option) => ({ ...option }))
+        options: LOG_STATUS_OPTIONS.map((option) => ({
+          ...option,
+          label: t(option.label as "pending" | "processing" | "done" | "failed")
+        }))
       },
       // Not a status: this selects maps with no ingestion record at all, which
       // is most of the archive, while `failed` selects the ones whose ingestion
       // actually broke. Merging them would drown the real failures.
-      { key: "unlinked_only", label: "Provenance unresolved", kind: "toggle" }
+      { key: "unlinked_only", label: t("provenanceUnresolved"), kind: "toggle" }
     );
     return list;
-  }, [tournamentId, tournamentsQuery.data, mapsQuery.data]);
+  }, [tournamentId, tournamentsQuery.data, mapsQuery.data, t]);
 
   const filters = useFilters(defs);
   const mapFilter = String(filters.values.map_id ?? "");
@@ -152,7 +157,7 @@ export function ParsedMatchesBrowser({
     () => [
       {
         id: "map",
-        header: "Map",
+        header: t("map"),
         // The server sorts none of these, so offering a sort control would be a
         // lie the header cannot honour.
         enableSorting: false,
@@ -177,7 +182,7 @@ export function ParsedMatchesBrowser({
       },
       {
         id: "score",
-        header: "Score",
+        header: t("score"),
         size: 92,
         enableSorting: false,
         cell: ({ row }) => (
@@ -188,7 +193,7 @@ export function ParsedMatchesBrowser({
       },
       {
         id: "log",
-        header: "Log",
+        header: t("log"),
         enableSorting: false,
         cell: ({ row }) => (
           <p
@@ -201,7 +206,7 @@ export function ParsedMatchesBrowser({
       },
       {
         id: "provenance",
-        header: "Provenance",
+        header: t("provenance"),
         size: 148,
         enableSorting: false,
         cell: ({ row }) =>
@@ -212,17 +217,17 @@ export function ParsedMatchesBrowser({
           ) : (
             // Never "failed": no record is unknown provenance, and the word
             // carries the whole meaning so the state survives greyscale.
-            <StatusPill tone="neutral">unresolved</StatusPill>
+            <StatusPill tone="neutral">{t("unresolved")}</StatusPill>
           )
       }
     ],
-    [showTournament]
+    [showTournament, t]
   );
 
   if (workspaceId == null) {
     return (
       <EmptyNote>
-        Parsed maps are scoped to a workspace. Pick one to see what the log parser produced.
+        {t("scopePrompt")}
       </EmptyNote>
     );
   }
@@ -237,7 +242,7 @@ export function ParsedMatchesBrowser({
             columns={columns}
             filterKey={filters.filterKey}
             initialPageSize={PAGE_SIZE}
-            searchPlaceholder="Search log name, code or team"
+            searchPlaceholder={t("search")}
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
             toolbar={
@@ -258,8 +263,8 @@ export function ParsedMatchesBrowser({
             }
             emptyMessage={
               unlinkedOnly
-                ? "No parsed maps with unresolved provenance."
-                : "No parsed maps here yet."
+                ? t("emptyUnresolved")
+                : t("empty")
             }
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
@@ -272,7 +277,7 @@ export function ParsedMatchesBrowser({
                   </span>
                 </p>
                 <p className="truncate font-mono text-xs text-muted-foreground">
-                  {row.original.log_record?.status ?? "unresolved"}
+                  {row.original.log_record?.status ?? t("unresolved")}
                 </p>
               </div>
             )}

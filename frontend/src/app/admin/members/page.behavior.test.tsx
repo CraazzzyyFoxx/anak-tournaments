@@ -31,8 +31,6 @@ const addMember = vi.fn();
 
 let permitted = true;
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
-
 const replace = vi.fn((url: string) => {
   window.history.replaceState(null, "", url);
   rerender?.();

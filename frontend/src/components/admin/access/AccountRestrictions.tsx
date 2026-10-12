@@ -25,6 +25,7 @@ import { rbacService } from "@/services/rbac.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { Spinner } from "@/components/ui/spinner";
 import { accessQueryKeys } from "@/lib/access/query-keys";
+import { useTranslations } from "next-intl";
 
 /**
  * Self-service, allow-by-default capabilities an admin can revoke per account
@@ -36,42 +37,42 @@ import { accessQueryKeys } from "@/lib/access/query-keys";
  * `shared/rbac/catalog.py`: a capability the backend gates on `can_capability`
  * but that never appears here is unrevokable in practice.
  */
-const RESTRICTABLE: PermissionCatalogEntry[] = [
+const RESTRICTABLE: Array<Omit<PermissionCatalogEntry, "description"> & { descriptionKey: string }> = [
   {
     key: "account.avatar",
     resource: "account",
     action: "avatar",
-    description: "Change own avatar"
+    descriptionKey: "avatar"
   },
   {
     key: "account.rename",
     resource: "account",
     action: "rename",
-    description: "Change own name"
+    descriptionKey: "rename"
   },
   {
     key: "account.social",
     resource: "account",
     action: "social",
-    description: "Manage own linked accounts"
+    descriptionKey: "social"
   },
   {
     key: "registration.self_register",
     resource: "registration",
     action: "self_register",
-    description: "Sign up for tournaments"
+    descriptionKey: "registration"
   },
   {
     key: "custom_game.self_join",
     resource: "custom_game",
     action: "self_join",
-    description: "Self-join pickup mixes"
+    descriptionKey: "pickup"
   },
   {
     key: "workspace.self_create",
     resource: "workspace",
     action: "self_create",
-    description: "Create own workspaces"
+    descriptionKey: "createWorkspace"
   }
 ];
 
@@ -95,6 +96,7 @@ export function AccountRestrictions({
   userId,
   canEdit
 }: Readonly<{ userId: number; canEdit: boolean }>) {
+  const t = useTranslations("adminAccess.restrictionsUi");
   const queryClient = useQueryClient();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const [open, setOpen] = useState(false);
@@ -134,36 +136,39 @@ export function AccountRestrictions({
         : rbacService.removeUserDeny(userId, permissionId, scopeWorkspaceId),
     onSuccess: (updated) =>
       queryClient.setQueryData(accessQueryKeys.denies(userId), updated),
-    onError: (error) => notify.apiError(error, { title: "Could not change the restriction" })
+    onError: (error) => notify.apiError(error, { title: t("error") })
   });
 
-  const catalog = RESTRICTABLE.filter(
+  const catalog: PermissionCatalogEntry[] = RESTRICTABLE.filter(
     (entry) => permissionIdByName.get(entry.key) !== undefined
-  );
+  ).map(({ descriptionKey, ...entry }) => ({
+    ...entry,
+    description: t(descriptionKey as "avatar" | "rename" | "social" | "registration" | "pickup" | "createWorkspace")
+  }));
 
   const scopeLabel = (workspaceId: number | null | undefined) =>
     workspaceId
       ? (workspaces.find((workspace) => workspace.id === workspaceId)?.name ??
         `Workspace #${workspaceId}`)
-      : "Global";
+      : t("global");
 
   return (
     <AccountDisclosure
-      title="Restrictions"
+      title={t("title")}
       open={open}
       onOpenChange={setOpen}
       summary={
         deniesQuery.isLoading ? (
           <Spinner className="size-3.5" />
         ) : denies.length === 0 ? (
-          "None"
+          t("none")
         ) : (
-          <span className="text-danger">{denies.length} active</span>
+          <span className="text-danger">{t("active", { count: denies.length })}</span>
         )
       }
       preview={
         denies.length > 0 ? (
-          <ul className="flex flex-wrap gap-1.5" aria-label="Active restrictions">
+            <ul className="flex flex-wrap gap-1.5" aria-label={t("activeLabel")}>
             {denies.map((deny) => (
               <li key={`${deny.permission_id}-${deny.workspace_id ?? "global"}`}>
                 <Badge tone="danger" className="font-normal">
@@ -179,20 +184,20 @@ export function AccountRestrictions({
       <div className={cn("space-y-2 rounded-lg border p-3", TONE_CLASS.danger)}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Label htmlFor={scopeId} className="text-xs text-muted-foreground">
-            Scope
+            {t("scope")}
           </Label>
           <Select
             value={String(scope)}
             onValueChange={(value) => setScope(value === "global" ? "global" : Number(value))}
           >
             <SelectTrigger id={scopeId} className="h-8 w-44 text-xs" disabled={!canEdit}>
-              <SelectValue placeholder="Select scope" />
+              <SelectValue placeholder={t("selectScope")} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="global">
                 <span className="flex items-center gap-2">
                   <Globe aria-hidden className="size-3.5" />
-                  Global
+                  {t("global")}
                 </span>
               </SelectItem>
               {workspaces.map((workspace) => (
@@ -208,8 +213,7 @@ export function AccountRestrictions({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          A checked capability is revoked in the selected scope. It beats every grant, superuser
-          included, for that exact action in that scope only.
+          {t("notice")}
         </p>
 
         {permissionsQuery.isLoading ? (

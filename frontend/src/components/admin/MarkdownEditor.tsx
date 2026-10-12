@@ -1,7 +1,9 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useMemo, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
+import { useTranslations } from "next-intl";
+import { commands } from "@uiw/react-md-editor";
 
 import { Markdown, MARKDOWN_REMARK_PLUGINS } from "@/components/Markdown";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,6 +68,42 @@ export function MarkdownEditor({
   label,
   className
 }: Readonly<MarkdownEditorProps>) {
+  const t = useTranslations("adminBracket.markdownEditor");
+  const toolbarCommands = useMemo(
+    () =>
+      commands.getCommands().map((command) => {
+        const key =
+          command.keyCommand === "list"
+            ? command.name === "ordered-list"
+              ? "orderedList"
+              : command.name === "checked-list"
+                ? "checkedList"
+                : "unorderedList"
+            : command.keyCommand === "group"
+              ? "title"
+              : command.keyCommand;
+        if (!key || key === "divider") return command;
+        const label = t(`toolbar.${key}` as never);
+        return {
+          ...command,
+          buttonProps: { ...command.buttonProps, title: label, "aria-label": label }
+        };
+      }),
+    [t]
+  );
+  const toolbarExtraCommands = useMemo(
+    () =>
+      commands.getExtraCommands().map((command) => {
+        const key = command.keyCommand === "preview" ? command.name : command.keyCommand;
+        if (!key || key === "divider") return command;
+        const label = t(`toolbar.${key}` as never);
+        return {
+          ...command,
+          buttonProps: { ...command.buttonProps, title: label, "aria-label": label }
+        };
+      }),
+    [t]
+  );
   if (readOnly) {
     return (
       <div
@@ -75,7 +113,7 @@ export function MarkdownEditor({
         {value.trim() ? (
           <Markdown source={value} />
         ) : (
-          <p className="text-caption text-muted-foreground">Nothing published yet.</p>
+          <p className="text-caption text-muted-foreground">{t("nothingPublished")}</p>
         )}
       </div>
     );
@@ -90,6 +128,8 @@ export function MarkdownEditor({
         // split and preview modes, so the default does not have to guess which
         // one a given document needs.
         preview="edit"
+        commands={toolbarCommands}
+        extraCommands={toolbarExtraCommands}
         height={420}
         textareaProps={{ "aria-label": label, placeholder, maxLength }}
         // One markdown pipeline for the whole feature: the preview is the public

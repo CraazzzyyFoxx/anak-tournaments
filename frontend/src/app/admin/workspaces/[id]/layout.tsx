@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -20,6 +21,7 @@ export default async function WorkspaceScopedSettingsLayout({
   children
 }: Readonly<{ params: Promise<{ id: string }>; children: ReactNode }>) {
   const { id } = await params;
+  const t = await getTranslations("adminAccess.common");
 
   return (
     <WorkspaceSettingsShell
@@ -28,7 +30,7 @@ export default async function WorkspaceScopedSettingsLayout({
       actions={
         <Button asChild variant="ghost" size="sm">
           <Link href="/admin/workspaces">
-            <ArrowLeft aria-hidden className="mr-2 size-4" /> All workspaces
+            <ArrowLeft aria-hidden className="mr-2 size-4" /> {t("allWorkspaces")}
           </Link>
         </Button>
       }

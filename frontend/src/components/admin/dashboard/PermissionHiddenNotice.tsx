@@ -1,4 +1,5 @@
 import { Lock } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { EmptyNote } from "@/components/kit/EmptyNote";
 
@@ -17,9 +18,10 @@ export function PermissionHiddenNotice({
   title,
   permission
 }: Readonly<PermissionHiddenNoticeProps>) {
+  const t = useTranslations("adminShell.dashboard");
   return (
     <EmptyNote icon={Lock} title={title}>
-      Ask a workspace administrator to grant your role the {permission} permission.
+      {t("permissionNotice", { permission })}
     </EmptyNote>
   );
 }

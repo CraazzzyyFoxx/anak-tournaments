@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import {
@@ -51,18 +52,14 @@ import { EmptyNote } from "@/components/kit/EmptyNote";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 /** Mirrors `TOURNAMENT_LINK_KINDS` in `backend/shared/models/tournament/link.py`. */
-const LINK_KINDS: ReadonlyArray<{ value: TournamentLinkKind; label: string }> = [
-  { value: "discord", label: "Discord" },
-  { value: "stream", label: "Stream" },
-  { value: "vod", label: "VOD" },
-  { value: "bracket", label: "Bracket" },
-  { value: "rules", label: "Rules" },
-  { value: "other", label: "Other" }
+const LINK_KINDS: ReadonlyArray<{ value: TournamentLinkKind }> = [
+  { value: "discord" },
+  { value: "stream" },
+  { value: "vod" },
+  { value: "bracket" },
+  { value: "rules" },
+  { value: "other" }
 ];
-
-const KIND_LABELS: Record<TournamentLinkKind, string> = Object.fromEntries(
-  LINK_KINDS.map((kind) => [kind.value, kind.label])
-) as Record<TournamentLinkKind, string>;
 
 interface LinkForm {
   kind: TournamentLinkKind;
@@ -99,14 +96,14 @@ const LINK_FORM_FIELDS = ["kind", "label", "url", "sort_order"] as const;
  * field name is the prefix. Anything unrecognised is still surfaced verbatim
  * under a synthetic key — `EntityFormDialog` lists every entry.
  */
-function linkFieldErrors(error: unknown): Record<string, string> {
+function linkFieldErrors(error: unknown, duplicateMessage: string): Record<string, string> {
   if (!(error instanceof ApiError)) {
     return {};
   }
 
   if (error.status === 409) {
     return {
-      url: "This tournament already has a link of this kind with the same URL. Edit that one, or change the URL."
+      url: duplicateMessage
     };
   }
 
@@ -153,6 +150,8 @@ export function TournamentLinksTab({
   canDelete,
   canRepollStreams
 }: Readonly<TournamentLinksTabProps>) {
+  const t = useTranslations("adminTournament.links");
+  const workspaceT = useTranslations("adminWorkspace.content");
   const queryClient = useQueryClient();
   const formId = useId();
   const kindFieldId = `${formId}-kind`;
@@ -187,7 +186,7 @@ export function TournamentLinksTab({
     onSuccess: async () => {
       await invalidateLinks();
       closeForm();
-      notify.success("Link added");
+      notify.success(t("added"));
     }
     // No onError toast: 409/422 land in the dialog as field errors, and a toast
     // on top of them would say the same thing twice.
@@ -199,7 +198,7 @@ export function TournamentLinksTab({
     onSuccess: async () => {
       await invalidateLinks();
       closeForm();
-      notify.success("Link updated");
+      notify.success(t("updated"));
     }
   });
 
@@ -211,20 +210,20 @@ export function TournamentLinksTab({
     onSuccess: async () => {
       await invalidateLinks();
       setDeletingLink(null);
-      notify.success("Link archived", {
-        description: "It is hidden from the tournament page and can be restored here."
+      notify.success(t("archived"), {
+        description: t("archiveDescription")
       });
     },
-    onError: (error) => notify.apiError(error, { title: "Could not archive the link" })
+    onError: (error) => notify.apiError(error, { title: t("archiveError") })
   });
 
   const restoreMutation = useMutation({
     mutationFn: (id: number) => adminService.updateTournamentLink(id, { is_active: true }),
     onSuccess: async () => {
       await invalidateLinks();
-      notify.success("Link restored");
+      notify.success(t("restored"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not restore the link" })
+    onError: (error) => notify.apiError(error, { title: t("restoreError") })
   });
 
   // Same PATCH as `restoreMutation` above, just a different field — "primary"
@@ -240,13 +239,12 @@ export function TournamentLinksTab({
       // only embeds a player for a channel that is live, and shows a plain link
       // otherwise. Promising an embed here would be a lie the organizer finds
       // out about by reloading the tournament page.
-      notify.success("Made the primary broadcast", {
-        description:
-          "It now leads the official links. The player only embeds a channel that is live, so an offline one stays a link until it goes live."
+      notify.success(t("primary"), {
+        description: t("primaryDescription")
       });
     },
     onError: (error) =>
-      notify.apiError(error, { title: "Could not make it the primary broadcast" })
+      notify.apiError(error, { title: t("primaryError") })
   });
 
   const repollMutation = useMutation({
@@ -260,10 +258,10 @@ export function TournamentLinksTab({
     onSuccess: () =>
       // 202, not 200: the poller picks the request up on its next heartbeat.
       // Saying "done" here would be a lie the operator then has to un-learn.
-      notify.success("Re-poll queued", {
-        description: "Live status refreshes on the poller's next heartbeat — up to 30 seconds."
+      notify.success(t("repoll"), {
+        description: t("repollDescription")
       }),
-    onError: (error) => notify.apiError(error, { title: "Could not queue the re-poll" })
+    onError: (error) => notify.apiError(error, { title: t("repollError") })
   });
 
   // Backend orders by `(sort_order, id)`; mirror it so a local refetch never
@@ -279,18 +277,18 @@ export function TournamentLinksTab({
   const columns: ColumnDef<TournamentLink>[] = [
     {
       accessorKey: "kind",
-      header: "Kind",
+      header: t("kind"),
       size: 112,
       cell: ({ row }) => (
-        <Badge variant="secondary">{KIND_LABELS[row.original.kind] ?? row.original.kind}</Badge>
+        <Badge variant="secondary">{t(`kinds.${row.original.kind}`)}</Badge>
       ),
       meta: columnMeta<TournamentLink>({
-        searchValue: (link) => KIND_LABELS[link.kind] ?? link.kind
+        searchValue: (link) => t(`kinds.${link.kind}`)
       })
     },
     {
       accessorKey: "label",
-      header: "Label",
+      header: t("label"),
       cell: ({ row }) => row.original.label ?? <span className="text-muted-foreground">—</span>,
       meta: columnMeta<TournamentLink>({ className: "max-w-[16rem] truncate" })
     },
@@ -317,21 +315,21 @@ export function TournamentLinksTab({
       // If these lists ever grow past a screenful, lift the arrow + reindex
       // handling from `StageManager`.
       accessorKey: "sort_order",
-      header: "Order",
+      header: t("order"),
       size: 80,
       meta: columnMeta<TournamentLink>({ align: "right", numeric: true })
     },
     {
       id: "state",
-      header: "State",
+      header: t("state"),
       size: 96,
       enableSorting: false,
       meta: columnMeta<TournamentLink>({ align: "center" }),
       cell: ({ row }) =>
         row.original.is_active ? (
-          <StatusIcon icon={CircleDot} label="Active" variant="success" />
+          <StatusIcon icon={CircleDot} label={t("active")} variant="success" />
         ) : (
-          <StatusIcon icon={Archive} label="Archived" variant="muted" />
+          <StatusIcon icon={Archive} label={t("archived")} variant="muted" />
         )
     },
     createKebabColumn<TournamentLink>(
@@ -343,23 +341,23 @@ export function TournamentLinksTab({
         const primarySortOrder = primaryStreamLinkSortOrder(link, links);
         return [
           {
-            label: "Make primary broadcast",
+            label: t("makePrimary"),
             icon: ArrowUpToLine,
             hidden: !canUpdate || primarySortOrder === null,
             onSelect: () =>
               primarySortOrder !== null &&
               makePrimaryMutation.mutate({ id: link.id, sortOrder: primarySortOrder })
           },
-          { label: "Edit", icon: Pencil, hidden: !canUpdate, onSelect: () => openEdit(link) },
+          { label: t("edit"), icon: Pencil, hidden: !canUpdate, onSelect: () => openEdit(link) },
           {
-            label: "Archive",
+            label: t("archive"),
             icon: Trash2,
             destructive: true,
             hidden: !canDelete || !link.is_active,
             onSelect: () => setDeletingLink(link)
           },
           {
-            label: "Restore",
+            label: t("restore"),
             icon: RotateCcw,
             hidden: !canUpdate || link.is_active,
             onSelect: () => restoreMutation.mutate(link.id)
@@ -372,13 +370,19 @@ export function TournamentLinksTab({
 
   const isDialogOpen = createDialogOpen || !!editingLink;
   const activeError = editingLink ? updateMutation.error : createMutation.error;
-  const fieldErrors = linkFieldErrors(activeError);
+  const fieldErrors = linkFieldErrors(activeError, t("duplicate"));
   const hasFieldErrors = Object.keys(fieldErrors).length > 0;
   // Field-level messages already say what to fix; the generic lead would only
   // repeat them. Anything else (403, 500, a network blip) still needs a line.
   const formErrorMessage = hasFieldErrors
     ? undefined
-    : entityFormError("link", !!editingLink, updateMutation.error, createMutation.error);
+    : entityFormError(
+        workspaceT("linkEntity"),
+        !!editingLink,
+        updateMutation.error,
+        createMutation.error,
+        (key, values) => workspaceT(key, values)
+      );
   const isFormDirty = isDialogOpen && hasUnsavedChanges(formData, getLinkForm(editingLink));
 
   const openCreate = () => {
@@ -422,7 +426,7 @@ export function TournamentLinksTab({
       {/* No title here: the settings section heading above already names this
           page. The header keeps only what acts on the table. */}
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-        <p className="text-sm text-muted-foreground">Lower sort order comes first.</p>
+        <p className="text-sm text-muted-foreground">{t("lowerFirst")}</p>
         <div className="flex shrink-0 gap-2">
           {/* Nothing to poll without an official stream link, so the button is
               absent rather than disabled — a disabled control invites a guess
@@ -439,13 +443,13 @@ export function TournamentLinksTab({
                 aria-hidden
                 className={`mr-2 h-4 w-4 ${repollMutation.isPending ? "animate-spin" : ""}`}
               />
-              Refresh live status
+              {t("refresh")}
             </Button>
           )}
           {canCreate && (
             <Button type="button" onClick={openCreate}>
               <Plus aria-hidden className="mr-2 h-4 w-4" />
-              Add link
+              {t("add")}
             </Button>
           )}
         </div>
@@ -454,7 +458,7 @@ export function TournamentLinksTab({
       <CardContent>
         {linksQuery.isError ? (
           <EmptyNote>
-            Could not load the links for this tournament.
+            {t("loadError")}
           </EmptyNote>
         ) : (
           <DataTable
@@ -462,7 +466,7 @@ export function TournamentLinksTab({
             isLoading={linksQuery.isLoading}
             columns={columns}
             getRowId={(link) => String(link.id)}
-            emptyMessage={`No links yet.${canCreate ? " Use “Add link” to add the first one." : ""}`}
+            emptyMessage={canCreate ? t("emptyWithAction") : t("empty")}
           />
         )}
       </CardContent>
@@ -470,22 +474,22 @@ export function TournamentLinksTab({
       <EntityFormDialog
         open={isDialogOpen}
         onOpenChange={onEntityDialogClose(closeForm)}
-        title={editingLink ? "Edit link" : "Add link"}
+        title={editingLink ? t("editTitle") : t("addTitle")}
         description={
           editingLink
-            ? "Update where this link points and how it is presented."
-            : "Add a Discord invite, broadcast, VOD, bracket or rules link to this tournament."
+            ? t("editDescription")
+            : t("addDescription")
         }
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
-        submittingLabel={editingLink ? "Saving link…" : "Adding link…"}
+        submittingLabel={editingLink ? t("saving") : t("adding")}
         errorMessage={formErrorMessage}
         fieldErrors={fieldErrors}
         isDirty={isFormDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={kindFieldId}>Kind *</Label>
+            <Label htmlFor={kindFieldId}>{t("kindRequired")}</Label>
             <Select
               value={formData.kind}
               onValueChange={(kind) =>
@@ -497,12 +501,12 @@ export function TournamentLinksTab({
                 aria-invalid={fieldErrors.kind ? true : undefined}
                 aria-describedby={fieldErrors.kind ? `${kindFieldId}-error` : undefined}
               >
-                <SelectValue placeholder="Pick a kind" />
+                <SelectValue placeholder={t("pickKind")} />
               </SelectTrigger>
               <SelectContent>
                 {LINK_KINDS.map((kind) => (
                   <SelectItem key={kind.value} value={kind.value}>
-                    {kind.label}
+                    {t(`kinds.${kind.value}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -513,12 +517,12 @@ export function TournamentLinksTab({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              A stream link is what the live-status poller watches.
+              {t("streamHint")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={urlFieldId}>URL *</Label>
+            <Label htmlFor={urlFieldId}>{t("urlRequired")}</Label>
             <Input
               id={urlFieldId}
               type="url"
@@ -537,12 +541,12 @@ export function TournamentLinksTab({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={labelFieldId}>Label</Label>
+            <Label htmlFor={labelFieldId}>{t("label")}</Label>
             <Input
               id={labelFieldId}
               value={formData.label}
               onChange={(event) => setFormData({ ...formData, label: event.target.value })}
-              placeholder="Main broadcast"
+              placeholder={t("mainBroadcast")}
               aria-invalid={fieldErrors.label ? true : undefined}
               aria-describedby={fieldErrors.label ? `${labelFieldId}-error` : undefined}
             />
@@ -552,12 +556,12 @@ export function TournamentLinksTab({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Shown instead of the raw URL. Leave empty to fall back to the kind.
+              {t("labelHint")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor={sortFieldId}>Sort order</Label>
+            <Label htmlFor={sortFieldId}>{t("orderLabel")}</Label>
             <Input
               id={sortFieldId}
               type="number"
@@ -577,7 +581,7 @@ export function TournamentLinksTab({
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Lower comes first; ties fall back to creation order.
+              {t("orderHint")}
             </p>
           </div>
         </div>
@@ -590,11 +594,13 @@ export function TournamentLinksTab({
           onConfirm={() => deactivateMutation.mutate(deletingLink.id)}
           pending={deactivateMutation.isPending}
           intent={{
-            title: "Archive link",
+            title: t("archiveTitle"),
             // Soft delete — the row survives with `is_active: false`. Saying
             // "permanently removed" here would be false.
-            description: `“${deletingLink.label ?? deletingLink.url}” disappears from the tournament page. Nothing is destroyed — you can restore it from this table.`,
-            confirmLabel: deactivateMutation.isPending ? "Archiving…" : "Archive",
+            description: t("archiveConfirmDescription", {
+              name: deletingLink.label ?? deletingLink.url
+            }),
+            confirmLabel: deactivateMutation.isPending ? t("archiving") : t("archive"),
             tone: "danger"
           }}
         />

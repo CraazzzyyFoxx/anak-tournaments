@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle, HelpCircle, MoreHorizontal, Users } from "lucide-react";
@@ -65,17 +66,17 @@ import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
  * all three. The backend answers 403/409/503 exactly (`verify_discord_guild`),
  * so the status IS the distinction.
  */
-const BIND_FAILURES: Record<number, string> = {
-  403: "Discord says you no longer administer that server. Ask its owner for Manage Server (or ownership), then try again.",
-  409: "Another workspace has already claimed that server. A Discord server belongs to one workspace, so ask the platform admins to release it first.",
-  503: "Discord could not be reached, so nothing was linked. Try again in a moment."
+const BIND_FAILURE_KEYS: Record<number, "bindForbidden" | "bindClaimed" | "bindUnreachable"> = {
+  403: "bindForbidden",
+  409: "bindClaimed",
+  503: "bindUnreachable"
 };
 
-function bindFailure(error: unknown): string {
+function bindFailure(error: unknown, t: (key: string) => string): string {
   const status = error instanceof ApiError ? error.status : 0;
-  return BIND_FAILURES[status] ?? getApiErrorMessage(error, "Could not link that Discord server.");
+  const key = BIND_FAILURE_KEYS[status];
+  return key ? t(key) : getApiErrorMessage(error, t("linkError"));
 }
-
 // Exactly what the bot does, and nothing else:
 //   View Channels 1024 + Read Message History 65536 — ingesting match logs
 //     (`attachment_processor.process_channel_history`),
@@ -130,6 +131,7 @@ function GuildMark({
 }
 
 function OwnerMark({ name, src }: Readonly<{ name: string; src?: string | null }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
       <Avatar className="size-5 rounded-full border">
@@ -137,7 +139,7 @@ function OwnerMark({ name, src }: Readonly<{ name: string; src?: string | null }
         <AvatarFallback className="bg-muted text-[10px] font-medium">{initials(name)}</AvatarFallback>
       </Avatar>
       <span className="truncate" title={name}>
-        Owner · <span className="text-foreground">{name}</span>
+        {t("owner")} <span className="text-foreground">{name}</span>
       </span>
     </span>
   );
@@ -150,7 +152,7 @@ function boundName(
 ): string {
   if (info?.name) return info.name;
   const fromPicker = picker.find((guild) => guild.guild_id === workspace.discord_guild_id);
-  return fromPicker?.name ?? "Discord server";
+  return fromPicker?.name ?? "Discord";
 }
 
 function boundIcon(
@@ -186,18 +188,19 @@ function ServerPicker({
   error: string | null;
   onBind: (guildId: string) => void;
 }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
   return (
     <div className="flex flex-col gap-3">
       {loading ? (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner />
-          Asking Discord which servers you administer…
+          {t("asking")}
         </p>
       ) : null}
 
       {failed ? (
         <p className="max-w-prose text-sm text-danger">
-          Discord could not be reached, so your servers could not be listed. Try again in a moment.
+          {t("unreachable")}
         </p>
       ) : null}
 
@@ -205,13 +208,12 @@ function ServerPicker({
           simply is not linked yet, and the fix is one screen away. */}
       {!loading && !failed && guilds.length === 0 ? (
         <div className="max-w-prose rounded-lg border border-dashed border-border p-4">
-          <p className="text-sm">You do not administer any Discord server that this account can see.</p>
+          <p className="text-sm">{t("none")}</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Link your Discord account (or reconnect it, so the server list is fresh) in account
-            settings, then come back. You need to own the server or have Manage Server on it.
+            {t("linkHelp")}
           </p>
           <Button asChild variant="outline" size="sm" className="mt-3">
-            <Link href="/?settings=profile">Open account settings</Link>
+            <Link href="/?settings=profile">{t("accountSettings")}</Link>
           </Button>
         </div>
       ) : null}
@@ -227,14 +229,14 @@ function ServerPicker({
                     {guild.name}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {guild.owner ? "You own this server" : "Manage Server"}
+                    {guild.owner ? t("owner") : t("linkServer")}
                   </p>
                 </div>
               </div>
               {guild.guild_id === boundId ? (
                 <StatusPill tone="success">
                   <CheckCircle aria-hidden className="size-3" />
-                  Linked
+                  {t("linked")}
                 </StatusPill>
               ) : (
                 <Button
@@ -244,7 +246,7 @@ function ServerPicker({
                   onClick={() => onBind(guild.guild_id)}
                 >
                   {pendingId === guild.guild_id ? <Spinner /> : null}
-                  {boundId ? "Link this instead" : "Link this server"}
+                  {t(boundId ? "linkThisInstead" : "linkServer")}
                 </Button>
               )}
             </li>
@@ -259,6 +261,13 @@ function ServerPicker({
       ) : null}
     </div>
   );
+}
+
+function announcementFailure(error: unknown, t: (key: string) => string): string {
+  const status = error instanceof ApiError ? error.status : 0;
+  if (status === 409) return t("announcementUnlinked");
+  if (status === 503) return t("announcementUnreachable");
+  return getApiErrorMessage(error, t("saveAnnouncementError"));
 }
 
 /**
@@ -284,6 +293,7 @@ function ServerCard({
   onUnlink: () => void;
   unlinking: boolean;
 }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
   const boundId = workspace.discord_guild_id as string;
   const invite = botInviteUrl(boundId);
   // `connected: false` is two different situations and `error` separates
@@ -310,7 +320,7 @@ function ServerCard({
                   <span className="inline-flex items-center gap-1">
                     <Users aria-hidden className="size-3" />
                     <span className="tabular-nums">
-                      {info.member_count === 1 ? "1 member" : `${info.member_count} members`}
+                      {info.member_count}
                     </span>
                   </span>
                 ) : null}
@@ -324,11 +334,11 @@ function ServerCard({
 
           <div className="flex items-center gap-1.5">
             <Button type="button" variant="outline" size="sm" onClick={onChange}>
-              Change server
+              {t("changeServer")}
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="More server actions">
+                <Button type="button" variant="ghost" size="icon" aria-label={t("moreActions")}>
                   <MoreHorizontal aria-hidden className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -336,7 +346,7 @@ function ServerCard({
                 {invite && !botMissing ? (
                   <DropdownMenuItem asChild>
                     <a href={invite} target="_blank" rel="noopener noreferrer">
-                      Re-invite bot
+                      {t("reinvite")}
                     </a>
                   </DropdownMenuItem>
                 ) : null}
@@ -345,7 +355,7 @@ function ServerCard({
                   disabled={unlinking}
                   onSelect={onUnlink}
                 >
-                  Unlink server
+                  {t("unlink")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -356,30 +366,30 @@ function ServerCard({
           {workspace.discord_guild_verified_at ? (
             <StatusPill tone="success">
               <CheckCircle aria-hidden className="size-3" />
-              Ownership verified
+              {t("ownershipVerified")}
             </StatusPill>
           ) : (
             <StatusPill tone="warning">
               <AlertTriangle aria-hidden className="size-3" />
-              Ownership not verified
+              {t("ownershipNotVerified")}
             </StatusPill>
           )}
           {botPresent ? (
             <StatusPill tone="success">
               <CheckCircle aria-hidden className="size-3" />
-              Bot in server
+              {t("botInServer")}
             </StatusPill>
           ) : null}
           {botMissing ? (
             <StatusPill tone="warning">
               <AlertTriangle aria-hidden className="size-3" />
-              Bot not in server
+              {t("botNotInServer")}
             </StatusPill>
           ) : null}
           {botUnknown ? (
             <StatusPill tone="neutral">
               <HelpCircle aria-hidden className="size-3" />
-              Bot status unknown
+              {t("botUnknown")}
             </StatusPill>
           ) : null}
         </div>
@@ -387,13 +397,12 @@ function ServerCard({
         {botMissing ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 p-3">
             <p className="max-w-prose text-sm text-warning">
-              The bot is not in this server, so it cannot read match logs, post announcements or
-              move mix players. Add it, then reload this page.
+              {t("botMissing")}
             </p>
             {invite ? (
               <Button asChild size="sm">
                 <a href={invite} target="_blank" rel="noopener noreferrer">
-                  Add bot to server
+                  {t("addBot")}
                 </a>
               </Button>
             ) : null}
@@ -409,15 +418,9 @@ function ServerCard({
  * server (`broadcastable_kinds`), so a kind added there appears here without a
  * release: unnamed, but never missing.
  */
-const KIND_LABELS: Record<string, string> = {
-  "registration.opened": "Registration opened",
-  "check_in.opened": "Check-in opened",
-  "encounter.scheduled": "Match scheduled"
-};
-
 const LOCALES = [
-  { value: "ru", label: "Russian" },
-  { value: "en", label: "English" }
+  { value: "ru" },
+  { value: "en" }
 ] as const;
 
 /**
@@ -425,17 +428,6 @@ const LOCALES = [
  * guild that was unlinked since the page loaded, Discord being unreachable,
  * and whatever the server said about the channel are three different fixes.
  */
-function announcementFailure(error: unknown): string {
-  const status = error instanceof ApiError ? error.status : 0;
-  if (status === 409) {
-    return "This workspace no longer has a linked Discord server, so there is no channel to post in. Reload the page and link one.";
-  }
-  if (status === 503) {
-    return "Discord could not be reached, so the channel could not be checked. Nothing was saved; try again in a moment.";
-  }
-  return getApiErrorMessage(error, "Could not save the announcement settings.");
-}
-
 /**
  * Where tournament events are announced, which of them, and in what language.
  *
@@ -445,6 +437,8 @@ function announcementFailure(error: unknown): string {
  * what the RPC takes.
  */
 function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
+  const contentT = useTranslations("adminWorkspace.content.fields");
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const configQuery = useQuery({
@@ -459,11 +453,11 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
     onSuccess: (saved) => {
       setError(null);
       queryClient.setQueryData(notificationQueryKeys.workspaceConfig(workspaceId), saved);
-      notify.success("Announcement settings saved");
+      notify.success(t("saved"));
     },
     onError: (cause) => {
-      setError(announcementFailure(cause));
-      notify.apiError(cause, { title: "Could not save the announcement settings" });
+      setError(announcementFailure(cause, (key) => t(key as never)));
+      notify.apiError(cause, { title: t("saveAnnouncementError") });
     }
   });
 
@@ -480,18 +474,16 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   return (
     <Card id="announcements">
       <CardContent className="pt-6">
-        <SettingGroup title="Tournament announcements">
+        <SettingGroup title={t("announcements")}>
           {!config ? (
             <p className="py-2 text-sm text-muted-foreground">
-              {configQuery.isError
-                ? "The announcement settings failed to load. Reload the page."
-                : "Loading announcement settings…"}
+              {configQuery.isError ? t("announcementLoadError") : t("announcementLoading")}
             </p>
           ) : (
             <>
               <SettingRow
-                label="Channel"
-                hint="With no channel the bot posts nothing. Hidden tournaments never reach it."
+                label={t("channel")}
+                hint={t("channelHint")}
               >
                 <div className="flex w-full items-center gap-2 md:max-w-sm">
                   <div className="min-w-0 flex-1">
@@ -501,8 +493,8 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                       value={config.discord_channel_id ?? ""}
                       onChange={(next) => update({ discord_channel_id: next === "" ? null : next })}
                       disabled={save.isPending}
-                      ariaLabel="Announcement Discord channel"
-                      placeholder="No channel"
+                      ariaLabel={t("announcementChannelAria")}
+                      placeholder={t("noChannel")}
                     />
                   </div>
                   {config.discord_channel_id ? (
@@ -513,15 +505,15 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                       disabled={save.isPending}
                       onClick={() => update({ discord_channel_id: null })}
                     >
-                      Clear
+                      {t("unlink")}
                     </Button>
                   ) : null}
                 </div>
               </SettingRow>
 
               <SettingRow
-                label="Events"
-                hint="Match scheduled is one post per match, so it is off by default."
+                label={t("events")}
+                hint={t("eventsHint")}
               >
                 <div className="flex flex-col gap-2">
                   {config.broadcastable_kinds.map((kind) => {
@@ -543,7 +535,7 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                           }
                         />
                         <Label htmlFor={id} className="text-sm font-normal">
-                          {KIND_LABELS[kind] ?? kind}
+                          {kind === "registration.opened" ? contentT("registrationOpened") : kind === "check_in.opened" ? contentT("checkInOpened") : contentT("encounterScheduled")}
                         </Label>
                       </div>
                     );
@@ -553,8 +545,8 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
 
               <SettingRow
                 htmlFor="announcement-locale"
-                label="Language"
-                hint="Times render in each reader's own timezone, whatever the language."
+                label={t("language")}
+                hint={t("languageHint")}
               >
                 <Select
                   value={config.locale}
@@ -567,7 +559,7 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                   <SelectContent>
                     {LOCALES.map((locale) => (
                       <SelectItem key={locale.value} value={locale.value}>
-                        {locale.label}
+                        {locale.value === "ru" ? t("russian") : t("english")}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -587,15 +579,16 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   );
 }
 
-const VOICE_PERMISSION_LABELS: Record<DiscordVoicePermission, string> = {
-  view_channel: "View Channel",
-  connect: "Connect",
-  move_members: "Move Members"
-};
-
-function missingLabel(missing: DiscordVoicePermission[] | null | undefined): string | null {
+function missingLabel(
+  t: (key: "viewChannel" | "connect" | "moveMembers") => string,
+  missing: DiscordVoicePermission[] | null | undefined
+): string | null {
   if (!missing || missing.length === 0) return null;
-  return missing.map((name) => VOICE_PERMISSION_LABELS[name]).join(", ");
+  return missing
+    .map((name) =>
+      name === "view_channel" ? t("viewChannel") : name === "connect" ? t("connect") : t("moveMembers")
+    )
+    .join(", ");
 }
 
 /**
@@ -608,6 +601,7 @@ function missingLabel(missing: DiscordVoicePermission[] | null | undefined): str
  * balancer page's dialog, so both views agree after a save.
  */
 function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
   const queryClient = useQueryClient();
   const configQuery = useQuery({
     queryKey: balancerQueryKeys.workspaceConfig(workspaceId),
@@ -629,7 +623,7 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
     (item) => item.type === "voice" && item.category_id === categoryId
   );
   const lacking = voices.flatMap((voice) => {
-    const missing = missingLabel(voice.missing_permissions);
+    const missing = missingLabel(t, voice.missing_permissions);
     return missing ? [`${voice.name}: ${missing}`] : [];
   });
 
@@ -645,21 +639,21 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: balancerQueryKeys.workspaceConfig(workspaceId) });
-      notify.success("Mix settings saved");
+      notify.success(t("saved"));
     },
-    onError: (cause) => notify.apiError(cause, { title: "Could not save the mix settings" })
+    onError: (cause) => notify.apiError(cause, { title: t("saveMixError") })
   });
 
   const busy = configQuery.isLoading || channelsQuery.isLoading || save.isPending;
-  const categoryMissing = missingLabel(category?.missing_permissions);
+  const categoryMissing = missingLabel(t, category?.missing_permissions);
 
   return (
     <Card>
       <CardContent className="pt-6">
-        <SettingGroup title="Mixes">
+        <SettingGroup title={t("mixes")}>
           <SettingRow
-            label="Announcement channel"
-            hint="Every mix posts its matchup here. A workspace admin can point a single mix elsewhere."
+            label={t("announcementChannel")}
+            hint={t("announcementChannelHint")}
           >
             <div className="flex w-full items-center gap-2 md:max-w-sm">
               <div className="min-w-0 flex-1">
@@ -668,8 +662,8 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                   value={channel}
                   onChange={(next) => save.mutate({ mix_discord_channel_id: next === "" ? null : next })}
                   disabled={configQuery.isLoading || save.isPending}
-                  ariaLabel="Mix Discord channel"
-                  placeholder="No channel"
+                  ariaLabel={t("mixChannelAria")}
+                  placeholder={t("noChannel")}
                 />
               </div>
               {channel ? (
@@ -680,15 +674,15 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                   disabled={save.isPending}
                   onClick={() => save.mutate({ mix_discord_channel_id: null })}
                 >
-                  Clear
+                  {t("unlink")}
                 </Button>
               ) : null}
             </div>
           </SettingRow>
 
           <SettingRow
-            label="Voice category"
-            hint="Mixes move each team into a voice of this category. The bot needs View Channel, Connect and Move Members on it."
+            label={t("voiceCategory")}
+            hint={t("voiceCategoryHint")}
           >
             <div className="flex w-full flex-col gap-1 md:max-w-sm">
               <div className="flex items-center gap-2">
@@ -705,8 +699,8 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                     }
                     disabled={busy}
                   >
-                    <SelectTrigger aria-label="Mix voice category">
-                      <SelectValue placeholder="No voice category" />
+                    <SelectTrigger aria-label={t("mixVoiceCategory")}>
+                      <SelectValue placeholder={t("noVoiceCategory")} />
                     </SelectTrigger>
                     <SelectContent>
                       {categories.map((item) => (
@@ -727,27 +721,27 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                       save.mutate({ mix_voice_category_id: null, mix_general_voice_channel_ids: [] })
                     }
                   >
-                    Clear
+                    {t("unlink")}
                   </Button>
                 ) : null}
               </div>
               {categoryMissing ? (
-                <p className="text-xs text-warning">Missing: {categoryMissing}</p>
+                  <p className="text-xs text-warning">{t("missing", { value: categoryMissing })}</p>
               ) : null}
             </div>
           </SettingRow>
 
           {categoryId !== "" ? (
             <SettingRow
-              label="General voices"
-              hint="Players wait in these. Every other voice in the category is a team voice."
+              label={t("generalVoices")}
+              hint={t("generalVoicesHint")}
             >
               <div className="flex w-full flex-col gap-2 md:max-w-sm">
                 {voices.length > 0 ? (
-                  <div role="group" aria-label="General voices" className="flex flex-wrap gap-1.5">
+                  <div role="group" aria-label={t("generalVoices")} className="flex flex-wrap gap-1.5">
                     {voices.map((voice) => {
                       const pressed = generalIds.includes(voice.id);
-                      const missing = missingLabel(voice.missing_permissions);
+                      const missing = missingLabel(t, voice.missing_permissions);
                       return (
                         <button
                           key={voice.id}
@@ -762,7 +756,7 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                                 : [...generalIds, voice.id]
                             })
                           }
-                          title={missing ? `Missing: ${missing}` : undefined}
+                          title={missing ? t("missing", { value: missing }) : undefined}
                           className={cn(
                             toggleVariants({ variant: "outline", size: "sm" }),
                             "rounded-full active:scale-[0.98]",
@@ -780,13 +774,11 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {channelsQuery.isLoading
-                      ? "Loading voice channels…"
-                      : "This category has no voice channels yet."}
+                    {channelsQuery.isLoading ? t("asking") : t("noVoiceCategory")}
                   </p>
                 )}
                 {lacking.length > 0 ? (
-                  <p className="text-xs text-warning">Missing on {lacking.join("; ")}</p>
+                  <p className="text-xs text-warning">{t("missingOn", { value: lacking.join("; ") })}</p>
                 ) : null}
               </div>
             </SettingRow>
@@ -808,6 +800,7 @@ function MixesCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
  * organiser can leave a server they were kicked from.
  */
 export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.discord");
   const settings = useWorkspaceSettingsForm(workspaceId, "discord");
   const { invalidate } = settings;
   const queryClient = useQueryClient();
@@ -836,11 +829,11 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
       setError(null);
       setPickerOpen(false);
       refresh();
-      notify.success("Discord server linked");
+      notify.success(t("linkedSuccess"));
     },
     onError: (cause) => {
-      setError(bindFailure(cause));
-      notify.apiError(cause, { title: "Could not link that Discord server" });
+      setError(bindFailure(cause, (key) => t(key as never)));
+      notify.apiError(cause, { title: t("linkError") });
     }
   });
 
@@ -850,10 +843,10 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
       setUnlinkOpen(false);
       setError(null);
       refresh();
-      notify.success("Discord server unlinked");
+      notify.success(t("unlinkedSuccess"));
     },
     onError: (cause) => {
-      notify.apiError(cause, { title: "Could not unlink that Discord server" });
+      notify.apiError(cause, { title: t("unlinkError") });
     }
   });
 
@@ -905,10 +898,9 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
               <Card>
                 <CardContent className="flex flex-col gap-4 pt-6">
                   <div>
-                    <h2 className={EYEBROW_CLASS}>Link a server</h2>
+                    <h2 className={EYEBROW_CLASS}>{t("linkServer")}</h2>
                     <p className="mt-1 max-w-prose text-sm text-muted-foreground">
-                      Pick the Discord server this workspace runs in. Announcements and mixes are
-                      set up once it is linked.
+                      {t("linkServerHelp")}
                     </p>
                   </div>
                   {picker}
@@ -919,10 +911,9 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
             <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
               <DialogContent className="max-w-xl">
                 <DialogHeader>
-                  <DialogTitle>Change server</DialogTitle>
+                  <DialogTitle>{t("changeTitle")}</DialogTitle>
                   <DialogDescription>
-                    Channels picked for announcements and mixes belong to the current server and
-                    stop working after a switch.
+                    {t("switchWarning")}
                   </DialogDescription>
                 </DialogHeader>
                 {picker}
@@ -934,9 +925,9 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
               onOpenChange={setUnlinkOpen}
               pending={unlink.isPending}
               intent={{
-                title: "Unlink Discord server",
-                description: `${name} stops serving ${workspace.name} the moment you confirm. Boosty subscriber roles, match logs, announcements and mixes have nowhere to go until you link a server again.`,
-                confirmLabel: "Unlink server",
+                title: t("unlinkTitle"),
+                description: t("unlinkDescription", { name, workspace: workspace.name }),
+                confirmLabel: t("unlink"),
                 tone: "danger"
               }}
               onConfirm={() => unlink.mutate()}

@@ -3,6 +3,7 @@
 // One claim: an assigned team slot can be removed — through the screen's single
 // confirmation, and never on an empty slot.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,7 @@ import type { Team } from "@/types/team.types";
 import type { Stage, StageItem } from "@/types/tournament.types";
 
 import { StageItemsSection } from "./StageItemsSection";
+import en from "@/i18n/messages/en.json";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -112,8 +114,9 @@ async function mount(stage: Stage) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
-      <QueryClientProvider client={client}>
-        <StageItemsSection
+      <NextIntlClientProvider locale="en" messages={en}>
+        <QueryClientProvider client={client}>
+          <StageItemsSection
           stage={stage}
           stages={[stage]}
           teams={[team]}
@@ -123,8 +126,9 @@ async function mount(stage: Stage) {
           onChanged={() => {}}
           onRequestDeleteItem={() => {}}
           onRequestRemoveInput={(input, label) => requestRemoveInput(input, label)}
-        />
-      </QueryClientProvider>
+          />
+        </QueryClientProvider>
+      </NextIntlClientProvider>
     );
   });
   await settle();

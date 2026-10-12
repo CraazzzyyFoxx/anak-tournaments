@@ -1,6 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
@@ -25,8 +26,9 @@ export interface PhaseStripProps {
  * misclick on a progress bar cannot start a draft.
  */
 export function PhaseStrip({ phases }: Readonly<PhaseStripProps>) {
+  const t = useTranslations("kit.actions");
   return (
-    <ol aria-label="Phases" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+    <ol aria-label={t("phases")} className="flex flex-wrap items-center gap-x-2 gap-y-1">
       {phases.map((phase, index) => (
         <li key={phase.key} className="flex items-center gap-2">
           {index > 0 ? (

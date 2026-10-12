@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
@@ -39,6 +40,7 @@ export function LadderBar({
   tone = "neutral",
   className
 }: Readonly<LadderBarProps>) {
+  const t = useTranslations("adminSettings.divisions");
   const [even, odd] = SEGMENT_TONE[tone];
   const large = size === "lg";
 
@@ -52,7 +54,7 @@ export function LadderBar({
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <ol
-        aria-label={`${bands.length} divisions over ${RANK_COUNT} OW ranks`}
+        aria-label={t("ladderBarLabel", { divisions: bands.length, ranks: RANK_COUNT })}
         className={cn("flex w-full gap-px", large ? "h-9" : "h-1.5")}
       >
         {segments.map((segment) => {
@@ -63,8 +65,17 @@ export function LadderBar({
               style={{ flexGrow: segment.size }}
               title={
                 band
-                  ? `${band.number} · ${band.name} — ${owRangeLabel(band)}`
-                  : `${rankLabel(segment.from)}${segment.size > 1 ? ` – ${rankLabel(segment.from + segment.size - 1)}` : ""} — no division`
+                  ? t("ladder.bandTitle", {
+                      number: band.number,
+                      name: band.name,
+                      range: owRangeLabel(band) ?? t("ladder.notLinked")
+                    })
+                  : t("ladder.noDivisionTitle", {
+                      range:
+                        segment.size > 1
+                          ? `${rankLabel(segment.from)} – ${rankLabel(segment.from + segment.size - 1)}`
+                          : rankLabel(segment.from)
+                    })
               }
               className={cn(
                 "flex min-w-0 basis-0 items-center justify-center overflow-hidden",

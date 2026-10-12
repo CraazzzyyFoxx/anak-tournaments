@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { Gavel, ListChecks, Pencil, Upload } from "lucide-react";
 
 import { AuditTrailButton } from "@/components/kit/AuditTrailSheet";
@@ -29,6 +30,9 @@ export function EncounterInspectorPanel({
   encounter: Encounter;
   workspaceId: number;
 }>) {
+  const t = useTranslations("adminMatches.encounters");
+  const commonT = useTranslations("adminMatches.common");
+  const reportsT = useTranslations("adminMatches.reports");
   const reportsQuery = useQuery({
     queryKey: encounterQueryKeys.reportsByEncounter(encounter.id, workspaceId),
     queryFn: () =>
@@ -54,42 +58,42 @@ export function EncounterInspectorPanel({
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
-        <InspectorField label="Teams">
+        <InspectorField label={t("teams")}>
           <span className="flex items-center gap-1.5">
-            <TeamName team={encounter.home_team} fallback="TBD" size="xs" />
-            <span className="text-muted-foreground">vs</span>
-            <TeamName team={encounter.away_team} fallback="TBD" size="xs" />
+            <TeamName team={encounter.home_team} fallback={commonT("unknown")} size="xs" />
+            <span className="text-muted-foreground">{t("vs")}</span>
+            <TeamName team={encounter.away_team} fallback={commonT("unknown")} size="xs" />
           </span>
         </InspectorField>
-        <InspectorField label="Score">
+        <InspectorField label={t("score")}>
           <span className="font-mono tabular-nums">
             {encounter.score.home} &ndash; {encounter.score.away}
           </span>
         </InspectorField>
-        <InspectorField label="Status">
+        <InspectorField label={t("status")}>
           <EncounterStatusCell status={encounter.status} />
         </InspectorField>
-        <InspectorField label="Result">{encounter.result_status}</InspectorField>
-        <InspectorField label="Best of">
+        <InspectorField label={t("result")}>{t(`resultStatus.${encounter.result_status}`)}</InspectorField>
+        <InspectorField label={t("bestOf")}>
           <span className="tabular-nums">{encounter.best_of}</span>
         </InspectorField>
-        <InspectorField label="Logs">{encounter.has_logs ? "Attached" : "None"}</InspectorField>
+        <InspectorField label={t("logs")}>{encounter.has_logs ? t("attached") : t("none")}</InspectorField>
       </div>
 
       <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>Captain reports</p>
+        <p className={EYEBROW_CLASS}>{t("captainReports")}</p>
         {reportsQuery.isLoading ? (
-          <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
+          <p className="mt-2 text-xs text-muted-foreground">{t("loading")}</p>
         ) : reportRow == null ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            No captain has reported this encounter.
+            {t("noCaptainReport")}
           </p>
         ) : (
           <ul className="mt-2 space-y-1 text-sm">
             {(
               [
-                ["Home", reportRow.home_report],
-                ["Away", reportRow.away_report]
+                [reportsT("home"), reportRow.home_report],
+                [reportsT("away"), reportRow.away_report]
               ] as const
             ).map(([side, report]) => (
               <li key={side} className="flex items-center gap-2">
@@ -100,11 +104,11 @@ export function EncounterInspectorPanel({
                       {report.home_score} &ndash; {report.away_score}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {report.reporter_name ?? "unknown"}
+                      {report.reporter_name ?? commonT("unknown")}
                     </span>
                   </>
                 ) : (
-                  <span className="text-xs italic text-muted-foreground">no report</span>
+                  <span className="text-xs italic text-muted-foreground">{commonT("noReport")}</span>
                 )}
               </li>
             ))}
@@ -113,12 +117,12 @@ export function EncounterInspectorPanel({
       </section>
 
       <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>Parsed maps ({parsedMapsQuery.data?.total ?? 0})</p>
+        <p className={EYEBROW_CLASS}>{t("parsedMaps", { count: parsedMapsQuery.data?.total ?? 0 })}</p>
         {parsedMapsQuery.isLoading ? (
-          <p className="mt-2 text-xs text-muted-foreground">Loading…</p>
+          <p className="mt-2 text-xs text-muted-foreground">{t("loading")}</p>
         ) : (parsedMapsQuery.data?.results.length ?? 0) === 0 ? (
           <p className="mt-2 text-xs text-muted-foreground">
-            No map has been parsed for this encounter yet.
+            {t("noParsedMap")}
           </p>
         ) : (
           <ul className="mt-2 space-y-1 text-sm">
@@ -157,6 +161,7 @@ export function EncounterInspectorActions({
   onEdit: (encounter: Encounter) => void;
   onUploaded: () => void;
 }>) {
+  const t = useTranslations("adminMatches.encounters");
   return (
     <>
       {encounter.format === "ffa" ? null : (
@@ -166,14 +171,14 @@ export function EncounterInspectorActions({
               cannot reach. */}
           <Link href={pregameRoomHref(encounter.tournament_id, encounter.id, returnTo)}>
             <ListChecks aria-hidden className="size-3.5" />
-            Open pre-game room
+            {t("openRoom")}
           </Link>
         </Button>
       )}
       {canUpdate ? (
         <Button variant="outline" size="sm" onClick={() => onEdit(encounter)}>
           <Pencil aria-hidden className="size-3.5" />
-          Edit
+          {t("edit")}
         </Button>
       ) : null}
       {canUpdate ? (
@@ -185,7 +190,7 @@ export function EncounterInspectorActions({
           trigger={
             <Button variant="outline" size="sm">
               <Upload aria-hidden className="size-3.5" />
-              Upload log
+              {t("uploadLog")}
             </Button>
           }
         />
@@ -198,7 +203,7 @@ export function EncounterInspectorActions({
             href={`${reportsHref}${reportsHref.includes("?") ? "&" : "?"}search=${encodeURIComponent(encounter.name)}&id=${encounter.id}`}
           >
             <Gavel aria-hidden className="size-3.5" />
-            Resolve result
+            {t("resolve")}
           </Link>
         </Button>
       ) : null}

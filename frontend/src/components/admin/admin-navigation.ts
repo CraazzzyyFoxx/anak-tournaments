@@ -82,12 +82,12 @@ export type AdminNavGroup = {
  * first of these the caller may actually open.
  */
 export const accessSectionViews: AdminNavView[] = [
-  { key: "accounts", label: "Accounts", href: "/admin/access/accounts" },
-  { key: "roles", label: "Roles", href: "/admin/access/roles" },
-  { key: "permissions", label: "Permissions", href: "/admin/access/permissions" },
-  { key: "api-keys", label: "API keys", href: "/admin/access/api-keys" },
-  { key: "oauth", label: "OAuth", href: "/admin/access/oauth" },
-  { key: "sessions", label: "Sessions", href: "/admin/access/sessions" },
+  { key: "accounts", label: "nav.accounts", href: "/admin/access/accounts" },
+  { key: "roles", label: "nav.roles", href: "/admin/access/roles" },
+  { key: "permissions", label: "nav.permissions", href: "/admin/access/permissions" },
+  { key: "api-keys", label: "nav.apiKeys", href: "/admin/access/api-keys" },
+  { key: "oauth", label: "nav.oauth", href: "/admin/access/oauth" },
+  { key: "sessions", label: "nav.sessions", href: "/admin/access/sessions" },
 ];
 
 /**
@@ -109,30 +109,30 @@ export const adminNavigationGroups: AdminNavGroup[] = [
     title: "",
     items: [
       {
-        title: "Dashboard",
+        title: "nav.dashboard",
         href: "/admin",
         icon: LayoutDashboard,
-        description: "Operations overview, live issues, and priority actions.",
+        description: "nav.dashboardDescription",
         permissions: overviewPermissions,
         workspaceAdminVisible: true,
       },
       {
-        title: "Tournaments",
+        title: "nav.tournaments",
         href: "/admin/tournaments",
         icon: Trophy,
-        description: "Manage tournament lifecycle, stages, and schedules.",
+        description: "nav.tournamentsDescription",
         permissions: ["tournament.read"],
       },
     ],
   },
   {
-    title: "DATA",
+    title: "nav.data",
     items: [
       {
-        title: "People",
+        title: "nav.people",
         href: "/admin/people",
         icon: UserCircle,
-        description: "Player identities, their accounts and their participations.",
+        description: "nav.peopleDescription",
         // `player.read`'s cross-tournament table became the Participations tab
         // of a person's card, so the old /admin/players aliases live here now.
         aliases: ["identities", "discord", "battletag", "twitch", "players", "participations"],
@@ -145,11 +145,11 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         // GLOBAL grant, which is why the page gates its actions on `hasPermission`.
       },
       {
-        title: "Ranks",
+        title: "nav.ranks",
         href: "/admin/ranks",
         icon: Gauge,
         description:
-          "Every rank value in the workspace — canon, author books, OW, hidden and the computed effective numbers.",
+          "nav.ranksDescription",
         // "rank" belongs to Collectors; aliases are unique across the sidebar.
         aliases: ["canon", "author ranks", "hidden rating", "effective", "sr", "mmr"],
         // `team.update`, not `rank.read`: the table exposes each organiser's
@@ -158,47 +158,47 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         permissions: ["team.update"],
       },
       {
-        title: "Teams",
+        title: "nav.teams",
         href: "/admin/teams",
         icon: Users,
-        description: "Review rosters, imports, and team readiness.",
+        description: "nav.teamsDescription",
         permissions: ["team.read"],
       },
       {
-        title: "Matches",
+        title: "nav.matches",
         href: "/admin/matches",
         icon: Swords,
         description:
-          "Encounters, standings, captain reports, parsed maps and logs across the workspace.",
+          "nav.matchesDescription",
         aliases: ["encounters", "match reports", "parsed maps", "logs", "results"],
         views: [
-          { key: "encounters", label: "Encounters", href: "/admin/matches?view=encounters" },
-          { key: "standings", label: "Standings", href: "/admin/matches?view=standings" },
-          { key: "reports", label: "Reports", href: "/admin/matches?view=reports" },
-          { key: "parsed", label: "Parsed maps", href: "/admin/matches?view=parsed" },
-          { key: "logs", label: "Logs", href: "/admin/matches?view=logs" },
+          { key: "encounters", label: "nav.encounters", href: "/admin/matches?view=encounters" },
+          { key: "standings", label: "nav.standings", href: "/admin/matches?view=standings" },
+          { key: "reports", label: "nav.reports", href: "/admin/matches?view=reports" },
+          { key: "parsed", label: "nav.parsedMaps", href: "/admin/matches?view=parsed" },
+          { key: "logs", label: "nav.logs", href: "/admin/matches?view=logs" },
         ],
         permissions: ["match.read"],
       },
       {
-        title: "Achievements",
+        title: "nav.achievements",
         href: "/admin/achievements",
         icon: Award,
-        description: "Manage achievements with condition tree evaluation engine.",
+        description: "nav.achievementsDescription",
         permissions: ["achievement.read"],
       },
     ],
   },
   {
-    title: "WORKSPACE",
+    title: "nav.workspace",
     items: [
       {
-        title: "Settings",
+        title: "nav.settings",
         href: "/admin/settings/general",
         activePrefix: "/admin/settings",
         icon: Settings2,
         description:
-          "Workspace identity, branding, divisions, balancer statuses, sub-roles and entitlements.",
+          "nav.settingsDescription",
         aliases: [
           "divisions",
           "balancer",
@@ -214,36 +214,36 @@ export const adminNavigationGroups: AdminNavGroup[] = [
           "subscription providers",
         ],
         views: [
-          { key: "general", label: "General", href: "/admin/settings/general" },
-          { key: "branding", label: "Branding", href: "/admin/settings/branding" },
-          { key: "visibility", label: "Visibility & SEO", href: "/admin/settings/visibility" },
-          { key: "domain", label: "Domain", href: "/admin/settings/domain" },
-          { key: "discord", label: "Discord", href: "/admin/settings/discord" },
-          { key: "divisions", label: "Divisions", href: "/admin/settings/divisions" },
-          { key: "statuses", label: "Balancer statuses", href: "/admin/settings/statuses" },
-          { key: "sub-roles", label: "Sub-roles", href: "/admin/settings/sub-roles" },
-          { key: "subscriptions", label: "Subscriptions", href: "/admin/settings/subscriptions" },
+          { key: "general", label: "nav.general", href: "/admin/settings/general" },
+          { key: "branding", label: "nav.branding", href: "/admin/settings/branding" },
+          { key: "visibility", label: "nav.visibilitySeo", href: "/admin/settings/visibility" },
+          { key: "domain", label: "nav.domain", href: "/admin/settings/domain" },
+          { key: "discord", label: "nav.discord", href: "/admin/settings/discord" },
+          { key: "divisions", label: "nav.divisions", href: "/admin/settings/divisions" },
+          { key: "statuses", label: "nav.balancerStatuses", href: "/admin/settings/statuses" },
+          { key: "sub-roles", label: "nav.subRoles", href: "/admin/settings/sub-roles" },
+          { key: "subscriptions", label: "nav.subscriptions", href: "/admin/settings/subscriptions" },
         ],
         workspaceAdminVisible: true,
       },
       {
-        title: "Members",
+        title: "nav.members",
         href: "/admin/members",
         icon: UserCog,
-        description: "Manage workspace member access and roles.",
+        description: "nav.membersDescription",
         workspaceAdminVisible: true,
       },
     ],
   },
   {
-    title: "PLATFORM",
+    title: "nav.platform",
     items: [
       {
-        title: "Game content",
+        title: "nav.gameContent",
         href: "/admin/content/heroes",
         activePrefix: "/admin/content",
         icon: Gamepad2,
-        description: "Heroes, maps, gamemodes, and the queue of unresolved log names.",
+        description: "nav.gameContentDescription",
         aliases: [
           "heroes",
           "maps",
@@ -254,19 +254,19 @@ export const adminNavigationGroups: AdminNavGroup[] = [
           "alias queue",
         ],
         views: [
-          { key: "heroes", label: "Heroes", href: "/admin/content/heroes" },
-          { key: "maps", label: "Maps", href: "/admin/content/maps" },
-          { key: "gamemodes", label: "Gamemodes", href: "/admin/content/gamemodes" },
-          { key: "unresolved", label: "Unresolved names", href: "/admin/content/unresolved" },
+          { key: "heroes", label: "nav.heroes", href: "/admin/content/heroes" },
+          { key: "maps", label: "nav.maps", href: "/admin/content/maps" },
+          { key: "gamemodes", label: "nav.gamemodes", href: "/admin/content/gamemodes" },
+          { key: "unresolved", label: "nav.unresolvedNames", href: "/admin/content/unresolved" },
         ],
         superuserOnly: true,
       },
       {
-        title: "Collectors",
+        title: "nav.collectors",
         href: "/admin/collectors/rank",
         activePrefix: "/admin/collectors",
         icon: Activity,
-        description: "Rank, subscription and stream collection health, history and configuration.",
+        description: "nav.collectorsDescription",
         // `canAccessAdminRoute` treats a permission list as OR
         // (`permissions.some`, `hooks/usePermissions.ts`), so one entry covers
         // all three collectors. `globalOnly` belongs to the streams prefix in
@@ -274,56 +274,56 @@ export const adminNavigationGroups: AdminNavGroup[] = [
         // `rank.read` holder still has a collector to look at.
         aliases: ["rank", "subscriptions", "boosty", "streams", "poller", "live", "overfast"],
         views: [
-          { key: "rank", label: "Rank", href: "/admin/collectors/rank" },
-          { key: "subscriptions", label: "Subscriptions", href: "/admin/collectors/subscriptions" },
-          { key: "streams", label: "Streams", href: "/admin/collectors/streams" },
+          { key: "rank", label: "nav.ranks", href: "/admin/collectors/rank" },
+          { key: "subscriptions", label: "nav.subscriptions", href: "/admin/collectors/subscriptions" },
+          { key: "streams", label: "nav.streams", href: "/admin/collectors/streams" },
         ],
         permissions: ["rank.read", "subscription.read", "stream.read"],
       },
       {
-        title: "Access",
+        title: "nav.access",
         href: "/admin/access",
         activePrefix: "/admin/access",
         icon: Shield,
-        description: "Staff accounts, roles, permissions, API keys, OAuth and sessions.",
+        description: "nav.accessDescription",
         aliases: ["staff", "roles", "permissions", "api keys", "sessions", "oauth", "accounts"],
         views: accessSectionViews,
         permissions: accessAdminPermissions,
         workspaceAdminVisible: true,
       },
       {
-        title: "Workspaces",
+        title: "nav.workspaces",
         href: "/admin/workspaces",
         icon: Building2,
-        description: "Manage workspaces and their settings.",
+        description: "nav.workspacesDescription",
         workspaceAdminVisible: true,
       },
       {
-        title: "Announcements",
+        title: "nav.announcements",
         href: "/admin/announcements",
         icon: Megaphone,
         description:
-          "Notices for this workspace, and the platform-wide banner every visitor sees.",
+          "nav.announcementsDescription",
         aliases: ["announcement", "banner", "notice", "broadcast"],
         permissions: ["announcement.read"],
         workspaceAdminVisible: true,
       },
       {
-        title: "Notifications",
+        title: "nav.notifications",
         href: "/admin/notifications",
         icon: Bell,
         description:
-          "System notifications this workspace produced — invites, decisions, disputes — and the retire that takes one out of every inbox.",
+          "nav.notificationsDescription",
         aliases: ["notification", "inbox", "retire", "registration approved"],
         permissions: ["notification.read"],
         workspaceAdminVisible: true,
       },
       {
-        title: "Audit log",
+        title: "nav.auditLog",
         href: "/admin/audit",
         icon: History,
         description:
-          "Who changed what, and when — roles, API keys, tournaments, workspace settings.",
+          "nav.auditLogDescription",
         aliases: ["audit", "who changed this", "change log", "trail"],
         permissions: ["audit.read"],
         workspaceAdminVisible: true,

@@ -4,6 +4,7 @@ import type { Header } from "@tanstack/react-table";
 import type { Ref, ThHTMLAttributes } from "react";
 
 import { TableHead } from "@/components/ui/table";
+import { useTranslations } from "next-intl";
 import { cn } from "@/components/data-table/host";
 
 export type AdminTableHeadProps<TData> = {
@@ -27,6 +28,7 @@ export function AdminTableHead<TData>({
   ref,
   ...rest
 }: Readonly<AdminTableHeadProps<TData>>) {
+  const t = useTranslations("kitTable.dataTableExtra");
   const resizeHandler = header.getResizeHandler();
   return (
     <TableHead ref={ref} {...rest} className={cn(className, "relative select-none")} style={style}>
@@ -35,8 +37,8 @@ export function AdminTableHead<TData>({
         <div
           role="separator"
           aria-orientation="vertical"
-          aria-label={`Resize ${header.column.id} column`}
-          title="Drag to resize, double-click to reset"
+          aria-label={t("resize", { id: header.column.id })}
+          title={t("resizeHint")}
           onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={resizeHandler}
           onTouchStart={resizeHandler}

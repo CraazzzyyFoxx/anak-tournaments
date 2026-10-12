@@ -14,6 +14,7 @@ import { AccountRoles } from "@/components/admin/access/AccountRoles";
 import { Skeleton } from "@/components/ui/skeleton";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { rbacService } from "@/services/rbac.service";
+import { useTranslations } from "next-intl";
 
 export interface AccountInspectorProps {
   userId: number;
@@ -40,6 +41,7 @@ export function AccountInspector({
   canUpdateAccount,
   canReadPeople
 }: Readonly<AccountInspectorProps>) {
+  const t = useTranslations("adminAccess.accountInspectorUi");
   const accountQuery = useQuery({
     queryKey: accessQueryKeys.userDetail(userId),
     queryFn: () => rbacService.getUser(userId)
@@ -58,8 +60,7 @@ export function AccountInspector({
   if (!account) {
     return (
       <p className="text-sm text-muted-foreground">
-        Could not load this account. Close the inspector and reopen it — the account may have just
-        been deleted.
+        {t("loadError")}
       </p>
     );
   }
@@ -69,8 +70,11 @@ export function AccountInspector({
       <div className="space-y-2">
         <AccountStatusPills account={account} />
         <p className="text-xs tabular-nums text-muted-foreground">
-          <span className="font-mono">#{account.id}</span> · Joined{" "}
-          {account.created_at.slice(0, 10)}
+          {t.rich("summary", {
+            accountId: account.id,
+            date: account.created_at.slice(0, 10),
+            num: (chunks) => <span className="font-mono">#{chunks}</span>
+          })}
         </p>
       </div>
       <AccountRoles userId={account.id} roles={account.roles} canEdit={canAssignRoles} />

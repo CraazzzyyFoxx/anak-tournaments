@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { Download, Rows3, Rows4, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,6 @@ import { CategorizedColumnPicker } from "@/components/ui/categorized-column-pick
 import type { AdminColumnCategory } from "@/components/data-table/columns";
 import { AdminSavedViews } from "@/components/data-table/SavedViews";
 import type { AdminTableDensity } from "@/components/data-table/useTablePreferences";
-
-const COLUMN_CATEGORY_LABELS: Record<AdminColumnCategory, string> = {
-  core: "Core",
-  meta: "Meta",
-  admin: "Admin"
-};
 
 /** One offerable column, as the picker and the visibility store see it. */
 export interface PickerColumn {
@@ -83,6 +78,7 @@ export function AdminTableToolbar({
   onResetColumns,
   actions
 }: Readonly<AdminTableToolbarProps>) {
+  const t = useTranslations("kitTable.dataTableExtra");
   return (
     <div className="flex flex-wrap items-center gap-3 border-b border-border/40 px-4 py-2.5">
       {showSearch ? (
@@ -106,15 +102,15 @@ export function AdminTableToolbar({
       {isRefreshing ? (
         <output className="flex shrink-0 items-center text-muted-foreground">
           <Spinner className="size-3" />
-          <span className="sr-only">Refreshing results…</span>
+          <span className="sr-only">{t("refreshing")}</span>
         </output>
       ) : null}
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {bulkActions}
         {offPageSelected > 0 ? (
-          <span className="text-xs tabular-nums text-muted-foreground" title="Selected rows not on this page are included in bulk actions">
-            {offPageSelected} on other pages
+          <span className="text-xs tabular-nums text-muted-foreground" title={t("selectedRowsOtherPages")}>
+            {t("selectedOnOtherPages", { count: offPageSelected })}
           </span>
         ) : null}
         <Button
@@ -124,10 +120,10 @@ export function AdminTableToolbar({
           className="h-8"
           onClick={onExportCsv}
           disabled={!canExport}
-          title={selectedCount > 0 ? `Export ${selectedCount} selected rows as CSV` : "Export the current view as CSV"}
+          title={selectedCount > 0 ? t("exportSelected", { count: selectedCount }) : t("exportCurrent")}
         >
           <Download aria-hidden className="size-3.5" />
-          CSV
+          {t("csv")}
         </Button>
         <Button
           type="button"
@@ -135,8 +131,8 @@ export function AdminTableToolbar({
           size="sm"
           className="h-8 w-8 px-0"
           aria-pressed={density === "compact"}
-          aria-label={density === "compact" ? "Comfortable rows" : "Compact rows"}
-          title={density === "compact" ? "Comfortable rows" : "Compact rows"}
+          aria-label={density === "compact" ? t("comfortableRows") : t("compactRows")}
+          title={density === "compact" ? t("comfortableRows") : t("compactRows")}
           onClick={onToggleDensity}
         >
           {density === "compact" ? <Rows3 aria-hidden className="size-3.5" /> : <Rows4 aria-hidden className="size-3.5" />}
@@ -149,12 +145,12 @@ export function AdminTableToolbar({
           <CategorizedColumnPicker<AdminColumnCategory, PickerColumn>
             columns={pickerColumns}
             categories={["core", "meta", "admin"]}
-            categoryLabel={(category) => COLUMN_CATEGORY_LABELS[category]}
+            categoryLabel={(category) => t(category)}
             visibility={visibility}
             onToggle={onToggleColumn}
             onReset={onResetColumns}
-            triggerLabel="Columns"
-            resetLabel="Reset to defaults"
+            triggerLabel={t("columns")}
+            resetLabel={t("resetColumns")}
             isMandatory={(id) => pickerColumns.some((column) => column.id === id && column.mandatory)}
           />
         ) : null}

@@ -53,9 +53,6 @@ let globalPermissions: string[] = [
 let superuser = false;
 let workspaceAdmin = false;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key
-}));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString().slice(0, 10) })
 }));

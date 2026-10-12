@@ -7,6 +7,7 @@
  */
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,9 +22,10 @@ interface CatalogNameFieldProps {
 }
 
 export function CatalogNameField({ id, value, onChange, placeholder }: Readonly<CatalogNameFieldProps>) {
+  const t = useTranslations("adminWorkspace.content.fields");
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>Name *</Label>
+      <Label htmlFor={id}>{t("name")}</Label>
       <Input
         id={id}
         value={value}
@@ -51,9 +53,10 @@ export function CatalogAliasesField({
   placeholder,
   helperText,
 }: Readonly<CatalogAliasesFieldProps>) {
+  const t = useTranslations("adminWorkspace.content.fields");
   return (
     <div className="space-y-2">
-      <Label htmlFor={id}>Aliases</Label>
+      <Label htmlFor={id}>{t("aliases")}</Label>
       <Textarea
         id={id}
         value={formatAliasesInput(aliases ?? [])}

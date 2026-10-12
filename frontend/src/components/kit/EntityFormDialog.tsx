@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -55,13 +56,14 @@ export function EntityFormDialog({
   errorMessage,
   fieldErrors,
   isDirty = false,
-  dirtyTitle = "Discard unsaved changes?",
-  dirtyDescription = "You have unsaved changes in this form. Leave now and the current edits will be lost.",
+  dirtyTitle,
+  dirtyDescription,
   guardNavigation = true,
   contentClassName,
   children,
   isReadOnly = false,
 }: Readonly<EntityFormDialogProps>) {
+  const t = useTranslations("kit.entityForm");
   const router = useRouter();
   const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const [pendingNavigationHref, setPendingNavigationHref] = useState<string | null>(null);
@@ -153,7 +155,7 @@ export function EntityFormDialog({
               >
                 <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="space-y-1">
-                  <p className="font-medium">Could not save your changes.</p>
+                  <p className="font-medium">{t("couldNotSave")}</p>
                   {errorMessage ? <p>{errorMessage}</p> : null}
                   {fieldErrorEntries.length > 0 ? (
                     <ul className="list-inside list-disc space-y-0.5">
@@ -168,7 +170,7 @@ export function EntityFormDialog({
 
             <DialogFooter className="mt-4 shrink-0 border-t border-border/60 pt-4">
               <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
-                {isReadOnly && cancelLabel === "Cancel" ? "Close" : cancelLabel}
+                {isReadOnly && cancelLabel === "Cancel" ? t("close") : cancelLabel}
               </Button>
               {!isReadOnly && (
                 <Button type="submit" disabled={isSubmitting}>
@@ -194,9 +196,9 @@ export function EntityFormDialog({
           if (!next) setPendingNavigationHref(null);
         }}
         intent={{
-          title: dirtyTitle,
-          description: dirtyDescription,
-          confirmLabel: "Discard changes",
+          title: dirtyTitle ?? t("discardChanges"),
+          description: dirtyDescription ?? t("unsavedDescription"),
+          confirmLabel: t("discardChanges"),
           tone: "danger"
         }}
         onConfirm={handleDiscardConfirm}

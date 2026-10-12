@@ -99,8 +99,6 @@ const OWNER_PROFILE = {
 const listRolesAll = vi.fn();
 const listPermissionsAll = vi.fn();
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
-
 vi.mock("@/services/rbac.service", () => ({
   rbacService: {
     listRolesAll: (...args: unknown[]) => listRolesAll(...args),

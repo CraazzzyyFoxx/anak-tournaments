@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 
 const SHAPE_CLASS = {
   square: "rounded-md",
@@ -27,6 +28,7 @@ export function AssetPreview({
   shape = "square",
   className
 }: Readonly<AssetPreviewProps>) {
+  const t = useTranslations("adminWorkspace.assetPreview");
   const trimmed = name.trim();
   const accessibleName = trimmed ? `${trimmed} ${assetLabel}` : assetLabel;
 
@@ -34,7 +36,7 @@ export function AssetPreview({
     return (
       <div
         role="img"
-        aria-label={`${accessibleName} placeholder`}
+        aria-label={t("placeholder", { name: accessibleName })}
         className={cn(
           "flex items-center justify-center border border-dashed border-border/70 bg-muted/30 text-sm font-semibold text-muted-foreground",
           SHAPE_CLASS[shape],

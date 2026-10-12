@@ -51,6 +51,7 @@ export function DraftCaptainsStep({
   rosterShape
 }: Readonly<DraftCaptainsStepProps>) {
   const t = useTranslations("draftAdmin");
+  const tAdmin = useTranslations("adminTournament.draft");
 
   const poolById = useMemo(
     () => new Map(pool.map((registration) => [registration.id, registration])),
@@ -221,7 +222,7 @@ export function DraftCaptainsStep({
                       id={`team-name-${id}`}
                       className="mt-2 h-8"
                       placeholder={t("teamName")}
-                      aria-label={`${row.label} · ${t("teamName")}`}
+                      aria-label={tAdmin("teamNameFor", { label: row.label, teamName: t("teamName") })}
                       value={value.teamNames[id] ?? ""}
                       onChange={(event) =>
                         onChange({

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Lock, Pencil, RefreshCw, Trash2, Trophy } from "lucide-react";
@@ -58,8 +59,8 @@ function standingFormOf(standing: Standings | null): StandingUpdateInput {
 }
 
 /** The stage or stage item a standings row was computed for. */
-function standingScopeLabel(standing: Standings): string {
-  return standing.stage_item?.name ?? standing.stage?.name ?? "Unassigned";
+function standingScopeLabel(standing: Standings, unassignedLabel: string): string {
+  return standing.stage_item?.name ?? standing.stage?.name ?? unassignedLabel;
 }
 
 /**
@@ -86,6 +87,7 @@ export function StandingsBrowser({
   /** Set = only this stage's rows, and no Stage filter to widen it again. */
   stageId?: number;
 }>) {
+  const t = useTranslations("adminTournaments.standings");
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   const { searchParams } = useQueryParams({ resetOnChange: [] });
@@ -150,7 +152,7 @@ export function StandingsBrowser({
     if (tournamentId == null) {
       list.push({
         key: TOURNAMENT_QUERY_PARAM,
-        label: "Tournament",
+        label: t("filters.tournament"),
         kind: "single",
         options: (tournamentsQuery.data?.results ?? []).map((entry) => ({
           value: String(entry.id),
@@ -162,7 +164,7 @@ export function StandingsBrowser({
     if (stageId == null && stageList.length > 0) {
       list.push({
         key: "stage",
-        label: "Stage",
+        label: t("filters.stage"),
         kind: "single",
         options: stageList.map((stage) => ({ value: String(stage.id), label: stage.name }))
       });
@@ -170,13 +172,13 @@ export function StandingsBrowser({
     if (stageItems.length > 0) {
       list.push({
         key: "group",
-        label: "Group",
+        label: t("filters.group"),
         kind: "single",
         options: stageItems.map((item) => ({ value: String(item.id), label: item.name }))
       });
     }
     return list;
-  }, [tournamentId, stageId, tournamentsQuery.data, stageList, stageItems]);
+  }, [t, tournamentId, stageId, tournamentsQuery.data, stageList, stageItems]);
 
   const filters = useFilters(defs);
   const stageFilter = String(filters.values.stage ?? "");
@@ -212,7 +214,7 @@ export function StandingsBrowser({
     onSuccess: () => {
       invalidate();
       setEditing(null);
-      notify.success("Standing updated");
+      notify.success(t("updated"));
     }
   });
 
@@ -221,7 +223,7 @@ export function StandingsBrowser({
     onSuccess: () => {
       invalidate();
       setPendingDelete(null);
-      notify.success("Standing deleted");
+      notify.success(t("deleted"));
     }
   });
 
@@ -230,7 +232,7 @@ export function StandingsBrowser({
     onSuccess: () => {
       invalidate();
       setRecalculateOpen(false);
-      notify.success("Standings recalculated");
+      notify.success(t("recalculated"));
     }
   });
 
@@ -238,7 +240,7 @@ export function StandingsBrowser({
     mutationFn: () => adminService.syncEncountersFromChallonge(scopeTournamentId!),
     onSuccess: () => {
       invalidate();
-      notify.success("Results synced from Challonge");
+      notify.success(t("synced"));
     }
   });
 
@@ -255,9 +257,9 @@ export function StandingsBrowser({
             ) : null}
             <span className="font-bold tabular-nums">{row.original.position}</span>
             {row.original.is_pinned ? (
-              <span title="Pinned place" className="text-muted-foreground">
+              <span title={t("pinnedPlace")} className="text-muted-foreground">
                 <Lock aria-hidden className="size-3.5" />
-                <span className="sr-only">Pinned place</span>
+                <span className="sr-only">{t("pinnedPlace")}</span>
               </span>
             ) : null}
           </div>
@@ -265,7 +267,7 @@ export function StandingsBrowser({
       },
       {
         accessorKey: "team",
-        header: "Team",
+        header: t("columns.team"),
         enableSorting: false,
         cell: ({ row }) =>
           row.original.team ? (
@@ -280,16 +282,18 @@ export function StandingsBrowser({
         ? [
             {
               id: "scope",
-              header: "Stage",
+              header: t("columns.stage"),
               enableSorting: false,
-              cell: ({ row }) => <span className="text-sm">{standingScopeLabel(row.original)}</span>
+              cell: ({ row }) => (
+                <span className="text-sm">{standingScopeLabel(row.original, t("unassigned"))}</span>
+              )
             } satisfies ColumnDef<Standings>
           ]
         : (scopedStage?.items.length ?? 0) > 1
           ? [
               {
                 id: "scope",
-                header: "Group",
+                header: t("columns.group"),
                 enableSorting: false,
                 cell: ({ row }) => (
                   <span className="text-sm">{row.original.stage_item?.name ?? "—"}</span>
@@ -299,31 +303,31 @@ export function StandingsBrowser({
           : []),
       {
         accessorKey: "matches",
-        header: "MP",
+        header: t("columns.matches"),
         size: 72,
         cell: ({ row }) => <span className="tabular-nums">{row.original.matches}</span>
       },
       {
         accessorKey: "win",
-        header: "W",
+        header: t("winsShort"),
         size: 64,
         cell: ({ row }) => <span className="tabular-nums text-success">{row.original.win}</span>
       },
       {
         accessorKey: "draw",
-        header: "D",
+        header: t("drawsShort"),
         size: 64,
         cell: ({ row }) => <span className="tabular-nums text-warning">{row.original.draw}</span>
       },
       {
         accessorKey: "lose",
-        header: "L",
+        header: t("lossesShort"),
         size: 64,
         cell: ({ row }) => <span className="tabular-nums text-danger">{row.original.lose}</span>
       },
       {
         accessorKey: "points",
-        header: "Pts",
+        header: t("columns.points"),
         size: 80,
         cell: ({ row }) => (
           <span className="font-bold tabular-nums">{row.original.points.toFixed(1)}</span>
@@ -331,13 +335,13 @@ export function StandingsBrowser({
       },
       {
         accessorKey: "buchholz",
-        header: "BH",
+        header: t("columns.buchholz"),
         size: 110,
         // Median and full are separate tiebreakers, and a lone number reads as
         // whichever one the organizer assumes. Show the pair, matching the
         // public table.
         cell: ({ row }) => (
-          <span className="text-sm tabular-nums" title="Median / full Buchholz">
+          <span className="text-sm tabular-nums" title={t("buchholzTitle")}>
             {row.original.buchholz == null
               ? "—"
               : row.original.full_buchholz == null
@@ -348,7 +352,7 @@ export function StandingsBrowser({
       },
       {
         accessorKey: "tb",
-        header: "TB",
+        header: t("columns.tiebreak"),
         size: 72,
         cell: ({ row }) => (
           <span className="text-sm tabular-nums">{row.original.tb != null ? row.original.tb : "—"}</span>
@@ -357,7 +361,7 @@ export function StandingsBrowser({
       createKebabColumn<Standings>(
         (row) => [
           {
-            label: "Edit standing",
+            label: t("edit"),
             icon: Pencil,
             hidden: !canUpdate,
             onSelect: () => {
@@ -367,23 +371,23 @@ export function StandingsBrowser({
             }
           },
           {
-            label: "Delete standing",
+            label: t("delete"),
             icon: Trash2,
             destructive: true,
             hidden: !canDelete,
             onSelect: () => setPendingDelete(row)
           }
         ],
-        { rowLabel: (row) => `standing for ${row.team?.name ?? "team"}` }
+        { rowLabel: (row) => t("rowLabel", { name: row.team?.name ?? t("team") }) }
       )
     ],
-    [canUpdate, canDelete, updateMutation, stageId, scopedStage]
+    [t, canUpdate, canDelete, updateMutation, stageId, scopedStage]
   );
 
   if (workspaceId == null) {
     return (
       <EmptyNote>
-        Standings are scoped to a workspace. Pick one to see a ranking table.
+        {t("workspaceRequired")}
       </EmptyNote>
     );
   }
@@ -400,12 +404,12 @@ export function StandingsBrowser({
           ? [
               {
                 key: TOURNAMENT_QUERY_PARAM,
-                label: `Tournament: ${tournamentQuery.data?.name ?? `#${tournamentId}`}`
+                label: t("pinnedTournament", { name: tournamentQuery.data?.name ?? `#${tournamentId}` })
               }
             ]
           : []),
         ...(stageId != null
-          ? [{ key: "stage", label: `Stage: ${scopedStage?.name ?? `#${stageId}`}` }]
+          ? [{ key: "stage", label: t("pinnedStage", { name: scopedStage?.name ?? `#${stageId}` }) }]
           : [])
       ]}
       trailing={
@@ -417,10 +421,10 @@ export function StandingsBrowser({
               size="sm"
               value={view}
               onValueChange={(next) => setView(next as "table" | "arrange")}
-              aria-label="Standings view"
+              aria-label={t("view")}
             >
-              <ToggleGroupItem value="table">Table</ToggleGroupItem>
-              <ToggleGroupItem value="arrange">Arrange</ToggleGroupItem>
+              <ToggleGroupItem value="table">{t("table")}</ToggleGroupItem>
+              <ToggleGroupItem value="arrange">{t("arrange")}</ToggleGroupItem>
             </ToggleGroup>
           ) : null}
           {canRecalculate ? (
@@ -431,7 +435,7 @@ export function StandingsBrowser({
               onClick={() => setRecalculateOpen(true)}
             >
               <RefreshCw aria-hidden className="size-4" />
-              Recalculate
+              {t("recalculate")}
             </Button>
           ) : null}
           {canAccessPermission("challonge.update", workspaceId) && scopeTournamentId != null ? (
@@ -442,7 +446,7 @@ export function StandingsBrowser({
               onClick={() => syncMutation.mutate()}
             >
               <RefreshCw aria-hidden className="size-4" />
-              Sync Challonge
+              {t("sync")}
             </Button>
           ) : null}
         </>
@@ -468,14 +472,14 @@ export function StandingsBrowser({
           isLoading={standingsQuery.isLoading}
           columns={columns}
           initialPageSize={PAGE_SIZE}
-          searchPlaceholder="Search by team name…"
+          searchPlaceholder={t("searchPlaceholder")}
           filterKey={filters.filterKey}
           getRowId={(row) => String(row.id)}
           toolbar={toolbar}
           emptyMessage={
             scopeTournamentId == null
-              ? "Standings are computed per tournament. Pick one to see its table."
-              : "No standings yet. Recalculate to build them from encounter results."
+              ? t("pickTournament")
+              : t("empty")
           }
           onRowDoubleClick={
             canUpdate
@@ -493,17 +497,21 @@ export function StandingsBrowser({
                 {row.original.is_pinned ? (
                   <>
                     <Lock aria-hidden className="mr-1 inline size-3.5" />
-                    <span className="sr-only">Pinned place, </span>
+                    <span className="sr-only">{t("pinnedPlaceComma")}</span>
                   </>
                 ) : null}
-                {row.original.team?.name ?? "Unknown team"}
+                {row.original.team?.name ?? t("unknownTeam")}
               </p>
               <p className="text-xs tabular-nums text-muted-foreground">
-                {row.original.win}W · {row.original.draw}D · {row.original.lose}L ·{" "}
-                {row.original.points.toFixed(1)} pts
+                {t("recordSummary", {
+                  wins: row.original.win,
+                  draws: row.original.draw,
+                  losses: row.original.lose,
+                  points: row.original.points.toFixed(1)
+                })}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {standingScopeLabel(row.original)}
+                {standingScopeLabel(row.original, t("unassigned"))}
               </p>
             </div>
           )}
@@ -512,7 +520,10 @@ export function StandingsBrowser({
 
       {tiebreakOrder && tiebreakOrder.length > 0 ? (
         <p className="text-sm text-muted-foreground">
-          Tiebreakers:{" "}
+          {t.rich("tiebreakSummary", {
+            value: formatTiebreakOrder(tiebreakOrder),
+            valueText: (chunks) => <span className="font-medium text-foreground">{chunks}</span>
+          })}
           <span className="font-medium text-foreground">
             {formatTiebreakOrder(tiebreakOrder)}
           </span>
@@ -524,13 +535,13 @@ export function StandingsBrowser({
         onOpenChange={(next) => {
           if (!next) setEditing(null);
         }}
-        title="Edit standing"
-        description="Adjust a stored standings row manually. Position is not edited here — use Arrange to pin a place that survives recalculation."
+        title={t("edit")}
+        description={t("editDescription")}
         isSubmitting={updateMutation.isPending}
-        submittingLabel="Updating standing…"
+        submittingLabel={t("updating")}
         errorMessage={
           updateMutation.isError
-            ? `Could not update the standing. ${updateMutation.error.message}`
+            ? t("updateError", { message: updateMutation.error.message })
             : undefined
         }
         isDirty={editing != null && hasUnsavedChanges(form, standingFormOf(editing))}
@@ -541,7 +552,7 @@ export function StandingsBrowser({
       >
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="standing-points">Points</Label>
+            <Label htmlFor="standing-points">{t("points")}</Label>
             <NumberInput
               id="standing-points"
               min={0}
@@ -550,7 +561,7 @@ export function StandingsBrowser({
             />
           </div>
           <div>
-            <Label htmlFor="standing-win">Wins</Label>
+            <Label htmlFor="standing-win">{t("wins")}</Label>
             <NumberInput
               id="standing-win"
               integer
@@ -560,7 +571,7 @@ export function StandingsBrowser({
             />
           </div>
           <div>
-            <Label htmlFor="standing-draw">Draws</Label>
+            <Label htmlFor="standing-draw">{t("draws")}</Label>
             <NumberInput
               id="standing-draw"
               integer
@@ -570,7 +581,7 @@ export function StandingsBrowser({
             />
           </div>
           <div>
-            <Label htmlFor="standing-lose">Losses</Label>
+            <Label htmlFor="standing-lose">{t("losses")}</Label>
             <NumberInput
               id="standing-lose"
               integer
@@ -580,7 +591,7 @@ export function StandingsBrowser({
             />
           </div>
           <div>
-            <Label htmlFor="standing-buchholz">Buchholz (median)</Label>
+            <Label htmlFor="standing-buchholz">{t("buchholzMedian")}</Label>
             <NumberInput
               id="standing-buchholz"
               value={form.buchholz ?? 0}
@@ -588,7 +599,7 @@ export function StandingsBrowser({
             />
           </div>
           <div>
-            <Label htmlFor="standing-tb">Head-to-head (TB)</Label>
+            <Label htmlFor="standing-tb">{t("headToHead")}</Label>
             <NumberInput
               id="standing-tb"
               integer
@@ -607,9 +618,9 @@ export function StandingsBrowser({
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Delete standing",
-          description: `Deleting the row for “${pendingDelete?.team?.name ?? "this team"}” removes it from the table. Recalculating rebuilds it from encounter results.`,
-          confirmLabel: "Delete standing",
+          title: t("delete"),
+          description: t("deleteDescription", { name: pendingDelete?.team?.name ?? t("thisTeam") }),
+          confirmLabel: t("delete"),
           tone: "danger"
         }}
         onConfirm={() => {
@@ -622,10 +633,10 @@ export function StandingsBrowser({
         onOpenChange={setRecalculateOpen}
         pending={recalculateMutation.isPending}
         intent={{
-          title: "Recalculate standings?",
+          title: t("recalculateTitle"),
           description:
-            "Every standings row for this tournament is rebuilt from encounter results. Manual row edits are overwritten; pinned places are kept.",
-          confirmLabel: "Recalculate",
+            t("recalculateDescription"),
+          confirmLabel: t("recalculate"),
           tone: "warning"
         }}
         onConfirm={() => recalculateMutation.mutate()}

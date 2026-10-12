@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import type { Team } from "@/types/team.types";
 import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
@@ -28,19 +29,22 @@ export function TeamCombobox({
   value,
   onSelect,
   id,
-  placeholder = "Select team",
-  searchPlaceholder = "Search team…",
+  placeholder,
+  searchPlaceholder,
   disabled = false,
   allowClear = true,
   isTeamDisabled,
   triggerAriaLabel,
   triggerClassName
 }: Readonly<TeamComboboxProps>) {
+  const t = useTranslations("adminPeople.teamCombobox");
+  const resolvedPlaceholder = placeholder ?? t("select");
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("search");
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
   const selected = useMemo(() => teams.find((team) => team.id === value), [teams, value]);
-  const selectedLabel = selected?.name ?? placeholder;
+  const selectedLabel = selected?.name ?? resolvedPlaceholder;
 
   const handleSelect = useCallback(
     (team: Team | undefined) => {
@@ -62,12 +66,12 @@ export function TeamCombobox({
       disabled={disabled}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}
-      searchPlaceholder={searchPlaceholder}
-      emptyMessage="No teams match that search. Try a shorter name or the numeric id."
+      searchPlaceholder={resolvedSearchPlaceholder}
+      emptyMessage={t("empty")}
       clear={
         allowClear && typeof value === "number"
           ? {
-              label: "Set as TBD",
+              label: t("tbd"),
               value: "clear-team-selection",
               onSelect: () => handleSelect(undefined)
             }

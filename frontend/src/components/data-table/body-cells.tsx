@@ -10,6 +10,7 @@ import type { ColumnLayout } from "@/components/data-table/column-layout";
 import type { RowSelectionGestures } from "@/components/data-table/useRowSelectionGestures";
 
 export interface BodyCellContext<TData> {
+  i18n: (key: string, values?: Record<string, unknown>) => string;
   layout: ColumnLayout<TData>;
   /** Vertical padding for the current density. */
   cellPadding: string;
@@ -21,6 +22,7 @@ export interface BodyCellContext<TData> {
 }
 
 export interface LeadingCellContext<TData> {
+  i18n: (key: string, values?: Record<string, unknown>) => string;
   layout: ColumnLayout<TData>;
   cellPadding: string;
   cellAlign: "top" | "middle";
@@ -32,7 +34,7 @@ export interface LeadingCellContext<TData> {
 /** The narrow first column: expand chevron and/or selection checkbox. */
 export function renderLeadingCell<TData>(
   row: Row<TData>,
-  { layout, cellPadding, cellAlign, enableRowSelection, hasExpandedDetail, gestures }: LeadingCellContext<TData>
+  { i18n, layout, cellPadding, cellAlign, enableRowSelection, hasExpandedDetail, gestures }: LeadingCellContext<TData>
 ) {
   return (
     <TableCell
@@ -55,7 +57,7 @@ export function renderLeadingCell<TData>(
             type="button"
             onClick={row.getToggleExpandedHandler()}
             aria-expanded={row.getIsExpanded()}
-            aria-label={row.getIsExpanded() ? "Collapse details" : "Expand details"}
+            aria-label={row.getIsExpanded() ? i18n("collapseDetails") : i18n("expandDetails")}
             className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
           >
             {row.getIsExpanded() ? (
@@ -72,7 +74,7 @@ export function renderLeadingCell<TData>(
             onPointerDown={gestures.checkboxPointerDown(row)}
             onClick={gestures.checkboxClick}
             className="touch-none"
-            aria-label={`Select row ${row.id}`}
+            aria-label={i18n("selectRow", { id: row.id })}
           />
         ) : null}
       </div>

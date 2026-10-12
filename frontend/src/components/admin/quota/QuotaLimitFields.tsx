@@ -48,6 +48,7 @@ export function QuotaLimitFields({
   disabled = false
 }: Readonly<QuotaLimitFieldsProps>) {
   const t = useTranslations("quota");
+  const tSettings = useTranslations("adminSettings.quota");
   const format = useFormatter();
 
   return (
@@ -116,12 +117,14 @@ export function QuotaLimitFields({
               </p>
             ) : null}
             <p id={hintId} className="text-xs text-muted-foreground">
-              {t(`dimensions.${dimension}.hint`)}{" "}
               {inherited
-                ? t("inheritedCeiling", {
-                    value: ceiling === null ? t("unlimited") : format.number(ceiling)
+                ? tSettings("hintWithInherited", {
+                    hint: t(`dimensions.${dimension}.hint`),
+                    inherited: t("inheritedCeiling", {
+                      value: ceiling === null ? t("unlimited") : format.number(ceiling)
+                    })
                   })
-                : null}
+                : t(`dimensions.${dimension}.hint`)}
             </p>
           </div>
         );

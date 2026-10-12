@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -14,10 +15,11 @@ import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 
 export default function DiscordSettingsPage() {
+  const t = useTranslations("adminTournament.discordSettings");
   return (
     <SettingsSectionPage
       section="discord"
-      description="What this tournament posts and sends on Discord, and the channel it reads match logs from."
+      description={t("description")}
     >
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <DiscordSettings
@@ -39,6 +41,7 @@ function DiscordSettings({
   tournament: Tournament;
   canUpdateTournament: boolean;
 }>) {
+  const t = useTranslations("adminTournament.discordSettings");
   const channelQuery = useQuery({
     queryKey: getTournamentWorkspaceQueryKeys(tournamentId).discordChannel,
     queryFn: () => adminService.getDiscordChannel(tournamentId)
@@ -58,11 +61,10 @@ function DiscordSettings({
             <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="settings-discord-broadcasts" className="cursor-pointer">
-                  Post announcements to Discord
+                  {t("announcements")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Registration and check-in opening and match times go to the workspace&apos;s
-                  notification channel.
+                  {t("announcementsDescription")}
                 </p>
               </div>
               <Switch
@@ -76,12 +78,10 @@ function DiscordSettings({
             <div className="flex items-center justify-between gap-4 border-t border-border pt-4">
               <div className="flex flex-col gap-0.5">
                 <Label htmlFor="settings-discord-dms" className="cursor-pointer">
-                  Message players on Discord
+                  {t("messages")}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Invites, registration decisions, check-in and match times for this tournament
-                  reach players as Discord direct messages. Switched off, they only appear in
-                  players&apos; in-app notifications.
+                  {t("messagesDescription")}
                 </p>
               </div>
               <Switch

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import dynamic from "next/dynamic";
 
 import { usePermissions } from "@/hooks/usePermissions";
@@ -20,7 +22,7 @@ export default function LinksSettingsPage() {
   return (
     <SettingsSectionPage
       section="links"
-      description="Discord, broadcasts, VODs, bracket and rules shown on the tournament page."
+      description={useTranslations("adminTournament.screenDescriptions")("links")}
     >
       {({ tournamentId, workspaceId }) => (
         <TournamentLinksTab

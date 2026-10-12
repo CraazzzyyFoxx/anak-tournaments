@@ -8,13 +8,14 @@ import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useHubTournamentQuery } from "../hubQueries";
 import { REGISTRATION_SUB_TABS, type RegistrationSubTab } from "../tab-guards";
+import { useTranslations } from "next-intl";
 
-const SUB_TAB_LABELS: Record<RegistrationSubTab, string> = {
-  entries: "Entries",
-  teams: "Teams",
-  form: "Form",
-  feed: "Sheets feed",
-  "rank-autofill": "Rank autofill"
+const SUB_TAB_LABEL_KEYS: Record<RegistrationSubTab, "entries" | "teams" | "form" | "feed" | "rankAutofill"> = {
+  entries: "entries",
+  teams: "teams",
+  form: "form",
+  feed: "feed",
+  "rank-autofill": "rankAutofill"
 };
 
 const DEFAULT_SUB_TAB: RegistrationSubTab = "entries";
@@ -40,6 +41,7 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
   const pathname = usePathname();
   const router = useRouter();
   const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
+  const t = useTranslations("adminTournament.registration");
 
   const basePath = `/admin/tournaments/${params.id}/registration`;
   const segment = pathname.startsWith(basePath)
@@ -76,7 +78,7 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
 
   const items: LinkTabItem[] = REGISTRATION_SUB_TABS.map((key) => ({
     key,
-    label: SUB_TAB_LABELS[key],
+    label: t(`tabs.${SUB_TAB_LABEL_KEYS[key]}`),
     href: `${basePath}/${key}`,
     hidden: key === "teams" && teamsOffered !== true
   }));
@@ -87,7 +89,7 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
 
   return (
     <div className="space-y-4">
-      <LinkTabs items={items} activeKey={active} level={2} ariaLabel="Registration sections" />
+      <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
       {allowed && known ? children : null}
     </div>
   );

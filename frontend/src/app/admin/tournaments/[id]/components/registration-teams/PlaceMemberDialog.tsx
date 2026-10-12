@@ -52,6 +52,7 @@ export function PlaceMemberDialog({
   actions: RegistrationTeamActions;
 }>) {
   const t = useTranslations("registrationTeams");
+  const tAdmin = useTranslations("adminTournament.registrationTeams");
   const tSlot = useTranslations("rosterShape.slotCodes");
   const fieldId = useId();
 
@@ -91,7 +92,7 @@ export function PlaceMemberDialog({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`${t("admin.place")} — ${team?.name ?? ""}`}
+      title={tAdmin("dialogTitle", { action: t("admin.place"), team: team?.name ?? "" })}
       description={t("admin.placeHint")}
       submitLabel={t("admin.place")}
       isSubmitting={actions.isPlacing}

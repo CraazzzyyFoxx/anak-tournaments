@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Pencil, Check, X, ArrowRightLeft } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ interface AvatarSectionProps {
 }
 
 function AvatarSection({ user, canEdit, onUserUpdated }: Readonly<AvatarSectionProps>) {
+  const t = useTranslations("adminPeople.profile");
   const queryClient = useQueryClient();
 
   const uploadMutation = useMutation({
@@ -71,10 +73,11 @@ function AvatarSection({ user, canEdit, onUserUpdated }: Readonly<AvatarSectionP
 
       {(uploadMutation.isError || deleteMutation.isError) && (
         <p className="max-w-[200px] text-center text-xs text-destructive">
-          Could not update the avatar.{" "}
-          {(uploadMutation.error ?? deleteMutation.error) instanceof Error
-            ? ((uploadMutation.error ?? deleteMutation.error) as Error).message
-            : "Try again."}
+          {t("avatarUpdateError", {
+            message: (uploadMutation.error ?? deleteMutation.error) instanceof Error
+              ? ((uploadMutation.error ?? deleteMutation.error) as Error).message
+              : t("tryAgain")
+          })}
         </p>
       )}
     </div>
@@ -90,6 +93,7 @@ interface NameSectionProps {
 }
 
 function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps>) {
+  const t = useTranslations("adminPeople.profile");
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.name);
@@ -114,7 +118,7 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
   const handleSave = () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setNameError("Enter a player name.");
+      setNameError(t("enterName"));
       return;
     }
     if (trimmed === user.name) {
@@ -145,7 +149,7 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
     return (
       <div className="space-y-2">
         <Label htmlFor="player-name" className="text-xs text-muted-foreground">
-          Player name
+          {t("playerName")}
         </Label>
         <div className="flex items-center gap-2">
           <Input
@@ -171,7 +175,7 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
             className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
             onClick={handleSave}
             disabled={updateMutation.isPending}
-            aria-label="Save player name"
+            aria-label={t("saveName")}
           >
             {updateMutation.isPending ? (
               <Spinner />
@@ -185,7 +189,7 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={handleCancel}
             disabled={updateMutation.isPending}
-            aria-label="Cancel name edit"
+            aria-label={t("cancelName")}
           >
             <X aria-hidden className="h-4 w-4" />
           </Button>
@@ -197,7 +201,7 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
         ) : null}
         {updateMutation.isError && updateMutation.error instanceof Error && (
           <p role="alert" className="text-xs text-destructive">
-            Could not save the player name. {updateMutation.error.message}
+            {t("saveError", { message: updateMutation.error.message })}
           </p>
         )}
       </div>
@@ -213,7 +217,7 @@ function NameSection({ user, canEdit, onUserUpdated }: Readonly<NameSectionProps
           variant="ghost"
           className="h-7 w-7 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
           onClick={handleStartEditing}
-          aria-label="Edit player name"
+          aria-label={t("editName")}
         >
           <Pencil aria-hidden className="h-3.5 w-3.5" />
         </Button>
@@ -256,6 +260,7 @@ export function PlayerProfileBody({
   onMergeRequested,
   onUserUpdated,
 }: Readonly<PlayerProfileBodyProps>) {
+  const t = useTranslations("adminPeople.profile");
   const [user, setUser] = useState(initialUser);
 
   // Every section updates local state through this; also bust the Next Data
@@ -272,11 +277,11 @@ export function PlayerProfileBody({
       <div className="flex flex-col items-center gap-3 pb-4 border-b border-border/40">
         <AvatarSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
         <NameSection user={user} canEdit={canEdit} onUserUpdated={handleUserUpdated} />
-        <span className="text-xs text-muted-foreground tabular-nums">ID: {user.id}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{t("idLabel", { id: user.id })}</span>
         {canMerge && onMergeRequested ? (
           <Button type="button" variant="outline" size="sm" onClick={() => onMergeRequested(user)}>
             <ArrowRightLeft aria-hidden className="mr-2 h-4 w-4" />
-            Merge into another profile
+            {t("merge")}
           </Button>
         ) : null}
       </div>
@@ -284,7 +289,7 @@ export function PlayerProfileBody({
       {/* ── Social identities ─────────────────────────── */}
       <div className="pt-2">
         <div className="flex items-center gap-2 mb-3">
-          <h4 className="text-sm font-medium text-muted-foreground">Social identities</h4>
+          <h4 className="text-sm font-medium text-muted-foreground">{t("socialIdentities")}</h4>
           <Badge variant="outline" className="tabular-nums font-normal text-xs">
             {user.social_accounts?.length ?? 0}
           </Badge>
@@ -312,12 +317,13 @@ export function PlayerProfileDialog({
   onClose,
   ...body
 }: Readonly<PlayerProfileDialogProps>) {
+  const t = useTranslations("adminPeople.profile");
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="max-w-md">
         <DialogHeader className="sr-only">
-          <DialogTitle>Player profile</DialogTitle>
-          <DialogDescription>Manage the player profile, avatar, and social identities.</DialogDescription>
+          <DialogTitle>{t("title")}</DialogTitle>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
         <PlayerProfileBody {...body} />

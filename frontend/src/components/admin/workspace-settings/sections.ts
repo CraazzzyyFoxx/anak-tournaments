@@ -25,18 +25,11 @@ export const WORKSPACE_SETTINGS_SECTIONS = [
 
 export type WorkspaceSettingsSectionKey = (typeof WORKSPACE_SETTINGS_SECTIONS)[number];
 
-export const WORKSPACE_SETTINGS_SECTION_LABELS: Record<WorkspaceSettingsSectionKey, string> = {
-  general: "General",
-  branding: "Branding",
-  visibility: "Visibility",
-  domain: "Domain",
-  discord: "Discord",
-  divisions: "Divisions",
-  statuses: "Player statuses",
-  "sub-roles": "Sub-roles",
-  "registration-forms": "Registration forms",
-  subscriptions: "Subscriptions",
-  quota: "Rate limits"
+export const WORKSPACE_SETTINGS_SECTION_LABEL_KEYS: Record<WorkspaceSettingsSectionKey, string> = {
+  general: "sections.general", branding: "sections.branding", visibility: "sections.visibility",
+  domain: "sections.domain", discord: "sections.discord", divisions: "sections.divisions",
+  statuses: "sections.statuses", "sub-roles": "sections.subRoles",
+  "registration-forms": "sections.registrationForms", subscriptions: "sections.subscriptions", quota: "sections.quota"
 };
 
 /** One sentence under the hub heading, so a section says what it decides
@@ -45,18 +38,10 @@ export const WORKSPACE_SETTINGS_SECTION_DESCRIPTIONS: Record<
   WorkspaceSettingsSectionKey,
   string
 > = {
-  general: "How this workspace is named, described and scheduled.",
-  branding: "The palette the public site paints this workspace in.",
-  visibility: "Who can find this workspace, and who counts as a newcomer in it.",
-  domain: "The subdomain, the custom domain and the text search engines show.",
-  discord:
-    "The Discord server this workspace runs in: subscriber roles, match logs, tournament announcements and mixes.",
-  divisions: "Rank bands players are sorted into, and the version tournaments read.",
-  statuses: "Player statuses the balancer takes into account.",
-  "sub-roles": "Hero sub-roles used by rosters and reports.",
-  "registration-forms": "Saved questionnaires any tournament here can start from.",
-  subscriptions: "Subscription providers that grant entitlements here.",
-  quota: "How much this workspace, one key and one session may spend."
+  general: "sectionDescriptions.general", branding: "sectionDescriptions.branding", visibility: "sectionDescriptions.visibility",
+  domain: "sectionDescriptions.domain", discord: "sectionDescriptions.discord", divisions: "sectionDescriptions.divisions",
+  statuses: "sectionDescriptions.statuses", "sub-roles": "sectionDescriptions.subRoles",
+  "registration-forms": "sectionDescriptions.registrationForms", subscriptions: "sectionDescriptions.subscriptions", quota: "sectionDescriptions.quota"
 };
 
 /**
@@ -80,11 +65,11 @@ export type WorkspaceRecordSectionKey = (typeof WORKSPACE_RECORD_SECTIONS)[numbe
 
 const GROUPS: ReadonlyArray<{ label: string; sections: readonly WorkspaceSettingsSectionKey[] }> = [
   {
-    label: "Workspace",
+    label: "sections.workspace",
     sections: ["general", "branding", "visibility", "domain", "discord"]
   },
-  { label: "Competitive", sections: ["divisions", "statuses", "sub-roles", "registration-forms"] },
-  { label: "Entitlements", sections: ["subscriptions", "quota"] }
+  { label: "sections.competitive", sections: ["divisions", "statuses", "sub-roles", "registration-forms"] },
+  { label: "sections.entitlements", sections: ["subscriptions", "quota"] }
 ];
 
 /**
@@ -98,14 +83,15 @@ const GROUPS: ReadonlyArray<{ label: string; sections: readonly WorkspaceSetting
  */
 export function workspaceSettingsNavGroups(
   basePath: string,
-  only?: readonly WorkspaceSettingsSectionKey[]
+  only?: readonly WorkspaceSettingsSectionKey[],
+  translate: (key: string) => string = (key) => key
 ): SectionNavGroup[] {
   const allowed = only ? new Set<string>(only) : null;
   return GROUPS.map((group) => ({
-    label: group.label,
+    label: translate(group.label),
     items: group.sections.map((section) => ({
       key: section,
-      label: WORKSPACE_SETTINGS_SECTION_LABELS[section],
+      label: translate(WORKSPACE_SETTINGS_SECTION_LABEL_KEYS[section]),
       href: `${basePath}/${section}`,
       hidden: allowed ? !allowed.has(section) : false
     }))

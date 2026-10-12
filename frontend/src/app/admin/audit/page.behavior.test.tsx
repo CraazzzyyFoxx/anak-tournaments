@@ -17,6 +17,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuditLogRead } from "@/types/admin.types";
+import en from "@/i18n/messages/en.json";
 import AdminAuditPage from "./page";
 
 declare global {
@@ -29,11 +30,21 @@ const listAudit = vi.fn();
 let permitted = true;
 let superuser = false;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  // Pinned formatting: the assertions are about which row is on screen, not
-  // about the locale, and the real formatter needs an intl provider.
-}));
+const MESSAGES = { kit: en.kit, kitAudit: en.kitAudit, kitTable: en.kitTable, adminMatches: { audit: en.adminMatches.audit } };
+
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) => {
+      try {
+        return actual.createTranslator({ locale: "en", messages: MESSAGES, namespace: namespace as never });
+      } catch {
+        return ((key: string) => key) as ReturnType<typeof actual.useTranslations>;
+      }
+    }
+  };
+});
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({
     dateTime: (value: Date) => value.toISOString().slice(0, 16).replace("T", " ")

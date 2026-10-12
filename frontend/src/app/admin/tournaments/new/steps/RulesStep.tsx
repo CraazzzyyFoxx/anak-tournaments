@@ -1,6 +1,7 @@
 "use client";
 
 import { Label } from "@/components/ui/label";
+import { useTranslations } from "next-intl";
 import { NumberInput } from "@/components/ui/number-input";
 import {
   Select,
@@ -28,29 +29,30 @@ export function RulesStep({
   divisionGridVersions,
   divisionGridLoading
 }: Readonly<RulesStepProps>) {
+  const t = useTranslations("adminTournaments.rules");
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="wizard-team-formation">Team formation</Label>
+          <Label htmlFor="wizard-team-formation">{t("teamFormation")}</Label>
           <Select
             value={value.team_formation ?? "balancer"}
             onValueChange={(nextValue) => onChange({ ...value, team_formation: nextValue })}
           >
             <SelectTrigger id="wizard-team-formation" className="mt-1.5">
-              <SelectValue placeholder="Select method" />
+              <SelectValue placeholder={t("selectMethod")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="balancer">Auto-balance (Balancer)</SelectItem>
-              <SelectItem value="draft">Live draft</SelectItem>
-              <SelectItem value="registration">Team registration</SelectItem>
-              <SelectItem value="solo">Solo registration (FFA)</SelectItem>
+              <SelectItem value="balancer">{t("formation.balancer")}</SelectItem>
+              <SelectItem value="draft">{t("formation.draft")}</SelectItem>
+              <SelectItem value="registration">{t("formation.registration")}</SelectItem>
+              <SelectItem value="solo">{t("formation.solo")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         <div>
-          <Label htmlFor="wizard-division-grid-version">Division grid version</Label>
+          <Label htmlFor="wizard-division-grid-version">{t("divisionGridVersion")}</Label>
           <Select
             value={value.division_grid_version_id?.toString() ?? "none"}
             onValueChange={(nextValue) =>
@@ -62,11 +64,11 @@ export function RulesStep({
           >
             <SelectTrigger id="wizard-division-grid-version" className="mt-1.5">
               <SelectValue
-                placeholder={divisionGridLoading ? "Loading division grids…" : "Select version"}
+                placeholder={divisionGridLoading ? t("loadingDivisionGrids") : t("selectVersion")}
               />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">Workspace default</SelectItem>
+              <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
               {divisionGridVersions.map((version) => (
                 <SelectItem key={version.id} value={version.id.toString()}>
                   {version.label} (v{version.version}, {version.status})
@@ -78,10 +80,10 @@ export function RulesStep({
       </div>
 
       <div>
-        <h3 className="mb-3 text-sm font-medium">Scoring points</h3>
+        <h3 className="mb-3 text-sm font-medium">{t("scoringPoints")}</h3>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="wizard-win-points">Win</Label>
+            <Label htmlFor="wizard-win-points">{t("win")}</Label>
             <NumberInput
               id="wizard-win-points"
               value={value.win_points ?? 1}
@@ -90,7 +92,7 @@ export function RulesStep({
             />
           </div>
           <div>
-            <Label htmlFor="wizard-draw-points">Draw</Label>
+            <Label htmlFor="wizard-draw-points">{t("draw")}</Label>
             <NumberInput
               id="wizard-draw-points"
               value={value.draw_points ?? 0.5}
@@ -99,7 +101,7 @@ export function RulesStep({
             />
           </div>
           <div>
-            <Label htmlFor="wizard-loss-points">Loss</Label>
+            <Label htmlFor="wizard-loss-points">{t("loss")}</Label>
             <NumberInput
               id="wizard-loss-points"
               value={value.loss_points ?? 0}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -15,7 +17,7 @@ export default function PreviewSettingsPage() {
   return (
     <SettingsSectionPage
       section="preview"
-      description="Whether the public site shows this tournament, and who may see it while it does not."
+      description={useTranslations("adminTournament.screenDescriptions")("preview")}
     >
       {({ tournament, tournamentId, workspaceId, canUpdateTournament }) => (
         <PreviewForm
@@ -45,6 +47,7 @@ function PreviewForm({
   workspaceId: number;
   disabled: boolean;
 }>) {
+  const t = useTranslations("adminTournament.previewExtra");
   const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
     tournament,
     tournamentId,
@@ -63,12 +66,12 @@ function PreviewForm({
               onCheckedChange={(checked) => patch({ is_hidden: checked === true })}
             />
             <Label htmlFor="settings-is-hidden" className="cursor-pointer">
-              Hidden (preview) — not visible to the public
+              {t("hidden")}
             </Label>
           </div>
 
           <div className="flex flex-col gap-2">
-            <h2 className={EYEBROW_CLASS}>Preview allowlist</h2>
+            <h2 className={EYEBROW_CLASS}>{t("title")}</h2>
             {/* Add and remove mutate immediately — the allowlist is its own
                 resource, not a field of the tournament, so it is not part of
                 the save below. */}
@@ -79,8 +82,7 @@ function PreviewForm({
               />
             ) : (
               <EmptyNote size="sm">
-                Tick “Hidden (preview)” above to choose who may view this tournament while it is
-                still private.
+                {t("hint")}
               </EmptyNote>
             )}
           </div>

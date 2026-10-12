@@ -134,24 +134,24 @@ export function buildStageUpdatePayload(stage: Stage, form: StageForm): StageUpd
  * summary, and the dirty flag itself (`length > 0`).
  */
 const FIELD_LABELS: Record<keyof StageForm, string> = {
-  name: "Name",
-  order: "Phase",
-  stageType: "Format",
-  maxRounds: "Swiss rounds",
-  advanceCount: "Teams advancing",
-  deGrandFinalType: "Grand final",
-  advanceUpperCount: "To upper bracket",
-  seedRanking: "Bracket seeds",
-  rankingPreset: "Standings preset",
-  tiebreakOrder: "Tiebreaker order",
-  scoringWin: "Win points",
-  scoringDraw: "Draw points",
-  scoringLoss: "Loss points",
-  swissByePoints: "Swiss bye points",
-  bestOf: "Best-of",
-  ffaPlacementPoints: "Points per place",
-  ffaColumns: "Game columns",
-  ffaFormula: "Points formula"
+  name: "name",
+  order: "phase",
+  stageType: "format",
+  maxRounds: "swissRounds",
+  advanceCount: "teamsAdvancing",
+  deGrandFinalType: "grandFinal",
+  advanceUpperCount: "toUpperBracket",
+  seedRanking: "bracketSeeds",
+  rankingPreset: "standingsPreset",
+  tiebreakOrder: "tiebreakerOrder",
+  scoringWin: "winPoints",
+  scoringDraw: "drawPoints",
+  scoringLoss: "lossPoints",
+  swissByePoints: "swissByePoints",
+  bestOf: "bestOf",
+  ffaPlacementPoints: "pointsPerPlace",
+  ffaColumns: "gameColumns",
+  ffaFormula: "pointsFormula"
 };
 
 export function stageFormChanges(stage: Stage, form: StageForm): string[] {

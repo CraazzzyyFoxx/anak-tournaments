@@ -32,7 +32,7 @@ export default function AdmissionSettingsPage() {
   return (
     <SettingsSectionPage
       section="admission"
-      description="Every rule that can refuse an entry: profile, subscription, and the team-level checks run before export."
+      description={useTranslations("adminTournament.screenDescriptions")("admission")}
     >
       {({ tournament, tournamentId, canTeamCreate }) => (
         <AdmissionForm

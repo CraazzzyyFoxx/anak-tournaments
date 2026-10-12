@@ -1,4 +1,7 @@
+import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
+
+import en from "@/i18n/messages/en.json";
 
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { Admission, AdmissionDecision, StatusMeta } from "@/types/registration.types";
@@ -75,11 +78,14 @@ const createRegistration = (
     ...overrides
   }) as AdminRegistration;
 
+const groupT = createTranslator({ locale: "en", messages: en, namespace: "registrationsAdmin.grouping" });
+
 describe("registration grouping", () => {
   it("groups registrations by check-in status", () => {
     const groups = groupRegistrations(
       [createRegistration(1, { checked_in: false }), createRegistration(2, { checked_in: true })],
-      "check_in"
+      "check_in",
+      groupT
     );
 
     expect(
@@ -106,7 +112,8 @@ describe("registration grouping", () => {
           balancer_status_meta: createStatusMeta("ready", "balancer", "Ready")
         })
       ],
-      "balancer_status"
+      "balancer_status",
+      groupT
     );
 
     expect(
@@ -124,7 +131,8 @@ describe("registration grouping", () => {
         createRegistration(2, { admission: admission("pending_check_in") }),
         createRegistration(3, { admission: admission("not_admitted") })
       ],
-      "admission"
+      "admission",
+      groupT
     );
 
     expect(
@@ -153,7 +161,8 @@ describe("registration grouping", () => {
           admission: admission("admitted")
         })
       ],
-      "admission"
+      "admission",
+      groupT
     );
 
     expect(groups.map((group) => group.key)).toEqual(["admitted"]);
@@ -169,7 +178,8 @@ describe("registration grouping", () => {
         createRegistration(3, { admission: admission("admitted") }),
         createRegistration(4, { admission: admission("admitted") })
       ],
-      "admission"
+      "admission",
+      groupT
     );
 
     expect(groups.map((group) => [group.key, group.registrations.length])).toEqual([

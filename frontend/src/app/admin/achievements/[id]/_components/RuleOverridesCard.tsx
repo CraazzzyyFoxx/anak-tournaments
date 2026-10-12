@@ -1,6 +1,7 @@
 "use client";
 
 import { Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,23 +25,24 @@ export function RuleOverridesCard({
   overrides: AchievementOverrideRead[];
   onDelete: (id: number) => void;
 }>) {
+  const t = useTranslations("adminAchievements");
   const format = useFormatter();
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Overrides</CardTitle>
-        <CardDescription>Manual grants and revocations</CardDescription>
+        <CardTitle>{t("ruleOverrides.title")}</CardTitle>
+        <CardDescription>{t("ruleOverrides.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>User ID</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead>Tournament</TableHead>
-              <TableHead>Date</TableHead>
+              <TableHead>{t("detail.userId")}</TableHead>
+              <TableHead>{t("common.action")}</TableHead>
+              <TableHead>{t("common.reason")}</TableHead>
+              <TableHead>{t("common.tournament")}</TableHead>
+              <TableHead>{t("common.date")}</TableHead>
               <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
@@ -62,7 +64,7 @@ export function RuleOverridesCard({
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label={`Delete ${ov.action} override`}
+                    aria-label={t("ruleOverrides.deleteLabel", { action: ov.action })}
                     onClick={() => onDelete(ov.id)}
                   >
                     <Trash2 aria-hidden className="h-4 w-4 text-destructive" />

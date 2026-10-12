@@ -32,9 +32,22 @@ const getGamemodes = vi.fn();
 
 let superuser = true;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key
-}));
+vi.mock("next-intl", async () => {
+  const importedMessages = await import("@/i18n/messages/en.json");
+  const messages = importedMessages.default ?? importedMessages;
+  return {
+    useTranslations: (namespace: string) => (key: string, values?: Record<string, unknown>) => {
+      let value: unknown = messages;
+      for (const part of `${namespace}.${key}`.split(".")) {
+        if (value == null) return key;
+        value = (value as Record<string, unknown>)[part];
+      }
+      return typeof value === "string"
+        ? value.replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? `{${name}}`))
+        : key;
+    }
+  };
+});
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
 }));

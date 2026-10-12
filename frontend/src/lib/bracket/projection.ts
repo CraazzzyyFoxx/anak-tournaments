@@ -12,7 +12,7 @@
  */
 import type { Tone } from "@/components/kit/tone";
 import { resolveBestOf, stageBestOfRoundSections } from "@/lib/tournament/best-of";
-import { bracketRoundLabelEn } from "@/lib/bracket/round-name";
+import { bracketRoundLabelEn, type BracketRoundShape } from "@/lib/bracket/round-name";
 import type {
   SeedRanking,
   Stage,
@@ -49,6 +49,13 @@ export const STAGE_TYPE_LABELS: Record<StageType, string> = {
   swiss: "Swiss",
   ffa_league: "FFA League"
 };
+export const STAGE_TYPE_LABEL_KEYS: Record<StageType, string> = {
+  round_robin: "round_robin",
+  single_elimination: "single_elimination",
+  double_elimination: "double_elimination",
+  swiss: "swiss",
+  ffa_league: "ffa_league"
+};
 
 export const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
   group: "Group",
@@ -56,12 +63,24 @@ export const STAGE_ITEM_TYPE_LABELS: Record<StageItemType, string> = {
   bracket_lower: "Lower bracket",
   single_bracket: "Single bracket"
 };
+export const STAGE_ITEM_TYPE_LABEL_KEYS: Record<StageItemType, string> = {
+  group: "group",
+  bracket_upper: "bracket_upper",
+  bracket_lower: "bracket_lower",
+  single_bracket: "single_bracket"
+};
 
 export const SEED_RANKING_LABELS: Record<SeedRanking, string> = {
   slot: "Slot order (manual / standings)",
   avg_sr: "Highest team avg SR first",
   total_sr: "Highest team total SR first",
   random: "Random (stable per stage)"
+};
+export const SEED_RANKING_LABEL_KEYS: Record<SeedRanking, string> = {
+  slot: "slot",
+  avg_sr: "avg_sr",
+  total_sr: "total_sr",
+  random: "random"
 };
 
 export const DEFAULT_SWISS_TIEBREAKERS = [
@@ -105,16 +124,16 @@ export function ffaDefaultTiebreakers(columns: readonly { key: string }[] = []):
 }
 
 export const RANKING_PRESETS = [
-  { value: "default", label: "System default (based on type)" },
-  { value: "challonge_swiss", label: "Challonge Swiss (Buchholz first)" },
-  { value: "challonge_round_robin", label: "Challonge Round Robin" },
-  { value: "bracket_default", label: "Default bracket" }
+  { value: "default", label: "System default (based on type)", labelKey: "default" },
+  { value: "challonge_swiss", label: "Challonge Swiss (Buchholz first)", labelKey: "challonge_swiss" },
+  { value: "challonge_round_robin", label: "Challonge Round Robin", labelKey: "challonge_round_robin" },
+  { value: "bracket_default", label: "Default bracket", labelKey: "bracket_default" }
 ] as const;
 
 /** The FFA catalogue: the duel presets order metrics a lobby cannot compute. */
 export const FFA_RANKING_PRESETS = [
-  { value: "default", label: "System default (based on type)" },
-  { value: "ffa_default", label: "FFA default (game wins, then score)" }
+  { value: "default", label: "System default (based on type)", labelKey: "default" },
+  { value: "ffa_default", label: "FFA default (game wins, then score)", labelKey: "ffa_default" }
 ] as const;
 
 /** The tiebreak order a stage type falls back to with no preset chosen. */
@@ -204,7 +223,20 @@ export function getInputDisplayLabel(
   stages: Stage[],
   teamById: Map<number, Team>
 ) {
-  if (input.team_id != null) return getTeamName(teamById, input.team_id);
+  return getInputDisplayLabelInfo(input, stages, teamById).label;
+}
+
+export type InputDisplayLabelInfo =
+  | { label: string; key: "team" }
+  | { label: "Empty slot"; key: "emptySlot" }
+  | { label: string; key: "winnerOf"; groupName: string; position: number };
+
+export function getInputDisplayLabelInfo(
+  input: StageItemInput,
+  stages: Stage[],
+  teamById: Map<number, Team>
+): InputDisplayLabelInfo {
+  if (input.team_id != null) return { label: getTeamName(teamById, input.team_id), key: "team" };
 
   if (
     input.input_type === "tentative" &&
@@ -215,10 +247,15 @@ export function getInputDisplayLabel(
       .flatMap((stage) => stage.items)
       .find((item) => item.id === input.source_stage_item_id);
     const groupName = sourceItem?.name ?? `Item ${input.source_stage_item_id}`;
-    return `Winner of ${groupName} #${input.source_position}`;
+    return {
+      label: `Winner of ${groupName} #${input.source_position}`,
+      key: "winnerOf",
+      groupName,
+      position: input.source_position
+    };
   }
 
-  return "Empty slot";
+  return { label: "Empty slot", key: "emptySlot" };
 }
 
 export function isMergeableGroupStage(stage: Stage) {
@@ -403,7 +440,8 @@ export function projectStage({
   stageType,
   maxRounds,
   bestOf,
-  plannedRounds
+  plannedRounds,
+  formatRound = bracketRoundLabelEn
 }: {
   stage: Stage;
   stages: Stage[];
@@ -412,6 +450,7 @@ export function projectStage({
   bestOf: StageBestOfConfig;
   /** The engine's own rounds, when `planned-rounds` has answered. */
   plannedRounds?: readonly number[];
+  formatRound?: (round: number, shape: BracketRoundShape) => string;
 }): StageProjection {
   const isBracket = BRACKET_STAGE_TYPES.includes(stageType);
   const isGroups = GROUP_STAGE_TYPES.includes(stageType);
@@ -442,7 +481,8 @@ export function projectStage({
     bracketTeamCount: bracketTeams.count,
     lowerBracketTeamCount,
     configuredRounds: Object.keys(bestOf.by_round ?? {}).map(Number),
-    plannedRounds
+    plannedRounds,
+    formatRound
   });
 
   const upper = sections.find((section) => section.key === "upper");
@@ -474,7 +514,7 @@ export function projectStage({
   if (grandFinalRound != null) {
     rounds.push({
       round: grandFinalRound,
-      label: bracketRoundLabelEn(grandFinalRound, {
+      label: formatRound(grandFinalRound, {
         rounds: [grandFinalRound],
         finalRounds: [grandFinalRound]
       }),

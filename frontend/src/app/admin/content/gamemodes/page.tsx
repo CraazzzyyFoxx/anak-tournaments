@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { useTranslations } from "next-intl";
 import { ColumnDef } from "@tanstack/react-table";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -30,6 +31,7 @@ function getGamemodeForm(gamemode: Gamemode | null): GamemodeCreateInput | Gamem
 }
 
 export default function GamemodesAdminPage() {
+  const t = useTranslations("adminWorkspace.content");
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
@@ -66,25 +68,25 @@ export default function GamemodesAdminPage() {
   const columns: ColumnDef<Gamemode>[] = [
     {
       accessorKey: "id",
-      header: "ID",
+      header: t("columns.id"),
       size: 80,
       cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
     },
     {
       accessorKey: "name",
-      header: "Name",
+      header: t("columns.name"),
     },
-    createAliasesColumn<Gamemode>((gamemode) => gamemode.aliases),
+    createAliasesColumn<Gamemode>((gamemode) => gamemode.aliases, t("columns.aliases")),
     createKebabColumn<Gamemode>(
       (gamemode) => [
         {
-          label: "Edit gamemode",
+          label: t("actions.editGamemode"),
           icon: Pencil,
           hidden: !isSuperuser,
           onSelect: () => openEdit(gamemode),
         },
         {
-          label: "Delete gamemode",
+          label: t("actions.deleteGamemode"),
           icon: Trash2,
           destructive: true,
           hidden: !isSuperuser,
@@ -103,17 +105,17 @@ export default function GamemodesAdminPage() {
           adminService.getGamemodes({ page, search, per_page: pageSize, sort: sortField ?? undefined, order: sortDir })
         }
         columns={columns}
-        searchPlaceholder="Search gamemodes…"
-        emptyMessage="No gamemodes yet. Use “Create gamemode” to add the first one."
+        searchPlaceholder={t("catalog.gamemode.search")}
+        emptyMessage={t("catalog.gamemode.empty")}
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
         actions={
           <CatalogToolbarActions
             canSync={isSuperuser}
             isSyncing={syncMutation.isPending}
             onSync={() => syncMutation.mutate()}
-            syncLabel="Sync gamemodes from game"
+            syncLabel={t("catalog.gamemode.sync")}
             onCreate={openCreate}
-            createLabel="Create gamemode"
+            createLabel={t("catalog.gamemode.create")}
           />
         }
       />
@@ -122,18 +124,19 @@ export default function GamemodesAdminPage() {
       <EntityFormDialog
         open={isDialogOpen}
         onOpenChange={onEntityDialogClose(closeForm)}
-        title={editingGamemode ? "Edit gamemode" : "Create gamemode"}
+        title={editingGamemode ? t("catalog.gamemode.updateTitle") : t("catalog.gamemode.createTitle")}
         description={
-          editingGamemode ? "Update gamemode information" : "Create a new gamemode in the game"
+          editingGamemode ? t("catalog.gamemode.descriptionUpdate") : t("catalog.gamemode.descriptionCreate")
         }
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
-        submittingLabel={editingGamemode ? "Updating gamemode…" : "Creating gamemode…"}
+        submittingLabel={editingGamemode ? t("catalog.gamemode.updating") : t("catalog.gamemode.creating")}
         errorMessage={entityFormError(
           "gamemode",
           !!editingGamemode,
           updateMutation.error,
-          createMutation.error
+          createMutation.error,
+          (key, values) => t(key, values)
         )}
         isDirty={isFormDirty}
       >
@@ -142,7 +145,7 @@ export default function GamemodesAdminPage() {
             id={nameFieldId}
             value={formData.name}
             onChange={(name) => setFormData({ ...formData, name })}
-            placeholder="Gamemode name"
+            placeholder={t("catalog.gamemode.namePlaceholder")}
           />
 
           <CatalogAliasesField
@@ -150,7 +153,7 @@ export default function GamemodesAdminPage() {
             aliases={formData.aliases}
             onChange={(aliases) => setFormData({ ...formData, aliases })}
             placeholder={"Контроль\nコントロール"}
-            helperText="One alias per line — names as they appear in match logs."
+            helperText={t("fields.aliasesHelp")}
           />
         </div>
       </EntityFormDialog>
@@ -163,9 +166,9 @@ export default function GamemodesAdminPage() {
           onConfirm={() => deleteMutation.mutate(deletingGamemode.id)}
           pending={deleteMutation.isPending}
           intent={{
-            title: "Delete gamemode",
-            description: `“${deletingGamemode.name}” will be permanently removed. Reassign any maps still using it first, otherwise the delete will fail.`,
-            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            title: t("catalog.gamemode.deleteTitle"),
+            description: t("catalog.gamemode.deleteDescription", { name: deletingGamemode.name }),
+            confirmLabel: t("actions.delete"),
             tone: "danger",
           }}
         />

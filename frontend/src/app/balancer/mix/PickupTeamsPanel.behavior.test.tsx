@@ -46,7 +46,16 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, values?: Record<string, unknown>) => {
+    const label = String(values?.label ?? "");
+    return (
+      ({ edit: `Edit ${label}`, save: `Save ${label}`, cancel: `Cancel ${label} edit` } as Record<string, string>)[key] ??
+      ({ editTeamName: "Edit team name", saveTeamName: "Save team name" } as Record<string, string>)[key] ??
+      key
+    );
+  }
+}));
 vi.mock("@/lib/datetime/client", () => ({ useFormatter: () => ({ relativeTime: () => "just now" }) }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));

@@ -46,16 +46,9 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { RbacRole } from "@/types/rbac.types";
 import type { WorkspaceMember, WorkspaceSystemRole } from "@/types/workspace.types";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
+import { useTranslations } from "next-intl";
 
 const SYSTEM_ROLES: WorkspaceSystemRole[] = ["owner", "admin", "referee", "host", "player"];
-const SYSTEM_ROLE_LABEL: Record<WorkspaceSystemRole, string> = {
-  owner: "Owner",
-  admin: "Admin",
-  referee: "Referee",
-  host: "Host",
-  player: "Player"
-};
-
 function isSystemRoleName(name: string): name is WorkspaceSystemRole {
   return (SYSTEM_ROLES as string[]).includes(name);
 }
@@ -82,6 +75,9 @@ export function memberPrimaryRole(member: WorkspaceMember): WorkspaceSystemRole 
 }
 
 export default function WorkspaceMembersPage() {
+  const t = useTranslations("adminAccess.common");
+  const tw = useTranslations("adminAccess.workspace");
+  const tm = useTranslations("adminAccess.member");
   const { isSuperuser, canAccessAnyPermission } = usePermissions();
   const queryClient = useQueryClient();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -128,10 +124,10 @@ export default function WorkspaceMembersPage() {
   const filterDefs = useMemo<FilterDef[]>(() => {
     const options = (scopedRoles ?? []).map((role) => ({ value: String(role.id), label: role.name }));
     return [
-      { key: "role", label: "Role", kind: "single", options },
-      { key: "exclude_role", label: "Exclude role", kind: "multi", options }
+      { key: "role", label: t("role"), kind: "single", options },
+      { key: "exclude_role", label: tm("excludeRole"), kind: "multi", options }
     ];
-  }, [scopedRoles]);
+  }, [scopedRoles, t, tm]);
   const filters = useFilters(filterDefs);
   const roleFilter = String(filters.values.role ?? "");
   const excludeRoleIds = Array.isArray(filters.values.exclude_role)
@@ -147,7 +143,7 @@ export default function WorkspaceMembersPage() {
       workspaceService.updateMemberRole(currentWorkspaceId!, authUserId, roleIds),
     onSuccess: () => {
       invalidateMembers();
-      notify.success("Roles updated");
+      notify.success(tw("rolesUpdated"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -157,7 +153,7 @@ export default function WorkspaceMembersPage() {
     onSuccess: () => {
       invalidateMembers();
       setPendingRemoval(null);
-      notify.success("Member removed");
+      notify.success(tw("memberRemoved"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -168,8 +164,8 @@ export default function WorkspaceMembersPage() {
       invalidateMembers();
       notify.success(
         assigned > 0
-          ? `Assigned "player" to ${assigned} member${assigned === 1 ? "" : "s"} without a role`
-          : "Everyone already has a role"
+          ? tm("assignedPlayer", { count: assigned })
+          : tm("everyoneHasRole")
       );
     },
     onError: (error) => notify.apiError(error)
@@ -180,7 +176,7 @@ export default function WorkspaceMembersPage() {
       if (nextRole === memberPrimaryRole(member)) return;
       const sysId = systemRoleId(nextRole);
       if (sysId == null) {
-        notify.error("That workspace role is not configured yet");
+        notify.error(tw("roleNotConfigured"));
         return;
       }
       updateRolesMutation.mutate({
@@ -188,7 +184,7 @@ export default function WorkspaceMembersPage() {
         roleIds: [sysId, ...memberCustomRoleIds(member)]
       });
     },
-    [systemRoleId, updateRolesMutation]
+    [systemRoleId, updateRolesMutation, tw]
   );
 
   const toggleCustomRole = useCallback(
@@ -210,7 +206,7 @@ export default function WorkspaceMembersPage() {
     const cols: ColumnDef<WorkspaceMember>[] = [
       {
         id: "user",
-        header: "User",
+        header: t("user"),
         enableSorting: true,
         cell: ({ row }) => {
           const member = row.original;
@@ -234,7 +230,7 @@ export default function WorkspaceMembersPage() {
       },
       {
         id: "role",
-        header: "Role",
+        header: t("role"),
         size: 340,
         enableSorting: true,
         // Editing stays in the cell -- the one deliberate exception to "details
@@ -247,7 +243,7 @@ export default function WorkspaceMembersPage() {
             return (
               <div className="flex flex-wrap gap-1.5">
                 {member.rbac_roles.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">No roles</span>
+                  <span className="text-xs text-muted-foreground">{t("noRoles")}</span>
                 ) : (
                   member.rbac_roles.map((role) => (
                     <Badge key={role.id} variant="outline" className="text-xs">
@@ -266,14 +262,14 @@ export default function WorkspaceMembersPage() {
               >
                 <SelectTrigger
                   className="h-8 w-32 text-sm"
-                  aria-label={`Workspace role for ${memberLabel(member)}`}
+                  aria-label={tm("userRole", { member: memberLabel(member) })}
                 >
-                  <SelectValue placeholder="No role" />
+                  <SelectValue placeholder={t("noRole")} />
                 </SelectTrigger>
                 <SelectContent>
                   {SYSTEM_ROLES.map((name) => (
                     <SelectItem key={name} value={name} className="text-sm">
-                      {SYSTEM_ROLE_LABEL[name]}
+                      {tm(`${name}Role`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -286,9 +282,9 @@ export default function WorkspaceMembersPage() {
                       variant="outline"
                       size="sm"
                       className="h-8 gap-1 text-xs"
-                      aria-label={`Custom roles for ${memberLabel(member)}`}
+                      aria-label={tm("customRoles", { member: memberLabel(member) })}
                     >
-                      + custom
+                      {tm("custom")}
                       {customCount > 0 ? (
                         <Badge
                           variant="secondary"
@@ -302,9 +298,9 @@ export default function WorkspaceMembersPage() {
                   </PopoverTrigger>
                   <PopoverContent className="w-64 p-0" align="start">
                     <Command>
-                      <CommandInput placeholder="Search custom roles…" />
+                      <CommandInput placeholder={tm("searchCustomRoles")} />
                       <CommandList>
-                        <CommandEmpty>No custom roles match that search.</CommandEmpty>
+                        <CommandEmpty>{t("noCustomRoles")}</CommandEmpty>
                         <CommandGroup>
                           {customScopedRoles.map((role) => {
                             const checked = memberCustomRoleIds(member).includes(role.id);
@@ -348,7 +344,7 @@ export default function WorkspaceMembersPage() {
       createKebabColumn<WorkspaceMember>(
         (member) => [
           {
-            label: "Remove from workspace",
+            label: tm("remove"),
             icon: Trash2,
             destructive: true,
             hidden: !canDeleteMembers,
@@ -359,7 +355,7 @@ export default function WorkspaceMembersPage() {
       )
     );
     return cols;
-  }, [canUpdateMembers, canDeleteMembers, customScopedRoles, changePrimaryRole, toggleCustomRole]);
+  }, [canUpdateMembers, canDeleteMembers, customScopedRoles, changePrimaryRole, toggleCustomRole, t, tm]);
 
   // Exclusive branch: no workspace selected means the table below never renders,
   // so this header is the page's only `<h1>`.
@@ -367,8 +363,8 @@ export default function WorkspaceMembersPage() {
     return (
       <div className="flex flex-col gap-6">
         <AdminPageHeader
-          title="Workspace members"
-          description="Pick a workspace from the switcher above to see and manage its members."
+          title={tw("membersTitle")}
+          description={tw("membersDescription")}
         />
       </div>
     );
@@ -385,13 +381,13 @@ export default function WorkspaceMembersPage() {
           onClick={() => autofillMutation.mutate()}
         >
           <Wand2 aria-hidden className="size-3.5" />
-          Fill missing roles
+          {tw("fillMissing")}
         </Button>
       ) : null}
       {canCreateMembers ? (
         <Button size="sm" className="gap-1.5" onClick={() => setAddOpen(true)}>
           <UserPlus aria-hidden className="size-3.5" />
-          Add member
+          {t("addMember")}
         </Button>
       ) : null}
     </>
@@ -400,8 +396,8 @@ export default function WorkspaceMembersPage() {
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
-        title="Workspace members"
-        description={`Manage who has access to ${workspace?.name ?? "this workspace"} and their RBAC roles.`}
+        title={tw("membersTitle")}
+        description={tw("manageMembers", { workspace: workspace?.name ?? t("thisWorkspace") })}
       />
 
       <DataTable<WorkspaceMember>
@@ -423,11 +419,11 @@ export default function WorkspaceMembersPage() {
         }
         columns={columns}
         initialPageSize={25}
-        searchPlaceholder="Search by name or email…"
+        searchPlaceholder={t("searchByNameEmail")}
         filterKey={filters.filterKey}
         getRowId={(row) => String(row.auth_user_id)}
         toolbar={<FilterBar defs={filterDefs} filters={filters} />}
-        emptyMessage="No members yet. Add staff and administrators here — players who register for a tournament are added automatically."
+        emptyMessage={tw("noMembers")}
         actions={tableActions}
       />
 
@@ -448,11 +444,11 @@ export default function WorkspaceMembersPage() {
         open={pendingRemoval !== null}
         onOpenChange={(open) => (open ? null : setPendingRemoval(null))}
         intent={{
-          title: "Remove member",
+          title: t("removeMember"),
           description: pendingRemoval
-            ? `${memberLabel(pendingRemoval)} loses access to ${workspace?.name ?? "this workspace"} and all roles granted here. Their tournament results are kept, and you can add them back later.`
+            ? tm("removeDescription", { member: memberLabel(pendingRemoval), workspace: workspace?.name ?? t("thisWorkspace") })
             : "",
-          confirmLabel: "Remove member",
+          confirmLabel: t("removeMember"),
           tone: "danger"
         }}
         onConfirm={() => {
@@ -477,6 +473,9 @@ function AddMemberDialog({
   systemRoleId: (name: WorkspaceSystemRole) => number | undefined;
   onAdded: () => void;
 }>) {
+  const t = useTranslations("adminAccess.common");
+  const tw = useTranslations("adminAccess.workspace");
+  const tm = useTranslations("adminAccess.member");
   const userFieldId = useId();
   const roleFieldId = useId();
   const [userId, setUserId] = useState<string>("");
@@ -495,7 +494,7 @@ function AddMemberDialog({
     onSuccess: () => {
       setUserId("");
       setRole("player");
-      notify.success("Member added");
+      notify.success(tw("memberAdded"));
       onAdded();
     },
     onError: (error) => notify.apiError(error)
@@ -507,12 +506,12 @@ function AddMemberDialog({
   // form will not go through is spoken instead of silently greyed out.
   const submit = () => {
     if (!userId) {
-      notify.error("Pick the user you want to add first.");
+      notify.error(tw("pickUser"));
       return;
     }
     const roleId = systemRoleId(role);
     if (roleId == null) {
-      notify.error("That workspace role is not configured yet");
+      notify.error(tw("roleNotConfigured"));
       return;
     }
     addMemberMutation.mutate(roleId);
@@ -522,16 +521,13 @@ function AddMemberDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add member</DialogTitle>
-          <DialogDescription>
-            Grant a user access to this workspace. Use this for people who have not played yet
-            (e.g. staff/administrators) — players who registered are added automatically.
-          </DialogDescription>
+          <DialogTitle>{t("addMember")}</DialogTitle>
+          <DialogDescription>{tm("addDescription")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={userFieldId}>User</Label>
+            <Label htmlFor={userFieldId}>{t("user")}</Label>
             <Popover open={userComboOpen} onOpenChange={setUserComboOpen}>
               <PopoverTrigger asChild>
                 <Button
@@ -542,15 +538,15 @@ function AddMemberDialog({
                   aria-expanded={userComboOpen}
                   className="justify-between"
                 >
-                  <span className="truncate">{selectedUsername ?? "Select user…"}</span>
+                  <span className="truncate">{selectedUsername ?? tm("selectUser")}</span>
                   <ChevronsUpDown aria-hidden className="ml-2 size-4 shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
                 <Command>
-                  <CommandInput placeholder="Search user…" />
+                  <CommandInput placeholder={t("searchUser")} />
                   <CommandList>
-                    <CommandEmpty>No user matches that search.</CommandEmpty>
+                    <CommandEmpty>{t("noUser")}</CommandEmpty>
                     <CommandGroup>
                       {(allUsers ?? []).map((u) => (
                         <CommandItem
@@ -579,7 +575,7 @@ function AddMemberDialog({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={roleFieldId}>Role</Label>
+            <Label htmlFor={roleFieldId}>{t("role")}</Label>
             <Select value={role} onValueChange={(value) => setRole(value as WorkspaceSystemRole)}>
               <SelectTrigger id={roleFieldId}>
                 <SelectValue />
@@ -587,7 +583,7 @@ function AddMemberDialog({
               <SelectContent>
                 {SYSTEM_ROLES.map((name) => (
                   <SelectItem key={name} value={name}>
-                    {SYSTEM_ROLE_LABEL[name]}
+                    {tm(`${name}Role`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -597,10 +593,10 @@ function AddMemberDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("cancel")}
           </Button>
           <Button onClick={submit} disabled={addMemberMutation.isPending}>
-            {addMemberMutation.isPending ? "Adding…" : "Add member"}
+            {addMemberMutation.isPending ? tm("adding") : t("addMember")}
           </Button>
         </DialogFooter>
       </DialogContent>

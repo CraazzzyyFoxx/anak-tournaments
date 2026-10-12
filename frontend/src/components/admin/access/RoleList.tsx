@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Lock, Wrench } from "lucide-react";
 
 import { SearchField } from "@/components/ui/search-field";
@@ -24,6 +25,7 @@ export function RoleList({
   selectedRoleId: number | null;
   onSelect: (roleId: number) => void;
 }>) {
+  const t = useTranslations("adminAccess.common");
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
   const visible = needle
@@ -34,11 +36,11 @@ export function RoleList({
     <div className="rounded-xl border border-border bg-card">
       <div className="space-y-2 border-b border-border px-3 py-3">
         <p className="text-xs tabular-nums text-muted-foreground">
-          {roles.length} role{roles.length === 1 ? "" : "s"} in this scope
+          {t("roleCountInScope", { count: roles.length })}
         </p>
         <SearchField
-          label="Filter roles"
-          placeholder="Filter roles…"
+          label={t("filterRoles")}
+          placeholder={t("searchRoles")}
           value={query}
           onValueChange={setQuery}
         />
@@ -47,8 +49,8 @@ export function RoleList({
       {visible.length === 0 ? (
         <p className="p-3 text-sm text-muted-foreground">
           {roles.length === 0
-            ? "No roles in this scope yet. Create one to bundle permissions."
-            : "No role matches this filter."}
+            ? t("noRoles")
+            : t("nothingHere")}
         </p>
       ) : (
         <ul className="flex flex-col gap-1 p-2">
@@ -73,18 +75,18 @@ export function RoleList({
                       {role.name}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">
-                      {role.description || "No description"}
+                      {role.description || t("noDescription")}
                     </span>
                   </span>
                   {role.is_system ? (
                     <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                       <Lock aria-hidden className="size-3.5" />
-                      System
+                      {t("system")}
                     </span>
                   ) : (
                     <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                       <Wrench aria-hidden className="size-3.5" />
-                      Custom
+                      {t("custom")}
                     </span>
                   )}
                 </button>

@@ -1,6 +1,9 @@
 "use client";
 
 import { Play } from "lucide-react";
+import { useTranslations } from "next-intl";
+
+import type { AchievementCategory } from "@/types/admin.types";
 
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +51,7 @@ export function EvaluateAchievementsDialog({
   onRun: () => void;
   isRunning: boolean;
 }>) {
+  const t = useTranslations("adminAchievements");
   const rulesByCategory = groupRulesByCategory(rules);
 
   const toggleCategory = (category: string, checked: boolean) => {
@@ -69,23 +73,22 @@ export function EvaluateAchievementsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Evaluate achievements</DialogTitle>
+          <DialogTitle>{t("evaluateDialog.title")}</DialogTitle>
           <DialogDescription>
-            Pick a tournament, specific achievements, or both. Leave everything untouched to
-            re-evaluate every achievement across every tournament.
+            {t("evaluateDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           {/* Tournament selector */}
           <div className="space-y-2">
-            <Label htmlFor="eval-tournament">Tournament (optional)</Label>
+            <Label htmlFor="eval-tournament">{t("evaluateDialog.tournamentOptional")}</Label>
             <TournamentCombobox
               id="eval-tournament"
               tournaments={tournaments}
               value={tournamentId}
               onSelect={(t) => onTournamentChange(t?.id)}
-              placeholder="All tournaments"
+              placeholder={t("evaluateDialog.allTournaments")}
             />
           </div>
 
@@ -93,10 +96,10 @@ export function EvaluateAchievementsDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">
-                Achievements{" "}
-                <span className="tabular-nums text-muted-foreground">
-                  ({selectedRuleIds.size > 0 ? `${selectedRuleIds.size} selected` : "all"})
-                </span>
+                {t.rich("evaluateDialog.achievementSelection", {
+                  count: selectedRuleIds.size,
+                  num: (chunks) => <span className="tabular-nums text-muted-foreground">{chunks}</span>,
+                })}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -104,14 +107,14 @@ export function EvaluateAchievementsDialog({
                   size="sm"
                   onClick={() => onSelectedRuleIdsChange(new Set(rules.map((r) => r.id)))}
                 >
-                  Select all
+                  {t("evaluateDialog.selectAll")}
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => onSelectedRuleIdsChange(new Set())}
                 >
-                  Clear
+                  {t("evaluateDialog.clear")}
                 </Button>
               </div>
             </div>
@@ -126,9 +129,9 @@ export function EvaluateAchievementsDialog({
                         <Checkbox
                           checked={allChecked ? true : someChecked ? "indeterminate" : false}
                           onCheckedChange={(checked) => toggleCategory(category, !!checked)}
-                          aria-label={`Select every ${category} achievement`}
+                          aria-label={t("evaluateDialog.selectEvery", { category: t(`common.categoryValues.${category as AchievementCategory}`) })}
                         />
-                        <span className="text-sm font-medium capitalize">{category}</span>
+                        <span className="text-sm font-medium">{t(`common.categoryValues.${category as AchievementCategory}`)}</span>
                         <Badge variant="secondary" className="text-xs tabular-nums">{categoryRules.length}</Badge>
                       </div>
                       <div className="ml-6 grid grid-cols-2 gap-1">
@@ -137,7 +140,7 @@ export function EvaluateAchievementsDialog({
                             <Checkbox
                               checked={selectedRuleIds.has(rule.id)}
                               onCheckedChange={(checked) => toggleRule(rule.id, !!checked)}
-                              aria-label={`Evaluate ${rule.name}`}
+                              aria-label={t("evaluateDialog.evaluate", { name: rule.name })}
                             />
                             <span className="truncate">{rule.slug}</span>
                           </label>
@@ -153,11 +156,11 @@ export function EvaluateAchievementsDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("evaluateDialog.cancel")}
           </Button>
           <Button onClick={onRun} disabled={isRunning}>
             <Play className={`mr-2 h-4 w-4 ${isRunning ? "animate-spin" : ""}`} aria-hidden />
-            {isRunning ? "Evaluating…" : "Run evaluation"}
+            {isRunning ? t("common.evaluating") : t("evaluation.run")}
           </Button>
         </DialogFooter>
       </DialogContent>

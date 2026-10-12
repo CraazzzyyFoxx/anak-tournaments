@@ -1,6 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +12,7 @@ export function ImportErrorPanel({
   message,
   onDismiss,
 }: Readonly<{ message: string; onDismiss: () => void }>) {
+  const t = useTranslations("adminAchievements");
   return (
     <div className="flex items-start justify-between gap-3 rounded-lg border border-danger/40 bg-danger/10 p-4">
       <p className="text-sm text-danger">{message}</p>
@@ -18,7 +20,7 @@ export function ImportErrorPanel({
         variant="ghost"
         size="icon"
         onClick={onDismiss}
-        aria-label="Dismiss the import error"
+        aria-label={t("import.dismissError")}
       >
         <X className="h-4 w-4" aria-hidden />
       </Button>
@@ -34,20 +36,21 @@ export function ImportResultPanel({
   result,
   onDismiss,
 }: Readonly<{ result: AchievementRuleImportResult; onDismiss: () => void }>) {
+  const t = useTranslations("adminAchievements");
   return (
     <div className="rounded-lg border p-4 bg-muted/50 space-y-3">
       <div className="flex items-center justify-between">
         <p className="font-medium">
-          Import result
+          {t("import.result")}
           <span className="ml-2 text-sm text-muted-foreground tabular-nums">
-            created +{result.created} · updated {result.updated}
+            {t("import.created", { count: result.created })} · {t("import.updated", { count: result.updated })}
           </span>
         </p>
         <Button
           variant="ghost"
           size="icon"
           onClick={onDismiss}
-          aria-label="Dismiss the import summary"
+          aria-label={t("import.dismissSummary")}
         >
           <X className="h-4 w-4" aria-hidden />
         </Button>

@@ -21,9 +21,6 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const getTeam = vi.fn();
 const updateTeam = vi.fn();
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key
-}));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({
     dateTime: (value: Date) => value.toISOString().slice(0, 10),

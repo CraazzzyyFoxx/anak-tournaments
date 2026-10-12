@@ -1,14 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { SectionNav } from "@/components/kit/SectionNav";
 import {
   WORKSPACE_SETTINGS_SECTIONS,
-  WORKSPACE_SETTINGS_SECTION_DESCRIPTIONS,
-  WORKSPACE_SETTINGS_SECTION_LABELS,
   workspaceSettingsNavGroups,
   type WorkspaceSettingsSectionKey
 } from "./sections";
@@ -54,6 +53,7 @@ export function WorkspaceSettingsShell({
   actions,
   children
 }: Readonly<WorkspaceSettingsShellProps>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings");
   const pathname = usePathname();
   if (FULL_SCREEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return <>{children}</>;
 
@@ -66,15 +66,15 @@ export function WorkspaceSettingsShell({
   return (
     <div className="flex flex-col gap-4">
       <AdminPageHeader
-        title={activeKey ? WORKSPACE_SETTINGS_SECTION_LABELS[activeKey] : "Workspace settings"}
+        title={activeKey ? t(`sections.${activeKey === "sub-roles" ? "subRoles" : activeKey === "registration-forms" ? "registrationForms" : activeKey}`) : t("sections.settingsTitle")}
         description={
-          activeKey ? WORKSPACE_SETTINGS_SECTION_DESCRIPTIONS[activeKey] : undefined
+          activeKey ? t(`sectionDescriptions.${activeKey === "sub-roles" ? "subRoles" : activeKey === "registration-forms" ? "registrationForms" : activeKey}`) : undefined
         }
         actions={actions}
       />
       <div className="flex flex-col gap-4 md:flex-row md:gap-6">
         <SectionNav
-          groups={workspaceSettingsNavGroups(basePath, sections)}
+          groups={workspaceSettingsNavGroups(basePath, sections, (key) => t(key as never))}
           activeKey={activeKey ?? ""}
         />
         {/* Not `<main>`: the admin shell already exposes the page-level main

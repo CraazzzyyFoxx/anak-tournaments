@@ -3,10 +3,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
+
 import {
   SCHEDULABLE_PHASES,
   TOURNAMENT_PHASES,
-  TOURNAMENT_STATUS_LABELS,
   VALID_TRANSITIONS
 } from "./lifecycle";
 
@@ -66,7 +68,10 @@ function members(block: string): string[] {
 describe("tournament lifecycle parity with backend/shared/core", () => {
   it("carries every status the enum defines, and no invented one", () => {
     expect([...TOURNAMENT_PHASES].sort()).toEqual(ALL_STATUSES);
-    expect(Object.keys(TOURNAMENT_STATUS_LABELS).sort()).toEqual(ALL_STATUSES);
+    // Every surface names a status through `common.statusBadge.<status>`.
+    for (const messages of [en, ru]) {
+      expect(ALL_STATUSES.filter((status) => !(status in messages.common.statusBadge))).toEqual([]);
+    }
   });
 
   it("orders the phases exactly as PHASE_ORDER does", () => {

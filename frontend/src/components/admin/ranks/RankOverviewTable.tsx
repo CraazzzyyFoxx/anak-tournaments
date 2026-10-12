@@ -85,6 +85,7 @@ export interface RankOverviewTableProps {
  */
 export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>) {
   const t = useTranslations("admin.rankOverview");
+  const tBracket = useTranslations("adminBracket");
   const tRoles = useTranslations("common.roles");
   const format = useFormatter();
   const grid = useDivisionGrid();
@@ -105,9 +106,9 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
     () =>
       getDivisionOptions(grid).map((division) => ({
         value: String(division),
-        label: getDivisionLabel(grid, division) ?? String(division),
+        label: getDivisionLabel(grid, division) ?? tBracket("labels.divisionFallback", { number: division }),
       })),
-    [grid],
+    [grid, tBracket],
   );
 
   const defs = useMemo<FilterDef[]>(
@@ -233,7 +234,10 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
               ) : (
                 <>
                   <DivisionIcon division={division} width={20} height={20} />
-                  <span className="truncate">{getDivisionLabel(grid, division) ?? division}</span>
+                  <span className="truncate">
+                    {getDivisionLabel(grid, division) ??
+                      tBracket("labels.divisionFallback", { number: division })}
+                  </span>
                 </>
               )}
               {owDivision ? (
@@ -355,7 +359,7 @@ export function RankOverviewTable({ playerId }: Readonly<RankOverviewTableProps>
     ];
 
     return playerId == null ? [player, ...rest] : rest;
-  }, [t, tRoles, format, grid, playerId]);
+  }, [t, tRoles, tBracket, format, grid, playerId]);
 
   if (workspaceId == null) {
     return <EmptyNote>{t("noWorkspace")}</EmptyNote>;

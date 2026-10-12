@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Check, ChevronDown, ChevronsUpDown, ChevronUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ function moveItem(list: string[], index: number, direction: -1 | 1): string[] {
 
 /** Multi-select combobox with selected chips that can be reordered/removed. */
 export function HeaderMultiCombobox({ options, value, onChange, disabled }: Readonly<HeaderMultiComboboxProps>) {
+  const t = useTranslations("sheetsFeed.controls");
   const [open, setOpen] = useState(false);
 
   const toggle = (option: string) => {
@@ -55,16 +57,16 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
             className="h-9 w-full justify-between font-normal"
           >
             <span className={cn("truncate", value.length === 0 && "text-muted-foreground")}>
-              {value.length > 0 ? `${value.length} column${value.length === 1 ? "" : "s"} selected` : "Select columns…"}
+              {value.length > 0 ? t("columnsSelected", { count: value.length }) : t("selectColumns")}
             </span>
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="p-0" style={{ width: "var(--radix-popover-trigger-width)" }}>
           <Command>
-            <CommandInput placeholder="Search columns…" />
+            <CommandInput placeholder={t("searchColumns")} />
             <CommandList>
-              <CommandEmpty>No columns found.</CommandEmpty>
+              <CommandEmpty>{t("noColumns")}</CommandEmpty>
               <CommandGroup>
                 {options.map((option) => {
                   const checked = value.includes(option);
@@ -96,7 +98,7 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
                 type="button"
                 disabled={disabled || index === 0}
                 onClick={() => onChange(moveItem(value, index, -1))}
-                title="Move up"
+                title={t("moveUp")}
                 className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-30"
               >
                 <ChevronUp className="size-3.5" />
@@ -105,7 +107,7 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
                 type="button"
                 disabled={disabled || index === value.length - 1}
                 onClick={() => onChange(moveItem(value, index, 1))}
-                title="Move down"
+                title={t("moveDown")}
                 className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-30"
               >
                 <ChevronDown className="size-3.5" />
@@ -114,7 +116,7 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
                 type="button"
                 disabled={disabled}
                 onClick={() => onChange(value.filter((item) => item !== column))}
-                title="Remove"
+                title={t("remove")}
                 className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
               >
                 <X className="size-3.5" />

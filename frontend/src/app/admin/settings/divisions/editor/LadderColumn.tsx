@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import Image from "next/image";
 import { ChevronDown, ChevronUp, Merge, Scissors } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export function LadderColumn({
   onSelect,
   dispatch
 }: Readonly<LadderColumnProps>) {
+  const t = useTranslations("adminSettings.divisions");
   const listRef = useRef<HTMLOListElement>(null);
   const owners = ladderOwners(bands);
   const gaps = owners.filter((owner) => owner === null).length;
@@ -69,29 +71,28 @@ export function LadderColumn({
   }, [selectedSlug]);
 
   const hint = !editable
-    ? "This version is immutable, so the ladder is shown as it was published."
+    ? t("ladder.hintImmutable")
     : onLadder
-      ? "Rank ranges follow the ladder. Hover a rank to cut a new division there, or join a division to the one above. The arrows move a boundary one rank."
-      : "Where each OW rank lands. The arrows move a boundary one rank; link a whole run from the OW ranks column.";
+      ? t("ladder.hintLadder")
+      : t("ladder.hintCustom");
 
   return (
     <div className="flex max-h-[calc(100vh-13rem)] flex-col rounded-xl border border-border bg-card xl:sticky xl:top-4">
       <div className="flex items-baseline justify-between gap-2 border-b border-border px-3 py-2">
-        <h2 className="font-display text-sm font-semibold">OW ladder</h2>
-        <span className={cn(EYEBROW_CLASS, "font-mono tabular-nums")}>{RANK_COUNT} ranks</span>
+        <h2 className="font-display text-sm font-semibold">{t("ladder.title")}</h2>
+        <span className={cn(EYEBROW_CLASS, "font-mono tabular-nums")}>{t("ladder.rankCount", { count: RANK_COUNT })}</span>
       </div>
 
       <p className="px-3 pt-2 text-xs text-muted-foreground">{hint}</p>
       {implicitLinks && !onLadder ? (
         <p className="mx-2 mt-2 rounded-md border border-border bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
-          This version stores no OW links, so OW ranks resolve by rank range — that is what is
-          drawn. Saving stores the links as shown.
+          {t("ladder.noLinks")}
         </p>
       ) : null}
 
       <ol
         ref={listRef}
-        aria-label="OW ranks and the division each lands in"
+        aria-label={t("ladder.aria")}
         className="min-h-0 flex-1 overflow-y-auto p-2"
       >
         {LADDER.map((rank, index) => {
@@ -109,8 +110,8 @@ export function LadderColumn({
           const canCut = editable && onLadder && !startsRun;
           const into = (target: number | null, moving: number) =>
             target === null
-              ? `Unlink ${rankLabel(moving)}`
-              : `Move ${rankLabel(moving)} into ${bands[target].name}`;
+              ? t("ladder.unlinkRank", { rank: rankLabel(moving) })
+              : t("ladder.moveRank", { rank: rankLabel(moving), target: bands[target].name });
 
           return (
             <li
@@ -133,9 +134,7 @@ export function LadderColumn({
                 disabled={band === null}
                 onClick={() => band && onSelect(band.slug)}
                 className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                aria-label={
-                  band ? `${rank.name}, in ${band.name}` : `${rank.name}, in no division`
-                }
+                aria-label={band ? t("ladder.rankIn", { rank: rank.name, division: band.name }) : t("ladder.rankUnlinked", { rank: rank.name })}
               >
                 <Image
                   src={rank.icon_url}
@@ -160,7 +159,7 @@ export function LadderColumn({
                   )}
                   title={band ? `${band.number}. ${band.name}` : undefined}
                 >
-                  {band ? `${band.number}. ${band.name}` : "Not linked"}
+                  {band ? `${band.number}. ${band.name}` : t("ladder.notLinked")}
                 </span>
               ) : null}
 
@@ -184,7 +183,7 @@ export function LadderColumn({
                   ) : null}
                   {canJoin ? (
                     <RowButton
-                      label={`Join ${band!.name} into ${bands[above!].name}`}
+                      label={t("ladder.join", { from: band!.name, into: bands[above!].name })}
                       onClick={() => dispatch({ type: "merge", bandIndex: owner!, into: "up" })}
                     >
                       <Merge aria-hidden />
@@ -192,7 +191,7 @@ export function LadderColumn({
                   ) : null}
                   {canCut ? (
                     <RowButton
-                      label={`Start a new division at ${rank.name}`}
+                      label={t("ladder.startDivision", { rank: rank.name })}
                       onClick={() => dispatch({ type: "splitAt", rank: index })}
                     >
                       <Scissors aria-hidden />
@@ -207,7 +206,7 @@ export function LadderColumn({
 
       {gaps > 0 ? (
         <p className="border-t border-border px-3 py-2 text-xs text-warning">
-          {gaps} {gaps === 1 ? "rank lands" : "ranks land"} in no division
+          {t("ladder.gaps", { count: gaps })}
         </p>
       ) : null}
     </div>

@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
+
+import type { AchievementCategory } from "@/types/admin.types";
 
 import type { AchievementRule } from "@/types/admin.types";
 import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
@@ -23,11 +26,14 @@ export function AchievementCombobox({
   value,
   onSelect,
   id,
-  placeholder = "Select achievement",
-  searchPlaceholder = "Search achievement…",
+  placeholder,
+  searchPlaceholder,
   disabled = false,
   allowClear = true,
 }: Readonly<AchievementComboboxProps>) {
+  const t = useTranslations("adminAchievements");
+  const resolvedPlaceholder = placeholder ?? t("common.achievement");
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("condition.searchNodes");
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
@@ -38,7 +44,7 @@ export function AchievementCombobox({
 
   const selectedLabel = selectedRule
     ? `${selectedRule.name} (${selectedRule.slug})`
-    : placeholder;
+    : resolvedPlaceholder;
 
   const handleSelect = useCallback(
     (rule: AchievementRule | undefined) => {
@@ -67,12 +73,12 @@ export function AchievementCombobox({
       disabled={disabled}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}
-      searchPlaceholder={searchPlaceholder}
-      emptyMessage="No achievements match that search. Try the slug or category."
+      searchPlaceholder={resolvedSearchPlaceholder}
+      emptyMessage={t("list.empty")}
       clear={
         allowClear && typeof value === "number" && value > 0
           ? {
-              label: "Clear selection",
+              label: t("common.clear"),
               value: "clear-achievement-selection",
               onSelect: () => handleSelect(undefined),
             }
@@ -80,7 +86,7 @@ export function AchievementCombobox({
       }
     >
       {grouped.map(([category, categoryRules]) => (
-        <CommandGroup key={category} heading={category} className="[&_[cmdk-group-heading]]:capitalize">
+        <CommandGroup key={category} heading={t(`common.categoryValues.${category as AchievementCategory}`)} className="[&_[cmdk-group-heading]]:capitalize">
           {categoryRules.map((rule) => (
             <CommandItem
               key={rule.id}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -31,6 +32,7 @@ export function MatchesView({
   tournamentId: number;
   children: (scope: MatchesViewScope) => ReactNode;
 }>) {
+  const t = useTranslations("adminTournament.matches");
   const { canAccessPermission, isLoaded } = usePermissions();
   const tournamentQuery = useHubTournamentQuery(tournamentId);
 
@@ -44,9 +46,9 @@ export function MatchesView({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to read matches in this tournament.
+            {t("unauthorizedDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
