@@ -701,6 +701,71 @@ def test_every_class_the_converter_rejects_is_reported_with_its_ids_and_stops_th
         assert str(expected) in line, f"{fragment}: id {expected} missing from {line}"
 
 
+def _spare_member_on(conn: psycopg.Connection, ids: dict[str, int], **rows: bool) -> int:
+    """Seed the one member no team of the seed uses onto the given teams (letter=is_substitution)."""
+    member = _scalar(conn, "SELECT max(id) FROM workspace_member WHERE workspace_id = %s", (ids["ws"],))
+    for letter, is_substitution in rows.items():
+        _insert(
+            conn,
+            "tournament.player",
+            name="spare",
+            rank=2000,
+            role="damage",
+            tournament_id=ids["t"],
+            workspace_member_id=member,
+            team_id=ids[f"team_{letter}"],
+            is_substitution=is_substitution,
+        )
+    return member
+
+
+def _check_two(conn: psycopg.Connection) -> list[tuple]:
+    (rows,) = [rows for question, rows in _run_checks(conn, revision.PREFLIGHT).items() if "two rosters" in question]
+    return rows
+
+
+def test_a_regular_seat_beats_a_substitute_row_of_the_same_encounter(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        # Regular of team A, registered as a substitute on its opponent D: they sit in A's encounters as a regular.
+        member = _spare_member_on(conn, ids, A=False, D=True)
+        assert _check_two(conn) == []
+    done = _alembic(REJECTED_DB, "head")
+    assert done.returncode == 0, done.stderr[-3000:]
+
+    def snapshots(encounter: str) -> list[tuple]:
+        with _connect(REJECTED_DB) as conn:
+            return _rows(
+                conn,
+                "SELECT t.team_id, tm.is_substitute,"
+                " (SELECT count(*) FROM encounter.team_member_role r WHERE r.team_member_id = tm.id)"
+                " FROM encounter.team_member tm JOIN encounter.team t ON t.id = tm.encounter_team_id"
+                " WHERE t.encounter_id = %s AND tm.workspace_member_id = %s",
+                (ids[encounter], member),
+            )
+
+    # A vs D: one snapshot, on the regular side, role included.
+    assert snapshots("e_hero") == [(ids["team_A"], False, 1)]
+    # Without the regular seat in the encounter the substitute row stays.
+    assert snapshots("e_slots") == [(ids["team_D"], True, 1)]
+    assert snapshots("e_pool") == [(ids["team_D"], True, 1)]
+
+
+@pytest.mark.parametrize("flags", [{"A": False, "D": False}, {"A": True, "D": True}], ids=["two-regulars", "two-subs"])
+def test_check_two_still_refuses_what_the_rule_cannot_settle(legacy_template, flags) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        member = _spare_member_on(conn, ids, **flags)
+        assert _check_two(conn) == [(ids["e_hero"], member, [ids["team_A"], ids["team_D"]])]
+    done = _alembic(REJECTED_DB, "head")
+    assert done.returncode != 0
+    assert "pre-flight failed" in done.stderr
+    line = next(line for line in done.stderr.splitlines() if "two rosters" in line)
+    assert str(ids["e_hero"]) in line
+
+
 # --------------------------------------------------------------------------- #
 # The upgrade
 # --------------------------------------------------------------------------- #

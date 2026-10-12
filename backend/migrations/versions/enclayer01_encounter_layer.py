@@ -670,12 +670,18 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
             SELECT id, away_team_id FROM tournament.encounter WHERE away_team_id IS NOT NULL
              UNION ALL
             SELECT encounter_id, team_id FROM tournament.encounter_participant
+        ),
+        member_seat AS (
+            SELECT seat.encounter_id, p.workspace_member_id, seat.team_id,
+                   bool_or(NOT p.is_substitution) AS regular
+              FROM seat JOIN tournament.player p ON p.team_id = seat.team_id
+             GROUP BY seat.encounter_id, p.workspace_member_id, seat.team_id
         )
-        SELECT seat.encounter_id, p.workspace_member_id, array_agg(DISTINCT seat.team_id) AS team_ids
-          FROM seat JOIN tournament.player p ON p.team_id = seat.team_id
-         GROUP BY seat.encounter_id, p.workspace_member_id
-        HAVING count(DISTINCT seat.team_id) > 1
-         ORDER BY seat.encounter_id, p.workspace_member_id
+        SELECT encounter_id, workspace_member_id, array_agg(team_id ORDER BY team_id) AS team_ids
+          FROM member_seat
+         GROUP BY encounter_id, workspace_member_id
+        HAVING count(*) > 1 AND count(*) FILTER (WHERE regular) <> 1
+         ORDER BY encounter_id, workspace_member_id
         """,
     ),
     (
@@ -1122,30 +1128,44 @@ _FFA_PARTICIPATIONS = """
     ON CONFLICT (encounter_id, slot) WHERE active DO NOTHING
 """
 
+#: A member who is a regular of one seat of the encounter and only a substitute
+#: on another seat played for the regular seat: legacy rows cannot say which
+#: team a substitute registration was used for, and the statistics agree with
+#: the regular seat. Pre-flight check 2 refuses what this cannot settle.
+_SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT = """
+       AND NOT (p.is_substitution AND EXISTS (
+                SELECT 1 FROM encounter.team ot
+                  JOIN tournament.player q ON q.team_id = ot.team_id
+                 WHERE ot.encounter_id = et.encounter_id AND ot.team_id <> et.team_id
+                   AND q.workspace_member_id = p.workspace_member_id AND NOT q.is_substitution))
+"""
+
 _ROSTERS = (
-    # The whole roster of the seat's team, substitutes included (D40). Rows of
-    # one member that agree collapse here; rows that disagree were stopped by
-    # pre-flight check 1, so ``DISTINCT ON`` only ever picks between equals.
-    """
+    # The whole roster of the seat's team, substitutes included (D40) -- except
+    # a substitute row of a member who is a regular on another seat of the same
+    # encounter. Rows of one member that agree collapse here; rows that
+    # disagree were stopped by pre-flight check 1, so ``DISTINCT ON`` only ever
+    # picks between equals.
+    f"""
     INSERT INTO encounter.team_member
            (encounter_id, encounter_team_id, active, workspace_member_id, display_name_snapshot, rank, is_substitute)
     SELECT DISTINCT ON (et.id, p.workspace_member_id)
            et.encounter_id, et.id, et.active, p.workspace_member_id, left(p.name, 255), p.rank, p.is_substitution
       FROM encounter.team et
       JOIN tournament.player p ON p.team_id = et.team_id
-     WHERE et.team_id IS NOT NULL
+     WHERE et.team_id IS NOT NULL {_SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT}
      ORDER BY et.id, p.workspace_member_id, p.id
     ON CONFLICT (encounter_team_id, workspace_member_id) DO NOTHING
     """,
     # Role and sub-role are two rows of one dimension (D67): the sub-role is a
     # child code of the role, not a second axis.
-    """
+    f"""
     WITH roster AS (
         SELECT DISTINCT ON (et.id, p.workspace_member_id)
                et.id AS encounter_team_id, p.workspace_member_id, p.role::text AS role, p.sub_role
           FROM encounter.team et
           JOIN tournament.player p ON p.team_id = et.team_id
-         WHERE et.team_id IS NOT NULL
+         WHERE et.team_id IS NOT NULL {_SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT}
          ORDER BY et.id, p.workspace_member_id, p.id
     )
     INSERT INTO encounter.team_member_role (team_member_id, dimension, role)

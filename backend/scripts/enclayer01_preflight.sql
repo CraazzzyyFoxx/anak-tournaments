@@ -30,12 +30,18 @@ WITH seat AS (
     SELECT id, away_team_id FROM tournament.encounter WHERE away_team_id IS NOT NULL
      UNION ALL
     SELECT encounter_id, team_id FROM tournament.encounter_participant
+),
+member_seat AS (
+    SELECT seat.encounter_id, p.workspace_member_id, seat.team_id,
+           bool_or(NOT p.is_substitution) AS regular
+      FROM seat JOIN tournament.player p ON p.team_id = seat.team_id
+     GROUP BY seat.encounter_id, p.workspace_member_id, seat.team_id
 )
-SELECT seat.encounter_id, p.workspace_member_id, array_agg(DISTINCT seat.team_id) AS team_ids
-  FROM seat JOIN tournament.player p ON p.team_id = seat.team_id
- GROUP BY seat.encounter_id, p.workspace_member_id
-HAVING count(DISTINCT seat.team_id) > 1
- ORDER BY seat.encounter_id, p.workspace_member_id;
+SELECT encounter_id, workspace_member_id, array_agg(team_id ORDER BY team_id) AS team_ids
+  FROM member_seat
+ GROUP BY encounter_id, workspace_member_id
+HAVING count(*) > 1 AND count(*) FILTER (WHERE regular) <> 1
+ ORDER BY encounter_id, workspace_member_id;
 
 \echo '3. encounter result status disagrees with encounter status'
 SELECT id AS encounter_id, status::text AS status, result_status::text AS result_status
