@@ -118,6 +118,7 @@ from src.services.encounter.games import encounter_game_service
 from src.services.encounter.map_report import ClaimResultIn, map_report_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
+from src.services.encounter.replay_codes import replay_codes_by_encounter
 from src.services.encounter.report_form import report_form_service
 from src.services.registration import _common as reg_common
 from src.services.registration import audit as reg_audit
@@ -319,6 +320,7 @@ def register(broker: Any, logger: Any) -> None:
             # exactly the rules the submit endpoint will enforce, in one round trip.
             return {
                 "reports": await captain_service.get_encounter_reports(session, encounter_id),
+                "replay_codes": _dump((await replay_codes_by_encounter(session, [encounter_id])).get(encounter_id, [])),
                 "form": _dump(await report_form_service.resolve_report_form(session, tournament_id)),
             }
 

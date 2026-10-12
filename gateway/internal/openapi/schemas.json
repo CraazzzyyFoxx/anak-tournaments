@@ -7630,7 +7630,7 @@
       "summary": "Claim a game result"
     },
     "rpc.tournament.captain_reports": {
-      "description": "Permission: public; no authentication required \u2014 visible to anyone who may view the tournament. Returns every participation's report for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.",
+      "description": "Permission: public; no authentication required \u2014 visible to anyone who may view the tournament. Returns every participation's report for an encounter (score, closeness, comment and custom field values), every participation's per-position replay codes under `replay_codes`, and the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.",
       "summary": "Get captain reports"
     },
     "rpc.tournament.captain_select_game_map": {
@@ -39903,6 +39903,13 @@
           "title": "Participations",
           "type": "array"
         },
+        "replay_codes": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ReplayCodeRead"
+          },
+          "title": "Replay Codes",
+          "type": "array"
+        },
         "reported_count": {
           "title": "Reported Count",
           "type": "integer"
@@ -46744,6 +46751,30 @@
         "reason"
       ],
       "title": "ReopenResultIn",
+      "type": "object"
+    },
+    "tournament.ReplayCodeRead": {
+      "description": "One participation's replay code for one position (``game_team.replay_code``).\n\n``encounter_team_id`` is the participation; its slot comes from the row's\n``participations``.",
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "encounter_team_id": {
+          "title": "Encounter Team Id",
+          "type": "integer"
+        },
+        "position": {
+          "title": "Position",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "position",
+        "encounter_team_id",
+        "code"
+      ],
+      "title": "ReplayCodeRead",
       "type": "object"
     },
     "tournament.ReportBuiltInFieldConfig": {

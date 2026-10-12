@@ -47,6 +47,7 @@ export function ReportInspectorPanel({
             teamName={seat.name}
             standing={report ? scoreline(report.results, seatIds) : ""}
             report={report}
+            replayCodes={row.replay_codes.filter((code) => code.encounter_team_id === seat.encounter_team_id)}
             customFields={customFields}
           />
         );

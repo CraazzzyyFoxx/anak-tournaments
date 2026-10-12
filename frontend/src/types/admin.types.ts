@@ -1,6 +1,6 @@
 // Admin CRUD Types
 
-import type { CaptainReport } from "@/types/encounter.types";
+import type { CaptainReport, ReplayCode } from "@/types/encounter.types";
 
 // ─── Global Settings (parser.*) ───────────────────────────────────────────────
 
@@ -813,6 +813,8 @@ export interface EncounterReportsRow {
   participations: EncounterParticipationRef[];
   /** Every report filed against it, one per reporting participation. */
   reports: AdminCaptainReport[];
+  /** Every participation's replay codes, in play order — what the reports are compared against. */
+  replay_codes: ReplayCode[];
   reported_count: number;
   /**
    * Three-valued on purpose: `null` until every participation has reported.

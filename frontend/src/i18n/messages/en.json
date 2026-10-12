@@ -3600,6 +3600,7 @@
       "reportedScore": "Reported score",
       "reportedCloseness": "Match quality",
       "reportedClosenessValue": "{value} of 10",
+      "reportedCodes": "Lobby codes",
       "reportedComment": "Comment",
       "pregame": "Pre-game",
       "pregameMap": "Map veto",

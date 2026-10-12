@@ -11,12 +11,12 @@ import type { DateFormatter } from "@/components/kit/format-time";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { AdminCaptainReport, EncounterReportsRow } from "@/types/admin.types";
-import type { ReportCustomFieldDefinition } from "@/types/encounter.types";
+import type { ReplayCode, ReportCustomFieldDefinition } from "@/types/encounter.types";
 
 import { reportOf, scoreline } from "@/lib/encounter/reports";
 import { seatsBySlot } from "@/lib/encounter/seats";
 
-import { DASH, fmtDate, submittedAt } from "./report-model";
+import { DASH, fmtDate, replayCodesText, submittedAt } from "./report-model";
 
 /**
  * One field of every seat's report, in slot order.
@@ -48,7 +48,7 @@ function SeatsCell({
 function sidesColumn(
   id: string,
   header: string,
-  read: (report: AdminCaptainReport | null, seatIds: number[]) => string,
+  read: (report: AdminCaptainReport | null, seatIds: number[], codes: ReplayCode[]) => string,
   meta: Parameters<typeof columnMeta<EncounterReportsRow>>[0]
 ): ColumnDef<EncounterReportsRow> {
   return {
@@ -62,7 +62,11 @@ function sidesColumn(
       return (
         <SeatsCell
           rows={seats.map((seat) => {
-            const text = read(reportOf(row.original.reports, seat.encounter_team_id), seatIds);
+            const text = read(
+              reportOf(row.original.reports, seat.encounter_team_id),
+              seatIds,
+              row.original.replay_codes.filter((code) => code.encounter_team_id === seat.encounter_team_id)
+            );
             return {
               slot: seat.slot,
               name: seat.name,
@@ -229,6 +233,12 @@ export function useEncounterReportColumns({
         (report, seatIds) => (report ? scoreline(report.results, seatIds) : ""),
         { category: "meta", defaultHidden: true, numeric: true, className: "min-w-[100px]" }
       ),
+      sidesColumn("map_codes", "Lobby codes", (_report, _seatIds, codes) => replayCodesText(codes), {
+        category: "meta",
+        defaultHidden: true,
+        responsive: "lg",
+        className: "min-w-[180px] max-w-[240px]"
+      }),
       sidesColumn("comments", "Comments", (report) => report?.comment ?? "", {
         category: "meta",
         defaultHidden: true,

@@ -33,6 +33,7 @@ __all__ = (
     "EncounterReportsStats",
     "EncounterTeamRef",
     "LastResolutionRead",
+    "ReplayCodeRead",
     "TeamReportRead",
     "TeamReportResultRead",
 )
@@ -65,6 +66,17 @@ class TeamReportRead(BaseModel):
     results: list[TeamReportResultRead] = Field(default_factory=list)
     created_at: str | None
     updated_at: str | None
+
+
+class ReplayCodeRead(BaseModel):
+    """One participation's replay code for one position (``game_team.replay_code``).
+
+    ``encounter_team_id`` is the participation; its slot comes from the row's
+    ``participations``."""
+
+    position: int
+    encounter_team_id: int
+    code: str
 
 
 class EncounterParticipationRef(BaseModel):
@@ -114,6 +126,9 @@ class EncounterReportsRow(BaseModel):
     scheduled_at: datetime | None
     participations: list[EncounterParticipationRef] = Field(default_factory=list)
     reports: list[TeamReportRead] = Field(default_factory=list)
+    #: Every participation's replay codes, in play order -- what an adjudicator
+    #: compares the reports against.
+    replay_codes: list[ReplayCodeRead] = Field(default_factory=list)
     reported_count: int
     #: None until every participation has reported — "they disagree" and "only
     #: some have answered" are different states and the UI must not conflate them.

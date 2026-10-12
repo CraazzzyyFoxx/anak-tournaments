@@ -158,8 +158,20 @@ export interface MatchReportForm {
   custom_fields: ReportCustomFieldDefinition[];
 }
 
+/**
+ * One participation's replay code for one position (`ReplayCodeRead`, from
+ * `game_team.replay_code`). The slot is the participation's own.
+ */
+export interface ReplayCode {
+  position: number;
+  encounter_team_id: number;
+  code: string;
+}
+
 export interface CaptainReportsResponse {
   reports: CaptainReport[];
+  /** Every participation's replay codes, in play order. */
+  replay_codes: ReplayCode[];
   form: MatchReportForm;
 }
 

@@ -87,6 +87,7 @@ function row(overrides: Partial<EncounterReportsRow> = {}): EncounterReportsRow 
       { encounter_team_id: 1, slot: 1, team_id: 11, name: "A" }
     ],
     reports: [report(1, 2, 1), report(2, 0, 2)],
+    replay_codes: [],
     reported_count: 2,
     standings_match: false,
     series_score_valid: true,
@@ -142,6 +143,26 @@ describe("ResolveResultDialog", () => {
     // that will be recorded, or the choice is unverifiable before submitting.
     const body = await mount(<ResolveResultDialog row={row()} open onOpenChange={() => {}} />);
     expect(body.textContent).toContain("2 – 1");
+  });
+
+  it("lists every participation's replay codes, by position, for the admin to compare", async () => {
+    const body = await mount(
+      <ResolveResultDialog
+        row={row({
+          replay_codes: [
+            { position: 1, encounter_team_id: 1, code: "A1B2" },
+            { position: 1, encounter_team_id: 2, code: "Z9Y8" }
+          ]
+        })}
+        open
+        onOpenChange={() => {}}
+      />
+    );
+    expect(body.textContent).toContain("Replay codes");
+    expect(body.textContent).toContain("A · Map 1");
+    expect(body.textContent).toContain("A1B2");
+    expect(body.textContent).toContain("B · Map 1");
+    expect(body.textContent).toContain("Z9Y8");
   });
 
   it("adopts a report by participation id rather than by copying its numbers", async () => {

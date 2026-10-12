@@ -29,6 +29,7 @@ from shared.services.bracket import advancement
 from shared.services.encounter import participants
 from shared.tests.encounter_writer_case import EncounterWriterCase
 from src import schemas
+from src.services.admin.encounter_reports import encounter_reports_service
 from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.ffa import ffa_encounter_service
 from src.services.encounter.flows import flows_service, to_summary
@@ -358,6 +359,47 @@ class SeriesReportTests(ResultFlowCase):
             # report says never happened.
             cancelled = await s.get_one(EncounterGame, third.id)
             self.assertEqual(enums.EncounterGameState.CANCELLED, cancelled.state)
+
+    async def test_a_captains_codes_land_on_positions_nobody_opened_and_the_admin_reads_them(self) -> None:
+        # No game was ever entered: the codes are all the room has of the maps.
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+
+        for seat, user, codes, score in (
+            (first, self.users[0], [(1, "M1 A1B2"), (2, "M2 B2C3"), (9, "OFF CARD")], (2.0, 1.0)),
+            (second, self.users[1], [(1, "M1 Z9Y8")], (2.0, 1.0)),
+        ):
+            async with self.Session() as s:
+                encounter = await self.encounter(s)
+                await captain_service.submit_team_report(
+                    s,
+                    self.ids["e"],
+                    encounter_team_id=seat.id,
+                    reporter_user_id=user,
+                    games_played=3,
+                    results=[
+                        ReportResultIn(encounter_team_id=first.id, score=score[0], placement=1, wins=int(score[0])),
+                        ReportResultIn(encounter_team_id=second.id, score=score[1], placement=2, wins=int(score[1])),
+                    ],
+                    closeness=5,
+                    basis_version=encounter.result_version,
+                    map_codes=codes,
+                )
+
+        async with self.Session() as s:
+            games = await encounter_game_service.list_games(s, self.ids["e"], include_cancelled=True)
+            positions = {game.position for game in games}
+            # Positions 1 and 2 were named, 9 is not on a best-of-3 card.
+            self.assertEqual({1, 2}, positions)
+            row = (
+                await encounter_reports_service.list_encounter_reports(
+                    s, workspace_id=self.ids["ws"], params=schemas.EncounterReportsSearchParams(page=1, per_page=10)
+                )
+            ).results[0]
+        self.assertEqual(
+            [(1, first.id, "M1 A1B2"), (1, second.id, "M1 Z9Y8"), (2, first.id, "M2 B2C3")],
+            [(code.position, code.encounter_team_id, code.code) for code in row.replay_codes],
+        )
 
     async def test_reports_that_disagree_dispute_the_encounter(self) -> None:
         async with self.Session() as s:

@@ -11,7 +11,8 @@ import type {
   CaptainReport,
   Encounter,
   EncounterTeam,
-  MatchReportForm
+  MatchReportForm,
+  ReplayCode
 } from "@/types/encounter.types";
 import { duelSeats, type DuelSlot } from "@/lib/encounter/seats";
 import styles from "@/components/match/EncounterDetail.module.css";
@@ -90,6 +91,9 @@ export default function EncounterCaptainReports({
               seatOne={seatOne}
               seatTwo={seatTwo}
               form={reportsQuery.data?.form}
+              replayCodes={(reportsQuery.data?.replay_codes ?? []).filter(
+                (code) => code.encounter_team_id === report.encounter_team_id
+              )}
             />
           ))}
         </div>
@@ -104,7 +108,8 @@ function ReportCard({
   slot,
   seatOne,
   seatTwo,
-  form
+  form,
+  replayCodes
 }: Readonly<{
   report: CaptainReport;
   teamName: string;
@@ -112,6 +117,8 @@ function ReportCard({
   seatOne: EncounterTeam | null;
   seatTwo: EncounterTeam | null;
   form?: MatchReportForm;
+  /** This participation's codes by position (`game_team.replay_code`). */
+  replayCodes: ReplayCode[];
 }>) {
   const t = useTranslations();
   const format = useFormatter();
@@ -156,6 +163,21 @@ function ReportCard({
             <span className={styles.label}>{t("encounters.detail.reportedCloseness")}</span>
             <span className={cn(styles.reportValue, styles.mono)}>
               {t("encounters.detail.reportedClosenessValue", { value: report.closeness })}
+            </span>
+          </div>
+        ) : null}
+
+        {replayCodes.length > 0 ? (
+          <div className={styles.reportField}>
+            <span className={styles.label}>{t("encounters.detail.reportedCodes")}</span>
+            <span className={styles.reportCodes}>
+              {[...replayCodes]
+                .sort((a, b) => a.position - b.position)
+                .map(({ position, code }) => (
+                  <span key={position} className={styles.reportCode}>
+                    {t("common.matchLogs.map", { index: position })} · {code}
+                  </span>
+                ))}
             </span>
           </div>
         ) : null}

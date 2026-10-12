@@ -1098,9 +1098,10 @@ DOCS: dict[str, dict] = {
         "summary": "Get captain reports",
         "description": (
             "Permission: public; no authentication required — visible to anyone who may view the tournament. "
-            "Returns every participation's report for an encounter (score, closeness, per-map codes, comment and "
-            "custom field values) alongside the tournament's match-report form config under `form`, so the "
-            "report dialog renders exactly the rules the submit endpoint enforces."
+            "Returns every participation's report for an encounter (score, closeness, comment and custom field "
+            "values), every participation's per-position replay codes under `replay_codes`, and the tournament's "
+            "match-report form config under `form`, so the report dialog renders exactly the rules the submit "
+            "endpoint enforces."
         ),
     },
     # ── captain pre-game room (pick/ban, readiness, per-map results) ───────

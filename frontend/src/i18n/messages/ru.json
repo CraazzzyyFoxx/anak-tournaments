@@ -3600,6 +3600,7 @@
       "reportedScore": "Указанный счёт",
       "reportedCloseness": "Качество матча",
       "reportedClosenessValue": "{value} из 10",
+      "reportedCodes": "Коды лобби",
       "reportedComment": "Комментарий",
       "pregame": "Предигровая фаза",
       "pregameMap": "Вето карт",

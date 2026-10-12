@@ -2367,7 +2367,7 @@ export interface paths {
         };
         /**
          * Get captain reports
-         * @description Permission: public; no authentication required — visible to anyone who may view the tournament. Returns every participation's report for an encounter (score, closeness, per-map codes, comment and custom field values) alongside the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.
+         * @description Permission: public; no authentication required — visible to anyone who may view the tournament. Returns every participation's report for an encounter (score, closeness, comment and custom field values), every participation's per-position replay codes under `replay_codes`, and the tournament's match-report form config under `form`, so the report dialog renders exactly the rules the submit endpoint enforces.
          *
          *     RPC subject: `rpc.tournament.captain_reports`
          */
@@ -25103,6 +25103,8 @@ export interface components {
             name: string;
             /** Participations */
             participations?: components["schemas"]["tournament.EncounterParticipationRef"][];
+            /** Replay Codes */
+            replay_codes?: components["schemas"]["tournament.ReplayCodeRead"][];
             /** Reported Count */
             reported_count: number;
             /** Reports */
@@ -26586,6 +26588,21 @@ export interface components {
         "tournament.ReopenResultIn": {
             /** Reason */
             reason: string;
+        };
+        /**
+         * ReplayCodeRead
+         * @description One participation's replay code for one position (``game_team.replay_code``).
+         *
+         *     ``encounter_team_id`` is the participation; its slot comes from the row's
+         *     ``participations``.
+         */
+        "tournament.ReplayCodeRead": {
+            /** Code */
+            code: string;
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /** Position */
+            position: number;
         };
         /** ReportBuiltInFieldConfig */
         "tournament.ReportBuiltInFieldConfig": {

@@ -475,16 +475,24 @@ class CaptainService:
 
         The code belongs to the participation that played the position
         (``game_team.replay_code``), which is what replaced the old per-report
-        ``encounter_map_code`` table. A code for a position the encounter does
-        not have is dropped, not an error: the form offers slots the veto may
-        never settle.
+        ``encounter_map_code`` table. A freeplay card opens its games as claims
+        arrive, so a captain who reports the series straight away names
+        positions with no row yet: those are opened (planned, every live seat
+        in them, like ``ensure_next_game`` does) rather than losing the code.
+        Only positions of the card (``1..best_of``) are accepted; a position
+        past it is dropped, not an error.
         """
         if not map_codes:
             return
         by_position = {game.position: game for game in await self.games.list_games(session, encounter.id)}
+        wanted = {position for position, _code in map_codes if 1 <= position <= encounter.best_of}
+        # From 1, so the room's "next position" never skips one the codes did not name.
+        for position in range(1, max(wanted, default=0) + 1):
+            if position not in by_position:
+                by_position[position] = await self.games.open_game(session, encounter, position=position)
         lines = await self.games.lines_by_game(session, list(by_position.values()))
         for position, code in map_codes:
-            game = by_position.get(position)
+            game = by_position.get(position) if position in wanted else None
             if game is None:
                 continue
             for row in lines.get(game.id, []):

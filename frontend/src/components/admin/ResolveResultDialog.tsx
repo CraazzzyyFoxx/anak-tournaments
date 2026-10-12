@@ -123,6 +123,27 @@ export function ResolveResultDialog({
             seriesScoreValid={row.series_score_valid}
           />
 
+          {row.replay_codes.length > 0 ? (
+            <div className="rounded-lg border border-border/60 p-3">
+              <p className={EYEBROW_CLASS}>Replay codes</p>
+              <ul className="mt-2 space-y-1">
+                {row.replay_codes.map((entry) => (
+                  <li
+                    key={`${entry.position}-${entry.encounter_team_id}`}
+                    className="flex gap-2 text-xs"
+                  >
+                    <span className="text-muted-foreground">
+                      {row.participations.find((seat) => seat.encounter_team_id === entry.encounter_team_id)?.name ??
+                        "Retired seat"}{" "}
+                      &middot; Map {entry.position}
+                    </span>
+                    <span className="font-mono">{entry.code}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {isConfirmed ? (
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">

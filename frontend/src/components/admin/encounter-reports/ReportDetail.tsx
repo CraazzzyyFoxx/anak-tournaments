@@ -4,9 +4,9 @@ import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { AdminCaptainReport } from "@/types/admin.types";
-import type { ReportCustomFieldDefinition } from "@/types/encounter.types";
+import type { ReplayCode, ReportCustomFieldDefinition } from "@/types/encounter.types";
 
-import { DASH, fmtDate, submittedAt } from "./report-model";
+import { DASH, fmtDate, replayCodesText, submittedAt } from "./report-model";
 
 /**
  * Everything one captain filed, in full.
@@ -21,6 +21,7 @@ export function ReportDetail({
   teamName,
   standing,
   report,
+  replayCodes,
   customFields
 }: Readonly<{
   label: string;
@@ -28,6 +29,8 @@ export function ReportDetail({
   /** What the report claims, in slot order: `2 – 1`. */
   standing: string;
   report: AdminCaptainReport | null;
+  /** This participation's codes by position (`game_team.replay_code`). */
+  replayCodes: ReplayCode[];
   customFields: ReportCustomFieldDefinition[];
 }>) {
   const format = useFormatter();
@@ -63,6 +66,9 @@ export function ReportDetail({
           label="Closeness"
           value={report.closeness == null ? "not rated" : `${report.closeness}/10`}
         />
+        {replayCodes.length > 0 ? (
+          <Field label="Lobby codes" value={replayCodesText(replayCodes)} mono />
+        ) : null}
         {report.comment ? <Field label="Comment" value={report.comment} /> : null}
         {customFields.map((field) => (
           <Field

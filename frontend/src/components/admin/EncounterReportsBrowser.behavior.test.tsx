@@ -216,6 +216,7 @@ function row(overrides: Partial<EncounterReportsRow> = {}): EncounterReportsRow 
         ]
       })
     ],
+    replay_codes: [],
     reported_count: 2,
     standings_match: false,
     series_score_valid: true,
@@ -404,6 +405,7 @@ describe("EncounterReportsBrowser", () => {
               custom_fields: { vod: "https://twitch.tv/clip" }
             })
           ],
+          replay_codes: [{ position: 2, encounter_team_id: 1, code: "B2C3" }],
           reported_count: 1,
           standings_match: null
         })
@@ -422,6 +424,7 @@ describe("EncounterReportsBrowser", () => {
     const text = inspector.textContent ?? "";
     // Everything the captain filed, so nothing has to be looked up elsewhere.
     expect(text).toContain("they left early");
+    expect(text).toContain("M2 B2C3");
     expect(text).toContain("https://twitch.tv/clip");
     // A side that filed nothing is said so, not left as a silent gap.
     expect(text).toContain("No report filed.");

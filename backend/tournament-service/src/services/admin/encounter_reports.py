@@ -31,6 +31,7 @@ from shared.models.encounter.report import EncounterTeamReport, EncounterTeamRep
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from src import models, schemas
+from src.services.encounter.replay_codes import replay_codes_by_encounter
 
 __all__ = ("encounter_reports_service",)
 
@@ -210,6 +211,7 @@ class AdminEncounterReportsService:
         reports: Sequence[EncounterTeamReport],
         lines: dict[int, list[EncounterTeamReportResult]],
         names: dict[int, str],
+        replay_codes: Sequence[schemas.ReplayCodeRead],
         *,
         stage_name: str | None,
         stage_type: object | None,
@@ -246,6 +248,7 @@ class AdminEncounterReportsService:
                 )
                 for report in reports
             ],
+            replay_codes=list(replay_codes),
             reported_count=count,
             # Undecided until every seat has answered: "they disagree" and "only
             # some have reported" are different states.
@@ -297,6 +300,7 @@ class AdminEncounterReportsService:
         encounters = [row[0] for row in rows]
 
         seats, reports, lines, names, stages = await self._page_context(session, encounters, rows)
+        codes = await replay_codes_by_encounter(session, [encounter.id for encounter in encounters])
         return pagination.Paginated(
             page=params.page,
             per_page=params.per_page,
@@ -308,6 +312,7 @@ class AdminEncounterReportsService:
                     reports.get(row[0].id, []),
                     lines,
                     names,
+                    codes.get(row[0].id, []),
                     stage_name=stages.get(row.bracket_stage_item_id, (None, None))[0]
                     or stages.get(row.bracket_stage_id, (None, None))[0],
                     stage_type=stages.get(row.bracket_stage_id, (None, None))[1],
