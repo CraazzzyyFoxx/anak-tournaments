@@ -10,6 +10,8 @@ gets wrong.
 
 from __future__ import annotations
 
+import itertools
+import os
 from collections.abc import Sequence
 from unittest import TestCase
 
@@ -24,12 +26,19 @@ from shared.models.encounter import (
     EncounterTeam,
     EncounterTeamMember,
 )
+from shared.models.identity.user import User
+from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.stage import Stage, StageItem
+from shared.models.tournament.team import Team
 from shared.services.bracket import advancement, engine, persist, swiss, swiss_state, template, usability
 from shared.services.encounter import participants, result
 from shared.tests.encounter_writer_case import EncounterWriterCase
+
+#: ``players.user.name`` is globally unique, so the extra players a deep
+#: bracket needs are tagged per test, like the writer case's own.
+_TAG = itertools.count()
 
 
 def _member(member_id: int, name: str) -> participants.MemberSnapshot:
@@ -43,10 +52,16 @@ def _member(member_id: int, name: str) -> participants.MemberSnapshot:
 
 
 class BracketCase(EncounterWriterCase):
-    """The writer case plus a published stage to hang a bracket on."""
+    """The writer case plus a published stage to hang a bracket on.
+
+    ``team_count`` past the four the writer case seeds adds users, members and
+    teams of its own -- an eight-team bracket is three rounds deep, which is
+    what a cascade has to be proven against.
+    """
 
     stage_type = enums.StageType.SINGLE_ELIMINATION
     grand_final_type = "no_reset"
+    team_count = 4
 
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
@@ -64,13 +79,28 @@ class BracketCase(EncounterWriterCase):
             await s.flush()
             item = StageItem(stage_id=stage.id, name="A", type=enums.StageItemType.SINGLE_BRACKET, order=1)
             s.add(item)
+            await self._seed_more_teams(s)
             await s.commit()
             self.ids["stage"] = stage.id
             self.ids["item"] = item.id
 
+    async def _seed_more_teams(self, session) -> None:
+        tag = f"brk-{os.getpid()}-{next(_TAG)}"
+        for index in range(4, self.team_count):
+            user = User(name=f"{tag}-{index}")
+            session.add(user)
+            await session.flush()
+            self.users.append(user.id)
+            member = WorkspaceMember(workspace_id=self.ids["ws"], player_id=user.id)
+            team = Team(tournament_id=self.ids["t"], name=f"T{index}", balancer_name=f"{tag}-T{index}")
+            session.add_all([member, team])
+            await session.flush()
+            self.ids[f"m{index}"] = member.id
+            self.ids[f"team{index}"] = team.id
+
     @property
     def team_ids(self) -> list[int]:
-        return [self.ids[f"team{index}"] for index in range(4)]
+        return [self.ids[f"team{index}"] for index in range(self.team_count)]
 
     def seat_teams(self) -> dict[int, persist.SeatTeam]:
         return {
@@ -79,7 +109,7 @@ class BracketCase(EncounterWriterCase):
                 seed=index + 1,
                 members=[_member(self.ids[f"m{index}"], f"m{index}")],
             )
-            for index in range(4)
+            for index in range(self.team_count)
         }
 
     async def build(self, session, skeleton) -> list[Encounter]:
@@ -386,6 +416,62 @@ class AdvancementTests(BracketCase):
             )
 
 
+class DeepCascadeTests(BracketCase):
+    """A correction in round 1 has to reach round 3, not just round 2."""
+
+    team_count = 8
+
+    async def _target_of(self, session, encounter_id: int) -> tuple[int, int]:
+        """``(target encounter id, slot)`` the first place of ``encounter_id`` feeds."""
+        row = await session.execute(
+            sa.select(EncounterLink.target_encounter_id, EncounterLink.target_slot).where(
+                EncounterLink.source_encounter_id == encounter_id,
+                EncounterLink.source_position == 1,
+            )
+        )
+        return row.one()
+
+    async def test_a_round_one_correction_empties_every_round_below_it(self) -> None:
+        async with self.Session() as s:
+            skeleton = engine.generate_bracket(enums.StageType.SINGLE_ELIMINATION, self.team_ids)
+            encounters = await self.build(s, skeleton)
+            rounds = await self.rounds(s, encounters)
+            self.assertEqual([1] * 4 + [2] * 2 + [3], sorted(rounds.values()))
+
+            # Play the whole bracket out, slot 1 winning everywhere.
+            for round_number in (1, 2, 3):
+                for encounter in [item for item in encounters if rounds[item.id] == round_number]:
+                    await self.win(s, encounter, winner_slot=1)
+                    await advancement.advance_after_result(s, encounter)
+            await s.commit()
+
+            quarter = next(item for item in encounters if rounds[item.id] == 1)
+            semi_id, semi_slot = await self._target_of(s, quarter.id)
+            final_id, final_slot = await self._target_of(s, semi_id)
+            self.assertEqual(3, rounds[final_id])
+            self.assertEqual(enums.EncounterStatus.COMPLETED, (await s.get_one(Encounter, final_id)).status)
+
+        async with self.Session() as s:
+            corrected = await result.lock_encounter(s, quarter.id)
+            await result.reopen(s, corrected, actor_user_id=self.users[0], reason="wrong team")
+            await advancement.reset_downstream(s, corrected, actor_user_id=self.users[0])
+            await s.commit()
+
+            for encounter_id, emptied_slot in ((semi_id, semi_slot), (final_id, final_slot)):
+                encounter = await s.get_one(Encounter, encounter_id)
+                live = {seat.slot: seat for seat in await participants.active_teams(s, encounter_id)}
+                self.assertNotIn(emptied_slot, live, f"slot {emptied_slot} of {encounter.name} is still taken")
+                # Vacated, renamed and re-stated -- in that order, all three.
+                self.assertEqual("TBD", encounter.name.split(" vs ")[emptied_slot - 1])
+                self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
+                self.assertEqual(enums.EncounterResultStatus.NONE, encounter.result_status)
+                self.assertIsNone(encounter.result_source)
+                # The occupant is retired with its old standing, not deleted.
+                retired = [seat for seat in await self.seats_of(s, encounter_id) if not seat.active]
+                self.assertEqual([emptied_slot], [seat.slot for seat in retired])
+                self.assertTrue(all(seat.placement is not None for seat in retired))
+
+
 class GrandFinalResetTests(BracketCase):
     """The reset is still lazy: it exists only once the lower bracket wins."""
 
@@ -516,6 +602,53 @@ class GrandFinalResetTests(BracketCase):
                     .scalars()
                     .all()
                 ),
+            )
+
+    async def test_correcting_the_grand_final_keeps_a_reset_that_was_played(self) -> None:
+        """A played position is history; the cascade behind the row would eat it."""
+        async with self.Session() as s:
+            _lower, grand_final = await self._grand_final(s)
+            await self.win(s, grand_final, winner_slot=2)
+            await advancement.advance_after_result(s, grand_final)
+            await s.commit()
+            reset_id = await s.scalar(
+                sa.select(EncounterLink.target_encounter_id).where(EncounterLink.source_encounter_id == grand_final.id)
+            )
+            played = EncounterGame(
+                encounter_id=reset_id,
+                position=1,
+                state=enums.EncounterGameState.CONFIRMED,
+                result_source=enums.EncounterGameResultSource.ADMIN,
+                confirmed_at=sa.func.now(),
+            )
+            s.add(played)
+            await s.flush()
+            for index, seat in enumerate(await participants.active_teams(s, reset_id)):
+                s.add(
+                    EncounterGameTeam(
+                        game_id=played.id, encounter_id=reset_id, encounter_team_id=seat.id, score=1 - index
+                    )
+                )
+            await s.commit()
+            played_id = played.id
+
+        async with self.Session() as s:
+            grand_final = await result.lock_encounter(s, grand_final.id)
+            await result.reopen(s, grand_final, actor_user_id=self.users[0], reason="wrong team")
+            await advancement.reset_downstream(s, grand_final, actor_user_id=self.users[0])
+            await self.win(s, grand_final, winner_slot=1)
+            await advancement.advance_after_result(s, grand_final)
+            await s.commit()
+
+            reset = await s.get(Encounter, reset_id)
+            self.assertIsNotNone(reset, "a Reset with a played position must survive the correction")
+            survivor = await s.get(EncounterGame, played_id)
+            self.assertEqual(enums.EncounterGameState.CONFIRMED, survivor.state)
+            # Each slot keeps the line-up that played the position, retired,
+            # beside the occupant the corrected result seated.
+            self.assertEqual(
+                [(1, False), (1, True), (2, False), (2, True)],
+                [(seat.slot, seat.active) for seat in await self.seats_of(s, reset_id)],
             )
 
 

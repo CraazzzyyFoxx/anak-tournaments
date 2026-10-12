@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import enums
 from shared.domain.encounter_naming import build_encounter_name
 from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame
 from shared.models.encounter.team import EncounterTeam, EncounterTeamMember, EncounterTeamMemberRole
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
@@ -411,13 +412,22 @@ async def _create_grand_final_reset(
 async def _drop_leftover_reset(session: AsyncSession, links: Sequence[EncounterLink]) -> list[EncounterLink]:
     """Remove a Reset left over from an earlier lower-bracket result.
 
-    Only an untouched one: a Reset somebody played is an admin's problem, not
-    this function's, and deleting it would take its games with it.
+    Only an unplayed one. ``status``/``result_status`` cannot answer that on
+    their own: the correction that gets here ran :func:`reset_downstream`
+    first, which vacates the Reset's seats and re-states it, so a Reset that
+    WAS played is sitting at OPEN/none by the time this looks. The positions
+    are the honest record -- a game that is not cancelled was played, and the
+    ``ON DELETE CASCADE`` behind this row would take it, the participations
+    that played it and the result journal with it.
     """
     kept = list(links)
     for reset_id in {link.target_encounter_id for link in links}:
         leftover = await lock_encounter(session, reset_id)
-        if leftover.status != enums.EncounterStatus.OPEN or leftover.result_status != enums.EncounterResultStatus.NONE:
+        if (
+            leftover.status != enums.EncounterStatus.OPEN
+            or leftover.result_status != enums.EncounterResultStatus.NONE
+            or await _has_played_position(session, reset_id)
+        ):
             continue
         for link in links:
             if link.target_encounter_id == reset_id:
@@ -426,3 +436,17 @@ async def _drop_leftover_reset(session: AsyncSession, links: Sequence[EncounterL
         kept = [link for link in kept if link.target_encounter_id != reset_id]
     await session.flush()
     return kept
+
+
+async def _has_played_position(session: AsyncSession, encounter_id: int) -> bool:
+    """Does this encounter hold a position that was not retired?"""
+    return (
+        await session.scalar(
+            sa.select(EncounterGame.id)
+            .where(
+                EncounterGame.encounter_id == encounter_id,
+                EncounterGame.state != enums.EncounterGameState.CANCELLED,
+            )
+            .limit(1)
+        )
+    ) is not None
