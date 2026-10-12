@@ -21,7 +21,12 @@ from collections.abc import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
-from shared.core.enums import EncounterGameResultSource, EncounterGameState, EncounterResultStatus
+from shared.core.enums import (
+    EncounterGameResultSource,
+    EncounterGameState,
+    EncounterResultStatus,
+    PickBanKind,
+)
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.encounter.encounter import Encounter
@@ -32,6 +37,8 @@ from src.services.encounter.games import (
     GameResultIn,
     encounter_game_service,
 )
+from src.services.encounter.realtime_commit import emit_pick_ban_update
+from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = ("GameCorrectionService", "game_correction_service")
 
@@ -82,6 +89,14 @@ class GameCorrectionService:
         )
         if encounter.result_status == EncounterResultStatus.CONFIRMED:
             await advancement.advance_after_result(session, encounter)
+        # A correction moves the encounter's standing and may reseat a whole
+        # bracket branch through ``reset_downstream``: every cached
+        # tournament-encounters read is stale and the standings have to be
+        # rebuilt. ``enqueue_tournament_recalculation`` emits the invalidation
+        # and queues the job in one call.
+        await enqueue_tournament_recalculation(session, encounter.tournament_id)
+        await emit_pick_ban_update(session, encounter.id)
+        await emit_pick_ban_update(session, encounter.id, kind=PickBanKind.HERO.value)
         await session.commit()
         lines = (await self.games.lines_by_game(session, [game])).get(game.id) or []
         return {"game": self.games.serialize(game, lines), "reset_downstream": cascaded}

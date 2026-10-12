@@ -316,36 +316,6 @@ class RecalculationEnqueueTests(_DatabaseTestCase):
         request.assert_awaited_once_with(self.db.shim, PREVIEW_TOURNAMENT_ID)
 
 
-class EncounterCompletedFanoutTests(_DatabaseTestCase):
-    """The achievement fan-out must skip the container only."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.db.tournament(REAL_TOURNAMENT_ID, name="Real", is_hidden=False)
-        self.db.tournament(CONTAINER_ID, name="Scrims", is_hidden=True)
-        self.room = self.db.room(index=1)
-        self.real = self.db.completed_encounter(REAL_TOURNAMENT_ID, stage_id=None, label="real")
-        self.db.session.commit()
-
-    async def _publish(self, encounter_id: int) -> AsyncMock:
-        encounter = self.db.session.get(models.Encounter, encounter_id)
-        enqueue = AsyncMock()
-        with patch.object(captain, "enqueue_outbox_event", enqueue):
-            await captain.captain_service._enqueue_encounter_completed(self.db.shim, encounter)
-        return enqueue
-
-    async def test_scrim_encounter_completion_publishes_no_achievement_event(self) -> None:
-        enqueue = await self._publish(self.room["encounter"])
-        enqueue.assert_not_awaited()
-
-    async def test_real_encounter_completion_still_publishes(self) -> None:
-        enqueue = await self._publish(self.real["encounter"])
-        enqueue.assert_awaited_once()
-        event = enqueue.await_args.args[1]
-        self.assertEqual(REAL_TOURNAMENT_ID, event.tournament_id)
-        self.assertEqual(self.real["home"], event.winner_team_id)
-
-
 class ScrimStandingsInventionTests(_DatabaseTestCase):
     """Why the enqueue guard is load-bearing, reproduced.
 

@@ -257,7 +257,7 @@ async def reopen(
     session: AsyncSession,
     encounter: Encounter,
     *,
-    actor_user_id: int,
+    actor_user_id: int | None,
     reason: str,
 ) -> EncounterResultAudit:
     """Take the standing result off the encounter, keeping the numbers.

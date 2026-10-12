@@ -85,37 +85,14 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
         entities.extend(
             tournament_service.tournament_entities(utils.prepare_entities(in_entities, "tournament"), tournament_entity)
         )
-    if "stage" in in_entities:
-        stage_entity = utils.join_entity(child, models.Encounter.stage)
-        entities.append(stage_entity)
-    if "stage_item" in in_entities:
-        stage_item_entity = utils.join_entity(child, models.Encounter.stage_item)
-        entities.append(stage_item_entity)
-    include_teams = "teams" in in_entities
-    include_home_team = include_teams or "home_team" in in_entities
-    include_away_team = include_teams or "away_team" in in_entities
-    if include_home_team:
-        home_team_entity = utils.join_entity(child, models.Encounter.home_team)
-        entities.append(home_team_entity)
-        home_team_entities = (
-            utils.prepare_entities(in_entities, "teams")
-            if include_teams
-            else utils.prepare_entities(in_entities, "home_team")
-        )
-        entities.extend(TeamRepository.team_entities(home_team_entities, home_team_entity))
-    if include_away_team:
-        away_team_entity = utils.join_entity(child, models.Encounter.away_team)
-        entities.append(away_team_entity)
-        entities.extend(
-            TeamRepository.team_entities(
-                (
-                    utils.prepare_entities(in_entities, "teams")
-                    if include_teams
-                    else utils.prepare_entities(in_entities, "away_team")
-                ),
-                away_team_entity,
-            )
-        )
+    # ``stage``/``stage_item``/``home_team``/``away_team`` are no longer
+    # relationships of an encounter: the bracket position moved to
+    # ``tournament.bracket_encounter`` and the two sides became
+    # ``encounter.team`` participations (D22, D55). Any of those four words in
+    # ``entities`` therefore loads the SEATS, which is what the reader renders
+    # them from.
+    if {"teams", "home_team", "away_team"} & set(in_entities):
+        entities.append(utils.join_entity(child, models.Encounter.teams))
     if "matches" in in_entities:
         matches_entity = utils.join_entity(child, models.Encounter.matches)
         entities.append(matches_entity)
@@ -235,9 +212,17 @@ def _apply_encounter_filters(
         # A specific tournament_id is authorized upstream by ensure_tournament_viewable.
         query = query.where(models.Encounter.tournament_id.in_(visible_tournament_ids_subquery(None)))
     if params.stage_id is not None:
-        query = query.where(models.Encounter.stage_id == params.stage_id)
+        query = query.where(
+            sa.exists()
+            .where(models.BracketEncounter.encounter_id == models.Encounter.id)
+            .where(models.BracketEncounter.stage_id == params.stage_id)
+        )
     if params.stage_item_id is not None:
-        query = query.where(models.Encounter.stage_item_id == params.stage_item_id)
+        query = query.where(
+            sa.exists()
+            .where(models.BracketEncounter.encounter_id == models.Encounter.id)
+            .where(models.BracketEncounter.stage_item_id == params.stage_item_id)
+        )
     if params.best_of is not None:
         query = query.where(models.Encounter.best_of == params.best_of)
     if params.status:
@@ -265,10 +250,10 @@ def _apply_encounter_filters(
                 sa.and_(
                     models.Player.tournament_id == models.Encounter.tournament_id,
                     models.Player.workspace_member.has(models.WorkspaceMember.player_id.in_(linked_player_ids)),
-                    sa.or_(
-                        models.Player.team_id == models.Encounter.home_team_id,
-                        models.Player.team_id == models.Encounter.away_team_id,
-                    ),
+                    sa.exists()
+                    .where(models.EncounterTeam.encounter_id == models.Encounter.id)
+                    .where(models.EncounterTeam.active.is_(True))
+                    .where(models.EncounterTeam.team_id == models.Player.team_id),
                 ),
             )
 
@@ -299,7 +284,7 @@ def _live_condition(now: datetime) -> sa.ColumnElement[bool]:
         ),
         sa.and_(
             models.Encounter.status == enums.EncounterStatus.PENDING,
-            models.Encounter.current_map_index.isnot(None),
+            models.Encounter.current_game_position.isnot(None),
         ),
         sa.and_(
             models.Encounter.status == enums.EncounterStatus.PENDING,

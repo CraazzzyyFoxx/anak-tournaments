@@ -58,7 +58,6 @@ from shared.repository import (
 from shared.services.bracket import advancement
 from shared.services.bracket.usability import is_encounter_live
 from shared.services.challonge_refs import resolve_encounter_challonge
-from shared.services.encounter.events import enqueue_encounter_completed
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import apply_result, lock_encounter, reopen
 from shared.services.encounter.result_audit import record_result_transition, snapshot
@@ -73,7 +72,7 @@ from src.services.encounter.dispute_review import notify_dispute_review
 from src.services.encounter.games import EncounterGameService, encounter_game_service
 from src.services.encounter.report_form import ReportFormService, report_form_service
 from src.services.encounter.room_journal import record_room_event
-from src.services.tournament.events import enqueue_tournament_recalculation
+from src.services.tournament.events import enqueue_encounter_completed, enqueue_tournament_recalculation
 
 __all__ = ("CaptainService", "ReportResultIn", "captain_service", "serialize_team_report")
 
@@ -553,7 +552,7 @@ class CaptainService:
         # report IS the result, so a PLANNED position left open would offer a
         # game nobody may play (D54, D59).
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
-        await enqueue_encounter_completed(session, encounter, source_service="tournament-service")
+        await enqueue_encounter_completed(session, encounter)
         await advancement.advance_after_result(session, encounter)
         return True
 
@@ -729,7 +728,7 @@ class CaptainService:
             if latest is not None:
                 latest.adopted_team_id = adopted_team_id
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
-        await enqueue_encounter_completed(session, encounter, source_service="tournament-service")
+        await enqueue_encounter_completed(session, encounter)
         await advancement.advance_after_result(session, encounter)
         await enqueue_tournament_recalculation(session, encounter.tournament_id)
         await session.commit()

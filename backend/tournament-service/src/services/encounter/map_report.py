@@ -31,6 +31,7 @@ from shared.core.enums import (
     EncounterGameResultSource,
     EncounterGameState,
     EncounterResultStatus,
+    PickBanKind,
 )
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
@@ -51,6 +52,7 @@ from src.services.encounter.games import (
     encounter_game_service,
     normalize_results,
 )
+from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
 
 __all__ = ("ClaimResultIn", "GameClaimService", "map_report_service")
@@ -202,9 +204,16 @@ class GameClaimService:
             actor_auth_user_id=actor_auth_user_id,
             data={"position": game.position, "game_id": game.id},
         )
-
-        by_claim = await self.claim_repo.results_for_claims(session, [row.id for row in claims])
+        # Unconditional, before every branch below: the other participants'
+        # tiles only flip from "not reported" to "sealed" on this signal, and
+        # the FIRST claim -- the one that resolves nothing -- is exactly the
+        # case that used to commit silently. Both topics, because the room
+        # refetches map and hero state together: two phases of one loop. It is
+        # also what stages the room's reconcile pass.
+        await emit_pick_ban_update(session, encounter.id)
+        await emit_pick_ban_update(session, encounter.id, kind=PickBanKind.HERO.value)
         claimed = {row.claimant_team_id for row in claims}
+        by_claim = await self.claim_repo.results_for_claims(session, [row.id for row in claims])
         if not live.issubset(claimed):
             # Still waiting on somebody: the first claim resolves nothing, and
             # saying so is what flips the opponent's tile to "sealed".

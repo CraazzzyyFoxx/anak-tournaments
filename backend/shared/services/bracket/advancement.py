@@ -188,7 +188,7 @@ async def advance_after_result(session: AsyncSession, encounter: Encounter) -> A
     return outcome
 
 
-async def reset_downstream(session: AsyncSession, encounter: Encounter, *, actor_user_id: int) -> None:
+async def reset_downstream(session: AsyncSession, encounter: Encounter, *, actor_user_id: int | None) -> None:
     """Empty every seat this encounter filled, and everything they filled.
 
     Each target loses the occupant, its unplayed positions (``vacate_slot``
@@ -196,6 +196,11 @@ async def reset_downstream(session: AsyncSession, encounter: Encounter, *, actor
     standing is re-materialised from the games the LIVE seats still cover --
     which is how an encounter that was complete goes back to OPEN after the
     line-up that played it was retired.
+
+    ``actor_user_id`` is the person who caused it, as a PLAYER identity; it is
+    ``None`` only when the caller genuinely has none -- an organizer account
+    with no linked player profile -- and the journal then reads as a machine
+    actor, which is what its nullable column means.
     """
     for link in await _outgoing(session, encounter.id):
         target = await lock_encounter(session, link.target_encounter_id)
@@ -226,7 +231,7 @@ async def _seat(session: AsyncSession, link: EncounterLink, holder: EncounterTea
     return True
 
 
-async def _restate(session: AsyncSession, encounter: Encounter, *, actor_user_id: int) -> None:
+async def _restate(session: AsyncSession, encounter: Encounter, *, actor_user_id: int | None) -> None:
     """Make the standing agree with the live seats again."""
     if encounter.result_source is not None and encounter.result_source != enums.EncounterResultSource.GAMES.value:
         # A decided result survives a recalculation by design, so it has to be

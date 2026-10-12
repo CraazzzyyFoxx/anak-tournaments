@@ -21,7 +21,9 @@ from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import UserRepository
 from shared.rpc.crud import CrudDispatcher, EntityConfig
+from shared.rpc.identity import rehydrate_user
 from shared.rpc.player_sub_role import player_sub_role_entity
 from src import schemas
 from src.core import auth, db
@@ -101,12 +103,14 @@ class AdminRegistryService:
         encounter_flows: EncounterFlowsService = encounter_flows,
         standings_flows: StandingsFlowsService = standings_flows,
         tournament_links: TournamentLinkService = tlink_service,
+        users: UserRepository = UserRepository(),
     ) -> None:
         self.tournament_flows = tournament_flows
         self.team_flows = team_flows
         self.encounter_flows = encounter_flows
         self.standings_flows = standings_flows
         self.tournament_links = tournament_links
+        self.users = users
 
     # --- workspace resolvers for create/list (must be awaitables) ---
 
@@ -194,6 +198,23 @@ class AdminRegistryService:
 
     async def _ser_tournament_link(self, session: AsyncSession, m: Any) -> Any:
         return _dump(schemas.TournamentLinkRead.model_validate(m, from_attributes=True))
+
+    # --- service hooks that need the caller, not just the row ---
+
+    async def _delete_encounter(self, session: AsyncSession, encounter_id: int, data: dict[str, Any]) -> None:
+        """Delete an encounter, naming the organizer who did it.
+
+        Deleting a played encounter retires the seats it advanced into later
+        rounds, and retiring a seat is :func:`reopen` -- a human act the journal
+        records (D68). Every other ``service_delete`` hook needs only the id, so
+        the actor is resolved here rather than widening the dispatcher's shape
+        for one entity. The journal column is a PLAYER identity
+        (``identity.user``), not the auth account the envelope carries, so an
+        organizer with no player profile is recorded as a machine actor rather
+        than refused: the deletion is still theirs to make.
+        """
+        actor = await self.users.get_by_auth_user_id(session, rehydrate_user(data.get("identity")).id)
+        await enc_service.delete_encounter(session, encounter_id, actor_user_id=None if actor is None else actor.id)
 
     # --- list functions ---
 
@@ -335,7 +356,7 @@ REGISTRY: dict[str, EntityConfig] = {
         resolve_ws_for_create=registry_service._ws_via_tournament_body,
         service_create=lambda s, p, d: enc_service.create_encounter(s, p),
         service_update=lambda s, i, p, d: enc_service.update_encounter(s, i, p),
-        service_delete=lambda s, i, d: enc_service.delete_encounter(s, i),
+        service_delete=lambda s, i, d: registry_service._delete_encounter(s, i, d),
         not_found_detail="Encounter not found",
         actions=frozenset({"create", "update", "delete"}),
         update_actions=_encounter_update_actions,

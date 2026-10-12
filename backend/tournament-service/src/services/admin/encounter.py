@@ -556,7 +556,7 @@ class AdminEncounterService:
 
         return match
 
-    async def delete_encounter(self, session: AsyncSession, encounter_id: int, *, actor_user_id: int) -> None:
+    async def delete_encounter(self, session: AsyncSession, encounter_id: int, *, actor_user_id: int | None) -> None:
         """Delete encounter (cascade deletes matches).
 
         The FK cascade removes this encounter's ``EncounterLink`` rows, but the

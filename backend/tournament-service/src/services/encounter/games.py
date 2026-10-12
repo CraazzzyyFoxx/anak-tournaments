@@ -28,6 +28,7 @@ from shared.core.enums import (
     EncounterGameResultSource,
     EncounterGameState,
     EncounterResultAuditAction,
+    EncounterResultStatus,
 )
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
@@ -56,6 +57,7 @@ from shared.repository import (
 from shared.services.encounter.game_audit import cancel_games as _cancel_games
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import refresh_from_games
+from src.services.tournament.events import enqueue_encounter_completed
 
 __all__ = ("GameResultIn", "EncounterGameService", "OPEN_STATES", "encounter_game_service")
 
@@ -368,7 +370,8 @@ class EncounterGameService:
         game.result_version = (game.result_version or 0) + 1
         await session.flush()
 
-        return await refresh_from_games(
+        was_confirmed = encounter.result_status == EncounterResultStatus.CONFIRMED
+        outcome = await refresh_from_games(
             session,
             encounter,
             action=(EncounterResultAuditAction.GAME_CORRECT if correcting else EncounterResultAuditAction.GAME_CONFIRM),
@@ -377,6 +380,14 @@ class EncounterGameService:
             game=game,
             reason=reason,
         )
+        # Under D57 this is the MAIN way an encounter completes: the last map
+        # being accepted is what ends the series, and a lobby finishes its card
+        # the same way. The announcement has exactly one consumer (achievement
+        # and MVP evaluation), so losing it here loses it for every
+        # claim-decided series and for every lobby.
+        if not was_confirmed and encounter.result_status == EncounterResultStatus.CONFIRMED:
+            await enqueue_encounter_completed(session, encounter)
+        return outcome
 
     async def select_map(
         self, session: AsyncSession, encounter: Encounter, game: EncounterGame, *, map_id: int

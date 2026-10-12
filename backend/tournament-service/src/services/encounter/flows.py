@@ -21,11 +21,38 @@ from src.services.tournament.flows import TournamentFlowsService
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
 
-def to_summary(encounter: models.Encounter) -> schemas.EncounterSummaryRead:
-    return schemas.EncounterSummaryRead(
-        **encounter.to_dict(),
-        score=schemas.Score(home=encounter.home_score, away=encounter.away_score),
-    )
+def _seats(encounter: models.Encounter) -> list[models.EncounterTeam]:
+    """The live seats in slot order. Eager-loaded by ``encounter_entities``."""
+    return sorted((seat for seat in encounter.teams if seat.active), key=lambda seat: seat.slot)
+
+
+def _wire_fields(encounter: models.Encounter, position: models.BracketEncounter | None) -> dict[str, typing.Any]:
+    """The fields the v1 wire still spells as two sides and a bracket position.
+
+    Read off the participations and ``tournament.bracket_encounter`` rather than
+    the columns that used to carry them, which are gone (D22, D55). The wire
+    SHAPE is Task 9's to change; where the numbers come from is this task's.
+    """
+    seats = _seats(encounter)
+    first = next((seat for seat in seats if seat.slot == 1), None)
+    second = next((seat for seat in seats if seat.slot == 2), None)
+    return {
+        "home_team_id": None if first is None else first.team_id,
+        "away_team_id": None if second is None else second.team_id,
+        "round": 0 if position is None else position.round,
+        "stage_id": None if position is None else position.stage_id,
+        "stage_item_id": None if position is None else position.stage_item_id,
+        "score": schemas.Score(
+            home=0 if first is None else int(first.score),
+            away=0 if second is None else int(second.score),
+        ),
+    }
+
+
+def to_summary(
+    encounter: models.Encounter, position: models.BracketEncounter | None = None
+) -> schemas.EncounterSummaryRead:
+    return schemas.EncounterSummaryRead(**encounter.to_dict(), **_wire_fields(encounter, position))
 
 
 def _saved_view_to_read(saved_view: models.EncounterSavedView) -> schemas.EncounterSavedViewRead:
@@ -135,14 +162,22 @@ class EncounterFlowsService:
         matches_read: list[schemas.MatchRead] = []
         games_read: list[schemas.EncounterGameRead] = []
 
-        if "stage" in entities and encounter.stage is not None:
-            # Nested stage challonge is derived at the top-level tournament read, not
-            # here — override to None so the legacy ``stage`` columns are never read.
-            stage = schemas.StageSummaryRead.model_validate(encounter.stage, from_attributes=True).model_copy(
-                update={"challonge_id": None, "challonge_slug": None}
-            )
-        if "stage_item" in entities and encounter.stage_item is not None:
-            stage_item = schemas.StageItemSummaryRead.model_validate(encounter.stage_item, from_attributes=True)
+        # The bracket position and the two seated teams, both off the rows that
+        # replaced the dropped columns: one encounter read, one extra statement.
+        position = await session.get(models.BracketEncounter, encounter.id)
+        seats = _seats(encounter)
+        if "stage" in entities and position is not None and position.stage_id is not None:
+            row = await session.get(models.Stage, position.stage_id)
+            if row is not None:
+                # Nested stage challonge is derived at the top-level tournament
+                # read, so the legacy ``stage`` columns are never read here.
+                stage = schemas.StageSummaryRead.model_validate(row, from_attributes=True).model_copy(
+                    update={"challonge_id": None, "challonge_slug": None}
+                )
+        if "stage_item" in entities and position is not None and position.stage_item_id is not None:
+            row = await session.get(models.StageItem, position.stage_item_id)
+            if row is not None:
+                stage_item = schemas.StageItemSummaryRead.model_validate(row, from_attributes=True)
         if "tournament" in entities:
             nested_tournament = utils.prepare_entities(entities, "tournament")
             cached_tournament = tournament_cache.get(encounter.tournament_id) if tournament_cache is not None else None
@@ -161,22 +196,23 @@ class EncounterFlowsService:
                 )
                 if tournament_cache is not None:
                     tournament_cache[encounter.tournament_id] = tournament
-        if "teams" in entities or "home_team" in entities:
-            teams_entities = (
-                utils.prepare_entities(entities, "teams")
-                if "teams" in entities
-                else utils.prepare_entities(entities, "home_team")
+        for slot, holder in ((1, "home_team"), (2, "away_team")):
+            if "teams" not in entities and holder not in entities:
+                continue
+            seat = next((row for row in seats if row.slot == slot), None)
+            source = await session.get(models.Team, seat.team_id) if seat and seat.team_id else None
+            if source is None:
+                continue
+            read = await self._cached_team_read(
+                session,
+                source,
+                utils.prepare_entities(entities, "teams" if "teams" in entities else holder),
+                team_cache,
             )
-            if encounter.home_team is not None:
-                home_team = await self._cached_team_read(session, encounter.home_team, teams_entities, team_cache)
-        if "teams" in entities or "away_team" in entities:
-            teams_entities = (
-                utils.prepare_entities(entities, "teams")
-                if "teams" in entities
-                else utils.prepare_entities(entities, "away_team")
-            )
-            if encounter.away_team is not None:
-                away_team = await self._cached_team_read(session, encounter.away_team, teams_entities, team_cache)
+            if slot == 1:
+                home_team = read
+            else:
+                away_team = read
         if "matches" in entities:
             matches_read = [
                 await self.to_pydantic_match(
@@ -199,8 +235,6 @@ class EncounterFlowsService:
                     map_id=game.map_id,
                     map=map_to_read(game.map, []) if game.map is not None else None,
                     state=game.state.value,
-                    accepted_home_score=game.accepted_home_score,
-                    accepted_away_score=game.accepted_away_score,
                     result_source=game.result_source.value if game.result_source is not None else None,
                     result_version=game.result_version,
                     confirmed_at=game.confirmed_at,
@@ -225,8 +259,8 @@ class EncounterFlowsService:
 
         return schemas.EncounterRead(
             **encounter_dict,
+            **_wire_fields(encounter, position),
             games=games_read,
-            score=schemas.Score(home=encounter.home_score, away=encounter.away_score),
             stage=stage,
             stage_item=stage_item,
             tournament=tournament,
@@ -234,7 +268,11 @@ class EncounterFlowsService:
             away_team=away_team,
             matches=matches_read,
             sources=[
-                schemas.EncounterSlotSourceRead(encounter_id=source.encounter_id, role=source.role, slot=source.slot)
+                schemas.EncounterSlotSourceRead(
+                    encounter_id=source.encounter_id,
+                    role=str(source.source_position),
+                    slot=str(source.slot),
+                )
                 for source in (slot_sources or {}).get(encounter.id, ())
             ],
         )
