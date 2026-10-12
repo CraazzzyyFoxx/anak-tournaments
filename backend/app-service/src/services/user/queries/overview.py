@@ -14,6 +14,7 @@ from shared.services.achievement_effective import build_effective_achievement_ro
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
 from src.core import config, enums, pagination
+from src.domain.encounter_seats import Seat
 
 from ._scope import (
     _apply_overview_role_filters,
@@ -23,7 +24,6 @@ from ._scope import (
     _compare_tournament_scope_exists,
     apply_has_logs_filter,
     overview_division_number_expr,
-    union_encounter_team_sides,
 )
 
 if typing.TYPE_CHECKING:
@@ -98,28 +98,26 @@ class UserOverviewQueries:
 
     def _overview_encounter_select(
         self,
-        build_columns: typing.Callable[[typing.Any, typing.Any, typing.Any], typing.Sequence[typing.Any]],
+        build_columns: typing.Callable[[Seat], typing.Sequence[typing.Any]],
         *where_conditions: typing.Any,
-    ) -> sa.CompoundSelect:
-        """Player -> Team -> Encounter -> Tournament via UNION ALL of equality joins.
+    ) -> sa.Select:
+        """Player -> Team -> seat -> Encounter -> Tournament, one row per encounter the team played.
 
-        `home_team_id = team.id OR away_team_id = team.id` cannot use either FK
-        index (OWT-TOURNAMENTS-21T). Same split as page-level closeness.
-        `build_columns(team_fk, maps_won, maps_lost)` is evaluated per side;
-        wrap the union in AVG/SUM yourself.
+        ``build_columns(seat)`` names the selected columns; wrap the result in
+        AVG/SUM yourself. Two-seat encounters only: the maps columns read the
+        series score.
         """
-
-        def _side(team_fk, won, lost):
-            return (
-                sa.select(*build_columns(team_fk, won, lost))
-                .select_from(models.Player)
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-                .where(*where_conditions)
-            )
-
-        return union_encounter_team_sides(_side)
+        seat = Seat()
+        query = (
+            sa.select(*build_columns(seat))
+            .select_from(models.Player)
+            .join(models.Team, models.Team.id == models.Player.team_id)
+        )
+        return (
+            seat.join(query, models.Team.id)
+            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .where(*where_conditions)
+        )
 
     def _overview_tournaments_count_expr(
         self,
@@ -340,7 +338,7 @@ class UserOverviewQueries:
             extra=(models.Encounter.closeness.isnot(None),),
         )
         sides = self._overview_encounter_select(
-            lambda _fk, _won, _lost: (models.Encounter.closeness.label("value"),),
+            lambda _seat: (models.Encounter.closeness.label("value"),),
             *where_conditions,
         ).subquery("overview_avg_closeness_sides")
         return sa.select(sa.func.avg(sides.c.value)).select_from(sides).scalar_subquery()
@@ -364,7 +362,7 @@ class UserOverviewQueries:
             grid=grid,
         )
         sides = self._overview_encounter_select(
-            lambda _fk, won, _lost: (won.label("value"),),
+            lambda seat: (seat.maps_won.label("value"),),
             *where_conditions,
         ).subquery("overview_maps_won_sides")
         return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
@@ -388,7 +386,7 @@ class UserOverviewQueries:
             grid=grid,
         )
         sides = self._overview_encounter_select(
-            lambda _fk, _won, lost: (lost.label("value"),),
+            lambda seat: (seat.maps_lost.label("value"),),
             *where_conditions,
         ).subquery("overview_maps_lost_sides")
         return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
@@ -416,7 +414,7 @@ class UserOverviewQueries:
             workspace_id=workspace_id,
         )
         sides = self._overview_encounter_select(
-            lambda _fk, won, lost: (won.label("won"), lost.label("lost")),
+            lambda seat: (seat.maps_won.label("won"), seat.maps_lost.label("lost")),
             *where_conditions,
         ).subquery("overview_winrate_sides")
         return (
@@ -445,7 +443,7 @@ class UserOverviewQueries:
             workspace_id=workspace_id,
         )
         sides = self._overview_encounter_select(
-            lambda _fk, won, lost: (models.Encounter.id.label("encounter_id"), (won + lost).label("maps")),
+            lambda seat: (models.Encounter.id.label("encounter_id"), (seat.maps_won + seat.maps_lost).label("maps")),
             *where_conditions,
         ).subquery("overview_encounters_played_sides")
         return (
@@ -886,28 +884,28 @@ class UserOverviewQueries:
             .group_by(models.WorkspaceMember.player_id)
         )
 
-        def _closeness_side(team_fk, _won, _lost):
-            return (
+        closeness_seat = Seat(name="closeness_seat")
+        closeness_sides = (
+            closeness_seat.join(
                 sa.select(
                     models.WorkspaceMember.player_id.label("user_id"),
                     models.Encounter.closeness.label("closeness"),
                 )
                 .select_from(models.Player)
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(
-                    models.WorkspaceMember.player_id.in_(user_ids),
-                    models.Player.is_substitution.is_(False),
-                    models.Tournament.is_finished.is_(True),
-                    models.Tournament.is_league.is_(False),
-                    models.Encounter.closeness.isnot(None),
-                    *ws_filter,
-                )
+                .join(models.Team, models.Team.id == models.Player.team_id),
+                models.Team.id,
             )
-
-        closeness_sides = union_encounter_team_sides(_closeness_side).subquery("overview_closeness_sides")
+            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id.in_(user_ids),
+                models.Player.is_substitution.is_(False),
+                models.Tournament.is_finished.is_(True),
+                models.Tournament.is_league.is_(False),
+                models.Encounter.closeness.isnot(None),
+                *ws_filter,
+            )
+        ).subquery("overview_closeness_sides")
         closeness_query = sa.select(
             closeness_sides.c.user_id,
             sa.func.avg(closeness_sides.c.closeness).label("avg_closeness"),
@@ -1011,10 +1009,9 @@ class UserOverviewQueries:
         """``(maps_won, maps_lost, encounters_played)`` per user for the page.
 
         Same scope as the other overview aggregates (not substitution, finished
-        non-league tournaments, optional workspace) and the same UNION ALL over
-        the two encounter sides — ``home_team_id = id OR away_team_id = id`` can
-        use neither FK index. "Played" is an encounter with a result (non-zero
-        score sum); the per-side DISTINCT stops a user rostered twice on one
+        non-league tournaments, optional workspace), read through the team's seat
+        in each two-seat encounter. "Played" is an encounter with a result (non-zero
+        score sum); the DISTINCT stops a user rostered twice on one
         team from counting that encounter's maps twice.
         """
         if not user_ids:
@@ -1022,30 +1019,30 @@ class UserOverviewQueries:
 
         ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
 
-        def _side(team_fk, won, lost):
-            return (
+        seat = Seat(name="record_seat")
+        sides = (
+            seat.join(
                 sa.select(
                     models.WorkspaceMember.player_id.label("user_id"),
                     models.Encounter.id.label("encounter_id"),
-                    won.label("won"),
-                    lost.label("lost"),
+                    seat.maps_won.label("won"),
+                    seat.maps_lost.label("lost"),
                 )
                 .select_from(models.Player)
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(
-                    models.WorkspaceMember.player_id.in_(user_ids),
-                    models.Player.is_substitution.is_(False),
-                    models.Tournament.is_finished.is_(True),
-                    models.Tournament.is_league.is_(False),
-                    *ws_filter,
-                )
-                .distinct()
+                .join(models.Team, models.Team.id == models.Player.team_id),
+                models.Team.id,
             )
-
-        sides = union_encounter_team_sides(_side).subquery("overview_map_record_sides")
+            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id.in_(user_ids),
+                models.Player.is_substitution.is_(False),
+                models.Tournament.is_finished.is_(True),
+                models.Tournament.is_league.is_(False),
+                *ws_filter,
+            )
+            .distinct()
+        ).subquery("overview_map_record_sides")
         query = sa.select(
             sides.c.user_id,
             sa.func.coalesce(sa.func.sum(sides.c.won), 0),

@@ -12,13 +12,13 @@ from shared.models import mv_hero_global_stats
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
 from src.core import enums, pagination
+from src.domain.encounter_seats import Seat
 
 from ._scope import (
     _build_eligible_hero_stats_cte,
     _hero_direction_score,
     _team_load_options,
     team_has_played_encounter,
-    union_encounter_team_sides,
     user_entities,
 )
 
@@ -165,30 +165,29 @@ class UserProfileQueries:
         tournaments, or the workspace's tournaments when ``workspace_id`` is given.
         """
 
-        def _side(team_fk, won, lost):
-            q = (
-                sa.select(
-                    models.WorkspaceMember.player_id.label("user_id"),
-                    won.label("maps_won"),
-                    lost.label("maps_lost"),
-                    models.Encounter.closeness.label("closeness"),
-                )
-                .select_from(models.Player)
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(
-                    models.Player.is_substitution.is_(False),
-                    models.WorkspaceMember.player_id == user_id,
-                )
-            )
-            if workspace_id is not None:
-                q = q.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id).where(
-                    models.Tournament.workspace_id == workspace_id
-                )
-            return q
+        seat = Seat()
 
-        sides = union_encounter_team_sides(_side).subquery("profile_map_sides")
+        q = (
+            sa.select(
+                models.WorkspaceMember.player_id.label("user_id"),
+                seat.maps_won.label("maps_won"),
+                seat.maps_lost.label("maps_lost"),
+                models.Encounter.closeness.label("closeness"),
+            )
+            .select_from(models.Player)
+            .join(models.Team, models.Team.id == models.Player.team_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.Player.is_substitution.is_(False),
+                models.WorkspaceMember.player_id == user_id,
+            )
+        )
+        q = seat.join(q, models.Team.id)
+        if workspace_id is not None:
+            q = q.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id).where(
+                models.Tournament.workspace_id == workspace_id
+            )
+        sides = q.subquery("profile_map_sides")
         query = (
             sa.select(
                 sa.func.sum(sides.c.maps_won).label("won_maps"),
@@ -265,30 +264,29 @@ class UserProfileQueries:
         tournament was actually played on.
         """
 
-        def _side(team_fk, won, lost):
-            q = (
-                sa.select(
-                    models.Player.role,
-                    won.label("maps_won"),
-                    lost.label("maps_lost"),
-                    models.Team.tournament_id.label("tournament_id"),
-                    models.Player.rank.label("rank"),
-                    tournament_effective_version_id_expr(models.Team.tournament_id).label("division_grid_version_id"),
-                )
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(
-                    models.Player.is_substitution.is_(False),
-                    models.WorkspaceMember.player_id == user_id,
-                )
-            )
-            if workspace_id is not None:
-                q = q.where(models.Tournament.workspace_id == workspace_id)
-            return q
+        seat = Seat()
 
-        sides = union_encounter_team_sides(_side).subquery("profile_role_sides")
+        q = (
+            sa.select(
+                models.Player.role,
+                seat.maps_won.label("maps_won"),
+                seat.maps_lost.label("maps_lost"),
+                models.Team.tournament_id.label("tournament_id"),
+                models.Player.rank.label("rank"),
+                tournament_effective_version_id_expr(models.Team.tournament_id).label("division_grid_version_id"),
+            )
+            .join(models.Team, models.Team.id == models.Player.team_id)
+            .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.Player.is_substitution.is_(False),
+                models.WorkspaceMember.player_id == user_id,
+            )
+        )
+        q = seat.join(q, models.Team.id)
+        if workspace_id is not None:
+            q = q.where(models.Tournament.workspace_id == workspace_id)
+        sides = q.subquery("profile_role_sides")
         query = (
             sa.select(
                 sides.c.role,
@@ -343,34 +341,33 @@ class UserProfileQueries:
         closeness)`` rows.
         """
 
-        def _side(team_fk, won, lost):
-            q = (
-                sa.select(
-                    models.Team.id.label("team_id"),
-                    won.label("maps_won"),
-                    lost.label("maps_lost"),
-                    models.Encounter.closeness.label("closeness"),
-                )
-                .select_from(models.Player)
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(
-                    models.WorkspaceMember.player_id == user_id,
-                    models.Player.is_substitution.is_(False),
-                    # Hidden tournaments (issue #115) never appear in a user's public
-                    # tournament list. This read is cashews-cached without the viewer,
-                    # so exclude unconditionally; admins/allowlisted view hidden
-                    # tournaments through the gated tournament pages instead.
-                    models.Tournament.is_hidden.is_(False),
-                )
-            )
-            if workspace_id is not None:
-                q = q.where(models.Tournament.workspace_id == workspace_id)
-            return q
+        seat = Seat()
 
-        sides = union_encounter_team_sides(_side).subquery("profile_tournament_sides")
+        q = (
+            sa.select(
+                models.Team.id.label("team_id"),
+                seat.maps_won.label("maps_won"),
+                seat.maps_lost.label("maps_lost"),
+                models.Encounter.closeness.label("closeness"),
+            )
+            .select_from(models.Player)
+            .join(models.Team, models.Team.id == models.Player.team_id)
+            .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id == user_id,
+                models.Player.is_substitution.is_(False),
+                # Hidden tournaments (issue #115) never appear in a user's public
+                # tournament list. This read is cashews-cached without the viewer,
+                # so exclude unconditionally; admins/allowlisted view hidden
+                # tournaments through the gated tournament pages instead.
+                models.Tournament.is_hidden.is_(False),
+            )
+        )
+        q = seat.join(q, models.Team.id)
+        if workspace_id is not None:
+            q = q.where(models.Tournament.workspace_id == workspace_id)
+        sides = q.subquery("profile_tournament_sides")
         agg = (
             sa.select(
                 sides.c.team_id,
@@ -410,48 +407,48 @@ class UserProfileQueries:
         closeness, total playtime in seconds)``.
         """
 
-        def _playtime_side(team_fk, _won, _lost):
-            return (
-                sa.select(models.MatchStatistics.value.label("value"))
-                .select_from(models.Player)
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-                .join(models.MatchStatistics, models.MatchStatistics.match_id == models.Match.id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(
-                    models.WorkspaceMember.player_id == user_id,
-                    models.Player.is_substitution.is_(False),
-                    models.Team.tournament_id == tournament.id,
-                    models.MatchStatistics.user_id == models.WorkspaceMember.player_id,
-                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                    models.MatchStatistics.hero_id.is_(None),
-                    models.MatchStatistics.round == 0,
-                )
+        seat = Seat(name="playtime_seat")
+        playtime_query = (
+            sa.select(models.MatchStatistics.value.label("value"))
+            .select_from(models.Player)
+            .join(models.Team, models.Team.id == models.Player.team_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id == user_id,
+                models.Player.is_substitution.is_(False),
+                models.Team.tournament_id == tournament.id,
+                models.MatchStatistics.user_id == models.WorkspaceMember.player_id,
+                models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
+                models.MatchStatistics.hero_id.is_(None),
+                models.MatchStatistics.round == 0,
             )
+        )
+        playtime_query = (
+            seat.join(playtime_query, models.Team.id, duel=False)
+            .join(models.Match, models.Match.encounter_id == models.Encounter.id)
+            .join(models.MatchStatistics, models.MatchStatistics.match_id == models.Match.id)
+        )
+        playtime_subquery = sa.select(
+            sa.func.sum(playtime_query.subquery("profile_playtime_sides").c.value)
+        ).scalar_subquery()
 
-        playtime_sides = union_encounter_team_sides(_playtime_side).subquery("profile_playtime_sides")
-        playtime_subquery = sa.select(sa.func.sum(playtime_sides.c.value)).scalar_subquery()
-
-        def _maps_side(team_fk, won, lost):
-            return (
-                sa.select(
-                    won.label("maps_won"),
-                    lost.label("maps_lost"),
-                    models.Encounter.closeness.label("closeness"),
-                )
-                .select_from(models.Player)
-                .join(models.Team, models.Team.id == models.Player.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(
-                    models.WorkspaceMember.player_id == user_id,
-                    models.Player.is_substitution.is_(False),
-                    models.Team.tournament_id == tournament.id,
-                )
+        maps_seat = Seat(name="maps_seat")
+        maps_query = (
+            sa.select(
+                maps_seat.maps_won.label("maps_won"),
+                maps_seat.maps_lost.label("maps_lost"),
+                models.Encounter.closeness.label("closeness"),
             )
-
-        map_sides = union_encounter_team_sides(_maps_side).subquery("profile_tournament_map_sides")
+            .select_from(models.Player)
+            .join(models.Team, models.Team.id == models.Player.team_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(
+                models.WorkspaceMember.player_id == user_id,
+                models.Player.is_substitution.is_(False),
+                models.Team.tournament_id == tournament.id,
+            )
+        )
+        map_sides = maps_seat.join(maps_query, models.Team.id).subquery("profile_tournament_map_sides")
         query = sa.select(
             sa.func.coalesce(sa.func.sum(map_sides.c.maps_won), 0).label("won_maps"),
             sa.func.coalesce(sa.func.sum(map_sides.c.maps_lost), 0).label("lost_maps"),
@@ -682,19 +679,16 @@ class UserProfileQueries:
 
         shared_teams = shared_teams_select.cte("shared_teams")
 
-        def _encounter_side(team_fk, won, lost):
-            return (
-                sa.select(
-                    shared_teams.c.teammate_id.label("teammate_id"),
-                    models.Encounter.tournament_id.label("tournament_id"),
-                    won.label("won_score"),
-                    lost.label("lost_score"),
-                )
-                .select_from(shared_teams)
-                .join(models.Encounter, team_fk == shared_teams.c.team_id)
-            )
-
-        teammate_encounters = union_encounter_team_sides(_encounter_side).cte("teammate_encounters")
+        encounter_seat = Seat(name="teammate_seat")
+        teammate_encounters = encounter_seat.join(
+            sa.select(
+                shared_teams.c.teammate_id.label("teammate_id"),
+                models.Encounter.tournament_id.label("tournament_id"),
+                encounter_seat.maps_won.label("won_score"),
+                encounter_seat.maps_lost.label("lost_score"),
+            ).select_from(shared_teams),
+            shared_teams.c.team_id,
+        ).cte("teammate_encounters")
 
         teammates_query = (
             sa.select(
@@ -769,19 +763,21 @@ class UserProfileQueries:
 
         # Distinct maps played together (separate CTE so the encounter→match fan-out
         # does not skew the winrate/tournament aggregates in teammates_query).
-        def _map_side(team_fk, _won, _lost):
-            return (
+        map_seat = Seat(name="teammate_map_seat")
+        map_sides = (
+            map_seat.join(
                 sa.select(
                     shared_teams.c.teammate_id.label("user_id"),
                     models.Match.map_id.label("map_id"),
                 )
                 .select_from(shared_teams)
-                .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id)
-                .join(models.Encounter, team_fk == shared_teams.c.team_id)
-                .outerjoin(models.Match, models.Match.encounter_id == models.Encounter.id)
+                .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id),
+                shared_teams.c.team_id,
+                duel=False,
             )
-
-        map_sides = union_encounter_team_sides(_map_side).subquery("teammate_map_sides")
+            .outerjoin(models.Match, models.Match.encounter_id == models.Encounter.id)
+            .subquery("teammate_map_sides")
+        )
         maps_query = (
             sa.select(
                 map_sides.c.user_id,

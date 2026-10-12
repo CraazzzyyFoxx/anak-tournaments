@@ -32,6 +32,7 @@ from src import schemas
 from src.core import db as app_db
 from src.services.user.queries.overview import overview as overview_queries
 from src.services.user.service import users as user_service
+from tests.encounter_seed import seed_encounter, seed_scoring_rule
 
 RECENT = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=5)
 
@@ -217,26 +218,20 @@ async def _seed(session: Any) -> _Seed:
         (t4, "F", "G", 5, 0),
         (t5, "H", "I", 4, 0),
     ]
+    rule_ids = {
+        workspace_id: await seed_scoring_rule(session, workspace_id)
+        for workspace_id in {tournament.workspace_id for tournament, *_ in encounters}
+    }
     encounter_ids: list[int] = []
     for index, (tournament, home, away, home_score, away_score) in enumerate(encounters):
-        encounter_id = (
-            await session.execute(
-                sa.text(
-                    "insert into tournament.encounter (name, home_team_id, away_team_id, home_score, away_score,"
-                    " round, best_of, tournament_id, status, result_status)"
-                    " values (:n, :h, :a, :hs, :as_, 1, 3, :t, 'COMPLETED', 'confirmed') returning id"
-                ),
-                {
-                    "n": f"E{index} {suffix}",
-                    "h": teams[home].id,
-                    "a": teams[away].id,
-                    "hs": home_score,
-                    "as_": away_score,
-                    "t": tournament.id,
-                },
-            )
-        ).scalar_one()
-        encounter_ids.append(encounter_id)
+        encounter = await seed_encounter(
+            session,
+            tournament,
+            rule_ids[tournament.workspace_id],
+            [(teams[home], home_score), (teams[away], away_score)],
+            name=f"E{index} {suffix}",
+        )
+        encounter_ids.append(encounter.id)
 
     # One parsed-log row, for charlie only: that is what has_logs selects.
     gamemode_id = (

@@ -146,7 +146,7 @@ class DashboardService:
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
             # Same reason as the coverage join in ``get_active_tournament_stats``: a
             # lobby produces no match logs at all, so "missing logs" never applies.
-            .where(models.Encounter.has_logs.is_(False), models.Encounter.format == "duel", *ws_filters)
+            .where(models.Encounter.has_logs.is_(False), models.Encounter.slot_count == 2, *ws_filters)
         )
 
         # Anti-joins use correlated NOT EXISTS instead of NOT IN (subquery):
@@ -278,7 +278,7 @@ class DashboardService:
                     models.Encounter.tournament_id == active.c.tournament_id,
                     # A lobby has no log format yet: counting it as "missing logs"
                     # would drag coverage down for a tournament that is complete.
-                    models.Encounter.format == "duel",
+                    models.Encounter.slot_count == 2,
                 ),
             )
             .group_by(active.c.tournament_id)

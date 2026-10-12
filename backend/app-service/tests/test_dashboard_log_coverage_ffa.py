@@ -1,7 +1,7 @@
 """An FFA lobby is not a series that is missing its logs (real-DB integration).
 
-A lobby never produces a match log — its results live in ``encounter_game_result``,
-not in ``matches.match`` — so counting it as "missing logs" would permanently drag
+A lobby never produces a match log — its results live in the participations'
+``encounter.game_team`` rows, not in ``matches.match`` — so counting it as "missing logs" would permanently drag
 the dashboard's log coverage down for a tournament that is actually complete::
 
     uv run pytest app-service/tests/test_dashboard_log_coverage_ffa.py -v
@@ -23,6 +23,7 @@ from shared.core import enums
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Team, Tournament
 from src.services.dashboard.service import dashboard
+from tests.encounter_seed import seed_encounter, seed_scoring_rule
 
 
 async def _seed(session: Any) -> tuple[int, int]:
@@ -48,20 +49,14 @@ async def _seed(session: Any) -> tuple[int, int]:
     session.add_all(teams)
     await session.flush()
 
-    await session.execute(
-        sa.text(
-            "insert into tournament.encounter (name, home_team_id, away_team_id, home_score, away_score, "
-            "round, best_of, tournament_id, status, result_status) "
-            "values ('A vs B', :h, :a, 0, 0, 1, 3, :t, 'OPEN', 'none')"
-        ),
-        {"h": teams[0].id, "a": teams[1].id, "t": tournament.id},
-    )
-    await session.execute(
-        sa.text(
-            "insert into tournament.encounter (name, format, home_score, away_score, round, best_of, "
-            "tournament_id, status, result_status) values ('Lobby', 'ffa', 0, 0, 1, 3, :t, 'OPEN', 'none')"
-        ),
-        {"t": tournament.id},
+    rule_id = await seed_scoring_rule(session, workspace.id)
+    await seed_encounter(session, tournament, rule_id, [(teams[0], 0), (teams[1], 0)], name="A vs B", completed=False)
+    # A lobby: three seats, so it is not a duel whatever its games say.
+    third = Team(tournament_id=tournament.id, name=f"Team 2 {suffix}", balancer_name=f"team-2-{suffix}")
+    session.add(third)
+    await session.flush()
+    await seed_encounter(
+        session, tournament, rule_id, [(teams[0], 0), (teams[1], 0), (third, 0)], name="Lobby", completed=False
     )
     await session.commit()
     return workspace.id, tournament.id

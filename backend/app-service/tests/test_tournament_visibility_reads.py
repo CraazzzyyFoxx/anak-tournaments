@@ -26,10 +26,18 @@ def hidden_and_visible(db):
     db.add(ws)
     db.flush()
     hidden = Tournament(
-        workspace_id=ws.id, name=f"Hidden {suffix}", status=enums.TournamentStatus.DRAFT, is_hidden=True
+        workspace_id=ws.id,
+        name=f"Hidden {suffix}",
+        slug=f"hidden-{suffix}",
+        status=enums.TournamentStatus.DRAFT,
+        is_hidden=True,
     )
     visible = Tournament(
-        workspace_id=ws.id, name=f"Visible {suffix}", status=enums.TournamentStatus.DRAFT, is_hidden=False
+        workspace_id=ws.id,
+        name=f"Visible {suffix}",
+        slug=f"visible-{suffix}",
+        status=enums.TournamentStatus.DRAFT,
+        is_hidden=False,
     )
     db.add_all([hidden, visible])
     db.commit()
@@ -50,7 +58,11 @@ def hidden_workspace_tournament(db):
     db.add(ws)
     db.flush()
     tournament = Tournament(
-        workspace_id=ws.id, name=f"Cascade {suffix}", status=enums.TournamentStatus.DRAFT, is_hidden=False
+        workspace_id=ws.id,
+        name=f"Cascade {suffix}",
+        slug=f"cascade-{suffix}",
+        status=enums.TournamentStatus.DRAFT,
+        is_hidden=False,
     )
     db.add(tournament)
     db.commit()
