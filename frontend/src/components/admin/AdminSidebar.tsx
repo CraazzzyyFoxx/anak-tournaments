@@ -26,7 +26,6 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import {
   SidebarBackToSite,
-  SidebarLanguageSwitch,
   SidebarUserDropdown,
   SidebarWorkspaceLogoItem
 } from "@/components/admin/sidebar-shared";
@@ -173,7 +172,6 @@ export function AdminSidebar() {
       {/* ── FOOTER: Admin tools + user ─────────────────── */}
       <SidebarFooter className="px-2 pb-2 pt-0 group-data-[collapsible=icon]:px-1">
         <SidebarBackToSite />
-        <SidebarLanguageSwitch />
         <SidebarUserDropdown />
       </SidebarFooter>
 

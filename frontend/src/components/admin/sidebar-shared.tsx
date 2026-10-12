@@ -1,31 +1,29 @@
 "use client";
 
+import { useId } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
-import { ArrowLeft, Check, ChevronsUpDown } from "lucide-react";
+import { ArrowLeft, Bell, Check, ChevronsUpDown } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverClose, PopoverTrigger } from "@/components/ui/popover";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem
 } from "@/components/ui/sidebar";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { AccountMenuContent } from "@/components/UserMenu";
+import {
+  ACCOUNT_MENU_ITEM_CLASS,
+  AccountMenuPanel,
+  AccountMenuSeparator
+} from "@/components/UserMenu";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
+import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import { cn, initials } from "@/lib/utils";
+import { initials } from "@/lib/utils";
 
 // Role names come from two RBAC scopes: global roles ("admin", "moderator" —
 // see AppRole in usePermissions) and
@@ -125,23 +123,12 @@ export function SidebarBackToSite() {
   );
 }
 
-/**
- * The RU | EN switch, in view rather than one menu deep. Collapsed to icons the
- * rail has no room for it; the account menu below carries the same choice.
- */
-export function SidebarLanguageSwitch() {
-  const t = useTranslations("common");
-  return (
-    <div className="flex items-center justify-between gap-2 px-2.5 py-1 group-data-[collapsible=icon]:hidden">
-      <span className="text-xs text-sidebar-foreground/40">{t("language")}</span>
-      <LanguageSwitcher className="h-7" />
-    </div>
-  );
-}
-
 export function SidebarUserDropdown() {
   const t = useTranslations("adminShell.sidebar");
+  const tCommon = useTranslations("common");
   const tDashboard = useTranslations("adminShell.dashboardExtra");
+  const workspaceLabelId = useId();
+  const openSettings = useAccountSettingsModalStore((s) => s.open);
   const { user, status } = useAuthProfile();
   const {
     workspaces: allWorkspaces,
@@ -161,8 +148,8 @@ export function SidebarUserDropdown() {
     <div className="mt-1">
       <SidebarMenu>
         <SidebarMenuItem>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <Popover>
+            <PopoverTrigger asChild>
               <SidebarMenuButton
                 size="lg"
                 tooltip={user?.username ?? tDashboard("profile")}
@@ -191,35 +178,59 @@ export function SidebarUserDropdown() {
                   className="ml-auto size-3.5 text-sidebar-foreground/25 group-data-[collapsible=icon]:hidden"
                 />
               </SidebarMenuButton>
-            </DropdownMenuTrigger>
+            </PopoverTrigger>
 
             {user && (
-              <AccountMenuContent user={user} align="start" side="top">
+              <AccountMenuPanel
+                user={user}
+                align="start"
+                side="top"
+                actions={
+                  // The admin shell has no notification bell, so its settings live here.
+                  <PopoverClose asChild>
+                    <button
+                      type="button"
+                      className={ACCOUNT_MENU_ITEM_CLASS}
+                      onClick={() => openSettings("notifications")}
+                    >
+                      <Bell className="size-4 shrink-0" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">{tCommon("notificationSettings")}</span>
+                    </button>
+                  </PopoverClose>
+                }
+              >
                 {workspaces.length > 0 && (
                   <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className={cn(EYEBROW_CLASS, "px-2 py-1")}>
-                      {t("workspace")}
-                    </DropdownMenuLabel>
-                    {workspaces.map((ws) => (
-                      <DropdownMenuItem
-                        key={ws.id}
-                        onClick={() => setCurrentWorkspace(ws.id)}
-                        aria-current={ws.id === currentWorkspaceId ? "true" : undefined}
-                        className="flex items-center gap-2 h-8 rounded-md text-sm"
+                    <AccountMenuSeparator />
+                    <div role="group" aria-labelledby={workspaceLabelId}>
+                      <p
+                        id={workspaceLabelId}
+                        className="px-2.5 pb-1 pt-1.5 text-caption text-[color:var(--aqt-fg-dim)]"
                       >
-                        <WorkspaceAvatar workspace={ws} size={20} />
-                        <span className="flex-1 truncate">{ws.name}</span>
-                        {ws.id === currentWorkspaceId && (
-                          <Check aria-hidden className="size-3.5 text-sidebar-primary" />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
+                        {t("workspace")}
+                      </p>
+                      {workspaces.map((ws) => (
+                        <PopoverClose key={ws.id} asChild>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentWorkspace(ws.id)}
+                            aria-current={ws.id === currentWorkspaceId ? "true" : undefined}
+                            className={ACCOUNT_MENU_ITEM_CLASS}
+                          >
+                            <WorkspaceAvatar workspace={ws} size={20} />
+                            <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                            {ws.id === currentWorkspaceId && (
+                              <Check aria-hidden className="size-4 shrink-0 text-[color:var(--aqt-teal)]" />
+                            )}
+                          </button>
+                        </PopoverClose>
+                      ))}
+                    </div>
                   </>
                 )}
-              </AccountMenuContent>
+              </AccountMenuPanel>
             )}
-          </DropdownMenu>
+          </Popover>
         </SidebarMenuItem>
       </SidebarMenu>
     </div>
