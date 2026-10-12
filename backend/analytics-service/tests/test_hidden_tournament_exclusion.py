@@ -29,6 +29,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from shared.testing import create_sqlite_tables
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
@@ -122,8 +124,19 @@ class _Fixture:
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in TABLES if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in TABLES:
-                table.create(conn)
+            create_sqlite_tables(conn, TABLES)
+            # Only the columns the map reads touch: the models' Postgres server defaults do not compile on SQLite.
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.scoring_rule (id INTEGER PRIMARY KEY, workspace_id INTEGER, preset TEXT)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.game (id INTEGER PRIMARY KEY, encounter_id INTEGER, state TEXT)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.game_team (game_id INTEGER, encounter_team_id INTEGER, placement INTEGER)"
+            )
+            # The encounters' result is a ``wins`` series score, so ``score`` counts maps.
+            conn.exec_driver_sql("INSERT INTO encounter.scoring_rule (id, workspace_id, preset) VALUES (1, 1, 'wins')")
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 1

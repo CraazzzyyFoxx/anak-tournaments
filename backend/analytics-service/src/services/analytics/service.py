@@ -11,6 +11,7 @@ from shared.models.division_grid import DivisionGridMapping, DivisionGridMapping
 from shared.repository import AnalyticsAlgorithmRepository, AnalyticsPlayerRepository, TeamRepository
 from src import models
 from src.core.workspace import workspace_scope_filter
+from src.domain.encounter_maps import seat_maps
 
 
 class AnalyticsService:
@@ -31,23 +32,17 @@ class AnalyticsService:
         workspace_id: int | None = None,
         workspace_ids: typing.Sequence[int] | None = None,
     ) -> typing.Sequence[sa.RowMapping]:
-        # A team's maps in an encounter are the series score of its live seat and of the other
-        # seat; a lobby (more than two seats) scores points, not maps, so it only counts as played.
+        # A team's maps in a duel come from its confirmed games (see ``seat_maps``); a lobby (more than
+        # two seats) scores points, not maps, so it only counts as played.
         seat = aliased(models.EncounterTeam, name="seat")
-        others = aliased(models.EncounterTeam, name="others")
-        lost = (
-            sa.select(sa.func.coalesce(sa.func.sum(others.score), 0))
-            .where(others.encounter_id == seat.encounter_id, others.active.is_(True), others.id != seat.id)
-            .correlate(seat)
-            .scalar_subquery()
-        )
+        maps_won, maps_lost = seat_maps(seat)
         points = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role.label("role"),
                 models.Player.team_id.label("team_id"),
-                sa.func.sum(seat.score).label("wins"),
-                sa.func.sum(lost).label("losses"),
+                sa.func.sum(maps_won).label("wins"),
+                sa.func.sum(maps_lost).label("losses"),
             )
             .select_from(models.Player)
             .join(

@@ -27,7 +27,7 @@ from src.core import pagination
 from src.services.user import _mappers
 from src.services.user.queries.encounters import encounters as encounter_queries
 from src.services.user.queries.overview import overview as overview_queries
-from tests.encounter_seed import seed_encounter, seed_scoring_rule
+from tests.encounter_seed import seed_confirmed_games, seed_encounter, seed_scoring_rule
 
 
 class _Seed:
@@ -245,3 +245,38 @@ def test_map_records_count_duels_only(db_session) -> None:
     seed, records = _run(db_session, body)
     # E1 2-1, E2 2-2, E4 0-2: the lobby's 30 points are not maps, and every duel has a result.
     assert records[seed.users["alice"]] == (4, 5, 3)
+
+
+def test_maps_come_from_the_games_and_fall_back_to_a_wins_series_score_only(db_session) -> None:
+    """``game_team`` is the source; a seat score is maps only for a ``wins`` series with no games."""
+
+    async def body(seed: _Seed):
+        async def _tournament_teams():
+            row = (
+                await db_session.execute(
+                    sa.text("select tournament_id from tournament.team where id = :t"), {"t": seed.teams["X"]}
+                )
+            ).scalar_one()
+            return row
+
+        tournament_id = await _tournament_teams()
+        tournament = await db_session.get(Tournament, tournament_id)
+        teams = {key: await db_session.get(Team, team_id) for key, team_id in seed.teams.items()}
+        points_rule = await seed_scoring_rule(db_session, seed.workspace_id, "points")
+        wins_rule = await seed_scoring_rule(db_session, seed.workspace_id, "wins")
+        # A points-preset duel: its 40-5 is points, so no map is won or lost -- with or without games.
+        await seed_encounter(db_session, tournament, points_rule, [(teams["X"], 40), (teams["Y"], 5)], name="PTS")
+        # A wins-preset duel whose seat score (9-0) disagrees with its two confirmed games (1-1): games win.
+        with_games = await seed_encounter(
+            db_session, tournament, wins_rule, [(teams["X"], 9), (teams["Y"], 0)], name="GAMES"
+        )
+        await seed_confirmed_games(db_session, with_games, [[1, 2], [2, 1]])
+        # A wins-preset duel without games: its seat score is the maps (3-2).
+        await seed_encounter(db_session, tournament, wins_rule, [(teams["X"], 3), (teams["Y"], 2)], name="SERIES")
+        await db_session.commit()
+        # The base seed's E1/E2/E4/lobby add 4 won / 5 lost maps (see the duel-only test above).
+        return await overview_queries.get_overview_map_records(db_session, [seed.users["alice"]], seed.workspace_id)
+
+    seed, records = _run(db_session, body)
+    # 4+0 (base) + 1 (GAMES) + 3 (SERIES) won; 5+0 + 1 + 2 lost; PTS adds nothing and is not "played".
+    assert records[seed.users["alice"]] == (8, 8, 5)

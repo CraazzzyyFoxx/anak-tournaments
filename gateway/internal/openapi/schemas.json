@@ -2448,8 +2448,6 @@
             "enum": [
               "id",
               "name",
-              "home_team_id",
-              "away_team_id",
               "closeness",
               "round",
               "played_at"
@@ -13823,29 +13821,6 @@
     "app.EncounterReadWithUserStats": {
       "description": "Encounter rendered on the user encounters page.",
       "properties": {
-        "away_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.UserEncounterTeamSummary"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "away_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Team Id"
-        },
         "best_of": {
           "default": 3,
           "title": "Best Of",
@@ -13867,29 +13842,6 @@
           "default": false,
           "title": "Has Logs",
           "type": "boolean"
-        },
-        "home_team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.UserEncounterTeamSummary"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "home_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Team Id"
         },
         "id": {
           "title": "Id",
@@ -13915,8 +13867,10 @@
           "title": "Round",
           "type": "integer"
         },
-        "score": {
-          "$ref": "#/components/schemas/app.Score"
+        "slot_count": {
+          "default": 2,
+          "title": "Slot Count",
+          "type": "integer"
         },
         "stage": {
           "anyOf": [
@@ -13943,6 +13897,13 @@
         "status": {
           "title": "Status",
           "type": "string"
+        },
+        "teams": {
+          "items": {
+            "$ref": "#/components/schemas/app.UserEncounterTeamSummary"
+          },
+          "title": "Teams",
+          "type": "array"
         },
         "tournament": {
           "anyOf": [
@@ -13975,7 +13936,6 @@
       "required": [
         "id",
         "name",
-        "score",
         "round",
         "tournament_id",
         "status"
@@ -16330,7 +16290,7 @@
       "title": "PaginationQueryParams",
       "type": "object"
     },
-    "app.PaginationSortQueryParams_Literal__id____name____home_team_id____away_team_id____closeness____round____played_at___": {
+    "app.PaginationSortQueryParams_Literal__id____name____closeness____round____played_at___": {
       "properties": {
         "entities": {
           "items": {
@@ -16366,8 +16326,6 @@
           "enum": [
             "id",
             "name",
-            "home_team_id",
-            "away_team_id",
             "closeness",
             "round",
             "played_at"
@@ -16376,7 +16334,7 @@
           "type": "string"
         }
       },
-      "title": "PaginationSortQueryParams[Literal['id', 'name', 'home_team_id', 'away_team_id', 'closeness', 'round', 'played_at']]",
+      "title": "PaginationSortQueryParams[Literal['id', 'name', 'closeness', 'round', 'played_at']]",
       "type": "object"
     },
     "app.PaginationSortQueryParams_Literal__id____name____slug____rarity____similarity___similarity__": {
@@ -18711,7 +18669,7 @@
       "type": "object"
     },
     "app.UserEncounterTeamPlayerRef": {
-      "description": "Player reference inside encounter teams \u2014 minimal id+user_id+role.\n\nUsed only by the frontend to identify which side the viewer played on\n(`players.find(p => p.user_id === selfUserId)`). Renders nothing on its\nown \u2014 for the full player card see `UserTournamentPlayer`.",
+      "description": "Roster member inside an encounter seat \u2014 minimal id+user_id+role.\n\nUsed only by the frontend to identify which seat the viewer played in\n(`players.find(p => p.user_id === selfUserId)`). Renders nothing on its\nown \u2014 for the full player card see `UserTournamentPlayer`. ``id`` is the\nroster snapshot row, not a tournament player.",
       "properties": {
         "id": {
           "title": "Id",
@@ -18746,7 +18704,7 @@
       "type": "object"
     },
     "app.UserEncounterTeamSummary": {
-      "description": "Team summary inside `EncounterReadWithUserStats.{home,away}_team`.",
+      "description": "One live seat inside `EncounterReadWithUserStats.teams`.\n\n``id`` is the participation (``encounter.team``), ``team_id`` the source\ntournament team -- ``None`` once that team is deleted; ``name`` is the\nsnapshot the encounter was played under, and ``players`` its roster snapshot.",
       "properties": {
         "id": {
           "title": "Id",
@@ -18756,16 +18714,50 @@
           "title": "Name",
           "type": "string"
         },
+        "placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
         "players": {
           "items": {
             "$ref": "#/components/schemas/app.UserEncounterTeamPlayerRef"
           },
           "title": "Players",
           "type": "array"
+        },
+        "score": {
+          "default": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "integer"
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
         }
       },
       "required": [
         "id",
+        "slot",
         "name"
       ],
       "title": "UserEncounterTeamSummary",

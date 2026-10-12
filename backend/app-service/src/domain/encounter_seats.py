@@ -18,6 +18,7 @@ import sqlalchemy as sa
 from sqlalchemy.orm import aliased
 
 from src import models
+from src.core import enums
 
 __all__ = ("Seat",)
 
@@ -25,9 +26,8 @@ __all__ = ("Seat",)
 class Seat:
     """One team's live participation, joined to its encounter.
 
-    ``maps_won`` / ``maps_lost`` read the series score, so :meth:`join` keeps only
-    two-seat encounters unless asked otherwise: a lobby's ``score`` is points under
-    the stage's formula, and "the other seats' points" are not maps lost.
+    ``maps_won`` / ``maps_lost`` count maps from the confirmed games (``game_team``), so :meth:`join`
+    keeps only two-seat encounters unless asked otherwise.
     """
 
     def __init__(self, name: str = "seat") -> None:
@@ -44,20 +44,85 @@ class Seat:
             models.Encounter, encounter_on
         )
 
+    def _games(self, *conditions: typing.Callable[[typing.Any], sa.ColumnElement[bool]]) -> sa.ColumnElement[int]:
+        """How many confirmed games of this encounter this participation played and ``conditions`` hold for."""
+        game_team = aliased(models.EncounterGameTeam)
+        game = aliased(models.EncounterGame)
+        return (
+            sa.select(sa.func.count())
+            .select_from(game_team)
+            .join(game, game.id == game_team.game_id)
+            .where(
+                game_team.encounter_team_id == self.team.id,
+                game.state == enums.EncounterGameState.CONFIRMED,
+                *[condition(game_team) for condition in conditions],
+            )
+            .correlate(self.team)
+            .scalar_subquery()
+        )
+
+    @property
+    def _has_games(self) -> sa.ColumnElement[bool]:
+        game = aliased(models.EncounterGame)
+        return sa.exists(
+            sa.select(1).where(
+                game.encounter_id == self.team.encounter_id, game.state == enums.EncounterGameState.CONFIRMED
+            )
+        )
+
+    @property
+    def _series_only_wins(self) -> sa.ColumnElement[bool]:
+        """The result is a ``wins``-preset series score: there, and only there, ``score`` counts maps."""
+        return sa.exists(
+            sa.select(1).where(
+                models.ScoringRule.id == models.Encounter.scoring_rule_id, models.ScoringRule.preset == "wins"
+            )
+        )
+
     @property
     def maps_won(self) -> sa.ColumnElement[int]:
-        return sa.cast(self.team.score, sa.Integer)
+        """Maps this participation won: its first places in the confirmed games (``game_team``).
+
+        A series with no game rows (an ``import``/``admin``/``series_claim`` result) falls back to its seat
+        ``score`` -- but only under the ``wins`` preset, where the score IS the maps won. A points-preset
+        score is never maps, so such an encounter contributes none.
+        """
+
+        def won(game_team: typing.Any) -> sa.ColumnElement[bool]:
+            rival = aliased(models.EncounterGameTeam)
+            return sa.and_(
+                game_team.placement == 1,
+                ~sa.exists(
+                    sa.select(1).where(
+                        rival.game_id == game_team.game_id,
+                        rival.encounter_team_id != game_team.encounter_team_id,
+                        rival.placement == 1,
+                    )
+                ),
+            )
+
+        return sa.case(
+            (self._has_games, self._games(won)),
+            (self._series_only_wins, sa.cast(self.team.score, sa.Integer)),
+            else_=0,
+        )
 
     @property
     def maps_lost(self) -> sa.ColumnElement[int]:
-        """What the other live seats scored (the opponent, in a duel)."""
+        """Maps this participation lost: its games placed below first, else (see :attr:`maps_won`) the
+        other live seats' score under the ``wins`` preset."""
         others = self._others
-        return sa.cast(
+        series_score = sa.cast(
             sa.select(sa.func.coalesce(sa.func.sum(others.score), 0))
             .where(others.encounter_id == self.team.encounter_id, others.active.is_(True), others.id != self.team.id)
             .correlate(self.team)
             .scalar_subquery(),
             sa.Integer,
+        )
+        return sa.case(
+            (self._has_games, self._games(lambda game_team: game_team.placement > 1)),
+            (self._series_only_wins, series_score),
+            else_=0,
         )
 
     @property

@@ -19,6 +19,7 @@ from shared.core.impact import BADGE_THRESHOLD
 from src import models
 from src.core import enums
 from tests.conftest import RpcHarness, build_query
+from tests.encounter_seed import add_duel
 
 _IMPACT_FIXTURE_IDS = {
     "user_a": 9_400_000_001,
@@ -32,6 +33,7 @@ _IMPACT_FIXTURE_IDS = {
     "player_a": 9_400_000_040,
     "player_b": 9_400_000_041,
     "encounter": 9_400_000_050,
+    "scoring_rule": 9_400_000_051,
     "match_with_impact": 9_400_000_060,
     "match_without_impact": 9_400_000_061,
     "match_below_threshold": 9_400_000_062,
@@ -78,11 +80,22 @@ def _ensure_impact_badge_fixture(db: Session) -> dict[str, int]:
     assert map_row is not None, "no map seeded in dev DB"
     map_id = map_row[0]
 
+    db.add(models.Workspace(id=ids["workspace"], slug="impact-badge-ws", name="Impact Badge Workspace"))
+    db.flush()
+    db.add(
+        models.ScoringRule(
+            id=ids["scoring_rule"],
+            workspace_id=ids["workspace"],
+            preset="wins",
+            game_formula="win",
+            end_formula="games >= best_of",
+        )
+    )
+    db.flush()
     db.add_all(
         [
             models.User(id=ids["user_a"], name="impact-badge-user-a"),
             models.User(id=ids["user_b"], name="impact-badge-user-b"),
-            models.Workspace(id=ids["workspace"], slug="impact-badge-ws", name="Impact Badge Workspace"),
             models.WorkspaceMember(
                 id=ids["workspace_member_a"], workspace_id=ids["workspace"], player_id=ids["user_a"]
             ),
@@ -127,16 +140,20 @@ def _ensure_impact_badge_fixture(db: Session) -> dict[str, int]:
                 team_id=ids["team_away"],
                 is_substitution=False,
             ),
-            models.Encounter(
-                id=ids["encounter"],
-                name="Impact Badge Encounter",
-                home_team_id=ids["team_home"],
-                away_team_id=ids["team_away"],
-                home_score=2,
-                away_score=1,
-                round=1,
-                tournament_id=ids["tournament"],
-            ),
+        ]
+    )
+    db.flush()
+    add_duel(
+        db,
+        encounter_id=ids["encounter"],
+        tournament_id=ids["tournament"],
+        workspace_id=ids["workspace"],
+        scoring_rule_id=ids["scoring_rule"],
+        name="Impact Badge Encounter",
+        seats=[(ids["team_home"], 2), (ids["team_away"], 1)],
+    )
+    db.add_all(
+        [
             models.Match(
                 id=ids["match_with_impact"],
                 home_team_id=ids["team_home"],
@@ -170,6 +187,12 @@ def _ensure_impact_badge_fixture(db: Session) -> dict[str, int]:
                 encounter_id=ids["encounter"],
                 map_id=map_id,
             ),
+        ]
+    )
+    # Matches before their statistics: the rows share no relationship to order them by.
+    db.flush()
+    db.add_all(
+        [
             # match_with_impact: A tops the match -> badge True.
             models.MatchStatistics(
                 id=ids["stat_a_impact_rank_m1"],
