@@ -35,6 +35,7 @@ importlib.import_module("src.services.achievement.engine.conditions.encounter_se
 evaluator = _scrim.evaluator
 eval_context = _scrim.eval_context
 models = _scrim.models
+sa = _scrim.sa
 enums = _scrim.enums
 
 USER_C = 104
@@ -213,6 +214,21 @@ class EncounterResultTests(_SeriesCase):
             await self.context(REAL_TOURNAMENT_ID),
         )
         self.assertEqual({(USER_C, REAL_TOURNAMENT_ID, encounter)}, result)
+
+    async def test_a_lobby_is_not_a_duel(self) -> None:
+        self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
+        home, away = self.two_teams(REAL_TOURNAMENT_ID)
+        lobby = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=5, second_score=1)
+        # Three seats: slots 1 and 2 still finished first and second, and say nothing about a winner.
+        encounter_table = models.Encounter.__table__
+        self.db.session.execute(sa.update(encounter_table).where(encounter_table.c.id == lobby).values(slot_count=3))
+        self.db.session.commit()
+
+        for params in ({"outcome": "win"}, {"outcome": "loss"}):
+            result = await evaluator.evaluate(
+                self.db.shim, {"type": "encounter_result", "params": params}, await self.context(REAL_TOURNAMENT_ID)
+            )
+            self.assertEqual(set(), result)
 
 
 class EncounterComebackTests(_SeriesCase):

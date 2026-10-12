@@ -116,9 +116,12 @@ async def execute_bracket_path(
     if played_lower:
         candidate_queries: list[sa.Select] = []
         if min_lb_wins:
+            # Grouped over the labelled output: the seats carry a ``tournament_id`` of their own,
+            # so naming the column inside the joined query is ambiguous on Postgres.
+            lower_wins = _decided_teams_query(context, where_clause=lower_clause, winners=True).subquery("lower_wins")
             lower_win_counts = (
-                _decided_teams_query(context, where_clause=lower_clause, winners=True)
-                .group_by(sa.text("tournament_id"), sa.text("team_id"))
+                sa.select(lower_wins.c.tournament_id, lower_wins.c.team_id)
+                .group_by(lower_wins.c.tournament_id, lower_wins.c.team_id)
                 .having(sa.func.count() >= min_lb_wins)
             )
             candidate_queries.append(lower_win_counts)

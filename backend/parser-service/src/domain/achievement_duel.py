@@ -46,7 +46,12 @@ class Duel:
         self.second = aliased(models.EncounterTeam, name=f"{name}_second")
 
     def join(self, query: sa.Select) -> sa.Select:
-        """Join both seats onto a query that already selects from the encounter."""
+        """Join both seats onto a query that already selects from the encounter.
+
+        Only a two-seat encounter joins: the seats of a lobby are not a duel, and
+        slots 1 and 2 of it say nothing about who won.
+        """
+        query = query.where(self.encounter.slot_count == 2)
         for seat, slot in ((self.first, 1), (self.second, 2)):
             query = query.join(
                 seat,
