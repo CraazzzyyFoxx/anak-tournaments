@@ -3,9 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import type { AchievementCategory } from "@/types/admin.types";
 
-import type { AchievementRule } from "@/types/admin.types";
+import type { AchievementCategory, AchievementRule } from "@/types/admin.types";
 import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Badge } from "@/components/ui/badge";

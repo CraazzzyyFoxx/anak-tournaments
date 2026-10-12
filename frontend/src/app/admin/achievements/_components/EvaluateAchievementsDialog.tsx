@@ -3,7 +3,6 @@
 import { Play } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import type { AchievementCategory } from "@/types/admin.types";
 
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { AchievementRule } from "@/types/admin.types";
+import type { AchievementCategory, AchievementRule } from "@/types/admin.types";
 import type { Tournament } from "@/types/tournament.types";
 
 import { groupRulesByCategory } from "../achievement-form.model";

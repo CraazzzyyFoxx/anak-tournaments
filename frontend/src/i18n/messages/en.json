@@ -11733,10 +11733,11 @@
       "accountLabel": "{account} (#{id})",
       "ownerSummary": "{account} will own the target player.",
       "selectOwner": "Select a surviving owner.",
-      "deletedAfterTransfer": "{account} will be deleted after transfer",
-      "retainedUnlinked": "{account} will be retained, without ownership of the merged player",
+      "deletedAfterTransfer": "{account} will be deleted after transfer.",
+      "retainedUnlinked": "{account} will be retained, without ownership of the merged player.",
       "ownsPlayer": "Owns the surviving player",
       "keptUnlinked": "Kept, unlinked from the player",
+      "accountDeleted": "Deleted after transfer",
       "passwordSet": "Password set",
       "noPassword": "No password",
       "active": "active",
@@ -11854,7 +11855,9 @@
       "noEntriesYetWorkspace": "The audit log has no entries in this workspace yet. It records admin actions from the moment it was switched on, so history begins with the next change.",
       "noActivitySinceAll": "No activity recorded since the audit log started on {date}. Anything done before that date left no trail — there is no backfill.",
       "noActivitySinceWorkspace": "No activity recorded in this workspace since the audit log started on {date}. Anything done before that date left no trail — there is no backfill.",
-      "moreFields": "+{count} more"
+      "moreFields": "+{count} more",
+      "inspectorSubtitle": "{time} · by {actor}",
+      "inspectorSubtitleWithTarget": "{time} · by {actor} · {target}"
     },
     "encounters": {
       "status": "Status",

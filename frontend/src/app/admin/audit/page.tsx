@@ -493,7 +493,11 @@ export default function AdminAuditPage() {
           title={openAction?.label ?? ""}
           subtitle={
             openRow
-              ? `${formatAuditTimestamp(format, openRow.created_at)} · by ${formatAuditActor(openRow, auditT)}${openTarget ? ` · ${openTarget}` : ""}`
+              ? t(openTarget ? "inspectorSubtitleWithTarget" : "inspectorSubtitle", {
+                  time: formatAuditTimestamp(format, openRow.created_at),
+                  actor: formatAuditActor(openRow, auditT),
+                  target: openTarget ?? ""
+                })
               : undefined
           }
           onPrev={

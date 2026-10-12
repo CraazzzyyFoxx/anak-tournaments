@@ -3,7 +3,7 @@
 import { useMemo, type CSSProperties } from "react";
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import { commands } from "@uiw/react-md-editor";
+import { commands, type ICommand } from "@uiw/react-md-editor";
 
 import { Markdown, MARKDOWN_REMARK_PLUGINS } from "@/components/Markdown";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,6 +59,19 @@ type MarkdownEditorProps = {
   className?: string;
 };
 
+/** The three list buttons share `keyCommand: "list"` and differ by name. */
+const LIST_MESSAGE_KEYS: Record<string, string> = {
+  "ordered-list": "orderedList",
+  "checked-list": "checkedList"
+};
+
+function toolbarMessageKey(command: ICommand): string | undefined {
+  if (command.keyCommand === "list") return LIST_MESSAGE_KEYS[command.name ?? ""] ?? "unorderedList";
+  // the heading dropdown
+  if (command.keyCommand === "group") return "title";
+  return command.keyCommand;
+}
+
 export function MarkdownEditor({
   value,
   onChange,
@@ -72,16 +85,7 @@ export function MarkdownEditor({
   const toolbarCommands = useMemo(
     () =>
       commands.getCommands().map((command) => {
-        const key =
-          command.keyCommand === "list"
-            ? command.name === "ordered-list"
-              ? "orderedList"
-              : command.name === "checked-list"
-                ? "checkedList"
-                : "unorderedList"
-            : command.keyCommand === "group"
-              ? "title"
-              : command.keyCommand;
+        const key = toolbarMessageKey(command);
         if (!key || key === "divider") return command;
         const label = t(`toolbar.${key}` as never);
         return {

@@ -69,17 +69,20 @@ function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
   };
 }
 
+/** Hero roles as the catalog stores them; anything else is shown as is. */
+const HERO_ROLE_MESSAGE_KEYS = {
+  Tank: "heroRoles.tank",
+  Damage: "heroRoles.damage",
+  Support: "heroRoles.support"
+} as const;
+
 export default function HeroesAdminPage() {
   const t = useTranslations("adminWorkspace.content");
   const roleLabel = useCallback(
-    (role: string) =>
-      role === "Tank"
-        ? t("heroRoles.tank")
-        : role === "Damage"
-          ? t("heroRoles.damage")
-          : role === "Support"
-            ? t("heroRoles.support")
-            : role,
+    (role: string) => {
+      const key = HERO_ROLE_MESSAGE_KEYS[role as keyof typeof HERO_ROLE_MESSAGE_KEYS];
+      return key ? t(key) : role;
+    },
     [t]
   );
   const { isSuperuser } = usePermissions();

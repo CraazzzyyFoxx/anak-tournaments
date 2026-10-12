@@ -66,13 +66,17 @@ import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
  * all three. The backend answers 403/409/503 exactly (`verify_discord_guild`),
  * so the status IS the distinction.
  */
+type DiscordSettingsTranslator = ReturnType<
+  typeof useTranslations<"adminWorkspace.workspaceSettings.discord">
+>;
+
 const BIND_FAILURE_KEYS: Record<number, "bindForbidden" | "bindClaimed" | "bindUnreachable"> = {
   403: "bindForbidden",
   409: "bindClaimed",
   503: "bindUnreachable"
 };
 
-function bindFailure(error: unknown, t: (key: string) => string): string {
+function bindFailure(error: unknown, t: DiscordSettingsTranslator): string {
   const status = error instanceof ApiError ? error.status : 0;
   const key = BIND_FAILURE_KEYS[status];
   return key ? t(key) : getApiErrorMessage(error, t("linkError"));
@@ -263,13 +267,6 @@ function ServerPicker({
   );
 }
 
-function announcementFailure(error: unknown, t: (key: string) => string): string {
-  const status = error instanceof ApiError ? error.status : 0;
-  if (status === 409) return t("announcementUnlinked");
-  if (status === 503) return t("announcementUnreachable");
-  return getApiErrorMessage(error, t("saveAnnouncementError"));
-}
-
 /**
  * The bound server: who it is, whether the bot can act in it, and the verbs
  * on it. "Change server" is the everyday action; unlinking and re-inviting the
@@ -418,6 +415,15 @@ function ServerCard({
  * server (`broadcastable_kinds`), so a kind added there appears here without a
  * release: unnamed, but never missing.
  */
+const KIND_MESSAGE_KEYS: Record<
+  string,
+  "registrationOpened" | "checkInOpened" | "encounterScheduled"
+> = {
+  "registration.opened": "registrationOpened",
+  "check_in.opened": "checkInOpened",
+  "encounter.scheduled": "encounterScheduled"
+};
+
 const LOCALES = [
   { value: "ru" },
   { value: "en" }
@@ -428,6 +434,13 @@ const LOCALES = [
  * guild that was unlinked since the page loaded, Discord being unreachable,
  * and whatever the server said about the channel are three different fixes.
  */
+function announcementFailure(error: unknown, t: DiscordSettingsTranslator): string {
+  const status = error instanceof ApiError ? error.status : 0;
+  if (status === 409) return t("announcementUnlinked");
+  if (status === 503) return t("announcementUnreachable");
+  return getApiErrorMessage(error, t("saveAnnouncementError"));
+}
+
 /**
  * Where tournament events are announced, which of them, and in what language.
  *
@@ -456,7 +469,7 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
       notify.success(t("saved"));
     },
     onError: (cause) => {
-      setError(announcementFailure(cause, (key) => t(key as never)));
+      setError(announcementFailure(cause, t));
       notify.apiError(cause, { title: t("saveAnnouncementError") });
     }
   });
@@ -535,7 +548,7 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
                           }
                         />
                         <Label htmlFor={id} className="text-sm font-normal">
-                          {kind === "registration.opened" ? contentT("registrationOpened") : kind === "check_in.opened" ? contentT("checkInOpened") : contentT("encounterScheduled")}
+                          {KIND_MESSAGE_KEYS[kind] ? contentT(KIND_MESSAGE_KEYS[kind]) : kind}
                         </Label>
                       </div>
                     );
@@ -579,15 +592,19 @@ function AnnouncementsCard({ workspaceId }: Readonly<{ workspaceId: number }>) {
   );
 }
 
+const VOICE_PERMISSION_MESSAGE_KEYS = {
+  view_channel: "viewChannel",
+  connect: "connect",
+  move_members: "moveMembers"
+} as const satisfies Record<DiscordVoicePermission, string>;
+
 function missingLabel(
   t: (key: "viewChannel" | "connect" | "moveMembers") => string,
   missing: DiscordVoicePermission[] | null | undefined
 ): string | null {
   if (!missing || missing.length === 0) return null;
   return missing
-    .map((name) =>
-      name === "view_channel" ? t("viewChannel") : name === "connect" ? t("connect") : t("moveMembers")
-    )
+    .map((name) => t(VOICE_PERMISSION_MESSAGE_KEYS[name]))
     .join(", ");
 }
 
@@ -832,7 +849,7 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
       notify.success(t("linkedSuccess"));
     },
     onError: (cause) => {
-      setError(bindFailure(cause, (key) => t(key as never)));
+      setError(bindFailure(cause, t));
       notify.apiError(cause, { title: t("linkError") });
     }
   });

@@ -39,6 +39,13 @@ function MergeSelect({ id, value, options, placeholder, invalid, describedBy, on
   );
 }
 
+/** What happens to one auth account once the merge goes through. */
+function accountFateKey(ownsPlayer: boolean, removed: boolean) {
+  if (ownsPlayer) return "ownsPlayer";
+  if (removed) return "accountDeleted";
+  return "keptUnlinked";
+}
+
 export function UserMergeAuthSection({
   preview,
   policy,
@@ -56,6 +63,7 @@ export function UserMergeAuthSection({
   const other = preview.accounts.find((account) => account.id !== policy.surviving_auth_user_id);
   const deletedAccountId = policy.other_account_action === "delete" ? other?.id : undefined;
   const deleting = deletedAccountId != null;
+  const otherAccountKey = deleting ? "deletedAfterTransfer" : "retainedUnlinked";
   const resourceLabel = (resource: string) => {
     if (resource === "oauth_connections") return t("resource.oauthLoginsMoved");
     if (resource === "workspace_memberships") return t("resource.workspaceMemberships");
@@ -123,7 +131,7 @@ export function UserMergeAuthSection({
       </div>
       <p className="text-sm">
         {survivor ? t("ownerSummary", { account: accountLabel(survivor.id) }) : t("selectOwner")}
-        {other ? ` ${t(deleting ? "deletedAfterTransfer" : "retainedUnlinked", { account: accountLabel(other.id) })}.` : ""}
+        {other ? ` ${t(otherAccountKey, { account: accountLabel(other.id) })}` : ""}
       </p>
       {other && policy.other_account_action === "keep" && preview.memberships?.length ? (
         <div className="space-y-3">
@@ -168,7 +176,7 @@ export function UserMergeAuthSection({
             <div key={account.id} className="space-y-1.5 rounded-md border px-3 py-2 text-sm">
               <p className="font-medium break-words">{accountLabel(account.id)}</p>
               <p className="text-xs text-muted-foreground">
-                {ownsPlayer ? t("ownsPlayer") : removed ? t("deletedAfterTransfer") : t("keptUnlinked")}
+                {t(accountFateKey(ownsPlayer, removed))}
               </p>
               <p className="break-words text-muted-foreground">{account.email}</p>
               <p className="text-muted-foreground">

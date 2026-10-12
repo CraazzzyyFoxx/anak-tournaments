@@ -47,10 +47,23 @@ import {
   getDefaultStageItemType,
   getInputDisplayLabelInfo,
   STAGE_ITEM_TYPE_LABELS,
+  type InputDisplayLabelInfo,
   type StageProgress
 } from "@/lib/bracket/projection";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Spinner } from "@/components/ui/spinner";
+
+/** What a seed slot shows: the team, the group placement feeding it, or nothing yet. */
+function inputLabel(
+  info: InputDisplayLabelInfo,
+  t: ReturnType<typeof useTranslations<"adminBracket">>
+): string {
+  if (info.key === "team") return info.label;
+  if (info.key === "winnerOf") {
+    return t("labels.winnerOf", { groupName: info.groupName, position: info.position });
+  }
+  return t("labels.emptySlot");
+}
 
 /** One item's inputs in seed order. */
 function seedOrder(item: StageItem): StageItemInput[] {
@@ -512,15 +525,10 @@ export function StageItemsSection({
                           // The position, not the stored slot: it is what the team is
                           // seeded as, gaps an older delete left included.
                           const seed = index + 1;
-                          const labelInfo = getInputDisplayLabelInfo(input, stages, teamById);
-                          const label = labelInfo.key === "team"
-                            ? labelInfo.label
-                            : labelInfo.key === "winnerOf"
-                              ? tRoot("labels.winnerOf", {
-                                  groupName: labelInfo.groupName,
-                                  position: labelInfo.position
-                                })
-                              : tRoot("labels.emptySlot");
+                          const label = inputLabel(
+                            getInputDisplayLabelInfo(input, stages, teamById),
+                            tRoot
+                          );
                           const isEditing = editingInputId === input.id;
                           const canSwapAssignedTeams = input.team_id != null;
 
@@ -691,17 +699,7 @@ export function StageItemsSection({
           <DragOverlay>
             {activeDragInput ? (
               <span className="rounded-md border border-border bg-card px-2.5 py-1.5 text-xs shadow-lg">
-                {(() => {
-                  const info = getInputDisplayLabelInfo(activeDragInput, stages, teamById);
-                  return info.key === "team"
-                    ? info.label
-                    : info.key === "winnerOf"
-                      ? tRoot("labels.winnerOf", {
-                          groupName: info.groupName,
-                          position: info.position
-                        })
-                      : tRoot("labels.emptySlot");
-                })()}
+                {inputLabel(getInputDisplayLabelInfo(activeDragInput, stages, teamById), tRoot)}
               </span>
             ) : null}
           </DragOverlay>

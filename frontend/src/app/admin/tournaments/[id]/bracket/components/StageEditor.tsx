@@ -91,6 +91,19 @@ export const BRACKET_SECTIONS = [
 ] as const;
 export type BracketSection = (typeof BRACKET_SECTIONS)[number];
 
+/** Each section's tab label key in `adminBracket.editor`. */
+const BRACKET_SECTION_MESSAGE_KEYS = {
+  general: "general",
+  seeding: "seeding",
+  "ffa-scoring": "ffaScoring",
+  tiebreakers: "tiebreakers",
+  "best-of": "bestOf",
+  schedule: "schedule",
+  layout: "layout",
+  standings: "standings",
+  items: "items"
+} as const satisfies Record<BracketSection, string>;
+
 /** Every confirm-guarded stage operation, and what the dialog says about it. */
 type PendingOp =
   | { kind: "delete-stage" }
@@ -401,7 +414,7 @@ export function StageEditor({
 
   const tabs: LinkTabItem[] = BRACKET_SECTIONS.map((key) => ({
     key,
-    label: t(key === "ffa-scoring" ? "ffaScoring" : key === "best-of" ? "bestOf" : key),
+    label: t(BRACKET_SECTION_MESSAGE_KEYS[key]),
     href: sectionHref(key),
     badge: key === "items" ? stage.items.length || undefined : undefined,
     hidden: !sectionAllowed[key]

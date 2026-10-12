@@ -8,6 +8,8 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { SectionNav } from "@/components/kit/SectionNav";
 import {
   WORKSPACE_SETTINGS_SECTIONS,
+  workspaceSectionDescription,
+  workspaceSectionLabel,
   workspaceSettingsNavGroups,
   type WorkspaceSettingsSectionKey
 } from "./sections";
@@ -66,15 +68,13 @@ export function WorkspaceSettingsShell({
   return (
     <div className="flex flex-col gap-4">
       <AdminPageHeader
-        title={activeKey ? t(`sections.${activeKey === "sub-roles" ? "subRoles" : activeKey === "registration-forms" ? "registrationForms" : activeKey}`) : t("sections.settingsTitle")}
-        description={
-          activeKey ? t(`sectionDescriptions.${activeKey === "sub-roles" ? "subRoles" : activeKey === "registration-forms" ? "registrationForms" : activeKey}`) : undefined
-        }
+        title={activeKey ? workspaceSectionLabel(activeKey, t) : t("sections.settingsTitle")}
+        description={activeKey ? workspaceSectionDescription(activeKey, t) : undefined}
         actions={actions}
       />
       <div className="flex flex-col gap-4 md:flex-row md:gap-6">
         <SectionNav
-          groups={workspaceSettingsNavGroups(basePath, sections, (key) => t(key as never))}
+          groups={workspaceSettingsNavGroups(basePath, t, sections)}
           activeKey={activeKey ?? ""}
         />
         {/* Not `<main>`: the admin shell already exposes the page-level main
