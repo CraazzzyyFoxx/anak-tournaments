@@ -23,6 +23,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 os.environ["DEBUG"] = "true"
 
 admin_tournament = importlib.import_module("src.services.admin.tournament")
+challonge_sync = importlib.import_module("src.services.challonge.sync")
 
 
 class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
@@ -41,7 +42,12 @@ class CreateTournamentFromChallongeTests(IsolatedAsyncioTestCase):
             ) as create,
             patch.object(admin_tournament.tournament_service, "_link_tournament_challonge_source", AsyncMock()) as link,
             patch.object(
-                admin_tournament.sync_service, "import_tournament", AsyncMock(return_value={"created": 3})
+                # ``src.services.challonge.sync`` is imported inside
+                # ``create_from_challonge``, so the singleton is patched where it
+                # lives rather than on the admin module that never binds it.
+                challonge_sync.sync_service,
+                "import_tournament",
+                AsyncMock(return_value={"created": 3}),
             ) as import_,
             patch.object(
                 admin_tournament.tournament_service, "get_tournament", AsyncMock(return_value=finalized)

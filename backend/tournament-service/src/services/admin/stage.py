@@ -953,7 +953,9 @@ class AdminStageService:
             )
 
         for model in (
-            models.Encounter,
+            # The encounter's stage is its bracket POSITION now (D22), so that
+            # is the row a merge moves; the encounter itself has no stage.
+            models.BracketEncounter,
             models.Standing,
             models.ChallongeSource,
         ):

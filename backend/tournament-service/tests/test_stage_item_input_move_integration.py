@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core import enums  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
+from shared.models.encounter import ScoringRule  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import (  # noqa: E402
@@ -40,6 +41,16 @@ from shared.models.tournament import (  # noqa: E402
 )
 from src import schemas  # noqa: E402
 from src.services.admin.stage import stage_service  # noqa: E402
+
+
+def _wins_rule(workspace_id: int) -> ScoringRule:
+    """The duel preset every stage of this fixture is scored by."""
+    return ScoringRule(
+        workspace_id=workspace_id,
+        preset="wins",
+        game_formula="win",
+        end_formula="games >= best_of or max_wins * 2 > best_of",
+    )
 
 
 async def _seed(session: Any) -> SimpleNamespace:
@@ -59,9 +70,21 @@ async def _seed(session: Any) -> SimpleNamespace:
         Team(tournament_id=tournament.id, name=f"{name} {suffix}", balancer_name=f"{name}-{suffix}") for name in names
     ]
     session.add_all(teams)
-    groups = Stage(tournament_id=tournament.id, name="Groups", stage_type=enums.StageType.ROUND_ROBIN, order=1)
+    # Every stage carries its own ``encounter.scoring_rule``: the column is NOT
+    # NULL and a duel stage's rule is the ``wins`` preset (D51).
+    groups = Stage(
+        tournament_id=tournament.id,
+        name="Groups",
+        stage_type=enums.StageType.ROUND_ROBIN,
+        order=1,
+        scoring_rule=_wins_rule(workspace.id),
+    )
     playoffs = Stage(
-        tournament_id=tournament.id, name="Playoffs", stage_type=enums.StageType.SINGLE_ELIMINATION, order=2
+        tournament_id=tournament.id,
+        name="Playoffs",
+        stage_type=enums.StageType.SINGLE_ELIMINATION,
+        order=2,
+        scoring_rule=_wins_rule(workspace.id),
     )
     session.add_all([groups, playoffs])
     await session.flush()

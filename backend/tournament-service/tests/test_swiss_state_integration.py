@@ -25,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core import enums  # noqa: E402
+from shared.models.encounter import ScoringRule  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Stage, StageItem, SwissStoppedScope, Team, Tournament  # noqa: E402
 from shared.services.bracket import swiss_state  # noqa: E402
@@ -42,7 +43,20 @@ async def _seed(session: Any) -> SimpleNamespace:
     await session.flush()
     teams = [Team(tournament_id=tournament.id, name=f"T{n} {suffix}", balancer_name=f"t{n}-{suffix}") for n in range(3)]
     session.add_all(teams)
-    stage = Stage(tournament_id=tournament.id, name="Swiss", stage_type=enums.StageType.SWISS, order=1)
+    stage = Stage(
+        tournament_id=tournament.id,
+        name="Swiss",
+        stage_type=enums.StageType.SWISS,
+        order=1,
+        # NOT NULL since the encounter layer landed: a Swiss stage is scored by
+        # the ``wins`` preset (D51).
+        scoring_rule=ScoringRule(
+            workspace_id=workspace.id,
+            preset="wins",
+            game_formula="win",
+            end_formula="games >= best_of or max_wins * 2 > best_of",
+        ),
+    )
     session.add(stage)
     await session.flush()
     items = [

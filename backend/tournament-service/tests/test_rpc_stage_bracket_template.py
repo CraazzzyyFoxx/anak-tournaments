@@ -45,10 +45,25 @@ TEMPLATE = {
     "upper_seeds": 2,
     "lower_seeds": 2,
     "matches": [
-        {"id": 0, "round": 1, "home": {"seed": "U1"}, "away": {"seed": "U2"}},
-        {"id": 1, "round": -1, "home": {"seed": "L1"}, "away": {"seed": "L2"}},
-        {"id": 2, "round": -2, "home": {"winner_of": 1}, "away": {"loser_of": 0}},
-        {"id": 3, "round": 2, "home": {"winner_of": 0}, "away": {"winner_of": 2}},
+        {"id": 0, "round": 1, "slots": [{"slot": 1, "seed": "U1"}, {"slot": 2, "seed": "U2"}]},
+        {"id": 1, "round": -1, "slots": [{"slot": 1, "seed": "L1"}, {"slot": 2, "seed": "L2"}]},
+        {
+            "id": 2,
+            "round": -2,
+            # ``source_position`` 1 is the old "winner", 2 the old "loser".
+            "slots": [
+                {"slot": 1, "source_match": 1, "source_position": 1},
+                {"slot": 2, "source_match": 0, "source_position": 2},
+            ],
+        },
+        {
+            "id": 3,
+            "round": 2,
+            "slots": [
+                {"slot": 1, "source_match": 0, "source_position": 1},
+                {"slot": 2, "source_match": 2, "source_position": 1},
+            ],
+        },
     ],
 }
 
@@ -191,7 +206,7 @@ class StageBracketTemplateRpcTests(IsolatedAsyncioTestCase):
 
     async def test_set_relays_the_validators_problems_per_field(self):
         problems = [
-            {"match_id": 3, "slot": "away", "code": "unknown_match", "message": "away points at no match"},
+            {"match_id": 3, "slot": 2, "code": "unknown_match", "message": "slot 2 points at no match"},
             {"match_id": None, "slot": None, "code": "seed_unused", "message": "L2 is never used"},
         ]
         envelope, _, _, _ = await self._invoke(
@@ -225,7 +240,16 @@ class StageBracketTemplateRpcTests(IsolatedAsyncioTestCase):
                     "version": 1,
                     "upper_seeds": 2,
                     "lower_seeds": 0,
-                    "matches": [{"id": 0, "round": 1, "home": {"seed": "U1", "winner_of": 0}, "away": {"seed": "U2"}}],
+                    "matches": [
+                        {
+                            "id": 0,
+                            "round": 1,
+                            "slots": [
+                                {"slot": 1, "seed": "U1", "source_match": 0, "source_position": 1},
+                                {"slot": 2, "seed": "U2"},
+                            ],
+                        }
+                    ],
                 },
             },
             service_attr="set_bracket_template",
