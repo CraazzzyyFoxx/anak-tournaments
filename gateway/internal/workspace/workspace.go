@@ -27,7 +27,7 @@ const (
 		SELECT 1
 		FROM workspace_member wm
 		JOIN players."user" u ON u.id = wm.player_id
-		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2
+		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2 AND wm.removed_at IS NULL
 	)`
 	// Organizer staff of a workspace, as opposed to anyone on its roster. Mirror
 	// of AuthUser.has_admin_panel_access(workspace_id) on the REST side: a role

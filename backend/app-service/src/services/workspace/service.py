@@ -538,11 +538,17 @@ class WorkspaceService:
         )
 
     async def remove_member(self, session: AsyncSession, member: models.WorkspaceMember) -> None:
+        """Revoke the member's roles and stamp ``removed_at``; the row stays.
+
+        Roster snapshots (``encounter.team_member``) hang on the row, so it is
+        never deleted -- only the workspace's own deletion takes it. Re-adding the
+        player (``get_or_create_workspace_member``) clears the stamp.
+        """
         auth_user_id = await self.get_member_auth_user_id(session, member)
         await self.user_role_repo.revoke_workspace_roles(
             session, user_id=auth_user_id, workspace_id=member.workspace_id
         )
-        await self.member_repo.delete(session, member)
+        await self.member_repo.update_fields(session, member, {"removed_at": datetime.now(UTC)})
 
     # --- ownership cap guard (design §4.4) ----------------------------------
 

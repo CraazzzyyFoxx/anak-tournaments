@@ -93,7 +93,7 @@ async def _query_workspace_ids(session: Any, auth_user_id: int) -> tuple[int, ..
     roster = (
         sa.select(models.WorkspaceMember.workspace_id)
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-        .where(models.User.auth_user_id == auth_user_id)
+        .where(models.User.auth_user_id == auth_user_id, models.WorkspaceMember.removed_at.is_(None))
     )
     rbac = (
         sa.select(models.Role.workspace_id)

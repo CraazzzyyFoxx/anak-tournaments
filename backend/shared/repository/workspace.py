@@ -173,6 +173,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .options(selectinload(models.WorkspaceMember.player))
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.removed_at.is_(None),
                 models.User.auth_user_id == auth_user_id,
             )
         )
@@ -208,7 +209,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             sa.select(models.WorkspaceMember.workspace_id, models.Workspace.slug)
             .join(models.Workspace, models.Workspace.id == models.WorkspaceMember.workspace_id)
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-            .where(models.User.auth_user_id == auth_user_id)
+            .where(models.User.auth_user_id == auth_user_id, models.WorkspaceMember.removed_at.is_(None))
         )
         return [(workspace_id, slug) for workspace_id, slug in result.all()]
 
@@ -225,6 +226,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.removed_at.is_(None),
                 models.User.auth_user_id == auth_user_id,
             )
             .limit(1)
@@ -259,6 +261,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .options(selectinload(models.WorkspaceMember.player))
             .where(
                 models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.removed_at.is_(None),
                 models.User.auth_user_id.isnot(None),
             )
             .order_by(models.WorkspaceMember.id.asc())
@@ -272,7 +275,9 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         needs the scope of each membership row, never the row itself.
         """
         result = await session.scalars(
-            sa.select(models.WorkspaceMember.workspace_id).where(models.WorkspaceMember.player_id == player_id)
+            sa.select(models.WorkspaceMember.workspace_id).where(
+                models.WorkspaceMember.player_id == player_id, models.WorkspaceMember.removed_at.is_(None)
+            )
         )
         return result.all()
 
@@ -371,7 +376,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         base = (
             base.join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .join(models.AuthUser, models.AuthUser.id == models.User.auth_user_id)
-            .where(models.WorkspaceMember.workspace_id == workspace_id)
+            .where(models.WorkspaceMember.workspace_id == workspace_id, models.WorkspaceMember.removed_at.is_(None))
         )
         if search and search.strip():
             like = f"%{search.strip()}%"
@@ -437,8 +442,8 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         player_ids: set[int],
     ) -> dict[int, int]:
         """Batch counterpart of ``get_or_create_workspace_member``: resolve (or
-        create) the ``workspace_member`` anchors for a whole roster in two
-        statements.
+        create) the ``workspace_member`` anchors for a whole roster in three
+        statements (a removed member is revived, like the single-row helper).
 
         Mirrors ``get_or_create_workspace_member``'s insert-or-select
         idempotency (``INSERT ... ON CONFLICT DO NOTHING`` on
@@ -463,6 +468,16 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         )
         await session.execute(insert_stmt)
 
+        # Re-adding a removed member reuses the row, exactly as ``get_or_create_workspace_member`` does.
+        await session.execute(
+            sa.update(models.WorkspaceMember)
+            .where(
+                models.WorkspaceMember.workspace_id == workspace_id,
+                models.WorkspaceMember.player_id.in_(list(player_ids)),
+                models.WorkspaceMember.removed_at.is_not(None),
+            )
+            .values(removed_at=None)
+        )
         result = await session.execute(
             sa.select(models.WorkspaceMember.player_id, models.WorkspaceMember.id).where(
                 models.WorkspaceMember.workspace_id == workspace_id,
@@ -497,27 +512,33 @@ async def get_or_create_workspace_member(
         await session.flush()
         member = await session.get(models.WorkspaceMember, member_id)
         assert member is not None
-        # Autofill the baseline ``member`` RBAC role for a brand-new anchor of an
-        # auth-linked player: the members screen treats every auth-linked row as
-        # an RBAC member, so a fresh row must not be role-less. Fires ONLY on a
-        # real insert (not idempotent hits) and ONLY when the player has an auth
-        # account; the helper is additive (never downgrades a later ``player`` /
-        # explicit grant). Local import avoids any shared.repository<->shared.rbac
-        # import-time coupling on this widely-imported module.
-        from shared.rbac import assign_default_member_role_if_roleless
-
-        auth_user_id = await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == player_id))
-        if auth_user_id is not None:
-            await assign_default_member_role_if_roleless(session, user_id=auth_user_id, workspace_id=workspace_id)
-        return member
-
-    existing = await WorkspaceMemberRepository().get_by_player(session, workspace_id=workspace_id, player_id=player_id)
-    if existing is None:
-        raise RuntimeError(
-            f"get_or_create_workspace_member: no row after ON CONFLICT DO NOTHING "
-            f"(workspace_id={workspace_id}, player_id={player_id})"
+    else:
+        member = await WorkspaceMemberRepository().get_by_player(
+            session, workspace_id=workspace_id, player_id=player_id
         )
-    return existing
+        if member is None:
+            raise RuntimeError(
+                f"get_or_create_workspace_member: no row after ON CONFLICT DO NOTHING "
+                f"(workspace_id={workspace_id}, player_id={player_id})"
+            )
+        if member.removed_at is None:
+            return member
+        # Re-adding a removed member reuses the row (its roster history hangs on it).
+        member.removed_at = None
+        await session.flush()
+    # Autofill the baseline ``member`` RBAC role for a brand-new (or re-added) anchor of an
+    # auth-linked player: the members screen treats every auth-linked row as
+    # an RBAC member, so such a row must not be role-less. Fires ONLY on a
+    # real insert or a revival (not idempotent hits) and ONLY when the player has an auth
+    # account; the helper is additive (never downgrades a later ``player`` /
+    # explicit grant). Local import avoids any shared.repository<->shared.rbac
+    # import-time coupling on this widely-imported module.
+    from shared.rbac import assign_default_member_role_if_roleless
+
+    auth_user_id = await session.scalar(sa.select(models.User.auth_user_id).where(models.User.id == player_id))
+    if auth_user_id is not None:
+        await assign_default_member_role_if_roleless(session, user_id=auth_user_id, workspace_id=workspace_id)
+    return member
 
 
 async def resolve_workspace_member_id(
