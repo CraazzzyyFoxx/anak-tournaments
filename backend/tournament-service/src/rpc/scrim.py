@@ -54,8 +54,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=body.workspace_id,
                 label=body.label,
                 best_of=body.best_of,
-                home_team_name=body.home_team_name,
-                away_team_name=body.away_team_name,
+                team_names=body.team_names,
                 pool=body.pool.model_dump(mode="json"),
             )
             return _room(room)

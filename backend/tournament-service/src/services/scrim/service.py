@@ -26,7 +26,7 @@ from collections.abc import Sequence
 from copy import deepcopy
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Any, Literal
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -97,7 +97,8 @@ def _pick_ban():
     )
 
 
-Side = Literal["home", "away"]
+#: Slot 1 is the creator's seat, slot 2 the one the share link gives away (D55).
+SLOTS = (1, 2)
 
 # The container's name is cosmetic — rooms are found through ``ScrimRoom``, never
 # by name — but it is what a workspace admin sees in the hidden-tournament list,
@@ -140,7 +141,7 @@ def is_workspace_staff(user: models.AuthUser | None, workspace_id: int) -> bool:
     return user is not None and user.has_workspace_permission(workspace_id, "match", "result")
 
 
-def _may_close(room: ScrimRoom, user: models.AuthUser | None, side: Side | None) -> bool:
+def _may_close(room: ScrimRoom, user: models.AuthUser | None, viewer_slot: int | None) -> bool:
     """Creator, either captain, or workspace staff.
 
     One predicate for both the endpoint and the serialized ``can_close``, so the
@@ -152,7 +153,7 @@ def _may_close(room: ScrimRoom, user: models.AuthUser | None, side: Side | None)
         return False
     return (
         room.created_by_auth_user_id == user.id
-        or side is not None
+        or viewer_slot is not None
         or user.is_superuser
         or is_workspace_staff(user, room.workspace_id)
     )
@@ -258,12 +259,6 @@ async def _config_from_input(
 
 # ── reads ────────────────────────────────────────────────────────────────────
 
-#: Slot 1 is the creator's seat, slot 2 the one the share link gives away. The
-#: two wire words are the v1 names for exactly those two slots; nothing behind
-#: them is a home or an away side any more (D55).
-_SLOT_BY_SIDE: dict[Side, int] = {"home": 1, "away": 2}
-_SIDE_BY_SLOT: dict[int, Side] = {1: "home", 2: "away"}
-
 _ROOM_LOAD = (selectinload(ScrimRoom.encounter).selectinload(models.Encounter.teams),)
 
 
@@ -279,23 +274,24 @@ def _seat_at(encounter: models.Encounter, slot: int) -> models.EncounterTeam | N
     return live[0] if live else (candidates[-1] if candidates else None)
 
 
-def _team_payload(team: models.Team | None, seat: models.EncounterTeam | None) -> dict:
-    """One side of the room. ``captain_claimed`` is what the share link gives
+def _team_payload(slot: int, team: models.Team | None, seat: models.EncounterTeam | None) -> dict:
+    """One team of the room. ``captain_claimed`` is what the share link gives
     away: a seat with no live participation is still open."""
     if team is None:
-        return {"id": None, "name": seat.name if seat is not None else "TBD", "captain_claimed": False}
+        return {"slot": slot, "id": None, "name": seat.name if seat is not None else "TBD", "captain_claimed": False}
     return {
+        "slot": slot,
         "id": team.id,
         "name": team.name,
         "captain_claimed": team.captain_id is not None and seat is not None and seat.active,
     }
 
 
-def _free_side(encounter: models.Encounter) -> Side | None:
-    """The side still open to the link's next taker, or None once both are held."""
-    for slot, side in _SIDE_BY_SLOT.items():
+def _free_slot(encounter: models.Encounter) -> int | None:
+    """The slot still open to the link's next taker, or None once both are held."""
+    for slot in SLOTS:
         if not any(seat.slot == slot and seat.active for seat in encounter.teams):
-            return side
+            return slot
     return None
 
 
@@ -538,25 +534,25 @@ class ScrimService:
             return {}
         return {team.id: team for team in await self.team_repo.bulk_get(session, team_ids)}
 
-    def _viewer_side_for_player(
+    def _viewer_slot_for_player(
         self, room: ScrimRoom, player_id: int | None, teams: dict[int, models.Team]
-    ) -> Side | None:
+    ) -> int | None:
         if player_id is None:
             return None
-        for slot, side in _SIDE_BY_SLOT.items():
+        for slot in SLOTS:
             seat = _seat_at(room.encounter, slot)
             if seat is None or not seat.active or seat.team_id is None:
                 continue
             team = teams.get(seat.team_id)
             if team is not None and team.captain_id == player_id:
-                return side
+                return slot
         return None
 
-    async def _viewer_side(self, session: AsyncSession, room: ScrimRoom, user: models.AuthUser | None) -> Side | None:
+    async def _viewer_slot(self, session: AsyncSession, room: ScrimRoom, user: models.AuthUser | None) -> int | None:
         if user is None:
             return None
         player_id = await self.user_repo.get_id_by_auth_user_id(session, user.id)
-        return self._viewer_side_for_player(room, player_id, await self._room_teams(session, [room]))
+        return self._viewer_slot_for_player(room, player_id, await self._room_teams(session, [room]))
 
     def _serialize_room(
         self,
@@ -566,16 +562,16 @@ class ScrimService:
         teams: dict[int, models.Team],
     ) -> dict:
         encounter = room.encounter
-        side = self._viewer_side_for_player(room, player_id, teams)
-        free_side = _free_side(encounter)
+        viewer_slot = self._viewer_slot_for_player(room, player_id, teams)
+        free_slot = _free_slot(encounter)
         can_claim = (
-            side is None
-            and free_side is not None
+            viewer_slot is None
+            and free_slot is not None
             and room.closed_at is None
             and user is not None
             and (user.is_superuser or room.workspace_id in user.get_workspace_ids())
         )
-        seats = {slot: _seat_at(encounter, slot) for slot in _SIDE_BY_SLOT}
+        seats = {slot: _seat_at(encounter, slot) for slot in SLOTS}
         return {
             "id": room.id,
             "token": room.token,
@@ -585,16 +581,13 @@ class ScrimService:
             "stage_id": room.stage_id,
             "encounter_id": room.encounter_id,
             "best_of": encounter.best_of,
-            # Wire names from v1 (Task 9 renames them); the VALUES are slots 1, 2.
-            "home_team": _team_payload(
-                teams.get(seats[1].team_id) if seats[1] is not None and seats[1].team_id else None, seats[1]
-            ),
-            "away_team": _team_payload(
-                teams.get(seats[2].team_id) if seats[2] is not None and seats[2].team_id else None, seats[2]
-            ),
-            "viewer_side": side,
+            "teams": [
+                _team_payload(slot, teams.get(seat.team_id) if seat is not None and seat.team_id else None, seat)
+                for slot, seat in seats.items()
+            ],
+            "viewer_slot": viewer_slot,
             "can_claim": can_claim,
-            "can_close": room.closed_at is None and _may_close(room, user, side),
+            "can_close": room.closed_at is None and _may_close(room, user, viewer_slot),
             "created_at": room.created_at,
             "closed_at": room.closed_at,
         }
@@ -693,13 +686,12 @@ class ScrimService:
         workspace_id: int,
         label: str,
         best_of: int,
-        home_team_name: str,
-        away_team_name: str,
+        team_names: Sequence[str],
         pool: dict[str, Any],
     ) -> dict:
         """Provision one room and return it. Commits.
 
-        The creator takes the home side immediately; the away side stays unclaimed
+        The creator takes slot 1 immediately; slot 2 stays unclaimed
         until someone opens the link. That asymmetry is the point of the token — the
         room is usable the moment it exists, and the opponent needs no invitation
         beyond the URL.
@@ -759,10 +751,10 @@ class ScrimService:
             session.add(pick_ban_config)
 
         captain = await self._ensure_player(session, user)
-        home = models.Team(tournament_id=container.id, name=home_team_name, balancer_name=home_team_name)
-        home.captain_id = captain.id
-        away = models.Team(tournament_id=container.id, name=away_team_name, balancer_name=away_team_name)
-        await self.team_repo.create_many(session, [home, away])
+        first = models.Team(tournament_id=container.id, name=team_names[0], balancer_name=team_names[0])
+        first.captain_id = captain.id
+        second = models.Team(tournament_id=container.id, name=team_names[1], balancer_name=team_names[1])
+        await self.team_repo.create_many(session, [first, second])
 
         encounter = models.Encounter(
             name=label,
@@ -788,8 +780,8 @@ class ScrimService:
         # retired participation is how the room remembers the team the creator
         # named for an opponent until ``claim_side`` seats it (D55). That is also
         # what makes "is the link still open" a question about live seats alone.
-        await place_team(session, encounter, slot=1, team_id=home.id, name=home.name, seed=None, members=())
-        await place_team(session, encounter, slot=2, team_id=away.id, name=away.name, seed=None, members=())
+        await place_team(session, encounter, slot=1, team_id=first.id, name=first.name, seed=None, members=())
+        await place_team(session, encounter, slot=2, team_id=second.id, name=second.name, seed=None, members=())
         await vacate_slot(session, encounter, slot=2)
 
         await self._assert_playable(
@@ -823,19 +815,18 @@ class ScrimService:
         if room.closed_at is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This scrim room is closed")
 
-        existing_side = await self._viewer_side(session, room, user)
-        if existing_side is not None:
+        existing_slot = await self._viewer_slot(session, room, user)
+        if existing_slot is not None:
             # Idempotent for the captain who already holds a side, and a refusal for
             # anyone trying to hold both: the engine reads authority straight off
             # ``captain_id``, so one user on both sides could ban for both.
             return await self.serialize_room(session, room, user)
 
-        side = _free_side(room.encounter)
-        if side is None:
+        slot = _free_slot(room.encounter)
+        if slot is None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Both sides are already claimed")
 
         captain = await self._ensure_player(session, user)
-        slot = _SLOT_BY_SIDE[side]
         reserved = _seat_at(room.encounter, slot)
         if reserved is None or reserved.team_id is None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That side has no team to claim")
@@ -874,8 +865,8 @@ class ScrimService:
         allowlist afterwards.
         """
         room = await self._load_room(session, token)
-        side = await self._viewer_side(session, room, user)
-        if not _may_close(room, user, side):
+        viewer_slot = await self._viewer_slot(session, room, user)
+        if not _may_close(room, user, viewer_slot):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only the room's creator, a captain of either side, or workspace staff may close it",

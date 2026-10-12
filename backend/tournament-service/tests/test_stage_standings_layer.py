@@ -43,7 +43,7 @@ from shared.testing.db import ensure_test_postgres
 from src import schemas
 from src.services.admin.stage import rule_values, stage_service
 from src.services.challonge import sync as challonge_sync
-from src.services.scrim.service import _free_side, scrim_service
+from src.services.scrim.service import _free_slot, scrim_service
 from src.services.standings.service import Seat, StageEncounter, standings_service
 
 _TAG = itertools.count()
@@ -445,7 +445,7 @@ class ScrimClaimTests(StageLayerCase):
     """``claim_side`` fills slot 2 through ``place_team``.
 
     The real entry point, not the writer under it: what this guards is
-    ``_free_side``'s new definition (slot 2 has no LIVE participation), the
+    ``_free_slot``'s definition (slot 2 has no LIVE participation), the
     reserved slot-2 row ``create_room`` leaves behind, and the ordering that
     makes winning the conditional ``captain_id`` update the thing that
     authorizes the seat.
@@ -553,13 +553,15 @@ class ScrimClaimTests(StageLayerCase):
 
         async with self.Session() as s:
             room = await scrim_service._load_room(s, token)
-            self.assertEqual("away", _free_side(room.encounter))
+            self.assertEqual(2, _free_slot(room.encounter))
 
         async with self.Session() as s:
             payload = await scrim_service.claim_side(s, claimant, token)
 
-        self.assertEqual("away", payload["viewer_side"])
-        self.assertTrue(payload["away_team"]["captain_claimed"])
+        schemas.ScrimRoomRead.model_validate(payload)
+        self.assertEqual(2, payload["viewer_slot"])
+        self.assertEqual([1, 2], [team["slot"] for team in payload["teams"]])
+        self.assertTrue(payload["teams"][1]["captain_claimed"])
         async with self.Session() as s:
             seats = await active_teams(s, encounter_id)
             rows = (
@@ -593,7 +595,7 @@ class ScrimClaimTests(StageLayerCase):
         async with self.Session() as s:
             payload = await scrim_service.claim_side(s, claimant, token)
 
-        self.assertEqual("away", payload["viewer_side"])
+        self.assertEqual(2, payload["viewer_slot"])
         async with self.Session() as s:
             seats = await active_teams(s, encounter_id)
         self.assertEqual(2, len(seats), "a repeat claim must not write a second seat")

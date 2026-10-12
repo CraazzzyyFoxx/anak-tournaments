@@ -47012,22 +47012,10 @@
     },
     "tournament.ScrimCreateRequest": {
       "properties": {
-        "away_team_name": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Away Team Name",
-          "type": "string"
-        },
         "best_of": {
           "minimum": 1,
           "title": "Best Of",
           "type": "integer"
-        },
-        "home_team_name": {
-          "maxLength": 255,
-          "minLength": 1,
-          "title": "Home Team Name",
-          "type": "string"
         },
         "label": {
           "maxLength": 255,
@@ -47053,6 +47041,17 @@
           ],
           "title": "Pool"
         },
+        "team_names": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Team Names",
+          "type": "array"
+        },
         "workspace_id": {
           "title": "Workspace Id",
           "type": "integer"
@@ -47062,8 +47061,7 @@
         "workspace_id",
         "label",
         "best_of",
-        "home_team_name",
-        "away_team_name",
+        "team_names",
         "pool"
       ],
       "title": "ScrimCreateRequest",
@@ -47228,9 +47226,6 @@
     },
     "tournament.ScrimRoomRead": {
       "properties": {
-        "away_team": {
-          "$ref": "#/components/schemas/tournament.ScrimTeamRead"
-        },
         "best_of": {
           "title": "Best Of",
           "type": "integer"
@@ -47264,9 +47259,6 @@
           "title": "Encounter Id",
           "type": "integer"
         },
-        "home_team": {
-          "$ref": "#/components/schemas/tournament.ScrimTeamRead"
-        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -47279,6 +47271,13 @@
           "title": "Stage Id",
           "type": "integer"
         },
+        "teams": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.ScrimTeamRead"
+          },
+          "title": "Teams",
+          "type": "array"
+        },
         "token": {
           "title": "Token",
           "type": "string"
@@ -47287,20 +47286,16 @@
           "title": "Tournament Id",
           "type": "integer"
         },
-        "viewer_side": {
+        "viewer_slot": {
           "anyOf": [
             {
-              "enum": [
-                "home",
-                "away"
-              ],
-              "type": "string"
+              "type": "integer"
             },
             {
               "type": "null"
             }
           ],
-          "title": "Viewer Side"
+          "title": "Viewer Slot"
         },
         "workspace_id": {
           "title": "Workspace Id",
@@ -47316,9 +47311,8 @@
         "stage_id",
         "encounter_id",
         "best_of",
-        "home_team",
-        "away_team",
-        "viewer_side",
+        "teams",
+        "viewer_slot",
         "can_claim",
         "can_close",
         "created_at",
@@ -47340,9 +47334,14 @@
         "name": {
           "title": "Name",
           "type": "string"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "integer"
         }
       },
       "required": [
+        "slot",
         "id",
         "name",
         "captain_claimed"
