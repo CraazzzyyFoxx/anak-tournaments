@@ -52,7 +52,7 @@ from shared.repository import (
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.distributed_lock import distributed_lock
 from shared.services.encounter.participants import active_teams, place_team, vacate_slot
-from shared.services.encounter.result import apply_result
+from shared.services.encounter.result import apply_result, lock_encounter
 from shared.services.realtime import Resource
 from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
@@ -1685,6 +1685,9 @@ class ChallongeSyncService:
                 await _write_import_result(session, encounter, [home_score, away_score])
             return _UpsertResult(action="created", encounter=encounter, newly_completed=newly_completed)
 
+        # The background sync races captain submits: the row is ours before any
+        # decision is read off it or any seat or standing is written (D57, D68).
+        await lock_encounter(session, encounter.id)
         position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         seats = await active_teams(session, encounter.id)
         was_completed = encounter.status == enums.EncounterStatus.COMPLETED
@@ -1854,6 +1857,7 @@ class ChallongeSyncService:
                 continue
             encounter = match_lookup.get(source, match.id)
             if encounter is not None:
+                await lock_encounter(session, encounter.id)
                 # Re-fires advancement for every complete match (idempotent), so
                 # it must not re-stamp a standing that already exists -- and a
                 # standing somebody else decided is not ours to replace. A result
@@ -1862,8 +1866,12 @@ class ChallongeSyncService:
                 # its hands off an ``import`` result (D57), so converting one
                 # here would make the local decision unrecomputable forever.
                 # That includes the encounter ``_upsert_encounter_from_challonge``
-                # just reported as a CONFLICT, which is still in ``match_lookup``.
+                # just reported as a CONFLICT, which is still in ``match_lookup``
+                # -- a dispute or a half-reported series is a decision in progress
+                # and the local tally is not a result to stamp over it.
                 if encounter.result_status != enums.EncounterResultStatus.CONFIRMED:
+                    if _has_local_decision(encounter):
+                        continue
                     seats = await active_teams(session, encounter.id)
                     await _write_import_result(session, encounter, [seat.score for seat in seats])
                 await advance_and_announce(session, encounter, channel=False)

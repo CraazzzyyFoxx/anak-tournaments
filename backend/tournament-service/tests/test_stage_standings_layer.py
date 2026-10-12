@@ -21,7 +21,7 @@ import os
 import sys
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -37,7 +37,7 @@ from shared.models.tournament.stage import Stage, StageItem, StageItemInput
 from shared.models.tournament.team import Team
 from shared.models.tournament.tournament import Tournament
 from shared.services.encounter.participants import active_teams, place_team, vacate_slot
-from shared.services.encounter.result import apply_result
+from shared.services.encounter.result import apply_result, hold_result
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 from src import schemas
@@ -620,13 +620,17 @@ class ChallongeRoundTripTests(StageLayerCase):
         }
         return SimpleNamespace(**{**fields, **overrides})
 
-    async def _import(self, match: SimpleNamespace, *, stage: Stage):
-        """One match through ``_upsert_encounter_from_challonge``, for real."""
+    async def _import(self, match: SimpleNamespace, *, stage: Stage, existing: int | None = None):
+        """One match through ``_upsert_encounter_from_challonge``, for real.
+
+        ``existing`` is an encounter Challonge's match is already linked to."""
         source = challonge_sync._ImportSource(challonge_id=5, source_id=None, source_type="stage", stage=stage)
         match_lookup = challonge_sync._MatchLookup(
             by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={}
         )
         async with self.Session() as s:
+            if existing is not None:
+                match_lookup.by_challonge_id[match.id] = await s.get_one(Encounter, existing)
             tournament = await s.get_one(Tournament, self.tournament_id)
             teams_by_id = {
                 team.id: team for team in (await s.execute(sa.select(Team).where(Team.id.in_(self.team_ids)))).scalars()
@@ -726,6 +730,57 @@ class ChallongeRoundTripTests(StageLayerCase):
             row = await s.get_one(Encounter, encounter_id)
         self.assertEqual("admin", row.result_source)
         self.assertEqual(version, row.result_version, "no second write, no spurious IMPORT audit row")
+
+    async def _advance_remote_complete(self, encounter_id: int, stage: Stage) -> None:
+        """One remote-complete match through ``_advance_completed_challonge_matches``."""
+        source = challonge_sync._ImportSource(challonge_id=5, source_id=None, source_type="stage", stage=stage)
+        match_lookup = challonge_sync._MatchLookup(
+            by_source_key={}, by_challonge_id={}, mapped_keys=set(), unlinked_by_slot={}
+        )
+        async with self.Session() as s:
+            match_lookup.by_challonge_id[9001] = await s.get_one(Encounter, encounter_id)
+            with patch.object(challonge_sync, "advance_and_announce", AsyncMock()):
+                await challonge_sync.sync_service._advance_completed_challonge_matches(
+                    s, [(source, self._match())], match_lookup=match_lookup
+                )
+            await s.commit()
+
+    async def test_a_dispute_or_a_half_reported_series_is_not_stamped_over_by_the_import(self) -> None:
+        """The remote result is the conflict to settle, not a result to adopt."""
+        for held in (enums.EncounterResultStatus.DISPUTED, enums.EncounterResultStatus.PENDING_CONFIRMATION):
+            with self.subTest(held=held):
+                stage = await self.make_stage(enums.StageType.ROUND_ROBIN, teams=self.team_ids[:2], name=held.value)
+                async with self.Session() as s:
+                    encounter = await s.get_one(
+                        Encounter, (await stage_service.generate_encounters(s, stage.id, notify=False))[0].id
+                    )
+                    await hold_result(
+                        s,
+                        encounter,
+                        status=held,
+                        action=enums.EncounterResultAuditAction.AUTO_DISPUTE,
+                        audit_source="series_claim",
+                        actor_user_id=None,
+                    )
+                    await s.commit()
+                    encounter_id, version = encounter.id, encounter.result_version
+
+                await self._advance_remote_complete(encounter_id, stage)
+
+                async with self.Session() as s:
+                    row = await s.get_one(Encounter, encounter_id)
+                self.assertEqual((held, None, version), (row.result_status, row.result_source, row.result_version))
+
+    async def test_the_import_takes_the_encounters_row_lock_before_it_writes(self) -> None:
+        stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
+        _created, encounter_id = await self._import(self._match(), stage=stage)
+
+        with patch.object(challonge_sync, "lock_encounter", wraps=challonge_sync.lock_encounter) as lock:
+            await self._advance_remote_complete(encounter_id, stage)
+            lock.assert_awaited_with(ANY, encounter_id)
+            lock.reset_mock()
+            await self._import(self._match(state="open", scores_csv="1-0"), stage=stage, existing=encounter_id)
+            lock.assert_awaited_with(ANY, encounter_id)
 
     async def test_the_export_pushes_the_two_seats_in_slot_order(self) -> None:
         stage = await self.make_stage(enums.StageType.SINGLE_ELIMINATION)
