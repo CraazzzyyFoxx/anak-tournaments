@@ -38,7 +38,7 @@ from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame, EncounterGameTeam
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.bracket_encounter import BracketEncounter
-from shared.repository import EncounterRepository, StageRepository
+from shared.repository import BracketEncounterRepository, EncounterRepository, StageRepository
 from shared.services.encounter.participants import MemberSnapshot, place_team
 from shared.services.encounter.result import lock_encounter
 from src import models
@@ -85,10 +85,12 @@ class FfaEncounterService:
         self,
         *,
         encounter_repo: EncounterRepository = EncounterRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
         stage_repo: StageRepository = StageRepository(),
         games: EncounterGameService = encounter_game_service,
     ) -> None:
         self.encounter_repo = encounter_repo
+        self.bracket_encounter_repo = bracket_encounter_repo
         self.stage_repo = stage_repo
         self.games = games
 
@@ -127,14 +129,15 @@ class FfaEncounterService:
                 best_of=games,
             ),
         )
-        session.add(
+        await self.bracket_encounter_repo.create(
+            session,
             BracketEncounter(
                 encounter_id=lobby.id,
                 tournament_id=stage.tournament_id,
                 stage_id=stage.id,
                 stage_item_id=item.id,
                 round=1,
-            )
+            ),
         )
         for slot, team_id in enumerate(team_ids, 1):
             await place_team(

@@ -230,7 +230,8 @@ class EncounterGameService:
                 state=state,
             ),
         )
-        session.add_all(
+        await self.line_repo.create_many(
+            session,
             [
                 EncounterGameTeam(
                     game_id=game.id,
@@ -238,9 +239,8 @@ class EncounterGameService:
                     encounter_team_id=seat.id,
                 )
                 for seat in await active_teams(session, encounter.id)
-            ]
+            ],
         )
-        await session.flush()
         return game
 
     async def ensure_next_game(self, session: AsyncSession, encounter: Encounter) -> EncounterGame | None:
@@ -386,6 +386,7 @@ class EncounterGameService:
 
         correcting = game.state == EncounterGameState.CONFIRMED
         by_team = {row.encounter_team_id: row for row in await self.line_repo.list_for_games(session, [game.id])}
+        new_rows: list[EncounterGameTeam] = []
         for line in normalized:
             row = by_team.get(line.encounter_team_id)
             if row is None:
@@ -394,7 +395,7 @@ class EncounterGameService:
                     encounter_id=encounter.id,
                     encounter_team_id=line.encounter_team_id,
                 )
-                session.add(row)
+                new_rows.append(row)
             row.score = line.score
             row.placement = line.placement if entered else None
             row.column_values = dict(line.values)
@@ -403,7 +404,7 @@ class EncounterGameService:
         game.result_source = source
         game.confirmed_at = datetime.now(UTC)
         game.result_version = (game.result_version or 0) + 1
-        await session.flush()
+        await self.line_repo.create_many(session, new_rows)
 
         was_confirmed = encounter.result_status == EncounterResultStatus.CONFIRMED
         outcome = await refresh_from_games(

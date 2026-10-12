@@ -141,6 +141,20 @@ class StageItemRepository(BaseRepository[models.StageItem]):
         return result.scalars().all()
 
 
+class BracketEncounterRepository(BaseRepository[models.BracketEncounter]):
+    """``tournament.bracket_encounter`` — where an encounter sits in a bracket.
+
+    The row's key is ``encounter_id``, so the base ``get`` (keyed on ``id``) does
+    not apply; ``get_position`` is the identity-map primary-key lookup.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.BracketEncounter)
+
+    async def get_position(self, session: AsyncSession, encounter_id: int) -> models.BracketEncounter | None:
+        return await session.get(models.BracketEncounter, encounter_id)
+
+
 class TeamRepository(BaseRepository[models.Team]):
     def __init__(self) -> None:
         super().__init__(models.Team)

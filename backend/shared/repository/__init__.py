@@ -129,6 +129,7 @@ from .support import (
     LogProcessingRepository,
 )
 from .tournament import (
+    BracketEncounterRepository,
     EncounterRepository,
     MatchRepository,
     PlayerRepository,
@@ -199,6 +200,7 @@ __all__ = (
     "BalancerTournamentConfigRepository",
     "BaseRepository",
     "BattleTagRankStateRepository",
+    "BracketEncounterRepository",
     "CatalogAliasMissRepository",
     "ChallongeMappingRepository",
     "ChallongeMatchMappingRepository",

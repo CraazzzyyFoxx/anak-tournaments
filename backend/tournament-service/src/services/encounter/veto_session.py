@@ -24,7 +24,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import VetoSeedSource
 from shared.models.encounter.team import EncounterTeam
+from shared.repository import BracketEncounterRepository
 from src import models
+
+_positions = BracketEncounterRepository()
 
 REASON_TEAMS_UNKNOWN = "teams_unknown"
 REASON_NOT_CONFIGURED = "not_configured"
@@ -126,7 +129,7 @@ async def resolve_seeds(
     """
     if not teams:
         raise ValueError("an encounter with no participations has no pick-ban opener")
-    position = await session.get(models.BracketEncounter, encounter.id)
+    position = await _positions.get_position(session, encounter.id)
     source_team_ids = {team.team_id: team.id for team in teams if team.team_id is not None}
     if not source_team_ids or position is None:
         return SeedResolution(teams[0].id, VetoSeedSource.FALLBACK_FIRST_SLOT, {})

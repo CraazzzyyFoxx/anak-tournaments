@@ -19,7 +19,7 @@ from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.tournament import Tournament
-from shared.repository import EncounterRepository
+from shared.repository import BracketEncounterRepository, EncounterRepository
 from shared.services.bracket.advancement import persist_advancement_edges
 from shared.services.bracket.types import BracketSkeleton
 from shared.services.encounter.participants import MemberSnapshot, place_team
@@ -27,6 +27,7 @@ from shared.services.encounter.participants import MemberSnapshot, place_team
 __all__ = ("SeatTeam", "persist_skeleton")
 
 _encounters = EncounterRepository()
+_positions = BracketEncounterRepository()
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,12 +88,11 @@ async def persist_skeleton(
     # would cost a round trip per encounter, and the bracket rows and links
     # below need every id at once anyway.
     await _encounters.create_many(session, encounters)
-
-    for pairing in skeleton.pairings:
-        encounter = by_local_id[pairing.local_id]
-        session.add(
+    await _positions.create_many(
+        session,
+        [
             BracketEncounter(
-                encounter_id=encounter.id,
+                encounter_id=by_local_id[pairing.local_id].id,
                 tournament_id=tournament.id,
                 stage_id=stage.id,
                 stage_item_id=(
@@ -100,7 +100,12 @@ async def persist_skeleton(
                 ),
                 round=pairing.round_number,
             )
-        )
+            for pairing in skeleton.pairings
+        ],
+    )
+
+    for pairing in skeleton.pairings:
+        encounter = by_local_id[pairing.local_id]
         for index, team_id in enumerate(pairing.team_ids):
             if team_id is None:
                 continue

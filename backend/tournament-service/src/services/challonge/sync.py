@@ -35,12 +35,14 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_naming import build_encounter_name
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.repository import (
+    BracketEncounterRepository,
     ChallongeMatchMappingRepository,
     ChallongeParticipantMappingRepository,
     ChallongeSourceRepository,
     ChallongeSyncLogRepository,
     EncounterLinkRepository,
     EncounterRepository,
+    ScoringRuleRepository,
     StageItemInputRepository,
     StageItemRepository,
     StageRepository,
@@ -648,10 +650,12 @@ class ChallongeStructureService:
         stage_repo: StageRepository = StageRepository(),
         stage_item_repo: StageItemRepository = StageItemRepository(),
         stage_item_input_repo: StageItemInputRepository = StageItemInputRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
     ) -> None:
         self.stage_repo = stage_repo
         self.stage_item_repo = stage_item_repo
         self.stage_item_input_repo = stage_item_input_repo
+        self.bracket_encounter_repo = bracket_encounter_repo
 
     async def _ensure_stage_item(
         self,
@@ -953,7 +957,7 @@ class ChallongeStructureService:
     ) -> int:
         if encounter is None:
             return 0
-        position = await session.get(models.BracketEncounter, encounter.id)
+        position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         if position is None:
             return 0
         return await self._ensure_stage_item_team_inputs(
@@ -1508,6 +1512,8 @@ class ChallongeSyncService:
         tournament_repo: TournamentRepository = TournamentRepository(),
         encounter_repo: EncounterRepository = EncounterRepository(),
         encounter_link_repo: EncounterLinkRepository = EncounterLinkRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
+        scoring_rule_repo: ScoringRuleRepository = ScoringRuleRepository(),
         source_repo: ChallongeSourceRepository = ChallongeSourceRepository(),
         match_mapping_repo: ChallongeMatchMappingRepository = ChallongeMatchMappingRepository(),
         participant_mapping_repo: ChallongeParticipantMappingRepository = ChallongeParticipantMappingRepository(),
@@ -1518,6 +1524,8 @@ class ChallongeSyncService:
         self.tournament_repo = tournament_repo
         self.encounter_repo = encounter_repo
         self.encounter_link_repo = encounter_link_repo
+        self.bracket_encounter_repo = bracket_encounter_repo
+        self.scoring_rule_repo = scoring_rule_repo
         self.source_repo = source_repo
         self.match_mapping_repo = match_mapping_repo
         self.participant_mapping_repo = participant_mapping_repo
@@ -1575,8 +1583,7 @@ class ChallongeSyncService:
             game_formula="win",
             end_formula=WINS_END_FORMULA,
         )
-        session.add(rule)
-        await session.flush()
+        await self.scoring_rule_repo.create(session, rule)
         return rule.id
 
     async def _upsert_encounter_from_challonge(
@@ -1652,14 +1659,15 @@ class ChallongeSyncService:
                 status=initial_status,
             )
             await self.encounter_repo.create(session, encounter)
-            session.add(
+            await self.bracket_encounter_repo.create(
+                session,
                 models.BracketEncounter(
                     encounter_id=encounter.id,
                     tournament_id=tournament.id,
                     stage_id=refs.stage_id,
                     stage_item_id=refs.stage_item_id,
                     round=match.round,
-                )
+                ),
             )
             await _reseat(session, encounter, [home_team_id, away_team_id], names)
             match_lookup.set(source, match.id, encounter)
@@ -1677,7 +1685,7 @@ class ChallongeSyncService:
                 await _write_import_result(session, encounter, [home_score, away_score])
             return _UpsertResult(action="created", encounter=encounter, newly_completed=newly_completed)
 
-        position = await session.get(models.BracketEncounter, encounter.id)
+        position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         seats = await active_teams(session, encounter.id)
         was_completed = encounter.status == enums.EncounterStatus.COMPLETED
         has_local_decision = _has_local_decision(encounter)
@@ -1719,14 +1727,15 @@ class ChallongeSyncService:
             teams_changed = await _reseat(session, encounter, [home_team_id, away_team_id], names)
             encounter.name = build_encounter_name([names.get(home_team_id), names.get(away_team_id)])
         if position is None:
-            session.add(
+            await self.bracket_encounter_repo.create(
+                session,
                 models.BracketEncounter(
                     encounter_id=encounter.id,
                     tournament_id=tournament.id,
                     stage_id=refs.stage_id,
                     stage_item_id=refs.stage_item_id,
                     round=match.round,
-                )
+                ),
             )
         else:
             position.round = match.round
@@ -2169,7 +2178,7 @@ class ChallongeSyncService:
         # id — the caller treats a missing match id as "skip".
         if sources is None:
             sources = await self.mapping.discover_sources(session, tournament)
-        position = await session.get(models.BracketEncounter, encounter.id)
+        position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         candidates = [source for source in sources if _source_matches_encounter(source, position)]
         source = candidates[0] if candidates else (sources[0] if len(sources) == 1 else None)
         return source, None

@@ -35,6 +35,7 @@ from shared.core import enums, tournament_state
 from shared.domain.pick_ban_config import has_pool
 from shared.repository.notification_recipients import NotificationRecipientRepository
 from shared.repository.tournament import (
+    BracketEncounterRepository,
     TeamRepository,
     TournamentPhaseScheduleRepository,
     TournamentRepository,
@@ -84,11 +85,13 @@ class LifecycleNotifier:
         recipient_repo: NotificationRecipientRepository = NotificationRecipientRepository(),
         team_repo: TeamRepository = TeamRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
     ) -> None:
         self.schedule_repo = schedule_repo
         self.recipient_repo = recipient_repo
         self.team_repo = team_repo
         self.tournament_repo = tournament_repo
+        self.bracket_encounter_repo = bracket_encounter_repo
 
     async def on_status_entered(self, session: AsyncSession, tournament: models.Tournament) -> None:
         """Announce the phase ``tournament`` has just been moved into.
@@ -272,8 +275,7 @@ class LifecycleNotifier:
                 dedupe_key=dedupe_key,
             )
 
-    @staticmethod
-    async def _has_pick_ban(session: AsyncSession, encounter: models.Encounter) -> bool:
+    async def _has_pick_ban(self, session: AsyncSession, encounter: models.Encounter) -> bool:
         """Whether this encounter's coordinate resolves to a pick-ban with a
         pool -- the same question ``PregameRoomLink`` asks on the frontend.
 
@@ -283,7 +285,7 @@ class LifecycleNotifier:
         Sessions are not consulted: they only exist once both captains are
         ready, which is after the message this flag is for.
         """
-        position = await session.get(models.BracketEncounter, encounter.id)
+        position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         for kind in (enums.PickBanKind.MAP, enums.PickBanKind.HERO):
             config = await _pick_ban_sessions().resolve_config_at_level(
                 session,

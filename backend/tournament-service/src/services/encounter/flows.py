@@ -4,7 +4,13 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import EncounterGameState
-from shared.repository import EncounterGameTeamRepository, TeamRepository
+from shared.repository import (
+    BracketEncounterRepository,
+    EncounterGameTeamRepository,
+    StageItemRepository,
+    StageRepository,
+    TeamRepository,
+)
 from shared.services.bracket.advancement import SlotSource, resolve_slot_sources
 from shared.services.challonge_refs import (
     ChallongeRef,
@@ -121,12 +127,20 @@ class EncounterFlowsService:
         teams: TeamFlowsService = team_flows_service,
         tournaments: TournamentFlowsService = tournament_flows_service,
         game_teams: EncounterGameTeamRepository = EncounterGameTeamRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
+        stage_repo: StageRepository = StageRepository(),
+        stage_item_repo: StageItemRepository = StageItemRepository(),
+        team_repo: TeamRepository = TeamRepository(),
     ) -> None:
         self.encounters = encounters
         self.maps = maps
         self.teams = teams
         self.tournaments = tournaments
         self.game_team_repo = game_teams
+        self.bracket_encounter_repo = bracket_encounter_repo
+        self.stage_repo = stage_repo
+        self.stage_item_repo = stage_item_repo
+        self.team_repo = team_repo
 
     async def to_pydantic(
         self,
@@ -172,10 +186,10 @@ class EncounterFlowsService:
 
         # The bracket position and the two seated teams, both off the rows that
         # replaced the dropped columns: one encounter read, one extra statement.
-        position = await session.get(models.BracketEncounter, encounter.id)
+        position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         seats = _seats(encounter)
         if "stage" in entities and position is not None and position.stage_id is not None:
-            row = await session.get(models.Stage, position.stage_id)
+            row = await self.stage_repo.get(session, position.stage_id)
             if row is not None:
                 # Nested stage challonge is derived at the top-level tournament
                 # read, so the legacy ``stage`` columns are never read here.
@@ -183,7 +197,7 @@ class EncounterFlowsService:
                     update={"challonge_id": None, "challonge_slug": None}
                 )
         if "stage_item" in entities and position is not None and position.stage_item_id is not None:
-            row = await session.get(models.StageItem, position.stage_item_id)
+            row = await self.stage_item_repo.get(session, position.stage_item_id)
             if row is not None:
                 stage_item = schemas.StageItemSummaryRead.model_validate(row, from_attributes=True)
         if "tournament" in entities:
@@ -223,8 +237,8 @@ class EncounterFlowsService:
                     # read that reached the same team through a shallower path
                     # earlier -- ``matches.teams`` loads ``Match.home_team`` with no
                     # team options at all -- would hand this loop a bare instance.
-                    source = await session.get(
-                        models.Team,
+                    source = await self.team_repo.get(
+                        session,
                         seat.team_id,
                         options=TeamRepository.team_entities(nested_team),
                         populate_existing=True,
