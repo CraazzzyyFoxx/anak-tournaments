@@ -1340,7 +1340,7 @@ A participation is append-only: replacing the occupant of a slot writes a new `t
 sets the old one `active = false`, and nothing reactivates it. `team_id` is the source
 `tournament.team` and is set to NULL if that team is deleted; `name` is the snapshot that
 survives. Two partial unique indexes allow one active occupant per slot and one active seat per
-source team, and `uq_team_member_active_member` one active seat per workspace member. The
+source team, and `uq_team_member_active_member` one active seat per workspace member per encounter. The
 `team_member` rows carry an `active` copy of their participation's, kept in step by an
 `ON UPDATE CASCADE` composite key.
 
