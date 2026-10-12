@@ -15,12 +15,21 @@ bind every new row immediately and are validated at the end of this same
 revision, after the data half has run. ``downgrade()`` refuses: the move is
 forward-fix only.
 
+The data half (§13.8) runs in the same transaction: four pre-flight checks that
+stop the revision rather than guess, then the backfill of every column added
+here, then ``SET NOT NULL`` / ``VALIDATE CONSTRAINT``. Its converters are pure
+and golden-tested from ``backend/tests/test_enclayer01_convert.py``, which is why
+this module imports nothing from ``shared``: a migration has to keep meaning what
+it meant on the day it ran. Lobby scores are NOT written here -- the level-2
+formula runs in Python, in ``backend/scripts/enclayer01_recompute_lobbies.py``.
+
 Revision ID: enclayer01
 Revises: apikeysu01
 """
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Sequence
 
@@ -615,17 +624,933 @@ _EXTERNAL = (
 )
 
 
-def upgrade() -> None:
-    _take_locks()
-    for statement in (*_SCHEMAS_AND_TYPES, *_MOVE_TABLES, *_OWNER_KEYS, *_NEW_TABLES, *_RESHAPE, *_EXTERNAL):
+# --------------------------------------------------------------------------- #
+# 7. Pre-flight checks (§13.8)
+# --------------------------------------------------------------------------- #
+
+#: The four questions the data has to answer before anything moves. Every one of
+#: them is a decision the migration must NOT make by row order -- which role the
+#: player really had, which team they played for, which game a replay code
+#: belongs to -- so a non-empty answer stops the revision and a human resolves
+#: the rows. The same four queries live in ``backend/scripts/enclayer01_preflight.sql``
+#: so an operator can run them days before the deploy window; they are written
+#: against the PRE-move names on purpose and run before the first DDL statement.
+PREFLIGHT: tuple[tuple[str, str], ...] = (
+    (
+        "tournament.player rows of one workspace member in one team disagree on role or rank",
+        """
+        SELECT p.team_id, p.workspace_member_id, array_agg(p.id ORDER BY p.id) AS player_ids
+          FROM tournament.player p
+         GROUP BY p.team_id, p.workspace_member_id
+        HAVING count(DISTINCT (p.role, p.rank)) > 1
+         ORDER BY p.team_id, p.workspace_member_id
+        """,
+    ),
+    (
+        "one workspace member sits in two rosters of the same encounter",
+        """
+        WITH seat AS (
+            SELECT id AS encounter_id, home_team_id AS team_id
+              FROM tournament.encounter WHERE home_team_id IS NOT NULL
+             UNION ALL
+            SELECT id, away_team_id FROM tournament.encounter WHERE away_team_id IS NOT NULL
+             UNION ALL
+            SELECT encounter_id, team_id FROM tournament.encounter_participant
+        )
+        SELECT seat.encounter_id, p.workspace_member_id, array_agg(DISTINCT seat.team_id) AS team_ids
+          FROM seat JOIN tournament.player p ON p.team_id = seat.team_id
+         GROUP BY seat.encounter_id, p.workspace_member_id
+        HAVING count(DISTINCT seat.team_id) > 1
+         ORDER BY seat.encounter_id, p.workspace_member_id
+        """,
+    ),
+    (
+        "encounter result status disagrees with encounter status",
+        """
+        SELECT id AS encounter_id, status::text AS status, result_status::text AS result_status
+          FROM tournament.encounter
+         WHERE (result_status = 'confirmed') <> (status = 'COMPLETED')
+         ORDER BY id
+        """,
+    ),
+    (
+        "replay code names a position holding both a cancelled and a live game",
+        """
+        SELECT c.id AS map_code_id, r.encounter_id, c.map_index
+          FROM tournament.encounter_map_code c
+          JOIN tournament.encounter_captain_report r ON r.id = c.report_id
+         WHERE EXISTS (SELECT 1 FROM tournament.encounter_game g
+                        WHERE g.encounter_id = r.encounter_id AND g.position = c.map_index
+                          AND g.state = 'cancelled')
+           AND EXISTS (SELECT 1 FROM tournament.encounter_game g
+                        WHERE g.encounter_id = r.encounter_id AND g.position = c.map_index
+                          AND g.state <> 'cancelled')
+         ORDER BY c.id
+        """,
+    ),
+)
+
+#: How many offending rows the error message carries; the rest are counted.
+PREFLIGHT_SAMPLE = 20
+
+
+def _preflight() -> None:
+    """Run the four checks and stop the revision with the offending ids.
+
+    Runs AFTER ``_take_locks`` and before the first DDL statement: a SELECT
+    issued first would take ACCESS SHARE on the very tables the revision then
+    needs ACCESS EXCLUSIVE on, and a lock upgrade is exactly the deadlock the
+    retry loop cannot give an attempt back for.
+    """
+    bind = op.get_bind()
+    failures: list[str] = []
+    for question, query in PREFLIGHT:
+        rows = bind.execute(sa.text(query)).mappings().all()
+        if not rows:
+            continue
+        sample = "; ".join(str(dict(row)) for row in rows[:PREFLIGHT_SAMPLE])
+        rest = len(rows) - PREFLIGHT_SAMPLE
+        failures.append(f"{question} [{len(rows)}]: {sample}" + (f"; … {rest} more" if rest > 0 else ""))
+    if failures:
+        raise RuntimeError("enclayer01 pre-flight failed; resolve these rows by hand first:\n" + "\n".join(failures))
+
+
+# --------------------------------------------------------------------------- #
+# 8. Converters (pure; golden-tested by backend/tests/test_enclayer01_convert.py)
+# --------------------------------------------------------------------------- #
+
+#: D61: a series is decided by wins, and it is over once every position is
+#: played or one side is past half (a drawn map pays no win but burns a game).
+WINS_END_FORMULA = "games >= best_of or max_wins * 2 > best_of"
+#: A lobby plays its whole card; points decide, not wins.
+POINTS_END_FORMULA = "games >= best_of"
+
+
+def wins_rule() -> dict:
+    """The series preset: one point per game won, no organizer columns."""
+    return {
+        "preset": "wins",
+        "columns": [],
+        "placement_points": [],
+        "game_formula": "win",
+        "end_formula": WINS_END_FORMULA,
+    }
+
+
+def scoring_rule_for_stage(stage_type: str, ffa_columns, ffa_formula: str | None, ffa_placement_points) -> dict:
+    """One stage's rule row (§13.8). Only a lobby stage keeps its FFA settings.
+
+    A bracket stage's ``ffa_*`` columns are the table defaults nobody entered;
+    carrying them would compile a formula the ``wins`` preset never evaluates.
+    """
+    if stage_type != "ffa_league":
+        return wins_rule()
+    return {
+        "preset": "points",
+        "columns": list(ffa_columns) if ffa_columns else [],
+        "placement_points": [float(points) for points in (ffa_placement_points or ())],
+        # ``stage.ffa_formula`` is NOT NULL with default 'score'; a NULL can only
+        # come from a hand-edited row, and the engine must still compile it.
+        "game_formula": ffa_formula or "score",
+        "end_formula": POINTS_END_FORMULA,
+    }
+
+
+def duel_placements(slot1_score: int, slot2_score: int, completed: bool) -> tuple[int | None, int | None]:
+    """Places of the two seats of a duel. No place until there is a result; a
+    draw gives both first (§13.8)."""
+    if not completed:
+        return (None, None)
+    if slot1_score == slot2_score:
+        return (1, 1)
+    return (1, 2) if slot1_score > slot2_score else (2, 1)
+
+
+def result_source_for(confirmed: bool, stored: tuple[int, int], games_aggregate: tuple[int, int] | None) -> str | None:
+    """Where a confirmed encounter's official result came from (D57).
+
+    ``games`` only when the stored score IS the confirmed games' score --
+    anything else is a number somebody put there (an admin, a Challonge import)
+    and must not be presented as recomputable from an incomplete set of games.
+    ``games_aggregate`` is None when there is nothing comparable to aggregate:
+    no confirmed game carries a score pair (every lobby, and any series
+    confirmed without its games).
+    """
+    if not confirmed:
+        return None
+    return "games" if games_aggregate is not None and tuple(games_aggregate) == tuple(stored) else "import"
+
+
+def ruleset_actor(actor: str) -> str:
+    """Ruleset actors stop naming sides (§13.4): ``home``/``away`` become slots."""
+    return {"home": "slot:1", "away": "slot:2"}.get(actor, actor)
+
+
+def rewrite_ruleset(document):
+    """A ruleset v2 document with every step's ``actors`` moved to slots."""
+    if not isinstance(document, dict):
+        return document
+    phases = document.get("phases")
+    if not isinstance(phases, list):
+        return document
+    rewritten = []
+    for phase in phases:
+        if not isinstance(phase, dict) or not isinstance(phase.get("steps"), list):
+            rewritten.append(phase)
+            continue
+        steps = [
+            {**step, "actors": ruleset_actor(step["actors"])}
+            if isinstance(step, dict) and isinstance(step.get("actors"), str)
+            else step
+            for step in phase["steps"]
+        ]
+        rewritten.append({**phase, "steps": steps})
+    return {**document, "phases": rewritten}
+
+
+def _snapshot_lines(entries, team_participations: dict[int, int]) -> list[dict] | None:
+    """A lobby snapshot's rows, keyed by participation instead of source team.
+
+    Everything but ``team_id`` is carried verbatim -- a game snapshot keeps its
+    placement and stats, a lobby total its points and games. An entry whose team
+    no longer has a participation is dropped: it could not be read by anything
+    keyed on participations, and the legacy ``ffa_results_json`` column stays in
+    the table until ``enclayer02``, so nothing is lost.
+    """
+    if entries is None:
+        return None
+    lines = []
+    for entry in entries:
+        participation = team_participations.get(entry.get("team_id"))
+        if participation is None:
+            continue
+        lines.append({"encounter_team_id": participation, **{k: v for k, v in entry.items() if k != "team_id"}})
+    return lines
+
+
+def _duel_lines(slot1_score, slot2_score, slot_participations: dict[int, int]) -> list[dict] | None:
+    """A duel snapshot's rows: one per occupied seat, placed by the pair."""
+    if slot1_score is None and slot2_score is None:
+        return None
+    places = duel_placements(slot1_score or 0, slot2_score or 0, True)
+    lines = []
+    for slot, score, placement in ((1, slot1_score, places[0]), (2, slot2_score, places[1])):
+        participation = slot_participations.get(slot)
+        if participation is not None:
+            lines.append({"encounter_team_id": participation, "score": score, "placement": placement})
+    return lines
+
+
+def audit_snapshot(row: dict, slot_participations: dict[int, int], team_participations: dict[int, int]) -> dict:
+    """``before``/``after``/``snapshot_scope`` of one journal row (D47, D68).
+
+    The scope is the shape of the snapshot, not the presence of ``game_id``: a
+    lobby totals row is written WITH the game that triggered it, and it is still
+    the encounter's standing (§13.8). A duel's score pair is a game's accepted
+    score when the row names a game, and the series score otherwise.
+    """
+    ffa = row.get("ffa_results_json")
+    if isinstance(ffa, dict):
+        before = _snapshot_lines(ffa.get("before"), team_participations)
+        after = _snapshot_lines(ffa.get("after"), team_participations)
+        lobby_total = any(
+            "points" in entry for entries in (ffa.get("before") or [], ffa.get("after") or []) for entry in entries
+        )
+        scope = "game" if row.get("game_id") is not None and not lobby_total else "encounter"
+    else:
+        before = _duel_lines(row.get("home_score_before"), row.get("away_score_before"), slot_participations)
+        after = _duel_lines(row.get("home_score_after"), row.get("away_score_after"), slot_participations)
+        scope = "game" if row.get("game_id") is not None else "encounter"
+    return {"before": before, "after": after if after is not None else [], "snapshot_scope": scope}
+
+
+# --------------------------------------------------------------------------- #
+# 9. Backfill (§13.8)
+# --------------------------------------------------------------------------- #
+
+_DISCIPLINE = (
+    # The row is already seeded with the schema half; both statements are here
+    # so the backfill can be read -- and re-run -- as one piece.
+    "INSERT INTO catalog.discipline (code, name) VALUES ('overwatch', 'Overwatch') ON CONFLICT (code) DO NOTHING",
+    "UPDATE tournament.tournament SET discipline = 'overwatch' WHERE discipline IS DISTINCT FROM 'overwatch'",
+)
+
+_ENCOUNTER_COLUMNS = (
+    """
+    UPDATE encounter.encounter e SET workspace_id = t.workspace_id, discipline = t.discipline
+      FROM tournament.tournament t
+     WHERE t.id = e.tournament_id AND (e.workspace_id IS NULL OR e.discipline IS NULL)
+    """,
+    """
+    UPDATE encounter.encounter e SET scoring_rule_id = s.scoring_rule_id
+      FROM tournament.stage s
+     WHERE s.id = e.stage_id AND e.scoring_rule_id IS NULL
+    """,
+    # A duel seats two; a lobby seats as many as its highest participant slot.
+    # Two is the floor: ``ck_encounter_slot_count`` says an encounter nobody
+    # entered is still a meeting of two seats.
+    """
+    UPDATE encounter.encounter e
+       SET slot_count = GREATEST(2, COALESCE(
+             (SELECT max(p.slot) FROM tournament.encounter_participant p WHERE p.encounter_id = e.id), 0))
+     WHERE e.slot_count IS NULL
+    """,
+    """
+    INSERT INTO tournament.bracket_encounter (encounter_id, tournament_id, stage_id, stage_item_id, round)
+         SELECT e.id, e.tournament_id, e.stage_id, e.stage_item_id, e.round
+           FROM encounter.encounter e
+          WHERE e.round IS NOT NULL
+    ON CONFLICT (encounter_id) DO NOTHING
+    """,
+)
+
+#: Lobby seats carry their participant row's slot; the duel seats are written in
+#: Python, which is where the placement rule lives.
+_FFA_PARTICIPATIONS = """
+    INSERT INTO encounter.team (encounter_id, tournament_id, slot, team_id, name)
+         SELECT p.encounter_id, e.tournament_id, p.slot, p.team_id, left(t.name, 255)
+           FROM tournament.encounter_participant p
+           JOIN encounter.encounter e ON e.id = p.encounter_id
+           JOIN tournament.team t ON t.id = p.team_id
+    ON CONFLICT (encounter_id, slot) WHERE active DO NOTHING
+"""
+
+_ROSTERS = (
+    # The whole roster of the seat's team, substitutes included (D40). Rows of
+    # one member that agree collapse here; rows that disagree were stopped by
+    # pre-flight check 1, so ``DISTINCT ON`` only ever picks between equals.
+    """
+    INSERT INTO encounter.team_member
+           (encounter_id, encounter_team_id, active, workspace_member_id, display_name_snapshot, rank, is_substitute)
+    SELECT DISTINCT ON (et.id, p.workspace_member_id)
+           et.encounter_id, et.id, et.active, p.workspace_member_id, left(p.name, 255), p.rank, p.is_substitution
+      FROM encounter.team et
+      JOIN tournament.player p ON p.team_id = et.team_id
+     WHERE et.team_id IS NOT NULL
+     ORDER BY et.id, p.workspace_member_id, p.id
+    ON CONFLICT (encounter_team_id, workspace_member_id) DO NOTHING
+    """,
+    # Role and sub-role are two rows of one dimension (D67): the sub-role is a
+    # child code of the role, not a second axis.
+    """
+    WITH roster AS (
+        SELECT DISTINCT ON (et.id, p.workspace_member_id)
+               et.id AS encounter_team_id, p.workspace_member_id, p.role::text AS role, p.sub_role
+          FROM encounter.team et
+          JOIN tournament.player p ON p.team_id = et.team_id
+         WHERE et.team_id IS NOT NULL
+         ORDER BY et.id, p.workspace_member_id, p.id
+    )
+    INSERT INTO encounter.team_member_role (team_member_id, dimension, role)
+         SELECT tm.id, 'player_role', code
+           FROM encounter.team_member tm
+           JOIN roster r ON r.encounter_team_id = tm.encounter_team_id
+                        AND r.workspace_member_id = tm.workspace_member_id
+     CROSS JOIN LATERAL (VALUES (r.role), (r.sub_role)) AS v(code)
+          WHERE code IS NOT NULL
+    ON CONFLICT DO NOTHING
+    """,
+)
+
+#: One row per participation per game, including cancelled positions and games
+#: nobody has played yet -- an empty row IS the statement that this seat has no
+#: result here (§13.8).
+_GAME_TEAM_ROWS = """
+    INSERT INTO encounter.game_team (game_id, encounter_id, encounter_team_id)
+         SELECT g.id, g.encounter_id, et.id
+           FROM encounter.game g
+           JOIN encounter.team et ON et.encounter_id = g.encounter_id
+    ON CONFLICT (game_id, encounter_team_id) DO NOTHING
+"""
+
+_GAME_RESULTS = (
+    """
+    UPDATE encounter.game_team gt SET placement = r.placement, column_values = r.stats
+      FROM tournament.encounter_game_result r
+      JOIN encounter.team et ON et.encounter_id = r.encounter_id AND et.team_id = r.team_id
+     WHERE gt.game_id = r.game_id AND gt.encounter_team_id = et.id
+    """,
+    # The code was filed against a report's team and a map index; the position
+    # it names has exactly one live game (pre-flight check 4).
+    """
+    UPDATE encounter.game_team gt SET replay_code = c.code
+      FROM tournament.encounter_map_code c
+      JOIN tournament.encounter_captain_report r ON r.id = c.report_id
+      JOIN encounter.team et ON et.encounter_id = r.encounter_id AND et.team_id = r.team_id
+      JOIN encounter.game g ON g.encounter_id = r.encounter_id AND g.position = c.map_index
+                           AND g.state <> 'cancelled'
+     WHERE gt.game_id = g.id AND gt.encounter_team_id = et.id AND gt.replay_code IS NULL
+    """,
+)
+
+_CLAIMS_AND_REPORTS = (
+    # A map report was one side's claim about one game. ``basis_version = 0``:
+    # the claims predate versioning, so they are all based on "no result yet".
+    """
+    INSERT INTO encounter.game_claim
+           (created_at, updated_at, encounter_id, game_id, claimant_team_id, reporter_user_id, basis_version)
+         SELECT mr.created_at, mr.updated_at, g.encounter_id, mr.game_id, et.id, mr.reporter_user_id, 0
+           FROM tournament.encounter_map_report mr
+           JOIN encounter.game g ON g.id = mr.game_id
+           JOIN encounter.team et ON et.encounter_id = g.encounter_id
+                                 AND et.slot = CASE mr.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+    ON CONFLICT (game_id, claimant_team_id) DO NOTHING
+    """,
+    """
+    INSERT INTO encounter.game_claim_result (claim_id, game_id, encounter_team_id, score)
+         SELECT c.id, c.game_id, et.id, CASE et.slot WHEN 1 THEN mr.home_score WHEN 2 THEN mr.away_score END
+           FROM tournament.encounter_map_report mr
+           JOIN encounter.game g ON g.id = mr.game_id
+           JOIN encounter.team claimant ON claimant.encounter_id = g.encounter_id
+                                       AND claimant.slot = CASE mr.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+           JOIN encounter.game_claim c ON c.game_id = mr.game_id AND c.claimant_team_id = claimant.id
+           JOIN encounter.team et ON et.encounter_id = g.encounter_id AND et.slot IN (1, 2)
+    ON CONFLICT (claim_id, encounter_team_id) DO NOTHING
+    """,
+    # ``games_played`` stays NULL: a captain report carried a score, never how
+    # many games it took, and the number is not invented here (D59).
+    """
+    INSERT INTO encounter.team_report
+           (created_at, updated_at, encounter_id, encounter_team_id, reporter_user_id, games_played,
+            basis_version, closeness, comment, custom_fields_json)
+         SELECT cr.created_at, cr.updated_at, cr.encounter_id, et.id, cr.reporter_user_id, NULL,
+                0, cr.closeness, cr.comment, cr.custom_fields_json
+           FROM tournament.encounter_captain_report cr
+           JOIN encounter.team et ON et.encounter_id = cr.encounter_id AND et.team_id = cr.team_id
+    ON CONFLICT (encounter_id, encounter_team_id) DO NOTHING
+    """,
+    """
+    INSERT INTO encounter.team_report_result (report_id, encounter_id, encounter_team_id, score)
+         SELECT tr.id, tr.encounter_id, et.id,
+                CASE et.slot WHEN 1 THEN cr.home_score WHEN 2 THEN cr.away_score END
+           FROM tournament.encounter_captain_report cr
+           JOIN encounter.team reporter ON reporter.encounter_id = cr.encounter_id
+                                       AND reporter.team_id = cr.team_id
+           JOIN encounter.team_report tr ON tr.encounter_id = cr.encounter_id
+                                        AND tr.encounter_team_id = reporter.id
+           JOIN encounter.team et ON et.encounter_id = cr.encounter_id AND et.slot IN (1, 2)
+    ON CONFLICT (report_id, encounter_team_id) DO NOTHING
+    """,
+    """
+    INSERT INTO encounter.readiness (created_at, updated_at, encounter_id, encounter_team_id, ready_user_id)
+         SELECT r.created_at, r.updated_at, r.encounter_id, et.id, r.ready_user_id
+           FROM tournament.encounter_readiness r
+           JOIN encounter.team et ON et.encounter_id = r.encounter_id
+                                 AND et.slot = CASE r.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+    ON CONFLICT (encounter_id, encounter_team_id) DO NOTHING
+    """,
+    """
+    UPDATE encounter.room_event re SET encounter_team_id = et.id
+      FROM encounter.team et
+     WHERE et.encounter_id = re.encounter_id
+       AND et.slot = CASE re.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+       AND re.encounter_team_id IS NULL
+    """,
+)
+
+_PICK_BAN = (
+    """
+    UPDATE encounter.pick_ban_entry e SET encounter_id = s.encounter_id
+      FROM encounter.pick_ban_session s WHERE s.id = e.session_id AND e.encounter_id IS NULL
+    """,
+    """
+    UPDATE encounter.pick_ban_submission sub SET encounter_id = s.encounter_id
+      FROM encounter.pick_ban_session s WHERE s.id = sub.session_id AND sub.encounter_id IS NULL
+    """,
+    # A side becomes a participation; ``decider``/``admin`` keep their meaning in
+    # the actor kind, which is what the old enum conflated (§13.4).
+    *(
+        f"""
+        UPDATE encounter.pick_ban_entry e
+           SET {column}_kind = CASE WHEN e.{column}::text IN ('home', 'away') THEN 'team'
+                                    ELSE e.{column}::text END::encounter.pickbanactor,
+               {column}_team_id = CASE WHEN e.{column}::text IN ('home', 'away') THEN (
+                   SELECT t.id FROM encounter.team t
+                    WHERE t.encounter_id = e.encounter_id
+                      AND t.slot = CASE e.{column}::text WHEN 'home' THEN 1 ELSE 2 END) END
+         WHERE e.{column} IS NOT NULL AND e.{column}_kind IS NULL
+        """
+        for column in ("picked_by", "protected_by")
+    ),
+    """
+    UPDATE encounter.pick_ban_submission sub SET encounter_team_id = t.id
+      FROM encounter.team t
+     WHERE t.encounter_id = sub.encounter_id
+       AND t.slot = CASE sub.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+       AND sub.encounter_team_id IS NULL
+    """,
+    """
+    UPDATE encounter.pick_ban_session s
+       SET first_team_id = (SELECT t.id FROM encounter.team t
+                             WHERE t.encounter_id = s.encounter_id
+                               AND t.slot = CASE s.first_side::text WHEN 'home' THEN 1 WHEN 'away' THEN 2 END),
+           pending_chooser_team_id = (SELECT t.id FROM encounter.team t
+                             WHERE t.encounter_id = s.encounter_id
+                               AND t.slot = CASE s.pending_loser_side::text
+                                            WHEN 'home' THEN 1 WHEN 'away' THEN 2 END),
+           undo_requested_by_team_id = (SELECT t.id FROM encounter.team t
+                             WHERE t.encounter_id = s.encounter_id
+                               AND t.slot = CASE s.undo_requested_by::text
+                                            WHEN 'home' THEN 1 WHEN 'away' THEN 2 END)
+     WHERE s.first_side IS NOT NULL OR s.pending_loser_side IS NOT NULL OR s.undo_requested_by IS NOT NULL
+    """,
+    # The seeds were the room's; they belong to the seat. One encounter may hold
+    # a map and a hero room, so the lowest session id wins deterministically.
+    """
+    WITH seed AS (
+        SELECT DISTINCT ON (encounter_id) encounter_id, home_seed, away_seed
+          FROM encounter.pick_ban_session
+         WHERE home_seed IS NOT NULL OR away_seed IS NOT NULL
+         ORDER BY encounter_id, id
+    )
+    UPDATE encounter.team t SET seed = CASE t.slot WHEN 1 THEN seed.home_seed WHEN 2 THEN seed.away_seed END
+      FROM seed
+     WHERE seed.encounter_id = t.encounter_id AND t.slot IN (1, 2) AND t.seed IS NULL
+       AND (CASE t.slot WHEN 1 THEN seed.home_seed WHEN 2 THEN seed.away_seed END) IS NOT NULL
+    """,
+    # The pool a running room was opened against, snapshotted off the config as
+    # it stands now: ``{mode, items, slots}``, slots carrying their reserve and
+    # their own items. A room whose config was deleted keeps an empty pool.
+    """
+    UPDATE encounter.pick_ban_session s
+       SET pool_json = COALESCE((
+           SELECT json_build_object(
+               'mode', c.mode::text,
+               'items', COALESCE((SELECT json_agg(i.item_id ORDER BY i.sort_order, i.item_id)
+                                    FROM tournament.pick_ban_config_item i
+                                   WHERE i.pick_ban_config_id = c.id), '[]'::json),
+               'slots', COALESCE((SELECT json_agg(json_build_object(
+                                      'position', sl.position,
+                                      'reserve_item_id', sl.reserve_item_id,
+                                      'items', COALESCE((SELECT json_agg(si.item_id ORDER BY si.sort_order, si.item_id)
+                                                           FROM tournament.pick_ban_config_slot_item si
+                                                          WHERE si.pick_ban_config_slot_id = sl.id), '[]'::json))
+                                      ORDER BY sl.position)
+                                    FROM tournament.pick_ban_config_slot sl
+                                   WHERE sl.pick_ban_config_id = c.id), '[]'::json))
+             FROM tournament.pick_ban_config c WHERE c.id = s.config_id),
+           json_build_object('mode', NULL, 'items', '[]'::json, 'slots', '[]'::json))
+     WHERE s.pool_json IS NULL
+    """,
+)
+
+#: Advancement stops speaking of winners and sides: a link is "the Nth place of
+#: this encounter fills that encounter's Mth seat" (D13, D65).
+_LINKS = """
+    UPDATE tournament.encounter_link l
+       SET tournament_id = e.tournament_id,
+           source_position = CASE l.role::text WHEN 'winner' THEN 1 WHEN 'loser' THEN 2 END,
+           target_slot = CASE l.legacy_target_slot::text WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+      FROM encounter.encounter e
+     WHERE e.id = l.source_encounter_id AND l.tournament_id IS NULL
+"""
+
+_AUDIT_VERSIONS = (
+    # The journal had no versions; its order is its history, so the rows are
+    # numbered by when they were written and the encounter carries the count.
+    """
+    WITH numbered AS (
+        SELECT id, row_number() OVER (PARTITION BY encounter_id ORDER BY created_at, id) AS version
+          FROM encounter.result_audit
+    )
+    UPDATE encounter.result_audit a SET result_version = n.version
+      FROM numbered n WHERE n.id = a.id AND a.result_version IS NULL
+    """,
+    """
+    UPDATE encounter.encounter e SET result_version = counted.rows
+      FROM (SELECT encounter_id, count(*) AS rows FROM encounter.result_audit GROUP BY encounter_id) counted
+     WHERE counted.encounter_id = e.id AND e.result_version = 0
+    """,
+)
+
+_FINALIZE = (
+    # The backfill wrote through deferred foreign keys (the rules, the roster
+    # snapshots, the game rows); their checks are still queued, and ALTER TABLE
+    # refuses to touch a table with pending trigger events. Firing them here
+    # also means a reference the backfill got wrong fails BEFORE the NOT NULLs
+    # and the validations, which is the error worth reading.
+    "SET CONSTRAINTS ALL IMMEDIATE",
+    """
+    ALTER TABLE encounter.encounter
+      ALTER COLUMN workspace_id    SET NOT NULL,
+      ALTER COLUMN discipline      SET NOT NULL,
+      ALTER COLUMN scoring_rule_id SET NOT NULL,
+      ALTER COLUMN slot_count      SET NOT NULL
+    """,
+    "ALTER TABLE tournament.stage ALTER COLUMN scoring_rule_id SET NOT NULL",
+    """
+    ALTER TABLE encounter.result_audit
+      ALTER COLUMN result_version SET NOT NULL,
+      ALTER COLUMN snapshot_scope SET NOT NULL,
+      ALTER COLUMN "after"        SET NOT NULL
+    """,
+    "ALTER TABLE encounter.pick_ban_session ALTER COLUMN pool_json SET NOT NULL",
+    "ALTER TABLE encounter.pick_ban_entry ALTER COLUMN encounter_id SET NOT NULL",
+    "ALTER TABLE encounter.pick_ban_submission ALTER COLUMN encounter_id SET NOT NULL",
+    """
+    ALTER TABLE tournament.encounter_link
+      ALTER COLUMN tournament_id   SET NOT NULL,
+      ALTER COLUMN source_position SET NOT NULL,
+      ALTER COLUMN target_slot     SET NOT NULL
+    """,
+    # Only buildable now: every pre-migration row had NULL ``encounter_team_id``
+    # and NULLS NOT DISTINCT would have collided on the two sides of one step.
+    """
+    CREATE UNIQUE INDEX uq_pick_ban_submission_step_team_attempt
+        ON encounter.pick_ban_submission (session_id, step_index, encounter_team_id, attempt) NULLS NOT DISTINCT
+    """,
+    # Every constraint the schema half could only add NOT VALID, now that the
+    # data behind it exists. ``ck_encounter_result_version`` is not here: it was
+    # added VALID against a column that was born defaulted to 0.
+    *(
+        f"ALTER TABLE {table} VALIDATE CONSTRAINT {name}"
+        for table, name in (
+            ("encounter.encounter", "fk_encounter_owner"),
+            ("encounter.encounter", "fk_encounter_scoring_rule"),
+            ("encounter.encounter", "ck_encounter_best_of"),
+            ("encounter.encounter", "ck_encounter_slot_count"),
+            ("encounter.encounter", "ck_encounter_result_source"),
+            ("encounter.encounter", "ck_encounter_confirmed_source"),
+            ("encounter.result_audit", "fk_result_audit_game"),
+            ("encounter.result_audit", "fk_result_audit_adopted"),
+            ("encounter.result_audit", "ck_result_audit_scope"),
+            ("encounter.result_audit", "ck_result_audit_game_scope"),
+            ("encounter.room_event", "fk_room_event_team"),
+            ("encounter.pick_ban_session", "fk_pick_ban_session_first_team"),
+            ("encounter.pick_ban_session", "fk_pick_ban_session_pending_chooser"),
+            ("encounter.pick_ban_session", "fk_pick_ban_session_undo_requested_by"),
+            ("encounter.pick_ban_entry", "fk_pick_ban_entry_session"),
+            ("encounter.pick_ban_entry", "fk_pick_ban_entry_picked_by"),
+            ("encounter.pick_ban_entry", "fk_pick_ban_entry_protected_by"),
+            ("encounter.pick_ban_entry", "ck_pick_ban_entry_picked_by"),
+            ("encounter.pick_ban_entry", "ck_pick_ban_entry_protected_by"),
+            ("encounter.pick_ban_submission", "fk_pick_ban_submission_session"),
+            ("encounter.pick_ban_submission", "fk_pick_ban_submission_team"),
+            ("tournament.encounter_link", "fk_link_source"),
+            ("tournament.encounter_link", "fk_link_target"),
+            ("tournament.encounter_link", "ck_link_not_self"),
+            ("tournament.encounter_link", "ck_link_positions"),
+        )
+    ),
+    *(f"ALTER TABLE {table} VALIDATE CONSTRAINT {name}" for table, name, _ in _MATCH_TEAM_FKS),
+)
+
+_INSERT_RULE = (
+    "INSERT INTO encounter.scoring_rule"
+    " (workspace_id, preset, columns, placement_points, game_formula, end_formula)"
+    " VALUES (:workspace_id, :preset, CAST(:columns AS JSONB), CAST(:placement_points AS FLOAT8[]),"
+    " :game_formula, :end_formula) RETURNING id"
+)
+
+
+def _rule_params(workspace_id: int, rule: dict) -> dict:
+    """A rule dict as bind parameters. The array goes as a literal: an empty
+    Python list has no element type for the driver to infer."""
+    return {
+        "workspace_id": workspace_id,
+        "preset": rule["preset"],
+        "columns": json.dumps(rule["columns"]),
+        "placement_points": "{" + ",".join(repr(float(points)) for points in rule["placement_points"]) + "}",
+        "game_formula": rule["game_formula"],
+        "end_formula": rule["end_formula"],
+    }
+
+
+def _write_many(bind, statement: str, rows: list[dict]) -> None:
+    """One executemany for rows the converters had to build in Python.
+
+    ponytail: parameter sets, not a temporary table -- psycopg pipelines them,
+    and a cutover window is allowed to take minutes.
+    """
+    if rows:
+        bind.execute(sa.text(statement), rows)
+
+
+def _scoring_rules(bind) -> None:
+    """One rule per stage, plus one ``wins`` rule per tournament for the
+    encounters that belong to no stage (freeplay, imports)."""
+    stages = (
+        bind.execute(
+            sa.text(
+                "SELECT s.id, s.stage_type::text AS stage_type, s.ffa_columns, s.ffa_formula,"
+                " s.ffa_placement_points, t.workspace_id"
+                " FROM tournament.stage s JOIN tournament.tournament t ON t.id = s.tournament_id"
+                " WHERE s.scoring_rule_id IS NULL ORDER BY s.id"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    for stage in stages:
+        rule = scoring_rule_for_stage(
+            stage["stage_type"], stage["ffa_columns"], stage["ffa_formula"], stage["ffa_placement_points"]
+        )
+        rule_id = bind.execute(sa.text(_INSERT_RULE), _rule_params(stage["workspace_id"], rule)).scalar_one()
+        bind.execute(
+            sa.text("UPDATE tournament.stage SET scoring_rule_id = :rule_id WHERE id = :stage_id"),
+            {"rule_id": rule_id, "stage_id": stage["id"]},
+        )
+
+    stageless = (
+        bind.execute(
+            sa.text(
+                "SELECT DISTINCT t.id, t.workspace_id FROM encounter.encounter e"
+                " JOIN tournament.tournament t ON t.id = e.tournament_id"
+                " WHERE e.stage_id IS NULL AND e.scoring_rule_id IS NULL ORDER BY 1"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    for tournament in stageless:
+        rule_id = bind.execute(
+            sa.text(_INSERT_RULE), _rule_params(tournament["workspace_id"], wins_rule())
+        ).scalar_one()
+        bind.execute(
+            sa.text(
+                "UPDATE encounter.encounter SET scoring_rule_id = :rule_id"
+                " WHERE tournament_id = :tournament_id AND stage_id IS NULL AND scoring_rule_id IS NULL"
+            ),
+            {"rule_id": rule_id, "tournament_id": tournament["id"]},
+        )
+
+
+def _participations(bind) -> None:
+    """The two sides of a duel become seats 1 and 2; a lobby's participants keep
+    their slots. An empty seat (TBD) gets no row at all."""
+    duels = (
+        bind.execute(
+            sa.text(
+                "SELECT e.id, e.tournament_id, e.home_team_id, e.away_team_id, e.home_score, e.away_score,"
+                " e.status::text = 'COMPLETED' AS completed,"
+                " left(home.name, 255) AS home_name, left(away.name, 255) AS away_name"
+                " FROM encounter.encounter e"
+                " LEFT JOIN tournament.team home ON home.id = e.home_team_id"
+                " LEFT JOIN tournament.team away ON away.id = e.away_team_id"
+                " WHERE e.format = 'duel' AND (e.home_team_id IS NOT NULL OR e.away_team_id IS NOT NULL)"
+                "   AND NOT EXISTS (SELECT 1 FROM encounter.team t WHERE t.encounter_id = e.id)"
+                " ORDER BY e.id"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    rows: list[dict] = []
+    for duel in duels:
+        places = duel_placements(duel["home_score"] or 0, duel["away_score"] or 0, duel["completed"])
+        seats = (
+            (1, duel["home_team_id"], duel["home_name"], duel["home_score"], places[0]),
+            (2, duel["away_team_id"], duel["away_name"], duel["away_score"], places[1]),
+        )
+        for slot, team_id, name, score, placement in seats:
+            if team_id is None:
+                continue
+            rows.append(
+                {
+                    "encounter_id": duel["id"],
+                    "tournament_id": duel["tournament_id"],
+                    "slot": slot,
+                    "team_id": team_id,
+                    "name": name,
+                    "score": float(score or 0),
+                    "placement": placement,
+                }
+            )
+    _write_many(
+        bind,
+        "INSERT INTO encounter.team (encounter_id, tournament_id, slot, team_id, name, score, placement)"
+        " VALUES (:encounter_id, :tournament_id, :slot, :team_id, :name, :score, :placement)",
+        rows,
+    )
+    # Lobby scores and placements are the level-2 calculator's answer, which runs
+    # in Python after the migration (backend/scripts/enclayer01_recompute_lobbies.py).
+    op.execute(_FFA_PARTICIPATIONS)
+
+
+def _game_results(bind) -> None:
+    """Accepted game results, per participation."""
+    op.execute(_GAME_TEAM_ROWS)
+    games = (
+        bind.execute(
+            sa.text(
+                "SELECT g.id AS game_id, g.accepted_home_score AS home_score, g.accepted_away_score AS away_score,"
+                " first.id AS first_team_id, second.id AS second_team_id"
+                " FROM encounter.game g"
+                " JOIN encounter.team first ON first.encounter_id = g.encounter_id AND first.slot = 1"
+                " JOIN encounter.team second ON second.encounter_id = g.encounter_id AND second.slot = 2"
+                " WHERE g.accepted_home_score IS NOT NULL AND g.accepted_away_score IS NOT NULL"
+                " ORDER BY g.id"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    rows: list[dict] = []
+    for game in games:
+        places = duel_placements(game["home_score"], game["away_score"], True)
+        rows.append(
+            {
+                "game_id": game["game_id"],
+                "encounter_team_id": game["first_team_id"],
+                "score": game["home_score"],
+                "placement": places[0],
+            }
+        )
+        rows.append(
+            {
+                "game_id": game["game_id"],
+                "encounter_team_id": game["second_team_id"],
+                "score": game["away_score"],
+                "placement": places[1],
+            }
+        )
+    _write_many(
+        bind,
+        "UPDATE encounter.game_team SET score = :score, placement = :placement"
+        " WHERE game_id = :game_id AND encounter_team_id = :encounter_team_id",
+        rows,
+    )
+    for statement in _GAME_RESULTS:
         op.execute(statement)
 
-    # The data half of this revision follows here. It backfills every column
-    # added above, then SET NOT NULL / VALIDATE CONSTRAINT, and creates
-    # ``uq_pick_ban_submission_step_team_attempt`` (session_id, step_index,
-    # encounter_team_id, attempt) NULLS NOT DISTINCT -- which cannot be built
-    # before ``encounter_team_id`` is filled, since every existing row would
-    # collide on NULL.
+
+def _rulesets(bind) -> None:
+    """``home``/``away`` actors become slots, in the configs and in the snapshot
+    every running room took of its config (§13.7)."""
+    for table in ("tournament.pick_ban_config", "encounter.pick_ban_session"):
+        documents = (
+            bind.execute(
+                sa.text(
+                    f"SELECT id, ruleset_json FROM {table}"
+                    """ WHERE ruleset_json::text ~ '"actors"\\s*:\\s*"(home|away)"' ORDER BY id"""
+                )
+            )
+            .mappings()
+            .all()
+        )
+        _write_many(
+            bind,
+            f"UPDATE {table} SET ruleset_json = CAST(:ruleset AS JSON) WHERE id = :id",
+            [{"id": row["id"], "ruleset": json.dumps(rewrite_ruleset(row["ruleset_json"]))} for row in documents],
+        )
+
+
+def _audit(bind) -> None:
+    """The journal's score pairs and lobby blobs become one shape over
+    participations, and the rows get the versions they never had."""
+    participations = (
+        bind.execute(
+            sa.text(
+                "SELECT t.encounter_id, t.id, t.slot, t.team_id FROM encounter.team t"
+                " WHERE EXISTS (SELECT 1 FROM encounter.result_audit a WHERE a.encounter_id = t.encounter_id)"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    by_slot: dict[int, dict[int, int]] = {}
+    by_team: dict[int, dict[int, int]] = {}
+    for row in participations:
+        by_slot.setdefault(row["encounter_id"], {})[row["slot"]] = row["id"]
+        if row["team_id"] is not None:
+            by_team.setdefault(row["encounter_id"], {})[row["team_id"]] = row["id"]
+
+    rows: list[dict] = []
+    audit = bind.execute(
+        sa.text(
+            "SELECT id, encounter_id, home_score_before, away_score_before, home_score_after, away_score_after,"
+            ' ffa_results_json, game_id, adopted_team_id FROM encounter.result_audit WHERE "after" IS NULL'
+            " ORDER BY id"
+        )
+    ).mappings()
+    for row in audit:
+        teams = by_team.get(row["encounter_id"], {})
+        snapshot = audit_snapshot(dict(row), by_slot.get(row["encounter_id"], {}), teams)
+        rows.append(
+            {
+                "id": row["id"],
+                "before": None if snapshot["before"] is None else json.dumps(snapshot["before"]),
+                "after": json.dumps(snapshot["after"]),
+                "snapshot_scope": snapshot["snapshot_scope"],
+                "adopted_team_id": teams.get(row["adopted_team_id"]),
+            }
+        )
+    _write_many(
+        bind,
+        'UPDATE encounter.result_audit SET "before" = CAST(:before AS JSONB), "after" = CAST(:after AS JSONB),'
+        " snapshot_scope = :snapshot_scope, adopted_team_id = :adopted_team_id WHERE id = :id",
+        rows,
+    )
+    for statement in _AUDIT_VERSIONS:
+        op.execute(statement)
+
+
+def _result_source(bind) -> None:
+    """Where each confirmed encounter's official result came from (D57)."""
+    encounters = (
+        bind.execute(
+            sa.text(
+                "SELECT e.id, e.home_score, e.away_score, agg.first_wins, agg.second_wins, agg.games"
+                " FROM encounter.encounter e"
+                " LEFT JOIN LATERAL ("
+                "   SELECT count(*) FILTER (WHERE g.accepted_home_score > g.accepted_away_score) AS first_wins,"
+                "          count(*) FILTER (WHERE g.accepted_away_score > g.accepted_home_score) AS second_wins,"
+                "          count(*) AS games"
+                "     FROM encounter.game g"
+                "    WHERE g.encounter_id = e.id AND g.state::text = 'confirmed'"
+                "      AND g.accepted_home_score IS NOT NULL AND g.accepted_away_score IS NOT NULL) agg ON TRUE"
+                " WHERE e.result_status::text = 'confirmed' AND e.result_source IS NULL"
+                " ORDER BY e.id"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    rows = [
+        {
+            "id": row["id"],
+            "result_source": result_source_for(
+                True,
+                (row["home_score"] or 0, row["away_score"] or 0),
+                (row["first_wins"], row["second_wins"]) if row["games"] else None,
+            ),
+        }
+        for row in encounters
+    ]
+    _write_many(bind, "UPDATE encounter.encounter SET result_source = :result_source WHERE id = :id", rows)
+
+
+def _backfill() -> None:
+    """§13.8, row by row: owner keys, rules, seats, rosters, results, journal."""
+    bind = op.get_bind()
+    for statement in _DISCIPLINE:
+        op.execute(statement)
+    # FIRST of everything that touches an encounter row: ``ck_encounter_confirmed_source``
+    # was added NOT VALID, which still binds every row an UPDATE rewrites, and a
+    # confirmed encounter without a source fails it. Nothing here needs the
+    # participations -- the answer comes from the stored score and the games.
+    _result_source(bind)
+    _scoring_rules(bind)
+    for statement in _ENCOUNTER_COLUMNS:
+        op.execute(statement)
+    _participations(bind)
+    for statement in _ROSTERS:
+        op.execute(statement)
+    _game_results(bind)
+    for statement in (*_CLAIMS_AND_REPORTS, *_PICK_BAN, _LINKS):
+        op.execute(statement)
+    _rulesets(bind)
+    _audit(bind)
+    for statement in _FINALIZE:
+        op.execute(statement)
+
+
+def upgrade() -> None:
+    _take_locks()
+    _preflight()
+    for statement in (*_SCHEMAS_AND_TYPES, *_MOVE_TABLES, *_OWNER_KEYS, *_NEW_TABLES, *_RESHAPE, *_EXTERNAL):
+        op.execute(statement)
+    _backfill()
 
 
 def downgrade() -> None:
