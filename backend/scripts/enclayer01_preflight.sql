@@ -52,3 +52,26 @@ SELECT c.id AS map_code_id, r.encounter_id, c.map_index
                 WHERE g.encounter_id = r.encounter_id AND g.position = c.map_index
                   AND g.state <> 'cancelled')
  ORDER BY c.id;
+
+-- Beyond §13.8's four: two states the revision cannot carry across and will not
+-- guess at either. Both are already forbidden by a validated legacy CHECK or by
+-- the data model, so they are expected to be empty forever -- they are here so
+-- that a database where one is not stops the cutover BEFORE the lock is taken,
+-- not halfway through the backfill. The revision runs these two as well.
+
+\echo '5. game result placement is below 1, which encounter.game_team cannot store'
+SELECT r.id AS game_result_id, r.game_id, r.team_id, r.placement
+  FROM tournament.encounter_game_result r
+ WHERE r.placement IS NOT NULL AND r.placement < 1
+ ORDER BY r.id;
+
+\echo '6. journal row adopted a team that holds no seat in its encounter'
+SELECT a.id AS result_audit_id, a.encounter_id, a.adopted_team_id
+  FROM tournament.encounter_result_audit a
+  JOIN tournament.encounter e ON e.id = a.encounter_id
+ WHERE a.adopted_team_id IS NOT NULL
+   AND a.adopted_team_id IS DISTINCT FROM e.home_team_id
+   AND a.adopted_team_id IS DISTINCT FROM e.away_team_id
+   AND NOT EXISTS (SELECT 1 FROM tournament.encounter_participant p
+                    WHERE p.encounter_id = a.encounter_id AND p.team_id = a.adopted_team_id)
+ ORDER BY a.id;

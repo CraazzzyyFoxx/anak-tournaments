@@ -690,12 +690,45 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
     ),
 )
 
+#: Two more questions, beyond §13.8's four. They are not transfer decisions --
+#: both are states a validated legacy CHECK or a column default already forbids
+#: (``ck_encounter_game_result_placement``, ``encounter_game_result.stats NOT
+#: NULL``) or that the data model has no answer for. They are here because the
+#: cost is one cheap query and the alternative is the backfill aborting halfway
+#: through the ACCESS EXCLUSIVE window on a row the operator could have seen
+#: days earlier. Like the four above, they stop the revision with the ids.
+GUARDS: tuple[tuple[str, str], ...] = (
+    (
+        "game result placement is below 1, which encounter.game_team cannot store",
+        """
+        SELECT r.id AS game_result_id, r.game_id, r.team_id, r.placement
+          FROM tournament.encounter_game_result r
+         WHERE r.placement IS NOT NULL AND r.placement < 1
+         ORDER BY r.id
+        """,
+    ),
+    (
+        "journal row adopted a team that holds no seat in its encounter",
+        """
+        SELECT a.id AS result_audit_id, a.encounter_id, a.adopted_team_id
+          FROM tournament.encounter_result_audit a
+          JOIN tournament.encounter e ON e.id = a.encounter_id
+         WHERE a.adopted_team_id IS NOT NULL
+           AND a.adopted_team_id IS DISTINCT FROM e.home_team_id
+           AND a.adopted_team_id IS DISTINCT FROM e.away_team_id
+           AND NOT EXISTS (SELECT 1 FROM tournament.encounter_participant p
+                            WHERE p.encounter_id = a.encounter_id AND p.team_id = a.adopted_team_id)
+         ORDER BY a.id
+        """,
+    ),
+)
+
 #: How many offending rows the error message carries; the rest are counted.
 PREFLIGHT_SAMPLE = 20
 
 
 def _preflight() -> None:
-    """Run the four checks and stop the revision with the offending ids.
+    """Run the checks and stop the revision with the offending ids.
 
     Runs AFTER ``_take_locks`` and before the first DDL statement: a SELECT
     issued first would take ACCESS SHARE on the very tables the revision then
@@ -704,7 +737,7 @@ def _preflight() -> None:
     """
     bind = op.get_bind()
     failures: list[str] = []
-    for question, query in PREFLIGHT:
+    for question, query in (*PREFLIGHT, *GUARDS):
         rows = bind.execute(sa.text(query)).mappings().all()
         if not rows:
             continue
@@ -742,8 +775,20 @@ def scoring_rule_for_stage(stage_type: str, ffa_columns, ffa_formula: str | None
 
     A bracket stage's ``ffa_*`` columns are the table defaults nobody entered;
     carrying them would compile a formula the ``wins`` preset never evaluates.
+
+    ``ffa_league`` is the only lobby stage type there is -- in the PG type and in
+    ``shared.core.enums.StageType`` -- and the two exact-match filters that
+    follow from it are load-bearing: a lobby stage mapped to ``wins`` would be
+    skipped by ``enclayer01_recompute_lobbies.py``, which selects on
+    ``preset == 'points'``, and would keep ``score = 0`` forever with nothing
+    raised. So an unknown ``ffa_`` type stops the revision instead.
     """
     if stage_type != "ffa_league":
+        if stage_type.startswith("ffa_"):
+            raise RuntimeError(
+                f"enclayer01 has no scoring rule for stage type {stage_type!r}:"
+                " map it like 'ffa_league' before migrating"
+            )
         return wins_rule()
     return {
         "preset": "points",
@@ -964,8 +1009,14 @@ _GAME_TEAM_ROWS = """
 """
 
 _GAME_RESULTS = (
+    # ``column_values`` is NOT NULL here while ``stats`` is only NOT NULL over
+    # there: COALESCE costs nothing and removes the dependency entirely. The
+    # placement comes across raw -- ``ck_encounter_game_result_placement``
+    # already says it is NULL or >= 1, and a row that somehow is not was named
+    # by the guard above rather than rounded up to a place nobody finished in.
     """
-    UPDATE encounter.game_team gt SET placement = r.placement, column_values = r.stats
+    UPDATE encounter.game_team gt
+       SET placement = r.placement, column_values = COALESCE(r.stats, '{}'::jsonb)
       FROM tournament.encounter_game_result r
       JOIN encounter.team et ON et.encounter_id = r.encounter_id AND et.team_id = r.team_id
      WHERE gt.game_id = r.game_id AND gt.encounter_team_id = et.id
@@ -1456,6 +1507,7 @@ def _audit(bind) -> None:
             by_team.setdefault(row["encounter_id"], {})[row["team_id"]] = row["id"]
 
     rows: list[dict] = []
+    orphans: list[tuple[int, int, int]] = []
     audit = bind.execute(
         sa.text(
             "SELECT id, encounter_id, home_score_before, away_score_before, home_score_after, away_score_after,"
@@ -1466,14 +1518,32 @@ def _audit(bind) -> None:
     for row in audit:
         teams = by_team.get(row["encounter_id"], {})
         snapshot = audit_snapshot(dict(row), by_slot.get(row["encounter_id"], {}), teams)
+        adopted = row["adopted_team_id"]
+        # ``adopted_team_id`` is the SAME column changing meaning, not a copy:
+        # writing NULL over an id that resolves to no seat would destroy the
+        # only record of whose report was taken as truth. The guard above means
+        # this cannot happen; if it ever does, the cutover stops with the rows.
+        if adopted is not None and adopted not in teams:
+            orphans.append((row["id"], row["encounter_id"], adopted))
+            continue
         rows.append(
             {
                 "id": row["id"],
                 "before": None if snapshot["before"] is None else json.dumps(snapshot["before"]),
                 "after": json.dumps(snapshot["after"]),
                 "snapshot_scope": snapshot["snapshot_scope"],
-                "adopted_team_id": teams.get(row["adopted_team_id"]),
+                "adopted_team_id": None if adopted is None else teams[adopted],
             }
+        )
+    if orphans:
+        listed = "; ".join(
+            f"result_audit {audit_id} (encounter {encounter_id}) adopted team {team_id}"
+            for audit_id, encounter_id, team_id in orphans[:PREFLIGHT_SAMPLE]
+        )
+        rest = len(orphans) - PREFLIGHT_SAMPLE
+        raise RuntimeError(
+            f"enclayer01 cannot remap {len(orphans)} adopted team(s) to a participation: {listed}"
+            + (f"; … {rest} more" if rest > 0 else "")
         )
     _write_many(
         bind,

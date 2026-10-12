@@ -11,6 +11,8 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 
+import pytest
+
 _PATH = pathlib.Path(__file__).resolve().parents[1] / "migrations" / "versions" / "enclayer01_encounter_layer.py"
 spec = importlib.util.spec_from_file_location("enclayer01", _PATH)
 assert spec is not None and spec.loader is not None
@@ -48,6 +50,15 @@ def test_every_other_stage_type_becomes_the_wins_preset():
             "game_formula": "win",
             "end_formula": WINS_END,
         }
+
+
+def test_an_unmapped_lobby_stage_type_stops_the_revision():
+    # ``ffa_league`` is the only ``ffa_`` member of ``StageType`` today. A new
+    # one silently scored as ``wins`` would never be picked up by the lobby
+    # recompute (it selects ``preset == 'points'``) and would keep score 0
+    # forever, so the migration refuses instead.
+    with pytest.raises(RuntimeError, match="ffa_rounds"):
+        mod.scoring_rule_for_stage("ffa_rounds", None, "score", None)
 
 
 def test_duel_placements_rank_by_score_only_once_the_encounter_is_over():
