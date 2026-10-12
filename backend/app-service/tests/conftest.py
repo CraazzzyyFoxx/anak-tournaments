@@ -114,10 +114,13 @@ class RpcHarness:
     """Registers RPC modules against a capture broker and dispatches by topic."""
 
     def __init__(self) -> None:
-        import logging
+        from loguru import logger
 
         self.broker = _CaptureBroker()
-        self.logger = logging.getLogger("app-rpc-tests")
+        # The handlers log with loguru's ``{}`` placeholders (``serve.py`` hands them a
+        # loguru logger); a stdlib logger would turn a failing RPC into a logging
+        # TypeError that hides the real exception.
+        self.logger = logger
 
     def register(self, *modules: Any) -> RpcHarness:
         for module in modules:
@@ -138,6 +141,21 @@ class RpcHarness:
         import asyncio
 
         return asyncio.run(self.call(topic, data))
+
+
+@pytest.fixture(autouse=True)
+def _drop_loop_bound_async_connections() -> Generator[None]:
+    """Forget pooled asyncpg connections once a test is over.
+
+    Tests drive the async engine through ``asyncio.run``, and every call gets a fresh
+    loop; a connection pooled by a finished loop breaks the next one ("Event loop is
+    closed", "'NoneType' object has no attribute 'send'"). ``close=False`` drops the
+    pool without touching the dead loop.
+    """
+    yield
+    from src.core import db as async_db
+
+    async_db.async_engine.sync_engine.dispose(close=False)
 
 
 @pytest.fixture(scope="session")

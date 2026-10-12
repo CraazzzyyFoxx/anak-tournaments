@@ -196,6 +196,23 @@ def test_the_opponent_filter_and_the_sort_by_round_read_the_other_seats(db_sessi
     assert in_playoffs == [seed.encounters["E1"]]
 
 
+def test_the_encounter_list_sorts_by_closeness_and_by_round(db_session) -> None:
+    async def body(seed: _Seed) -> dict[str, list[int]]:
+        found: dict[str, list[int]] = {}
+        for sort in ("closeness", "round"):
+            rows, _ = await encounter_queries.get_user_encounters_paginated(
+                db_session, seed.users["alice"], _params(sort=sort, order="desc"), seed.workspace_id
+            )
+            found[sort] = [row[0].id for row in rows]
+        return found
+
+    seed, found = _run(db_session, body)
+    # A sort key moves rows around; it never drops one, and E1, the only bracketed encounter, has a round.
+    assert sorted(found["closeness"]) == sorted(seed.encounters.values())
+    assert found["round"][0] == seed.encounters["E1"]
+    assert sorted(found["round"]) == sorted(seed.encounters.values())
+
+
 def test_opponents_and_stage_records_are_read_off_placements(db_session) -> None:
     async def body(seed: _Seed):
         opponents = await encounter_queries.get_user_opponents(db_session, seed.users["alice"], seed.workspace_id)

@@ -1096,11 +1096,12 @@ def test_get_user_encounters(
                     "sort": sort,
                     "order": order,
                     "entities": entities,
+                    "workspace_id": "all",
                 }
             ),
         },
     )
-    assert env["ok"] is True
+    assert env["ok"] is True, env
     content = env["data"]
     assert content["page"] == page
     assert content["per_page"] == per_page
