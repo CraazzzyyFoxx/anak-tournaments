@@ -41,6 +41,7 @@ PRE_REVISION = "apikeysu01"
 TEMPLATE_DB = "enclayer01_legacy_tpl"
 MIGRATED_DB = "enclayer01_migrated"
 REJECTED_DB = "enclayer01_rejected"
+LIVE_DB = "enclayer01_live_named"
 
 
 def _load(name: str, path: pathlib.Path):
@@ -561,7 +562,7 @@ def legacy_template():
         preflight = _run_checks(conn, _preflight_queries())
     yield {"ids": ids, "before": before, "preflight": preflight}
     with _connect("postgres") as admin:
-        for name in (MIGRATED_DB, REJECTED_DB, TEMPLATE_DB):
+        for name in (MIGRATED_DB, REJECTED_DB, LIVE_DB, TEMPLATE_DB):
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
@@ -1153,3 +1154,114 @@ def test_deleting_a_team_after_the_upgrade_keeps_the_encounters_it_played(migrat
         assert _scalar(tx, "SELECT count(*) FROM matches.match WHERE id = %s", (ids["match"],)) == 1
         assert _scalar(tx, "SELECT count(*) FROM encounter.team WHERE team_id IS NULL AND name = 'Team C'") == 4
     assert conn  # the module connection stays open for the tests that follow
+
+
+# --------------------------------------------------------------------------- #
+# The live database is not the chain's database
+# --------------------------------------------------------------------------- #
+
+#: The real dev database (a pg_dump restored for the rehearsal) names these
+#: differently from a database built by running the chain, and the revision used
+#: to trust the chain's names: the first rename failed with "relation
+#: ix_tournament_pick_ban_session_encounter_id does not exist" and the FK drops
+#: after it would have failed the same way. ``LIVE_NAMES`` gives a copy of the
+#: seeded template the live names before the upgrade.
+LIVE_NAMES = (
+    # an index the live database already has under its final name
+    "ALTER INDEX tournament.ix_tournament_pick_ban_session_encounter_id RENAME TO ix_pick_ban_session_encounter_id",
+    "ALTER INDEX tournament.ix_tournament_pick_ban_entry_session_id RENAME TO ix_pick_ban_entry_session_id",
+    "ALTER INDEX tournament.ix_tournament_pick_ban_entry_item_id RENAME TO ix_pick_ban_entry_item_id",
+    # indexes and a check constraint that are already (or still) under a name the revision never heard of
+    "ALTER INDEX tournament.ix_tournament_encounter_game_encounter_id RENAME TO ix_game_encounter_id",
+    "ALTER INDEX tournament.ix_tournament_encounter_game_map_id RENAME TO some_hand_made_index_on_map",
+    "ALTER INDEX tournament.uq_encounter_game_encounter_position RENAME TO some_hand_made_unique_position",
+    "ALTER TABLE tournament.encounter_game RENAME CONSTRAINT ck_encounter_game_position TO ck_game_position",
+    # foreign keys the matches.* tables got from the rename of match_assists / match_kill_feed / match_statistics
+    "ALTER TABLE matches.statistics RENAME CONSTRAINT statistics_team_id_fkey TO match_statistics_team_id_fkey",
+    "ALTER TABLE matches.kill_feed RENAME CONSTRAINT kill_feed_killer_team_id_fkey TO match_kill_feed_killer_team_id_fkey",
+    "ALTER TABLE matches.kill_feed RENAME CONSTRAINT kill_feed_victim_team_id_fkey TO match_kill_feed_victim_team_id_fkey",
+    "ALTER TABLE matches.event RENAME CONSTRAINT assists_team_id_fkey TO match_assists_team_id_fkey",
+    "ALTER TABLE matches.event RENAME CONSTRAINT assists_related_team_id_fkey TO match_assists_related_team_id_fkey",
+    # the link table's foreign keys
+    "ALTER TABLE tournament.encounter_link RENAME CONSTRAINT encounter_link_source_encounter_id_fkey TO fk_encounter_link_source",
+    "ALTER TABLE tournament.encounter_link RENAME CONSTRAINT encounter_link_target_encounter_id_fkey TO fk_encounter_link_target",
+    # the result audit's game key, and the pick-ban keys, under names of their own
+    "ALTER TABLE tournament.encounter_result_audit RENAME CONSTRAINT fk_tournament_encounter_result_audit_game_id TO fk_audit_game_by_hand",
+    "ALTER TABLE tournament.pick_ban_entry RENAME CONSTRAINT pick_ban_entry_session_id_fkey TO fk_entry_session_by_hand",
+    "ALTER TABLE tournament.pick_ban_submission RENAME CONSTRAINT pick_ban_submission_session_id_fkey TO fk_submission_session_by_hand",
+    "ALTER TABLE tournament.encounter RENAME CONSTRAINT encounter_tournament_id_fkey TO fk_encounter_tournament_by_hand",
+    "ALTER TABLE tournament.encounter RENAME CONSTRAINT encounter_home_team_id_fkey TO fk_encounter_home_by_hand",
+    "ALTER TABLE tournament.encounter RENAME CONSTRAINT encounter_away_team_id_fkey TO fk_encounter_away_by_hand",
+    "ALTER TABLE tournament.encounter_result_audit RENAME CONSTRAINT encounter_result_audit_adopted_team_id_fkey TO fk_audit_adopted_by_hand",
+)
+
+
+@pytest.fixture(scope="module")
+def live_named(legacy_template):
+    _recreate(LIVE_DB, TEMPLATE_DB)
+    with _connect(LIVE_DB) as conn:
+        for statement in LIVE_NAMES:
+            conn.execute(statement)
+    done = _alembic(LIVE_DB, "head")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(LIVE_DB) as conn:
+        yield conn
+
+
+def test_a_live_named_database_upgrades_to_the_head_with_every_constraint_validated(live_named) -> None:
+    assert _scalar(live_named, "SELECT version_num FROM public.alembic_version") == "enclayer01b"
+    assert _rows(live_named, "SELECT conrelid::regclass::text, conname FROM pg_constraint WHERE NOT convalidated") == []
+
+
+def test_indexes_end_under_their_final_names_whatever_they_were_called(live_named) -> None:
+    names = {name for (name,) in _rows(live_named, "SELECT indexname FROM pg_indexes WHERE schemaname = 'encounter'")}
+    assert {
+        "ix_game_encounter_id",
+        "ix_game_map_id",
+        "uq_game_encounter_position",
+        "ix_result_audit_game_id",
+        "ix_pick_ban_session_encounter_id",
+        "ix_pick_ban_entry_session_id",
+        "ix_pick_ban_entry_item_id",
+        "ix_pick_ban_submission_session_id",
+    } <= names
+    assert not names & {
+        "some_hand_made_index_on_map",
+        "some_hand_made_unique_position",
+        "ix_tournament_encounter_game_encounter_id",
+        "ix_tournament_encounter_game_map_id",
+        "ix_tournament_encounter_result_audit_game_id",
+        "ix_tournament_pick_ban_submission_session_id",
+    }
+
+
+def test_the_foreign_keys_the_revision_replaces_are_gone_under_every_name(live_named) -> None:
+    gone = _rows(
+        live_named,
+        "SELECT conname FROM pg_constraint WHERE conname LIKE '%by_hand' OR conname IN"
+        " ('fk_encounter_link_source', 'fk_encounter_link_target')",
+    )
+    assert gone == []
+    assert (
+        _scalar(live_named, "SELECT count(*) FROM pg_constraint WHERE conname IN ('fk_link_source', 'fk_link_target')")
+        == 2
+    )
+
+
+def test_the_match_team_keys_keep_their_live_names_and_come_back_deferred_and_validated(live_named) -> None:
+    rows = _rows(
+        live_named,
+        "SELECT conrelid::regclass::text, conname, condeferrable, convalidated FROM pg_constraint"
+        " WHERE contype = 'f' AND confrelid = 'tournament.team'::regclass AND connamespace = 'matches'::regnamespace"
+        " ORDER BY 1, 2",
+    )
+    assert [(table, name) for table, name, *_ in rows] == [
+        ("matches.event", "match_assists_related_team_id_fkey"),
+        ("matches.event", "match_assists_team_id_fkey"),
+        ("matches.kill_feed", "match_kill_feed_killer_team_id_fkey"),
+        ("matches.kill_feed", "match_kill_feed_victim_team_id_fkey"),
+        ("matches.match", "match_away_team_id_fkey"),
+        ("matches.match", "match_home_team_id_fkey"),
+        ("matches.statistics", "match_statistics_team_id_fkey"),
+    ]
+    assert all(deferrable and validated for _, _, deferrable, validated in rows)
