@@ -841,6 +841,7 @@ class AdminResultTests(ResultFlowCase):
                     reason="  ",
                     actor_user_id=self.users[0],
                 )
+        self.assertEqual(422, caught.exception.status_code)
         self.assertEqual(["reason_required"], _codes(caught.exception))
 
     async def test_an_admin_result_stands_as_source_admin(self) -> None:
