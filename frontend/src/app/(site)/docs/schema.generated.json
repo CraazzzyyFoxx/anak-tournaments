@@ -1,6 +1,6 @@
 {
   "_generated_by": "backend/scripts/export_erd.py -- do not edit by hand",
-  "alembic_head": "enclayer01",
+  "alembic_head": "enclayer01b",
   "packages": [
     {
       "key": "achievements",

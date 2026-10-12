@@ -345,6 +345,70 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
         self.assertIsNone(await self._scalar("SELECT team_id FROM encounter.team WHERE id = :p1"))
         self.assertEqual("T0", await self._scalar("SELECT name FROM encounter.team WHERE id = :p1"))
 
+    async def test_deleting_the_team_of_a_migrated_encounter_keeps_the_encounter_and_its_match(self) -> None:
+        # An encounter that existed at cutover still carries its pre-V1 side
+        # columns until enclayer02. Their old ``ON DELETE CASCADE`` to
+        # tournament.team would take the encounter -- games, claims, journal and
+        # the matches it produced -- with the team (D55).
+        tag = f"enc-{os.getpid()}-{next(_TAG)}"
+        async with self.Session() as s:
+            mode = (
+                await s.execute(
+                    sa.text(
+                        "INSERT INTO overwatch.gamemode (slug, name, image_path) VALUES (:tag, :tag, 'x') RETURNING id"
+                    ),
+                    {"tag": tag},
+                )
+            ).scalar_one()
+            map_id = (
+                await s.execute(
+                    sa.text(
+                        "INSERT INTO overwatch.map (gamemode_id, name, image_path) VALUES (:mode, :tag, 'x') RETURNING id"
+                    ),
+                    {"mode": mode, "tag": tag},
+                )
+            ).scalar_one()
+            # The match was played by two OTHER teams: a team that still has a
+            # match cannot be deleted at all (deferred NO ACTION), which is the
+            # history-protecting half and not what is under test here.
+            others = [
+                (
+                    await s.execute(
+                        sa.text(
+                            "INSERT INTO tournament.team (tournament_id, name, balancer_name)"
+                            " VALUES (:t, 'O', 'O') RETURNING id"
+                        ),
+                        self.ids,
+                    )
+                ).scalar_one()
+                for _ in range(2)
+            ]
+            await s.commit()
+        try:
+            await self._execute(
+                "UPDATE encounter.encounter SET home_team_id = :team0, away_team_id = :team2 WHERE id = :e"
+            )
+            await self._execute(
+                "INSERT INTO matches.match (home_team_id, away_team_id, home_score, away_score, encounter_id, map_id)"
+                " VALUES (:o0, :o1, 1, 0, :e, :map_id)",
+                o0=others[0],
+                o1=others[1],
+                map_id=map_id,
+            )
+
+            await self._execute("DELETE FROM tournament.team WHERE id = :team0")
+
+            for table, column in (
+                ("encounter.encounter", "id"),
+                ("encounter.game", "encounter_id"),
+                ("matches.match", "encounter_id"),
+            ):
+                with self.subTest(table=table):
+                    self.assertEqual(1, await self._scalar(f"SELECT count(*) FROM {table} WHERE {column} = :e"))
+        finally:
+            await self._execute("DELETE FROM overwatch.map WHERE id = :map_id", map_id=map_id)
+            await self._execute("DELETE FROM overwatch.gamemode WHERE id = :mode", mode=mode)
+
     # ── 14–16: cascades from each owner ──
 
     async def test_deleting_the_encounter_takes_its_whole_layer(self) -> None:

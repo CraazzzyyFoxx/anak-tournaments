@@ -29,7 +29,7 @@ import click
 import sqlalchemy as sa
 from loguru import logger
 from pydantic_settings import SettingsConfigDict
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from shared.core import enums
 from shared.core.config import BaseServiceSettings
@@ -47,12 +47,16 @@ class _ScriptSettings(BaseServiceSettings):
     )
 
 
-settings = _ScriptSettings()
+async def recompute(dry_run: bool, engine: AsyncEngine | None = None) -> int:
+    """Rewrite the standing of every ``points`` encounter. Returns rows changed.
 
-
-async def recompute(dry_run: bool) -> int:
-    """Rewrite the standing of every ``points`` encounter. Returns rows changed."""
-    engine = create_async_engine(settings.db_url_asyncpg)
+    Settings are read here, not at import: importing the module (tests, tooling)
+    must not need a configured environment. ``engine`` is for callers that
+    already hold one; it is then left open.
+    """
+    owns_engine = engine is None
+    if engine is None:
+        engine = create_async_engine(_ScriptSettings().db_url_asyncpg)
     session_maker = async_sessionmaker(engine, expire_on_commit=False)
     changed = 0
     try:
@@ -133,7 +137,8 @@ async def recompute(dry_run: bool) -> int:
                 await session.commit()
                 logger.info(f"{changed} participations rewritten")
     finally:
-        await engine.dispose()
+        if owns_engine:
+            await engine.dispose()
     return changed
 
 

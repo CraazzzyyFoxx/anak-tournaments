@@ -77,6 +77,17 @@ def test_result_source_is_games_only_when_the_stored_score_is_the_games_score():
     assert mod.result_source_for(False, (2, 0), (2, 0)) is None
 
 
+def test_a_confirmed_lobby_with_games_is_games_not_import():
+    # A lobby stores no series score and none of its games carries an accepted
+    # pair, so there is nothing to compare -- but ``import`` would freeze it
+    # against every later game correction, which only a ``games`` result follows.
+    assert mod.result_source_for(True, (0, 0), None, lobby_with_games=True) == "games"
+    # Not official yet is still no source, lobby or not.
+    assert mod.result_source_for(False, (0, 0), None, lobby_with_games=True) is None
+    # A confirmed lobby with no game to recompute from is somebody's number.
+    assert mod.result_source_for(True, (0, 0), None, lobby_with_games=False) == "import"
+
+
 def test_ruleset_actors_become_slots_and_everything_else_is_left_alone():
     assert mod.ruleset_actor("home") == "slot:1"
     assert mod.ruleset_actor("away") == "slot:2"

@@ -15,7 +15,7 @@ bind every new row immediately and are validated at the end of this same
 revision, after the data half has run. ``downgrade()`` refuses: the move is
 forward-fix only.
 
-The data half (§13.8) runs in the same transaction: four pre-flight checks that
+The data half (§13.8) runs in the same transaction: the pre-flight checks that
 stop the revision rather than guess, then the backfill of every column added
 here, then ``SET NOT NULL`` / ``VALIDATE CONSTRAINT``. Its converters are pure
 and golden-tested from ``backend/tests/test_enclayer01_convert.py``, which is why
@@ -434,6 +434,15 @@ _RESHAPE = (
     "ALTER TABLE encounter.encounter DROP CONSTRAINT ck_encounter_ffa_has_no_sides",
     # Superseded by the three-column owner key below.
     "ALTER TABLE encounter.encounter DROP CONSTRAINT encounter_tournament_id_fkey",
+    # The legacy side columns stay (unmapped) until enclayer02, but their
+    # ``ON DELETE CASCADE`` to tournament.team must not: a migrated encounter
+    # still carries its home/away ids, and deleting the team would otherwise
+    # cascade through them into the encounter, its games, claims and matches (D55).
+    """
+    ALTER TABLE encounter.encounter
+      DROP CONSTRAINT encounter_home_team_id_fkey,
+      DROP CONSTRAINT encounter_away_team_id_fkey
+    """,
     """
     ALTER TABLE encounter.encounter
       RENAME CONSTRAINT ck_encounter_result_status_matches_status TO ck_encounter_confirmed_completed
@@ -577,8 +586,9 @@ _RESHAPE = (
 #: Until V4 the stats tables keep their own ``team_id`` columns; what changes is
 #: that deleting a tournament team no longer deletes the games it played.
 #: Deferred so a cascade that removes both sides at once still commits, and
-#: ``NOT VALID`` so re-adding them does not scan 27M statistics rows under an
-#: ACCESS EXCLUSIVE lock -- the data half validates them.
+#: ``NOT VALID`` so re-adding them does not scan 27M statistics rows while the
+#: ACCESS EXCLUSIVE lock taken at the start is held. They are validated by the
+#: next revision, ``enclayer01b``, in its own transaction.
 _MATCH_TEAM_FKS = (
     ("matches.match", "match_home_team_id_fkey", "home_team_id"),
     ("matches.match", "match_away_team_id_fkey", "away_team_id"),
@@ -635,9 +645,10 @@ _EXTERNAL = (
 #: them is a decision the migration must NOT make by row order -- which role the
 #: player really had, which team they played for, which game a replay code
 #: belongs to -- so a non-empty answer stops the revision and a human resolves
-#: the rows. The same four queries live in ``backend/scripts/enclayer01_preflight.sql``
-#: so an operator can run them days before the deploy window; they are written
-#: against the PRE-move names on purpose and run before the first DDL statement.
+#: the rows. ``PREFLIGHT`` and ``GUARDS`` live, query for query, in
+#: ``backend/scripts/enclayer01_preflight.sql`` so an operator can run them days
+#: before the deploy window; they are written against the PRE-move names on
+#: purpose and run before the first DDL statement.
 PREFLIGHT: tuple[tuple[str, str], ...] = (
     (
         "tournament.player rows of one workspace member in one team disagree on role or rank",
@@ -693,13 +704,17 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
     ),
 )
 
-#: Two more questions, beyond §13.8's four. They are not transfer decisions --
-#: both are states a validated legacy CHECK or a column default already forbids
+#: Further questions, beyond §13.8's four. Not transfer decisions: each is a
+#: state a validated legacy CHECK or a column default already forbids
 #: (``ck_encounter_game_result_placement``, ``encounter_game_result.stats NOT
-#: NULL``) or that the data model has no answer for. They are here because the
-#: cost is one cheap query and the alternative is the backfill aborting halfway
-#: through the ACCESS EXCLUSIVE window on a row the operator could have seen
-#: days earlier. Like the four above, they stop the revision with the ids.
+#: NULL``), that the data model has no answer for, or that one of this
+#: revision's immediate constraints (a link's unique target slot, a seat's
+#: source key, the bracket row's owner keys, ``ck_encounter_best_of``,
+#: ``ck_pick_ban_entry_picked_by``) or the lobby recompute would reject later.
+#: They are here because the cost is one cheap query and the alternative is the
+#: backfill aborting halfway through the ACCESS EXCLUSIVE window on a row the
+#: operator could have seen days earlier. Like the four above, they stop the
+#: revision with the ids.
 GUARDS: tuple[tuple[str, str], ...] = (
     (
         "game result placement is below 1, which encounter.game_team cannot store",
@@ -722,6 +737,90 @@ GUARDS: tuple[tuple[str, str], ...] = (
            AND NOT EXISTS (SELECT 1 FROM tournament.encounter_participant p
                             WHERE p.encounter_id = a.encounter_id AND p.team_id = a.adopted_team_id)
          ORDER BY a.id
+        """,
+    ),
+    (
+        "link repeats a target slot, joins an encounter to itself, or crosses tournaments",
+        """
+        SELECT l.id AS link_id, l.source_encounter_id, l.target_encounter_id, l.target_slot::text AS target_slot
+          FROM tournament.encounter_link l
+          JOIN tournament.encounter s ON s.id = l.source_encounter_id
+          JOIN tournament.encounter t ON t.id = l.target_encounter_id
+         WHERE s.tournament_id <> t.tournament_id
+            OR l.source_encounter_id = l.target_encounter_id
+            OR EXISTS (SELECT 1 FROM tournament.encounter_link o
+                        WHERE o.target_encounter_id = l.target_encounter_id
+                          AND o.target_slot = l.target_slot AND o.id <> l.id)
+         ORDER BY l.id
+        """,
+    ),
+    (
+        "encounter best_of is below 1",
+        """
+        SELECT id AS encounter_id, best_of FROM tournament.encounter WHERE best_of < 1 ORDER BY id
+        """,
+    ),
+    (
+        "duel seats the same team on both sides",
+        """
+        SELECT id AS encounter_id, home_team_id AS team_id
+          FROM tournament.encounter
+         WHERE home_team_id = away_team_id
+         ORDER BY id
+        """,
+    ),
+    (
+        "seated team belongs to another tournament than its encounter",
+        """
+        SELECT e.id AS encounter_id, e.tournament_id, t.id AS team_id, t.tournament_id AS team_tournament_id
+          FROM tournament.encounter e
+          JOIN tournament.team t ON t.id IN (e.home_team_id, e.away_team_id)
+         WHERE t.tournament_id <> e.tournament_id
+         UNION
+        SELECT e.id, e.tournament_id, t.id, t.tournament_id
+          FROM tournament.encounter_participant p
+          JOIN tournament.encounter e ON e.id = p.encounter_id
+          JOIN tournament.team t ON t.id = p.team_id
+         WHERE t.tournament_id <> e.tournament_id
+         ORDER BY 1, 3
+        """,
+    ),
+    (
+        "encounter sits in a stage of another tournament, or in a stage item of another stage",
+        """
+        SELECT e.id AS encounter_id, e.tournament_id, e.stage_id, e.stage_item_id
+          FROM tournament.encounter e
+         WHERE (e.stage_id IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM tournament.stage s
+                                 WHERE s.id = e.stage_id AND s.tournament_id = e.tournament_id))
+            OR (e.stage_item_id IS NOT NULL AND e.stage_id IS NOT NULL
+                AND NOT EXISTS (SELECT 1 FROM tournament.stage_item i
+                                 WHERE i.id = e.stage_item_id AND i.stage_id = e.stage_id))
+         ORDER BY e.id
+        """,
+    ),
+    (
+        "pick-ban entry was picked or protected by a side that holds no seat in its encounter",
+        """
+        SELECT en.id AS pick_ban_entry_id, s.encounter_id, v.column_name, v.side
+          FROM tournament.pick_ban_entry en
+          JOIN tournament.pick_ban_session s ON s.id = en.session_id
+          JOIN tournament.encounter e ON e.id = s.encounter_id
+          CROSS JOIN LATERAL (VALUES ('picked_by', en.picked_by::text),
+                                     ('protected_by', en.protected_by::text)) AS v(column_name, side)
+         WHERE (v.side = 'home' AND e.home_team_id IS NULL)
+            OR (v.side = 'away' AND e.away_team_id IS NULL)
+         ORDER BY en.id, v.column_name
+        """,
+    ),
+    (
+        "ffa encounter is not in an ffa_league stage, so it would be scored by wins and skipped by the lobby recompute",
+        """
+        SELECT e.id AS encounter_id, e.stage_id, s.stage_type::text AS stage_type
+          FROM tournament.encounter e
+          LEFT JOIN tournament.stage s ON s.id = e.stage_id
+         WHERE e.format = 'ffa' AND s.stage_type::text IS DISTINCT FROM 'ffa_league'
+         ORDER BY e.id
         """,
     ),
 )
@@ -814,18 +913,30 @@ def duel_placements(slot1_score: int, slot2_score: int, completed: bool) -> tupl
     return (1, 2) if slot1_score > slot2_score else (2, 1)
 
 
-def result_source_for(confirmed: bool, stored: tuple[int, int], games_aggregate: tuple[int, int] | None) -> str | None:
+def result_source_for(
+    confirmed: bool,
+    stored: tuple[int, int],
+    games_aggregate: tuple[int, int] | None,
+    *,
+    lobby_with_games: bool = False,
+) -> str | None:
     """Where a confirmed encounter's official result came from (D57).
 
     ``games`` only when the stored score IS the confirmed games' score --
     anything else is a number somebody put there (an admin, a Challonge import)
     and must not be presented as recomputable from an incomplete set of games.
     ``games_aggregate`` is None when there is nothing comparable to aggregate:
-    no confirmed game carries a score pair (every lobby, and any series
-    confirmed without its games).
+    no confirmed game carries a score pair (a series confirmed without its games).
+
+    A lobby is the exception: it never stored a series score (its standing is
+    the formula over its games, always was), so a confirmed lobby that has
+    confirmed games IS ``games`` -- ``import`` would freeze it against every
+    later game correction and rule edit, which only ``games`` results follow.
     """
     if not confirmed:
         return None
+    if lobby_with_games:
+        return "games"
     return "games" if games_aggregate is not None and tuple(games_aggregate) == tuple(stored) else "import"
 
 
@@ -854,6 +965,32 @@ def rewrite_ruleset(document):
         ]
         rewritten.append({**phase, "steps": steps})
     return {**document, "phases": rewritten}
+
+
+def pool_snapshot(
+    mode: str | None,
+    rotation: str | None,
+    kind: str,
+    best_of: int,
+    item_ids: Sequence[int],
+    slot_item_ids: Sequence[Sequence[int]],
+) -> dict:
+    """The pool a running room was opened against, in the shape the room reads.
+
+    Mirrors ``pick_ban_session.pool_snapshot`` (the writer of every new room):
+    ``{mode, rotation, progressive, items, slots: [[item ids]]}``, slots in
+    position order and cut to the series' ``best_of``. ``progressive`` is true
+    for slot mode and for every hero room -- a missing flag stops the next round
+    from ever opening. A room whose config was deleted (``mode is None``) keeps
+    an empty pool, still progressive when it is a hero room.
+    """
+    return {
+        "mode": mode or "pool",
+        "rotation": rotation or "fixed",
+        "progressive": mode == "slots" or kind == "hero",
+        "items": list(item_ids),
+        "slots": [list(items) for items in slot_item_ids[:best_of]],
+    }
 
 
 #: The two keys a notification payload carried while an encounter had a home
@@ -1184,30 +1321,6 @@ _PICK_BAN = (
      WHERE seed.encounter_id = t.encounter_id AND t.slot IN (1, 2) AND t.seed IS NULL
        AND (CASE t.slot WHEN 1 THEN seed.home_seed WHEN 2 THEN seed.away_seed END) IS NOT NULL
     """,
-    # The pool a running room was opened against, snapshotted off the config as
-    # it stands now: ``{mode, items, slots}``, slots carrying their reserve and
-    # their own items. A room whose config was deleted keeps an empty pool.
-    """
-    UPDATE encounter.pick_ban_session s
-       SET pool_json = COALESCE((
-           SELECT json_build_object(
-               'mode', c.mode::text,
-               'items', COALESCE((SELECT json_agg(i.item_id ORDER BY i.sort_order, i.item_id)
-                                    FROM tournament.pick_ban_config_item i
-                                   WHERE i.pick_ban_config_id = c.id), '[]'::json),
-               'slots', COALESCE((SELECT json_agg(json_build_object(
-                                      'position', sl.position,
-                                      'reserve_item_id', sl.reserve_item_id,
-                                      'items', COALESCE((SELECT json_agg(si.item_id ORDER BY si.sort_order, si.item_id)
-                                                           FROM tournament.pick_ban_config_slot_item si
-                                                          WHERE si.pick_ban_config_slot_id = sl.id), '[]'::json))
-                                      ORDER BY sl.position)
-                                    FROM tournament.pick_ban_config_slot sl
-                                   WHERE sl.pick_ban_config_id = c.id), '[]'::json))
-             FROM tournament.pick_ban_config c WHERE c.id = s.config_id),
-           json_build_object('mode', NULL, 'items', '[]'::json, 'slots', '[]'::json))
-     WHERE s.pool_json IS NULL
-    """,
 )
 
 #: Advancement stops speaking of winners and sides: a link is "the Nth place of
@@ -1276,8 +1389,9 @@ _FINALIZE = (
         ON encounter.pick_ban_submission (session_id, step_index, encounter_team_id, attempt) NULLS NOT DISTINCT
     """,
     # Every constraint the schema half could only add NOT VALID, now that the
-    # data behind it exists. ``ck_encounter_result_version`` is not here: it was
-    # added VALID against a column that was born defaulted to 0.
+    # data behind it exists, except the ``matches.*`` foreign keys (``enclayer01b``).
+    # ``ck_encounter_result_version`` is not here: it was added VALID against a
+    # column that was born defaulted to 0.
     *(
         f"ALTER TABLE {table} VALIDATE CONSTRAINT {name}"
         for table, name in (
@@ -1308,7 +1422,6 @@ _FINALIZE = (
             ("tournament.encounter_link", "ck_link_positions"),
         )
     ),
-    *(f"ALTER TABLE {table} VALIDATE CONSTRAINT {name}" for table, name, _ in _MATCH_TEAM_FKS),
 )
 
 _INSERT_RULE = (
@@ -1511,6 +1624,66 @@ def _rulesets(bind) -> None:
         )
 
 
+def _pools(bind) -> None:
+    """Every room opened before the cutover gets the pool snapshot the V1 room
+    reads, built off its config as it stands now (D6)."""
+    sessions = (
+        bind.execute(
+            sa.text(
+                "SELECT s.id, s.kind::text AS kind, s.config_id, e.best_of,"
+                " c.mode::text AS mode, c.first_ban_rotation::text AS rotation"
+                " FROM encounter.pick_ban_session s"
+                " JOIN encounter.encounter e ON e.id = s.encounter_id"
+                " LEFT JOIN tournament.pick_ban_config c ON c.id = s.config_id"
+                " WHERE s.pool_json IS NULL ORDER BY s.id"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    config_ids = sorted({row["config_id"] for row in sessions if row["config_id"] is not None})
+    items: dict[int, list[int]] = {}
+    slots: dict[int, dict[int, list[int]]] = {}
+    if config_ids:
+        for row in bind.execute(
+            sa.text(
+                "SELECT pick_ban_config_id, item_id FROM tournament.pick_ban_config_item"
+                " WHERE pick_ban_config_id = ANY(:ids) ORDER BY pick_ban_config_id, sort_order, item_id"
+            ),
+            {"ids": config_ids},
+        ).mappings():
+            items.setdefault(row["pick_ban_config_id"], []).append(row["item_id"])
+        # LEFT JOIN: a slot with no items is still a slot, and the room indexes
+        # slots by round.
+        for row in bind.execute(
+            sa.text(
+                "SELECT sl.pick_ban_config_id, sl.position, si.item_id"
+                " FROM tournament.pick_ban_config_slot sl"
+                " LEFT JOIN tournament.pick_ban_config_slot_item si ON si.pick_ban_config_slot_id = sl.id"
+                " WHERE sl.pick_ban_config_id = ANY(:ids)"
+                " ORDER BY sl.pick_ban_config_id, sl.position, si.sort_order, si.item_id"
+            ),
+            {"ids": config_ids},
+        ).mappings():
+            by_position = slots.setdefault(row["pick_ban_config_id"], {})
+            by_position.setdefault(row["position"], [])
+            if row["item_id"] is not None:
+                by_position[row["position"]].append(row["item_id"])
+    rows: list[dict] = []
+    for row in sessions:
+        by_position = slots.get(row["config_id"], {})
+        pool = pool_snapshot(
+            row["mode"],
+            row["rotation"],
+            row["kind"],
+            row["best_of"],
+            items.get(row["config_id"], []),
+            [by_position[position] for position in sorted(by_position)],
+        )
+        rows.append({"id": row["id"], "pool": json.dumps(pool)})
+    _write_many(bind, "UPDATE encounter.pick_ban_session SET pool_json = CAST(:pool AS JSON) WHERE id = :id", rows)
+
+
 def _notifications(bind) -> None:
     """Stored ``encounter.scheduled``/``encounter.dispute_review`` rows say
     ``team_names``, not home/away (§13.7): the inbox renders nothing else."""
@@ -1606,15 +1779,17 @@ def _result_source(bind) -> None:
     encounters = (
         bind.execute(
             sa.text(
-                "SELECT e.id, e.home_score, e.away_score, agg.first_wins, agg.second_wins, agg.games"
+                "SELECT e.id, e.home_score, e.away_score, e.format = 'ffa' AS lobby,"
+                " agg.first_wins, agg.second_wins, agg.scored_games, agg.confirmed_games"
                 " FROM encounter.encounter e"
                 " LEFT JOIN LATERAL ("
                 "   SELECT count(*) FILTER (WHERE g.accepted_home_score > g.accepted_away_score) AS first_wins,"
                 "          count(*) FILTER (WHERE g.accepted_away_score > g.accepted_home_score) AS second_wins,"
-                "          count(*) AS games"
+                "          count(*) FILTER (WHERE g.accepted_home_score IS NOT NULL"
+                "                             AND g.accepted_away_score IS NOT NULL) AS scored_games,"
+                "          count(*) AS confirmed_games"
                 "     FROM encounter.game g"
-                "    WHERE g.encounter_id = e.id AND g.state::text = 'confirmed'"
-                "      AND g.accepted_home_score IS NOT NULL AND g.accepted_away_score IS NOT NULL) agg ON TRUE"
+                "    WHERE g.encounter_id = e.id AND g.state::text = 'confirmed') agg ON TRUE"
                 " WHERE e.result_status::text = 'confirmed' AND e.result_source IS NULL"
                 " ORDER BY e.id"
             )
@@ -1628,7 +1803,8 @@ def _result_source(bind) -> None:
             "result_source": result_source_for(
                 True,
                 (row["home_score"] or 0, row["away_score"] or 0),
-                (row["first_wins"], row["second_wins"]) if row["games"] else None,
+                (row["first_wins"], row["second_wins"]) if row["scored_games"] else None,
+                lobby_with_games=bool(row["lobby"]) and row["confirmed_games"] > 0,
             ),
         }
         for row in encounters
@@ -1655,6 +1831,7 @@ def _backfill() -> None:
     _game_results(bind)
     for statement in (*_CLAIMS_AND_REPORTS, *_PICK_BAN, _LINKS):
         op.execute(statement)
+    _pools(bind)
     _rulesets(bind)
     _notifications(bind)
     _audit(bind)
