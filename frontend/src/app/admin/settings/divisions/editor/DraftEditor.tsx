@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { useRouter } from "next/navigation";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Star, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
@@ -97,6 +98,11 @@ export function DraftEditor({
   initialChoices,
   onReload
 }: Readonly<DraftEditorProps>) {
+  const t = useTranslations("adminSettings.divisions");
+  const failureDescription = (error: unknown) =>
+    t("failureDescription", {
+      reason: error instanceof Error ? error.message : t("operationFailed")
+    });
   const router = useRouter();
   const queryClient = useQueryClient();
   const { searchParams, setParams } = useQueryParams();
@@ -248,12 +254,12 @@ export function DraftEditor({
       queryClient.setQueryData(divisionGridQueryKeys.version(version.id), updated);
       await invalidate();
       if (pending.length === 0) {
-        notify.success(`v${updated.version} draft saved`);
+        notify.success(t("toast.draftSaved", { version: updated.version }));
       } else {
-        notify.warning(`v${updated.version} draft saved — mappings still open`, {
-          description: `${pending
-            .map((source) => source.readiness.version_label)
-            .join(", ")}: a mapping is stored once every division has a target. Finish it in Mappings.`
+        notify.warning(t("toast.draftSavedMappingsOpen", { version: updated.version }), {
+          description: t("toast.mappingPending", {
+            sources: pending.map((source) => source.readiness.version_label).join(", ")
+          })
         });
       }
       const pendingTierIds = new Set(
@@ -267,7 +273,7 @@ export function DraftEditor({
       }
       onReload(carry);
     },
-    onError: reportFailure("Draft could not be saved")
+    onError: reportFailure(t("errors.draftSave"), failureDescription)
   });
 
   const publishMutation = useMutation({
@@ -275,30 +281,30 @@ export function DraftEditor({
     onSuccess: async (published) => {
       queryClient.setQueryData(divisionGridQueryKeys.version(version.id), published);
       await invalidate();
-      notify.success(`v${published.version} published`);
+      notify.success(t("toast.published", { version: published.version }));
       onReload();
     },
-    onError: reportFailure("Version could not be published")
+    onError: reportFailure(t("errors.publish"), failureDescription)
   });
 
   const activateMutation = useMutation({
     mutationFn: () => workspaceService.activateDivisionGridVersion(workspaceId, version.id),
     onSuccess: async () => {
       await invalidate();
-      notify.success(`v${version.version} is now the workspace grid`);
+      notify.success(t("toast.activated", { version: version.version }));
       onReload();
     },
-    onError: reportFailure("Version could not be activated")
+    onError: reportFailure(t("errors.activate"), failureDescription)
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => workspaceService.deleteDivisionGridVersion(version.id),
     onSuccess: async () => {
       await invalidate();
-      notify.success("Draft discarded");
+      notify.success(t("toast.draftDiscarded"));
       router.push("/admin/settings/divisions");
     },
-    onError: reportFailure("Draft could not be discarded")
+    onError: reportFailure(t("errors.discard"), failureDescription)
   });
 
   const iconMutation = useMutation({
@@ -313,7 +319,7 @@ export function DraftEditor({
       return { bandIndex, url: upload.public_url };
     },
     onSuccess: ({ bandIndex, url }) => dispatch({ type: "setIcon", bandIndex, iconUrl: url }),
-    onError: reportFailure("Crest could not be uploaded")
+    onError: reportFailure(t("errors.crestUpload"), failureDescription)
   });
 
   const onPickIcon = useCallback((bandIndex: number) => {
@@ -339,22 +345,22 @@ export function DraftEditor({
   };
 
   const tabs: LinkTabItem[] = [
-    { key: "divisions", label: "Divisions", href: tabHref("divisions") },
+    { key: "divisions", label: t("tabs.divisions"), href: tabHref("divisions") },
     {
       key: "changes",
-      label: "Changes",
+      label: t("tabs.changes"),
       href: tabHref("changes"),
       badge: changeCount || undefined
     },
     {
       key: "mappings",
-      label: "Mappings",
+      label: t("tabs.mappings"),
       href: tabHref("mappings"),
       badge: unresolvedMappings || undefined
     },
     {
       key: "impact",
-      label: "Impact",
+      label: t("tabs.impact"),
       href: tabHref("impact"),
       hidden: isWide
     }
@@ -364,25 +370,22 @@ export function DraftEditor({
   const intent: ConfirmIntent =
     confirming === "delete"
       ? {
-          title: `Discard draft v${version.version}?`,
-          description:
-            "The draft version and every edit in it are deleted. The workspace keeps the version it uses now.",
-          confirmLabel: "Discard draft",
+          title: t("editorDetails.discardTitle", { version: version.version }),
+          description: t("editorDetails.discardDescription"),
+          confirmLabel: t("editor.discardDraft"),
           tone: "danger"
         }
       : confirming === "scale"
         ? {
-            title: "Follow the OW ladder?",
-            description:
-              "Every division's rank range is recomputed from its OW ranks, so the grid moves onto the OW scale (Bronze 5 = 500 … Champion 1 = 4900+). Stored player ranks keep their numbers — if they are on this grid's current scale, they will land in different divisions.",
-            confirmLabel: "Follow the ladder",
+            title: t("editor.followLadderTitle"),
+            description: t("editorDetails.followDescription"),
+            confirmLabel: t("editor.followLadder"),
             tone: "warning"
           }
         : {
-            title: `Publish v${version.version}?`,
-            description:
-              "A published version becomes immutable: tournaments can be pinned to it, and changing the divisions afterwards means a new draft. Publishing does not make it the workspace grid — activate it separately.",
-            confirmLabel: `Publish v${version.version}`,
+            title: t("editorDetails.publishTitle", { version: version.version }),
+            description: t("editorDetails.publishDescription"),
+            confirmLabel: t("editor.publishVersion", { version: version.version }),
             tone: "warning"
           };
 
@@ -402,9 +405,9 @@ export function DraftEditor({
           tone: VERSION_STATE_TONE[lifecycle]
         }}
         meta={[
-          base.length > 0 ? `Created from ${baseLabel}` : "No parent version",
-          `${state.bands.length} divisions`,
-          state.scale === "ladder" ? "Rank ranges follow the OW ladder" : "Custom rank scale"
+          base.length > 0 ? t("editorDetails.createdFrom", { base: baseLabel }) : t("editorDetails.noParent"),
+          t("divisionCount", { count: state.bands.length }),
+          state.scale === "ladder" ? t("editorDetails.followRanges") : t("editorDetails.customScale")
         ]}
         actions={
           <>
@@ -416,13 +419,13 @@ export function DraftEditor({
                 onClick={() => dispatch({ type: "undo" })}
               >
                 <RotateCcw aria-hidden className="size-4" />
-                Undo last change
+                {t("editor.undo")}
               </Button>
             ) : null}
             {editable && canDelete ? (
               <Button variant="ghost" size="sm" onClick={() => setConfirming("delete")}>
                 <Trash2 aria-hidden className="size-4" />
-                Discard draft
+                {t("editor.discardDraft")}
               </Button>
             ) : null}
             {canPublish && version.status === "draft" ? (
@@ -432,11 +435,11 @@ export function DraftEditor({
                 title={
                   publishable
                     ? undefined
-                    : "Resolve everything under “Ready to publish?” first — unsaved edits and open mapping decisions block a publish."
+                    : t("editorDetails.publishBlocked")
                 }
                 onClick={() => setConfirming("publish")}
               >
-                Publish v{version.version}
+                {t("editor.publishVersion", { version: version.version })}
               </Button>
             ) : null}
             {canPublish && version.status !== "draft" && version.id !== activeVersionId ? (
@@ -446,12 +449,12 @@ export function DraftEditor({
                 title={
                   readiness?.is_ready === true
                     ? undefined
-                    : "Every older version a tournament still reads needs a complete mapping first."
+                    : t("editorDetails.mappingBlocked")
                 }
                 onClick={() => activateMutation.mutate()}
               >
                 <Star aria-hidden className="size-4" />
-                Activate v{version.version}
+                {t("activateVersion", { version: version.version })}
               </Button>
             ) : null}
           </>
@@ -462,8 +465,8 @@ export function DraftEditor({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
           <p className="text-sm text-muted-foreground">
             {version.status === "draft"
-              ? "You can read this draft but not change it — editing needs the division_grid.update permission."
-              : "Published versions are immutable, because tournaments are pinned to them. Clone this version to change anything."}
+              ? t("editorDetails.readOnlyDraft")
+              : t("editorDetails.readOnlyPublished")}
           </p>
           {version.status !== "draft" && canPublish ? (
             <Button
@@ -476,10 +479,10 @@ export function DraftEditor({
                     await invalidate();
                     router.push(`/admin/settings/divisions/v/${draft.id}`);
                   })
-                  .catch(reportFailure("Draft could not be created"));
+                  .catch(reportFailure(t("errors.draftCreate"), failureDescription));
               }}
             >
-              Create draft from this version
+              {t("editor.createDraft")}
             </Button>
           ) : null}
         </div>
@@ -520,7 +523,7 @@ export function DraftEditor({
             items={tabs}
             activeKey={activeTab}
             level={2}
-            ariaLabel="Draft editor views"
+            ariaLabel={t("editor.views")}
           />
 
           {activeTab === "divisions" ? (
@@ -569,18 +572,18 @@ export function DraftEditor({
         <SaveBar
           dirty={dirty}
           saving={saveMutation.isPending}
-          primaryLabel="Save draft"
+          primaryLabel={t("editor.saveDraft")}
           summary={
             <>
-              <strong>
-                v{version.version} {version.status}
-              </strong>{" "}
-              · {state.bands.length} divisions · {state.history.length}{" "}
-              {state.history.length === 1 ? "edit" : "edits"}
-              {pickedCount > 0
-                ? ` · ${pickedCount} mapping ${pickedCount === 1 ? "pick" : "picks"}`
-                : null}{" "}
-              · {bandsDifferingFromBase(state.base, state.bands)} divisions differ from {baseLabel}
+              {t.rich("editor.saveBarSummary", {
+                version: version.version,
+                status: t(`editor.status.${version.status as "draft" | "published" | "archived"}`),
+                divisions: state.bands.length,
+                edits: state.history.length,
+                strong: (chunks) => <strong>{chunks}</strong>
+              })}
+              {pickedCount > 0 ? ` · ${t("editor.mappingSummary", { count: pickedCount })}` : null}{" "}
+              · {t("editor.differenceSummary", { count: bandsDifferingFromBase(state.base, state.bands), base: baseLabel })}
             </>
           }
           onDiscard={() => onReload()}
@@ -610,11 +613,7 @@ export function DraftEditor({
   );
 }
 
-function reportFailure(title: string) {
+function reportFailure(title: string, description: (error: unknown) => string) {
   return (error: unknown) =>
-    notify.error(title, {
-      description: `Nothing changed. ${
-        error instanceof Error ? error.message : "The division grid operation failed."
-      } Retry, or reload the page if it keeps failing.`
-    });
+    notify.error(title, { description: description(error) });
 }

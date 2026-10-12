@@ -2,6 +2,7 @@
 
 import { useRef, useState, type DragEvent } from "react";
 import { Camera, Pencil, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { cn, initials } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
@@ -87,6 +88,7 @@ export function EditableAvatar({
   labels,
   className,
 }: Readonly<EditableAvatarProps>) {
+  const t = useTranslations("kit.avatar");
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const interactive = editable && !disabled && !busy;
@@ -102,13 +104,12 @@ export function EditableAvatar({
   const handleFile = (file: File | undefined | null) => {
     if (!file) return;
     if (!accepts(file.type)) {
-      onError?.(labels?.unsupportedType ?? "Unsupported file type");
+      onError?.(labels?.unsupportedType ?? t("unsupportedType"));
       return;
     }
     if (maxSizeBytes && file.size > maxSizeBytes) {
       onError?.(
-        labels?.tooLarge ??
-          `File too large (max ${Math.round(maxSizeBytes / (1024 * 1024))} MB)`,
+        labels?.tooLarge ?? t("tooLarge", { max: Math.round(maxSizeBytes / (1024 * 1024)) }),
       );
       return;
     }
@@ -137,7 +138,7 @@ export function EditableAvatar({
         )}
         role={interactive ? "button" : undefined}
         tabIndex={interactive ? 0 : undefined}
-        aria-label={interactive ? (labels?.change ?? "Change image") : undefined}
+        aria-label={interactive ? (labels?.change ?? t("change")) : undefined}
         onClick={() => interactive && inputRef.current?.click()}
         onKeyDown={(e) => {
           if (interactive && (e.key === "Enter" || e.key === " ")) {
@@ -176,10 +177,10 @@ export function EditableAvatar({
             {src ? <Pencil className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
             <span className="text-label font-medium uppercase tracking-wide">
               {dragging
-                ? (labels?.drop ?? "Drop")
+                ? (labels?.drop ?? t("drop"))
                 : src
-                  ? (labels?.edit ?? "Edit")
-                  : (labels?.upload ?? "Upload")}
+                  ? (labels?.edit ?? t("edit"))
+                  : (labels?.upload ?? t("upload"))}
             </span>
           </div>
         )}
@@ -204,8 +205,8 @@ export function EditableAvatar({
             "absolute z-10 rounded-full border border-border bg-background/90 p-1 text-destructive/80 shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive hover:text-destructive-foreground",
             shape === "circle" ? "bottom-1 right-1" : "bottom-0.5 right-0.5",
           )}
-          aria-label={labels?.remove ?? "Remove image"}
-          title={labels?.remove ?? "Remove image"}
+          aria-label={labels?.remove ?? t("remove")}
+          title={labels?.remove ?? t("remove")}
         >
           <Trash2 className="h-3 w-3" />
         </button>

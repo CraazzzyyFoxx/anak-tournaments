@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { CalendarIcon, ChevronDownIcon, X } from "lucide-react";
-import { type DateTimeFormatOptions } from "next-intl";
+import { type DateTimeFormatOptions, useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -143,7 +143,8 @@ function isBeforeMinDate(date: Date, minDate: Date | undefined): boolean {
   return target < min;
 }
 
-export function DatePicker({ value, onChange, placeholder = "Pick a date", id }: Readonly<DatePickerProps>) {
+export function DatePicker({ value, onChange, placeholder, id }: Readonly<DatePickerProps>) {
+  const t = useTranslations("kit.datePicker");
   const format = useFormatter();
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => parseDateValue(value), [value]);
@@ -163,7 +164,7 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", id }:
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
-          {selected ? formatDisplay(format, selected) : <span>{placeholder}</span>}
+          {selected ? formatDisplay(format, selected) : <span>{placeholder ?? t("pick")}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
@@ -189,18 +190,19 @@ export function DatePicker({ value, onChange, placeholder = "Pick a date", id }:
 }
 
 export function DateTimePicker({
-  clearLabel = "Clear",
-  dateLabel = "Date",
+  clearLabel,
+  dateLabel,
   disabled = false,
   id,
   minDate,
   onChange,
-  placeholder = "Select date",
-  timeLabel = "Time",
+  placeholder,
+  timeLabel,
   timeId,
   value,
   labelClassName
 }: Readonly<DateTimePickerProps>) {
+  const t = useTranslations("kit.datePicker");
   const format = useFormatter();
   const [open, setOpen] = React.useState(false);
   const selected = React.useMemo(() => parseDateTimeValue(value), [value]);
@@ -211,7 +213,7 @@ export function DateTimePicker({
       <div className="flex flex-1 flex-col gap-2 sm:flex-row min-w-0">
         <Field className="min-w-0 flex-1 gap-1.5" data-disabled={disabled}>
           <FieldLabel htmlFor={id} className={labelClassName}>
-            {dateLabel}
+            {dateLabel ?? t("date")}
           </FieldLabel>
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -227,7 +229,7 @@ export function DateTimePicker({
                 )}
               >
                 <span className="truncate">
-                  {selected ? formatDateTimeDisplay(format, selected) : placeholder}
+                  {selected ? formatDateTimeDisplay(format, selected) : (placeholder ?? t("select"))}
                 </span>
                 <ChevronDownIcon data-icon="inline-end" />
               </Button>
@@ -253,7 +255,7 @@ export function DateTimePicker({
         </Field>
         <Field className="gap-1.5 sm:w-32 sm:shrink-0" data-disabled={disabled}>
           <FieldLabel htmlFor={timeId} className={labelClassName}>
-            {timeLabel}
+            {timeLabel ?? t("time")}
           </FieldLabel>
           <TimeInput
             id={timeId}
@@ -274,7 +276,7 @@ export function DateTimePicker({
           size="icon"
           className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
           onClick={() => onChange("")}
-          title={clearLabel}
+          title={clearLabel ?? t("clear")}
         >
           <X className="size-4" />
         </Button>

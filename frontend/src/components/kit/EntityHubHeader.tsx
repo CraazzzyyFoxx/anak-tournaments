@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
@@ -40,6 +41,7 @@ export function EntityHubHeader({
   backHref,
   level = 1
 }: Readonly<EntityHubHeaderProps>) {
+  const t = useTranslations("kit.actions");
   const metaParts = (meta ?? []).filter(
     (part) => part !== null && part !== undefined && part !== false
   );
@@ -50,7 +52,7 @@ export function EntityHubHeader({
       {backHref ? (
         <Link
           href={backHref}
-          aria-label="Back"
+        aria-label={t("back")}
           className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronLeft aria-hidden className="size-4" />

@@ -19,6 +19,8 @@ import type {
   FfaLobby
 } from "@/types/ffa.types";
 
+type FfaTranslator = ReturnType<typeof useTranslations<"adminMatches.ffa">>;
+
 /**
  * The FFA rejections a thrown value carries, richest form first.
  *
@@ -109,7 +111,8 @@ export function FfaGameResultsDialog({
 }: Readonly<FfaGameResultsDialogProps>) {
   const queryClient = useQueryClient();
   const describeError = useFfaErrorMessage();
-  const t = useTranslations();
+  const t = useTranslations("adminMatches.ffa");
+  const tErrors = useTranslations();
 
   const rows = [...lobby.rows].sort((left, right) => left.slot - right.slot);
   const cells = new Map(
@@ -153,7 +156,7 @@ export function FfaGameResultsDialog({
     mutationFn: (input: FfaGameResultsInput) =>
       ffaService.setGameResults(lobby.encounter_id, position, input),
     onSuccess: () => {
-      notify.success(`Game ${position} saved`);
+      notify.success(t("gameSaved", { position }));
       // One prefix covers the stage list, this lobby and the public table: a
       // game moves the whole group's standings, not one row.
       void queryClient.invalidateQueries({
@@ -196,7 +199,7 @@ export function FfaGameResultsDialog({
       // The server refuses this with `ffa_reason_required`. Spending the round
       // trip to learn it would only cost the organizer the numbers just typed.
       setBlanksFlagged(false);
-      setError(t("ffa.errors.ffa_reason_required"));
+      setError(tErrors("ffa.errors.ffa_reason_required"));
       return;
     }
     if (blankColumn) {
@@ -210,7 +213,7 @@ export function FfaGameResultsDialog({
       // The label is whatever the organizer named the column ("Kills", "Deaths"),
       // so it is quoted as written rather than bent into a sentence around it.
       setError(
-        `Enter ${blankColumn.label} for every team — type 0 for a team that scored nothing.`
+        t("enterEvery", { column: blankColumn.label })
       );
       return;
     }
@@ -223,10 +226,10 @@ export function FfaGameResultsDialog({
     <EntityFormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={isCorrection ? `Correct game ${position}` : `Enter game ${position}`}
-      description={`${lobby.name} · ${rows.length} teams · game ${position} of ${lobby.best_of}`}
+      title={isCorrection ? t("correctGame", { position }) : t("enterGame", { position })}
+      description={t("dialogDescription", { name: lobby.name, count: rows.length, position, bestOf: lobby.best_of })}
       onSubmit={handleSubmit}
-      submitLabel={isCorrection ? "Save correction" : "Save game"}
+      submitLabel={isCorrection ? t("saveCorrection") : t("saveGame")}
       isSubmitting={mutation.isPending}
       errorMessage={error ?? undefined}
     >
@@ -243,8 +246,11 @@ export function FfaGameResultsDialog({
           }`
         }}
       >
-        <span className={EYEBROW_CLASS}>Team</span>
-        <span className={EYEBROW_CLASS}>{requiresPlacement ? "Place" : "Place (optional)"}</span>
+        {t.rich("teamPlaceHeader", {
+          team: (chunks) => <span className={EYEBROW_CLASS}>{chunks}</span>,
+          place: (chunks) => <span className={EYEBROW_CLASS}>{chunks}</span>,
+          placeLabel: requiresPlacement ? t("place") : t("placeOptional")
+        })}
         {columns.map((column) => (
           <span key={column.key} className={EYEBROW_CLASS}>
             {column.label}
@@ -253,7 +259,7 @@ export function FfaGameResultsDialog({
               // will never see — this form is the only place the column shows
               // up at all, so nothing else can tell them.
               <span className="block normal-case tracking-normal text-[11px] text-muted-foreground">
-                hidden from viewers
+                {t("hidden")}
               </span>
             )}
           </span>
@@ -268,30 +274,31 @@ export function FfaGameResultsDialog({
             flagBlanks={blanksFlagged}
             onPlacement={(value) => setPlacement(row.team_id, value)}
             onStat={(key, value) => setStat(row.team_id, key, value)}
+            t={t}
           />
         ))}
       </div>
 
       <p className="text-xs text-muted-foreground">
         {requiresPlacement
-          ? `Places run 1 to ${rows.length}, each taken exactly once — this stage's formula pays for them.`
-          : "Leave the places empty to derive them from the points; teams on the same points share a place."}
+          ? t("placesFormula", { count: rows.length })
+          : t("placesPoints")}
       </p>
 
       {isCorrection ? (
         <div className="space-y-1">
           <label className={EYEBROW_CLASS} htmlFor="ffa-correction-reason">
-            Reason
+            {t("reason")}
           </label>
           <Input
             id="ffa-correction-reason"
-            aria-label="Reason"
+            aria-label={t("reason")}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Why this game is being re-entered"
+            placeholder={t("reasonLabel")}
           />
           <p className="text-xs text-muted-foreground">
-            This game has been played. The reason is recorded in the lobby’s audit trail.
+            {t("played")}
           </p>
         </div>
       ) : null}
@@ -306,7 +313,8 @@ function FieldRow({
   stats,
   flagBlanks,
   onPlacement,
-  onStat
+  onStat,
+  t
 }: Readonly<{
   name: string;
   columns: FfaColumn[];
@@ -315,6 +323,7 @@ function FieldRow({
   flagBlanks: boolean;
   onPlacement: (value: number | null) => void;
   onStat: (key: string, value: number | null) => void;
+  t: FfaTranslator;
 }>) {
   return (
     <>
@@ -322,7 +331,7 @@ function FieldRow({
       <NumberInput
         integer
         min={1}
-        aria-label={`Place for ${name}`}
+        aria-label={t("placeFor", { name })}
         value={placement}
         onValueChange={onPlacement}
       />
@@ -333,7 +342,7 @@ function FieldRow({
           // penalty, and the server takes any finite 0..1e9 (spec §3.2).
           min={0}
           max={1_000_000_000}
-          aria-label={`${column.label} for ${name}`}
+          aria-label={t("columnFor", { column: column.label, name })}
           aria-invalid={(flagBlanks && stats[column.key] === null) || undefined}
           className="aria-invalid:border-destructive"
           value={stats[column.key]}

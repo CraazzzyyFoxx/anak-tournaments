@@ -1,6 +1,7 @@
 "use client";
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { notifyEvaluationRun } from "@/components/admin/achievements/EvaluationRunSummary";
 import { notify } from "@/lib/notify";
@@ -103,6 +104,7 @@ export function useAchievementDetailMutations({
   onOverrideRemoved: () => void;
   onDeleted: () => void;
 }) {
+  const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
   const ruleKey = achievementQueryKeys.rule(workspaceId, ruleId);
 
@@ -164,7 +166,7 @@ export function useAchievementDetailMutations({
         rule_ids: [ruleId]
       }),
     onSuccess: (data) => {
-      notifyEvaluationRun(data);
+      notifyEvaluationRun(data, t as unknown as Parameters<typeof notifyEvaluationRun>[1]);
       queryClient.invalidateQueries({
         queryKey: achievementQueryKeys.ruleUsers(workspaceId, ruleId)
       });
@@ -175,9 +177,9 @@ export function useAchievementDetailMutations({
     mutationFn: (tournamentId?: number) =>
       adminService.testAchievementRule(workspaceId!, ruleId, tournamentId),
     onSuccess: (data) => {
-      notify.success("Dry-run complete", {
-        description: `${data.qualifying_count} users qualify`
-      });
+        notify.success(t("dryRun.complete"), {
+          description: t("dryRun.qualifying", { count: data.qualifying_count })
+        });
     }
   });
 

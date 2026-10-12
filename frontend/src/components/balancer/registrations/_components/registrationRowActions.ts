@@ -1,4 +1,5 @@
 import { Check, History, Pencil, ShieldX, Trash2, Undo2, X } from "lucide-react";
+import type { RegistrationsTranslator } from "@/components/balancer/registrations/_components/registrationsTranslator";
 
 import type { KebabAction } from "@/components/data-table";
 import type { AppPermission } from "@/hooks/usePermissions";
@@ -26,7 +27,8 @@ export interface RegistrationRowActionHandlers {
 /** The kebab menu of one registration row, gated by its own status and scope. */
 export function buildRegistrationRowActions(
   registration: AdminRegistration,
-  handlers: RegistrationRowActionHandlers
+  handlers: RegistrationRowActionHandlers,
+  t: RegistrationsTranslator
 ): KebabAction[] {
   const inBalancer = !registration.balancer_status_meta.excludes_from_balancer;
   const isWithdrawn = registration.status === "withdrawn";
@@ -38,13 +40,13 @@ export function buildRegistrationRowActions(
 
   return [
     {
-      label: "Edit",
+      label: t("actions.edit"),
       icon: Pencil,
       hidden: isWithdrawn,
       onSelect: () => handlers.onEdit(registration)
     },
     {
-      label: "Change history",
+      label: t("actions.history"),
       icon: History,
       hidden: !handlers.canAccessPermission("audit.read", registration.workspace_id),
       onSelect: () =>
@@ -55,26 +57,26 @@ export function buildRegistrationRowActions(
         })
     },
     {
-      label: "Approve",
+      label: t("actions.approve"),
       icon: Check,
       hidden: !isPending,
       onSelect: () => handlers.approve(registration.id)
     },
     {
-      label: "Reject",
+      label: t("actions.reject"),
       icon: X,
       hidden: !isPending,
       onSelect: () => handlers.reject(registration.id)
     },
     {
-      label: inBalancer ? "Remove from balancer" : "Add to balancer",
+      label: inBalancer ? t("actions.remove") : t("actions.add"),
       icon: inBalancer ? ShieldX : Check,
       hidden: !isManageable,
       onSelect: () =>
         handlers.setBalancerInclusion({ registrationId: registration.id, include: !inBalancer })
     },
     {
-      label: registration.checked_in ? "Uncheck-in" : "Check-in",
+      label: registration.checked_in ? t("actions.uncheckIn") : t("actions.checkIn"),
       icon: Check,
       hidden: !isManageable,
       onSelect: () =>
@@ -84,19 +86,19 @@ export function buildRegistrationRowActions(
         })
     },
     {
-      label: "Restore",
+      label: t("actions.restore"),
       icon: Undo2,
       hidden: !isWithdrawn,
       onSelect: () => handlers.restore(registration.id)
     },
     {
-      label: "Withdraw",
+      label: t("actions.withdraw"),
       icon: Undo2,
       hidden: isWithdrawn,
       onSelect: () => handlers.withdraw(registration.id)
     },
     {
-      label: "Delete",
+      label: t("actions.delete"),
       icon: Trash2,
       destructive: true,
       hidden: !handlers.canAccessPermission("registration.delete", registration.workspace_id),

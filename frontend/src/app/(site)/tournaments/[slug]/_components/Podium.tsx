@@ -51,7 +51,7 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
           {team.name}
         </span>
         {team.note ? (
-          <span className="mt-1 block text-label leading-snug text-[color:var(--aqt-fg-muted)]">
+          <span className="mt-1 block text-label leading-snug wrap-break-word text-[color:var(--aqt-fg-muted)]">
             {team.note}
           </span>
         ) : null}
@@ -72,7 +72,11 @@ export function Podium({ first, second, third, className }: Readonly<PodiumProps
 
   return (
     <div
-      className={cn("grid items-start gap-2", third ? "grid-cols-[1fr_1.2fr_1fr]" : "grid-cols-[1fr_1.2fr]", className)}
+      className={cn(
+        "grid items-start gap-2",
+        third ? "grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)]" : "grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]",
+        className
+      )}
       role="list"
       aria-label={t("tournamentDetail.podium.label")}
     >

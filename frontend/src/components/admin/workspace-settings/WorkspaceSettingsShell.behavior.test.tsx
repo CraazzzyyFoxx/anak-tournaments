@@ -12,6 +12,8 @@
 import { act, forwardRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextIntlClientProvider } from "next-intl";
+import messages from "@/i18n/messages/en.json";
 
 import { WORKSPACE_RECORD_SECTIONS } from "./sections";
 import { WorkspaceSettingsShell } from "./WorkspaceSettingsShell";
@@ -44,7 +46,13 @@ let container: HTMLDivElement;
 let root: Root;
 
 async function render(node: React.ReactNode) {
-  await act(async () => root.render(node));
+  await act(async () =>
+    root.render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        {node}
+      </NextIntlClientProvider>
+    )
+  );
 }
 
 /** The rail's links only — the narrow-viewport `Select` renders the same list. */

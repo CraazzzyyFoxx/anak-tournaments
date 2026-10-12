@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import {
   AlertTriangle,
@@ -113,38 +114,40 @@ export function parseRunFailures(
 }
 
 /** The one place a run's outcome is put into words; the banner and the toast share it. */
-export function describeEvaluationRun(run: EvaluationRunRead): EvaluationRunDigest {
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+export function describeEvaluationRun(run: EvaluationRunRead, t: Translate): EvaluationRunDigest {
   const failures = parseRunFailures(run);
   const skipped = failures.reduce((count, group) => count + group.slugs.length, 0);
   const base = { tone: STATUS_TONE[run.status], icon: STATUS_ICON[run.status], failures, skipped };
 
   switch (run.status) {
     case "queued":
-      return { ...base, headline: "Evaluation is queued", note: "It starts once this workspace is verified." };
+      return { ...base, headline: t("evaluation.queued"), note: t("evaluation.queuedNote") };
     case "running":
-      return { ...base, headline: "Evaluation is running", note: null };
+      return { ...base, headline: t("evaluation.running"), note: null };
     case "partial": {
       const total = run.rules_evaluated + skipped;
       return {
         ...base,
         headline:
           skipped === 0
-            ? "Some rules could not run"
+            ? t("evaluation.someFailed")
             : total === 1
-              ? "The rule could not run"
-              : `${skipped} of ${total} rules could not run`,
+              ? t("evaluation.oneFailed")
+              : t("evaluation.manyFailed", { count: skipped, total }),
         note: null
       };
     }
     case "failed":
-      return { ...base, headline: "Evaluation stopped before it finished", note: null };
+      return { ...base, headline: t("evaluation.stopped"), note: null };
     default:
       return {
         ...base,
         headline:
           run.results_created + run.results_removed === 0
-            ? "Evaluation finished with no changes"
-            : "Evaluation finished",
+            ? t("evaluation.noChanges")
+            : t("evaluation.finished"),
         note: null
       };
   }
@@ -160,11 +163,11 @@ const TONE_NOTIFY: Record<Tone, (message: string, options?: { description?: stri
 };
 
 /** Toast form of the same digest, for screens too small to hold the panel. */
-export function notifyEvaluationRun(run: EvaluationRunRead) {
-  const digest = describeEvaluationRun(run);
+export function notifyEvaluationRun(run: EvaluationRunRead, t: Translate) {
+  const digest = describeEvaluationRun(run, t as unknown as Translate);
   const description =
     digest.failures[0]?.cause ??
-    `${run.results_created} added, ${run.results_removed} removed`;
+    t("evaluation.addedRemoved", { added: run.results_created, removed: run.results_removed });
   return TONE_NOTIFY[digest.tone](digest.headline, { description });
 }
 
@@ -193,7 +196,7 @@ function Figure({ label, value }: Readonly<{ label: string; value: string }>) {
   );
 }
 
-function SlugList({ slugs }: Readonly<{ slugs: string[] }>) {
+function SlugList({ slugs, t }: Readonly<{ slugs: string[]; t: Translate }>) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? slugs : slugs.slice(0, SLUG_PREVIEW);
   const hidden = slugs.length - shown.length;
@@ -217,7 +220,7 @@ function SlugList({ slugs }: Readonly<{ slugs: string[] }>) {
             aria-expanded={expanded}
             onClick={() => setExpanded(!expanded)}
           >
-            {expanded ? "Show fewer" : `Show ${hidden} more`}
+            {expanded ? t("evaluation.showFewer") : t("evaluation.showMore", { count: hidden })}
           </Button>
         </li>
       ) : null}
@@ -245,16 +248,17 @@ export function EvaluationRunSummary({
   onDismiss,
   tournamentName
 }: Readonly<EvaluationRunSummaryProps>) {
+  const t = useTranslations("adminAchievements");
   const format = useFormatter();
-  const digest = describeEvaluationRun(run);
+  const digest = describeEvaluationRun(run, t as unknown as Translate);
   const Icon = digest.icon;
   const settled = run.status !== "queued" && run.status !== "running";
 
   const scope = tournamentName
-    ? `Tournament: ${tournamentName}`
+    ? t("evaluation.tournamentScope", { name: tournamentName })
     : run.tournament_id
-      ? `Tournament #${run.tournament_id}`
-      : "Whole workspace";
+      ? t("evaluation.tournamentIdScope", { id: run.tournament_id })
+      : t("evaluation.wholeWorkspace");
   const meta = [scope, formatDuration(run)].filter(Boolean).join(" · ");
 
   return (
@@ -286,7 +290,7 @@ export function EvaluationRunSummary({
             variant="ghost"
             size="icon"
             onClick={onDismiss}
-            aria-label="Dismiss the evaluation summary"
+            aria-label={t("evaluation.dismissSummary")}
           >
             <X className="size-4" aria-hidden />
           </Button>
@@ -295,10 +299,10 @@ export function EvaluationRunSummary({
 
       {settled ? (
         <dl className="flex flex-wrap gap-x-10 gap-y-3">
-          <Figure label="Rules run" value={format.number(run.rules_evaluated)} />
-          <Figure label="Results added" value={signed(run.results_created, "+", format.number)} />
+          <Figure label={t("evaluation.rulesRun")} value={format.number(run.rules_evaluated)} />
+          <Figure label={t("evaluation.resultsAdded")} value={signed(run.results_created, "+", format.number)} />
           <Figure
-            label="Results removed"
+            label={t("evaluation.resultsRemoved")}
             value={signed(run.results_removed, "\u2212", format.number)}
           />
         </dl>
@@ -312,7 +316,7 @@ export function EvaluationRunSummary({
               className={cn("rounded-md border p-3", TONE_PANEL[digest.tone])}
             >
               <p className="text-body text-foreground">{group.cause}</p>
-              {group.slugs.length > 0 ? <SlugList slugs={group.slugs} /> : null}
+              {group.slugs.length > 0 ? <SlugList slugs={group.slugs} t={t as unknown as Translate} /> : null}
             </li>
           ))}
         </ul>

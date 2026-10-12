@@ -1,17 +1,13 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { FFA_STAGE_TYPES } from "@/lib/bracket/projection";
 import { useHubStagesQuery } from "../hubQueries";
 import { allowedBracketSubTab, BRACKET_SUB_TABS, type BracketSubTab } from "../tab-guards";
-
-const SUB_TAB_LABELS: Record<BracketSubTab, string> = {
-  stages: "Stages",
-  lobbies: "Lobbies"
-};
 
 const DEFAULT_SUB_TAB: BracketSubTab = BRACKET_SUB_TABS[0];
 
@@ -30,6 +26,7 @@ function isBracketSubTab(value: string): value is BracketSubTab {
  * tab is a label pretending to be navigation, so it is not drawn at all.
  */
 export default function BracketLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const t = useTranslations("adminBracket.layout");
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const pathname = usePathname();
@@ -64,7 +61,7 @@ export default function BracketLayout({ children }: Readonly<{ children: ReactNo
 
   const items: LinkTabItem[] = BRACKET_SUB_TABS.map((key) => ({
     key,
-    label: SUB_TAB_LABELS[key],
+    label: t(key),
     href: `${key === DEFAULT_SUB_TAB ? basePath : `${basePath}/${key}`}${scopeQuery}`,
     hidden: !allowedBracketSubTab(key, { hasFfaStage })
   }));
@@ -72,7 +69,7 @@ export default function BracketLayout({ children }: Readonly<{ children: ReactNo
   return (
     <div className="space-y-4">
       {items.filter((item) => !item.hidden).length > 1 ? (
-        <LinkTabs items={items} activeKey={active} level={2} ariaLabel="Bracket views" />
+        <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("views")} />
       ) : null}
       {activeAllowed ? children : null}
     </div>

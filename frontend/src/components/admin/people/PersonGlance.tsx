@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
@@ -52,6 +53,7 @@ export function PersonGlance({
   personId,
   canReadAuth
 }: Readonly<{ personId: number; canReadAuth: boolean }>) {
+  const t = useTranslations("adminPeople.glance");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const ranks = useCurrentRanks(personId);
   const subscriptionsQuery = useQuery({
@@ -64,21 +66,21 @@ export function PersonGlance({
 
   return (
     <dl className="divide-y divide-border/60">
-      <GlanceRow label="Ranks" href={tabHref("ranks")} linkLabel="Rank collection">
+      <GlanceRow label={t("ranks")} href={tabHref("ranks")} linkLabel={t("rankCollection")}>
         {ranks.isLoading ? (
           <Skeleton className="h-7 w-48" />
         ) : ranks.ranks.length === 0 ? (
-          <p className={MUTED}>No ranked battle tag yet.</p>
+          <p className={MUTED}>{t("noRank")}</p>
         ) : (
           <CurrentRankChips ranks={ranks.ranks} />
         )}
       </GlanceRow>
 
-      <GlanceRow label="Subscriptions" href={tabHref("subscriptions")} linkLabel="All checks">
+      <GlanceRow label={t("subscriptions")} href={tabHref("subscriptions")} linkLabel={t("allChecks")}>
         {subscriptionsQuery.isLoading ? (
           <Skeleton className="h-7 w-48" />
         ) : subscriptions.length === 0 ? (
-          <p className={MUTED}>No verdict stored.</p>
+          <p className={MUTED}>{t("noVerdict")}</p>
         ) : (
           <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
             {subscriptions.map((row) => (
@@ -101,11 +103,11 @@ export function PersonGlance({
       </GlanceRow>
 
       {canReadAuth ? (
-        <GlanceRow label="Account" href={tabHref("account")} linkLabel="Manage account">
+        <GlanceRow label={t("account")} href={tabHref("account")} linkLabel={t("manageAccount")}>
           {accountsQuery.isLoading ? (
             <Skeleton className="h-7 w-48" />
           ) : !linked ? (
-            <p className={MUTED}>No account signs in as this player.</p>
+            <p className={MUTED}>{t("noAccount")}</p>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium">@{linked.username}</span>

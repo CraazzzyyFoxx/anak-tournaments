@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import type {
   MappingPreviewRow,
   MappingTargetDef,
@@ -38,6 +39,7 @@ function sourceValue(_target: MappingTargetDef, state: MappingTargetState | unde
 }
 
 export function PreviewTable({ targets, mappingState, row }: Readonly<PreviewTableProps>) {
+  const t = useTranslations("sheetsFeed.preview");
   const errorByTarget = new Map<string, string>();
   for (const error of row.errors) {
     if (error.target && !errorByTarget.has(error.target)) {
@@ -53,16 +55,16 @@ export function PreviewTable({ targets, mappingState, row }: Readonly<PreviewTab
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[34%]">Field</TableHead>
-            <TableHead className="w-[33%]">Source value</TableHead>
-            <TableHead className="w-[33%]">Parsed value</TableHead>
+            <TableHead className="w-[34%]">{t("field")}</TableHead>
+            <TableHead className="w-[33%]">{t("sourceValue")}</TableHead>
+            <TableHead className="w-[33%]">{t("parsedValue")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {visibleTargets.length === 0 ? (
             <TableRow>
               <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
-                No fields are mapped yet.
+                {t("noFields")}
               </TableCell>
             </TableRow>
           ) : (

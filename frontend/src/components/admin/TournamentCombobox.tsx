@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import type { Tournament } from "@/types/tournament.types";
 import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
@@ -22,11 +23,14 @@ export function TournamentCombobox({
   value,
   onSelect,
   id,
-  placeholder = "All tournaments",
-  searchPlaceholder = "Search tournament…",
+  placeholder,
+  searchPlaceholder,
   disabled = false,
   allowClear = true,
 }: Readonly<TournamentComboboxProps>) {
+  const t = useTranslations("adminTournaments.combobox");
+  placeholder ??= t("all");
+  searchPlaceholder ??= t("search");
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
@@ -66,11 +70,11 @@ export function TournamentCombobox({
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}
       searchPlaceholder={searchPlaceholder}
-      emptyMessage="No tournaments match that search. Try a shorter name or the numeric id."
+      emptyMessage={t("empty")}
       clear={
         allowClear && typeof value === "number"
           ? {
-              label: "Clear selection",
+              label: t("clear"),
               value: "clear-tournament-selection",
               onSelect: () => handleSelect(undefined),
             }

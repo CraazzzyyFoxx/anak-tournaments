@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { BadgeCheck, ShieldAlert, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -22,11 +23,11 @@ import type { Workspace, WorkspaceVerificationStatus } from "@/types/workspace.t
 // glyph and the notice's tinted surface stay driven by one field.
 const TIERS: Record<
   WorkspaceVerificationStatus,
-  { label: string; tone: Extract<Tone, "warning" | "info" | "success">; icon: LucideIcon }
+  { tone: Extract<Tone, "warning" | "info" | "success">; icon: LucideIcon }
 > = {
-  unverified: { label: "Unverified", tone: "warning", icon: ShieldAlert },
-  verified: { label: "Verified", tone: "info", icon: ShieldCheck },
-  trusted: { label: "Trusted", tone: "success", icon: BadgeCheck }
+  unverified: { tone: "warning", icon: ShieldAlert },
+  verified: { tone: "info", icon: ShieldCheck },
+  trusted: { tone: "success", icon: BadgeCheck }
 };
 
 const ORDER: WorkspaceVerificationStatus[] = ["unverified", "verified", "trusted"];
@@ -42,8 +43,9 @@ const ORDER: WorkspaceVerificationStatus[] = ["unverified", "verified", "trusted
 export function WorkspaceVerificationIcon({
   status
 }: Readonly<{ status: WorkspaceVerificationStatus }>) {
+  const t = useTranslations("adminAccess.verification");
   const tier = TIERS[status] ?? TIERS.unverified;
-  return <StatusIcon icon={tier.icon} label={tier.label} variant={tier.tone} />;
+  return <StatusIcon icon={tier.icon} label={t(status)} variant={tier.tone} />;
 }
 
 /**
@@ -57,6 +59,7 @@ export function WorkspaceVerificationIcon({
 export function WorkspaceNotListedNotice({
   status
 }: Readonly<{ status: WorkspaceVerificationStatus }>) {
+  const t = useTranslations("adminAccess.verification");
   if (status !== "unverified") return null;
 
   return (
@@ -66,11 +69,9 @@ export function WorkspaceNotListedNotice({
         TONE_CLASS[TIERS.unverified.tone]
       )}
     >
-      <p className="font-medium">Not listed on the home page yet</p>
+      <p className="font-medium">{t("notListed")}</p>
       <p className="mt-1 max-w-prose opacity-90">
-        Your workspace is live — you can run tournaments, invite members and share its link right
-        now. It stays off the public workspace directory until the platform team reviews it.
-        Linking the Discord server you run helps that review along.
+        {t("notice")}
       </p>
     </div>
   );
@@ -82,14 +83,15 @@ export function WorkspaceVerificationControl({
   isSuperuser,
   onChanged
 }: Readonly<{ workspace: Workspace; isSuperuser: boolean; onChanged: () => void }>) {
+  const t = useTranslations("adminAccess.verification");
   const mutation = useMutation({
     mutationFn: (status: WorkspaceVerificationStatus) =>
       workspaceService.setVerificationStatus(workspace.id, status),
     onSuccess: (updated) => {
       onChanged();
-      notify.success(`Verification set to ${TIERS[updated.verification_status]?.label ?? updated.verification_status}`);
+      notify.success(t("changed", { tier: t(updated.verification_status) }));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not change the verification tier" })
+    onError: (error) => notify.apiError(error, { title: t("error") })
   });
 
   if (!isSuperuser) return null;
@@ -97,7 +99,7 @@ export function WorkspaceVerificationControl({
   return (
     <div>
       <label htmlFor="workspace-verification" className="text-sm font-medium leading-none">
-        Verification tier
+        {t("label")}
       </label>
       <Select
         value={workspace.verification_status}
@@ -110,14 +112,13 @@ export function WorkspaceVerificationControl({
         <SelectContent>
           {ORDER.map((status) => (
             <SelectItem key={status} value={status}>
-              {TIERS[status].label}
+              {t(status)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
       <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        “Verified” and “Trusted” workspaces are listed in the public directory on the home page;
-        “Trusted” also carries a badge there.
+        {t("description")}
       </p>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ export interface ChangesViewProps {
  * neighbour, and the players in it move there.
  */
 export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProps>) {
+  const t = useTranslations("adminSettings.divisions");
   const diff = diffBands(base, bands);
   const total =
     diff.added.length + diff.removed.length + diff.moved.length + diff.renamed.length;
@@ -31,7 +33,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
   if (base.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        This version was not created from another one, so there is nothing to compare it with.
+        {t("changes.noBase")}
       </p>
     );
   }
@@ -39,8 +41,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
   if (total === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        The draft is identical to {baseLabel}. Edit the ladder on the left or the divisions table
-        to start changing it.
+        {t("changes.identical", { base: baseLabel })}
       </p>
     );
   }
@@ -48,10 +49,10 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
   return (
     <div className="flex flex-col gap-4">
       <p className={cn(EYEBROW_CLASS, "font-mono")}>
-        {baseLabel} &rarr; draft · {total} {total === 1 ? "change" : "changes"}
+        {t("changes.summary", { base: baseLabel, count: total })}
       </p>
 
-      <Group title="Added" count={diff.added.length}>
+      <Group title={t("changes.added")} count={diff.added.length}>
         {diff.added.map((band) => (
           <Row
             key={band.slug}
@@ -62,7 +63,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
         ))}
       </Group>
 
-      <Group title="Removed — merged into a neighbour" count={diff.removed.length}>
+      <Group title={t("changes.removed")} count={diff.removed.length}>
         {diff.removed.map((band) => (
           <Row
             key={band.slug}
@@ -73,7 +74,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
         ))}
       </Group>
 
-      <Group title="Range or OW link moved" count={diff.moved.length}>
+      <Group title={t("changes.moved")} count={diff.moved.length}>
         {diff.moved.map(({ before, after }) => (
           <Row
             key={after.slug}
@@ -84,7 +85,7 @@ export function ChangesView({ base, bands, baseLabel }: Readonly<ChangesViewProp
         ))}
       </Group>
 
-      <Group title="Renamed" count={diff.renamed.length}>
+      <Group title={t("changes.renamed")} count={diff.renamed.length}>
         {diff.renamed.map(({ before, after }) => (
           <Row
             key={after.slug}

@@ -1,6 +1,7 @@
 "use client";
 
 import { ColumnDef } from "@tanstack/react-table";
+import { useTranslations } from "next-intl";
 import {
   CheckCircle,
   CircleOff,
@@ -47,62 +48,63 @@ export function AchievementsTable({
   workspaceId,
   actions,
 }: Readonly<{ workspaceId: number; actions: AchievementsTableActions }>) {
+  const t = useTranslations("adminAchievements");
   const listKey = achievementQueryKeys.adminList(workspaceId);
 
   const columns: ColumnDef<AchievementRule>[] = [
     {
       accessorKey: "id",
-      header: "ID",
+      header: t("common.id"),
       size: 60,
       cell: ({ row }) => <span className="tabular-nums">{row.original.id}</span>,
     },
     {
       accessorKey: "enabled",
-      header: "Status",
+      header: t("common.action"),
       size: 80,
       meta: columnMeta<AchievementRule>({ align: "center" }),
       cell: ({ row }) =>
         row.original.enabled ? (
-          <StatusIcon icon={CheckCircle} label="On" variant="success" />
+          <StatusIcon icon={CheckCircle} label={t("common.on")} variant="success" />
         ) : (
-          <StatusIcon icon={CircleOff} label="Off" variant="muted" />
+          <StatusIcon icon={CircleOff} label={t("common.off")} variant="muted" />
         ),
     },
-    { accessorKey: "slug", header: "Slug", size: 180 },
-    { accessorKey: "name", header: "Name" },
+    { accessorKey: "slug", header: t("common.slug"), size: 180 },
+    { accessorKey: "name", header: t("common.name") },
     {
       accessorKey: "category",
-      header: "Category",
+      header: t("common.category"),
       size: 120,
       cell: ({ row }) => (
-        <IconLabel icon={categoryIcon(row.original.category)} label={row.original.category} />
+        <IconLabel icon={categoryIcon(row.original.category)} label={t(`common.categoryValues.${row.original.category}`)} />
       ),
     },
     {
       accessorKey: "scope",
-      header: "Scope",
+      header: t("common.scope"),
       size: 120,
       cell: ({ row }) => (
-        <IconLabel icon={scopeIcon(row.original.scope)} label={row.original.scope} />
+        <IconLabel icon={scopeIcon(row.original.scope)} label={t(`common.scopeValues.${row.original.scope}`)} />
       ),
     },
     {
       accessorKey: "grain",
-      header: "Grain",
+      header: t("common.grain"),
       size: 140,
       cell: ({ row }) => (
-        <IconLabel icon={grainIcon(row.original.grain)} label={row.original.grain.replace("_", " + ")} />
+        <IconLabel icon={grainIcon(row.original.grain)} label={t(`common.grainValues.${row.original.grain}`)} />
       ),
     },
     {
       accessorKey: "rule_version",
-      header: "Ver",
+      header: t("common.version"),
       size: 50,
       cell: ({ row }) => <span className="tabular-nums">{row.original.rule_version}</span>,
     },
     {
       id: "conditions_count",
-      header: "Conditions",
+      header: t("condition.addCondition"),
       size: 90,
       enableSorting: false,
       accessorFn: (row) => countLeafConditions(row.condition_tree),
@@ -116,36 +118,36 @@ export function AchievementsTable({
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button aria-label={`Actions for ${rule.slug}`} variant="ghost" size="icon">
+              <Button aria-label={t("listActionsFor", { slug: rule.slug })} variant="ghost" size="icon">
                 <MoreHorizontal className="h-4 w-4" aria-hidden />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuLabel>{t("list.actions")}</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => actions.onOpen(rule)}>
                 <Eye className="mr-2 h-4 w-4" aria-hidden />
-                View details
+                {t("list.viewDetails")}
               </DropdownMenuItem>
               {actions.canUpdate && (
                 <DropdownMenuItem onClick={() => actions.onEdit(rule)}>
                   <Pencil className="mr-2 h-4 w-4" aria-hidden />
-                  Edit achievement
+                  {t("list.edit")}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onClick={() => actions.onTest(rule)}>
                 <TestTube className="mr-2 h-4 w-4" aria-hidden />
-                Test (dry run)
+                {t("list.test")}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => actions.onEvaluate(rule)}>
                 <Play className="mr-2 h-4 w-4" aria-hidden />
-                Evaluate this achievement
+                {t("list.evaluateOne")}
               </DropdownMenuItem>
               {actions.canUpdate && (
                 <DropdownMenuItem onClick={() => actions.onToggle(rule)}>
                   {rule.enabled ? (
-                    <><EyeOff className="mr-2 h-4 w-4" aria-hidden />Disable</>
+                    <><EyeOff className="mr-2 h-4 w-4" aria-hidden />{t("list.disable")}</>
                   ) : (
-                    <><Eye className="mr-2 h-4 w-4" aria-hidden />Enable</>
+                    <><Eye className="mr-2 h-4 w-4" aria-hidden />{t("list.enable")}</>
                   )}
                 </DropdownMenuItem>
               )}
@@ -153,7 +155,7 @@ export function AchievementsTable({
               {actions.canDelete && (
                 <DropdownMenuItem onClick={() => actions.onDelete(rule)} className="text-destructive">
                   <Trash2 className="mr-2 h-4 w-4" aria-hidden />
-                  Delete achievement
+                  {t("list.deleteAchievement")}
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
@@ -176,8 +178,8 @@ export function AchievementsTable({
         })
       }
       columns={columns}
-      searchPlaceholder="Search achievements…"
-      emptyMessage="No achievements found. Use “Seed defaults” to create the standard set, or “Create achievement” to start from scratch."
+      searchPlaceholder={t("list.search")}
+      emptyMessage={t("list.empty")}
       onRowClick={(row) => actions.onOpen(row.original)}
     />
   );

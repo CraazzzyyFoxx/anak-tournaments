@@ -21,6 +21,7 @@ const MEGABYTE = 1024 * 1024;
  */
 function QuotaScopeBars({ usage }: Readonly<{ usage: QuotaScopeUsage }>) {
   const t = useTranslations("quota");
+  const tSettings = useTranslations("adminSettings.quota");
   const format = useFormatter();
   // Reading the clock in render is impure and mismatches on hydration; the
   // window this counts down to is a minute or a day wide, so minute precision
@@ -52,7 +53,10 @@ function QuotaScopeBars({ usage }: Readonly<{ usage: QuotaScopeUsage }>) {
               </div>
               <Progress
                 value={percent}
-                aria-label={`${t(`scopes.${usage.scope}.label`)} — ${label}`}
+                aria-label={tSettings("usageLabel", {
+                  scope: t(`scopes.${usage.scope}.label`),
+                  dimension: label
+                })}
                 className={cn(
                   "mt-1.5 h-2",
                   percent >= 100 && "[&>div]:bg-danger",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,9 +40,9 @@ const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 
 /** The three community links, rendered identically — label, type, example. */
 const LINK_FIELDS = [
-  { key: "discord_url", label: "Discord", placeholder: "https://discord.gg/…" },
-  { key: "twitch_url", label: "Twitch", placeholder: "https://twitch.tv/…" },
-  { key: "boosty_url", label: "Boosty", placeholder: "https://boosty.to/…" }
+  { key: "discord_url", labelKey: "linkLabels.discord", placeholder: "https://discord.gg/…" },
+  { key: "twitch_url", labelKey: "linkLabels.twitch", placeholder: "https://twitch.tv/…" },
+  { key: "boosty_url", labelKey: "linkLabels.boosty", placeholder: "https://boosty.to/…" }
 ] as const;
 
 /**
@@ -53,6 +54,7 @@ const LINK_FIELDS = [
  * received.
  */
 export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.general");
   const settings = useWorkspaceSettingsForm(workspaceId, "general");
   const { isSuperuser } = usePermissions();
   const { form, patch, invalidate } = settings;
@@ -74,18 +76,18 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
     mutationFn: (file: File) => workspaceService.uploadIcon(workspaceId as number, file),
     onSuccess: () => {
       invalidate();
-      notify.success("Icon updated");
+      notify.success(t("iconUpdated"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not upload the icon" })
+    onError: (error) => notify.apiError(error, { title: t("uploadIconError") })
   });
 
   const deleteIcon = useMutation({
     mutationFn: () => workspaceService.deleteIcon(workspaceId as number),
     onSuccess: () => {
       invalidate();
-      notify.success("Icon removed");
+      notify.success(t("iconRemoved"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not remove the icon" })
+    onError: (error) => notify.apiError(error, { title: t("removeIconError") })
   });
 
   return (
@@ -116,7 +118,7 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
           <Card>
             <CardContent className="flex flex-col gap-4 pt-6">
               <div>
-                <Label htmlFor="workspace-name">Name</Label>
+                <Label htmlFor="workspace-name">{t("name")}</Label>
                 <Input
                   id="workspace-name"
                   className="mt-1.5"
@@ -126,7 +128,7 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
               </div>
 
               <div>
-                <Label htmlFor="workspace-tagline">Tagline</Label>
+                <Label htmlFor="workspace-tagline">{t("tagline")}</Label>
                 <Input
                   id="workspace-tagline"
                   className="mt-1.5"
@@ -135,12 +137,12 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                   onChange={(event) => patch({ tagline: event.target.value })}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  One line under the community name on its public page.
+                  {t("taglineHelp")}
                 </p>
               </div>
 
               <div>
-                <Label htmlFor="workspace-description">Description</Label>
+                <Label htmlFor="workspace-description">{t("description")}</Label>
                 <Textarea
                   id="workspace-description"
                   className="mt-1.5"
@@ -150,7 +152,7 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
               </div>
 
               <div>
-                <Label htmlFor="workspace-about">About</Label>
+                <Label htmlFor="workspace-about">{t("about")}</Label>
                 <Textarea
                   id="workspace-about"
                   className="mt-1.5 min-h-40 font-mono"
@@ -159,13 +161,13 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                   onChange={(event) => patch({ about: event.target.value })}
                 />
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Markdown. Rendered as the “About” block of the public page.
+                  {t("aboutHelp")}
                 </p>
               </div>
 
-              {LINK_FIELDS.map(({ key, label, placeholder }) => (
+              {LINK_FIELDS.map(({ key, labelKey, placeholder }) => (
                 <div key={key}>
-                  <Label htmlFor={`workspace-${key}`}>{label}</Label>
+                  <Label htmlFor={`workspace-${key}`}>{t(labelKey)}</Label>
                   <Input
                     id={`workspace-${key}`}
                     className="mt-1.5"
@@ -179,13 +181,13 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
               ))}
 
               <div>
-                <Label htmlFor="workspace-timezone">Timezone</Label>
+                <Label htmlFor="workspace-timezone">{t("timezone")}</Label>
                 <Select
                   value={values.timezone}
                   onValueChange={(value) => patch({ timezone: value })}
                 >
                   <SelectTrigger id="workspace-timezone" className="mt-1.5 w-full">
-                    <SelectValue placeholder="Select timezone" />
+                    <SelectValue placeholder={t("selectTimezone")} />
                   </SelectTrigger>
                   <SelectContent>
                     {timezoneOptions.map((zone) => (
@@ -196,12 +198,12 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                   </SelectContent>
                 </Select>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Tournament schedule times are entered and shown in this zone.
+                  {t("timezoneHelp")}
                 </p>
               </div>
 
               <div>
-                <p className="text-sm font-medium leading-none">Icon</p>
+                <p className="text-sm font-medium leading-none">{t("icon")}</p>
                 <div className="mt-1.5">
                   <EditableAvatar
                     src={workspace.icon_url}
@@ -217,18 +219,17 @@ export function GeneralSection({ workspaceId }: Readonly<{ workspaceId: number |
                   />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  PNG, JPEG, WebP or GIF, max 2 MB. Saved as soon as you pick it.
+                  {t("iconHelp")}
                 </p>
               </div>
 
               <div>
-                <p className="text-sm font-medium leading-none">Owner</p>
+                <p className="text-sm font-medium leading-none">{t("owner")}</p>
                 <p className="mt-1.5 text-sm">
                   <WorkspaceOwnerValue workspaceId={workspace.id} />
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  The account accountable for this workspace, counted against that account&apos;s
-                  workspace limit.
+                  {t("ownerHelp")}
                 </p>
                 <WorkspaceOwnerControl workspaceId={workspace.id} isSuperuser={isSuperuser} />
                 <WorkspaceOwnerTransferControl

@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowUp, MoreHorizontal, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import {
   DropdownMenu,
@@ -56,6 +57,7 @@ export function TemplateMatchCard({
   onMove,
   onDelete
 }: Readonly<TemplateMatchCardProps>) {
+  const t = useTranslations("bracketEditor");
   // A match cannot feed itself, so its own rows are never targets.
   const targeting = connecting !== null && connecting.source !== match.id;
 
@@ -70,11 +72,11 @@ export function TemplateMatchCard({
         ? `W M${slot.winner_of}`
         : slot?.loser_of != null
           ? `L M${slot.loser_of}`
-          : "Empty");
+          : t("empty"));
     // On screen the card's gutter says which match this row belongs to; an
     // accessible name has to carry it itself, so a listener hears
     // "M3 home: L1" rather than a bare "L1".
-    const name = `M${match.id} ${side}: ${slot === null ? "empty" : label}`;
+    const name = t("slotLabel", { id: match.id, side, state: slot === null ? t("empty").toLowerCase() : label });
     const rowClass = cn(
       "flex w-full items-center justify-between gap-2 px-2.5 text-left text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]",
       side === "home" && "border-b border-[color:var(--aqt-border)]",
@@ -87,7 +89,7 @@ export function TemplateMatchCard({
       return (
         <button
           type="button"
-          aria-label={`${name} — connect here`}
+          aria-label={`${name} — ${t("connectHere")}`}
           data-template-slot={`${match.id}-${side}`}
           data-connect-target=""
           className={cn(
@@ -98,7 +100,7 @@ export function TemplateMatchCard({
           onClick={() => onConnect(side)}
         >
           <span className="truncate">{label}</span>
-          <span className="shrink-0 text-label uppercase text-[color:var(--aqt-teal)]">drop</span>
+          <span className="shrink-0 text-label uppercase text-[color:var(--aqt-teal)]">{t("drop")}</span>
         </button>
       );
     }
@@ -122,7 +124,7 @@ export function TemplateMatchCard({
               {seed}
             </DropdownMenuItem>
           ))}
-          <DropdownMenuItem onSelect={() => onClear(side)}>Clear</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onClear(side)}>{t("clear")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -147,7 +149,7 @@ export function TemplateMatchCard({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label={`Match ${match.id} actions`}
+                aria-label={t("matchActions", { id: match.id })}
                 className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
               >
                 <MoreHorizontal className="size-3.5" aria-hidden />
@@ -156,15 +158,15 @@ export function TemplateMatchCard({
             <DropdownMenuContent align="start">
               <DropdownMenuItem onSelect={() => onMove(-1)}>
                 <ArrowUp className="size-4" aria-hidden />
-                Move up
+                {t("moveUp")}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onMove(1)}>
                 <ArrowDown className="size-4" aria-hidden />
-                Move down
+                {t("moveDown")}
               </DropdownMenuItem>
               <DropdownMenuItem className="text-danger focus:text-danger" onSelect={onDelete}>
                 <Trash2 className="size-4" aria-hidden />
-                Delete
+                {t("delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -177,8 +179,8 @@ export function TemplateMatchCard({
           type="button"
           data-template-port={`${match.id}-winner`}
           aria-pressed={connecting?.source === match.id && connecting.role === "winner"}
-          aria-label={`Connect winner of M${match.id}`}
-          title={`Connect winner of M${match.id}`}
+          aria-label={t("connectWinner", { id: match.id })}
+          title={t("connectWinner", { id: match.id })}
           className={cn(
             PORT_BUTTON,
             connecting?.source === match.id && connecting.role === "winner"
@@ -194,8 +196,8 @@ export function TemplateMatchCard({
             type="button"
             data-template-port={`${match.id}-loser`}
             aria-pressed={connecting?.source === match.id && connecting.role === "loser"}
-            aria-label={`Connect loser of M${match.id}`}
-            title={`Connect loser of M${match.id}`}
+            aria-label={t("connectLoser", { id: match.id })}
+            title={t("connectLoser", { id: match.id })}
             className={cn(
               PORT_BUTTON,
               connecting?.source === match.id && connecting.role === "loser"

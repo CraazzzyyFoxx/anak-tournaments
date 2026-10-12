@@ -39,10 +39,6 @@ const activateDivisionGridVersion = vi.fn();
 
 let permitted = true;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
-}));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString().slice(0, 10) })
 }));

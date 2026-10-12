@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, RefreshCcw } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,7 @@ export function PreviewTab({
   onRefresh,
   onChangeRow,
 }: Readonly<PreviewTabProps>) {
+  const t = useTranslations("sheetsFeed.preview");
   const rowCount = preview?.rows.length ?? 0;
   const safeIndex = Math.min(Math.max(activeRowIndex, 0), Math.max(rowCount - 1, 0));
   const activeRow = preview?.rows[safeIndex] ?? null;
@@ -53,17 +55,17 @@ export function PreviewTab({
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="space-y-1.5">
           <CardTitle className="flex flex-wrap items-center gap-2">
-            Preview
+            {t("title")}
             {preview ? (
               <span className="flex items-center gap-1.5">
-                <Badge variant="default">{preview.create_count} create</Badge>
-                <Badge variant="secondary">{preview.update_count} update</Badge>
-                <Badge variant="outline">{preview.skip_count} skip</Badge>
+                <Badge variant="default">{t("create", { count: preview.create_count })}</Badge>
+                <Badge variant="secondary">{t("update", { count: preview.update_count })}</Badge>
+                <Badge variant="outline">{t("skip", { count: preview.skip_count })}</Badge>
               </span>
             ) : null}
           </CardTitle>
           <CardDescription>
-            {activeRow ? `Sample row ${safeIndex + 1} of ${rowCount}` : "Sample rows parsed with the current mapping."}
+            {activeRow ? t("sampleRow", { current: safeIndex + 1, total: rowCount }) : t("sampleRowsDescription")}
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
@@ -75,7 +77,7 @@ export function PreviewTab({
                 className="size-8"
                 disabled={safeIndex <= 0}
                 onClick={() => onChangeRow(safeIndex - 1)}
-                title="Previous row"
+                title={t("previousRow")}
               >
                 <ChevronLeft className="size-4" />
               </Button>
@@ -88,7 +90,7 @@ export function PreviewTab({
                 className="size-8"
                 disabled={safeIndex >= rowCount - 1}
                 onClick={() => onChangeRow(safeIndex + 1)}
-                title="Next row"
+                title={t("nextRow")}
               >
                 <ChevronRight className="size-4" />
               </Button>
@@ -100,24 +102,24 @@ export function PreviewTab({
             ) : (
               <RefreshCcw className="mr-2 size-4" />
             )}
-            Refresh preview
+            {t("refresh")}
           </Button>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
         {!canPreview ? (
-          <EmptyNote className="text-center">Set a sheet URL to preview parsed rows.</EmptyNote>
+          <EmptyNote className="text-center">{t("urlRequired")}</EmptyNote>
         ) : !preview ? (
-          <EmptyNote title="No preview yet.">
-            Click “Refresh preview” to fetch sample rows with the current mapping.
+          <EmptyNote title={t("noPreviewTitle")}>
+            {t("noPreviewDescription")}
           </EmptyNote>
         ) : rowCount === 0 || !activeRow ? (
-          <EmptyNote className="text-center">The sheet returned no sample rows.</EmptyNote>
+          <EmptyNote className="text-center">{t("noRows")}</EmptyNote>
         ) : (
           <>
             <div className="flex items-center gap-2 text-sm">
-              <span className="font-medium">Row {activeRow.row_index}</span>
+              <span className="font-medium">{t("row", { index: activeRow.row_index })}</span>
               <Badge variant={DISPOSITION_VARIANT[activeRow.disposition]} className="capitalize">
                 {activeRow.disposition}
               </Badge>
@@ -125,7 +127,7 @@ export function PreviewTab({
             {activeRow.warnings.length > 0 ? (
               <Alert>
                 <AlertTitle>
-                  {activeRow.warnings.length} warning{activeRow.warnings.length === 1 ? "" : "s"}
+                  {t("warnings", { count: activeRow.warnings.length })}
                 </AlertTitle>
                 <AlertDescription>
                   <ul className="mt-1 space-y-1">

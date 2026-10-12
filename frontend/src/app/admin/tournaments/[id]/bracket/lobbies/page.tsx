@@ -43,6 +43,7 @@ export default function LobbiesViewPage() {
 }
 
 function LobbiesBoard({ tournamentId }: Readonly<{ tournamentId: number }>) {
+  const t = useTranslations("adminBracket.lobbies");
   const stagesQuery = useHubStagesQuery(tournamentId);
   if (stagesQuery.isPending) return tabFallback;
 
@@ -51,11 +52,10 @@ function LobbiesBoard({ tournamentId }: Readonly<{ tournamentId: number }>) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>No FFA stages</CardTitle>
+          <CardTitle>{t("noFfa")}</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          This tournament plays duels only. A lobby appears here once a stage of type FFA League has been
-          generated.
+          {t("duelsOnly")}
         </CardContent>
       </Card>
     );
@@ -71,6 +71,7 @@ function LobbiesBoard({ tournamentId }: Readonly<{ tournamentId: number }>) {
 }
 
 function StageLobbies({ tournamentId, stage }: Readonly<{ tournamentId: number; stage: Stage }>) {
+  const t = useTranslations("adminBracket.lobbies");
   // The organizer's read, not the public one: this screen is where a hidden
   // column is entered and checked, and `public_view` would have deleted it from
   // the answer before the dialog below ever saw it.
@@ -87,14 +88,14 @@ function StageLobbies({ tournamentId, stage }: Readonly<{ tournamentId: number; 
         <Skeleton className="h-56 w-full rounded-xl" />
       ) : lobbiesQuery.isError ? (
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span>The lobbies failed to load.</span>
+          <span>{t("loadError")}</span>
           <Button variant="outline" size="sm" onClick={() => void lobbiesQuery.refetch()}>
-            Try again
+            {t("tryAgain")}
           </Button>
         </div>
       ) : lobbies.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No lobbies yet — generate the stage to seat its groups.
+          {t("empty")}
         </p>
       ) : (
         lobbies.map((lobby) => <LobbyCard key={lobby.encounter_id} lobby={lobby} />)
@@ -104,6 +105,7 @@ function StageLobbies({ tournamentId, stage }: Readonly<{ tournamentId: number; 
 }
 
 function LobbyCard({ lobby }: Readonly<{ lobby: FfaLobby }>) {
+  const t = useTranslations("adminBracket.lobbies");
   const [entering, setEntering] = useState<number | null>(null);
   const [voiding, setVoiding] = useState<number | null>(null);
 
@@ -125,12 +127,12 @@ function LobbyCard({ lobby }: Readonly<{ lobby: FfaLobby }>) {
       </CardHeader>
       <CardContent className="space-y-3">
         {lobby.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No teams have been seeded into this lobby yet.</p>
+          <p className="text-sm text-muted-foreground">{t("noTeams")}</p>
         ) : (
           <>
             <FfaLobbyTable lobby={lobby} />
             <div className="flex flex-wrap items-center gap-2">
-              <span className={EYEBROW_CLASS}>Games</span>
+              <span className={EYEBROW_CLASS}>{t("games")}</span>
               {positions.map((position) => (
                 <span key={position} className="flex items-center gap-1">
                   <Button
@@ -139,11 +141,11 @@ function LobbyCard({ lobby }: Readonly<{ lobby: FfaLobby }>) {
                     variant={played.has(position) ? "outline" : "secondary"}
                     onClick={() => setEntering(position)}
                   >
-                    {played.has(position) ? `Correct game ${position}` : `Enter game ${position}`}
+                    {played.has(position) ? t("correct", { position }) : t("enter", { position })}
                   </Button>
                   {played.has(position) ? (
                     <Button type="button" size="sm" variant="ghost" onClick={() => setVoiding(position)}>
-                      Void
+                      {t("void")}
                     </Button>
                   ) : null}
                 </span>
@@ -181,6 +183,7 @@ function LobbyCard({ lobby }: Readonly<{ lobby: FfaLobby }>) {
 
 /** The series length of ONE lobby. The server refuses to cut below games played. */
 function GamesCountForm({ lobby }: Readonly<{ lobby: FfaLobby }>) {
+  const t = useTranslations("adminBracket.lobbies");
   const queryClient = useQueryClient();
   const describeError = useFfaErrorMessage();
   const [games, setGames] = useState<number | null>(lobby.best_of);
@@ -188,7 +191,7 @@ function GamesCountForm({ lobby }: Readonly<{ lobby: FfaLobby }>) {
   const mutation = useMutation({
     mutationFn: (value: number) => ffaService.setGamesCount(lobby.encounter_id, value),
     onSuccess: (updated) => {
-      notify.success(`${lobby.name} now plays ${updated.best_of} games`);
+      notify.success(t("saved", { name: lobby.name, count: updated.best_of }));
       void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.ffaAll(lobby.tournament_id) });
     },
     // One message per failure: the translated one below, not that plus the
@@ -204,11 +207,11 @@ function GamesCountForm({ lobby }: Readonly<{ lobby: FfaLobby }>) {
   return (
     <div className="flex items-center gap-2">
       <label className={EYEBROW_CLASS} htmlFor={`ffa-games-${lobby.encounter_id}`}>
-        Games
+        {t("games")}
       </label>
       <NumberInput
         id={`ffa-games-${lobby.encounter_id}`}
-        aria-label={`Games in ${lobby.name}`}
+        aria-label={t("gamesIn", { name: lobby.name })}
         integer
         min={1}
         max={50}
@@ -223,7 +226,7 @@ function GamesCountForm({ lobby }: Readonly<{ lobby: FfaLobby }>) {
         disabled={!valid || mutation.isPending}
         onClick={() => games != null && mutation.mutate(games)}
       >
-        Save
+        {t("save")}
       </Button>
     </div>
   );
@@ -239,7 +242,8 @@ function VoidGameDialog({
   position,
   onClose
 }: Readonly<{ lobby: FfaLobby; position: number; onClose: () => void }>) {
-  const t = useTranslations();
+  const t = useTranslations("adminBracket.lobbies");
+  const tCommon = useTranslations();
   const queryClient = useQueryClient();
   const describeError = useFfaErrorMessage();
   const [reason, setReason] = useState("");
@@ -248,7 +252,7 @@ function VoidGameDialog({
   const mutation = useMutation({
     mutationFn: (value: string) => ffaService.cancelGame(lobby.encounter_id, position, value),
     onSuccess: () => {
-      notify.success(`Game ${position} voided`);
+      notify.success(t("voided", { position }));
       void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.ffaAll(lobby.tournament_id) });
       onClose();
     },
@@ -262,7 +266,7 @@ function VoidGameDialog({
     event.preventDefault();
     const trimmed = reason.trim();
     if (!trimmed) {
-      setError(t("ffa.errors.ffa_reason_required"));
+      setError(tCommon("ffa.errors.ffa_reason_required"));
       return;
     }
     setError(null);
@@ -275,26 +279,26 @@ function VoidGameDialog({
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={`Void game ${position}`}
-      description={`${lobby.name} · the position becomes free and can be entered again`}
+      title={t("voidTitle", { position })}
+      description={t("voidDescription", { name: lobby.name })}
       onSubmit={handleSubmit}
-      submitLabel="Void game"
+      submitLabel={t("voidSubmit")}
       isSubmitting={mutation.isPending}
       errorMessage={error ?? undefined}
     >
       <div className="space-y-1">
         <label className={EYEBROW_CLASS} htmlFor={`ffa-void-reason-${lobby.encounter_id}`}>
-          Reason
+          {t("reason")}
         </label>
         <Input
           id={`ffa-void-reason-${lobby.encounter_id}`}
-          aria-label="Reason"
+          aria-label={t("reason")}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
-          placeholder="Why this game does not count"
+          placeholder={t("reasonPlaceholder")}
         />
         <p className="text-xs text-muted-foreground">
-          Recorded in the lobby audit trail. The results of this game stop counting toward the standings.
+          {t("audit")}
         </p>
       </div>
     </EntityFormDialog>

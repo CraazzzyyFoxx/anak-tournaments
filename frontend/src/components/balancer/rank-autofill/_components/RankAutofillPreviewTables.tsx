@@ -12,7 +12,7 @@ import type { DateFormatter } from "@/components/kit/format-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { ROLE_LABELS, getRoleIconName } from "@/lib/roster/roles";
+import { getRoleIconName } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import type {
   RankAutofillOwValue,
@@ -42,26 +42,27 @@ function formatRankSource(format: DateFormatter, role: RegistrationRankAutofillR
  */
 function formatBlendBreakdown(
   role: RegistrationRankAutofillRole,
-  owValue: RankAutofillOwValue | null
+  owValue: RankAutofillOwValue | null,
+  t: ReturnType<typeof useTranslations<"rankAutofill.breakdown">>
 ): string[] {
   // Plain-text `title` content, so the marker has to stay a word rather than an icon.
   const mark = (source: RegistrationRankAutofillRole["used_source"], ow?: RankAutofillOwValue) =>
-    role.used_source === source && (ow === undefined || ow === owValue) ? " (used)" : "";
+    role.used_source === source && (ow === undefined || ow === owValue) ? t("used") : "";
   const lines: string[] = [];
   if (role.ow_rank_value != null) {
-    lines.push(`OW formula ${role.ow_rank_value}${mark("ow", "composite")}`);
+    lines.push(t("owFormula", { value: String(role.ow_rank_value), marker: mark("ow", "composite") }));
   }
   if (role.ow_current_rank_value != null) {
-    lines.push(`OW current ${role.ow_current_rank_value}${mark("ow", "current")}`);
+    lines.push(t("owCurrent", { value: String(role.ow_current_rank_value), marker: mark("ow", "current") }));
   }
   if (role.ow_peak_rank_value != null) {
-    lines.push(`OW peak ≥${role.ow_peak_rank_value}${mark("ow", "peak")}`);
+    lines.push(t("owPeak", { value: String(role.ow_peak_rank_value), marker: mark("ow", "peak") }));
   }
   if (role.division_history_rank_value != null) {
-    lines.push(`balancer ${role.division_history_rank_value}${mark("division_history")}`);
+    lines.push(t("balancer", { value: String(role.division_history_rank_value), marker: mark("division_history") }));
   }
   if (role.analytics_rank_value != null) {
-    lines.push(`analytics ${role.analytics_rank_value}${mark("analytics")}`);
+    lines.push(t("analytics", { value: String(role.analytics_rank_value), marker: mark("analytics") }));
   }
   return lines;
 }
@@ -118,11 +119,13 @@ function RankAutofillRolePill({
   owValue
 }: Readonly<{ role: RegistrationRankAutofillRole; owValue: RankAutofillOwValue | null }>) {
   const t = useTranslations();
+  const tBreakdown = useTranslations("rankAutofill.breakdown");
+  const tRoles = useTranslations("common.roles");
   const format = useFormatter();
   const grid = useDivisionGrid();
-  const roleLabel = ROLE_LABELS[role.role] ?? role.role;
+  const roleLabel = tRoles.has(role.role) ? tRoles(role.role) : role.role;
   const source = formatRankSource(format, role);
-  const breakdown = formatBlendBreakdown(role, owValue);
+  const breakdown = formatBlendBreakdown(role, owValue, tBreakdown);
   const tone = resolveRolePillTone(role);
   // The tone already ranks these two apart: an update is what gets written, a
   // mismatch is a kept rank that disagrees with the suggestion (overwrite off)

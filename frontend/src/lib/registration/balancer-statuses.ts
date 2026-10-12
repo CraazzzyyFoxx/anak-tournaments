@@ -1,6 +1,22 @@
 import type { BalancerCustomStatus } from "@/types/balancer-admin.types";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
 
+/** Stable message keys for built-in status labels/descriptions. The exported
+ * status metadata intentionally keeps its English labels for public callers;
+ * admin surfaces use these keys when they render the same metadata. */
+export const BUILTIN_STATUS_MESSAGE_KEYS: Record<string, { label: string; description: string }> = {
+  pending: { label: "pending", description: "pendingDescription" },
+  approved: { label: "approved", description: "approvedDescription" },
+  rejected: { label: "rejected", description: "rejectedDescription" },
+  withdrawn: { label: "withdrawn", description: "withdrawnDescription" },
+  banned: { label: "banned", description: "bannedDescription" },
+  insufficient_data: { label: "incomplete", description: "incompleteDescription" },
+  not_in_balancer: { label: "notAdded", description: "notAddedDescription" },
+  excluded: { label: "excluded", description: "excludedDescription" },
+  incomplete: { label: "incomplete", description: "balancerIncompleteDescription" },
+  ready: { label: "ready", description: "readyDescription" }
+};
+
 const BUILTIN_STATUS_META: Record<StatusScope, StatusMeta[]> = {
   registration: [
     {

@@ -9,6 +9,6 @@ import type { Tone } from "@/components/kit/tone";
  */
 export function tournamentStatus(isFinished: boolean): { label: string; tone: Tone } {
   return isFinished
-    ? { label: "Finished", tone: "neutral" }
-    : { label: "Active", tone: "success" };
+    ? { label: "finished", tone: "neutral" }
+    : { label: "active", tone: "success" };
 }

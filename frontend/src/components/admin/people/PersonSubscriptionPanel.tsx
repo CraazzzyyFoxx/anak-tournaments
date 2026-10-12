@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Search } from "lucide-react";
 import { useDebounce } from "use-debounce";
@@ -38,6 +39,7 @@ interface SelectUser {
 /** Compact search that lives in the page header; matches drop down below the
  *  input and open the player detail on select. */
 export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }>) {
+  const t = useTranslations("adminPeople.subscription");
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   // APG combobox: DOM focus never leaves the input, so the highlighted row is
@@ -94,7 +96,7 @@ export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: Sele
     }
   };
 
-  const foundLabel = `${results.length} ${results.length === 1 ? "player" : "players"} found`;
+  const foundLabel = t("found", { count: results.length });
   const resultsAnnouncement = showDropdown && !searchQuery.isLoading ? foundLabel : "";
 
   return (
@@ -106,13 +108,13 @@ export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: Sele
       <Input
         className="pl-8"
         role="combobox"
-        aria-label="Search player by name"
+        aria-label={t("searchLabel")}
         aria-autocomplete="list"
         aria-expanded={showDropdown}
         aria-controls={listId}
         aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined}
         autoComplete="off"
-        placeholder="Search player by name…"
+        placeholder={t("search")}
         value={term}
         onChange={(event) => {
           setTerm(event.target.value);
@@ -128,12 +130,12 @@ export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: Sele
       {showDropdown && (
         <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
           {searchQuery.isLoading ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">Searching…</p>
+            <p className="px-3 py-2 text-sm text-muted-foreground">{t("searching")}</p>
           ) : results.length > 0 ? (
             <div
               id={listId}
               role="listbox"
-              aria-label="Matching players"
+              aria-label={t("matching")}
               className="max-h-72 divide-y divide-border overflow-y-auto"
             >
               {results.map((user, index) => (
@@ -162,7 +164,7 @@ export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: Sele
             </div>
           ) : (
             <p id={listId} className="px-3 py-2 text-sm text-muted-foreground">
-              No player matches “{debounced}”.
+              {t("noMatch", { query: debounced })}
             </p>
           )}
         </div>
@@ -181,6 +183,7 @@ export function SubscriptionPlayerSearch({ onSelect }: Readonly<{ onSelect: Sele
  * inactive on Friday, active again after a re-subscribe") is visible at all.
  */
 function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
+  const t = useTranslations("adminPeople.subscription");
   const format = useFormatter();
   const labels = useSubscriptionLabels();
   // Scoped server-side to the injected workspace; see `admin.service.ts`.
@@ -193,12 +196,12 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
 
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-semibold">Check history</h3>
+      <h3 className="text-sm font-semibold">{t("history")}</h3>
       {query.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">{t("loading")}</p>
       ) : rows.length === 0 ? (
         <EmptyNote>
-          No checks recorded for this player yet.
+          {t("emptyHistory")}
         </EmptyNote>
       ) : (
         <ol className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
@@ -217,7 +220,7 @@ function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
                 <span>{labels.state[row.state] ?? row.state}</span>
                 {row.tier_label || row.tier_rank != null ? (
                   <span className="text-muted-foreground">
-                    {row.tier_label ?? `Tier ${row.tier_rank}`}
+                    {row.tier_label ?? t("tierValue", { rank: row.tier_rank ?? 0 })}
                   </span>
                 ) : null}
                 <span className="text-muted-foreground">
@@ -250,6 +253,7 @@ export function SubscriptionPlayerPanel({
   userId,
   label
 }: Readonly<{ userId: number; label: string }>) {
+  const t = useTranslations("adminPeople.subscription");
   const format = useFormatter();
   const labels = useSubscriptionLabels();
   const queryClient = useQueryClient();
@@ -267,22 +271,20 @@ export function SubscriptionPlayerPanel({
     onSuccess: (result) => {
       notify.success(
         result.checked === 0
-          ? "Nothing to check — this player is not registered in a tournament that requires a subscription"
-          : result.checked === 1
-            ? "Checked 1 subscription"
-            : `Checked ${result.checked} subscriptions`
+          ? t("nothingToCheck")
+          : t("checked", { count: result.checked })
       );
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.subscriptions() });
     },
     onError: (error) =>
-      notify.apiError(error, { title: "Could not re-check the subscription — try again" })
+      notify.apiError(error, { title: t("recheckError") })
   });
 
   return (
     <div className="space-y-5">
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">Current entitlements</h3>
+          <h3 className="text-sm font-semibold">{t("entitlements")}</h3>
           <Button
             size="sm"
             disabled={triggerMutation.isPending}
@@ -293,29 +295,27 @@ export function SubscriptionPlayerPanel({
             ) : (
               <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
             )}
-            Re-check now
+            {t("recheck")}
           </Button>
         </div>
 
         {statusQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
         ) : rows.length === 0 ? (
           <EmptyNote>
-            No subscription verdict stored for this player. Either they have no linked auth account,
-            or nothing has ever checked them — subscriptions are only resolved for tournaments whose
-            registration form requires one.
+            {t("empty")}
           </EmptyNote>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Workspace</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead>Tier</TableHead>
-                <TableHead>Checked</TableHead>
-                <TableHead>Reason</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead>{t("workspace")}</TableHead>
+                <TableHead>{t("provider")}</TableHead>
+                <TableHead>{t("state")}</TableHead>
+                <TableHead>{t("tier")}</TableHead>
+                <TableHead>{t("checkedLabel")}</TableHead>
+                <TableHead>{t("reason")}</TableHead>
+                <TableHead className="text-right">{t("action")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -331,7 +331,7 @@ export function SubscriptionPlayerPanel({
                     <StateBadge state={row.state} />
                   </TableCell>
                   <TableCell className="text-sm tabular-nums text-muted-foreground">
-                    {row.tier_label ?? (row.tier_rank != null ? `Tier ${row.tier_rank}` : "—")}
+                    {row.tier_label ?? (row.tier_rank != null ? t("tierValue", { rank: row.tier_rank }) : "—")}
                   </TableCell>
                   <TableCell
                     className="text-sm tabular-nums text-muted-foreground"
@@ -348,10 +348,10 @@ export function SubscriptionPlayerPanel({
                       size="sm"
                       disabled={triggerMutation.isPending}
                       onClick={() => triggerMutation.mutate([row.provider])}
-                      aria-label={`Re-check ${PROVIDER_LABELS[row.provider] ?? row.provider} for ${label}`}
+                      aria-label={t("recheckFor", { provider: PROVIDER_LABELS[row.provider] ?? row.provider, label })}
                     >
                       <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
-                      Re-check
+                      {t("recheck")}
                     </Button>
                   </TableCell>
                 </TableRow>

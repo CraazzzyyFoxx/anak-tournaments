@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
+import type messages from "@/i18n/messages/en.json";
 import { useFormatter } from "@/lib/datetime/client";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +14,6 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { useSyncActiveWorkspace } from "@/hooks/useSyncActiveWorkspace";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { TOURNAMENT_STATUS_LABELS } from "@/lib/tournament/lifecycle";
 import { TournamentHubActions } from "./components/TournamentHubActions";
 import { formatDate, TOURNAMENT_STATUS_TONE } from "./components/tournamentWorkspace.helpers";
 import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
@@ -32,13 +33,13 @@ import { allowedTab, isLegacyTabSegment, isTabKey, TAB_KEYS, type TabKey } from 
  * `teams`, and `pickBan`/`links` sections of `settings` — configuration is not
  * a phase, and the bar was nine items wide because it pretended otherwise.
  */
-const TAB_LABELS: Record<TabKey, string> = {
-  overview: "Overview",
-  registration: "Registration",
-  teams: "Teams",
-  bracket: "Bracket",
-  matches: "Matches",
-  settings: "Settings"
+const TAB_LABEL_KEYS: Record<TabKey, keyof typeof messages.adminTournament.shell.tabs> = {
+  overview: "overview",
+  registration: "registration",
+  teams: "teams",
+  bracket: "bracket",
+  matches: "matches",
+  settings: "settings"
 };
 
 // Trailing debounce for readiness invalidations (§3): bulk registration edits
@@ -60,6 +61,8 @@ export function TournamentHubShell({
   tournamentId: number;
   children: ReactNode;
 }>) {
+  const t = useTranslations("adminTournament.shell");
+  const tStatus = useTranslations("common.statusBadge");
   const format = useFormatter();
   const router = useRouter();
   const pathname = usePathname();
@@ -212,8 +215,8 @@ export function TournamentHubShell({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Tournament not found</CardTitle>
-          <CardDescription>The requested admin workspace could not be loaded.</CardDescription>
+          <CardTitle>{t("notFound")}</CardTitle>
+          <CardDescription>{t("notFoundDescription")}</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -247,9 +250,9 @@ export function TournamentHubShell({
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to access this tournament workspace.
+            {t("unauthorizedDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -258,7 +261,7 @@ export function TournamentHubShell({
 
   const tabItems: LinkTabItem[] = TAB_KEYS.map((key) => ({
     key,
-    label: TAB_LABELS[key],
+    label: t(`tabs.${TAB_LABEL_KEYS[key]}` as `tabs.${keyof typeof messages.adminTournament.shell.tabs}`),
     href: `${basePath}/${key}`,
     hidden: !allowedTab(key, tabAccess)
   }));
@@ -268,22 +271,22 @@ export function TournamentHubShell({
       <EntityHubHeader
         title={tournament.name}
         status={{
-          label: TOURNAMENT_STATUS_LABELS[tournament.status],
+          label: tStatus(tournament.status),
           tone: TOURNAMENT_STATUS_TONE[tournament.status]
         }}
         meta={[
           <span key="dates" className="tabular-nums">
             {formatDate(format, tournament.start_date)} — {formatDate(format, tournament.end_date)}
           </span>,
-          tournament.is_league ? "League" : null,
+          tournament.is_league ? t("league") : null,
           <span key="teams" className="tabular-nums">
-            {formatMetric(teamsCount, teamsCountQuery.isLoading)} teams
+            {t("teamsMetric", { value: formatMetric(teamsCount, teamsCountQuery.isLoading), count: teamsCount ?? 0 })}
           </span>,
           <span key="encounters" className="tabular-nums">
-            {formatMetric(encountersCount, encountersCountQuery.isLoading)} encounters
+            {t("encountersMetric", { value: formatMetric(encountersCount, encountersCountQuery.isLoading), count: encountersCount ?? 0 })}
           </span>,
           <span key="standings" className="tabular-nums">
-            {formatMetric(standingsCount, standingsQuery.isLoading)} standings
+            {t("standingsMetric", { value: formatMetric(standingsCount, standingsQuery.isLoading), count: standingsCount ?? 0 })}
           </span>
         ]}
         actions={
@@ -296,7 +299,7 @@ export function TournamentHubShell({
           />
         }
       />
-      <LinkTabs items={tabItems} activeKey={isLegacySegment ? "" : activeTab} ariaLabel="Tournament sections" />
+      <LinkTabs items={tabItems} activeKey={isLegacySegment ? "" : activeTab} ariaLabel={t("sections")} />
       {activeTabAllowed ? children : null}
     </div>
   );

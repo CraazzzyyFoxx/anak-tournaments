@@ -1,3 +1,5 @@
+import type { useTranslations } from "next-intl";
+
 import type { SectionNavGroup } from "@/components/kit/SectionNav";
 
 /**
@@ -25,39 +27,44 @@ export const WORKSPACE_SETTINGS_SECTIONS = [
 
 export type WorkspaceSettingsSectionKey = (typeof WORKSPACE_SETTINGS_SECTIONS)[number];
 
-export const WORKSPACE_SETTINGS_SECTION_LABELS: Record<WorkspaceSettingsSectionKey, string> = {
-  general: "General",
-  branding: "Branding",
-  visibility: "Visibility",
-  domain: "Domain",
-  discord: "Discord",
-  divisions: "Divisions",
-  statuses: "Player statuses",
-  "sub-roles": "Sub-roles",
-  "registration-forms": "Registration forms",
-  subscriptions: "Subscriptions",
-  quota: "Rate limits"
-};
+/**
+ * Each section's key under `sections.*` and `sectionDescriptions.*` in
+ * `adminWorkspace.workspaceSettings`: the slugs are kebab-case, message keys
+ * are camelCase.
+ */
+const SECTION_MESSAGE_KEYS = {
+  general: "general",
+  branding: "branding",
+  visibility: "visibility",
+  domain: "domain",
+  discord: "discord",
+  divisions: "divisions",
+  statuses: "statuses",
+  "sub-roles": "subRoles",
+  "registration-forms": "registrationForms",
+  subscriptions: "subscriptions",
+  quota: "quota"
+} as const satisfies Record<WorkspaceSettingsSectionKey, string>;
+
+export type WorkspaceSettingsTranslator = ReturnType<
+  typeof useTranslations<"adminWorkspace.workspaceSettings">
+>;
+
+export function workspaceSectionLabel(
+  section: WorkspaceSettingsSectionKey,
+  t: WorkspaceSettingsTranslator
+): string {
+  return t(`sections.${SECTION_MESSAGE_KEYS[section]}`);
+}
 
 /** One sentence under the hub heading, so a section says what it decides
  * before the reader has to infer it from the controls. */
-export const WORKSPACE_SETTINGS_SECTION_DESCRIPTIONS: Record<
-  WorkspaceSettingsSectionKey,
-  string
-> = {
-  general: "How this workspace is named, described and scheduled.",
-  branding: "The palette the public site paints this workspace in.",
-  visibility: "Who can find this workspace, and who counts as a newcomer in it.",
-  domain: "The subdomain, the custom domain and the text search engines show.",
-  discord:
-    "The Discord server this workspace runs in: subscriber roles, match logs, tournament announcements and mixes.",
-  divisions: "Rank bands players are sorted into, and the version tournaments read.",
-  statuses: "Player statuses the balancer takes into account.",
-  "sub-roles": "Hero sub-roles used by rosters and reports.",
-  "registration-forms": "Saved questionnaires any tournament here can start from.",
-  subscriptions: "Subscription providers that grant entitlements here.",
-  quota: "How much this workspace, one key and one session may spend."
-};
+export function workspaceSectionDescription(
+  section: WorkspaceSettingsSectionKey,
+  t: WorkspaceSettingsTranslator
+): string {
+  return t(`sectionDescriptions.${SECTION_MESSAGE_KEYS[section]}`);
+}
 
 /**
  * The sections that exist under both shells: `/admin/settings/*` for the
@@ -78,13 +85,16 @@ export const WORKSPACE_RECORD_SECTIONS = [
 
 export type WorkspaceRecordSectionKey = (typeof WORKSPACE_RECORD_SECTIONS)[number];
 
-const GROUPS: ReadonlyArray<{ label: string; sections: readonly WorkspaceSettingsSectionKey[] }> = [
+const GROUPS: ReadonlyArray<{
+  label: "workspace" | "competitive" | "entitlements";
+  sections: readonly WorkspaceSettingsSectionKey[];
+}> = [
   {
-    label: "Workspace",
+    label: "workspace",
     sections: ["general", "branding", "visibility", "domain", "discord"]
   },
-  { label: "Competitive", sections: ["divisions", "statuses", "sub-roles", "registration-forms"] },
-  { label: "Entitlements", sections: ["subscriptions", "quota"] }
+  { label: "competitive", sections: ["divisions", "statuses", "sub-roles", "registration-forms"] },
+  { label: "entitlements", sections: ["subscriptions", "quota"] }
 ];
 
 /**
@@ -98,14 +108,15 @@ const GROUPS: ReadonlyArray<{ label: string; sections: readonly WorkspaceSetting
  */
 export function workspaceSettingsNavGroups(
   basePath: string,
+  t: WorkspaceSettingsTranslator,
   only?: readonly WorkspaceSettingsSectionKey[]
 ): SectionNavGroup[] {
   const allowed = only ? new Set<string>(only) : null;
   return GROUPS.map((group) => ({
-    label: group.label,
+    label: t(`sections.${group.label}`),
     items: group.sections.map((section) => ({
       key: section,
-      label: WORKSPACE_SETTINGS_SECTION_LABELS[section],
+      label: workspaceSectionLabel(section, t),
       href: `${basePath}/${section}`,
       hidden: allowed ? !allowed.has(section) : false
     }))

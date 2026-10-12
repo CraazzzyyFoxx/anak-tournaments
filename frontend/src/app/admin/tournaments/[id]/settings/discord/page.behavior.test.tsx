@@ -45,9 +45,15 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), info: vi.fn(), apiError: vi.fn() }
 }));
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key
-}));
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  const { default: en } = await import("@/i18n/messages/en.json");
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never })
+  };
+});
 
 // No Discord guild is reachable in a test, and a pending channel list renders
 // a disabled combobox rather than the manual-ID fallback — so the fallback is
@@ -192,7 +198,7 @@ describe("Settings › Discord", () => {
     await settle();
     await act(async () => {
       [...document.querySelectorAll("button")]
-        .find((button) => button.textContent?.trim() === "save")
+        .find((button) => button.textContent?.trim() === "Save changes")
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();

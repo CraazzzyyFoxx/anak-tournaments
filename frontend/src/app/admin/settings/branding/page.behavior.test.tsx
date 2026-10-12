@@ -59,8 +59,6 @@ vi.mock("@/stores/workspace.store", () => ({
   ) => selector({ currentWorkspaceId: 7, fetchWorkspaces })
 }));
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
-
 const WORKSPACE: Workspace = {
   id: 7,
   slug: "owt",
@@ -167,21 +165,21 @@ describe("Workspace settings › Branding", () => {
     await render();
 
     expect(container.querySelector<HTMLInputElement>("#brand-primary")?.value).toBe("#0ea5a4");
-    expect(container.querySelector('[aria-label="unsavedChanges"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
   });
 
   it("PATCHes the edited colour alone — no visibility, domain or general field", async () => {
     await render();
 
     await type(container.querySelector<HTMLInputElement>("#brand-primary")!, "#ff0055");
-    // next-intl is the identity here: the summary renders as its key, and the
-    // PATCH below is what pins "one field".
-    expect(container.querySelector('[aria-label="unsavedChanges"]')?.textContent).toContain(
-      "changedFields"
-    );
+    // The translated summary confirms that exactly one field is dirty; the
+    // PATCH below pins the request to that field.
+    const saveBar = container.querySelector('[role="region"]');
+    expect(saveBar).toBeTruthy();
+    expect(saveBar?.textContent).toContain("1 changed field");
 
     await act(async () => {
-      button("save")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button("Save changes")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 
@@ -210,7 +208,7 @@ describe("Workspace settings › Branding", () => {
 
     await type(container.querySelector<HTMLInputElement>("#brand-primary")!, "#000000");
     await act(async () => {
-      button("discard")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button("Discard")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await settle();
 

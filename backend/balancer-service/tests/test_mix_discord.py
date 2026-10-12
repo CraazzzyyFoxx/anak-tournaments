@@ -230,14 +230,14 @@ def test_the_lineup_carries_the_map_its_gamemode_and_the_points_at_stake() -> No
     card = _lineup(next_map=("Busan", "Контроль"), points_per_win=25)
 
     assert ":owt_map: Busan · Контроль" in card.text
-    assert ":owt_points: +25 за победу" in card.text
+    assert ":owt_points: Победа: +25" in card.text
 
 
 def test_the_lineup_says_so_before_anyone_rolled_a_map() -> None:
     card = _lineup(next_map=("Busan", None), points_per_win=0)
 
     assert ":owt_map: Busan" in card.text
-    assert "за победу" not in card.text
+    assert "Победа" not in card.text
     assert ":owt_map: Карта ещё не выбрана" in _lineup().text
 
 
@@ -284,7 +284,7 @@ def test_the_picture_carries_the_gap_the_points_and_the_maps_art() -> None:
         document, points_per_win=25, next_map=("Busan", "Контроль"), map_image="https://s3.example/busan.jpg"
     )
 
-    assert picture.pills == ("Разница средних 100", "+25 за победу")
+    assert picture.pills == ("Разрыв по рангу 100", "Победа +25")
     assert (picture.map_name, picture.gamemode) == ("Busan", "Контроль")
     # Everything fetched before drawing: the map's art and one badge per distinct tier.
     assert picture.image_urls == {

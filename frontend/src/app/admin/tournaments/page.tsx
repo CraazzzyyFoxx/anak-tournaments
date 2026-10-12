@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ColumnDef } from "@tanstack/react-table";
@@ -32,6 +33,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 export default function TournamentsPage() {
+  const t = useTranslations("adminTournaments.list");
   const format = useFormatter();
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
@@ -50,7 +52,7 @@ export default function TournamentsPage() {
       queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.list() });
       setDeleteDialogOpen(false);
       setSelectedTournament(null);
-      notify.success("Tournament deleted successfully");
+      notify.success(t("deleted"));
     }
   });
 
@@ -76,41 +78,41 @@ export default function TournamentsPage() {
   const columns: ColumnDef<Tournament>[] = [
     {
       accessorKey: "name",
-      header: "Name",
+      header: t("columns.name"),
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <span className="font-medium">{row.original.name}</span>
           {row.original.is_hidden ? (
-            <StatusIcon icon={EyeOff} label="Unpublished" variant="muted" />
+            <StatusIcon icon={EyeOff} label={t("status.unpublished")} variant="muted" />
           ) : null}
         </div>
       )
     },
     {
       accessorKey: "is_league",
-      header: "Type",
+      header: t("columns.type"),
       meta: columnMeta<Tournament>({ align: "center" }),
       cell: ({ row }) =>
         row.getValue("is_league") ? (
-          <StatusIcon icon={Crown} label="League" variant="info" />
+          <StatusIcon icon={Crown} label={t("type.league")} variant="info" />
         ) : (
-          <StatusIcon icon={Trophy} label="Tournament" variant="muted" />
+          <StatusIcon icon={Trophy} label={t("type.tournament")} variant="muted" />
         )
     },
     {
       accessorKey: "is_finished",
-      header: "Status",
+      header: t("columns.status"),
       meta: columnMeta<Tournament>({ align: "center" }),
       cell: ({ row }) =>
         row.getValue("is_finished") ? (
-          <StatusIcon icon={CheckCircle} label="Finished" variant="muted" />
+          <StatusIcon icon={CheckCircle} label={t("status.finished")} variant="muted" />
         ) : (
-          <StatusIcon icon={CircleDot} label="Active" variant="success" />
+          <StatusIcon icon={CircleDot} label={t("status.active")} variant="success" />
         )
     },
     {
       accessorKey: "start_date",
-      header: "Start date",
+      header: t("columns.startDate"),
       cell: ({ row }) => (
         <span className="tabular-nums">
           {/* Tournament days are UTC midnights — read in UTC. */}
@@ -120,7 +122,7 @@ export default function TournamentsPage() {
     },
     {
       accessorKey: "end_date",
-      header: "End date",
+      header: t("columns.endDate"),
       cell: ({ row }) => (
         <span className="tabular-nums">
           {format.dateTime(new Date(row.getValue("end_date")), { dateStyle: "medium", timeZone: "UTC" })}
@@ -129,12 +131,12 @@ export default function TournamentsPage() {
     },
     {
       accessorKey: "stages",
-      header: "Stages",
+      header: t("columns.stages"),
       enableSorting: false,
       cell: ({ row }) => {
         const stages = row.original.stages ?? [];
         if (stages.length === 0) {
-          return <span className="text-muted-foreground">No stages</span>;
+          return <span className="text-muted-foreground">{t("noStages")}</span>;
         }
 
         const stagesLabel = formatTournamentStages(stages);
@@ -142,7 +144,7 @@ export default function TournamentsPage() {
         return (
           <div className="max-w-80">
             <div className="font-medium tabular-nums">
-              {stages.length} {stages.length === 1 ? "stage" : "stages"}
+              {t("stageCount", { count: stages.length })}
             </div>
             <div className="truncate text-xs text-muted-foreground" title={stagesLabel}>
               {stagesLabel}
@@ -157,7 +159,7 @@ export default function TournamentsPage() {
         canDelete ? (
           <div className="flex items-center gap-2">
             <Button
-              aria-label={`Delete tournament ${row.original.name}`}
+              aria-label={t("deleteAria", { name: row.original.name })}
               variant="ghost"
               size="icon"
               onClick={() => handleDelete(row.original)}
@@ -173,13 +175,13 @@ export default function TournamentsPage() {
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
-        title="Tournaments"
-        description="Manage tournaments and their stages"
+        title={t("title")}
+        description={t("description")}
         actions={
           canCreate ? (
             <Button size="sm" onClick={() => router.push("/admin/tournaments/new")}>
               <Plus className="size-3.5" aria-hidden />
-              Create tournament
+              {t("create")}
             </Button>
           ) : null
         }
@@ -203,8 +205,8 @@ export default function TournamentsPage() {
           })
         }
         columns={columns}
-        searchPlaceholder="Search tournaments…"
-        emptyMessage="No tournaments yet. Create one to start adding stages, teams and encounters."
+        searchPlaceholder={t("searchPlaceholder")}
+        emptyMessage={t("empty")}
         onRowClick={(row) => handleRowClick(row.original)}
       />
 
@@ -217,9 +219,9 @@ export default function TournamentsPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Resume tournament setup?</AlertDialogTitle>
+            <AlertDialogTitle>{t("resumeTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {`"${draftPromptTournament?.name}" is an unpublished draft without stages. Resume setup in the wizard, or open the tournament hub directly.`}
+              {t("resumeDescription", { name: draftPromptTournament?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -230,10 +232,10 @@ export default function TournamentsPage() {
                 }
               }}
             >
-              Open tournament hub
+              {t("openHub")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => router.push("/admin/tournaments/new")}>
-              Resume in wizard
+              {t("resumeWizard")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -247,16 +249,16 @@ export default function TournamentsPage() {
           onConfirm={handleConfirmDelete}
           pending={deleteMutation.isPending}
           intent={{
-            title: "Delete tournament",
-            description: `Deleting "${selectedTournament?.name}" also removes its stages, teams, encounters and standings. This cannot be undone.`,
-            confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+            title: t("deleteTitle"),
+            description: t("deleteDescription", { name: selectedTournament?.name ?? "" }),
+            confirmLabel: deleteMutation.isPending ? t("deleting") : t("delete"),
             tone: "danger",
             cascade: [
-              "All tournament stages",
-              "All teams in this tournament",
-              "All players in these teams",
-              "All encounters in this tournament",
-              "All standings data"
+              t("cascade.stages"),
+              t("cascade.teams"),
+              t("cascade.players"),
+              t("cascade.encounters"),
+              t("cascade.standings")
             ]
           }}
         />

@@ -14,10 +14,11 @@ import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
 
 export default function DraftSettingsPage() {
+  const tPage = useTranslations("adminTournament.screenDescriptions");
   return (
     <SettingsSectionPage
       section="draft"
-      description="The pick order every draft of this tournament follows. Timers and autopick are set per draft."
+      description={tPage("draft")}
     >
       {({ tournament, tournamentId, canUpdateTournament }) => (
         <DraftFormatForm

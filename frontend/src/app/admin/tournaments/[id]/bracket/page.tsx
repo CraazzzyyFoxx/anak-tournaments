@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { MasterDetail } from "@/components/kit/MasterDetail";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -31,6 +32,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
  * history entry back.
  */
 export default function BracketTabPage() {
+  const t = useTranslations("adminBracket.page");
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
   const queryClient = useQueryClient();
@@ -84,7 +86,7 @@ export default function BracketTabPage() {
     return (
       <PageStateCard
         state="error"
-        title="Could not load the stages"
+        title={t("loadError")}
         onAction={() => void stagesQuery.refetch()}
       />
     );
@@ -128,11 +130,11 @@ export default function BracketTabPage() {
       emptyDetail={
         <PageStateCard
           state="empty"
-          title={orderedStages.length > 0 ? "No stage selected" : "No stages yet"}
+          title={orderedStages.length > 0 ? t("noStageSelected") : t("noStages")}
           description={
             orderedStages.length > 0
-              ? "Pick a stage on the left to edit its format, seeding, tiebreakers, best-of and structure."
-              : "Add the first stage to start building the tournament flow."
+              ? t("pickStage")
+              : t("addFirstStage")
           }
         />
       }

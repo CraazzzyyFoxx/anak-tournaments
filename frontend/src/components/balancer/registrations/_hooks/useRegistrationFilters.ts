@@ -78,13 +78,13 @@ export function useRegistrationFilters({
 
   const defs: FilterDef[] = useMemo(
     () => [
-      { key: "admission", label: "Admission", kind: "single", options: admissionOptions },
-      { key: "role", label: "Role", kind: "single", options: roleOptions },
+      { key: "admission", label: t("registrationsAdmin.filters.admission"), kind: "single", options: admissionOptions },
+      { key: "role", label: t("registrationsAdmin.filters.role"), kind: "single", options: roleOptions },
       ...(requireSubscription
         ? [
             {
               key: "subscription",
-              label: "Subscription",
+              label: t("registrationsAdmin.filters.subscription"),
               kind: "single" as const,
               options: (
                 Object.keys(SUBSCRIPTION_LABELS) as (keyof typeof SUBSCRIPTION_LABELS)[]
@@ -98,7 +98,7 @@ export function useRegistrationFilters({
         : []),
       {
         key: "status",
-        label: "Status",
+        label: t("registrationsAdmin.filters.status"),
         kind: "multi",
         options: statusFilterOptions.map((option) => ({
           ...option,
@@ -107,11 +107,11 @@ export function useRegistrationFilters({
       },
       {
         key: "inclusion",
-        label: "Participation",
+        label: t("registrationsAdmin.filters.participation"),
         kind: "single",
         options: [
-          { value: "included", label: "Included", count: facets.included },
-          { value: "excluded", label: "Excluded", count: facets.excluded },
+          { value: "included", label: t("registrationsAdmin.columns.included"), count: facets.included },
+          { value: "excluded", label: t("registrationsAdmin.columns.excluded"), count: facets.excluded },
           // A second axis on the same chip: the pool verdict says whether the
           // row is in the balancer, this says whether the registrant offered to
           // be called in. They go through the message catalogue because the
@@ -122,13 +122,13 @@ export function useRegistrationFilters({
       },
       {
         key: "source",
-        label: "Source",
+        label: t("registrationsAdmin.filters.source"),
         kind: "single",
         options: [
-          { value: "manual", label: "Manual", count: facets.source.get("manual") ?? 0 },
+          { value: "manual", label: t("registrationsAdmin.filters.manual"), count: facets.source.get("manual") ?? 0 },
           {
             value: "google_sheets",
-            label: "Google Sheets",
+            label: t("registrationsAdmin.filters.googleSheets"),
             count: facets.source.get("google_sheets") ?? 0
           }
         ]

@@ -13,7 +13,7 @@
 //     rule that a participation joins a team inside one tournament;
 //  5. one action end to end: edit a participation through the shared form.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, useEffect, useState, type ReactNode } from "react";
+import { act, useEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,10 +39,6 @@ const getTeams = vi.fn();
 
 let permitted = true;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
-}));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
 }));

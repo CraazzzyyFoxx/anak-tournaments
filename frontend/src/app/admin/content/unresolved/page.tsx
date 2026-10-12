@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
 import { Check, CheckCircle, EyeOff } from "lucide-react";
@@ -27,12 +28,6 @@ import { MISS_QUEUE_KEY } from "../miss-queue";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 const ENTITY_TYPES: CatalogEntityType[] = ["hero", "map", "gamemode"];
-
-const ENTITY_LABELS: Record<CatalogEntityType, string> = {
-  hero: "Hero",
-  map: "Map",
-  gamemode: "Gamemode",
-};
 
 /**
  * Query-key root of the admin list each entity type feeds. Attaching an alias
@@ -65,6 +60,7 @@ function formatSeenAt(format: DateFormatter, value: string): string {
  * into a dialog the way an entity edit would.
  */
 export default function UnresolvedNamesAdminPage() {
+  const t = useTranslations("adminWorkspace.content");
   const format = useFormatter();
   const queryClient = useQueryClient();
   const { isSuperuser } = usePermissions();
@@ -76,16 +72,16 @@ export default function UnresolvedNamesAdminPage() {
     () => [
       {
         key: "type",
-        label: "Type",
+        label: t("filters.type"),
         kind: "single",
         options: ENTITY_TYPES.map((entityType) => ({
           value: entityType,
-          label: ENTITY_LABELS[entityType],
+          label: t(`catalog.${entityType}Entity`),
         })),
       },
-      { key: "resolved", label: "Include resolved", kind: "toggle" },
+      { key: "resolved", label: t("filters.includeResolved"), kind: "toggle" },
     ],
-    []
+    [t]
   );
   const filters = useFilters(filterDefs);
   const entityTypeFilter = String(filters.values.type ?? "") as CatalogEntityType | "";
@@ -152,24 +148,24 @@ export default function UnresolvedNamesAdminPage() {
         alias: miss.raw_name,
       }),
     onSuccess: (_result, { miss }) => {
-      notify.success(`“${miss.raw_name}” attached as a ${ENTITY_LABELS[miss.entity_type]} alias`);
+      notify.success(t("catalog.attached", { name: miss.raw_name, entity: t(`catalog.${miss.entity_type}Entity`).toLowerCase() }));
       invalidateQueue();
       // The alias now lives on the entity, so its admin list is stale too.
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.contentEntity(ENTITY_LIST_KEYS[miss.entity_type]) });
       queryClient.invalidateQueries({ queryKey: [ENTITY_LIST_KEYS[miss.entity_type]] });
       forgetTarget(miss.id);
     },
-    onError: (error) => notify.apiError(error, { title: "Could not attach the alias" }),
+    onError: (error) => notify.apiError(error, { title: t("catalog.attachError") }),
   });
 
   const dismissMutation = useMutation({
     mutationFn: (miss: CatalogAliasMissRead) => adminService.dismissCatalogAliasMiss(miss.id),
     onSuccess: (_result, miss) => {
-      notify.success(`“${miss.raw_name}” hidden`);
+      notify.success(t("catalog.hidden", { name: miss.raw_name }));
       invalidateQueue();
       forgetTarget(miss.id);
     },
-    onError: (error) => notify.apiError(error, { title: "Could not hide the miss" }),
+    onError: (error) => notify.apiError(error, { title: t("catalog.hideError") }),
   });
 
   const isBusy = (missId: number) =>
@@ -186,7 +182,7 @@ export default function UnresolvedNamesAdminPage() {
       return null;
     }
     if (miss.resolved_at) {
-      return <StatusIcon icon={CheckCircle} label="Resolved" variant="success" />;
+      return <StatusIcon icon={CheckCircle} label={t("catalog.resolved")} variant="success" />;
     }
 
     return (
@@ -204,8 +200,8 @@ export default function UnresolvedNamesAdminPage() {
           });
         }}
         options={entityOptions[miss.entity_type]}
-        placeholder={`Pick a ${ENTITY_LABELS[miss.entity_type].toLowerCase()}…`}
-        searchPlaceholder="Search…"
+        placeholder={t("catalog.pickEntity", { entity: t(`catalog.${miss.entity_type}Entity`).toLowerCase() })}
+        searchPlaceholder={t("catalog.search")}
         isLoading={entityLoading[miss.entity_type]}
         disabled={entityLoading[miss.entity_type] || isBusy(miss.id)}
         triggerClassName="h-9"
@@ -216,14 +212,14 @@ export default function UnresolvedNamesAdminPage() {
   const columns: ColumnDef<CatalogAliasMissRead>[] = [
     {
       id: "entity_type",
-      header: "Type",
+      header: t("columns.type"),
       size: 96,
       enableSorting: false,
-      cell: ({ row }) => <Badge variant="outline">{ENTITY_LABELS[row.original.entity_type]}</Badge>,
+      cell: ({ row }) => <Badge variant="outline">{t(`catalog.${row.original.entity_type}Entity`)}</Badge>,
     },
     {
       id: "raw_name",
-      header: "Raw name",
+      header: t("columns.rawName"),
       size: 200,
       enableSorting: false,
       cell: ({ row }) => (
@@ -232,20 +228,20 @@ export default function UnresolvedNamesAdminPage() {
     },
     {
       id: "occurrences",
-      header: "Times seen",
+      header: t("columns.timesSeen"),
       size: 96,
       enableSorting: false,
       cell: ({ row }) => <span className="tabular-nums">{row.original.occurrences}</span>,
     },
     {
       id: "last_seen_at",
-      header: "Last seen",
+      header: t("columns.lastSeen"),
       size: 128,
       enableSorting: false,
       cell: ({ row }) => (
         <span
           className="text-xs tabular-nums text-muted-foreground"
-          title={`First seen ${formatSeenAt(format, row.original.first_seen_at)}`}
+          title={t("catalog.firstSeen", { date: formatSeenAt(format, row.original.first_seen_at) })}
         >
           {formatSeenAt(format, row.original.last_seen_at)}
         </span>
@@ -253,7 +249,7 @@ export default function UnresolvedNamesAdminPage() {
     },
     {
       id: "last_log",
-      header: "Last log",
+      header: t("columns.lastLog"),
       size: 88,
       enableSorting: false,
       cell: ({ row }) => {
@@ -279,7 +275,7 @@ export default function UnresolvedNamesAdminPage() {
     },
     {
       id: "target",
-      header: "Attach to",
+      header: t("columns.attachTo"),
       size: 240,
       enableSorting: false,
       cell: ({ row }) => targetPicker(row.original),
@@ -304,7 +300,7 @@ export default function UnresolvedNamesAdminPage() {
               disabled={entityId === undefined || busy}
               title={
                 entityId === undefined
-                  ? `Pick the ${ENTITY_LABELS[miss.entity_type].toLowerCase()} this name means first`
+                  ? t("catalog.pickFirst", { entity: t(`catalog.${miss.entity_type}Entity`).toLowerCase() })
                   : undefined
               }
               onClick={() => attachMutation.mutate({ miss, entityId: entityId! })}
@@ -314,7 +310,7 @@ export default function UnresolvedNamesAdminPage() {
               ) : (
                 <Check aria-hidden className="h-4 w-4" />
               )}
-              Attach
+              {t("actions.attach")}
             </Button>
             <Button
               type="button"
@@ -324,7 +320,7 @@ export default function UnresolvedNamesAdminPage() {
               onClick={() => dismissMutation.mutate(miss)}
             >
               <EyeOff aria-hidden className="h-4 w-4" />
-              Dismiss
+              {t("actions.dismiss")}
             </Button>
           </div>
         );
@@ -363,12 +359,12 @@ export default function UnresolvedNamesAdminPage() {
         return { ...response, results, total: results.length };
       }}
       columns={columns}
-      searchPlaceholder="Search raw names…"
+      searchPlaceholder={t("catalog.search")}
       toolbar={<FilterBar defs={filterDefs} filters={filters} />}
       emptyMessage={
         includeResolved
-          ? "No unresolved names recorded. Every log name so far resolved to a catalog entity."
-          : "Nothing in the queue. Every log name so far resolved to a catalog entity."
+          ? t("catalog.noResolved")
+          : t("catalog.nothing")
       }
       renderMobileCard={(row) => (
         <div className="min-w-0 flex-1 space-y-1.5">
@@ -376,8 +372,11 @@ export default function UnresolvedNamesAdminPage() {
             {row.original.raw_name}
           </code>
           <p className="truncate text-xs text-muted-foreground">
-            {ENTITY_LABELS[row.original.entity_type]} · seen {row.original.occurrences}× · last{" "}
-            {formatSeenAt(format, row.original.last_seen_at)}
+            {t("catalog.mobileSummary", {
+              entity: t(`catalog.${row.original.entity_type}Entity`),
+              count: row.original.occurrences,
+              date: formatSeenAt(format, row.original.last_seen_at),
+            })}
           </p>
           {targetPicker(row.original)}
         </div>

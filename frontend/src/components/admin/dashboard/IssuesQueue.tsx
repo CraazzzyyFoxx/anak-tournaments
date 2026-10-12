@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { AlertCircle, AlertTriangle, ChevronRight, Info, type LucideIcon } from "lucide-react";
 
@@ -22,17 +23,26 @@ export type IssueItem = {
  * colour, and `detail` is the screen-reader text for it — the row used to
  * print "Needs attention soon" under every warning, three times in a column.
  */
-const SEVERITY: Record<AttentionTone, { tone: Tone; icon: LucideIcon; detail: string }> = {
-  critical: { tone: "danger", icon: AlertTriangle, detail: "Needs immediate action" },
-  warning: { tone: "warning", icon: AlertCircle, detail: "Needs attention soon" },
-  info: { tone: "info", icon: Info, detail: "Review when convenient" }
+const SEVERITY: Record<AttentionTone, { tone: Tone; icon: LucideIcon }> = {
+  critical: { tone: "danger", icon: AlertTriangle },
+  warning: { tone: "warning", icon: AlertCircle },
+  info: { tone: "info", icon: Info }
 };
+
+function severityKey(tone: AttentionTone) {
+  return tone === "critical"
+    ? "needsImmediateAction"
+    : tone === "warning"
+      ? "needsAttentionSoon"
+      : "reviewWhenConvenient";
+}
 
 interface IssuesQueueProps {
   items: IssueItem[];
 }
 
 export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
+  const t = useTranslations("adminShell.dashboard");
   // The count pill takes the worst severity present. It used to be
   // `variant="destructive"` unconditionally, so an info-only list raised a red
   // alarm. `aria-hidden` because the CardDescription below states the same
@@ -48,7 +58,7 @@ export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle asChild>
-            <h2>Issues</h2>
+            <h2>{t("issues")}</h2>
           </CardTitle>
           {items.length > 0 && (
             <StatusPill tone={worstTone} className="tabular-nums" aria-hidden>
@@ -58,8 +68,7 @@ export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
         </div>
         {items.length > 0 && (
           <CardDescription>
-            {items.length} item{items.length === 1 ? "" : "s"} need
-            {items.length === 1 ? "s" : ""} attention
+            {t("issueCount", { count: items.length })}
           </CardDescription>
         )}
       </CardHeader>
@@ -77,7 +86,7 @@ export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
                     className="-mx-6 flex items-center gap-3 px-6 py-2.5 transition-colors hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                   >
                     <Icon className={cn("size-4 shrink-0", TONE_TEXT[severity.tone])} aria-hidden />
-                    <span className="sr-only">{severity.detail}: </span>
+                    <span className="sr-only">{t(severityKey(item.tone))}: </span>
                     <span className="min-w-0 flex-1 truncate text-sm text-foreground">
                       {item.label}
                     </span>
@@ -97,7 +106,7 @@ export function IssuesQueue({ items }: Readonly<IssuesQueueProps>) {
           </ul>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Nothing needs attention — new issues appear here as they are detected.
+            {t("nothingNeedsAttention")}
           </p>
         )}
       </CardContent>

@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
@@ -13,13 +14,6 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 const VIEWS = ["encounters", "standings", "reports", "parsed", "logs"] as const;
 type MatchesView = (typeof VIEWS)[number];
 
-const VIEW_LABELS: Record<MatchesView, string> = {
-  encounters: "Encounters",
-  standings: "Standings",
-  reports: "Reports",
-  parsed: "Parsed maps",
-  logs: "Logs"
-};
 
 /**
  * Params a view switch keeps. The tournament and stage scope are what the five
@@ -84,6 +78,7 @@ const TournamentLogsTab = dynamic(
  * state the switch owns.
  */
 export default function AdminMatchesPage() {
+  const t = useTranslations("adminMatches.matches");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { canAccessPermission, isLoaded } = usePermissions();
   const searchParams = useSearchParams();
@@ -102,7 +97,7 @@ export default function AdminMatchesPage() {
   const items: LinkTabItem[] = VIEWS.map((key) => {
     const query = new URLSearchParams(scope);
     query.set("view", key);
-    return { key, label: VIEW_LABELS[key], href: `/admin/matches?${query.toString()}` };
+    return { key, label: t(key), href: `/admin/matches?${query.toString()}` };
   });
 
   if (!isLoaded) return fallback;
@@ -111,9 +106,9 @@ export default function AdminMatchesPage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to read matches in this workspace.
+            {t("noPermission")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -123,11 +118,11 @@ export default function AdminMatchesPage() {
   return (
     <div className="space-y-4">
       <AdminPageHeader
-        title="Matches"
-        description="Encounters, standings, captain reports, parsed maps and logs across the workspace."
+        title={t("title")}
+        description={t("description")}
       />
 
-      <LinkTabs items={items} activeKey={view} ariaLabel="Matches views" />
+      <LinkTabs items={items} activeKey={view} ariaLabel={t("views")} />
 
       {view === "encounters" ? (
         <EncountersBrowser tournamentId={null} workspaceId={workspaceId} />

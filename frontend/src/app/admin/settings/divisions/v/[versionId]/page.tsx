@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +27,7 @@ import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
  * both saving and discarding local edits go through it.
  */
 export default function DivisionDraftEditorPage() {
+  const t = useTranslations("adminSettings.divisions");
   const params = useParams<{ versionId: string }>();
   const versionId = Number(params.versionId);
   const [epoch, setEpoch] = useState(0);
@@ -68,8 +70,8 @@ export default function DivisionDraftEditorPage() {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace to open its division grid draft."
+        title={t("noWorkspace.title")}
+        description={t("noWorkspace.openDraft")}
       />
     );
   }
@@ -78,8 +80,8 @@ export default function DivisionDraftEditorPage() {
     return (
       <PageStateCard
         state="not-found"
-        title="This draft is not available to you"
-        description="Reading the division grid needs the division_grid.read permission in this workspace."
+        title={t("draftUnavailable.title")}
+        description={t("draftUnavailable.description")}
       />
     );
   }
@@ -88,9 +90,9 @@ export default function DivisionDraftEditorPage() {
     return (
       <PageStateCard
         state="error"
-        title="Version could not be loaded"
-        description="The draft failed to load, so nothing here can be edited safely."
-        actionLabel="Retry"
+        title={t("versionLoadError.title")}
+        description={t("versionLoadError.description")}
+        actionLabel={t("retry")}
         onAction={() => void versionQuery.refetch()}
       />
     );

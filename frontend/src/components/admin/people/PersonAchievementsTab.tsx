@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
  * own page and this tab links there.
  */
 export function PersonAchievementsTab({ personId }: Readonly<{ personId: number }>) {
+  const t = useTranslations("adminPeople.achievements");
   const achievementsQuery = useQuery({
     queryKey: adminQueryKeys.personAchievements(personId),
     queryFn: () => userService.getUserAchievements(personId)
@@ -29,7 +31,7 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
     () => [
       {
         accessorKey: "name",
-        header: "Achievement",
+        header: t("achievement"),
         meta: columnMeta<AchievementRarity>({
           sticky: true,
           searchValue: (row) => `${row.name} ${row.slug}`
@@ -45,7 +47,7 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
       },
       {
         accessorKey: "category",
-        header: "Category",
+        header: t("category"),
         cell: ({ row }) =>
           row.original.category ? (
             <Badge variant="outline" className="font-normal capitalize">
@@ -57,14 +59,14 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
       },
       {
         accessorKey: "count",
-        header: "Times",
+        header: t("times"),
         size: 90,
         meta: columnMeta<AchievementRarity>({ numeric: true, align: "right" }),
         cell: ({ row }) => <span className="tabular-nums">{row.original.count}</span>
       },
       {
         id: "tournaments",
-        header: "Tournaments",
+        header: t("tournaments"),
         enableSorting: false,
         cell: ({ row }) =>
           row.original.tournaments.length === 0 ? (
@@ -76,16 +78,16 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
           )
       }
     ],
-    []
+    [t]
   );
 
   if (achievementsQuery.isError) {
     return (
       <PageStateCard
         state="error"
-        title="Could not load achievements"
+        title={t("loadError")}
         onAction={() => void achievementsQuery.refetch()}
-        actionLabel="Try again"
+        actionLabel={t("retry")}
       />
     );
   }
@@ -97,8 +99,8 @@ export function PersonAchievementsTab({ personId }: Readonly<{ personId: number 
       columns={columns}
       initialPageSize={20}
       getRowId={(row) => String(row.id)}
-      searchPlaceholder="Search achievements…"
-      emptyMessage="This person has not earned an achievement yet."
+      searchPlaceholder={t("search")}
+      emptyMessage={t("empty")}
     />
   );
 }

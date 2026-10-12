@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronRight, RefreshCcw } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { StatusPill } from "@/components/kit/StatusPill";
@@ -67,6 +68,7 @@ export function SourceSyncTab({
   onChangeAutoSyncIntervalSeconds,
   onSync,
 }: Readonly<SourceSyncTabProps>) {
+  const t = useTranslations("sheetsFeed.source");
   const format = useFormatter();
   const headers = feed?.header_row_json ?? [];
 
@@ -74,8 +76,8 @@ export function SourceSyncTab({
     <Card>
       <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
         <div className="space-y-1.5">
-          <CardTitle>Source</CardTitle>
-          <CardDescription>Where registrations are read from and how often the worker re-syncs.</CardDescription>
+          <CardTitle>{t("title")}</CardTitle>
+          <CardDescription>{t("description")}</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {feed ? (
@@ -84,31 +86,31 @@ export function SourceSyncTab({
                 {feed.last_sync_status ?? "pending"}
               </StatusPill>
               <span className="text-xs text-muted-foreground">
-                Last sync{" "}
+                {t("lastSync")} {" "}
                 {feed.last_synced_at
                   ? format.dateTime(new Date(feed.last_synced_at), {
                       dateStyle: "medium",
                       timeStyle: "short"
                     })
-                  : "never"}
+                  : t("never")}
               </span>
             </>
           ) : (
-            <span className="text-xs text-muted-foreground">No feed yet</span>
+            <span className="text-xs text-muted-foreground">{t("noFeed")}</span>
           )}
           <Button
             variant="outline"
             size="sm"
             onClick={onSync}
             disabled={isSyncing || !canSync}
-            title={canSync ? undefined : "Save the feed and any pending changes before syncing."}
+            title={canSync ? undefined : t("syncDisabled")}
           >
             {isSyncing ? (
               <Spinner className="mr-2" />
             ) : (
               <RefreshCcw className="mr-2 size-4" />
             )}
-            Sync now
+            {t("syncNow")}
           </Button>
         </div>
       </CardHeader>
@@ -116,7 +118,7 @@ export function SourceSyncTab({
       <CardContent className="space-y-4">
         <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div className="space-y-2">
-            <Label htmlFor="sheet-url">Sheet URL</Label>
+            <Label htmlFor="sheet-url">{t("sheetUrl")}</Label>
             <Input
               id="sheet-url"
               value={sourceUrl}
@@ -125,12 +127,12 @@ export function SourceSyncTab({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="sheet-title">Title</Label>
+            <Label htmlFor="sheet-title">{t("titleLabel")}</Label>
             <Input
               id="sheet-title"
               value={title}
               onChange={(event) => onChangeTitle(event.target.value)}
-              placeholder="Optional label"
+              placeholder={t("optionalLabel")}
             />
           </div>
         </div>
@@ -143,12 +145,12 @@ export function SourceSyncTab({
           />
           <div className="min-w-0 flex-1">
             <Label htmlFor="sheet-auto-sync" className="text-sm font-medium">
-              Auto-sync
+              {t("autoSync")}
             </Label>
-            <p className="text-xs text-muted-foreground">Run periodic feed sync in the parser worker.</p>
+            <p className="text-xs text-muted-foreground">{t("autoSyncDescription")}</p>
           </div>
           <Label htmlFor="sheet-interval" className="flex items-center gap-2 text-sm font-normal text-muted-foreground">
-            every
+            {t("every")}
             <Input
               id="sheet-interval"
               inputMode="numeric"
@@ -157,7 +159,7 @@ export function SourceSyncTab({
               disabled={!autoSyncEnabled}
               className="h-8 w-20 text-right tabular-nums"
             />
-            seconds
+            {t("seconds")}
           </Label>
         </div>
 
@@ -167,7 +169,7 @@ export function SourceSyncTab({
           <details className="group">
             <summary className={`${EYEBROW_CLASS} inline-flex cursor-pointer list-none items-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-offset-2`}>
               <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
-              {headers.length} detected header{headers.length === 1 ? "" : "s"}
+              {t("detectedHeaders", { count: headers.length })}
             </summary>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {headers.map((header, index) => (
@@ -183,11 +185,11 @@ export function SourceSyncTab({
           <div className="space-y-3 border-t pt-4">
             <dl className="flex flex-wrap gap-x-6 gap-y-2">
               {[
-                { label: "Created", value: syncResult.created },
-                { label: "Updated", value: syncResult.updated },
-                { label: "Withdrawn", value: syncResult.withdrawn },
-                { label: "Skipped", value: syncResult.skipped },
-                { label: "Total", value: syncResult.total },
+                { label: t("created"), value: syncResult.created },
+                { label: t("updated"), value: syncResult.updated },
+                { label: t("withdrawn"), value: syncResult.withdrawn },
+                { label: t("skipped"), value: syncResult.skipped },
+                { label: t("total"), value: syncResult.total },
               ].map((stat) => (
                 <div key={stat.label} className="flex items-baseline gap-1.5">
                   <dt className={EYEBROW_CLASS}>{stat.label}</dt>
@@ -198,13 +200,13 @@ export function SourceSyncTab({
             {syncResult.errors.length > 0 ? (
               <Alert variant="destructive">
                 <AlertTitle>
-                  {syncResult.errors.length} row error{syncResult.errors.length === 1 ? "" : "s"}
+                  {t("rowErrors", { count: syncResult.errors.length })}
                 </AlertTitle>
                 <AlertDescription>
                   <ul className="mt-1 space-y-1">
                     {syncResult.errors.map((error, index) => (
                       <li key={`${error.target ?? "row"}-${index}`} className="text-xs">
-                        {error.row_index != null ? <span className="font-medium">Row {error.row_index}: </span> : null}
+                        {error.row_index != null ? <span className="font-medium">{t("rowPrefix", { index: error.row_index })}: </span> : null}
                         {error.target ? <span className="font-mono">{error.target}</span> : null}
                         {error.column ? <span className="text-muted-foreground"> ({error.column})</span> : null}
                         {error.target || error.column ? " — " : ""}

@@ -274,9 +274,9 @@ describe("custom scale", () => {
     const state = newEraDraft();
     // Division 5 sits between Division 4 (1700) and Division 6 (1500).
     expect(floorError(state.bands, 4, "1650")).toBeNull();
-    expect(floorError(state.bands, 4, "1700")).toBe("Must be below Division 4 (1700).");
-    expect(floorError(state.bands, 4, "1500")).toBe("Must be above Division 6 (1500).");
-    expect(floorError(state.bands, 4, "16.5")).toBe("Enter a whole number.");
+    expect(floorError(state.bands, 4, "1700")).toEqual({ code: "mustBeBelow", name: "Division 4", rankMin: 1700 });
+    expect(floorError(state.bands, 4, "1500")).toEqual({ code: "mustBeAbove", name: "Division 6", rankMin: 1500 });
+    expect(floorError(state.bands, 4, "16.5")).toEqual({ code: "notInteger" });
     expect(draftReducer(state, { type: "setFloor", bandIndex: 4, rankMin: 1700 })).toBe(state);
 
     const moved = apply(state, [{ type: "setFloor", bandIndex: 4, rankMin: 1650 }]);
@@ -482,12 +482,12 @@ describe("edit log", () => {
       { type: "setScale", scale: "custom" }
     ]);
     expect(describeEdits(ladder)).toEqual([
-      "Renamed Champion → Apex",
-      `Split Elite at ${LADDER[10].name}`,
-      `${LADDER[9].name} moved from Elite to Untitled division`,
-      "Merged Untitled division into Elite",
-      "Set a crest for Elite",
-      "Rank ranges are now a custom scale"
+      { key: "edit.renamed", values: { before: "Champion", after: "Apex" } },
+      { key: "edit.splitAt", values: { name: "Elite", rank: LADDER[10].name } },
+      { key: "edit.moved", values: { rank: LADDER[9].name, from: "Elite", to: "Untitled division" } },
+      { key: "edit.merged", values: { gone: "Untitled division", survivor: "Elite" } },
+      { key: "edit.crest", values: { name: "Elite" } },
+      { key: "edit.customScale" }
     ]);
 
     const custom = apply(newEraDraft(), [
@@ -497,10 +497,10 @@ describe("edit log", () => {
       { type: "split", bandIndex: 5 }
     ]);
     expect(describeEdits(custom)).toEqual([
-      "Division 5 now starts at 1650",
-      `Linked ${LADDER[0].name} – ${LADDER[2].name} to Division 1`,
-      "Unlinked Division 3 from the OW ladder",
-      "Split Division 6 — the new division takes 1500–1574"
+      { key: "edit.floor", values: { name: "Division 5", rank: 1650 } },
+      { key: "edit.linked", values: { range: `${LADDER[0].name} – ${LADDER[2].name}`, name: "Division 1" } },
+      { key: "edit.unlinked", values: { name: "Division 3" } },
+      { key: "edit.split", values: { name: "Division 6", range: "1500–1574" } }
     ]);
   });
 });

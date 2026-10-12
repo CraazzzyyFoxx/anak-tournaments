@@ -61,6 +61,7 @@ export function ResolveRoleConflictDialog({
   feasibility
 }: Readonly<ResolveRoleConflictDialogProps>) {
   const t = useTranslations("draftAdmin.roleConflict");
+  const tAdmin = useTranslations("adminTournament.draft");
   const queryClient = useQueryClient();
   const [playerId, setPlayerId] = useState<number | null>(null);
   const [role, setRole] = useState<DraftRole | null>(null);
@@ -153,7 +154,11 @@ export function ResolveRoleConflictDialog({
                     variant="outline"
                     className="tabular-nums"
                   >
-                    {team?.name ?? `#${slot.team_id}`} · {t(`roles.${slot.slot_code}`)} #{slot.ordinal}
+                    {tAdmin("slotLabel", {
+                      team: team?.name ?? `#${slot.team_id}`,
+                      role: t(`roles.${slot.slot_code}`),
+                      ordinal: slot.ordinal
+                    })}
                   </Badge>
                 );
               })}
@@ -185,11 +190,13 @@ export function ResolveRoleConflictDialog({
             </Select>
             {player && (
               <p className="text-xs text-[color:var(--aqt-fg-muted)]">
-                {t("declaredRoles")}:{" "}
-                {(player.primary_role
-                  ? [player.primary_role, ...player.secondary_roles]
-                  : player.secondary_roles
-                ).join(", ") || t("noRole")}
+                {tAdmin("rolesSummary", {
+                  label: t("declaredRoles"),
+                  roles: (player.primary_role
+                    ? [player.primary_role, ...player.secondary_roles]
+                    : player.secondary_roles
+                  ).join(", ") || t("noRole")
+                })}
               </p>
             )}
           </div>
@@ -206,7 +213,7 @@ export function ResolveRoleConflictDialog({
             >
               <SelectTrigger
                 id="role-conflict-role"
-                aria-label={player ? `${t("newRole")} · ${playerName(player)}` : t("newRole")}
+                aria-label={player ? tAdmin("newRoleFor", { role: t("newRole"), player: playerName(player) }) : t("newRole")}
               >
                 <SelectValue placeholder={t("selectRole")} />
               </SelectTrigger>
@@ -327,4 +334,3 @@ function ImpactValue({
     </div>
   );
 }
-

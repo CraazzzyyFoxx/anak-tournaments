@@ -1,6 +1,8 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import type messages from "@/i18n/messages/en.json";
 import type { ReactNode } from "react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -9,7 +11,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import type { Tournament } from "@/types/tournament.types";
 import { tabFallback, useHubTournamentQuery } from "../hubQueries";
 import { allowedSettingsSection, type SettingsSection, type TabAccess } from "../tab-guards";
-import { SETTINGS_SECTION_LABELS } from "./settings-sections";
+import { SETTINGS_SECTION_LABEL_KEYS } from "./settings-sections";
 
 export interface SettingsSectionContext {
   tournament: Tournament;
@@ -42,6 +44,7 @@ export function SettingsSectionPage({
   children
 }: Readonly<SettingsSectionProps>) {
   const params = useParams<{ id: string }>();
+  const t = useTranslations("adminTournament.settings");
   const tournamentId = Number(params.id);
   const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
 
@@ -59,8 +62,12 @@ export function SettingsSectionPage({
     teamFormation: tournament?.team_formation === "draft" ? "draft" : "balancer"
   };
 
+  const sectionLabel = t(
+    `sections.${SETTINGS_SECTION_LABEL_KEYS[section]}` as `sections.${keyof typeof messages.adminTournament.settings.sections}`
+  );
+
   const header = (
-    <AdminPageHeader title={SETTINGS_SECTION_LABELS[section]} description={description} />
+    <AdminPageHeader title={sectionLabel} description={description} />
   );
 
   if (tournamentQuery.isLoading || !permissionsLoaded) {
@@ -78,8 +85,8 @@ export function SettingsSectionPage({
         {header}
         <PageStateCard
           state="not-found"
-          title="Tournament not found"
-          description="This tournament could not be loaded, so its settings cannot be shown."
+          title={t("notFound")}
+          description={t("notFoundDescription")}
         />
       </div>
     );
@@ -91,8 +98,8 @@ export function SettingsSectionPage({
         {header}
         <PageStateCard
           state="error"
-          title="Not permitted"
-          description={`You do not have permission to open “${SETTINGS_SECTION_LABELS[section]}” for this tournament.`}
+          title={t("notPermitted")}
+          description={t("notPermittedDescription", { section: sectionLabel })}
         />
       </div>
     );

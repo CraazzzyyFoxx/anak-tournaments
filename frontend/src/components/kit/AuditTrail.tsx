@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ChevronDown, Lock } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
@@ -21,6 +22,7 @@ import {
   type AuditDiffKind,
   type AuditDiffRow,
   type AuditTrailScope,
+  useAuditTranslator
 } from "@/components/kit/audit-log";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -117,12 +119,14 @@ export function AuditFieldDiff({
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
 }>) {
-  const rows = auditDiffRows(before, after);
+  const t = useTranslations("kitAudit.audit");
+  const auditT = useAuditTranslator();
+  const rows = auditDiffRows(before, after, auditT);
 
   if (rows.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No field-level changes were captured for this entry.
+        {t("noFieldChanges")}
       </p>
     );
   }
@@ -136,7 +140,7 @@ export function AuditFieldDiff({
         // so the previous values are genuinely not on record. Anyone comparing
         // two entries needs to know that before drawing a conclusion from them.
         <p className="text-xs text-muted-foreground">
-          Only the values this action set are on record; the previous ones are not.
+          {t("onlySetValues")}
         </p>
       ) : null}
     </div>
@@ -145,18 +149,20 @@ export function AuditFieldDiff({
 
 /** Everything the compact line leaves out, shown only when asked for. */
 function AuditEntryDetail({ entry }: Readonly<{ entry: AuditLogRead }>) {
+  const t = useTranslations("kitAudit.audit");
+  const auditT = useAuditTranslator();
   const meta: Array<{ label: string; value: string }> = [
-    { label: "Source", value: auditSourceLabel(entry.source) },
+    { label: t("source"), value: auditSourceLabel(entry.source, auditT) },
     ...(entry.ip_address ? [{ label: "IP", value: entry.ip_address }] : []),
-    ...(entry.user_agent ? [{ label: "Device", value: entry.user_agent }] : []),
-    ...(entry.correlation_id ? [{ label: "Correlation", value: entry.correlation_id }] : []),
+    ...(entry.user_agent ? [{ label: t("device"), value: entry.user_agent }] : []),
+    ...(entry.correlation_id ? [{ label: t("correlation"), value: entry.correlation_id }] : []),
   ];
 
   return (
     <div className="mt-2 space-y-2 rounded-md border border-border/50 bg-muted/20 p-2.5">
       {entry.reason ? (
         <p className="text-xs text-foreground">
-          <span className="text-muted-foreground">Reason: </span>
+          <span className="text-muted-foreground">{t("reason")} </span>
           {entry.reason}
         </p>
       ) : null}
@@ -178,9 +184,11 @@ function AuditEntryDetail({ entry }: Readonly<{ entry: AuditLogRead }>) {
 }
 
 function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
+  const t = useTranslations("kitAudit.audit");
+  const auditT = useAuditTranslator();
   const [open, setOpen] = useState(false);
   const format = useFormatter();
-  const action = describeAuditAction(entry.action);
+  const action = describeAuditAction(entry.action, auditT);
   const hasDetail =
     entry.before_json != null ||
     entry.after_json != null ||
@@ -214,19 +222,23 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
               // curated one: the reader needs to know the wording is a guess,
               // not a fact.
               <Badge tone="neutral" className="font-normal">
-                unrecognised action
+                {t("unrecognised")}
               </Badge>
             )}
           </div>
           {/* `title` keeps the full actor readable once it truncates. */}
           <p
             className="mt-0.5 truncate text-xs text-muted-foreground"
-            title={formatAuditActor(entry)}
+            title={formatAuditActor(entry, auditT)}
           >
-            by{" "}
-            <span className={cn("text-foreground", isMachineActor(entry) && "italic")}>
-              {formatAuditActor(entry)}
-            </span>
+            {t.rich("byActor", {
+              actor: (chunks) => (
+                <span className={cn("text-foreground", isMachineActor(entry) && "italic")}>
+                  {chunks}
+                </span>
+              ),
+              actorName: formatAuditActor(entry, auditT)
+            })}
           </p>
         </div>
 
@@ -237,7 +249,7 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
             onClick={() => setOpen((current) => !current)}
             className="flex shrink-0 items-center gap-1 rounded text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
-            {open ? "Hide details" : "Details"}
+            {open ? t("hideDetails") : t("details")}
             <ChevronDown
               aria-hidden
               className={cn("size-3.5 transition-transform", open && "rotate-180")}
@@ -260,7 +272,9 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
  * this list belongs to `AuditTrailSheet`, which is the only thing that mounts it.
  */
 export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) {
-  const entityNoun = (auditEntityLabel(scope.entityType) ?? "record").toLowerCase();
+  const t = useTranslations("kitAudit.audit");
+  const auditT = useAuditTranslator();
+  const entityNoun = (auditEntityLabel(scope.entityType, auditT) ?? "record").toLowerCase();
   const format = useFormatter();
 
   const trailQuery = useInfiniteQuery({
@@ -297,18 +311,18 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
   });
 
   if (trailQuery.isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading…</p>;
+    return <p className="text-sm text-muted-foreground">{t("loading")}</p>;
   }
 
   if (trailQuery.isError) {
-    return renderTrailError(trailQuery.error, entityNoun);
+    return renderTrailError(trailQuery.error, entityNoun, (key, values) => t(key as never, values as never));
   }
 
   // The three empty states below are distinct claims about history, so they are
   // never collapsed into one.
   if (entries.length === 0) {
     if (historyStart.isLoading) {
-      return <p className="text-sm text-muted-foreground">Loading…</p>;
+      return <p className="text-sm text-muted-foreground">{t("loading")}</p>;
     }
     if (historyStart.data) {
       // Empty state 1 of 3: the journal runs, this entity is simply older than
@@ -318,9 +332,11 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
       // able to make truthfully.
       return (
         <p className="text-sm text-muted-foreground">
-          No changes recorded for this {entityNoun}. The audit log in this workspace starts on{" "}
-          <span className="text-foreground">{formatAuditDate(format, historyStart.data)}</span> —
-          anything done before that date left no trail.
+          {t.rich("noChangesWithStart", {
+            entity: entityNoun,
+            date: (chunks) => <span className="text-foreground">{chunks}</span>,
+            dateValue: formatAuditDate(format, historyStart.data)
+          })}
         </p>
       );
     }
@@ -328,8 +344,7 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
     // no start date to quote and no claim to make about this entity.
     return (
       <p className="text-sm text-muted-foreground">
-        The audit log has no entries in this workspace yet. It records admin actions from the moment
-        it was switched on, so history begins with the next change.
+        {t("noEntries")}
       </p>
     );
   }
@@ -349,7 +364,7 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
       {total > AUDIT_TRAIL_PAGE_SIZE ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border/40 pt-3">
           <p role="status" className="text-xs tabular-nums text-muted-foreground">
-            Showing {entries.length} of {formatChangeCount(total)}
+            {t("showing", { shown: entries.length, total: t("changeCount", { count: total }) })}
           </p>
           {trailQuery.hasNextPage ? (
             <Button
@@ -363,7 +378,7 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
               {trailQuery.isFetchingNextPage ? (
                 <Spinner className="size-3.5" />
               ) : null}
-              Load more
+              {t("loadMore")}
             </Button>
           ) : null}
         </div>
@@ -373,10 +388,6 @@ export function AuditTrailBody({ scope }: Readonly<{ scope: AuditTrailScope }>) 
 }
 
 /** Full templated strings, so the singular is not "1 changes". */
-function formatChangeCount(count: number): string {
-  return count === 1 ? "1 change" : `${count} changes`;
-}
-
 /**
  * Empty state 3 of 3 lives here: a refusal is not an absence of history.
  *
@@ -385,7 +396,7 @@ function formatChangeCount(count: number): string {
  * refusal or an empty page — never their history. Reading that refusal as "no
  * changes" would be the same false reassurance the empty states above avoid.
  */
-function renderTrailError(error: unknown, entityNoun: string) {
+function renderTrailError(error: unknown, entityNoun: string, t: (key: string, values?: Record<string, unknown>) => string) {
   const status = error instanceof ApiError ? error.status : 0;
 
   if (status === 401 || status === 403) {
@@ -393,8 +404,7 @@ function renderTrailError(error: unknown, entityNoun: string) {
       <p className="flex items-start gap-2 text-sm text-muted-foreground">
         <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
         <span>
-          You do not have access to the audit log for this workspace, so this {entityNoun}&rsquo;s
-          history is hidden rather than empty. Ask an owner for the audit read permission.
+          {t("accessHidden", { entity: entityNoun })}
         </span>
       </p>
     );
@@ -402,8 +412,9 @@ function renderTrailError(error: unknown, entityNoun: string) {
 
   return (
     <p className="text-sm text-danger">
-      The change history could not be loaded
-      {error instanceof Error && error.message ? `: ${error.message}` : "."}
+      {error instanceof Error && error.message
+        ? t("loadFailedWithReason", { reason: error.message })
+        : t("loadFailedWithPeriod")}
     </p>
   );
 }

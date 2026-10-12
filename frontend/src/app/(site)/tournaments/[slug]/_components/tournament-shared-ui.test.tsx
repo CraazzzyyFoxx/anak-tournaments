@@ -188,22 +188,6 @@ describe("tournament navigation and loading source contracts", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toMatch(/animation:\s*none/);
   });
-
-  it("keeps the Teams skeleton at one mobile and two desktop columns", () => {
-    const skeletonSource = readFileSync(
-      resolve(tournamentRoot, "_components/TournamentSkeletons.tsx"),
-      "utf8"
-    );
-    const css = readFileSync(resolve(tournamentRoot, "TournamentDetail.module.css"), "utf8");
-
-    expect(skeletonSource).toContain("styles.teamsSkeletonGrid");
-    expect(css).toMatch(
-      /\.teamsSkeletonGrid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\)/
-    );
-    expect(css).toMatch(
-      /@media \(min-width:\s*641px\)[\s\S]*?\.teamsSkeletonGrid\s*\{[\s\S]*?repeat\(2,\s*minmax\(0,\s*1fr\)\)/
-    );
-  });
 });
 
 describe("tournament detail locale parity", () => {

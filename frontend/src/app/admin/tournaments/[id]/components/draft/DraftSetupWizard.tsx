@@ -98,6 +98,7 @@ export function DraftSetupWizard({
   aside
 }: Readonly<DraftSetupWizardProps>) {
   const t = useTranslations("draftAdmin");
+  const tAdmin = useTranslations("adminTournament.draft");
   const queryClient = useQueryClient();
   const boardKey = tournamentQueryKeys.draftBoard(tournamentId);
   const initialSession = board?.session ?? null;
@@ -363,13 +364,13 @@ export function DraftSetupWizard({
               {preview && (
                 <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm tabular-nums">
                   <div>
-                    {t("teams")}: {preview.diff.teams_before} → {preview.diff.teams_after}
+                    {tAdmin("diff", { label: t("teams"), before: preview.diff.teams_before, after: preview.diff.teams_after })}
                   </div>
                   <div>
-                    {t("players")}: {preview.diff.players_before} → {preview.diff.players_after}
+                    {tAdmin("diff", { label: t("players"), before: preview.diff.players_before, after: preview.diff.players_after })}
                   </div>
                   <div>
-                    {t("picks")}: {preview.diff.picks_before} → {preview.diff.picks_after}
+                    {tAdmin("diff", { label: t("picks"), before: preview.diff.picks_before, after: preview.diff.picks_after })}
                   </div>
                 </div>
               )}
@@ -506,7 +507,7 @@ export function DraftSetupWizard({
           </div>
           {session && (
             <Badge variant="outline" className="tabular-nums">
-              {t("sessionNumber", { id: session.id })} · v{session.version}
+              {tAdmin("sessionVersion", { id: session.id, version: session.version })}
             </Badge>
           )}
         </div>

@@ -36,6 +36,7 @@ export default defineConfig({
     // file-level `include` — and an unmatched file is silently not collected,
     // so nine tests once sat green without ever running. One runner, one glob:
     // every `*.test.ts(x)` under `src` is collected by construction.
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"]
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    setupFiles: ["src/test/next-intl-fallback.ts"]
   }
 });

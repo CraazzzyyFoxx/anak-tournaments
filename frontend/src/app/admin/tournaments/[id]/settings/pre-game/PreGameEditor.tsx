@@ -84,6 +84,7 @@ export function PreGameEditor({
   onResetToInherited
 }: Readonly<PreGameEditorProps>) {
   const t = useTranslations("pickBan.admin");
+  const tAdmin = useTranslations("adminTournament.preGame");
   const ids = useId();
 
   const form = usePreGameDraft({ scope, kind, stages, encounters, configs });
@@ -146,7 +147,7 @@ export function PreGameEditor({
             aria-current={key === step ? "step" : undefined}
             onClick={() => onStepChange(key)}
           >
-            {index + 1} · {t(`step.${key}`)}
+            {tAdmin("stepLabel", { number: index + 1, step: t(`step.${key}`) })}
           </Button>
         ))}
       </nav>

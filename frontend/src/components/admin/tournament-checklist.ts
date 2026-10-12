@@ -1,6 +1,11 @@
+import type { useTranslations } from "next-intl";
+
 import { reachedAtLeast } from "@/lib/tournament/lifecycle";
 import type { TournamentReadiness } from "@/types/admin.types";
 import type { StageSummary, Tournament, TournamentStatus } from "@/types/tournament.types";
+
+/** The `adminTournaments.checklist` translator of the component that renders the checklist. */
+export type ChecklistTranslator = ReturnType<typeof useTranslations<"adminTournaments.checklist">>;
 
 /**
  * Living-checklist model for the Overview tab (design §3, D22, D16).
@@ -57,7 +62,8 @@ export interface ChecklistContext {
 
 export function buildChecklist(
   readiness: TournamentReadiness,
-  ctx: ChecklistContext
+  ctx: ChecklistContext,
+  t: ChecklistTranslator
 ): ChecklistItem[] {
   // The backend masks each permission group as a whole (D16), so one sentinel
   // field per group tells access apart from a legitimate zero/null value.
@@ -75,14 +81,14 @@ export function buildChecklist(
   items.push({
     key: "schedule",
     phase: "setup",
-    label: "Phase schedule",
+    label: t("phaseSchedule"),
     state: !setupAccess ? "no-access" : readiness.schedule_configured ? "done" : "todo",
     href: settingsHref
   });
   items.push({
     key: "grid",
     phase: "setup",
-    label: "Division grid",
+    label: t("divisionGrid"),
     state: !setupAccess ? "no-access" : readiness.grid_selected ? "done" : "todo",
     href: settingsHref
   });
@@ -90,7 +96,7 @@ export function buildChecklist(
     items.push({
       key: "registration_form",
       phase: "setup",
-      label: "Registration form",
+      label: t("registrationForm"),
       state: !teamAccess
         ? "no-access"
         : readiness.registration_form_configured
@@ -101,7 +107,7 @@ export function buildChecklist(
     items.push({
       key: "registration_open",
       phase: "setup",
-      label: "Registration open",
+      label: t("registrationOpen"),
       state: !teamAccess ? "no-access" : readiness.registration_open ? "done" : "todo",
       href: registrationHref
     });
@@ -112,11 +118,11 @@ export function buildChecklist(
   items.push({
     key: "approved",
     phase: "registration",
-    label: "Approved registrations",
+    label: t("approvedRegistrations"),
     // Informational, no threshold (§3) — never nags about a count.
     state: !teamAccess ? "no-access" : "done",
     detail: teamAccess
-      ? `${approved} approved · ${readiness.registrations_pending ?? 0} pending`
+      ? t("approvedDetail", { approved, pending: readiness.registrations_pending ?? 0 })
       : undefined,
     href: registrationHref
   });
@@ -124,9 +130,9 @@ export function buildChecklist(
   items.push({
     key: "ranks",
     phase: "registration",
-    label: "Ranks covered",
+    label: t("ranksCovered"),
     state: !teamAccess ? "no-access" : approved > 0 && ranked >= approved ? "done" : "todo",
-    detail: teamAccess ? `${ranked}/${approved} ranked` : undefined,
+    detail: teamAccess ? t("rankedDetail", { ranked, approved }) : undefined,
     href: registrationHref
   });
   const checkInScheduled = ctx.schedule.includes("check_in");
@@ -134,7 +140,7 @@ export function buildChecklist(
   items.push({
     key: "check_in",
     phase: "registration",
-    label: "Check-in",
+    label: t("checkIn"),
     state: !checkInScheduled
       ? "skipped"
       : !teamAccess
@@ -142,19 +148,19 @@ export function buildChecklist(
         : approved > 0 && checkedIn >= approved
           ? "done"
           : "todo",
-    detail: checkInScheduled && teamAccess ? `${checkedIn}/${approved} checked in` : undefined,
+    detail: checkInScheduled && teamAccess ? t("checkedInDetail", { checkedIn, approved }) : undefined,
     href: registrationHref
   });
 
   // ── Formation (by team_formation, §3) ──────────────────────────────────
   if (readiness.team_formation === "draft") {
     const draftSessionDetail = readiness.draft_session_status
-      ? `Session: ${readiness.draft_session_status}`
-      : "No draft session";
+      ? t("sessionDetail", { status: readiness.draft_session_status })
+      : t("noDraftSession");
     items.push({
       key: "draft_completed",
       phase: "formation",
-      label: "Draft completed",
+      label: t("draftCompleted"),
       state: !teamAccess
         ? "no-access"
         : readiness.draft_session_status === "completed"
@@ -169,7 +175,7 @@ export function buildChecklist(
     items.push({
       key: "pool_ready",
       phase: "formation",
-      label: "Player pool ready",
+      label: t("playerPoolReady"),
       state: !teamAccess
         ? "no-access"
         : poolNeedFix > 0
@@ -178,21 +184,21 @@ export function buildChecklist(
             ? "done"
             : "todo",
       detail: teamAccess
-        ? `${poolReady} ready${poolNeedFix > 0 ? ` · ${poolNeedFix} need fix` : ""}`
+        ? t("poolDetail", { ready: poolReady, needFix: poolNeedFix })
         : undefined,
       href: teamsHref
     });
     items.push({
       key: "balance_saved",
       phase: "formation",
-      label: "Balance saved",
+      label: t("balanceSaved"),
       state: !teamAccess ? "no-access" : readiness.balance_saved ? "done" : "todo",
       href: teamsHref
     });
     items.push({
       key: "balance_exported",
       phase: "formation",
-      label: "Balance exported",
+      label: t("balanceExported"),
       state: !teamAccess ? "no-access" : readiness.balance_exported_at != null ? "done" : "todo",
       href: teamsHref
     });
@@ -202,28 +208,28 @@ export function buildChecklist(
   items.push({
     key: "stages",
     phase: "bracket",
-    label: "Stages configured",
+    label: t("stagesConfigured"),
     state: !setupAccess ? "no-access" : (readiness.stages_total ?? 0) > 0 ? "done" : "todo",
     href: stagesHref
   });
   items.push({
     key: "slots",
     phase: "bracket",
-    label: "Stage slots filled",
+    label: t("stageSlotsFilled"),
     state: !setupAccess ? "no-access" : readiness.stage_slots_filled ? "done" : "todo",
     href: stagesHref
   });
   items.push({
     key: "bracket",
     phase: "bracket",
-    label: "Bracket generated",
+    label: t("bracketGenerated"),
     state: !setupAccess ? "no-access" : readiness.bracket_generated ? "done" : "todo",
     href: stagesHref
   });
   items.push({
     key: "activation",
     phase: "bracket",
-    label: "Tournament live",
+    label: t("tournamentLive"),
     // Status is never masked — derived from the state machine, not counters.
     state: reachedAtLeast(readiness.status, "live") ? "done" : "todo"
   });
@@ -234,7 +240,7 @@ export function buildChecklist(
   items.push({
     key: "logs",
     phase: "live",
-    label: "Logs cover matches",
+    label: t("logsCoverMatches"),
     // Neutral until the first log arrives (§3: otherwise "Logs: not used").
     state: !setupAccess
       ? "no-access"
@@ -246,8 +252,8 @@ export function buildChecklist(
     detail: !setupAccess
       ? undefined
       : !readiness.logs_used
-        ? "Logs: not used"
-        : `${withLogs}/${encountersTotal} matches with logs`,
+        ? t("logsNotUsed")
+        : t("logsDetail", { withLogs, total: encountersTotal }),
     href: `${ctx.basePath}/matches/logs`
   });
 
@@ -255,13 +261,13 @@ export function buildChecklist(
   items.push({
     key: "completed",
     phase: "finish",
-    label: "Completed",
+    label: t("completed"),
     state: reachedAtLeast(readiness.status, "completed") ? "done" : "todo"
   });
   items.push({
     key: "archived",
     phase: "finish",
-    label: "Archived",
+    label: t("archived"),
     // Optional phase (§3): never warns or nags — done or quietly skipped.
     state: readiness.status === "archived" ? "done" : "skipped"
   });

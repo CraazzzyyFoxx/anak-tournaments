@@ -1,6 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { BulkBar } from "@/components/kit/BulkBar";
 import { Button } from "@/components/ui/button";
@@ -33,8 +34,9 @@ export default function RegistrationBulkActions({
   onAddToBalancer,
   addToBalancerPending
 }: Readonly<RegistrationBulkActionsProps>) {
+  const t = useTranslations("registrationsAdmin.bulk");
   return (
-    <BulkBar count={selected.length} unit="registrations" onClear={clearSelection}>
+    <BulkBar count={selected.length} unit={t("registrations")} onClear={clearSelection}>
       <Button
         size="sm"
         onClick={() => {
@@ -50,7 +52,7 @@ export default function RegistrationBulkActions({
         ) : (
           <Check className="mr-2 h-4 w-4" aria-hidden />
         )}
-        Approve {selected.length}
+        {t("approve", { count: selected.length })}
       </Button>
       <Button
         size="sm"
@@ -75,7 +77,7 @@ export default function RegistrationBulkActions({
         ) : (
           <Check className="mr-2 h-4 w-4" aria-hidden />
         )}
-        Add to Balancer {selected.length}
+        {t("add", { count: selected.length })}
       </Button>
     </BulkBar>
   );

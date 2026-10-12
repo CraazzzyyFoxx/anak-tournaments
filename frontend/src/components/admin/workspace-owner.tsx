@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/kit/AuthUserSearchCombobox";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -43,6 +44,7 @@ function useWorkspaceOwner(workspaceId: number | null) {
  * settings page into an error state over it.
  */
 export function WorkspaceOwnerValue({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
+  const t = useTranslations("adminAccess.common");
   const query = useWorkspaceOwner(workspaceId);
 
   if (workspaceId == null || query.isPending) {
@@ -53,7 +55,7 @@ export function WorkspaceOwnerValue({ workspaceId }: Readonly<{ workspaceId: num
   }
   const owner = query.data;
   if (!owner) {
-    return <span className="text-muted-foreground">No owner recorded</span>;
+    return <span className="text-muted-foreground">{t("noOwner")}</span>;
   }
 
   return (
@@ -77,6 +79,8 @@ export function WorkspaceOwnerControl({
   workspaceId,
   isSuperuser
 }: Readonly<{ workspaceId: number | null; isSuperuser: boolean }>) {
+  const t = useTranslations("adminAccess.owner");
+  const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
   const owner = useWorkspaceOwner(workspaceId).data;
 
@@ -86,10 +90,14 @@ export function WorkspaceOwnerControl({
     onSuccess: (next) => {
       queryClient.setQueryData(adminQueryKeys.workspaceOwner(workspaceId), next);
       notify.success(
-        next ? `Owner set to ${next.username ? `@${next.username}` : `#${next.auth_user_id}`}` : "Owner cleared"
+        next
+          ? t("ownerSet", {
+              owner: next.username ? `@${next.username}` : `#${next.auth_user_id}`
+            })
+          : t("cleared")
       );
     },
-    onError: (error) => notify.apiError(error, { title: "Could not change the owner" })
+    onError: (error) => notify.apiError(error, { title: t("changedError") })
   });
 
   if (!isSuperuser || workspaceId == null) return null;
@@ -97,7 +105,7 @@ export function WorkspaceOwnerControl({
   return (
     <div className="mt-3">
       <label htmlFor="workspace-owner" className="text-sm font-medium leading-none">
-        Reassign owner
+        {tc("reassignOwner")}
       </label>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <AuthUserSearchCombobox
@@ -105,7 +113,7 @@ export function WorkspaceOwnerControl({
           value={owner?.auth_user_id}
           selectedLabel={owner?.username ?? owner?.email ?? undefined}
           onSelect={(account) => mutation.mutate(account?.id ?? null)}
-          placeholder="Select an account"
+          placeholder={tc("selectAccount")}
           disabled={mutation.isPending}
         />
         {owner ? (
@@ -116,13 +124,12 @@ export function WorkspaceOwnerControl({
             disabled={mutation.isPending}
             onClick={() => mutation.mutate(null)}
           >
-            Clear
+            {tc("clear")}
           </Button>
         ) : null}
       </div>
       <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        Superusers only, and audited. This moves the accountability stamp alone: workspace roles
-        are unchanged, so grant or revoke the “owner” role in Members separately.
+        {t("superuserDescription")}
       </p>
     </div>
   );
@@ -142,6 +149,8 @@ export function WorkspaceOwnerTransferControl({
   workspaceName,
   isSuperuser
 }: Readonly<{ workspaceId: number | null; workspaceName: string; isSuperuser: boolean }>) {
+  const t = useTranslations("adminAccess.owner");
+  const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
   const owner = useWorkspaceOwner(workspaceId).data;
   const currentUserId = useAuthProfileStore((state) => state.user?.id);
@@ -154,10 +163,12 @@ export function WorkspaceOwnerTransferControl({
       queryClient.setQueryData(adminQueryKeys.workspaceOwner(workspaceId), next);
       setTarget(null);
       notify.success(
-        `Ownership transferred to ${next.username ? `@${next.username}` : `#${next.auth_user_id}`}`
+        t("ownershipTransferred", {
+          owner: next.username ? `@${next.username}` : `#${next.auth_user_id}`
+        })
       );
     },
-    onError: (error) => notify.apiError(error, { title: "Could not transfer ownership" })
+    onError: (error) => notify.apiError(error, { title: t("transferError") })
   });
 
   const isOwner = currentUserId != null && owner?.auth_user_id === currentUserId;
@@ -166,7 +177,7 @@ export function WorkspaceOwnerTransferControl({
   return (
     <div className="mt-3">
       <label htmlFor="workspace-owner-transfer" className="text-sm font-medium leading-none">
-        Transfer ownership
+        {tc("transferOwnership")}
       </label>
       <div className="mt-1.5">
         <AuthUserSearchCombobox
@@ -174,13 +185,12 @@ export function WorkspaceOwnerTransferControl({
           value={target?.id}
           selectedLabel={target?.label}
           onSelect={(account) => setTarget(account ?? null)}
-          placeholder="Hand over to…"
+          placeholder={tc("handOverTo")}
           disabled={mutation.isPending}
         />
       </div>
       <p className="mt-1 max-w-prose text-xs text-muted-foreground">
-        The recipient is added to the workspace and granted the “owner” role. The outgoing owner
-        keeps their membership and every other role they hold — only “owner” moves.
+        {t("transferDescription")}
       </p>
 
       <ConfirmDialog
@@ -190,9 +200,9 @@ export function WorkspaceOwnerTransferControl({
         }}
         pending={mutation.isPending}
         intent={{
-          title: "Transfer ownership",
-          description: `${target?.label ?? "This account"} becomes the owner of “${workspaceName}” and is granted the “owner” role. ${isOwner && !isSuperuser ? "You keep your membership but lose the owner role, and only the new owner or a superuser can hand it back." : "The outgoing owner keeps their membership but loses the owner role."}`,
-          confirmLabel: "Transfer ownership",
+          title: tc("transferOwnership"),
+          description: t("recipientDescription", { target: target?.label ?? tc("account"), workspace: workspaceName, details: isOwner && !isSuperuser ? t("ownerKeeps") : t("outgoingKeeps") }),
+          confirmLabel: tc("transferOwnership"),
           tone: "danger"
         }}
         onConfirm={() => {

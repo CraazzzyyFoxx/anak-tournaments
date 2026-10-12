@@ -1,6 +1,7 @@
 "use client";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { useTranslations } from "next-intl";
 import { ArrowRight, Calendar } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 
@@ -33,12 +34,14 @@ interface ActiveTournamentCardProps {
  * screen was already saying.
  */
 export function ActiveTournamentCard({ canRead, tournament }: Readonly<ActiveTournamentCardProps>) {
+  const t = useTranslations("adminShell.dashboard");
+  const tExtra = useTranslations("adminShell.dashboardExtra");
   const format = useFormatter();
   if (!canRead) {
     return (
       <Card>
         <CardContent className="pt-6">
-          <PermissionHiddenNotice title="Tournament data is hidden" permission="tournament read" />
+          <PermissionHiddenNotice title={t("tournamentDataHidden")} permission="tournament read" />
         </CardContent>
       </Card>
     );
@@ -49,12 +52,11 @@ export function ActiveTournamentCard({ canRead, tournament }: Readonly<ActiveTou
       <Card>
         <CardContent className="flex flex-col gap-3 pt-6">
           <p className="text-sm text-muted-foreground">
-            No tournaments are currently active. Create or reopen a tournament to populate the
-            dashboard.
+            {t("noActiveTournaments")}
           </p>
           <Button asChild variant="outline" size="sm" className="w-fit">
             <HoverPrefetchLink href="/admin/tournaments">
-              View all tournaments
+              {t("viewAllTournaments")}
               <ArrowRight className="size-3.5" aria-hidden />
             </HoverPrefetchLink>
           </Button>
@@ -73,9 +75,9 @@ export function ActiveTournamentCard({ canRead, tournament }: Readonly<ActiveTou
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <StatusPill tone={status.tone} dot={!tournament.is_finished}>
-              {status.label}
+              {t(status.label as never)}
             </StatusPill>
-            {tournament.is_league ? "League" : "Tournament"}
+            {tournament.is_league ? tExtra("league") : tExtra("tournament")}
           </div>
 
           <CardTitle asChild className="mt-2 line-clamp-1 text-xl text-foreground">
@@ -93,7 +95,7 @@ export function ActiveTournamentCard({ canRead, tournament }: Readonly<ActiveTou
               <>
                 <span aria-hidden>·</span>
                 <span className="tabular-nums">
-                  {stageCount} stage{stageCount === 1 ? "" : "s"}
+                  {t("stagesCount", { count: stageCount })}
                 </span>
               </>
             )}
@@ -110,7 +112,7 @@ export function ActiveTournamentCard({ canRead, tournament }: Readonly<ActiveTou
 
         <Button asChild size="sm" className="shrink-0">
           <HoverPrefetchLink href={`/admin/tournaments/${tournament.id}`}>
-            Open tournament
+            {t("openTournament")}
             <ArrowRight className="size-3.5" aria-hidden />
           </HoverPrefetchLink>
         </Button>

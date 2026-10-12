@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { WorkspaceQuotaCard } from "@/components/admin/quota/WorkspaceQuotaCard";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -13,6 +15,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
  * that — raising one answers 422 and the offending field says so.
  */
 export default function WorkspaceQuotaSettingsPage() {
+  const t = useTranslations("adminSettings.quota");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { canAccessPermission } = usePermissions();
 
@@ -20,8 +23,8 @@ export default function WorkspaceQuotaSettingsPage() {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace in the sidebar to see and edit its rate limits."
+        title={t("noWorkspace.title")}
+        description={t("noWorkspace.description")}
       />
     );
   }
@@ -30,8 +33,8 @@ export default function WorkspaceQuotaSettingsPage() {
     return (
       <PageStateCard
         state="not-found"
-        title="Not available"
-        description="Editing rate limits needs the workspace.update permission in this workspace."
+        title={t("notAvailable.title")}
+        description={t("notAvailable.description")}
       />
     );
   }

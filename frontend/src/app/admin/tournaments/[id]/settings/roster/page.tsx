@@ -18,7 +18,7 @@ export default function RosterSettingsPage() {
   return (
     <SettingsSectionPage
       section="roster"
-      description="How many players of each role a team of this tournament fields, and how deep its bench may go."
+      description={useTranslations("adminTournament.screenDescriptions")("roster")}
     >
       {({ tournament, tournamentId, canUpdateTournament, canTeamCreate }) => (
         <RosterForm
@@ -44,6 +44,7 @@ function RosterForm({
   benchDisabled: boolean;
 }>) {
   const t = useTranslations("registrationFormAdmin.page");
+  const tournamentT = useTranslations("adminTournament.roster");
   const ids = useId();
   const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
     tournament,
@@ -103,7 +104,7 @@ function RosterForm({
         dirty={dirty || benchDirty}
         summary={
           totalError
-            ? "The roster total above is out of range"
+            ? tournamentT("totalOutOfRange")
             : [dirty ? summary : null, benchDirty ? bench.summary : null]
                 .filter(Boolean)
                 .join(" · ")

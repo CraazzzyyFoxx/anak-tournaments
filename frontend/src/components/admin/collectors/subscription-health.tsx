@@ -38,6 +38,7 @@ const SUBSCRIPTION_KEY = "parser.subscription_collection";
  * as `<state> <count>` text, so the state is never carried by colour alone.
  */
 function StateBar({ stats }: Readonly<{ stats: SubscriptionCollectionStats }>) {
+  const tDashboard = useTranslations("adminShell.dashboardExtra");
   const labels = useSubscriptionLabels();
   const total = stats.total || 1;
   const counts = stats.by_state ?? {};
@@ -50,7 +51,7 @@ function StateBar({ stats }: Readonly<{ stats: SubscriptionCollectionStats }>) {
               key={s}
               className={cn("h-full", STATE_BAR[s])}
               style={{ width: `${(counts[s] / total) * 100}%` }}
-              title={`${labels.state[s]}: ${counts[s]}`}
+              title={tDashboard("statusCountTitle", { label: labels.state[s], count: counts[s] })}
             />
           ) : null
         )}

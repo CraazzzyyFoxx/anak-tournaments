@@ -1,6 +1,7 @@
 "use client";
 
 import { rbacService } from "@/services/rbac.service";
+import { useTranslations } from "next-intl";
 import type { AuthAdminUser } from "@/types/rbac.types";
 import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
 import { useSearchComboboxQuery } from "@/components/kit/useSearchComboboxQuery";
@@ -29,10 +30,13 @@ export function AuthUserSearchCombobox({
   value,
   selectedLabel,
   onSelect,
-  placeholder = "Select auth account",
-  searchPlaceholder = "Search by email or username…",
+  placeholder,
+  searchPlaceholder,
   disabled = false
 }: Readonly<AuthUserSearchComboboxProps>) {
+  const t = useTranslations("kit.authUser");
+  const resolvedPlaceholder = placeholder ?? t("placeholder");
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t("searchPlaceholder");
   const {
     open,
     setOpen,
@@ -47,15 +51,15 @@ export function AuthUserSearchCombobox({
       rbacService.listUsers({ search: query, per_page: 20 }).then((page) => page.results),
     onSelect,
     messages: {
-      loading: "Loading accounts…",
-      error: "Could not load accounts. Try again.",
-      minChars: "Type at least 2 characters to search.",
-      empty: "No accounts match that email or username."
+      loading: t("loading"),
+      error: t("error"),
+      minChars: t("minChars"),
+      empty: t("empty")
     }
   });
 
   const label =
-    selectedLabel ?? (typeof value === "number" && value > 0 ? `User #${value}` : placeholder);
+    selectedLabel ?? (typeof value === "number" && value > 0 ? `User #${value}` : resolvedPlaceholder);
 
   return (
     <Combobox
@@ -66,14 +70,14 @@ export function AuthUserSearchCombobox({
       disabled={disabled}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}
-      searchPlaceholder={searchPlaceholder}
+      searchPlaceholder={resolvedSearchPlaceholder}
       emptyMessage={emptyMessage}
       // Results are already server-filtered; don't let cmdk re-filter them out.
       shouldFilter={false}
       clear={
         typeof value === "number" && value > 0
           ? {
-              label: "Clear selection",
+              label: t("clearSelection"),
               value: "clear-auth-user-selection",
               onSelect: () => handleSelect(undefined)
             }

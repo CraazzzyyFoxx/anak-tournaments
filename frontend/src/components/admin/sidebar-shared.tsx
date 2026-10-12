@@ -1,29 +1,29 @@
 "use client";
 
+import { useId } from "react";
 import Image from "next/image";
-import { ArrowLeft, Check, ChevronsUpDown } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { ArrowLeft, Bell, Check, ChevronsUpDown } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverClose, PopoverTrigger } from "@/components/ui/popover";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem
 } from "@/components/ui/sidebar";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
-import { AccountMenuContent } from "@/components/UserMenu";
+import {
+  ACCOUNT_MENU_ITEM_CLASS,
+  AccountMenuPanel,
+  AccountMenuSeparator
+} from "@/components/UserMenu";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { filterAccessibleWorkspaces, useWorkspaceStore } from "@/stores/workspace.store";
+import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
-import { cn, initials } from "@/lib/utils";
+import { initials } from "@/lib/utils";
 
 // Role names come from two RBAC scopes: global roles ("admin", "moderator" —
 // see AppRole in usePermissions) and
@@ -41,18 +41,18 @@ function getRoleLabel({
   globalRoles: string[];
   workspaceRoles: string[];
 }) {
-  if (isSuperuser) return "Superuser";
-  if (globalRoles.includes("admin")) return "Admin";
-  if (globalRoles.includes("moderator")) return "Moderator";
-  if (workspaceRoles.includes("owner")) return "Owner";
-  if (workspaceRoles.includes("admin")) return "Admin";
-  if (workspaceRoles.includes("referee")) return "Referee";
-  if (workspaceRoles.includes("host")) return "Host";
-  if (workspaceRoles.includes("player")) return "Player";
-  return "Operator";
+  if (isSuperuser) return "superuser";
+  if (globalRoles.includes("admin") || workspaceRoles.includes("admin")) return "admin";
+  if (globalRoles.includes("moderator")) return "moderator";
+  if (workspaceRoles.includes("owner")) return "owner";
+  if (workspaceRoles.includes("referee")) return "referee";
+  if (workspaceRoles.includes("host")) return "host";
+  if (workspaceRoles.includes("player")) return "player";
+  return "operator";
 }
 
 export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
+  const t = useTranslations("adminShell.dashboardExtra");
   const { user, status } = useAuthProfile();
   const { workspaces: allWorkspaces, currentWorkspaceId } = useWorkspaceStore();
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
@@ -66,7 +66,7 @@ export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
           size="lg"
           className="h-9 rounded-lg px-2 hover:bg-transparent group-data-[collapsible=icon]:justify-center"
         >
-          <HoverPrefetchLink href={href} aria-label={`${currentWorkspace?.name ?? SITE_NAME} admin home`}>
+          <HoverPrefetchLink href={href} aria-label={t("workspaceAdminHome", { workspace: currentWorkspace?.name ?? SITE_NAME })}>
             {currentWorkspace?.icon_url ? (
               <div className="flex size-7 items-center justify-center">
                 <Image
@@ -103,18 +103,19 @@ export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
 }
 
 export function SidebarBackToSite() {
+  const t = useTranslations("adminShell.sidebar");
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
           asChild
           size="sm"
-          tooltip="Return to site"
+          tooltip={t("returnToSite")}
           className="h-7 rounded-md px-2.5 text-sm text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/40"
         >
           <HoverPrefetchLink href="/">
             <ArrowLeft aria-hidden className="size-4 text-sidebar-foreground/30" />
-            <span>Return to site</span>
+            <span>{t("returnToSite")}</span>
           </HoverPrefetchLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -123,6 +124,11 @@ export function SidebarBackToSite() {
 }
 
 export function SidebarUserDropdown() {
+  const t = useTranslations("adminShell.sidebar");
+  const tCommon = useTranslations("common");
+  const tDashboard = useTranslations("adminShell.dashboardExtra");
+  const workspaceLabelId = useId();
+  const openSettings = useAccountSettingsModalStore((s) => s.open);
   const { user, status } = useAuthProfile();
   const {
     workspaces: allWorkspaces,
@@ -132,27 +138,27 @@ export function SidebarUserDropdown() {
 
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
-  const roleLabel = getRoleLabel({
+  const roleLabel = t(`roles.${getRoleLabel({
     isSuperuser: user?.isSuperuser ?? false,
     globalRoles: user?.roles ?? [],
     workspaceRoles: user?.workspaces.flatMap((ws) => ws.roles) ?? []
-  });
+  })}` as never);
 
   return (
     <div className="mt-1">
       <SidebarMenu>
         <SidebarMenuItem>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <Popover>
+            <PopoverTrigger asChild>
               <SidebarMenuButton
                 size="lg"
-                tooltip={user?.username ?? "Profile"}
+                tooltip={user?.username ?? tDashboard("profile")}
                 className="h-12 rounded-lg px-2 hover:bg-sidebar-accent/60 data-[state=open]:bg-sidebar-accent/60"
               >
                 <Avatar className="size-8 rounded-lg ring-1 ring-sidebar-border/60">
                   <AvatarImage
                     src={user?.avatarUrl ?? undefined}
-                    alt={user?.username ?? "User"}
+                    alt={user?.username ?? tDashboard("user")}
                   />
                   <AvatarFallback className="rounded-lg bg-sidebar-accent text-xs font-medium text-sidebar-foreground/60">
                     {initials(user?.username)}
@@ -160,7 +166,7 @@ export function SidebarUserDropdown() {
                 </Avatar>
                 <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
                   <span className="truncate text-sm font-medium text-sidebar-foreground">
-                    {user?.username ?? "User"}
+                    {user?.username ?? tDashboard("user")}
                   </span>
                   <span className="truncate text-xs text-sidebar-foreground/40">
                     {roleLabel}
@@ -172,35 +178,59 @@ export function SidebarUserDropdown() {
                   className="ml-auto size-3.5 text-sidebar-foreground/25 group-data-[collapsible=icon]:hidden"
                 />
               </SidebarMenuButton>
-            </DropdownMenuTrigger>
+            </PopoverTrigger>
 
             {user && (
-              <AccountMenuContent user={user} align="start" side="top">
+              <AccountMenuPanel
+                user={user}
+                align="start"
+                side="top"
+                actions={
+                  // The admin shell has no notification bell, so its settings live here.
+                  <PopoverClose asChild>
+                    <button
+                      type="button"
+                      className={ACCOUNT_MENU_ITEM_CLASS}
+                      onClick={() => openSettings("notifications")}
+                    >
+                      <Bell className="size-4 shrink-0" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">{tCommon("notificationSettings")}</span>
+                    </button>
+                  </PopoverClose>
+                }
+              >
                 {workspaces.length > 0 && (
                   <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel className={cn(EYEBROW_CLASS, "px-2 py-1")}>
-                      Workspace
-                    </DropdownMenuLabel>
-                    {workspaces.map((ws) => (
-                      <DropdownMenuItem
-                        key={ws.id}
-                        onClick={() => setCurrentWorkspace(ws.id)}
-                        aria-current={ws.id === currentWorkspaceId ? "true" : undefined}
-                        className="flex items-center gap-2 h-8 rounded-md text-sm"
+                    <AccountMenuSeparator />
+                    <div role="group" aria-labelledby={workspaceLabelId}>
+                      <p
+                        id={workspaceLabelId}
+                        className="px-2.5 pb-1 pt-1.5 text-caption text-[color:var(--aqt-fg-dim)]"
                       >
-                        <WorkspaceAvatar workspace={ws} size={20} />
-                        <span className="flex-1 truncate">{ws.name}</span>
-                        {ws.id === currentWorkspaceId && (
-                          <Check aria-hidden className="size-3.5 text-sidebar-primary" />
-                        )}
-                      </DropdownMenuItem>
-                    ))}
+                        {t("workspace")}
+                      </p>
+                      {workspaces.map((ws) => (
+                        <PopoverClose key={ws.id} asChild>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentWorkspace(ws.id)}
+                            aria-current={ws.id === currentWorkspaceId ? "true" : undefined}
+                            className={ACCOUNT_MENU_ITEM_CLASS}
+                          >
+                            <WorkspaceAvatar workspace={ws} size={20} />
+                            <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                            {ws.id === currentWorkspaceId && (
+                              <Check aria-hidden className="size-4 shrink-0 text-[color:var(--aqt-teal)]" />
+                            )}
+                          </button>
+                        </PopoverClose>
+                      ))}
+                    </div>
                   </>
                 )}
-              </AccountMenuContent>
+              </AccountMenuPanel>
             )}
-          </DropdownMenu>
+          </Popover>
         </SidebarMenuItem>
       </SidebarMenu>
     </div>

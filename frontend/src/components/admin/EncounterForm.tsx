@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { useTranslations } from "next-intl";
 import { Star } from "lucide-react";
 
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
@@ -99,14 +100,14 @@ export function encounterFormOf(encounter: Encounter): EncounterFormState {
 
 /** The one blocking message, or `null` when the form may be submitted. */
 export function encounterFormError(form: EncounterFormState): string | null {
-  if (!form.name.trim()) return "Enter an encounter name.";
-  if (form.stage_id == null) return "Select a stage before saving the encounter.";
+  if (!form.name.trim()) return "enterName";
+  if (form.stage_id == null) return "selectStageBefore";
   if (
     form.home_team_id != null &&
     form.away_team_id != null &&
     form.home_team_id === form.away_team_id
   ) {
-    return "Pick two different teams.";
+    return "differentTeams";
   }
   return null;
 }
@@ -172,6 +173,7 @@ export function EncounterForm({
   stages: Stage[];
   teams: Team[];
 }>) {
+  const t = useTranslations("adminMatches.form");
   const prefix = useId();
   const stage = stages.find((entry) => entry.id === value.stage_id) ?? null;
   const stageItem = stage?.items.find((item) => item.id === value.stage_item_id) ?? null;
@@ -181,17 +183,17 @@ export function EncounterForm({
   return (
     <div className="space-y-4">
       <div>
-        <Label htmlFor={`${prefix}-name`}>Encounter name *</Label>
+        <Label htmlFor={`${prefix}-name`}>{t("name")}</Label>
         <Input
           id={`${prefix}-name`}
           value={value.name}
-          placeholder="e.g. Quarter Final 1"
+          placeholder={t("namePlaceholder")}
           onChange={(event) => onChange({ ...value, name: event.target.value })}
         />
       </div>
 
       <div>
-        <Label htmlFor={`${prefix}-stage`}>Stage *</Label>
+        <Label htmlFor={`${prefix}-stage`}>{t("stageRequired")}</Label>
         <Select
           value={value.stage_id?.toString() ?? ""}
           onValueChange={(next) => {
@@ -206,7 +208,7 @@ export function EncounterForm({
           }}
         >
           <SelectTrigger id={`${prefix}-stage`}>
-            <SelectValue placeholder="Select stage" />
+            <SelectValue placeholder={t("selectStage")} />
           </SelectTrigger>
           <SelectContent>
             {stages.map((entry) => (
@@ -219,7 +221,7 @@ export function EncounterForm({
       </div>
 
       <div>
-        <Label htmlFor={`${prefix}-stage-item`}>Stage item</Label>
+        <Label htmlFor={`${prefix}-stage-item`}>{t("stageItem")}</Label>
         <Select
           value={value.stage_item_id?.toString() ?? "none"}
           onValueChange={(next) => {
@@ -237,10 +239,10 @@ export function EncounterForm({
           }}
         >
           <SelectTrigger id={`${prefix}-stage-item`}>
-            <SelectValue placeholder="Select stage item" />
+            <SelectValue placeholder={t("selectStageItem")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">No stage item</SelectItem>
+            <SelectItem value="none">{t("noStageItem")}</SelectItem>
             {(stage?.items ?? []).map((item) => (
               <SelectItem key={item.id} value={item.id.toString()}>
                 {item.name}
@@ -252,12 +254,12 @@ export function EncounterForm({
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
-          <Label htmlFor={`${prefix}-home`}>Home team</Label>
+          <Label htmlFor={`${prefix}-home`}>{t("homeTeam")}</Label>
           <TeamCombobox
             id={`${prefix}-home`}
             teams={teams}
             value={value.home_team_id}
-            placeholder="Select home team"
+            placeholder={t("selectHome")}
             onSelect={(team) => {
               const homeTeamId = team?.id ?? null;
               onChange({
@@ -269,12 +271,12 @@ export function EncounterForm({
           />
         </div>
         <div>
-          <Label htmlFor={`${prefix}-away`}>Away team</Label>
+          <Label htmlFor={`${prefix}-away`}>{t("awayTeam")}</Label>
           <TeamCombobox
             id={`${prefix}-away`}
             teams={teams}
             value={value.away_team_id}
-            placeholder="Select away team"
+            placeholder={t("selectAway")}
             onSelect={(team) => {
               const awayTeamId = team?.id ?? null;
               onChange({
@@ -288,7 +290,7 @@ export function EncounterForm({
       </div>
 
       <div>
-        <Label htmlFor={`${prefix}-round`}>Round *</Label>
+        <Label htmlFor={`${prefix}-round`}>{t("round")}</Label>
         <NumberInput
           id={`${prefix}-round`}
           integer
@@ -301,7 +303,7 @@ export function EncounterForm({
         idPrefix={`${prefix}-score`}
         homeScore={value.home_score}
         awayScore={value.away_score}
-        presetLabel={isGroupStage ? "Group stage presets" : "Result presets"}
+        presetLabel={isGroupStage ? t("groupPresets") : t("resultPresets")}
         showGroupStageHint={isGroupStage}
         onScoreChange={(score) =>
           onChange({ ...value, home_score: score.homeScore, away_score: score.awayScore })
@@ -309,7 +311,7 @@ export function EncounterForm({
       />
 
       <div>
-        <Label htmlFor={`${prefix}-status`}>Status</Label>
+        <Label htmlFor={`${prefix}-status`}>{t("status")}</Label>
         <Select
           value={value.status}
           onValueChange={(next) =>
@@ -320,22 +322,22 @@ export function EncounterForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="OPEN">Open</SelectItem>
-            <SelectItem value="PENDING">Pending</SelectItem>
+            <SelectItem value="OPEN">{t("open")}</SelectItem>
+            <SelectItem value="PENDING">{t("pending")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       {mode === "edit" ? (
-        <div role="group" aria-label="Match closeness">
-          <p className="text-sm font-medium leading-none">Match closeness</p>
+        <div role="group" aria-label={t("closeness")}>
+          <p className="text-sm font-medium leading-none">{t("closeness")}</p>
           <div className="mt-2 flex items-center gap-1">
             {[1, 2, 3, 4, 5].map((star) => (
               <button
                 key={star}
                 type="button"
                 className="p-1"
-                aria-label={`Rate closeness ${star} of 5`}
+                aria-label={t("rateCloseness", { star })}
                 aria-pressed={star <= stars}
                 onClick={() =>
                   onChange({
@@ -355,7 +357,7 @@ export function EncounterForm({
               </button>
             ))}
             <span className="ml-2 text-sm tabular-nums text-muted-foreground">
-              {stars > 0 ? `${stars}/5` : "Not set"}
+              {stars > 0 ? `${stars}/5` : t("notSet")}
             </span>
           </div>
         </div>

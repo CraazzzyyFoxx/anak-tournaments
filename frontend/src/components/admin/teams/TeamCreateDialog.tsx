@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -37,6 +38,7 @@ const EMPTY_FORM: TeamCreateForm = { name: "", captainId: 0, captainName: "" };
  * updates and deletes in dependency order on submit.
  */
 export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<TeamCreateDialogProps>) {
+  const t = useTranslations("adminPeople.createTeam");
   const router = useRouter();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<TeamCreateForm>(EMPTY_FORM);
@@ -59,7 +61,7 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
         queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.teamsAll() }),
         queryClient.invalidateQueries({ queryKey: adminQueryKeys.tournament(tournamentId) })
       ]);
-      notify.success("Team created — add its roster below");
+      notify.success(t("created"));
       setForm(EMPTY_FORM);
       onOpenChange(false);
       router.push(`/admin/teams/${team.id}`);
@@ -71,11 +73,11 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
     event.preventDefault();
 
     if (form.captainId <= 0) {
-      setError("Pick the captain.");
+      setError(t("pickCaptain"));
       return;
     }
     if (!teamName) {
-      setError("Enter a team name.");
+      setError(t("enterName"));
       return;
     }
 
@@ -93,36 +95,36 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
         }
         onOpenChange(nextOpen);
       }}
-      title="Create team"
-      description="Name the team and pick its captain. You will land on the team page to add players."
+      title={t("title")}
+      description={t("description")}
       onSubmit={handleSubmit}
-      submitLabel="Create team"
+      submitLabel={t("submit")}
       isSubmitting={createTeam.isPending}
-      submittingLabel="Creating…"
+      submittingLabel={t("creating")}
       errorMessage={error}
       isDirty={open && hasUnsavedChanges(form, EMPTY_FORM)}
     >
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="team-create-name">Team name</Label>
+          <Label htmlFor="team-create-name">{t("teamName")}</Label>
           <Input
             id="team-create-name"
             value={form.name}
-            placeholder={captainHandle || "Team name"}
+            placeholder={captainHandle || t("teamName")}
             onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
           />
           <p className="text-xs text-muted-foreground">
-            Leave empty to name the team after its captain.
+            {t("nameHint")}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="team-create-captain">Captain</Label>
+          <Label htmlFor="team-create-captain">{t("captain")}</Label>
           <UserSearchCombobox
             id="team-create-captain"
             value={form.captainId || undefined}
             selectedName={form.captainName || undefined}
-            placeholder="Search user by name"
+            placeholder={t("searchUser")}
             onSelect={(user) =>
               setForm((current) => ({
                 ...current,
@@ -132,8 +134,7 @@ export function TeamCreateDialog({ open, onOpenChange, tournamentId }: Readonly<
             }
           />
           <p className="text-xs text-muted-foreground">
-            Add the captain to the roster on the team page — changing the captain later requires them
-            to be a roster member.
+            {t("rosterHint")}
           </p>
         </div>
       </div>

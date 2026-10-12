@@ -11,6 +11,7 @@ import type {
   AdminRegistrationFormUpsert
 } from "@/types/balancer-admin.types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
+import { useTranslations } from "next-intl";
 
 /** Same key the questionnaire builder uses, so the four editors share one read. */
 export const registrationFormQueryKey = (tournamentId: number) =>
@@ -45,6 +46,7 @@ export interface RegistrationFormSection {
  */
 export function useRegistrationFormSection(tournamentId: number): RegistrationFormSection {
   const queryClient = useQueryClient();
+  const t = useTranslations("adminTournament.registrationForm");
   const [patchState, setPatchState] = useState<Partial<AdminRegistrationFormUpsert>>({});
 
   const query = useQuery({
@@ -73,9 +75,9 @@ export function useRegistrationFormSection(tournamentId: number): RegistrationFo
     onSuccess: async (updated) => {
       queryClient.setQueryData(registrationFormQueryKey(tournamentId), updated);
       setPatchState({});
-      notify.success("Registration settings saved");
+      notify.success(t("saved"));
     },
-    onError: () => notify.error("Could not save the registration settings")
+    onError: () => notify.error(t("saveError"))
   });
 
   const changed = Object.keys(patchState).length;
@@ -85,7 +87,7 @@ export function useRegistrationFormSection(tournamentId: number): RegistrationFo
     saved,
     patch,
     dirty: changed > 0,
-    summary: changed === 1 ? "1 changed setting" : `${changed} changed settings`,
+    summary: t("changed", { count: changed }),
     loading: query.isLoading,
     saving: mutation.isPending,
     save: () => mutation.mutate(),

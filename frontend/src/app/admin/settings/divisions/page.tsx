@@ -8,6 +8,7 @@ import { ArrowRight, Download, Star, Upload, Wand2 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useFormatter } from "@/lib/datetime/client";
+import { useTranslations } from "next-intl";
 
 import { DataTable } from "@/components/data-table";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -57,9 +58,9 @@ const SOURCE_STATUS_TONE = {
 } as const;
 
 const SOURCE_STATUS_LABEL = {
-  ok: "mapping complete",
-  incomplete: "mapping incomplete",
-  missing: "no mapping"
+  ok: "impact.mappingComplete",
+  incomplete: "impact.mappingIncomplete",
+  missing: "impact.noMapping"
 } as const;
 
 const MONO_CAPTION = "font-mono text-label uppercase tracking-wider text-muted-foreground";
@@ -92,6 +93,7 @@ const BUILT_IN_BANDS = bandsFromTiers(OW_REFERENCE_GRID.tiers);
  * version is still the one every rank resolves through.
  */
 export default function DivisionsSettingsPage() {
+  const t = useTranslations("adminSettings.divisions");
   const router = useRouter();
   const queryClient = useQueryClient();
   const format = useFormatter();
@@ -207,24 +209,24 @@ export default function DivisionsSettingsPage() {
     mutationFn: () => workspaceService.cloneDivisionGridVersion(latestVersion!.id),
     onSuccess: async (version) => {
       await refresh();
-      notify.success(`Draft v${version.version} created`);
+      notify.success(t("toast.draftCreated", { version: version.version }));
       router.push(editorHref(version.id));
     },
-    onError: reportFailure("Draft could not be created")
+    onError: reportFailure(t("errors.draftCreate"), t)
   });
 
   const standardMutation = useMutation({
     mutationFn: () =>
       workspaceService.createDivisionGridVersion(workspaceId!, selectedGrid!.id, {
-        label: "Standard OW ladder",
+        label: t("standardLadder"),
         tiers: STANDARD_OW_TIERS
       }),
     onSuccess: async (version) => {
       await refresh();
-      notify.success(`Draft v${version.version} loaded with the standard ladder`);
+      notify.success(t("toast.standardLoaded", { version: version.version }));
       router.push(editorHref(version.id));
     },
-    onError: reportFailure("Standard ladder could not be loaded")
+    onError: reportFailure(t("errors.standardLoad"), t)
   });
 
   const activateMutation = useMutation({
@@ -233,9 +235,9 @@ export default function DivisionsSettingsPage() {
     onSuccess: async (version) => {
       setActivating(null);
       await refresh();
-      notify.success(`v${version.version} is now the workspace grid`);
+      notify.success(t("toast.activated", { version: version.version }));
     },
-    onError: reportFailure("Version could not be activated")
+    onError: reportFailure(t("errors.activate"), t)
   });
 
   const portableImportMutation = useMutation({
@@ -244,9 +246,9 @@ export default function DivisionsSettingsPage() {
     onSuccess: async (grid) => {
       await refresh();
       setParams({ grid: String(grid.id) });
-      notify.success("Division grid imported from JSON");
+      notify.success(t("toast.jsonImported"));
     },
-    onError: reportFailure("JSON import failed")
+    onError: reportFailure(t("errors.jsonImport"), t)
   });
 
   const exportPortable = async () => {
@@ -262,7 +264,7 @@ export default function DivisionsSettingsPage() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      reportFailure("JSON export failed")(error);
+      reportFailure(t("errors.jsonExport"), t)(error);
     } finally {
       setPendingAction(null);
     }
@@ -272,10 +274,10 @@ export default function DivisionsSettingsPage() {
     try {
       portableImportMutation.mutate(JSON.parse(await file.text()) as DivisionGridPortableDocument);
     } catch (error) {
-      notify.error("Invalid division grid JSON", {
-        description: `Nothing was imported. ${
-          error instanceof Error ? error.message : "The file is not valid JSON."
-        } Export a grid from another workspace and import that file unchanged.`
+      notify.error(t("errors.invalidJson"), {
+        description: t("errors.invalidJsonDescription", {
+          reason: error instanceof Error ? error.message : t("errors.invalidJsonReason")
+        })
       });
     } finally {
       if (portableInputRef.current) portableInputRef.current.value = "";
@@ -292,7 +294,7 @@ export default function DivisionsSettingsPage() {
       },
       {
         id: "name",
-        header: "Division",
+        header: t("table.division"),
         cell: ({ row }) => (
           <span className="flex min-w-0 items-center gap-2">
             <Image
@@ -309,7 +311,7 @@ export default function DivisionsSettingsPage() {
       },
       {
         id: "range",
-        header: "Rank range",
+        header: t("table.rankRange"),
         size: 130,
         cell: ({ row }) => (
           <span className="font-mono text-sm tabular-nums">{rankRangeLabel(row.original)}</span>
@@ -317,23 +319,23 @@ export default function DivisionsSettingsPage() {
       },
       {
         id: "ow",
-        header: "OW ranks",
+        header: t("table.owRanks"),
         cell: ({ row }) => (
           <span className={cn("font-mono text-sm", !row.original.ow && "text-warning")}>
-            {owRangeLabel(row.original)}
+            {owRangeLabel(row.original) ?? t("ladder.notLinked")}
           </span>
         )
       }
     ],
-    []
+    [t]
   );
 
   if (workspaceId === null) {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace to manage its division grid."
+        title={t("noWorkspace.title")}
+        description={t("noWorkspace.description")}
       />
     );
   }
@@ -342,8 +344,8 @@ export default function DivisionsSettingsPage() {
     return (
       <PageStateCard
         state="not-found"
-        title="Divisions are not available to you"
-        description="Reading the division grid needs the division_grid.read permission in this workspace."
+        title={t("unavailable.title")}
+        description={t("unavailable.description")}
       />
     );
   }
@@ -352,9 +354,9 @@ export default function DivisionsSettingsPage() {
     return (
       <PageStateCard
         state="error"
-        title="Division grids could not be loaded"
-        description="The list of grids failed to load, so nothing below is trustworthy."
-        actionLabel="Retry"
+        title={t("loadError.title")}
+        description={t("loadError.description")}
+        actionLabel={t("retry")}
         onAction={() => void gridsQuery.refetch()}
       />
     );
@@ -374,18 +376,18 @@ export default function DivisionsSettingsPage() {
   const nextAction = draft ? (
     <Button size="sm" asChild>
       <Link href={editorHref(draft.id)}>
-        Open draft v{draft.version}
+        {t("openDraft", { version: draft.version })}
         <ArrowRight aria-hidden className="size-3.5" />
       </Link>
     </Button>
   ) : readyCandidate ? (
     <Button size="sm" onClick={() => setActivating(readyCandidate)}>
       <Star aria-hidden className="size-3.5" />
-      Activate v{readyCandidate.version}
+      {t("activateVersion", { version: readyCandidate.version })}
     </Button>
   ) : canCreate && latestVersion ? (
     <Button size="sm" onClick={() => cloneMutation.mutate()} disabled={cloneMutation.isPending}>
-      New draft from v{latestVersion.version}
+      {t("newDraft", { version: latestVersion.version })}
     </Button>
   ) : canCreate && selectedGrid ? (
     <Button
@@ -394,7 +396,7 @@ export default function DivisionsSettingsPage() {
       disabled={standardMutation.isPending}
     >
       <Wand2 aria-hidden className="size-3.5" />
-      Load standard OW ladder
+      {t("loadStandard")}
     </Button>
   ) : null;
 
@@ -412,13 +414,13 @@ export default function DivisionsSettingsPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <p className={cn(EYEBROW_CLASS, activeVersion && "text-primary/80")}>
-              In force{activeVersion ? ` · v${activeVersion.version}` : ""}
+              {activeVersion ? t("inForceVersion", { version: activeVersion.version }) : t("inForce")}
             </p>
             <h2
               id="divisions-in-force"
               className="mt-1 font-display text-2xl font-semibold leading-tight tracking-tight"
             >
-              {activeVersion ? activeVersion.label : "Built-in Overwatch ladder"}
+              {activeVersion ? activeVersion.label : t("builtInLadder")}
             </h2>
             <p className={cn(MONO_CAPTION, "mt-1.5")}>
               {activeVersion
@@ -439,7 +441,7 @@ export default function DivisionsSettingsPage() {
           </div>
           {nextAction ? (
             <div className="flex shrink-0 flex-col items-start gap-1.5 lg:items-end">
-              <span className={EYEBROW_CLASS}>Next step</span>
+              <span className={EYEBROW_CLASS}>{t("nextStep")}</span>
               {nextAction}
             </div>
           ) : null}
@@ -455,9 +457,9 @@ export default function DivisionsSettingsPage() {
         <p className="mt-3 max-w-prose text-xs text-muted-foreground">
           {activeVersion
             ? activeIsShared
-              ? "This version belongs to a grid shared with other workspaces, so it cannot be edited here. Load a ladder or create a draft in this workspace's own grid, then activate it to take over."
-              : `Every rank in this workspace resolves through v${activeVersion.version} until another version is published and activated.`
-            : "No version is active, so ranks resolve one-to-one through the standard ladder. Publish and activate a version to sort players into your own divisions."}
+              ? t("activeShared")
+              : t("activeDescription", { version: activeVersion.version })
+            : t("inactiveDescription")}
         </p>
       </section>
 
@@ -466,12 +468,10 @@ export default function DivisionsSettingsPage() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="min-w-0">
               <h2 id="divisions-history" className="font-display text-base font-semibold">
-                Version history
+                {t("versionHistory")}
               </h2>
               <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">
-                A division is a band of the Overwatch ladder. Published versions are immutable —
-                every tournament keeps the version it was played on, and a mapping translates its
-                divisions into the version in force.
+                {t("versionHistoryDescription")}
               </p>
             </div>
             {canCreate ? (
@@ -483,7 +483,7 @@ export default function DivisionsSettingsPage() {
                     onClick={() => cloneMutation.mutate()}
                     disabled={cloneMutation.isPending}
                   >
-                    + New draft from v{latestVersion.version}
+                    + {t("newDraft", { version: latestVersion.version })}
                   </Button>
                 ) : null}
                 <Button
@@ -493,7 +493,7 @@ export default function DivisionsSettingsPage() {
                   disabled={standardMutation.isPending || selectedGrid === null}
                 >
                   <Wand2 aria-hidden className="size-3.5" />
-                  Load standard OW ladder
+                  {t("loadStandard")}
                 </Button>
               </div>
             ) : null}
@@ -502,14 +502,14 @@ export default function DivisionsSettingsPage() {
           {grids.length > 1 ? (
             <div className="flex items-center gap-2">
               <label className={EYEBROW_CLASS} htmlFor="division-grid-select">
-                Grid
+                {t("grid")}
               </label>
               <Select
                 value={selectedGrid ? String(selectedGrid.id) : undefined}
                 onValueChange={(value) => setParams({ grid: value })}
               >
                 <SelectTrigger id="division-grid-select" className="h-9 w-72">
-                  <SelectValue placeholder="Choose a grid" />
+                  <SelectValue placeholder={t("chooseGrid")} />
                 </SelectTrigger>
                 <SelectContent>
                   {grids.map((grid) => (
@@ -524,8 +524,8 @@ export default function DivisionsSettingsPage() {
           ) : null}
 
           {versions.length === 0 ? (
-            <EmptyNote title="No versions yet">
-              Load the standard Overwatch ladder to start, or import a grid from another workspace.
+            <EmptyNote title={t("noVersions")}> 
+              {t("noVersionsDescription")}
             </EmptyNote>
           ) : (
             <VersionHistory
@@ -539,7 +539,7 @@ export default function DivisionsSettingsPage() {
           )}
 
           <div className="flex flex-wrap items-center gap-x-1 gap-y-1">
-            <span className={cn(EYEBROW_CLASS, "mr-2")}>Transfer</span>
+            <span className={cn(EYEBROW_CLASS, "mr-2")}>{t("transfer")}</span>
             {canCreate ? (
               <>
                 <input
@@ -561,7 +561,7 @@ export default function DivisionsSettingsPage() {
                   disabled={portableImportMutation.isPending}
                 >
                   <Upload aria-hidden className="size-3.5" />
-                  Import JSON
+                  {t("importJson")}
                 </Button>
               </>
             ) : null}
@@ -572,11 +572,11 @@ export default function DivisionsSettingsPage() {
               disabled={selectedGrid === null || pendingAction === "export"}
             >
               <Download aria-hidden className="size-3.5" />
-              Export JSON
+              {t("exportJson")}
             </Button>
             {canCreate ? (
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/admin/settings/divisions/import">Import from workspace…</Link>
+                <Link href="/admin/settings/divisions/import">{t("importWorkspace")}</Link>
               </Button>
             ) : null}
           </div>
@@ -584,18 +584,17 @@ export default function DivisionsSettingsPage() {
 
         <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-readers">
           <h2 id="divisions-readers" className="font-display text-base font-semibold">
-            Who reads which version
+            {t("readersTitle")}
           </h2>
           {!activeVersion ? (
             <p className="text-xs text-muted-foreground">
-              Once a version is in force, this lists the older versions tournaments still read and
-              whether their divisions map onto it.
+              {t("readersDescription")}
             </p>
           ) : readinessQuery.isLoading ? (
             <Skeleton className="h-32 w-full rounded-xl" />
           ) : sources.length === 0 ? (
             <EmptyNote size="sm">
-              Every tournament in this workspace reads v{activeVersion.version}. Nothing to map.
+              {t("nothingToMap", { version: activeVersion.version })}
             </EmptyNote>
           ) : (
             <ul className="flex flex-col gap-3">
@@ -610,7 +609,7 @@ export default function DivisionsSettingsPage() {
       <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-table">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="divisions-table" className="font-display text-base font-semibold">
-            Divisions in force
+            {t("divisionsInForce")}
           </h2>
           {activeVersion ? (
             <span className={MONO_CAPTION}>
@@ -624,11 +623,11 @@ export default function DivisionsSettingsPage() {
             columns={columns}
             getRowId={(row) => row.slug}
             initialPageSize={50}
-            emptyMessage="This version has no divisions."
+            emptyMessage={t("table.empty")}
           />
         ) : (
           <EmptyNote size="sm">
-            Players are sorted by their Overwatch rank directly until a version is activated.
+            {t("playersUntilActivated")}
           </EmptyNote>
         )}
       </section>
@@ -639,13 +638,9 @@ export default function DivisionsSettingsPage() {
           if (!open) setActivating(null);
         }}
         intent={{
-          title: `Activate v${activating?.version ?? ""}?`,
-          description: `Every rank in this workspace will resolve through v${
-            activating?.version ?? ""
-          } from now on. Tournaments keep the version they were played on${
-            activeVersion ? `, and v${activeVersion.version} stays in the history` : ""
-          }.`,
-          confirmLabel: `Activate v${activating?.version ?? ""}`,
+          title: t("confirm.activateTitle", { version: activating?.version ?? "" }),
+          description: t("confirm.activateDescription", { version: activating?.version ?? "" }),
+          confirmLabel: t("activateVersion", { version: activating?.version ?? "" }),
           tone: "neutral"
         }}
         pending={activateMutation.isPending}
@@ -667,6 +662,7 @@ function SourceCard({
   source,
   target
 }: Readonly<{ source: DivisionGridReadinessSource; target: DivisionGridVersion }>) {
+  const t = useTranslations("adminSettings.divisions");
   const hidden = source.tournament_count - source.tournament_names.length;
   return (
     <li className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3">
@@ -680,12 +676,12 @@ function SourceCard({
           </p>
         </div>
         <StatusPill tone={SOURCE_STATUS_TONE[source.status]}>
-          {SOURCE_STATUS_LABEL[source.status]}
+          {t(SOURCE_STATUS_LABEL[source.status])}
         </StatusPill>
       </div>
 
       <p className={MONO_CAPTION}>
-        {source.tournament_count} {source.tournament_count === 1 ? "tournament" : "tournaments"}
+        {t("tournamentCount", { count: source.tournament_count })}
       </p>
       {source.tournament_names.length > 0 ? (
         <ul className="flex flex-col gap-0.5 text-xs">
@@ -694,27 +690,27 @@ function SourceCard({
               {name}
             </li>
           ))}
-          {hidden > 0 ? <li className="text-muted-foreground">+{hidden} more</li> : null}
+          {hidden > 0 ? <li className="text-muted-foreground">{t("more", { count: hidden })}</li> : null}
         </ul>
       ) : null}
 
       {source.status === "ok" ? null : (
         <p className="text-xs text-muted-foreground">
           {source.status === "missing"
-            ? `No mapping into v${target.version} yet, so players from these tournaments cannot be translated into the current divisions.`
-            : `${source.conflict_tiers.length} of its divisions have no target in v${target.version} yet.`}{" "}
-          Create a draft, resolve its Mappings view, then publish and activate it.
+            ? t("sourceMissing", { version: target.version })
+            : t("sourceIncomplete", { count: source.conflict_tiers.length, version: target.version })}{" "}
+          {t("sourceAction")}
         </p>
       )}
     </li>
   );
 }
 
-function reportFailure(title: string) {
+function reportFailure(title: string, t: ReturnType<typeof useTranslations<"adminSettings.divisions">>) {
   return (error: unknown) =>
     notify.error(title, {
-      description: `Nothing changed. ${
-        error instanceof Error ? error.message : "The division grid operation failed."
-      } Retry, or reload the page if it keeps failing.`
+      description: t("failureDescription", {
+        reason: error instanceof Error ? error.message : t("operationFailed")
+      })
     });
 }

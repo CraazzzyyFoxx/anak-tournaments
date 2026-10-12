@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RefreshCw, Search } from "lucide-react";
 import { useDebounce } from "use-debounce";
@@ -34,6 +35,7 @@ interface SelectUser {
 /** Compact search that lives in the page header; matches drop down below the
  *  input and open the player detail on select. */
 export function RankPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }>) {
+  const t = useTranslations("adminPeople.rank");
   const [term, setTerm] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,8 +66,8 @@ export function RankPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }
       />
       <Input
         className="pl-8"
-        aria-label="Search player by battle tag"
-        placeholder="Search player by battle tag…"
+        aria-label={t("searchLabel")}
+        placeholder={t("search")}
         value={term}
         onChange={(event) => {
           setTerm(event.target.value);
@@ -79,7 +81,7 @@ export function RankPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }
       {showDropdown && (
         <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
           {searchQuery.isLoading ? (
-            <p className="px-3 py-2 text-sm text-muted-foreground">Searching…</p>
+            <p className="px-3 py-2 text-sm text-muted-foreground">{t("searching")}</p>
           ) : results.length > 0 ? (
             <div className="max-h-72 divide-y divide-border overflow-y-auto">
               {results.map((user) => (
@@ -95,7 +97,7 @@ export function RankPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }
             </div>
           ) : (
             <p className="px-3 py-2 text-sm text-muted-foreground">
-              No player matches “{debounced}”. Try the full battle tag, including the #tag.
+              {t("noMatch", { query: debounced })}
             </p>
           )}
         </div>
@@ -106,8 +108,8 @@ export function RankPlayerSearch({ onSelect }: Readonly<{ onSelect: SelectUser }
 
 // ─── Current ranks (native OverFast division/tier per role) ──────────────────
 
-function rankLabel(rank: CurrentRank): string {
-  if (!rank.is_ranked || !rank.division) return "Unranked";
+function rankLabel(rank: CurrentRank, unrankedLabel: string): string {
+  if (!rank.is_ranked || !rank.division) return unrankedLabel;
   const division = rank.division.charAt(0).toUpperCase() + rank.division.slice(1);
   return rank.tier != null ? `${division} ${rank.tier}` : division;
 }
@@ -122,16 +124,17 @@ export function useCurrentRanks(userId: number) {
 }
 
 export function CurrentRankChips({ ranks }: Readonly<{ ranks: CurrentRank[] }>) {
+  const t = useTranslations("adminPeople.rank");
   return (
     <div className="flex flex-wrap gap-2">
       {ranks.map((rank) => (
         <span
           key={`${rank.social_account_id}-${rank.role}-${rank.platform}`}
           className="inline-flex items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1 text-xs"
-          title={`${rank.battle_tag} · ${rank.platform}`}
+          title={[rank.battle_tag, rank.platform].join(" · ")}
         >
           <span className="capitalize text-muted-foreground">{rank.role}</span>
-          <span className="font-medium">{rankLabel(rank)}</span>
+          <span className="font-medium">{rankLabel(rank, t("unranked"))}</span>
         </span>
       ))}
     </div>
@@ -139,12 +142,13 @@ export function CurrentRankChips({ ranks }: Readonly<{ ranks: CurrentRank[] }>) 
 }
 
 function CurrentRanksSection({ userId }: Readonly<{ userId: number }>) {
+  const t = useTranslations("adminPeople.rank");
   const { isLoading, ranks } = useCurrentRanks(userId);
   if (isLoading || ranks.length === 0) return null;
 
   return (
     <section className="space-y-2">
-      <h3 className="text-sm font-semibold">Current ranks</h3>
+      <h3 className="text-sm font-semibold">{t("current")}</h3>
       <CurrentRankChips ranks={ranks} />
     </section>
   );
@@ -160,6 +164,7 @@ function CurrentRanksSection({ userId }: Readonly<{ userId: number }>) {
  * WU drops the player lookup.
  */
 export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
+  const t = useTranslations("adminPeople.rank");
   const format = useFormatter();
   const queryClient = useQueryClient();
   // Scoped server-side to the injected workspace; see `admin.service.ts`.
@@ -176,12 +181,12 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
     mutationFn: (socialAccountIds: number[] | null) =>
       adminService.triggerRankCollection({ user_id: userId, social_account_ids: socialAccountIds }),
     onSuccess: (result) => {
-      notify.success(`Queued ${result.enqueued} rank fetch(es)`);
+      notify.success(t("queued", { count: result.enqueued }));
       setSelectedTagIds(new Set());
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.rank() });
     },
     onError: (error) =>
-      notify.apiError(error, { title: "Could not queue the rank fetch — try again" })
+      notify.apiError(error, { title: t("queueError") })
   });
 
   const toggleTag = (id: number) =>
@@ -198,7 +203,7 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
 
       <section className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">Collection status</h3>
+          <h3 className="text-sm font-semibold">{t("collection")}</h3>
           <div className="flex items-center gap-2">
             {selectedTagIds.size > 0 && (
               <Button
@@ -207,7 +212,7 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
                 disabled={triggerMutation.isPending}
                 onClick={() => triggerMutation.mutate([...selectedTagIds])}
               >
-                <span className="tabular-nums">Collect selected ({selectedTagIds.size})</span>
+                <span className="tabular-nums">{t("collectSelected", { count: selectedTagIds.size })}</span>
               </Button>
             )}
             <Button
@@ -220,29 +225,28 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
               ) : (
                 <RefreshCw aria-hidden className="mr-1.5 h-3.5 w-3.5" />
               )}
-              Collect all
+              {t("collectAll")}
             </Button>
           </div>
         </div>
 
         {statusQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
         ) : rows.length === 0 ? (
           <EmptyNote>
-            No battle tags linked to this player. Ask them to connect a Battle.net account before
-            rank collection can run.
+            {t("noTags")}
           </EmptyNote>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8" />
-                <TableHead>Battle tag</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last checked</TableHead>
-                <TableHead>Last success</TableHead>
-                <TableHead className="text-right">Failures</TableHead>
-                <TableHead className="text-right">Action</TableHead>
+                <TableHead>{t("battleTag")}</TableHead>
+                <TableHead>{t("status")}</TableHead>
+                <TableHead>{t("lastChecked")}</TableHead>
+                <TableHead>{t("lastSuccess")}</TableHead>
+                <TableHead className="text-right">{t("failures")}</TableHead>
+                <TableHead className="text-right">{t("action")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -252,7 +256,7 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
                     <Checkbox
                       checked={selectedTagIds.has(row.social_account_id)}
                       onCheckedChange={() => toggleTag(row.social_account_id)}
-                      aria-label={`Select ${row.battle_tag}`}
+                      aria-label={t("select", { battleTag: row.battle_tag })}
                     />
                   </TableCell>
                   <TableCell className="font-medium">{row.battle_tag}</TableCell>
@@ -274,10 +278,10 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
                       size="sm"
                       disabled={triggerMutation.isPending}
                       onClick={() => triggerMutation.mutate([row.social_account_id])}
-                      aria-label={`Collect rank for ${row.battle_tag}`}
+                      aria-label={t("collectFor", { battleTag: row.battle_tag })}
                     >
                       <RefreshCw aria-hidden className="mr-1 h-3 w-3" />
-                      Collect
+                      {t("collect")}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -287,7 +291,7 @@ export function RankPlayerPanel({ userId }: Readonly<{ userId: number }>) {
         )}
       </section>
 
-      <RankHistory userId={userId} title="Rank history" />
+      <RankHistory userId={userId} title={t("history")} />
     </div>
   );
 }

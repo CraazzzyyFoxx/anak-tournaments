@@ -45,6 +45,26 @@ appears, use exactly this translation for consistency across the app.
 | Candidate | Кандидат | «карты-кандидаты» |
 | Reserve map | Резервная карта | reserve used on a tie |
 
+## Admin console terms
+
+| EN | RU | Notes |
+|---|---|---|
+| Workspace | Воркспейс | not «пространство»; masculine: «в воркспейсе», «воркспейсы» |
+| Division grid | Шкала дивизионов | |
+| Player identity | Игровой профиль | the player record, as opposed to the sign-in account |
+| Auth account | Аккаунт входа | the account a person signs in with |
+| Sessions | Сессии | |
+| Team registration | Командная регистрация | |
+| Tournament hub | Панель турнира | |
+| Bracket layout | Схема сетки | |
+| Google Sheets feed | Фид Google Sheets | masculine: «фид сохранён» |
+| Parsed maps | Разобранные карты | not «распарсенные» |
+| Unresolved names | Нераспознанные названия | |
+| On call | На подмену | registration flag: ready to step in as a substitute |
+| Best-of | Best-of | not translated |
+| Stats | | the public site's `matches.stat.*` wording |
+| Roles, tournament statuses | | reuse `common.roles` and `common.statusBadge` rather than new keys |
+
 ## Style rules
 
 - Tone: address the user with «вы», no officialese; short and to the point (UI strings).

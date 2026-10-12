@@ -187,7 +187,7 @@ def _voice_card_json(target: str) -> dict[str, object]:
                 "target": target,
                 "style": "primary",
             },
-            {"type": "action", "label": "Вернуть в общий", "action": "voice.return", "target": target},
+            {"type": "action", "label": "Вернуть в общий войс", "action": "voice.return", "target": target},
         ],
     }
 
@@ -2800,7 +2800,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         card = command.card
         self.assertIn("Scrim · Игра 4", card.text)
         self.assertIn(":owt_map: Busan · Control", card.text)
-        self.assertIn(":owt_points: +25 за победу", card.text)
+        self.assertIn(":owt_points: Победа: +25", card.text)
         self.assertEqual(card.details, "-# :owt_players: <@111>")
         self.assertEqual(card.rows[0][0].url, "https://owt.example/balancer/mix/11")
         # The lineup is a message of this mix like the signup card, filed by the

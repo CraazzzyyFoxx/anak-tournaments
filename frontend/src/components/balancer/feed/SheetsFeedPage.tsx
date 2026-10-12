@@ -3,6 +3,7 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { SaveBar } from "@/components/kit/SaveBar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -36,6 +37,7 @@ const PREVIEW_SAMPLE_ROWS = 5;
 // legacy balancer route (tournament from the ?tournament query) until T14.
 export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId: number | null }>) {
   const queryClient = useQueryClient();
+  const t = useTranslations("sheetsFeed");
 
   const [sourceUrl, setSourceUrl] = useState("");
   const [title, setTitle] = useState("");
@@ -148,12 +150,12 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
         mapping.resetChanges();
         setSourceHasChanges(false);
         await invalidateFeed();
-        notify.success("Google Sheets feed saved");
+        notify.success(t("notifications.feedSaved"));
         return;
       }
       setFieldErrors(toFieldErrors(result.error.errors));
       setFormError(result.error.message);
-      notify.error("Mapping is invalid", { description: result.error.message });
+      notify.error(t("notifications.mappingInvalid"), { description: result.error.message });
     },
     onError: (error: Error) => {
       setFormError(error.message);
@@ -165,8 +167,13 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
     onSuccess: async (result) => {
       setSyncResult(result);
       await Promise.all([invalidateFeed(), invalidateRegistrations()]);
-      notify.success("Google Sheets sync complete", {
-        description: `${result.created} created, ${result.updated} updated, ${result.withdrawn} withdrawn, ${result.skipped} skipped`
+      notify.success(t("notifications.syncComplete"), {
+        description: t("notifications.syncSummary", {
+          created: result.created,
+          updated: result.updated,
+          withdrawn: result.withdrawn,
+          skipped: result.skipped
+        })
       });
     }
   });
@@ -182,8 +189,8 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
       // (without clobbering columns the admin already chose).
       setDetectedHeaderKeys(dedupeHeaders(result.headers));
       mapping.applySuggestedMapping(result.mapping_config_json);
-      notify.success("Auto-suggest applied", {
-        description: "Headers detected and a starting mapping was suggested."
+      notify.success(t("notifications.autoSuggestApplied"), {
+        description: t("notifications.autoSuggestDescription")
       });
     }
   });
@@ -208,9 +215,9 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
   if (!tournamentId) {
     return (
       <Alert>
-        <AlertTitle>Select a tournament</AlertTitle>
+        <AlertTitle>{t("errors.selectTournament")}</AlertTitle>
         <AlertDescription>
-          Choose a tournament in the sidebar before configuring the Google Sheets feed.
+          {t("errors.selectTournamentDescription")}
         </AlertDescription>
       </Alert>
     );
@@ -220,10 +227,10 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
     const message =
       (feedQuery.error as Error)?.message ??
       (catalogQuery.error as Error)?.message ??
-      "Reload and try again.";
+      t("errors.reload")
     return (
       <Alert variant="destructive">
-        <AlertTitle>Failed to load the Google Sheets feed</AlertTitle>
+        <AlertTitle>{t("errors.loadFailed")}</AlertTitle>
         <AlertDescription>{message}</AlertDescription>
       </Alert>
     );
@@ -233,7 +240,7 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
     return (
       <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
         <Spinner className="mr-2" />
-        Loading mapping…
+        {t("loading.mapping")}
       </div>
     );
   }
@@ -280,7 +287,7 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
 
   const save = () => {
     if (!canSave) {
-      setFormError("A sheet URL is required.");
+      setFormError(t("errors.sheetUrlRequired"));
       return;
     }
     saveMutation.mutate();
@@ -291,7 +298,7 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
       {formError ? (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Mapping could not be saved</AlertTitle>
+          <AlertTitle>{t("errors.mappingSaveFailed")}</AlertTitle>
           <AlertDescription>{formError}</AlertDescription>
         </Alert>
       ) : null}
@@ -355,13 +362,13 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
       <SaveBar
         dirty={hasChanges}
         saving={saveMutation.isPending}
-        primaryLabel={feedExists ? "Save changes" : "Create feed"}
+        primaryLabel={feedExists ? t("saveBar.saveChanges") : t("saveBar.createFeed")}
         summary={
           canSave
             ? feedExists
-              ? "Unsaved feed changes"
-              : "New Google Sheets feed"
-            : "A sheet URL is required"
+              ? t("saveBar.unsavedChanges")
+              : t("saveBar.newFeed")
+            : t("errors.sheetUrlRequired")
         }
         onDiscard={discard}
         onSave={save}

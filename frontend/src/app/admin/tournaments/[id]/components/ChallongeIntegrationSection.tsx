@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, Users } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 import { StatusPill } from "@/components/kit/StatusPill";
@@ -82,6 +83,8 @@ export function ChallongeIntegrationSection({
   slug,
   onSlugChange
 }: Readonly<ChallongeIntegrationSectionProps>) {
+  const t = useTranslations("adminTournament.challonge");
+  const tx = useTranslations("adminTournament.challongeExtra");
   const format = useFormatter();
   const queryClient = useQueryClient();
 
@@ -105,7 +108,7 @@ export function ChallongeIntegrationSection({
         queryKey: adminQueryKeys.tournament(tournamentId)
       });
       invalidateTournamentWorkspace(queryClient, tournamentId);
-      notify.success("Challonge import started", { description: "Sync log will update shortly." });
+      notify.success(tx("importStarted"), { description: t("syncSoon") });
     }
   });
 
@@ -113,7 +116,7 @@ export function ChallongeIntegrationSection({
     mutationFn: () => adminService.challongeExport(tournamentId),
     onSuccess: () => {
       invalidateSyncLog();
-      notify.success("Challonge export started", { description: "Sync log will update shortly." });
+      notify.success(tx("exportStarted"), { description: t("syncSoon") });
     }
   });
 
@@ -129,7 +132,7 @@ export function ChallongeIntegrationSection({
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <h3 className={EYEBROW_CLASS}>Challonge</h3>
+        <h3 className={EYEBROW_CLASS}>{t("title")}</h3>
         <div className="flex shrink-0 items-center gap-2">
           {/* The only genuinely linkable Challonge target on this card. Sync-log
               rows carry match/participant ids, which have no public URL — they
@@ -142,22 +145,22 @@ export function ChallongeIntegrationSection({
               className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
             >
               <ExternalLink className="size-3" aria-hidden />
-              Open bracket
+              {t("openBracket")}
             </a>
           ) : null}
           <StatusPill tone={hasChallongeSource ? "accent" : "neutral"}>
-            {hasChallongeSource ? "Connected" : "Not linked"}
+            {hasChallongeSource ? tx("statusConnected") : tx("notLinked")}
           </StatusPill>
         </div>
       </div>
 
       <div>
         <Label htmlFor="settings-challonge" className="text-xs">
-          Challonge URL or slug
+          {t("urlOrSlug")}
         </Label>
         <Input
           id="settings-challonge"
-          placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
+          placeholder={t("placeholder")}
           value={slug}
           onChange={(event) => onSlugChange(event.target.value)}
           className="mt-1.5 bg-background/50"
@@ -177,7 +180,7 @@ export function ChallongeIntegrationSection({
           ) : (
             <ArrowDownToLine className="size-4" aria-hidden />
           )}
-          {importMutation.isPending ? "Importing…" : "Import"}
+          {importMutation.isPending ? tx("importing") : tx("import")}
         </Button>
         <Button
           type="button"
@@ -191,27 +194,27 @@ export function ChallongeIntegrationSection({
           ) : (
             <ArrowUpFromLine className="size-4" aria-hidden />
           )}
-          {exportMutation.isPending ? "Exporting…" : "Export"}
+          {exportMutation.isPending ? tx("exporting") : tx("export")}
         </Button>
       </div>
 
       {!hasChallongeSource ? (
         <EmptyNote size="sm">
-          Save a Challonge URL or a stage slug above to enable bracket sync.
+          {t("enableSync")}
         </EmptyNote>
       ) : syncPending || isLoading || lastLog ? (
         <div
           aria-live="polite"
           className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
         >
-          <span className={EYEBROW_CLASS}>Last sync</span>
+          <span className={EYEBROW_CLASS}>{t("lastSync")}</span>
           {syncPending ? (
             <span className="inline-flex items-center gap-1.5 text-foreground">
               <Spinner className="size-3" />
-              Sync running — the log updates when it finishes.
+              {t("running")}
             </span>
           ) : isLoading ? (
-            <span>Loading sync state…</span>
+            <span>{t("loadingState")}</span>
           ) : lastLog ? (
             <>
               <StatusPill tone={getLogTone(lastLog.status)} className="h-5">
@@ -229,8 +232,10 @@ export function ChallongeIntegrationSection({
             <>
               <span aria-hidden>·</span>
               <span className={TONE_TEXT.warning}>
-                <span className="tabular-nums">{failedLogCount}</span> recent sync event
-                {failedLogCount === 1 ? "" : "s"} need review.
+                {tx.rich("failedSyncSummary", {
+                  count: failedLogCount,
+                  num: (chunks) => <span className="tabular-nums">{chunks}</span>
+                })}
               </span>
             </>
           ) : null}
@@ -249,33 +254,35 @@ export function ChallongeIntegrationSection({
             <Button asChild type="button" size="sm" variant="outline" className="shrink-0">
               <Link href={teamMappingHref}>
                 <Users className="size-4" aria-hidden />
-                Map teams
+                {t("mapTeams")}
               </Link>
             </Button>
           }
         >
           <span className={cn("font-medium", TONE_TEXT.warning)}>
-            <span className="tabular-nums">{unmappedParticipantIds.length}</span> Challonge
-            participant{unmappedParticipantIds.length === 1 ? "" : "s"} not mapped to a team.
+            {tx.rich("unmappedParticipants", {
+              count: unmappedParticipantIds.length,
+              num: (chunks) => <span className="tabular-nums">{chunks}</span>
+            })}
           </span>{" "}
-          Import cannot create their matches until each one points at an internal team.
+          {t("importBlocked")}
         </EmptyNote>
       ) : null}
 
       {hasChallongeSource ? (
         <div>
           <div className="mb-2 flex items-center justify-between gap-3">
-            <p className={EYEBROW_CLASS}>Sync log</p>
+            <p className={EYEBROW_CLASS}>{t("syncLog")}</p>
             <Badge variant="secondary" className="tabular-nums">
-              {logs.length} recent
+              {tx("recentCount", { count: logs.length })}
             </Badge>
           </div>
 
           {isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading sync log…</div>
+            <div className="text-sm text-muted-foreground">{t("loadingLog")}</div>
           ) : logs.length === 0 ? (
             <EmptyNote>
-              No sync history yet. Run an import or export to record the first event.
+              {t("emptyLog")}
             </EmptyNote>
           ) : (
             <div className="max-h-[260px] overflow-y-auto rounded-lg border border-border/60">
@@ -301,7 +308,7 @@ export function ChallongeIntegrationSection({
                       nowhere. The bracket link lives in the header instead. */}
                   {log.challonge_id ? (
                     <span className="hidden shrink-0 text-muted-foreground lg:inline">
-                      Challonge <span className="tabular-nums">#{log.challonge_id}</span>
+                      {t("participant")} <span className="tabular-nums">#{log.challonge_id}</span>
                     </span>
                   ) : null}
                   <span className="shrink-0 tabular-nums text-muted-foreground">

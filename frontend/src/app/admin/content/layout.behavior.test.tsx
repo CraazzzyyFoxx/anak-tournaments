@@ -10,6 +10,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextIntlClientProvider } from "next-intl";
+import messages from "@/i18n/messages/en.json";
 
 import GameContentLayout from "./layout";
 
@@ -50,11 +52,13 @@ async function mount() {
   mounted.push({ root, container });
   await act(async () => {
     root.render(
-      <QueryClientProvider client={client}>
-        <GameContentLayout>
-          <p>section body</p>
-        </GameContentLayout>
-      </QueryClientProvider>
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QueryClientProvider client={client}>
+          <GameContentLayout>
+            <p>section body</p>
+          </GameContentLayout>
+        </QueryClientProvider>
+      </NextIntlClientProvider>
     );
   });
   await settle();

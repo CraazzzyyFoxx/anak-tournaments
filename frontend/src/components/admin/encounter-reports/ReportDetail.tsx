@@ -3,6 +3,7 @@
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import type { AdminCaptainReport } from "@/types/admin.types";
 import type { ReportCustomFieldDefinition } from "@/types/encounter.types";
 
@@ -28,13 +29,14 @@ export function ReportDetail({
   customFields: ReportCustomFieldDefinition[];
 }>) {
   const format = useFormatter();
+  const t = useTranslations("adminMatches.reports");
   if (!report) {
     return (
       <section className="rounded-xl border border-dashed border-border/60 p-3">
         <p className={EYEBROW_CLASS}>
           {label} · {teamName}
         </p>
-        <p className="mt-1 text-sm italic text-muted-foreground">No report filed.</p>
+        <p className="mt-1 text-sm italic text-muted-foreground">{t("noReport")}</p>
       </section>
     );
   }
@@ -57,14 +59,14 @@ export function ReportDetail({
       </div>
 
       <dl className="space-y-1 text-sm">
-        <Field label="Reported by" value={report.reporter_name ?? "unknown"} />
-        <Field label="Submitted" value={fmtDate(format, submittedAt(report))} mono />
+        <Field label={t("reportedBy")} value={report.reporter_name ?? t("unknown")} />
+        <Field label={t("submitted")} value={fmtDate(format, submittedAt(report))} mono />
         <Field
-          label="Closeness"
-          value={report.closeness == null ? "not rated" : `${report.closeness}/10`}
+          label={t("closeness")}
+          value={report.closeness == null ? t("notRated") : `${report.closeness}/10`}
         />
-        {codes ? <Field label="Lobby codes" value={codes} mono /> : null}
-        {report.comment ? <Field label="Comment" value={report.comment} /> : null}
+        {codes ? <Field label={t("lobbyCodes")} value={codes} mono /> : null}
+        {report.comment ? <Field label={t("comment")} value={report.comment} /> : null}
         {customFields.map((field) => (
           <Field
             key={field.key}

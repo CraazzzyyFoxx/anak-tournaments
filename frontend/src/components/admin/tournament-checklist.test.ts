@@ -2,7 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import type { TournamentReadiness } from "@/types/admin.types";
 
-import { buildChecklist, type ChecklistContext, type ChecklistItem } from "./tournament-checklist";
+import { createTranslator } from "next-intl";
+
+import en from "@/i18n/messages/en.json";
+
+import {
+  buildChecklist,
+  type ChecklistContext,
+  type ChecklistItem,
+  type ChecklistTranslator
+} from "./tournament-checklist";
+
+const t = createTranslator({ locale: "en", messages: en, namespace: "adminTournaments.checklist" }) as ChecklistTranslator;
 
 function readiness(overrides: Partial<TournamentReadiness> = {}): TournamentReadiness {
   return {
@@ -76,7 +87,7 @@ function byKey(items: ChecklistItem[], key: string): ChecklistItem {
 
 describe("buildChecklist", () => {
   it("registration items are no-access when readiness registration fields are null", () => {
-    const items = buildChecklist(readiness(TEAM_MASKED), ctx());
+    const items = buildChecklist(readiness(TEAM_MASKED), ctx(), t);
     for (const key of [
       "registration_form",
       "registration_open",
@@ -92,7 +103,7 @@ describe("buildChecklist", () => {
   });
 
   it("setup and bracket items are no-access when tournament fields are null", () => {
-    const items = buildChecklist(readiness(SETUP_MASKED), ctx());
+    const items = buildChecklist(readiness(SETUP_MASKED), ctx(), t);
     for (const key of ["schedule", "grid", "stages", "slots", "bracket", "logs"]) {
       expect(byKey(items, key).state, key).toBe("no-access");
     }
@@ -101,34 +112,31 @@ describe("buildChecklist", () => {
   it("check-in item skipped when phase absent from schedule", () => {
     const withoutCheckIn = buildChecklist(
       readiness(),
-      ctx({ schedule: ["registration", "live"] })
-    );
+      ctx({ schedule: ["registration", "live"] }), t);
     expect(byKey(withoutCheckIn, "check_in").state).toBe("skipped");
 
-    const withCheckIn = buildChecklist(readiness(), ctx());
+    const withCheckIn = buildChecklist(readiness(), ctx(), t);
     expect(byKey(withCheckIn, "check_in").state).toBe("done");
   });
 
   it("logs item neutral when logs_used=false", () => {
-    const notUsed = buildChecklist(readiness({ logs_used: false }), ctx());
+    const notUsed = buildChecklist(readiness({ logs_used: false }), ctx(), t);
     expect(byKey(notUsed, "logs").state).toBe("skipped");
     expect(byKey(notUsed, "logs").detail).toBe("Logs: not used");
 
     const partial = buildChecklist(
       readiness({ logs_used: true, encounters_with_logs: 4, encounters_total: 10 }),
-      ctx()
-    );
+      ctx(), t);
     expect(byKey(partial, "logs").state).toBe("warn");
 
     const full = buildChecklist(
       readiness({ logs_used: true, encounters_with_logs: 10, encounters_total: 10 }),
-      ctx()
-    );
+      ctx(), t);
     expect(byKey(full, "logs").state).toBe("done");
   });
 
   it("formation items follow team_formation", () => {
-    const balancer = buildChecklist(readiness({ team_formation: "balancer" }), ctx());
+    const balancer = buildChecklist(readiness({ team_formation: "balancer" }), ctx(), t);
     expect(balancer.some((item) => item.key === "pool_ready")).toBe(true);
     expect(balancer.some((item) => item.key === "balance_saved")).toBe(true);
     expect(balancer.some((item) => item.key === "balance_exported")).toBe(true);
@@ -136,53 +144,50 @@ describe("buildChecklist", () => {
 
     const draft = buildChecklist(
       readiness({ team_formation: "draft", draft_session_status: "completed" }),
-      ctx()
-    );
+      ctx(), t);
     expect(draft.some((item) => item.key === "pool_ready")).toBe(false);
     expect(draft.some((item) => item.key === "balance_saved")).toBe(false);
     expect(byKey(draft, "draft_completed").state).toBe("done");
 
     const draftPending = buildChecklist(
       readiness({ team_formation: "draft", draft_session_status: "live" }),
-      ctx()
-    );
+      ctx(), t);
     expect(byKey(draftPending, "draft_completed").state).toBe("todo");
   });
 
   it("archived never warns", () => {
     for (const status of ["registration", "live", "playoffs", "completed"]) {
-      const item = byKey(buildChecklist(readiness({ status }), ctx()), "archived");
+      const item = byKey(buildChecklist(readiness({ status }), ctx(), t), "archived");
       expect(item.state, status).toBe("skipped");
     }
     expect(
-      byKey(buildChecklist(readiness({ status: "archived" }), ctx()), "archived").state
+      byKey(buildChecklist(readiness({ status: "archived" }), ctx(), t), "archived").state
     ).toBe("done");
   });
 
   it("approved is informational without threshold", () => {
     const empty = buildChecklist(
       readiness({ registrations_approved: 0, registrations_pending: 0 }),
-      ctx()
-    );
+      ctx(), t);
     expect(byKey(empty, "approved").state).toBe("done");
 
-    const filled = buildChecklist(readiness({ registrations_approved: 12 }), ctx());
+    const filled = buildChecklist(readiness({ registrations_approved: 12 }), ctx(), t);
     expect(byKey(filled, "approved").state).toBe("done");
   });
 
   it("pool warns when registrations need fixing", () => {
-    const items = buildChecklist(readiness({ pool_ready: 5, pool_need_fix: 2 }), ctx());
+    const items = buildChecklist(readiness({ pool_ready: 5, pool_need_fix: 2 }), ctx(), t);
     expect(byKey(items, "pool_ready").state).toBe("warn");
   });
 
   it("registration form items hidden for challonge-sourced tournaments", () => {
-    const items = buildChecklist(readiness(), ctx({ hasChallongeSource: true }));
+    const items = buildChecklist(readiness(), ctx({ hasChallongeSource: true }), t);
     expect(items.some((item) => item.key === "registration_form")).toBe(false);
     expect(items.some((item) => item.key === "registration_open")).toBe(false);
   });
 
   it("hrefs point at final tab addresses (D20)", () => {
-    const items = buildChecklist(readiness({ logs_used: true }), ctx());
+    const items = buildChecklist(readiness({ logs_used: true }), ctx(), t);
     expect(byKey(items, "approved").href).toBe("/admin/tournaments/7/registration/entries");
     expect(byKey(items, "pool_ready").href).toBe("/admin/tournaments/7/teams/roster");
     expect(byKey(items, "stages").href).toBe("/admin/tournaments/7/bracket");
@@ -190,11 +195,11 @@ describe("buildChecklist", () => {
   });
 
   it("completion tracks the state machine status", () => {
-    const before = buildChecklist(readiness({ status: "playoffs" }), ctx());
+    const before = buildChecklist(readiness({ status: "playoffs" }), ctx(), t);
     expect(byKey(before, "completed").state).toBe("todo");
     expect(byKey(before, "activation").state).toBe("done");
 
-    const after = buildChecklist(readiness({ status: "completed" }), ctx());
+    const after = buildChecklist(readiness({ status: "completed" }), ctx(), t);
     expect(byKey(after, "completed").state).toBe("done");
   });
 });

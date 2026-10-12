@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useMemo, useState, type KeyboardEvent } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, Check, Sparkles, Trash2, UserPlus, X } from "lucide-react";
 
@@ -71,7 +72,6 @@ interface RosterDraft {
 }
 
 const NO_SUB_ROLE = "none";
-const NO_SUB_ROLE_LABEL = "No sub-role";
 
 function emptyDraft(parentId: number | null, role: PlayerRoleOption = "Damage"): RosterDraft {
   return { parentId, userId: 0, userName: "", name: "", role, rank: 0, subRole: "" };
@@ -187,13 +187,14 @@ function RoleSelect({
   label: string;
   disabled?: boolean;
 }>) {
+  const t = useTranslations("adminPeople.roster");
   return (
     <Select
       value={value}
       onValueChange={(next) => onChange(normalizePlayerRole(next))}
       disabled={disabled}
     >
-      <SelectTrigger aria-label={`${label}: ${value}`} className="h-8 w-[4.5rem] gap-1 px-2">
+      <SelectTrigger aria-label={[label, value].join(": ")} className="h-8 w-[4.5rem] gap-1 px-2">
         <SelectValue>
           <PlayerRoleIcon role={value} size={18} decorative />
         </SelectValue>
@@ -203,7 +204,7 @@ function RoleSelect({
           <SelectItem key={role} value={role}>
             <span className="flex items-center gap-2">
               <PlayerRoleIcon role={role} size={16} decorative />
-              {role}
+              {t(`role${role}` as "roleTank" | "roleDamage" | "roleSupport")}
             </span>
           </SelectItem>
         ))}
@@ -226,13 +227,14 @@ function SubRoleSelect({
   label: string;
   disabled?: boolean;
 }>) {
+  const t = useTranslations("adminPeople.roster");
   // A saved sub-role missing from the catalog (renamed, deactivated) still needs
   // an option, or Radix renders the trigger empty.
   const items =
     !value || options.some((option) => option.slug === value)
       ? options
       : [...options, { slug: value, label: formatSubRoleLabel(value) ?? value }];
-  const selectedLabel = items.find((option) => option.slug === value)?.label ?? NO_SUB_ROLE_LABEL;
+  const selectedLabel = items.find((option) => option.slug === value)?.label ?? t("noSubRole");
 
   return (
     <Select
@@ -240,11 +242,11 @@ function SubRoleSelect({
       onValueChange={(next) => onChange(next === NO_SUB_ROLE ? "" : next)}
       disabled={disabled}
     >
-      <SelectTrigger aria-label={`${label}: ${selectedLabel}`} className="h-8 w-[9.5rem] px-2">
+      <SelectTrigger aria-label={[label, selectedLabel].join(": ")} className="h-8 w-[9.5rem] px-2">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={NO_SUB_ROLE}>{NO_SUB_ROLE_LABEL}</SelectItem>
+        <SelectItem value={NO_SUB_ROLE}>{t("noSubRole")}</SelectItem>
         {items.map((option) => (
           <SelectItem key={option.slug} value={option.slug}>
             {option.label}
@@ -307,6 +309,7 @@ export function TeamRosterEditor({
   canUpdatePlayer,
   canDeletePlayer
 }: Readonly<TeamRosterEditorProps>) {
+  const t = useTranslations("adminPeople.roster");
   const queryClient = useQueryClient();
   const tableStyles = getAdminDetailTableStyles("compact");
   const [draft, setDraft] = useState<RosterDraft | null>(null);
@@ -394,7 +397,7 @@ export function TeamRosterEditor({
           <UserSearchCombobox
             value={draft.userId || undefined}
             selectedName={draft.userName || undefined}
-            placeholder="Link a user"
+            placeholder={t("linkUser")}
             onSelect={(user) =>
               setDraft((current) =>
                 current
@@ -409,9 +412,9 @@ export function TeamRosterEditor({
             }
           />
           <Input
-            aria-label="New player name"
+            aria-label={t("newPlayer")}
             value={draft.name}
-            placeholder="Roster name"
+            placeholder={t("rosterName")}
             className="h-8"
             onChange={(event) =>
               setDraft((current) => (current ? { ...current, name: event.target.value } : current))
@@ -422,7 +425,7 @@ export function TeamRosterEditor({
       <TableCell className={tableStyles.cell}>
         <RoleSelect
           value={draft.role}
-          label="Role of the new player"
+          label={t("roleOf")}
           onChange={(role) =>
             setDraft((current) => (current ? { ...current, role, subRole: "" } : current))
           }
@@ -430,7 +433,7 @@ export function TeamRosterEditor({
       </TableCell>
       <TableCell className={tableStyles.numericCell}>
         <Input
-          aria-label="Rank of the new player"
+          aria-label={t("rankOf")}
           value={String(draft.rank)}
           inputMode="numeric"
           className="h-8 w-20 tabular-nums"
@@ -447,14 +450,14 @@ export function TeamRosterEditor({
           value={draft.subRole}
           options={subRoleOptionsFor(draft.role)}
           disabled={subRoleCatalogRole(draft.role) == null}
-          label="Sub-role of the new player"
+          label={t("subRoleOf")}
           onChange={(subRole) =>
             setDraft((current) => (current ? { ...current, subRole } : current))
           }
         />
       </TableCell>
       <TableCell className={tableStyles.cell}>
-        {draft.parentId != null ? <Badge variant="secondary">Substitute</Badge> : null}
+        {draft.parentId != null ? <Badge variant="secondary">{t("substitute")}</Badge> : null}
       </TableCell>
       <TableCell className={tableStyles.cell}>
         <div className="flex items-center justify-end gap-1">
@@ -465,14 +468,14 @@ export function TeamRosterEditor({
             onClick={submitDraft}
           >
             <Check aria-hidden className="mr-1.5 size-4" />
-            {addPlayer.isPending ? "Adding…" : "Add"}
+            {addPlayer.isPending ? t("adding") : t("add")}
           </Button>
           <Button
             type="button"
             variant="ghost"
             size="icon"
             className="size-8"
-            aria-label="Cancel adding a player"
+            aria-label={t("cancel")}
             onClick={() => setDraft(null)}
           >
             <X aria-hidden className="size-4" />
@@ -487,8 +490,8 @@ export function TeamRosterEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm tabular-nums text-muted-foreground">
           {players.length
-            ? `${players.length - substituteCount} starters · ${substituteCount} substitutes`
-            : "No players yet — add the first one to make the team valid."}
+            ? t("rosterCount", { starters: players.length - substituteCount, substitutes: substituteCount })
+            : t("empty")}
         </p>
         {canCreatePlayer ? (
           <Button
@@ -499,7 +502,7 @@ export function TeamRosterEditor({
             onClick={() => setDraft(emptyDraft(null))}
           >
             <UserPlus aria-hidden className="mr-2 size-4" />
-            Add player
+            {t("add")}
           </Button>
         ) : null}
       </div>
@@ -508,12 +511,12 @@ export function TeamRosterEditor({
         <Table>
           <TableHeader>
             <TableRow className={tableStyles.headerRow}>
-              <TableHead className={tableStyles.head}>Player</TableHead>
-              <TableHead className={tableStyles.head}>Role</TableHead>
-              <TableHead className={tableStyles.head}>Rank</TableHead>
-              <TableHead className={tableStyles.head}>Sub-role</TableHead>
-              <TableHead className={tableStyles.head}>Flags</TableHead>
-              <TableHead className={cn(tableStyles.head, "text-right")}>Actions</TableHead>
+              <TableHead className={tableStyles.head}>{t("player")}</TableHead>
+              <TableHead className={tableStyles.head}>{t("role")}</TableHead>
+              <TableHead className={tableStyles.head}>{t("rank")}</TableHead>
+              <TableHead className={tableStyles.head}>{t("subRole")}</TableHead>
+              <TableHead className={tableStyles.head}>{t("flags")}</TableHead>
+              <TableHead className={cn(tableStyles.head, "text-right")}>{t("actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -534,7 +537,7 @@ export function TeamRosterEditor({
                     >
                       <CommitField
                         value={player.name}
-                        label={`Roster name of ${player.name}`}
+                        label={t("rosterNameOf", { name: player.name })}
                         disabled={!canUpdatePlayer}
                         className="font-medium"
                         onCommit={(name) => {
@@ -552,7 +555,7 @@ export function TeamRosterEditor({
                   <TableCell className={tableStyles.cell}>
                     <RoleSelect
                       value={role}
-                      label={`Role of ${player.name}`}
+                      label={t("roleOfPlayer", { name: player.name })}
                       disabled={!canUpdatePlayer}
                       onChange={(next) => patch(player, { role: next, sub_role: null })}
                     />
@@ -568,7 +571,7 @@ export function TeamRosterEditor({
                       />
                       <CommitField
                         value={String(player.rank)}
-                        label={`Rank of ${player.name}`}
+                        label={t("rankOfPlayer", { name: player.name })}
                         disabled={!canUpdatePlayer}
                         inputMode="numeric"
                         className="w-20 tabular-nums"
@@ -586,7 +589,7 @@ export function TeamRosterEditor({
                     <SubRoleSelect
                       value={player.sub_role ?? ""}
                       options={subRoleOptionsFor(player.role)}
-                      label={`Sub-role of ${player.name}`}
+                      label={t("subRoleOfPlayer", { name: player.name })}
                       disabled={!canUpdatePlayer || subRoleCatalogRole(player.role) == null}
                       onChange={(subRole) => patch(player, { sub_role: subRole || null })}
                     />
@@ -597,20 +600,20 @@ export function TeamRosterEditor({
                       <FlagToggle
                         active={player.is_newcomer}
                         icon={Sparkles}
-                        label={`Newcomer — ${player.name}`}
+                        label={t("newcomer", { name: player.name })}
                         disabled={!canUpdatePlayer}
                         onToggle={() => patch(player, { is_newcomer: !player.is_newcomer })}
                       />
                       <FlagToggle
                         active={player.is_newcomer_role}
                         icon={ArrowLeftRight}
-                        label={`New to this role — ${player.name}`}
+                        label={t("newRole", { name: player.name })}
                         disabled={!canUpdatePlayer}
                         onToggle={() =>
                           patch(player, { is_newcomer_role: !player.is_newcomer_role })
                         }
                       />
-                      {player.is_substitution ? <Badge variant="secondary">Sub</Badge> : null}
+                      {player.is_substitution ? <Badge variant="secondary">{t("sub")}</Badge> : null}
                     </div>
                   </TableCell>
 
@@ -622,11 +625,11 @@ export function TeamRosterEditor({
                           variant="ghost"
                           size="sm"
                           // Keeps the visible word in the accessible name (WCAG 2.5.3).
-                          aria-label={`Replace ${player.name} with a substitute`}
+                          aria-label={t("replace", { name: player.name })}
                           disabled={draft != null}
                           onClick={() => setDraft(emptyDraft(player.id, role))}
                         >
-                          Replace
+                          {t("replaceAction")}
                         </Button>
                       ) : null}
                       {canDeletePlayer ? (
@@ -635,7 +638,7 @@ export function TeamRosterEditor({
                           variant="ghost"
                           size="icon"
                           className="size-8 text-destructive"
-                          aria-label={`Remove ${player.name} from the roster`}
+                          aria-label={t("remove", { name: player.name })}
                           onClick={() => setPendingRemoval(player)}
                         >
                           <Trash2 aria-hidden className="size-4" />
@@ -655,7 +658,7 @@ export function TeamRosterEditor({
               <TableRow className={tableStyles.row}>
                 <TableCell className={tableStyles.cell} colSpan={6}>
                   <span className="text-muted-foreground">
-                    This team has no players. A team needs at least one to appear in a bracket.
+                    {t("empty")}
                   </span>
                 </TableCell>
               </TableRow>
@@ -674,12 +677,11 @@ export function TeamRosterEditor({
         }}
         pending={removePlayer.isPending}
         intent={{
-          title: `Remove ${pendingRemoval?.name ?? "player"}`,
-          description:
-            "The roster record and its match statistics are removed permanently. This cannot be undone.",
-          confirmLabel: removePlayer.isPending ? "Removing…" : "Remove",
+            title: t("removeNamed", { name: pendingRemoval?.name ?? t("player") }),
+            description: t("deleteDescription"),
+            confirmLabel: removePlayer.isPending ? t("removing") : t("removeAction"),
           tone: "danger",
-          cascade: ["Match statistics for this player", "Substitutes linked to this slot"]
+          cascade: [t("cascadeMatchStats"), t("cascadeSubstitutes")]
         }}
       />
     </div>

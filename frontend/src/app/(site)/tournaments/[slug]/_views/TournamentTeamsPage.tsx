@@ -35,6 +35,7 @@ import {
   TEAMS_VIEWS,
   type TeamsSortBy
 } from "./tournamentTeams.model";
+import { overviewVariant } from "./tournamentOverview.model";
 import { useIsNarrowViewport, useStoredTeamsView, writeStoredView } from "./useTeamsViewPreference";
 import { useTournamentTeamsData } from "./useTournamentTeamsData";
 
@@ -49,17 +50,6 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
 
   const teams = useMemo(() => teamsQuery.data?.results ?? [], [teamsQuery.data]);
 
-  const defaultSort: TeamsSortBy = isTournamentStatusEnded(tournament.status)
-    ? "placement"
-    : "group";
-  const sortBy = readViewParam(searchParams, "sort", TEAMS_SORTS, defaultSort);
-  const groupFilter = searchParams?.get("group") ?? null;
-  const search = searchParams?.get("q") ?? "";
-  const needle = search.trim().toLowerCase();
-  const view = narrow
-    ? "list"
-    : readViewParam(searchParams, "view", TEAMS_VIEWS, storedView ?? "list");
-
   const groups = useMemo(() => {
     const counts = new Map<string, number>();
     for (const team of teams) {
@@ -68,6 +58,35 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
     }
     return Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [teams]);
+
+  // A sort that cannot reorder anything is not offered.
+  const hasPlacement = teams.some((team) => team.placement != null);
+  const sortOptions = TEAMS_SORTS.filter(
+    (sort) => (sort !== "placement" || hasPlacement) && (sort !== "group" || groups.length > 1)
+  );
+  const preferredSort: TeamsSortBy = isTournamentStatusEnded(tournament.status)
+    ? "placement"
+    : "group";
+  const defaultSort = sortOptions.includes(preferredSort) ? preferredSort : sortOptions[0];
+  const sortBy = readViewParam(searchParams, "sort", sortOptions, defaultSort);
+  const sortLabel: Record<TeamsSortBy, string> = {
+    placement: t("common.byPlacement"),
+    group: t("tournamentDetail.teams.byGroup"),
+    sr: t("common.byAvgSr"),
+    name: t("common.byName")
+  };
+  const groupFilter = searchParams?.get("group") ?? null;
+  const search = searchParams?.get("q") ?? "";
+  const needle = search.trim().toLowerCase();
+  const view = narrow
+    ? "list"
+    : readViewParam(searchParams, "view", TEAMS_VIEWS, storedView ?? "list");
+
+  // A group chip whose count equals the total filters nothing.
+  const groupChips = groups.filter(([, count]) => count !== teams.length);
+  // The group colour only says something when the visible rows mix groups.
+  const showGroup = groupFilter == null && groups.length > 1;
+  const medal = overviewVariant(tournament.status) === "completed";
 
   const visibleTeams = useMemo(
     () =>
@@ -127,10 +146,11 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="placement">{t("common.byPlacement")}</SelectItem>
-                    <SelectItem value="group">{t("tournamentDetail.teams.byGroup")}</SelectItem>
-                    <SelectItem value="sr">{t("common.byAvgSr")}</SelectItem>
-                    <SelectItem value="name">{t("common.byName")}</SelectItem>
+                    {sortOptions.map((sort) => (
+                      <SelectItem key={sort} value={sort}>
+                        {sortLabel[sort]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <ViewSegment
@@ -154,23 +174,27 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
               </>
             }
           >
-            <FilterChip
-              active={groupFilter == null}
-              count={teams.length}
-              onClick={() => setParams({ group: null })}
-            >
-              {t("common.all")}
-            </FilterChip>
-            {groups.map(([name, count]) => (
-              <FilterChip
-                key={name}
-                active={groupFilter === name}
-                count={count}
-                onClick={() => setParams({ group: name })}
-              >
-                {groupDisplayName(name, t("common.group"))}
-              </FilterChip>
-            ))}
+            {groupChips.length > 0 ? (
+              <>
+                <FilterChip
+                  active={groupFilter == null}
+                  count={teams.length}
+                  onClick={() => setParams({ group: null })}
+                >
+                  {t("common.all")}
+                </FilterChip>
+                {groupChips.map(([name, count]) => (
+                  <FilterChip
+                    key={name}
+                    active={groupFilter === name}
+                    count={count}
+                    onClick={() => setParams({ group: name })}
+                  >
+                    {groupDisplayName(name, t("common.group"))}
+                  </FilterChip>
+                ))}
+              </>
+            ) : null}
           </SectionToolbar>
 
           {visibleTeams.length === 0 ? (
@@ -203,7 +227,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                         ))}
                       </p>
                     ) : null}
-                    <TournamentTeamCard team={team} />
+                    <TournamentTeamCard team={team} medal={medal} showGroup={showGroup} />
                   </div>
                 );
               })}
@@ -218,6 +242,7 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                   slug={slug}
                   record={records?.get(team.id) ?? null}
                   needle={needle}
+                  showGroup={showGroup}
                   registrationsByUser={registrationsByUser}
                   heroesMap={heroesMap}
                 />

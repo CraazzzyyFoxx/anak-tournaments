@@ -77,9 +77,22 @@ export type Scale = "ladder" | "custom";
 interface HistoryEntry {
   bands: Band[];
   scale: Scale;
-  /** The edit that left this state, in a sentence — the log reads it. */
-  note: string;
+  /** The edit that left this state; the UI translates it. */
+  note: EditNote;
 }
+
+export type EditNote =
+  | { key: "edit.renamed"; values: { before: string; after: string } }
+  | { key: "edit.splitAt"; values: { name: string; rank: string } }
+  | { key: "edit.split"; values: { name: string; range: string } }
+  | { key: "edit.merged"; values: { gone: string; survivor: string } }
+  | { key: "edit.moved"; values: { rank: string; from: string; to: string } }
+  | { key: "edit.floor"; values: { name: string; rank: number } }
+  | { key: "edit.linked"; values: { range: string; name: string } }
+  | { key: "edit.unlinked"; values: { name: string } }
+  | { key: "edit.ladderScale"; values?: undefined }
+  | { key: "edit.customScale"; values?: undefined }
+  | { key: "edit.crest"; values: { name: string } };
 
 export interface DraftState {
   bands: Band[];
@@ -118,8 +131,8 @@ export function owSize(band: Band): number {
 }
 
 /** "Grandmaster 4 – Master 2", one rank's name, or "Not linked". */
-export function owRangeLabel(band: Band): string {
-  if (!band.ow) return "Not linked";
+export function owRangeLabel(band: Band): string | null {
+  if (!band.ow) return null;
   return band.ow.from === band.ow.to
     ? rankLabel(band.ow.from)
     : `${rankLabel(band.ow.from)} – ${rankLabel(band.ow.to)}`;
@@ -185,14 +198,19 @@ export function floorsDescend(bands: Band[]): boolean {
   );
 }
 
+/** Why a floor was refused; the editor renders it as a message. */
+export type FloorError =
+  | { code: "notInteger" }
+  | { code: "mustBeBelow" | "mustBeAbove"; name: string; rankMin: number };
+
 /** Why `raw` cannot be this band's floor, or `null` when it can. The reducer applies the same rule. */
-export function floorError(bands: Band[], bandIndex: number, raw: string): string | null {
-  if (!/^-?\d+$/.test(raw.trim())) return "Enter a whole number.";
+export function floorError(bands: Band[], bandIndex: number, raw: string): FloorError | null {
+  if (!/^-?\d+$/.test(raw.trim())) return { code: "notInteger" };
   const value = Number(raw);
   const above = bands[bandIndex - 1];
   const below = bands[bandIndex + 1];
-  if (above && value >= above.rankMin) return `Must be below ${above.name} (${above.rankMin}).`;
-  if (below && value <= below.rankMin) return `Must be above ${below.name} (${below.rankMin}).`;
+  if (above && value >= above.rankMin) return { code: "mustBeBelow", name: above.name, rankMin: above.rankMin };
+  if (below && value <= below.rankMin) return { code: "mustBeAbove", name: below.name, rankMin: below.rankMin };
   return null;
 }
 
@@ -430,45 +448,45 @@ function apply(state: DraftState, action: Exclude<Action, { type: "undo" }>): Ba
 }
 
 /** The edit in a sentence, from the action and the states around it. */
-function describe(action: Exclude<Action, { type: "undo" }>, before: Band[], after: Band[]): string {
+function describe(action: Exclude<Action, { type: "undo" }>, before: Band[], after: Band[]): EditNote {
   switch (action.type) {
     case "splitAt":
     case "split": {
       const known = new Set(before.map((band) => band.slug));
       const added = after.find((band) => !known.has(band.slug));
       const parent = added ? after[after.indexOf(added) - 1] : undefined;
-      if (!added || !parent) return "Split a division";
+      if (!added || !parent) return { key: "edit.split", values: { name: "", range: "" } };
       return action.type === "splitAt"
-        ? `Split ${parent.name} at ${rankLabel(added.ow?.from ?? action.rank)}`
-        : `Split ${parent.name} — the new division takes ${rankRangeLabel(added)}`;
+        ? { key: "edit.splitAt", values: { name: parent.name, rank: rankLabel(added.ow?.from ?? action.rank) } }
+        : { key: "edit.split", values: { name: parent.name, range: rankRangeLabel(added) } };
     }
     case "merge": {
       const gone = before[action.bandIndex];
       const survivor = after[action.into === "up" ? action.bandIndex - 1 : action.bandIndex];
-      return `Merged ${gone.name} into ${survivor.name}`;
+      return { key: "edit.merged", values: { gone: gone.name, survivor: survivor.name } };
     }
     case "nudge": {
       const moving = action.delta === -1 ? action.rank - 1 : action.rank;
       const from = ladderOwners(before)[moving];
       const to = ladderOwners(after)[moving];
       const name = (list: Band[], index: number | null) =>
-        index === null ? "no division" : list[index].name;
-      return `${rankLabel(moving)} moved from ${name(before, from)} to ${name(after, to)}`;
+        index === null ? "" : list[index].name;
+      return { key: "edit.moved", values: { rank: rankLabel(moving), from: name(before, from), to: name(after, to) } };
     }
     case "setFloor":
-      return `${after[action.bandIndex].name} now starts at ${action.rankMin}`;
+      return { key: "edit.floor", values: { name: after[action.bandIndex].name, rank: action.rankMin } };
     case "link":
-      return `Linked ${owRangeLabel(after[action.bandIndex])} to ${after[action.bandIndex].name}`;
+      return { key: "edit.linked", values: { range: owRangeLabel(after[action.bandIndex]) ?? "", name: after[action.bandIndex].name } };
     case "unlink":
-      return `Unlinked ${before[action.bandIndex].name} from the OW ladder`;
+      return { key: "edit.unlinked", values: { name: before[action.bandIndex].name } };
     case "setScale":
       return action.scale === "ladder"
-        ? "Rank ranges now follow the OW ladder"
-        : "Rank ranges are now a custom scale";
+        ? { key: "edit.ladderScale" }
+        : { key: "edit.customScale" };
     case "rename":
-      return `Renamed ${before[action.bandIndex].name} → ${after[action.bandIndex].name}`;
+      return { key: "edit.renamed", values: { before: before[action.bandIndex].name, after: after[action.bandIndex].name } };
     case "setIcon":
-      return `Set a crest for ${after[action.bandIndex].name}`;
+      return { key: "edit.crest", values: { name: after[action.bandIndex].name } };
   }
 }
 
@@ -505,7 +523,7 @@ export function initDraftState(bands: Band[], scale: Scale, base: Band[]): Draft
 }
 
 /** The whole edit log, oldest first. */
-export function describeEdits(state: DraftState): string[] {
+export function describeEdits(state: DraftState): EditNote[] {
   return state.history.map((entry) => entry.note);
 }
 

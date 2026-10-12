@@ -1,11 +1,11 @@
 "use client";
 
-// The card's own global CSS (`.team-card`, `.roster`, `.group-chip`,
-// `.placement`), moved out of globals.css and next to its only consumer.
+// The card's own global CSS (`.team-card`, `.roster`, `.group-chip`), moved
+// out of globals.css and next to its only consumer.
 import "./TournamentTeamCard.css";
 
 import React from "react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { Crown, Shuffle, Sprout } from "lucide-react";
 import {
   sortTeamPlayers,
@@ -19,6 +19,7 @@ import DivisionIcon from "@/components/DivisionIcon";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import TeamName from "@/components/TeamName";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
+import { PlaceBadge } from "@/components/ui/place-badge";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
 import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
@@ -204,6 +205,7 @@ export function RosterRank({
   className?: string;
 }>) {
   const workspaceGrid = useDivisionGrid();
+  const format = useFormatter();
   const label = getDivisionLabel(tournamentGrid ?? workspaceGrid, division) ?? `Division ${division}`;
   return (
     <div className={cn("flex items-center gap-2", dimmed && "opacity-50", className)}>
@@ -211,7 +213,7 @@ export function RosterRank({
         <DivisionIcon division={division} width={26} height={26} tournamentGrid={tournamentGrid} />
       </IconTooltip>
       <span className="aqt-tnum text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
-        {rank}
+        {format.number(rank, { maximumFractionDigits: 0 })}
       </span>
     </div>
   );
@@ -332,11 +334,27 @@ export const TournamentTeamTable = ({
   );
 };
 
-export function placementClass(placement: number): string {
-  if (placement === 1) return "gold";
-  if (placement === 2) return "silver";
-  if (placement === 3) return "bronze";
-  return "def";
+/**
+ * A team's place: the medal for 1–3 of a finished competition (`medal`), `#N`
+ * text for any other place — a live leader is not on the podium yet.
+ */
+export function TeamPlacement({ placement, medal }: { placement: number; medal: boolean }) {
+  const t = useTranslations();
+  if (medal && placement >= 1 && placement <= 3) {
+    return (
+      <span className="inline-flex">
+        <PlaceBadge place={placement} />
+        <span className="sr-only">
+          {t(`tournamentDetail.podium.place${placement as 1 | 2 | 3}`)}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="aqt-tnum text-caption font-semibold text-[color:var(--aqt-fg-muted)]">
+      #{placement}
+    </span>
+  );
 }
 
 interface TournamentTeamCardFrameProps extends React.HTMLAttributes<HTMLElement> {
@@ -389,34 +407,48 @@ export const TournamentTeamCardFrame = ({
   );
 };
 
-export const TournamentTeamCard = ({ team }: { team: Team }) => {
+/**
+ * `medal`: the competition is finished, so places 1–3 are medals.
+ * `showGroup`: the visible teams span several groups, so the group colour
+ * tells them apart; otherwise the chip would repeat one value on every card.
+ */
+export const TournamentTeamCard = ({
+  team,
+  medal,
+  showGroup
+}: {
+  team: Team;
+  medal: boolean;
+  showGroup: boolean;
+}) => {
   const t = useTranslations();
+  const format = useFormatter();
 
   return (
     <TournamentTeamCardFrame
       id={team.id.toString()}
       name={<TeamName team={team} size="md" />}
       leadingTag={
-        team.group?.name ? (
+        showGroup && team.group?.name ? (
           <span
             className="group-chip"
             style={{ "--group-hue": groupHue(team.group.name) } as React.CSSProperties}
           >
             {groupDisplayName(team.group.name, t("common.group"))}
           </span>
-        ) : (
-          <span />
-        )
+        ) : undefined
       }
       positionTag={
         team.placement != null ? (
-          <span className={cn("placement tabular-nums", placementClass(team.placement))}>
-            #{team.placement}
-          </span>
+          <TeamPlacement placement={team.placement} medal={medal} />
         ) : null
       }
       metricLabel={t("teams.roster.avgSr")}
-      metricValue={<span className="tabular-nums">{team.avg_sr.toFixed(0)}</span>}
+      metricValue={
+        <span className="tabular-nums">
+          {format.number(team.avg_sr, { maximumFractionDigits: 0 })}
+        </span>
+      }
     >
       <TournamentTeamTable
         players={team.players}

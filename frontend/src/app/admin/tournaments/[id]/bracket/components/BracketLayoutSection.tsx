@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { BracketTemplateEditor } from "@/components/bracket/editor/BracketTemplateEditor";
 import {
@@ -61,6 +62,7 @@ function templateProblems(error: unknown): TemplateProblem[] {
  * — so the section then shows only the server's own 409 text.
  */
 export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
+  const t = useTranslations("adminBracket.layoutSection");
   const queryClient = useQueryClient();
   const encountersQuery = useHubEncountersQuery(stage.tournament_id);
   const hasEncounters = (encountersQuery.data?.results ?? []).some(
@@ -106,11 +108,11 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
       setProblems([]);
       setHighlightMatchId(null);
       invalidate();
-      notify.success("Bracket layout saved");
+      notify.success(t("save"));
     },
     onError: (error) => {
       setProblems(templateProblems(error));
-      notify.apiError(error, { title: "Could not save the bracket layout" });
+      notify.apiError(error, { title: t("saveError") });
     }
   });
 
@@ -120,9 +122,9 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
       setProblems([]);
       setResetOpen(false);
       invalidate();
-      notify.success("Bracket layout reset to the generated one");
+      notify.success(t("reset"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not reset the bracket layout" })
+    onError: (error) => notify.apiError(error, { title: t("resetError") })
   });
 
   const seeds = templateQuery.data?.seeds;
@@ -137,23 +139,22 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
     <section aria-labelledby="bracket-layout-heading" className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="bracket-layout-heading" className="text-sm font-semibold text-foreground">
-          Bracket layout
+          {t("title")}
         </h3>
         <p className={EYEBROW_CLASS}>
-          {templateQuery.data?.custom ? <Badge variant="outline">Custom</Badge> : "generated layout"}
+          {templateQuery.data?.custom ? <Badge variant="outline">{t("custom")}</Badge> : t("generated")}
         </p>
       </div>
 
       {hasEncounters ? (
         <p className="text-sm text-muted-foreground">
-          This stage already has generated matches. Delete them first to edit the bracket.
+          {t("hasMatches")}
         </p>
       ) : templateQuery.isPending ? (
         <Skeleton className="h-64 w-full rounded-2xl" />
       ) : template === null ? (
         <p className="text-sm text-muted-foreground">
-          Nothing to draw yet — wire at least two teams into the upper bracket, or set the preceding
-          group stage&apos;s advancing count.
+          {t("empty")}
         </p>
       ) : (
         <>
@@ -164,7 +165,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                 integer
                 min={2}
                 max={512}
-                aria-label="Upper bracket seeds"
+                aria-label={t("upper")}
                 className="h-8 w-20"
                 value={draft.upper_seeds}
                 onValueChange={(next) => {
@@ -178,7 +179,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                 integer
                 min={0}
                 max={512}
-                aria-label="Lower bracket seeds"
+                aria-label={t("lower")}
                 className="h-8 w-20"
                 value={draft.lower_seeds}
                 onValueChange={(next) => {
@@ -188,8 +189,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
             </label>
             {seeds ? (
               <p className="text-xs text-muted-foreground">
-                Seeds wired now: <span className="tabular-nums">{seeds.upper}</span> upper /{" "}
-                <span className="tabular-nums">{seeds.lower}</span> lower
+                {t("wired", { upper: seeds.upper, lower: seeds.lower })}
               </p>
             ) : null}
             <div className="ml-auto flex items-center gap-2">
@@ -201,7 +201,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                   onClick={() => setResetOpen(true)}
                   disabled={resetMutation.isPending}
                 >
-                  Reset to generated
+                  {t("resetButton")}
                 </Button>
               ) : null}
               <Button
@@ -210,15 +210,14 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
                 onClick={() => saveMutation.mutate()}
                 disabled={payload === null || saveMutation.isPending}
               >
-                Save
+                {t("saveButton")}
               </Button>
             </div>
           </div>
 
           {mismatch && seeds ? (
             <p className={cn("text-xs", TONE_TEXT.warning)}>
-              The stage currently has {seeds.upper}+{seeds.lower} seeds; generation refuses until the
-              layout matches.
+              {t("mismatch", { count: seeds.upper + seeds.lower })}
             </p>
           ) : null}
 
@@ -230,7 +229,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
           />
 
           {problems.length > 0 ? (
-            <ul className="space-y-1" aria-label="Bracket layout problems">
+            <ul className="space-y-1" aria-label={t("problems")}>
               {problems.map((problem, index) => (
                 <li key={`${problem.code}-${problem.match_id}-${index}`}>
                   <button
@@ -256,10 +255,10 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
         open={resetOpen}
         onOpenChange={setResetOpen}
         intent={{
-          title: "Reset to the generated bracket?",
+          title: t("resetTitle"),
           description:
-            "The hand-drawn layout is deleted and this stage goes back to the bracket its format generates.",
-          confirmLabel: "Reset to generated",
+            t("resetDescription"),
+          confirmLabel: t("resetConfirm"),
           tone: "warning"
         }}
         onConfirm={() => resetMutation.mutate()}

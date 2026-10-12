@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown, Unlink } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -30,6 +31,7 @@ export interface OwRangePickerProps {
  * are dashed, so a gap in the ladder is visible from any row.
  */
 export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<OwRangePickerProps>) {
+  const t = useTranslations("adminSettings.divisions");
   const band = bands[bandIndex];
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -67,17 +69,17 @@ export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<O
         <Button
           variant="outline"
           size="sm"
-          aria-label={`OW ranks of ${band.name}: ${owRangeLabel(band)}`}
+          aria-label={t("table.owRanksOf", { name: band.name, range: owRangeLabel(band) ?? t("ladder.notLinked") })}
           className={cn(
             "h-8 w-full min-w-40 justify-between px-2 font-mono text-xs font-normal",
             !band.ow && "text-warning"
           )}
         >
-          <span className="truncate">{owRangeLabel(band)}</span>
+          <span className="truncate">{owRangeLabel(band) ?? t("ladder.notLinked")}</span>
           <ChevronDown aria-hidden className="size-3 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-2" aria-label={`OW ranks of ${band.name}`}>
+      <PopoverContent align="start" className="w-auto p-2" aria-label={t("table.owRanksOfName", { name: band.name })}>
         <div className="flex flex-col gap-1" onMouseLeave={() => setHovered(null)}>
           {ROWS.map((row) => (
             <div
@@ -128,8 +130,8 @@ export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<O
         <div className="mt-2 flex items-start justify-between gap-2 border-t border-border pt-2">
           <p className="max-w-56 text-xs text-muted-foreground" aria-live="polite">
             {anchor === null
-              ? "Click the first rank, then the last. Ranks taken from another division move here."
-              : `From ${rankLabel(anchor)} — click the other end, or the same rank again.`}
+              ? t("table.owPickerHint")
+              : t("table.owPickerFrom", { rank: rankLabel(anchor) })}
           </p>
           <Button
             variant="ghost"
@@ -142,7 +144,7 @@ export function OwRangePicker({ bands, bandIndex, onLink, onUnlink }: Readonly<O
             }}
           >
             <Unlink aria-hidden className="size-3" />
-            Unlink
+              {t("mapping.unlink")}
           </Button>
         </div>
       </PopoverContent>

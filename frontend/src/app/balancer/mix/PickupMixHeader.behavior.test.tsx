@@ -23,11 +23,27 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-// Echoes the key, plus any interpolated values -- so a label built from a
-// slot (`posts.lineupLobby`) is checkable without the real messages.
+// Keep the pre-localization key assertions for this suite's menu state tests;
+// the few controls whose accessible names were localized are mapped to their
+// existing English contract below.
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string, values?: Record<string, unknown>) =>
-    values ? `${key}(${Object.values(values).join(",")})` : key
+  useTranslations: () => (key: string, values?: Record<string, unknown>) => {
+    const label = String(values?.label ?? "");
+    const labels: Record<string, string> = {
+      more: "more",
+      edit: label ? `Edit ${label}` : "edit",
+      save: label ? `Save ${label}` : "save",
+      cancel: label ? `Cancel ${label} edit` : "cancel",
+      roleEdit: "roleEdit",
+      signupTrigger: "signupTrigger",
+      "discord.trigger": "discord.trigger",
+      "discord.allPosts": "discord.allPosts",
+      "posts.delete": "posts.delete"
+    };
+    const value = labels[key] ?? key;
+    if (key === "edit" || key === "save" || key === "cancel") return value;
+    return values ? `${value}(${Object.values(values).join(",")})` : value;
+  }
 }));
 
 const onOpenPool = vi.fn();

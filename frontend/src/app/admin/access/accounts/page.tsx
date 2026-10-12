@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { BadgeCheck, CheckCircle, ShieldAlert, Trash2, UserRound, XCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,6 +45,8 @@ function accountSubtitle(account: AuthAdminUser): string | undefined {
  * the inspector links across.
  */
 export default function AccessAdminAccountsPage() {
+  const t = useTranslations("adminAccess.common");
+  const ta = useTranslations("adminAccess.accounts");
   const queryClient = useQueryClient();
   const { hasPermission, isSuperuser, canAccessPermission } = usePermissions();
   const currentUserId = useAuthProfileStore((state) => state.user?.id);
@@ -66,34 +69,34 @@ export default function AccessAdminAccountsPage() {
     queryFn: () => rbacService.listRolesAll(),
     enabled: canReadRoles
   });
-  const roles = rolesQuery.data ?? [];
+  const roles = useMemo(() => rolesQuery.data ?? [], [rolesQuery.data]);
 
   const defs = useMemo<FilterDef[]>(
     () => [
       {
         key: "role",
-        label: "Role",
+        label: t("role"),
         kind: "single",
         options: roles.map((role) => ({ value: String(role.id), label: role.name }))
       },
       {
         key: "exclude_role",
-        label: "Exclude role",
+        label: t("excludeRoleLabel"),
         kind: "multi",
         options: roles.map((role) => ({ value: String(role.id), label: role.name }))
       },
       {
         key: "status",
-        label: "Status",
+        label: t("status"),
         kind: "single",
         options: [
-          { value: "active", label: "Active" },
-          { value: "inactive", label: "Inactive" }
+          { value: "active", label: t("active") },
+          { value: "inactive", label: t("inactive") }
         ]
       },
-      { key: "superuser", label: "Superusers only", kind: "toggle" }
+      { key: "superuser", label: t("superusersOnly"), kind: "toggle" }
     ],
-    [roles]
+    [roles, t]
   );
 
   const filters = useFilters(defs);
@@ -114,7 +117,7 @@ export default function AccessAdminAccountsPage() {
       await queryClient.invalidateQueries({ queryKey: accessQueryKeys.users() });
       setPendingDelete(null);
       if (removed && String(removed.id) === openId) setParams({ id: null });
-      notify.success("Account deleted");
+      notify.success(ta("accountDeleted"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -129,7 +132,7 @@ export default function AccessAdminAccountsPage() {
       },
       {
         accessorKey: "email",
-        header: "Account",
+        header: t("account"),
         cell: ({ row }) => (
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-foreground">{row.original.email}</p>
@@ -141,44 +144,44 @@ export default function AccessAdminAccountsPage() {
       },
       {
         id: "linkedPlayer",
-        header: "Player identity",
+        header: t("playerIdentity"),
         enableSorting: false,
         cell: ({ row }) => {
           const linked = getSingleLinkedPlayer(row.original.linked_players);
           if (!linked) {
-            return <span className="text-sm text-muted-foreground">Not linked</span>;
+            return <span className="text-sm text-muted-foreground">{t("notLinked")}</span>;
           }
           return <span className="truncate text-sm">{linked.player_name}</span>;
         }
       },
       {
         id: "status",
-        header: "Status",
+        header: t("status"),
         enableSorting: false,
         meta: columnMeta<AuthAdminUser>({ align: "center" }),
         cell: ({ row }) => (
           <div className="flex flex-wrap justify-center gap-2">
             {row.original.is_active ? (
-              <StatusIcon icon={CheckCircle} label="Active" variant="success" />
+              <StatusIcon icon={CheckCircle} label={t("active")} variant="success" />
             ) : (
-              <StatusIcon icon={XCircle} label="Inactive" variant="muted" />
+              <StatusIcon icon={XCircle} label={t("inactive")} variant="muted" />
             )}
             {row.original.is_verified ? (
-              <StatusIcon icon={BadgeCheck} label="Verified" variant="info" />
+              <StatusIcon icon={BadgeCheck} label={t("verified")} variant="info" />
             ) : null}
             {row.original.is_superuser ? (
-              <StatusIcon icon={ShieldAlert} label="Superuser" variant="destructive" />
+              <StatusIcon icon={ShieldAlert} label={t("superuser")} variant="destructive" />
             ) : null}
           </div>
         )
       },
       {
         id: "roles",
-        header: "Roles",
+        header: t("roles"),
         enableSorting: false,
         cell: ({ row }) =>
           row.original.roles.length === 0 ? (
-            <span className="text-sm text-muted-foreground">No roles</span>
+            <span className="text-sm text-muted-foreground">{t("noRoles")}</span>
           ) : (
             <div className="flex flex-wrap gap-1">
               {row.original.roles.map((role) => (
@@ -194,13 +197,13 @@ export default function AccessAdminAccountsPage() {
           const linked = getSingleLinkedPlayer(row.linked_players);
           return [
             {
-              label: "Open in People",
+              label: t("openPeople"),
               icon: UserRound,
               hidden: !canReadPeople || linked === null,
               href: linked ? `/admin/people/${linked.player_id}` : undefined
             },
             {
-              label: "Delete account",
+              label: t("deleteAccount"),
               icon: Trash2,
               destructive: true,
               hidden: !isSuperuser || row.id === currentUserId,
@@ -211,7 +214,7 @@ export default function AccessAdminAccountsPage() {
         { rowLabel: (row) => row.email }
       )
     ],
-    [canReadPeople, currentUserId, isSuperuser]
+    [canReadPeople, currentUserId, isSuperuser, t]
   );
 
   return (
@@ -222,12 +225,12 @@ export default function AccessAdminAccountsPage() {
           initialPageSize={PAGE_SIZE}
           pageSizeOptions={[10, 20, 50, 100]}
           cellAlign="top"
-          searchPlaceholder="Search accounts…"
+          searchPlaceholder={t("searchAccounts")}
           filterKey={filters.filterKey}
           inspectorId={openId}
           getRowId={(row) => String(row.id)}
           toolbar={<FilterBar defs={defs} filters={filters} />}
-          emptyMessage="No auth accounts match. Clear the filters to see every account."
+          emptyMessage={ta("noAuthMatches")}
           onRowClick={(row) => setParams({ id: String(row.original.id) })}
           renderMobileCard={(row) => (
             <div className="min-w-0 flex-1">
@@ -236,9 +239,9 @@ export default function AccessAdminAccountsPage() {
                 @{row.original.username}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {row.original.is_active ? "Active" : "Inactive"} ·{" "}
+                {row.original.is_active ? t("active") : t("inactive")} ·{" "}
                 {row.original.roles.length === 0
-                  ? "no roles"
+                  ? t("noRoles")
                   : row.original.roles.map((role) => role.name).join(", ")}
               </p>
             </div>
@@ -305,15 +308,15 @@ export default function AccessAdminAccountsPage() {
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Delete auth account",
-          description: `This permanently deletes the login for ${pendingDelete?.email ?? "this account"} and signs it out of every device immediately. The linked player profile and its tournament history are preserved — only unlinked. This cannot be undone.`,
-          confirmLabel: "Delete account",
+          title: ta("deleteTitle"),
+          description: ta("deleteDescription", { account: pendingDelete?.email ?? t("account") }),
+          confirmLabel: t("deleteAccount"),
           tone: "danger",
           cascade: [
-            "Assigned roles and permission restrictions",
-            "OAuth connections",
-            "API keys owned by this account",
-            "Active sessions"
+            ta("deleteDetailsRoles"),
+            ta("deleteDetailsOauth"),
+            ta("deleteDetailsKeys"),
+            ta("deleteDetailsSessions")
           ]
         }}
         onConfirm={() => {

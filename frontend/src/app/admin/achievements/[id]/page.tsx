@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -27,6 +28,7 @@ import {
 const emptyOverrideDraft: RuleOverrideDraft = { userName: "", action: "grant", reason: "" };
 
 export default function AchievementDetailPage() {
+  const t = useTranslations("adminAchievements");
   const params = useParams();
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
@@ -79,7 +81,7 @@ export default function AchievementDetailPage() {
   const totalUsers = users.data?.pages[0]?.total ?? 0;
 
   if (!workspaceId) {
-    return <div className="p-6 text-muted-foreground">Select a workspace first.</div>;
+    return <div className="p-6 text-muted-foreground">{t("detail.selectWorkspace")}</div>;
   }
 
   if (isLoading) {
@@ -92,7 +94,7 @@ export default function AchievementDetailPage() {
   }
 
   if (!rule) {
-    return <div className="p-6 text-muted-foreground">Achievement not found.</div>;
+    return <div className="p-6 text-muted-foreground">{t("detail.notFound")}</div>;
   }
 
   return (
@@ -205,12 +207,11 @@ export default function AchievementDetailPage() {
         onConfirm={() => deleteMutation.mutate()}
         pending={deleteMutation.isPending}
         intent={{
-          title: `Delete achievement "${rule.slug}"`,
-          description:
-            "The record and its linked data are removed permanently. This cannot be undone.",
-          confirmLabel: deleteMutation.isPending ? "Deleting…" : "Delete",
+          title: t("detail.deleteTitle", { slug: rule.slug }),
+          description: t("detail.deleteDescription"),
+          confirmLabel: deleteMutation.isPending ? t("common.deleting") : t("common.delete"),
           tone: "danger",
-          cascade: ["Every evaluation result and manual override for this achievement"],
+          cascade: [t("list.deleteCascadeResult")],
         }}
       />
     </div>

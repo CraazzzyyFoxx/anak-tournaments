@@ -36,10 +36,16 @@ vi.mock("@/lib/notify", () => ({
 }));
 // `ui/dialog` localizes its close button, so the tree needs a translator even
 // though nothing under test reads a message.
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  useLocale: () => "en"
-}));
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  const { default: en } = await import("@/i18n/messages/en.json");
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never }),
+    useLocale: () => "en"
+  };
+});
 
 // A mix roster: the Challonge participant name never equals the internal one,
 // which is exactly why auto-mapping left these unmapped and why the picker has

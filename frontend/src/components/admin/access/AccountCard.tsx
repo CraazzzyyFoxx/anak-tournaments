@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import type { QueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 
@@ -83,13 +84,14 @@ export function AccountDisclosure({
 }
 
 export function AccountStatusPills({ account }: Readonly<{ account: AuthAdminUser }>) {
+  const t = useTranslations("adminAccess.common");
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <StatusPill tone={account.is_active ? "success" : "neutral"} dot>
-        {account.is_active ? "Active" : "Inactive"}
+        {account.is_active ? t("active") : t("inactive")}
       </StatusPill>
-      {account.is_verified ? <StatusPill tone="info">Verified</StatusPill> : null}
-      {account.is_superuser ? <StatusPill tone="danger">Superuser</StatusPill> : null}
+      {account.is_verified ? <StatusPill tone="info">{t("verified")}</StatusPill> : null}
+      {account.is_superuser ? <StatusPill tone="danger">{t("superuser")}</StatusPill> : null}
     </div>
   );
 }

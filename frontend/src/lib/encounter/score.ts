@@ -8,6 +8,7 @@ export type EncounterScore = {
 export type EncounterScorePreset = EncounterScore & {
   label: string;
   description: string;
+  descriptionKey: "Home sweep" | "Home close win" | "Draw" | "Away close win" | "Away sweep";
 };
 
 type ScoreStageLike = {
@@ -19,11 +20,11 @@ type ScoreStageItemLike = {
 } | null | undefined;
 
 export const GROUP_STAGE_SCORE_PRESETS: EncounterScorePreset[] = [
-  { label: "2-0", description: "Home sweep", homeScore: 2, awayScore: 0 },
-  { label: "2-1", description: "Home close win", homeScore: 2, awayScore: 1 },
-  { label: "1-1", description: "Draw", homeScore: 1, awayScore: 1 },
-  { label: "1-2", description: "Away close win", homeScore: 1, awayScore: 2 },
-  { label: "0-2", description: "Away sweep", homeScore: 0, awayScore: 2 },
+  { label: "2-0", description: "Home sweep", descriptionKey: "Home sweep", homeScore: 2, awayScore: 0 },
+  { label: "2-1", description: "Home close win", descriptionKey: "Home close win", homeScore: 2, awayScore: 1 },
+  { label: "1-1", description: "Draw", descriptionKey: "Draw", homeScore: 1, awayScore: 1 },
+  { label: "1-2", description: "Away close win", descriptionKey: "Away close win", homeScore: 1, awayScore: 2 },
+  { label: "0-2", description: "Away sweep", descriptionKey: "Away sweep", homeScore: 0, awayScore: 2 },
 ];
 
 export function clampScoreValue(value: string | number): number {
@@ -78,7 +79,8 @@ export function validSeriesScores(bestOf: number): EncounterScorePreset[] {
   return scores.map((score) => ({
     ...score,
     label: `${score.homeScore}-${score.awayScore}`,
-    description: describeScore(score.homeScore, score.awayScore)
+    description: describeScore(score.homeScore, score.awayScore),
+    descriptionKey: describeScore(score.homeScore, score.awayScore) as EncounterScorePreset["descriptionKey"]
   }));
 }
 

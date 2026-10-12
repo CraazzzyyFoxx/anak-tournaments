@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 
 import { StatusPill } from "@/components/kit/StatusPill";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
@@ -72,6 +73,7 @@ export function MappingsView({
   mappable,
   loading
 }: Readonly<MappingsViewProps>) {
+  const t = useTranslations("adminSettings.divisions");
   const mapped = useMemo(
     () => sources.map((source) => ({ ...source, rows: autoMap(source.tiers, bands) })),
     [bands, sources]
@@ -80,8 +82,7 @@ export function MappingsView({
   if (!mappable) {
     return (
       <p className="text-sm text-muted-foreground">
-        Save the draft to compute mappings. Until then its divisions have no ids for the older
-        versions to point at.
+        {t("mappings.saveFirst")}
       </p>
     );
   }
@@ -91,7 +92,7 @@ export function MappingsView({
   if (sources.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No other version is still read by a tournament, so this draft needs no mapping.
+        {t("mappings.noMapping")}
       </p>
     );
   }
@@ -104,12 +105,15 @@ export function MappingsView({
           <section key={readiness.version_id} className="flex min-w-0 flex-col gap-2">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <p className={cn(EYEBROW_CLASS, "font-mono")}>
-                {readiness.version_label} &rarr; {targetLabel} · {readiness.tournament_count}{" "}
-                {readiness.tournament_count === 1 ? "tournament" : "tournaments"} · {rows.length}{" "}
-                source divisions
+                {t("mappingLabels.header", {
+                  source: readiness.version_label,
+                  target: targetLabel,
+                  tournaments: readiness.tournament_count,
+                  divisions: rows.length
+                })}
               </p>
               <StatusPill tone={unresolved.length === 0 ? "success" : "warning"}>
-                {unresolved.length === 0 ? "complete" : `${unresolved.length} to resolve`}
+                {unresolved.length === 0 ? t("mappingLabels.complete") : t("mappingLabels.toResolve", { count: unresolved.length })}
               </StatusPill>
             </div>
 
@@ -118,19 +122,19 @@ export function MappingsView({
                 <thead>
                   <tr className="border-b border-border text-left">
                     <th scope="col" className="px-3 py-2 font-medium">
-                      {readiness.version_label} division
+                      {t("table.versionDivision", { version: readiness.version_label })}
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Rank range
+                      {t("table.rankRange")}
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Players
+                      {t("table.players")}
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      In {targetLabel}
+                      {t("mappingLabels.inTarget", { target: targetLabel })}
                     </th>
                     <th scope="col" className="px-3 py-2 font-medium">
-                      Match
+                      {t("mappingLabels.match")}
                     </th>
                   </tr>
                 </thead>
@@ -146,7 +150,7 @@ export function MappingsView({
                         </td>
                         <td
                           className="px-3 py-2 text-muted-foreground"
-                          title="Player distribution per division is not exposed yet (backend gap G1)."
+                          title={t("table.playerDistributionUnavailable")}
                         >
                           &mdash;
                         </td>
@@ -161,7 +165,7 @@ export function MappingsView({
                           ) : target ? (
                             targetSummary(target)
                           ) : (
-                            <span className="text-warning">unresolved</span>
+                            <span className="text-warning">{t("mappings.unresolved")}</span>
                           )}
                         </td>
                         <td

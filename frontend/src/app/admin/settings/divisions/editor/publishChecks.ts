@@ -9,9 +9,24 @@ import {
   type Scale
 } from "./draftReducer";
 
+export type PublishCheckMessageKey =
+  | "impactChecks.coverageAll"
+  | "impactChecks.floors"
+  | "impactChecks.coverageLinked"
+  | "impactChecks.gaps"
+  | "impactChecks.unlinked"
+  | "impactChecks.unlinkedSome"
+  | "impactChecks.names"
+  | "impactChecks.saved"
+  | "impactChecks.crests"
+  | "impactChecks.crestsSome"
+  | "impactChecks.mappings"
+  | "impactChecks.mappingsSome"
+
 export interface PublishCheck {
   key: string;
-  label: string;
+  messageKey: PublishCheckMessageKey;
+  values?: Record<string, string | number>;
   ok: boolean;
   /** A failing advisory is worth saying and does not stop a publish. */
   blocking: boolean;
@@ -27,8 +42,6 @@ export interface PublishCheckInput {
   mappable: boolean;
   dirty: boolean;
 }
-
-const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /**
  * The pre-flight list behind "Ready to publish?" — and the Publish button's
@@ -62,7 +75,8 @@ export function publishChecks({
       ? [
           {
             key: "coverage",
-            label: `Every one of the ${RANK_COUNT} OW ranks belongs to exactly one division`,
+            messageKey: "impactChecks.coverageAll",
+            values: { count: RANK_COUNT },
             ok: bandsCoverLadder(bands),
             blocking: true
           }
@@ -70,25 +84,27 @@ export function publishChecks({
       : [
           {
             key: "floors",
-            label: "Rank ranges descend without gaps or overlaps",
+            messageKey: "impactChecks.floors",
             ok: floorsDescend(bands),
             blocking: true
           },
           {
             key: "coverage",
-            label:
+            messageKey:
               gaps === 0
-                ? `Every one of the ${RANK_COUNT} OW ranks links to a division`
-                : `${plural(gaps, "OW rank links", "OW ranks link")} to no division`,
+                ? "impactChecks.coverageLinked"
+                : "impactChecks.gaps",
+            values: { count: gaps || RANK_COUNT },
             ok: gaps === 0,
             blocking: true
           },
           {
             key: "unlinked",
-            label:
+            messageKey:
               unlinked === 0
-                ? "Every division has OW ranks"
-                : `${plural(unlinked, "division has", "divisions have")} no OW ranks — only a stored rank reaches ${unlinked === 1 ? "it" : "them"}`,
+                ? "impactChecks.unlinked"
+                : "impactChecks.unlinkedSome",
+            values: { count: unlinked },
             ok: unlinked === 0,
             blocking: false
           }
@@ -98,31 +114,34 @@ export function publishChecks({
     ...coverage,
     {
       key: "names",
-      label: `All ${bands.length} names are set and unique`,
+      messageKey: "impactChecks.names",
+      values: { count: bands.length },
       ok: namesUnique,
       blocking: true
     },
     {
       key: "saved",
-      label: "The draft is saved as a version",
+      messageKey: "impactChecks.saved",
       ok: !dirty,
       blocking: true
     },
     {
       key: "crests",
-      label:
+      messageKey:
         borrowed === 0
-          ? "Every division has its own crest"
-          : `${plural(borrowed, "division still borrows", "divisions still borrow")} a ladder crest`,
+          ? "impactChecks.crests"
+          : "impactChecks.crestsSome",
+      values: { count: borrowed },
       ok: borrowed === 0,
       blocking: false
     },
     {
       key: "mappings",
-      label:
+      messageKey:
         open === 0
-          ? "Every older version maps onto this one"
-          : `${plural(open, "mapping decision", "mapping decisions")} left in the Mappings tab`,
+          ? "impactChecks.mappings"
+          : "impactChecks.mappingsSome",
+      values: { count: open },
       // Before the first save there is nothing to map onto, and the "saved"
       // check above already reports that.
       ok: mappable ? open === 0 : false,

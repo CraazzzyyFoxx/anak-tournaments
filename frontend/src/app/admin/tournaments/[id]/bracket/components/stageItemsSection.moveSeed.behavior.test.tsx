@@ -3,11 +3,13 @@
 // One claim: a team dragged by its handle is INSERTED where it is dropped, in
 // its own group or another one, and every group's seeds stay numbered 1..N.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import adminService from "@/services/admin.service";
+import en from "@/i18n/messages/en.json";
 
 import type { Team } from "@/types/team.types";
 import type { Stage, StageItem, StageItemInput } from "@/types/tournament.types";
@@ -118,8 +120,9 @@ async function mount(stage: Stage) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
-      <QueryClientProvider client={client}>
-        <StageItemsSection
+      <NextIntlClientProvider locale="en" messages={en}>
+        <QueryClientProvider client={client}>
+          <StageItemsSection
           stage={stage}
           stages={[stage]}
           teams={teams}
@@ -129,8 +132,9 @@ async function mount(stage: Stage) {
           onChanged={() => {}}
           onRequestDeleteItem={() => {}}
           onRequestRemoveInput={() => {}}
-        />
-      </QueryClientProvider>
+          />
+        </QueryClientProvider>
+      </NextIntlClientProvider>
     );
   });
   await settle();
