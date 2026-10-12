@@ -93,6 +93,20 @@ class StageRepository(BaseRepository[models.Stage]):
     def __init__(self) -> None:
         super().__init__(models.Stage)
 
+    async def get(
+        self,
+        session: AsyncSession,
+        id: int | str,
+        *,
+        options: Sequence[_AbstractLoad] | None = None,
+        populate_existing: bool = False,
+    ) -> models.Stage | None:
+        # A plain lookup is an identity-map hit: an encounter list resolves the
+        # same few stages once per row, and a SELECT each is N statements.
+        if options is None and not populate_existing:
+            return await session.get(models.Stage, id)
+        return await super().get(session, id, options=options, populate_existing=populate_existing)
+
     async def list_by_tournament(
         self,
         session: AsyncSession,
@@ -131,6 +145,19 @@ class StageRepository(BaseRepository[models.Stage]):
 class StageItemRepository(BaseRepository[models.StageItem]):
     def __init__(self) -> None:
         super().__init__(models.StageItem)
+
+    async def get(
+        self,
+        session: AsyncSession,
+        id: int | str,
+        *,
+        options: Sequence[_AbstractLoad] | None = None,
+        populate_existing: bool = False,
+    ) -> models.StageItem | None:
+        # Identity-map lookup for a plain read; see ``StageRepository.get``.
+        if options is None and not populate_existing:
+            return await session.get(models.StageItem, id)
+        return await super().get(session, id, options=options, populate_existing=populate_existing)
 
     async def list_by_stage(self, session: AsyncSession, stage_id: int) -> Sequence[models.StageItem]:
         result = await session.execute(
