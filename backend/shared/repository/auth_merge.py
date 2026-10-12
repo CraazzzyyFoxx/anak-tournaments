@@ -76,6 +76,7 @@ class _Plan:
     deletes: list[tuple[sa.Table, dict[str, Any]]] = field(default_factory=list)
     workspace_ids: set[int] = field(default_factory=set)
     moved_role_ids: set[int] = field(default_factory=set)
+    revive_workspace_ids: set[int] = field(default_factory=set)
 
 
 @dataclass
@@ -176,8 +177,16 @@ def row_identity(table: sa.Table, row: dict[str, Any]) -> sa.ColumnElement[bool]
     return sa.and_(*(column == row[column.name] for column in table.primary_key.columns))
 
 
-async def ensure_target_memberships(session: AsyncSession, target_id: int, workspace_ids: set[int]) -> dict[int, int]:
-    """Create anchors only, without auto-granting any implicit baseline role."""
+async def ensure_target_memberships(
+    session: AsyncSession, target_id: int, workspace_ids: set[int], revive_workspace_ids: set[int]
+) -> dict[int, int]:
+    """Create anchors only, without auto-granting any implicit baseline role.
+
+    A target anchor that was soft-removed is revived (``removed_at`` cleared) in
+    ``revive_workspace_ids``: those are the workspaces where the merge hands the
+    survivor active access (an active source member or moved roles), which must
+    not end up hidden behind a stale removal.
+    """
     if not workspace_ids:
         return {}
     table = models.WorkspaceMember.__table__
@@ -186,6 +195,16 @@ async def ensure_target_memberships(session: AsyncSession, target_id: int, works
         .values([{"workspace_id": workspace_id, "player_id": target_id} for workspace_id in sorted(workspace_ids)])
         .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
     )
+    if revive_workspace_ids:
+        await session.execute(
+            sa.update(table)
+            .where(
+                table.c.player_id == target_id,
+                table.c.workspace_id.in_(revive_workspace_ids),
+                table.c.removed_at.is_not(None),
+            )
+            .values(removed_at=None)
+        )
     result = await session.execute(
         sa.select(table.c.workspace_id, table.c.id).where(
             table.c.player_id == target_id, table.c.workspace_id.in_(workspace_ids)
@@ -238,7 +257,7 @@ async def apply_auth_merge_plan(
     """Apply a validated preservation plan without committing its transaction."""
     fresh = plan.preview
     survivor_id = fresh.policy.surviving_auth_user_id
-    members = await ensure_target_memberships(session, target.id, plan.workspace_ids)
+    members = await ensure_target_memberships(session, target.id, plan.workspace_ids, plan.revive_workspace_ids)
     for source_member in state.memberships:
         if (
             source_member["player_id"] == source.id

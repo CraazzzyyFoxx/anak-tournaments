@@ -468,16 +468,30 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         )
         await session.execute(insert_stmt)
 
-        # Re-adding a removed member reuses the row, exactly as ``get_or_create_workspace_member`` does.
-        await session.execute(
-            sa.update(models.WorkspaceMember)
-            .where(
-                models.WorkspaceMember.workspace_id == workspace_id,
-                models.WorkspaceMember.player_id.in_(list(player_ids)),
-                models.WorkspaceMember.removed_at.is_not(None),
+        # Re-adding a removed member reuses the row, exactly as ``get_or_create_workspace_member`` does,
+        # baseline-role autofill included.
+        revived = (
+            await session.scalars(
+                sa.update(models.WorkspaceMember)
+                .where(
+                    models.WorkspaceMember.workspace_id == workspace_id,
+                    models.WorkspaceMember.player_id.in_(list(player_ids)),
+                    models.WorkspaceMember.removed_at.is_not(None),
+                )
+                .values(removed_at=None)
+                .returning(models.WorkspaceMember.player_id)
             )
-            .values(removed_at=None)
-        )
+        ).all()
+        if revived:
+            from shared.rbac import assign_default_member_role_if_roleless  # see get_or_create_workspace_member
+
+            auth_user_ids = await session.scalars(
+                sa.select(models.User.auth_user_id).where(
+                    models.User.id.in_(revived), models.User.auth_user_id.is_not(None)
+                )
+            )
+            for auth_user_id in auth_user_ids.all():
+                await assign_default_member_role_if_roleless(session, user_id=auth_user_id, workspace_id=workspace_id)
         result = await session.execute(
             sa.select(models.WorkspaceMember.player_id, models.WorkspaceMember.id).where(
                 models.WorkspaceMember.workspace_id == workspace_id,

@@ -181,3 +181,4 @@ class WorkspaceMemberRemovalTests(IsolatedAsyncioTestCase):
             self.assertEqual({player.id: member.id}, by_player)
             await s.refresh(member)
             self.assertIsNone(member.removed_at)
+            self.assertTrue(await user_has_any_workspace_role(s, user_id=auth_user.id, workspace_id=workspace.id))

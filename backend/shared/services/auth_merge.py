@@ -260,11 +260,17 @@ def _build_plan(
     source_members = {row["id"]: row for row in state.memberships if row["player_id"] == source.id}
     target_members = {row["workspace_id"]: row for row in state.memberships if row["player_id"] == target.id}
     plan.workspace_ids.update(row["workspace_id"] for row in source_members.values())
-    plan.workspace_ids.update(
+    # A removed source member carries no access to hand over; only active ones (and moved roles) revive a removed target.
+    plan.revive_workspace_ids.update(
+        row["workspace_id"] for row in source_members.values() if row.get("removed_at") is None
+    )
+    role_workspace_ids = {
         roles[row["role_id"]]["workspace_id"]
         for row in pair_grants
         if row["user_id"] in (survivor_id, donor_id) and roles[row["role_id"]]["workspace_id"] is not None
-    )
+    }
+    plan.workspace_ids.update(role_workspace_ids)
+    plan.revive_workspace_ids.update(role_workspace_ids)
     accepted_memberships: set[int] = set()
     moved_deny_ids: set[int] = set()
     memberships: list[AuthMergeMembership] = []
@@ -308,6 +314,7 @@ def _build_plan(
             for grant in grants:
                 plan.moved_role_ids.add(grant["role_id"])
             plan.workspace_ids.add(workspace_id)
+            plan.revive_workspace_ids.add(workspace_id)
             accepted_memberships.add(workspace_id)
             for deny in denies:
                 if deny["user_id"] != retained_id or deny["workspace_id"] != workspace_id:
