@@ -3,7 +3,8 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronDown, Crown } from "lucide-react";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
+import { useFormatter } from "@/lib/datetime/client";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { TeamPlacement, TournamentTeamTable } from "@/components/TournamentTeamCard";

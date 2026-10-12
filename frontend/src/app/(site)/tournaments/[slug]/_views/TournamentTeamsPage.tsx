@@ -88,14 +88,10 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
   const showGroup = groupFilter == null && groups.length > 1;
   const medal = overviewVariant(tournament.status) === "completed";
 
-  const visibleTeams = useMemo(
-    () =>
-      teams
-        .filter((team) => groupFilter == null || team.group?.name === groupFilter)
-        .filter((team) => matchesSearch(team, needle))
-        .sort((a, b) => compareTeams(a, b, sortBy)),
-    [teams, groupFilter, needle, sortBy]
-  );
+  const visibleTeams = teams
+    .filter((team) => groupFilter == null || team.group?.name === groupFilter)
+    .filter((team) => matchesSearch(team, needle))
+    .sort((a, b) => compareTeams(a, b, sortBy));
 
   const presentation = getPublicPageQueryPresentation({
     data: teamsQuery.data,
