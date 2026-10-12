@@ -17,7 +17,7 @@ from shared.repository import (
     TeamRepository,
     TournamentRepository,
 )
-from shared.services.bracket.advancement import reset_encounter_result
+from shared.services.bracket.advancement import reset_downstream
 from shared.services.bracket.swiss_state import remove_swiss_bye_round
 from src import models, schemas
 from src.core import enums
@@ -287,7 +287,7 @@ class AdminEncounterService:
 
         # Update fields
         update_data = data.model_dump(exclude_unset=True)
-        if encounter.format == enums.EncounterFormat.FFA:
+        if encounter.slot_count > 2:
             refused = sorted(set(update_data) - _FFA_EDITABLE_FIELDS)
             if refused:
                 raise HTTPException(
@@ -556,13 +556,14 @@ class AdminEncounterService:
 
         return match
 
-    async def delete_encounter(self, session: AsyncSession, encounter_id: int) -> None:
+    async def delete_encounter(self, session: AsyncSession, encounter_id: int, *, actor_user_id: int) -> None:
         """Delete encounter (cascade deletes matches).
 
         The FK cascade removes this encounter's ``EncounterLink`` rows, but the
         teams and results it already advanced into later matches would outlive
-        it as an orphaned bracket -- so the result is voided through the same
-        cascade an admin correction uses before the row goes.
+        it as an orphaned bracket -- so the seats it filled are retired through
+        the same cascade an admin correction uses before the row goes. That is
+        a human act on somebody else's bracket, hence the actor.
         """
         encounter = await self.encounter_repo.get(session, encounter_id)
 
@@ -570,36 +571,45 @@ class AdminEncounterService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 
         tournament_id = encounter.tournament_id
-        stage = await session.get(models.Stage, encounter.stage_id) if encounter.stage_id else None
+        position = await session.get(models.BracketEncounter, encounter_id)
+        stage = (
+            await session.get(models.Stage, position.stage_id)
+            if position is not None and position.stage_id is not None
+            else None
+        )
         # A Swiss bye is bookkeeping for a round that existed; when the round's
         # last encounter goes, so does the bye recorded for it.
         drop_bye_round = (
             stage is not None
             and stage.stage_type == enums.StageType.SWISS
-            and not await self._round_has_other_encounters(session, encounter)
+            and not await self._round_has_other_encounters(session, encounter, position)
         )
         await self._assert_source_correction_allowed(session, encounter)
-        # ``reset_encounter_result`` mutates ORM state and leaves flushing to its
-        # caller, and ``session.delete`` does not flush either: the enqueue below
-        # is still the first write of this transaction (same ordering contract as
-        # create).
-        await reset_encounter_result(session, encounter)
+        # ``reset_downstream`` mutates ORM state and leaves flushing to its
+        # caller, and ``session.delete`` does not flush either: the enqueue
+        # below is still the first write of this transaction (same ordering
+        # contract as create).
+        await reset_downstream(session, encounter, actor_user_id=actor_user_id)
         await session.delete(encounter)
         if drop_bye_round:
-            await remove_swiss_bye_round(session, stage.id, encounter.stage_item_id, encounter.round)
+            await remove_swiss_bye_round(session, stage.id, position.stage_item_id, position.round)
         await enqueue_tournament_recalculation(session, tournament_id)
         await session.commit()
 
     @staticmethod
-    async def _round_has_other_encounters(session: AsyncSession, encounter: models.Encounter) -> bool:
+    async def _round_has_other_encounters(
+        session: AsyncSession, encounter: models.Encounter, position: models.BracketEncounter | None
+    ) -> bool:
         """Any sibling left in this encounter's ``(stage, item, round)``."""
+        if position is None:
+            return False
         rows = await session.execute(
-            select(models.Encounter.id)
+            select(models.BracketEncounter.encounter_id)
             .where(
-                models.Encounter.stage_id == encounter.stage_id,
-                models.Encounter.stage_item_id == encounter.stage_item_id,
-                models.Encounter.round == encounter.round,
-                models.Encounter.id != encounter.id,
+                models.BracketEncounter.stage_id == position.stage_id,
+                models.BracketEncounter.stage_item_id.is_not_distinct_from(position.stage_item_id),
+                models.BracketEncounter.round == position.round,
+                models.BracketEncounter.encounter_id != encounter.id,
             )
             .limit(1)
         )

@@ -43,7 +43,20 @@ from shared.services.bracket.usability import is_encounter_live
 from shared.services.notifications import broadcast, notify
 from shared.services.registration_window import is_registration_window_open
 from src import models
-from src.services.encounter.pick_ban_session import pick_ban_session_service
+
+
+def _pick_ban_sessions():
+    """The pick-ban service, loaded on first use.
+
+    Module scope would make every admin encounter write depend on the whole
+    pick-ban stack loading, and the notifier only reaches it on the two paths
+    below. Resolved through the singleton on each call, so a test patching
+    ``pick_ban_session_service`` still intercepts both.
+    """
+    from src.services.encounter.pick_ban_session import pick_ban_session_service  # noqa: PLC0415
+
+    return pick_ban_session_service
+
 
 __all__ = ("LifecycleNotifier", "after_encounter_teams_changed", "lifecycle_notifier")
 
@@ -260,7 +273,7 @@ class LifecycleNotifier:
         ready, which is after the message this flag is for.
         """
         for kind in (enums.PickBanKind.MAP, enums.PickBanKind.HERO):
-            config = await pick_ban_session_service.resolve_config_at_level(
+            config = await _pick_ban_sessions().resolve_config_at_level(
                 session,
                 tournament_id=encounter.tournament_id,
                 kind=kind,
@@ -289,5 +302,5 @@ async def after_encounter_teams_changed(
     its singleton, so a test patching ``pick_ban_session_service`` at any call
     site still intercepts the sync.
     """
-    await pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change(session, encounter)
+    await _pick_ban_sessions().sync_all_pick_ban_sessions_after_team_change(session, encounter)
     await lifecycle_notifier.on_encounter_changed(session, encounter, channel=channel)

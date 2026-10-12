@@ -71,6 +71,167 @@ class EncounterGameTeamRepository(BaseRepository[models.EncounterGameTeam]):
             games.setdefault(game_id, []).append(line)
         return list(games.values())
 
+    async def list_for_games(
+        self, session: AsyncSession, game_ids: Sequence[int]
+    ) -> Sequence[models.EncounterGameTeam]:
+        """Every line of the given games, in game then participation order."""
+        if not game_ids:
+            return []
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterGameTeam.game_id.in_(tuple(game_ids)))
+            .order_by(models.EncounterGameTeam.game_id, models.EncounterGameTeam.encounter_team_id)
+        )
+        return result.scalars().all()
+
+    def _stage_lines(self, stage_id: int) -> sa.Select:
+        """Every confirmed game line of one stage, through the bracket position."""
+        return (
+            self.select()
+            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameTeam.game_id)
+            .join(
+                models.BracketEncounter,
+                models.BracketEncounter.encounter_id == models.EncounterGame.encounter_id,
+            )
+            .where(
+                models.BracketEncounter.stage_id == stage_id,
+                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
+            )
+        )
+
+    async def stage_has_unplaced_results(self, session: AsyncSession, stage_id: int) -> bool:
+        """Is any confirmed line of this stage missing an entered placement?
+
+        The guard behind a formula edit: a rule that READS a team's place needs
+        every place entered by hand, and a stage that already recorded games
+        without one cannot be re-scored by it.
+        """
+        row = await session.execute(
+            self._stage_lines(stage_id).where(models.EncounterGameTeam.placement.is_(None)).limit(1)
+        )
+        return row.scalars().first() is not None
+
+    async def stat_keys_for_stage(self, session: AsyncSession, stage_id: int) -> set[str]:
+        """Every organizer column key this stage's games actually recorded.
+
+        Read off the stored documents rather than the rule, so dropping a column
+        that games were entered under can be refused.
+        """
+        rows = await session.execute(
+            sa.select(sa.func.jsonb_object_keys(models.EncounterGameTeam.column_values))
+            .select_from(models.EncounterGameTeam)
+            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameTeam.game_id)
+            .join(
+                models.BracketEncounter,
+                models.BracketEncounter.encounter_id == models.EncounterGame.encounter_id,
+            )
+            .where(
+                models.BracketEncounter.stage_id == stage_id,
+                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
+            )
+        )
+        return set(rows.scalars())
+
+
+class EncounterGameClaimRepository(BaseRepository[models.EncounterGameClaim]):
+    """``encounter.game_claim`` — what one participation says a game ended on.
+
+    A claim is one row per claimant plus one ``game_claim_result`` row per
+    participation it names, so a lobby's claim and a duel's are the same shape.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterGameClaim)
+
+    async def list_for_game(self, session: AsyncSession, game_id: int) -> Sequence[models.EncounterGameClaim]:
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterGameClaim.game_id == game_id)
+            .order_by(models.EncounterGameClaim.claimant_team_id)
+        )
+        return result.scalars().all()
+
+    async def results_for_claims(
+        self, session: AsyncSession, claim_ids: Sequence[int]
+    ) -> dict[int, list[models.EncounterGameClaimResult]]:
+        """``claim_id -> its lines``; every asked-for claim gets a key."""
+        grouped: dict[int, list[models.EncounterGameClaimResult]] = {claim_id: [] for claim_id in claim_ids}
+        if not claim_ids:
+            return grouped
+        rows = await session.execute(
+            sa.select(models.EncounterGameClaimResult)
+            .where(models.EncounterGameClaimResult.claim_id.in_(tuple(claim_ids)))
+            .order_by(
+                models.EncounterGameClaimResult.claim_id,
+                models.EncounterGameClaimResult.encounter_team_id,
+            )
+        )
+        for row in rows.scalars():
+            grouped[row.claim_id].append(row)
+        return grouped
+
+    async def replace_results(
+        self,
+        session: AsyncSession,
+        claim: models.EncounterGameClaim,
+        rows: Sequence[models.EncounterGameClaimResult],
+    ) -> None:
+        """A re-filed claim replaces its lines; the claim row keeps its id."""
+        await session.execute(
+            sa.delete(models.EncounterGameClaimResult).where(models.EncounterGameClaimResult.claim_id == claim.id)
+        )
+        session.add_all(rows)
+        await session.flush()
+
+
+class EncounterTeamReportRepository(BaseRepository[models.EncounterTeamReport]):
+    """``encounter.team_report`` — a participation's report of the WHOLE encounter."""
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeamReport)
+
+    async def list_for_encounter(
+        self, session: AsyncSession, encounter_id: int
+    ) -> Sequence[models.EncounterTeamReport]:
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterTeamReport.encounter_id == encounter_id)
+            .order_by(models.EncounterTeamReport.encounter_team_id)
+        )
+        return result.scalars().all()
+
+    async def results_for_reports(
+        self, session: AsyncSession, report_ids: Sequence[int]
+    ) -> dict[int, list[models.EncounterTeamReportResult]]:
+        """``report_id -> its lines``; every asked-for report gets a key."""
+        grouped: dict[int, list[models.EncounterTeamReportResult]] = {report_id: [] for report_id in report_ids}
+        if not report_ids:
+            return grouped
+        rows = await session.execute(
+            sa.select(models.EncounterTeamReportResult)
+            .where(models.EncounterTeamReportResult.report_id.in_(tuple(report_ids)))
+            .order_by(
+                models.EncounterTeamReportResult.report_id,
+                models.EncounterTeamReportResult.encounter_team_id,
+            )
+        )
+        for row in rows.scalars():
+            grouped[row.report_id].append(row)
+        return grouped
+
+    async def replace_results(
+        self,
+        session: AsyncSession,
+        report: models.EncounterTeamReport,
+        rows: Sequence[models.EncounterTeamReportResult],
+    ) -> None:
+        """A re-filed report replaces its lines; the report row keeps its id."""
+        await session.execute(
+            sa.delete(models.EncounterTeamReportResult).where(models.EncounterTeamReportResult.report_id == report.id)
+        )
+        session.add_all(rows)
+        await session.flush()
+
 
 class EncounterTeamRepository(BaseRepository[models.EncounterTeam]):
     """``encounter.team`` — the participations (D55).
@@ -262,6 +423,7 @@ class ScoringRuleRepository(BaseRepository[models.ScoringRule]):
 
 
 __all__ = (
+    "EncounterGameClaimRepository",
     "EncounterGameRepository",
     "EncounterGameTeamRepository",
     "EncounterLinkRepository",
@@ -271,6 +433,7 @@ __all__ = (
     "EncounterSavedViewRepository",
     "EncounterTeamMemberRepository",
     "EncounterTeamMemberRoleRepository",
+    "EncounterTeamReportRepository",
     "EncounterTeamRepository",
     "ScoringRuleRepository",
 )

@@ -184,6 +184,7 @@ async def refresh_from_games(
     audit_source: str,
     actor_user_id: int | None,
     game: EncounterGame | None = None,
+    reason: str | None = None,
 ) -> EncounterOutcome:
     """Re-score the encounter from its confirmed games and write the outcome.
 
@@ -200,6 +201,10 @@ async def refresh_from_games(
     one's. Dropping only the retired LINE would be worse than keeping it: a
     two-seat game left with one line ranks the survivor first and pays it a
     win it never earned, so the whole game goes.
+
+    ``reason`` is the stated cause of a correction. The journal has exactly one
+    row per ``result_version``, so an admin's words have to travel with the
+    write that moved the standing rather than in a second row beside it.
     """
     seats = await active_teams(session, encounter.id)
     live = {seat.id for seat in seats}
@@ -241,7 +246,7 @@ async def refresh_from_games(
         action=action,
         audit_source=audit_source,
         actor_user_id=actor_user_id,
-        reason=None,
+        reason=reason,
         game=game,
         scope=AuditSnapshotScope.GAME if game is not None else AuditSnapshotScope.ENCOUNTER,
     )

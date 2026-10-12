@@ -1,22 +1,23 @@
-"""The series' games: one row per position, its accepted result, and the live
-score derived from them.
+"""The encounter's games: one row per position, and what each participation did
+in it.
 
 A ``Match`` (``matches.match``) is what a parsed log OBSERVED; an
 ``EncounterGame`` is what the tournament DECIDED for one position. This service
 owns that decision end to end -- opening positions (from the map pick-ban, or
-one at a time in freeplay), accepting a score, cancelling, and materialising the
-running series score onto ``Encounter.home_score``/``away_score``.
+one at a time in freeplay), accepting a result, cancelling -- for a duel and a
+lobby alike: a game's numbers live in one ``encounter.game_team`` row per active
+participation, so N seats are written the same way two are (D55, D58).
 
-The materialisation is LIVE only: once ``encounter.status`` is ``COMPLETED`` the
-official finalize (``shared/services/encounter/finalize.py``) is the sole writer
-of the encounter's score, so everything here leaves it alone. See
-docs/plans/2026-09-20-pregame-results-statistics-separation.md §5.1/§5.2/§6.3.
+It never writes the encounter's standing itself. Every accepted or retired game
+ends in :func:`shared.services.encounter.result.refresh_from_games`, the single
+result writer, which re-scores the whole series through the encounter's own
+``scoring_rule`` and confirms it once the rule's end condition holds (D57, D68).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,26 +28,39 @@ from shared.core.enums import (
     EncounterGameResultSource,
     EncounterGameState,
     EncounterResultAuditAction,
-    EncounterStatus,
 )
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_engine as engine
-from shared.domain.encounter_scoring import WINS_RULES, encounter_ended
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.encounter_game import EncounterGame
-from shared.models.tournament.encounter_report import EncounterMapReport
-from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
+from shared.domain.encounter_scoring import (
+    EncounterOutcome,
+    FfaResultError,
+    GameLine,
+    ScoringRules,
+    compile_rules,
+    evaluate_encounter,
+)
+from shared.domain.encounter_scoring import (
+    normalize_game_lines as _normalize_game_lines,
+)
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame, EncounterGameTeam
+from shared.models.encounter.pick_ban import PickBanEntry
 from shared.repository import (
+    EncounterGameClaimRepository,
     EncounterGameRepository,
-    EncounterMapReportRepository,
+    EncounterGameTeamRepository,
     PickBanEntryRepository,
+    ScoringRuleRepository,
 )
 from shared.services.encounter.game_audit import cancel_games as _cancel_games
-from shared.services.encounter.game_audit import record_game_result_transition
+from shared.services.encounter.participants import active_teams
+from shared.services.encounter.result import refresh_from_games
 
-# States a game can still move out of. `cancelled` is terminal history and
-# `confirmed` only moves via the admin correction command.
+__all__ = ("GameResultIn", "EncounterGameService", "OPEN_STATES", "encounter_game_service")
+
+# States a game can still move out of. ``cancelled`` is terminal history and
+# ``confirmed`` only moves via the admin correction command.
 OPEN_STATES = (
     EncounterGameState.PLANNED,
     EncounterGameState.AWAITING_RESULT,
@@ -55,49 +69,196 @@ OPEN_STATES = (
 
 
 @dataclass(frozen=True, slots=True)
-class MapWins:
-    """What the confirmed positions add up to. A draw is played but won by
-    nobody, so the two win counts need not sum to ``played`` (spec §6.3)."""
+class GameResultIn:
+    """One participation's numbers for one game, as a caller states them.
 
-    home_wins: int
-    away_wins: int
-    played: int
+    ``placement`` is left out when the rule derives it from the formula;
+    ``column_values`` carries the organizer's columns, and is empty under the
+    ``wins`` preset, where a game is decided by ``score`` alone.
+    """
+
+    encounter_team_id: int
+    score: int | None = None
+    placement: int | None = None
+    column_values: Mapping[str, float] = field(default_factory=dict)
+
+
+def _line(result: GameResultIn) -> GameLine:
+    return GameLine(
+        encounter_team_id=result.encounter_team_id,
+        score=result.score,
+        placement=result.placement,
+        values=dict(result.column_values),
+    )
+
+
+def normalize_results(
+    results: Sequence[GameResultIn],
+    participant_ids: Sequence[int],
+    rules: ScoringRules,
+) -> tuple[GameLine, ...]:
+    """Validate one game's lines against the rule, or raise 422 with its code."""
+    try:
+        return _normalize_game_lines([_line(item) for item in results], participant_ids, rules)
+    except FfaResultError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[ApiExc(code=exc.code, msg=str(exc))],
+        ) from exc
 
 
 class EncounterGameService:
-    """Game lifecycle + the live series score. The only writer of
-    ``encounter_game`` and of the encounter score before official finalize."""
+    """Game lifecycle. The only writer of ``encounter.game``/``game_team``."""
 
     def __init__(
         self,
         *,
         game_repo: EncounterGameRepository = EncounterGameRepository(),
-        report_repo: EncounterMapReportRepository = EncounterMapReportRepository(),
+        line_repo: EncounterGameTeamRepository = EncounterGameTeamRepository(),
+        claim_repo: EncounterGameClaimRepository = EncounterGameClaimRepository(),
         entry_repo: PickBanEntryRepository = PickBanEntryRepository(),
+        rule_repo: ScoringRuleRepository = ScoringRuleRepository(),
     ) -> None:
         self.game_repo = game_repo
-        self.report_repo = report_repo
+        self.line_repo = line_repo
+        self.claim_repo = claim_repo
         self.entry_repo = entry_repo
+        self.rule_repo = rule_repo
 
     # -- reads ------------------------------------------------------------
-    async def list_games(self, session: AsyncSession, encounter_id: int) -> list[EncounterGame]:
-        """The LIVE games (cancelled excluded) in series order."""
-        games = await self.game_repo.list_for_encounter(session, encounter_id)
+    async def list_games(
+        self, session: AsyncSession, encounter_id: int, *, include_cancelled: bool = False
+    ) -> list[EncounterGame]:
+        """The games in series order; cancelled positions are history."""
+        games = await self.game_repo.list_for_encounter(session, encounter_id, include_cancelled=include_cancelled)
         return sorted(games, key=lambda game: (game.position, game.id or 0))
 
-    async def reports_by_game(
+    async def lines_by_game(
         self, session: AsyncSession, games: Sequence[EncounterGame]
-    ) -> dict[int, list[EncounterMapReport]]:
-        """Captain claims grouped by game id; every given game gets a key."""
-        grouped: dict[int, list[EncounterMapReport]] = {game.id: [] for game in games}
-        rows = await self.report_repo.list_for_games(session, [game.id for game in games])
-        for row in rows:
+    ) -> dict[int, list[EncounterGameTeam]]:
+        """``game_id -> its participation rows``; every given game gets a key."""
+        grouped: dict[int, list[EncounterGameTeam]] = {game.id: [] for game in games}
+        for row in await self.line_repo.list_for_games(session, [game.id for game in games]):
             grouped.setdefault(row.game_id, []).append(row)
         return grouped
 
+    async def claims_by_game(self, session: AsyncSession, games: Sequence[EncounterGame]) -> dict[int, list[Any]]:
+        """``game_id -> the claims filed against it``; every game gets a key."""
+        grouped: dict[int, list[Any]] = {game.id: [] for game in games}
+        for game in games:
+            grouped[game.id] = list(await self.claim_repo.list_for_game(session, game.id))
+        return grouped
+
+    async def rules(self, session: AsyncSession, encounter: Encounter) -> ScoringRules:
+        """The encounter's compiled scoring rule. A missing row is a 404, not a
+        silent fallback: scoring a game by the wrong rule is worse than failing."""
+        rule = await self.rule_repo.get(session, encounter.scoring_rule_id)
+        if rule is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Encounter {encounter.id} points at scoring rule {encounter.scoring_rule_id}, which is gone",
+            )
+        return compile_rules(rule)
+
+    async def confirmed_game_lines(self, session: AsyncSession, encounter: Encounter) -> list[list[GameLine]]:
+        """The confirmed games the LIVE seats cover, oldest position first.
+
+        A game whose line-up includes a participation that has since been taken
+        over counts for nobody -- the same rule :func:`refresh_from_games`
+        scores by, so a claim is validated against exactly what the writer
+        would compute.
+        """
+        live = {seat.id for seat in await active_teams(session, encounter.id)}
+        return [
+            [
+                GameLine(
+                    encounter_team_id=row.encounter_team_id,
+                    score=row.score,
+                    placement=row.placement,
+                    values=row.column_values or {},
+                )
+                for row in lines
+            ]
+            for lines in await self.line_repo.confirmed_lines(session, encounter.id)
+            if live.issuperset(row.encounter_team_id for row in lines)
+        ]
+
+    async def standing(self, session: AsyncSession, encounter: Encounter) -> EncounterOutcome:
+        """What the confirmed games add up to right now, without writing it.
+
+        The same engine :func:`refresh_from_games` settles the official result
+        by, so a reader asking "is another map due?" and the writer confirming
+        the series can never answer it differently.
+        """
+        seats = await active_teams(session, encounter.id)
+        return evaluate_encounter(
+            await self.rules(session, encounter),
+            best_of=encounter.best_of,
+            team_ids=[seat.id for seat in seats],
+            games=await self.confirmed_game_lines(session, encounter),
+        )
+
+    async def series_settled(self, session: AsyncSession, encounter: Encounter) -> bool:
+        """Is the encounter over on the games already confirmed?"""
+        return (await self.standing(session, encounter)).ended
+
     # -- opening positions -------------------------------------------------
+    async def open_game(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        *,
+        position: int,
+        map_id: int | None = None,
+        state: EncounterGameState = EncounterGameState.PLANNED,
+    ) -> EncounterGame:
+        """Open one position and seat every live participation in it.
+
+        The ``game_team`` rows are written WITH the game: they are "who is in
+        this game", and a position without them could collect a claim naming a
+        participation the composite FK would then refuse.
+        """
+        game = await self.game_repo.create(
+            session,
+            EncounterGame(
+                encounter_id=encounter.id,
+                position=position,
+                map_id=map_id,
+                state=state,
+            ),
+        )
+        session.add_all(
+            [
+                EncounterGameTeam(
+                    game_id=game.id,
+                    encounter_id=encounter.id,
+                    encounter_team_id=seat.id,
+                )
+                for seat in await active_teams(session, encounter.id)
+            ]
+        )
+        await session.flush()
+        return game
+
+    async def ensure_next_game(self, session: AsyncSession, encounter: Encounter) -> EncounterGame | None:
+        """The position that should be played right now, opening one if the card
+        still has room. ``None`` once the encounter is decided or full."""
+        if await self.series_settled(session, encounter):
+            return None
+        games = await self.list_games(session, encounter.id)
+        open_game = next((game for game in games if game.state in OPEN_STATES), None)
+        if open_game is not None:
+            return open_game
+        if len(games) >= encounter.best_of:
+            return None
+        return await self.open_game(
+            session,
+            encounter,
+            position=max((game.position for game in games), default=0) + 1,
+        )
+
     async def sync_games_with_picks(
-        self, session: AsyncSession, encounter: Encounter, map_pick_ban: PickBanSession
+        self, session: AsyncSession, encounter: Encounter, map_pick_ban: Any
     ) -> list[EncounterGame]:
         """Make the live games mirror the map session's settled picks.
 
@@ -106,58 +267,18 @@ class EncounterGameService:
         """
         entries = list(await self.entry_repo.list_by_session(session, map_pick_ban.id))
         games = await self.list_games(session, encounter.id)
-        reports = await self.reports_by_game(session, games)
-        return await self._sync_games_with_snapshot(session, encounter, entries, games, reports)
-
-    @staticmethod
-    def _pick_game_changes(
-        entries: Sequence[PickBanEntry],
-        games: Sequence[EncounterGame],
-        reports: dict[int, list[EncounterMapReport]],
-    ) -> tuple[list[tuple[int, PickBanEntry, EncounterGame | None]], list[EncounterGame]]:
-        """The exact write plan, also used for the room's unlocked drift check."""
-        settled = engine.settled_in_order(entries)
-        by_position = {game.position: game for game in games}
-
-        changes = []
-        for position, entry in enumerate(settled, 1):
-            game = by_position.get(position)
-            if game is None or (
-                game.map_id != entry.item_id
-                and game.state in (EncounterGameState.PLANNED, EncounterGameState.AWAITING_RESULT)
-                and not reports.get(game.id)
-            ):
-                changes.append((position, entry, game))
-
-        stale = [
-            game
-            for game in games
-            if game.position > len(settled) and game.state != EncounterGameState.CONFIRMED and not reports.get(game.id)
-        ]
-        return changes, stale
-
-    async def _sync_games_with_snapshot(
-        self,
-        session: AsyncSession,
-        encounter: Encounter,
-        entries: Sequence[PickBanEntry],
-        games: list[EncounterGame],
-        reports: dict[int, list[EncounterMapReport]],
-    ) -> list[EncounterGame]:
-        """Caller-owned snapshot, taken under the write lock when mutating."""
-        changes, stale = self._pick_game_changes(entries, games, reports)
+        claims = await self.claims_by_game(session, games)
+        changes, stale = self._pick_game_changes(entries, games, claims)
         if not changes and not stale:
             return games
         for position, entry, game in changes:
             if game is None:
-                game = await self.game_repo.create(
+                game = await self.open_game(
                     session,
-                    EncounterGame(
-                        encounter_id=encounter.id,
-                        position=position,
-                        map_id=entry.item_id,
-                        state=EncounterGameState.AWAITING_RESULT,
-                    ),
+                    encounter,
+                    position=position,
+                    map_id=entry.item_id,
+                    state=EncounterGameState.AWAITING_RESULT,
                 )
                 games.append(game)
             else:
@@ -172,94 +293,90 @@ class EncounterGameService:
             key=lambda game: (game.position, game.id or 0),
         )
 
-    async def ensure_freeplay_game(self, session: AsyncSession, encounter: Encounter) -> EncounterGame | None:
-        """The position captains should be reporting right now, opening a new one
-        if the series has room. ``None`` once the series is decided."""
-        games = await self.list_games(session, encounter.id)
-        if self.series_settled(encounter, games):
-            return None
-        open_game = next((game for game in games if game.state in OPEN_STATES), None)
-        if open_game is not None:
-            return open_game
-        if len(games) >= encounter.best_of:
-            return None
-        return await self.game_repo.create(
-            session,
-            EncounterGame(
-                encounter_id=encounter.id,
-                position=max((game.position for game in games), default=0) + 1,
-                state=EncounterGameState.PLANNED,
-            ),
-        )
+    @staticmethod
+    def _pick_game_changes(
+        entries: Sequence[PickBanEntry],
+        games: Sequence[EncounterGame],
+        claims: Mapping[int, Sequence[Any]],
+    ) -> tuple[list[tuple[int, PickBanEntry, EncounterGame | None]], list[EncounterGame]]:
+        """The exact write plan, also used for the room's unlocked drift check."""
+        settled = engine.settled_in_order(entries)
+        by_position = {game.position: game for game in games}
 
-    # -- the score ---------------------------------------------------------
-    def live_score(self, games: Sequence[EncounterGame]) -> MapWins:
-        """Wins over confirmed positions. A draw is played but won by nobody."""
-        confirmed = [game for game in games if game.state == EncounterGameState.CONFIRMED]
-        return MapWins(
-            home_wins=sum(1 for game in confirmed if game.accepted_home_score > game.accepted_away_score),
-            away_wins=sum(1 for game in confirmed if game.accepted_away_score > game.accepted_home_score),
-            played=len(confirmed),
-        )
+        changes = []
+        for position, entry in enumerate(settled, 1):
+            game = by_position.get(position)
+            if game is None or (
+                game.map_id != entry.item_id
+                and game.state in (EncounterGameState.PLANNED, EncounterGameState.AWAITING_RESULT)
+                and not claims.get(game.id)
+            ):
+                changes.append((position, entry, game))
 
-    def series_settled(self, encounter: Encounter, games: Sequence[EncounterGame]) -> bool:
-        """Is the series over? The ``wins`` preset's end rule (plan §5), asked
-        through the one engine rather than spelled out again per caller."""
-        score = self.live_score(games)
-        return encounter_ended(
-            WINS_RULES,
-            best_of=encounter.best_of,
-            games=score.played,
-            max_wins=max(score.home_wins, score.away_wins),
-        )
-
-    def materialize_live_score(self, encounter: Encounter, games: Sequence[EncounterGame]) -> None:
-        """Mirror the live score onto the encounter — only while it is unofficial."""
-        if encounter.status == EncounterStatus.COMPLETED:
-            return
-        score = self.live_score(games)
-        encounter.home_score, encounter.away_score = score.home_wins, score.away_wins
+        stale = [
+            game
+            for game in games
+            if game.position > len(settled) and game.state != EncounterGameState.CONFIRMED and not claims.get(game.id)
+        ]
+        return changes, stale
 
     # -- commands ----------------------------------------------------------
-    async def accept_result(
+    async def record_result(
         self,
         session: AsyncSession,
         encounter: Encounter,
         game: EncounterGame,
         *,
-        home_score: int,
-        away_score: int,
+        results: Sequence[GameResultIn],
         source: EncounterGameResultSource,
         actor_user_id: int | None,
         reason: str | None = None,
-    ) -> EncounterGame:
-        """Write one position's accepted score. First write confirms it; a later
-        one is a correction — both bump ``result_version`` and journal a row."""
-        before = (game.accepted_home_score, game.accepted_away_score)
-        game.accepted_home_score = home_score
-        game.accepted_away_score = away_score
+    ) -> EncounterOutcome:
+        """Write one position's accepted numbers and re-score the encounter.
+
+        First write confirms the game; a later one is a correction. Both bump
+        ``game.result_version`` -- the number a claim's ``basis_version`` is
+        checked against -- and both end in the single result writer, so the
+        encounter's standing can never disagree with its games.
+        """
+        rules = await self.rules(session, encounter)
+        seats = await active_teams(session, encounter.id)
+        normalized = normalize_results(results, [seat.id for seat in seats], rules)
+        # Only an ENTERED place is stored: a rule that derives the place does so
+        # again on every read, so persisting today's ranking would freeze it
+        # under a formula the organizer may still change.
+        entered = any(item.placement is not None for item in results)
+
+        correcting = game.state == EncounterGameState.CONFIRMED
+        by_team = {row.encounter_team_id: row for row in await self.line_repo.list_for_games(session, [game.id])}
+        for line in normalized:
+            row = by_team.get(line.encounter_team_id)
+            if row is None:
+                row = EncounterGameTeam(
+                    game_id=game.id,
+                    encounter_id=encounter.id,
+                    encounter_team_id=line.encounter_team_id,
+                )
+                session.add(row)
+            row.score = line.score
+            row.placement = line.placement if entered else None
+            row.column_values = dict(line.values)
+
+        game.state = EncounterGameState.CONFIRMED
         game.result_source = source
         game.confirmed_at = datetime.now(UTC)
-        game.state = EncounterGameState.CONFIRMED
         game.result_version = (game.result_version or 0) + 1
-        record_game_result_transition(
+        await session.flush()
+
+        return await refresh_from_games(
             session,
             encounter,
-            game,
-            action=(
-                EncounterResultAuditAction.GAME_CONFIRM
-                if before == (None, None)
-                else EncounterResultAuditAction.GAME_CORRECT
-            ),
-            source=source.value,
+            action=(EncounterResultAuditAction.GAME_CORRECT if correcting else EncounterResultAuditAction.GAME_CONFIRM),
+            audit_source=source.value,
             actor_user_id=actor_user_id,
-            home_score_before=before[0],
-            away_score_before=before[1],
+            game=game,
             reason=reason,
         )
-        self.materialize_live_score(encounter, await self.list_games(session, encounter.id))
-        await session.flush()
-        return game
 
     async def select_map(
         self, session: AsyncSession, encounter: Encounter, game: EncounterGame, *, map_id: int
@@ -271,8 +388,7 @@ class EncounterGameService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=[ApiExc(code="result_locked", msg="This game's result is already settled")],
             )
-        reports = (await self.reports_by_game(session, [game])).get(game.id) or []
-        if reports and game.map_id != map_id:
+        if await self.claim_repo.list_for_game(session, game.id) and game.map_id != map_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=[ApiExc(code="map_locked", msg="A captain already reported this map; it cannot be changed")],
@@ -292,42 +408,42 @@ class EncounterGameService:
         actor_user_id: int | None,
         reason: str,
     ) -> None:
-        """Retire positions as history. A cancelled confirmed game loses its wins
-        from the live score, so the journal has to say who dropped them."""
-        _cancel_games(session, encounter, games, actor_user_id=actor_user_id, reason=reason)
-        self.materialize_live_score(encounter, await self.list_games(session, encounter.id))
+        """Retire positions as history and re-score what is left.
+
+        A cancelled confirmed game takes its points out of the standing, so the
+        encounter is re-scored here rather than by whoever cancelled.
+        """
+        if not _cancel_games(games):
+            return
         await session.flush()
+        await refresh_from_games(
+            session,
+            encounter,
+            action=EncounterResultAuditAction.GAME_CANCEL,
+            audit_source="admin" if actor_user_id is not None else "system",
+            actor_user_id=actor_user_id,
+            reason=reason,
+        )
 
     # -- serialization -----------------------------------------------------
-    def serialize(self, game: EncounterGame, reports: Sequence[EncounterMapReport]) -> dict[str, Any]:
+    def serialize(self, game: EncounterGame, lines: Sequence[EncounterGameTeam]) -> dict[str, Any]:
         return {
             "id": game.id,
             "position": game.position,
             "map_id": game.map_id,
             "state": game.state.value if game.state is not None else None,
-            "accepted_home_score": game.accepted_home_score,
-            "accepted_away_score": game.accepted_away_score,
             "result_source": game.result_source.value if game.result_source is not None else None,
             "result_version": game.result_version,
             "confirmed_at": game.confirmed_at.isoformat() if game.confirmed_at is not None else None,
-            "reports": [
-                {"side": report.side, "home_score": report.home_score, "away_score": report.away_score}
-                for report in sorted(reports, key=lambda report: report.side != "home")
+            "results": [
+                {
+                    "encounter_team_id": row.encounter_team_id,
+                    "score": row.score,
+                    "placement": row.placement,
+                    "column_values": dict(row.column_values or {}),
+                }
+                for row in sorted(lines, key=lambda row: row.encounter_team_id)
             ],
-        }
-
-    def serialize_series(self, encounter: Encounter, games: Sequence[EncounterGame]) -> dict[str, Any]:
-        score = self.live_score(games)
-        return {
-            "home_wins": score.home_wins,
-            "away_wins": score.away_wins,
-            "played": score.played,
-            "complete": self.series_settled(encounter, games),
-            "official": (
-                {"home_score": encounter.home_score, "away_score": encounter.away_score}
-                if encounter.status == EncounterStatus.COMPLETED
-                else None
-            ),
         }
 
 

@@ -26,61 +26,54 @@ from shared.core.enums import (
 )
 
 __all__ = (
-    "CaptainReportRead",
-    "EncounterMapCodeRead",
+    "EncounterParticipationRef",
     "EncounterReportsQueryParams",
     "EncounterReportsRow",
     "EncounterReportsSearchParams",
     "EncounterReportsStats",
     "EncounterTeamRef",
     "LastResolutionRead",
-    "valid_series_scores",
+    "TeamReportRead",
+    "TeamReportResultRead",
 )
 
 
-def valid_series_scores(best_of: int) -> set[tuple[int, int]]:
-    """Every score a best-of-N series can legitimately end on.
+class TeamReportResultRead(BaseModel):
+    """One participation's line inside one report."""
 
-    The winner reaches ``floor(N/2) + 1`` maps and the loser takes at most the
-    rest; an even N may also be drawn down the middle (BO2 -> 1:1). Used to flag
-    reports, never to reject them: reports predate per-round best-of, so a
-    mismatch is information, not an error.
-    """
-    if best_of < 1:
-        return set()
-    wins_needed = best_of // 2 + 1
-    losing_scores = range(best_of - wins_needed + 1)
-    scores = {(wins_needed, loser) for loser in losing_scores}
-    scores |= {(loser, wins_needed) for loser in losing_scores}
-    if best_of % 2 == 0:
-        scores.add((best_of // 2, best_of // 2))
-    return scores
+    encounter_team_id: int
+    score: float
+    placement: int | None = None
+    wins: int | None = None
 
 
-class EncounterMapCodeRead(BaseModel):
-    id: int
-    map_index: int
-    map_id: int | None
-    code: str
-
-
-class CaptainReportRead(BaseModel):
-    """One captain's independent report of an encounter's result."""
+class TeamReportRead(BaseModel):
+    """One participation's independent report of an encounter's result."""
 
     id: int
     encounter_id: int
-    team_id: int
-    side: str | None
+    encounter_team_id: int
     reporter_user_id: int | None
     reporter_name: str | None = None
-    home_score: int
-    away_score: int
+    #: Draws included; NULL only on reports carried over by the migration.
+    games_played: int | None
+    #: The ``encounter.result_version`` the report was filed against.
+    basis_version: int
     closeness: int | None
     comment: str | None = None
     custom_fields: dict[str, str] = Field(default_factory=dict)
-    map_codes: list[EncounterMapCodeRead]
+    results: list[TeamReportResultRead] = Field(default_factory=list)
     created_at: str | None
     updated_at: str | None
+
+
+class EncounterParticipationRef(BaseModel):
+    """One live seat of an encounter, as a list row names it."""
+
+    encounter_team_id: int
+    slot: int
+    team_id: int | None
+    name: str
 
 
 class EncounterTeamRef(BaseModel):
@@ -98,10 +91,11 @@ class LastResolutionRead(BaseModel):
 
 
 class EncounterReportsRow(BaseModel):
-    """One encounter plus the pair of reports filed against it.
+    """One encounter plus every report filed against it.
 
-    The row, not the report, is the unit: a dispute spans two reports and the
-    action that resolves it is per-encounter.
+    The row, not the report, is the unit: a dispute spans the reports of all of
+    an encounter's participations and the action that resolves it is
+    per-encounter.
     """
 
     id: int
@@ -112,21 +106,19 @@ class EncounterReportsRow(BaseModel):
     #: Lets the resolve dialog refuse a draw before sending it: an elimination
     #: bracket needs a winner and the finalizer rejects one with a 400.
     stage_type: StageType | None
-    round: int
+    #: The bracket round, or NULL for an encounter with no bracket position.
+    round: int | None
     best_of: int
     status: EncounterStatus
     result_status: EncounterResultStatus
     scheduled_at: datetime | None
-    home_team: EncounterTeamRef | None
-    away_team: EncounterTeamRef | None
-    home_report: CaptainReportRead | None
-    away_report: CaptainReportRead | None
+    participations: list[EncounterParticipationRef] = Field(default_factory=list)
+    reports: list[TeamReportRead] = Field(default_factory=list)
     reported_count: int
-    #: None until both sides have reported — "they disagree" and "only one has
-    #: answered" are different states and the UI must not conflate them.
-    scores_match: bool | None
-    #: False when the reported score is impossible for this encounter's best_of.
-    #: Advisory: reports predate per-round best-of.
+    #: None until every participation has reported — "they disagree" and "only
+    #: some have answered" are different states and the UI must not conflate them.
+    standings_match: bool | None
+    #: False when the reported standing is impossible for this encounter's rule.
     series_score_valid: bool
     last_resolution: LastResolutionRead | None
 

@@ -1,0 +1,607 @@
+"""The result flows over the encounter layer (D14, D50, D54, D57, D58, D59).
+
+A claim and a report are both "what a participation says happened", and both
+are reconciled by unanimity among the LIVE seats -- a duel's two and a lobby's
+N alike. These cases run against the real Postgres because the rules they pin
+live in constraints as much as in Python: one journal row per ``result_version``
+(``uq_result_audit_version``), one active participation per slot, and the
+partial unique index that frees a cancelled position.
+"""
+
+from __future__ import annotations
+
+import itertools
+import os
+
+import sqlalchemy as sa
+
+from shared.core import enums
+from shared.core.errors import BaseAPIException
+from shared.models.encounter import Encounter, EncounterGame, EncounterTeam, ScoringRule
+from shared.models.identity.user import User
+from shared.models.tenancy.workspace import WorkspaceMember
+from shared.models.tournament.encounter_link import EncounterLink
+from shared.models.tournament.team import Team
+from shared.services.bracket import advancement
+from shared.services.encounter import participants
+from shared.tests.encounter_writer_case import EncounterWriterCase
+from src.services.encounter.captain import ReportResultIn, captain_service
+from src.services.encounter.ffa import ffa_encounter_service
+from src.services.encounter.game_correction import game_correction_service
+from src.services.encounter.games import GameResultIn, encounter_game_service
+from src.services.encounter.map_report import ClaimResultIn, map_report_service
+
+#: ``players.user.name`` is globally unique, so the extra players a second
+#: encounter needs are tagged per test.
+_TAG = itertools.count()
+
+
+def _codes(exc: BaseAPIException) -> list[str]:
+    """The machine-readable codes of an ``ApiExc`` detail list."""
+    detail = exc.detail
+    if isinstance(detail, str):
+        return [detail]
+    return [getattr(item, "code", None) or item.get("code") for item in detail]
+
+
+class ResultFlowCase(EncounterWriterCase):
+    """The writer case with its seats already filled."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            for slot in range(1, self.slot_count + 1):
+                await participants.place_team(
+                    s,
+                    encounter,
+                    slot=slot,
+                    team_id=self.ids[f"team{slot - 1}"],
+                    name=f"T{slot - 1}",
+                    seed=slot,
+                    members=[
+                        participants.MemberSnapshot(
+                            workspace_member_id=self.ids[f"m{slot - 1}"],
+                            display_name=f"m{slot - 1}",
+                            rank=2500,
+                            is_substitute=False,
+                            roles=(("player_role", "tank"),),
+                        )
+                    ],
+                )
+            await s.commit()
+
+    async def seats(self, session) -> list[EncounterTeam]:
+        return await participants.active_teams(session, self.ids["e"])
+
+    async def open_game(self, session, position: int) -> EncounterGame:
+        encounter = await self.encounter(session)
+        game = await encounter_game_service.open_game(session, encounter, position=position)
+        await session.commit()
+        return game
+
+    @staticmethod
+    def win(winner_id: int, loser_id: int) -> list[GameResultIn]:
+        """One game of the ``wins`` preset: a map score, no entered place."""
+        return [
+            GameResultIn(encounter_team_id=winner_id, score=3),
+            GameResultIn(encounter_team_id=loser_id, score=1),
+        ]
+
+    @staticmethod
+    def claim(winner_id: int, loser_id: int, winner_score: int = 3) -> list[ClaimResultIn]:
+        return [
+            ClaimResultIn(encounter_team_id=winner_id, score=winner_score),
+            ClaimResultIn(encounter_team_id=loser_id, score=1),
+        ]
+
+    async def play(self, session, position: int, winner_id: int, loser_id: int) -> EncounterGame:
+        """Confirm one position as an admin, the short way the setup needs."""
+        encounter = await self.encounter(session)
+        game = await encounter_game_service.open_game(session, encounter, position=position)
+        await encounter_game_service.record_result(
+            session,
+            encounter,
+            game,
+            results=self.win(winner_id, loser_id),
+            source=enums.EncounterGameResultSource.ADMIN,
+            actor_user_id=None,
+        )
+        await session.commit()
+        return game
+
+
+class GameClaimTests(ResultFlowCase):
+    """``submit_game_claim``: unanimity among the game's live participations."""
+
+    async def test_a_game_confirms_when_every_participation_claims_the_same(self) -> None:
+        async with self.Session() as s:
+            game = await self.open_game(s, 1)
+            first, second = await self.seats(s)
+
+        async with self.Session() as s:
+            answer = await map_report_service.submit_game_claim(
+                s,
+                game.id,
+                claimant_team_id=first.id,
+                reporter_user_id=self.users[0],
+                results=self.claim(first.id, second.id),
+                basis_version=0,
+            )
+        self.assertEqual({"disputed": False, "resolved": False}, {k: answer[k] for k in ("disputed", "resolved")})
+
+        async with self.Session() as s:
+            answer = await map_report_service.submit_game_claim(
+                s,
+                game.id,
+                claimant_team_id=second.id,
+                reporter_user_id=self.users[1],
+                results=self.claim(first.id, second.id),
+                basis_version=0,
+            )
+        self.assertTrue(answer["resolved"])
+
+        async with self.Session() as s:
+            stored = await s.get_one(EncounterGame, game.id)
+            self.assertEqual(enums.EncounterGameState.CONFIRMED, stored.state)
+            self.assertEqual(enums.EncounterGameResultSource.CAPTAIN_AGREEMENT, stored.result_source)
+            self.assertEqual(1, stored.result_version)
+            standing = {seat.id: seat.score for seat in await self.seats(s)}
+            self.assertEqual({first.id: 1.0, second.id: 0.0}, standing)
+            # One confirmed game of a Bo3 ends nothing.
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.NONE, encounter.result_status)
+
+    async def test_claims_that_disagree_dispute_the_game(self) -> None:
+        async with self.Session() as s:
+            game = await self.open_game(s, 1)
+            first, second = await self.seats(s)
+
+        async with self.Session() as s:
+            await map_report_service.submit_game_claim(
+                s,
+                game.id,
+                claimant_team_id=first.id,
+                reporter_user_id=self.users[0],
+                results=self.claim(first.id, second.id),
+                basis_version=0,
+            )
+        async with self.Session() as s:
+            answer = await map_report_service.submit_game_claim(
+                s,
+                game.id,
+                claimant_team_id=second.id,
+                reporter_user_id=self.users[1],
+                results=self.claim(second.id, first.id),
+                basis_version=0,
+            )
+        self.assertEqual({"disputed": True, "resolved": False}, {k: answer[k] for k in ("disputed", "resolved")})
+
+        async with self.Session() as s:
+            stored = await s.get_one(EncounterGame, game.id)
+            self.assertEqual(enums.EncounterGameState.DISPUTED, stored.state)
+            self.assertIsNone(stored.result_source)
+            self.assertEqual(0, stored.result_version)
+            self.assertEqual({0.0}, {seat.score for seat in await self.seats(s)})
+
+    async def test_a_claim_against_a_superseded_result_is_stale(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            game = await self.play(s, 1, first.id, second.id)
+
+        with self.assertRaises(BaseAPIException) as caught:
+            async with self.Session() as s:
+                await map_report_service.submit_game_claim(
+                    s,
+                    game.id,
+                    claimant_team_id=first.id,
+                    reporter_user_id=self.users[0],
+                    results=self.claim(first.id, second.id),
+                    basis_version=0,
+                )
+        # A confirmed game is locked before its version is even compared: the
+        # claim is answered with what it has to do about it, not with "reload".
+        self.assertEqual(409, caught.exception.status_code)
+        self.assertEqual(["result_locked"], _codes(caught.exception))
+
+    async def test_a_claim_on_a_game_that_moved_on_is_refused_as_stale(self) -> None:
+        async with self.Session() as s:
+            game = await self.open_game(s, 1)
+            first, second = await self.seats(s)
+
+        with self.assertRaises(BaseAPIException) as caught:
+            async with self.Session() as s:
+                await map_report_service.submit_game_claim(
+                    s,
+                    game.id,
+                    claimant_team_id=first.id,
+                    reporter_user_id=self.users[0],
+                    results=self.claim(first.id, second.id),
+                    basis_version=7,
+                )
+        self.assertEqual(409, caught.exception.status_code)
+        self.assertEqual(["stale_state"], _codes(caught.exception))
+
+
+class SeriesReportTests(ResultFlowCase):
+    """``submit_team_report``: the whole encounter, checked by the rule."""
+
+    async def test_a_bo3_cannot_be_reported_three_nil(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+
+        with self.assertRaises(BaseAPIException) as caught:
+            async with self.Session() as s:
+                await captain_service.submit_team_report(
+                    s,
+                    self.ids["e"],
+                    encounter_team_id=first.id,
+                    reporter_user_id=self.users[0],
+                    games_played=3,
+                    results=[
+                        ReportResultIn(encounter_team_id=first.id, score=3.0, placement=1, wins=3),
+                        ReportResultIn(encounter_team_id=second.id, score=0.0, placement=2, wins=0),
+                    ],
+                    basis_version=0,
+                )
+        self.assertEqual(400, caught.exception.status_code)
+        # The series would have been over after the second map, so a third was
+        # never played: the claim is unreachable, not merely wrong.
+        self.assertIn("series_claim_unreachable", _codes(caught.exception))
+
+        async with self.Session() as s:
+            reports = await captain_service.get_encounter_reports(s, self.ids["e"])
+            self.assertEqual([], reports)
+
+    async def test_unanimous_reports_confirm_the_series_and_cancel_the_rest(self) -> None:
+        # Only the first map was entered as a game; the rest of the series is
+        # what the two reports agree on, which is the whole point of D54.
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            await self.play(s, 1, first.id, second.id)
+            await self.open_game(s, 2)
+            third = await self.open_game(s, 3)
+
+        standing = [
+            ReportResultIn(encounter_team_id=first.id, score=2.0, placement=1, wins=2),
+            ReportResultIn(encounter_team_id=second.id, score=1.0, placement=2, wins=1),
+        ]
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            version = encounter.result_version
+            await captain_service.submit_team_report(
+                s,
+                self.ids["e"],
+                encounter_team_id=first.id,
+                reporter_user_id=self.users[0],
+                games_played=3,
+                results=standing,
+                basis_version=version,
+                closeness=8,
+            )
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.PENDING_CONFIRMATION, encounter.result_status)
+            await captain_service.submit_team_report(
+                s,
+                self.ids["e"],
+                encounter_team_id=second.id,
+                reporter_user_id=self.users[1],
+                games_played=3,
+                results=standing,
+                basis_version=encounter.result_version,
+                closeness=6,
+            )
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.CONFIRMED, encounter.result_status)
+            self.assertEqual(enums.EncounterResultSource.SERIES_CLAIM.value, encounter.result_source)
+            self.assertEqual(enums.EncounterStatus.COMPLETED, encounter.status)
+            self.assertAlmostEqual(0.7, encounter.closeness)
+            places = {seat.id: (seat.score, seat.placement) for seat in await self.seats(s)}
+            self.assertEqual({first.id: (2.0, 1), second.id: (1.0, 2)}, places)
+            # The position nobody played is gone, not left open for a game the
+            # report says never happened.
+            cancelled = await s.get_one(EncounterGame, third.id)
+            self.assertEqual(enums.EncounterGameState.CANCELLED, cancelled.state)
+
+    async def test_reports_that_disagree_dispute_the_encounter(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            await self.play(s, 1, first.id, second.id)
+            await self.open_game(s, 2)
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            await captain_service.submit_team_report(
+                s,
+                self.ids["e"],
+                encounter_team_id=first.id,
+                reporter_user_id=self.users[0],
+                games_played=3,
+                results=[
+                    ReportResultIn(encounter_team_id=first.id, score=2.0, placement=1, wins=2),
+                    ReportResultIn(encounter_team_id=second.id, score=1.0, placement=2, wins=1),
+                ],
+                closeness=9,
+                basis_version=encounter.result_version,
+            )
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            await captain_service.submit_team_report(
+                s,
+                self.ids["e"],
+                encounter_team_id=second.id,
+                reporter_user_id=self.users[1],
+                games_played=3,
+                results=[
+                    ReportResultIn(encounter_team_id=first.id, score=1.0, placement=2, wins=1),
+                    ReportResultIn(encounter_team_id=second.id, score=2.0, placement=1, wins=2),
+                ],
+                closeness=4,
+                basis_version=encounter.result_version,
+            )
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.DISPUTED, encounter.result_status)
+            self.assertIsNone(encounter.result_source)
+            self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
+            audit = await captain_service.get_result_audit(s, self.ids["e"])
+            self.assertEqual(enums.EncounterResultAuditAction.AUTO_DISPUTE, audit[0]["action"])
+
+    async def test_a_game_claim_after_the_series_is_confirmed_is_refused(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            await self.play(s, 1, first.id, second.id)
+            await self.open_game(s, 2)
+            await self.open_game(s, 3)
+
+        standing = [
+            ReportResultIn(encounter_team_id=first.id, score=2.0, placement=1, wins=2),
+            ReportResultIn(encounter_team_id=second.id, score=1.0, placement=2, wins=1),
+        ]
+        for index, seat in enumerate((first, second)):
+            async with self.Session() as s:
+                encounter = await self.encounter(s)
+                await captain_service.submit_team_report(
+                    s,
+                    self.ids["e"],
+                    encounter_team_id=seat.id,
+                    reporter_user_id=self.users[index],
+                    games_played=3,
+                    results=standing,
+                    closeness=5,
+                    basis_version=encounter.result_version,
+                )
+
+        # The confirmed series cancelled the unplayed positions, so the claim
+        # lands on a position the organizer re-opened afterwards.
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            reopened = await encounter_game_service.open_game(s, encounter, position=3)
+            await s.commit()
+
+        with self.assertRaises(BaseAPIException) as caught:
+            async with self.Session() as s:
+                await map_report_service.submit_game_claim(
+                    s,
+                    reopened.id,
+                    claimant_team_id=second.id,
+                    reporter_user_id=self.users[1],
+                    results=self.claim(second.id, first.id),
+                    basis_version=0,
+                )
+        self.assertEqual(409, caught.exception.status_code)
+        self.assertEqual(["result_locked"], _codes(caught.exception))
+
+
+class AdminResultTests(ResultFlowCase):
+    """``set_encounter_result``: source ``admin``, reason required."""
+
+    async def test_an_admin_result_needs_a_reason(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+
+        with self.assertRaises(BaseAPIException) as caught:
+            async with self.Session() as s:
+                await captain_service.set_encounter_result(
+                    s,
+                    self.ids["e"],
+                    results=[
+                        ReportResultIn(encounter_team_id=first.id, score=2.0, placement=1),
+                        ReportResultIn(encounter_team_id=second.id, score=1.0, placement=2),
+                    ],
+                    reason="  ",
+                    actor_user_id=self.users[0],
+                )
+        self.assertEqual(422, caught.exception.status_code)
+        self.assertEqual(["reason_required"], _codes(caught.exception))
+
+    async def test_an_admin_result_stands_as_source_admin(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+
+        async with self.Session() as s:
+            await captain_service.set_encounter_result(
+                s,
+                self.ids["e"],
+                results=[
+                    ReportResultIn(encounter_team_id=first.id, score=2.0, placement=1),
+                    ReportResultIn(encounter_team_id=second.id, score=1.0, placement=2),
+                ],
+                reason="forfeit on the second map",
+                actor_user_id=self.users[0],
+            )
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultSource.ADMIN.value, encounter.result_source)
+            self.assertEqual(enums.EncounterStatus.COMPLETED, encounter.status)
+            audit = await captain_service.get_result_audit(s, self.ids["e"])
+            self.assertEqual("admin", audit[0]["source"])
+            self.assertEqual("forfeit on the second map", audit[0]["reason"])
+
+
+class LobbyResultTests(ResultFlowCase):
+    """``record_lobby_game``: an N-seat encounter scored by points."""
+
+    slot_count = 3
+    best_of = 2
+    preset = "points"
+    game_formula = "place_pts"
+    end_formula = "games >= best_of"
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        async with self.Session() as s:
+            rule = await s.get_one(ScoringRule, self.ids["rule"])
+            rule.placement_points = [10.0, 6.0, 3.0]
+            await s.commit()
+
+    async def test_a_lobby_completes_once_it_has_played_its_card(self) -> None:
+        seats = []
+        async with self.Session() as s:
+            seats = await self.seats(s)
+        order = [seat.id for seat in seats]
+
+        async with self.Session() as s:
+            await ffa_encounter_service.record_lobby_game(
+                s,
+                self.ids["e"],
+                1,
+                [
+                    GameResultIn(encounter_team_id=order[0], placement=1),
+                    GameResultIn(encounter_team_id=order[1], placement=2),
+                    GameResultIn(encounter_team_id=order[2], placement=3),
+                ],
+                actor_user_id=self.users[0],
+                reason=None,
+            )
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
+            self.assertEqual(enums.EncounterResultStatus.NONE, encounter.result_status)
+
+        async with self.Session() as s:
+            await ffa_encounter_service.record_lobby_game(
+                s,
+                self.ids["e"],
+                2,
+                [
+                    GameResultIn(encounter_team_id=order[2], placement=1),
+                    GameResultIn(encounter_team_id=order[1], placement=2),
+                    GameResultIn(encounter_team_id=order[0], placement=3),
+                ],
+                actor_user_id=self.users[0],
+                reason=None,
+            )
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterStatus.COMPLETED, encounter.status)
+            self.assertEqual(enums.EncounterResultSource.GAMES.value, encounter.result_source)
+            totals = {seat.id: seat.score for seat in await self.seats(s)}
+            self.assertEqual({order[0]: 13.0, order[1]: 12.0, order[2]: 13.0}, totals)
+            # The placement rows are what a lobby's table is drawn from.
+            rows = (
+                await s.execute(
+                    sa.text(
+                        "SELECT encounter_team_id, placement, column_values FROM encounter.game_team "
+                        "WHERE encounter_id = :e ORDER BY game_id, encounter_team_id"
+                    ).bindparams(e=self.ids["e"])
+                )
+            ).all()
+            self.assertEqual(6, len(rows))
+            self.assertEqual({1, 2, 3}, {row[1] for row in rows})
+            self.assertEqual([{}] * 6, [row[2] for row in rows])
+
+
+class CascadeTests(ResultFlowCase):
+    """An admin correction unwinds the bracket below it (Task 5)."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        tag = f"flow-{os.getpid()}-{next(_TAG)}"
+        async with self.Session() as s:
+            user = User(name=tag)
+            s.add(user)
+            await s.flush()
+            self.users.append(user.id)
+            member = WorkspaceMember(workspace_id=self.ids["ws"], player_id=user.id)
+            bye = Team(tournament_id=self.ids["t"], name="T9", balancer_name=f"{tag}-T9")
+            s.add_all([member, bye])
+            await s.flush()
+            final = Encounter(
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                tournament_id=self.ids["t"],
+                scoring_rule_id=self.ids["rule"],
+                name="Final",
+                slot_count=2,
+                best_of=self.best_of,
+                status=enums.EncounterStatus.OPEN,
+            )
+            s.add(final)
+            await s.flush()
+            await participants.place_team(s, final, slot=2, team_id=bye.id, name="T9", seed=3, members=[])
+            s.add(
+                EncounterLink(
+                    tournament_id=self.ids["t"],
+                    source_encounter_id=self.ids["e"],
+                    source_position=1,
+                    target_encounter_id=final.id,
+                    target_slot=1,
+                )
+            )
+            await s.commit()
+            self.ids["final"] = final.id
+
+    async def test_an_admin_correction_reseats_the_next_round(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            await self.play(s, 1, first.id, second.id)
+            game = await self.play(s, 2, first.id, second.id)
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.CONFIRMED, encounter.result_status)
+            await advancement.advance_after_result(s, encounter)
+            await s.commit()
+
+        async with self.Session() as s:
+            seated = await participants.active_teams(s, self.ids["final"])
+            self.assertEqual([("T0", 1), ("T9", 2)], [(seat.name, seat.slot) for seat in seated])
+
+        # The organizer corrects the SECOND map: the other team won it, so the
+        # series is 1:1 and nobody has advanced any more.
+        async with self.Session() as s:
+            await game_correction_service.correct_game(
+                s,
+                self.ids["e"],
+                game_id=game.id,
+                results=self.win(second.id, first.id),
+                actor_user_id=self.users[0],
+                reason="the second map was scored backwards",
+            )
+
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            self.assertEqual(enums.EncounterResultStatus.NONE, encounter.result_status)
+            self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
+            standing = {seat.id: seat.score for seat in await self.seats(s)}
+            self.assertEqual({first.id: 1.0, second.id: 1.0}, standing)
+            # The downstream seat the old first place held is retired, and the
+            # slot reads as open again.
+            seated = await participants.active_teams(s, self.ids["final"])
+            self.assertEqual([("T9", 2)], [(seat.name, seat.slot) for seat in seated])
+            retired = (
+                await s.execute(
+                    sa.select(EncounterTeam.name, EncounterTeam.active).where(
+                        EncounterTeam.encounter_id == self.ids["final"],
+                        EncounterTeam.slot == 1,
+                    )
+                )
+            ).all()
+            self.assertEqual([("T0", False)], list(retired))
+            audit = await captain_service.get_result_audit(s, self.ids["e"])
+            self.assertIn("the second map was scored backwards", [row["reason"] for row in audit])

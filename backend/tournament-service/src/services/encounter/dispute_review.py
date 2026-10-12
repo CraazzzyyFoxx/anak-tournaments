@@ -14,12 +14,12 @@ which permission marks an organizer), not part of the inbox primitive.
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.encounter_game import EncounterGame
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame
 from shared.repository.notification_recipients import NotificationRecipientRepository
 from shared.services.notifications import STAFF_PERMISSION, notify
 
@@ -33,8 +33,7 @@ async def notify_dispute_review(
     encounter: Encounter,
     *,
     workspace_id: int | None,
-    home_team_name: str,
-    away_team_name: str,
+    team_names: Sequence[str],
     game: EncounterGame | None = None,
     actor_auth_user_id: int | None = None,
     skip_auth_user_ids: Collection[int] = (),
@@ -79,7 +78,11 @@ async def notify_dispute_review(
                 # 0 is the series-level sentinel the inbox's ``plural`` selects
                 # on; an absent key is not an ICU argument.
                 "position": 0 if game is None else game.position,
-                "home_team_name": home_team_name,
-                "away_team_name": away_team_name,
+                # The two legacy keys app-service's renderer still interpolates
+                # (``notification_render.py``); a lobby's extra participations
+                # are in ``team_names`` until the locale strings are cut over.
+                "team_names": list(team_names),
+                "home_team_name": team_names[0] if len(team_names) > 0 else "",
+                "away_team_name": team_names[1] if len(team_names) > 1 else "",
             },
         )

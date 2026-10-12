@@ -30,7 +30,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import (
-    EncounterFormat,
     EncounterGameState,
     EncounterResultStatus,
     EncounterStatus,
@@ -85,7 +84,7 @@ class PregameRoomsService:
             select(Encounter).where(
                 Encounter.tournament_id == tournament_id,
                 # A lobby has no two sides to pick or ban between.
-                Encounter.format != EncounterFormat.FFA.value,
+                Encounter.slot_count == 2,
             ),
         )
         if not encounters:

@@ -39,14 +39,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from shared.core.enums import (
-    EncounterFormat,
     EncounterStatus,
     MapVetoSessionStatus,
     TournamentStatus,
 )
 from shared.domain import pick_ban_rules as pbr
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.pick_ban import PickBanSession, PickBanSubmission
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.pick_ban import PickBanSession, PickBanSubmission
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.tournament import Tournament
 from src.core import db
@@ -177,8 +176,8 @@ async def _encounters_of(session: AsyncSession, kind: str, scope_id: int) -> lis
     column = Encounter.tournament_id if kind == "tournament" else Encounter.stage_id
     result = await session.execute(
         select(Encounter.id).where(
+            Encounter.slot_count == 2,
             column == scope_id,
-            Encounter.format != EncounterFormat.FFA.value,
             Encounter.home_team_id.isnot(None),
             Encounter.away_team_id.isnot(None),
             Encounter.status != EncounterStatus.COMPLETED,
@@ -275,7 +274,7 @@ async def reconcile_stalled_rooms() -> None:
             .join(Tournament, Tournament.id == Encounter.tournament_id)
             .outerjoin(Stage, Stage.id == Encounter.stage_id)
             .where(
-                Encounter.format != EncounterFormat.FFA.value,
+                Encounter.slot_count == 2,
                 Encounter.home_team_id.isnot(None),
                 Encounter.away_team_id.isnot(None),
                 Encounter.status != EncounterStatus.COMPLETED,

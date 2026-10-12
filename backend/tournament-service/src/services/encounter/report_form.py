@@ -27,7 +27,7 @@ from src.schemas.encounter_report_form import (
     ReportCustomFieldDefinition,
 )
 
-# One per-map code: (map_index 1-based, replay/match code string).
+# One per-position replay/match code: (position 1-based, code string).
 MapCodeInput = tuple[int, str]
 
 # Series length assumed when an encounter has no ``best_of`` — mirrors the
@@ -95,8 +95,7 @@ def _config(form: MatchReportFormRead, name: str) -> ReportBuiltInFieldConfig:
 def validate_submission(
     form: MatchReportFormRead,
     *,
-    home_score: int,
-    away_score: int,
+    games_played: int,
     closeness: int | None,
     map_codes: Sequence[MapCodeInput],
     comment: str | None,
@@ -126,14 +125,14 @@ def validate_submission(
 
     map_codes_config = _config(form, "map_codes")
     if map_codes_config.enabled:
-        sanitized.map_codes = [(map_index, clean) for map_index, code in map_codes if (clean := (code or "").strip())]
+        sanitized.map_codes = [(position, clean) for position, code in map_codes if (clean := (code or "").strip())]
         if map_codes_config.required:
-            # One code per map actually PLAYED, not per best-of slot: a 2-0 Bo3
-            # needs two codes and a 0-0 forfeit none. Clamped to the slots the
-            # client actually offers (``series_map_indices``) — demanding a code
-            # for a map the series does not have would be an unfixable 422.
-            played = max(0, home_score + away_score)
-            required = sorted(set(available_map_indices))[:played]
+            # One code per position actually PLAYED, not per best-of slot: a
+            # two-game Bo3 needs two codes and a forfeit none. Clamped to the
+            # slots the client actually offers (``series_map_indices``) --
+            # demanding a code for a position the encounter does not have would
+            # be an unfixable 422.
+            required = sorted(set(available_map_indices))[: max(0, games_played)]
             supplied = {map_index for map_index, _code in sanitized.map_codes}
             if any(index not in supplied for index in required):
                 raise _unprocessable("a match code is required for every played map")

@@ -220,9 +220,10 @@ def _apply_encounter_filters(
     viewer_auth_user_id: int | None = None,
     joined_tournament: bool = False,
 ) -> sa.Select:
-    # Every list, search and overview here renders a SERIES (two sides, a score).
-    # A lobby has neither, so it is out unless the caller asks for it by format.
-    query = query.where(models.Encounter.format == (params.format or enums.EncounterFormat.DUEL))
+    # Every list, search and overview here renders a DUEL (two seats, a score).
+    # A lobby has its own table read, so it is out unless the caller asks for a
+    # wider card by slot count.
+    query = query.where(models.Encounter.slot_count == (params.slot_count or 2))
 
     if params.query:
         query = params.apply_search(query, models.Encounter)

@@ -1,309 +1,220 @@
-"""Per-captain encounter result reporting.
+"""Per-participation reporting of the WHOLE encounter, and the admin overrides
+that settle it (D50, D54, D59).
 
-Each captain submits their own report (series score + closeness rating + optional
-per-map codes) independently — there is no blocking submit/confirm handshake. The
-encounter result is DERIVED from the reports:
+Each participation files its own report -- the final standing, how many games it
+took, a closeness rating, an optional comment and the organizer's custom fields
+-- independently; there is no submit/confirm handshake. The encounter's result
+is DERIVED from them:
 
-- < 2 reports        -> ``pending_confirmation`` (waiting on the other captain).
-- 2 reports, scores match -> ``confirmed`` (via ``finalize_encounter_score``,
-  which advances the bracket); ``Encounter.closeness`` = average of the two
-  ratings / 10.
-- 2 reports, scores differ -> ``disputed`` (admin resolves).
+- not every live participation has reported -> ``pending_confirmation``;
+- all reported, standings agree -> ``confirmed`` with source ``series_claim``,
+  and the positions nobody played are cancelled (D54, D59);
+- all reported, standings differ -> ``disputed``, for an organizer to settle.
 
-A captain may re-submit (upsert) their report until the encounter is confirmed;
-afterwards only an admin can change the result (``set_encounter_result`` /
-admin encounter edit).
+A report is checked against the games already on record by
+:func:`shared.domain.encounter_scoring.series_claim_errors`: it must name the
+encounter's participations, claim at least the confirmed games and at most the
+card, end the encounter under the rule's own end formula without having ended
+earlier (which is what makes a 3:0 in a Bo3 impossible), and agree with the
+computed totals when every claimed game is confirmed.
+
+A participation may re-file until the encounter's result is confirmed;
+afterwards only an organizer moves it, through :meth:`set_encounter_result` or
+:meth:`reopen_encounter_result`.
 """
 
-from collections.abc import Sequence
-from datetime import UTC, datetime
+from __future__ import annotations
 
-from sqlalchemy import select
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.enums import (
+    EncounterGameState,
     EncounterResultAuditAction,
+    EncounterResultSource,
     EncounterResultStatus,
     EncounterStatus,
     MapPoolEntryStatus,
     PickBanKind,
-    StageType,
 )
+from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.encounter_scoring import WINS_RULES, SeriesClaim, series_claim_errors
-from shared.messaging.config import (
-    TOURNAMENT_EVENTS_EXCHANGE,
-)
-from shared.messaging.outbox import enqueue_outbox_event
-from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
+from shared.domain.encounter_scoring import SeriesClaim, series_claim_errors
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
+from shared.models.encounter.report import EncounterTeamReport, EncounterTeamReportResult
+from shared.models.encounter.team import EncounterTeam
 from shared.repository import (
-    EncounterCaptainReportRepository,
-    EncounterMapCodeRepository,
     EncounterRepository,
     EncounterResultAuditRepository,
+    EncounterTeamReportRepository,
     UserRepository,
 )
-from shared.schemas.events import EncounterCompletedEvent
 from shared.services.bracket import advancement
-from shared.services.bracket.swiss_state import remove_swiss_bye_round
 from shared.services.bracket.usability import is_encounter_live
 from shared.services.challonge_refs import resolve_encounter_challonge
-from shared.services.encounter.result_audit import record_result_transition
-from shared.services.scrim_scope import is_scrim_container
+from shared.services.encounter.events import enqueue_encounter_completed
+from shared.services.encounter.participants import active_teams
+from shared.services.encounter.result import apply_result, lock_encounter, reopen
+from shared.services.encounter.result_audit import record_result_transition, snapshot
 from src import models, schemas
-from src.services.challonge.sync import sync_service
+
+# ``src.services.challonge.sync`` is not imported at module scope: the exporter
+# is a different vertical, it is only reached when the encounter actually has a
+# Challonge link, and importing it here would make every result flow depend on
+# the whole Challonge stack loading.
 from src.services.encounter import report_form
 from src.services.encounter.dispute_review import notify_dispute_review
-from src.services.encounter.finalize import FinalizeService, finalize_service
+from src.services.encounter.games import EncounterGameService, encounter_game_service
 from src.services.encounter.report_form import ReportFormService, report_form_service
 from src.services.encounter.room_journal import record_room_event
 from src.services.tournament.events import enqueue_tournament_recalculation
 
-# One per-map code: (map_index 1-based, replay/match code string). Defined by the
-# report-form service, which validates them.
+__all__ = ("CaptainService", "ReportResultIn", "captain_service", "serialize_team_report")
+
+
+def _challonge_sync():
+    """The Challonge exporter, loaded on first use (see the import note above)."""
+    from src.services.challonge.sync import sync_service  # noqa: PLC0415
+
+    return sync_service
+
+
+# One per-position replay/match code: (position 1-based, code string). Defined
+# by the report-form service, which validates them.
 MapCodeInput = report_form.MapCodeInput
 
-_ENCOUNTER_LOCK_OPTIONS = (
-    selectinload(models.Encounter.home_team),
-    selectinload(models.Encounter.away_team),
-    selectinload(models.Encounter.stage),
-)
+
+@dataclass(frozen=True, slots=True)
+class ReportResultIn:
+    """One participation's line of a series report.
+
+    ``wins`` is ``None`` when the rule does not count wins (a lobby's card,
+    where points alone decide); ``placement`` is ``None`` when the form does not
+    ask for places.
+    """
+
+    encounter_team_id: int
+    score: float
+    placement: int | None = None
+    wins: int | None = None
 
 
-def serialize_map_code(code: models.EncounterMapCode) -> schemas.EncounterMapCodeRead:
-    return schemas.EncounterMapCodeRead(
-        id=code.id,
-        map_index=code.map_index,
-        map_id=code.map_id,
-        code=code.code,
-    )
-
-
-def serialize_captain_report(
-    report: models.EncounterCaptainReport,
-    encounter: models.Encounter,
-    map_codes: Sequence[models.EncounterMapCode],
+def serialize_team_report(
+    report: EncounterTeamReport,
+    results: Sequence[EncounterTeamReportResult],
     reporter_name: str | None = None,
-) -> schemas.CaptainReportRead:
-    """Build the report payload shared by the public read and the admin list."""
-    side: str | None = None
-    if report.team_id == encounter.home_team_id:
-        side = "home"
-    elif report.team_id == encounter.away_team_id:
-        side = "away"
-    return schemas.CaptainReportRead(
+) -> schemas.TeamReportRead:
+    """The report payload shared by the public read and the admin list."""
+    return schemas.TeamReportRead(
         id=report.id,
         encounter_id=report.encounter_id,
-        team_id=report.team_id,
-        side=side,
+        encounter_team_id=report.encounter_team_id,
         reporter_user_id=report.reporter_user_id,
         reporter_name=reporter_name,
-        home_score=report.home_score,
-        away_score=report.away_score,
+        games_played=report.games_played,
+        basis_version=report.basis_version,
         closeness=report.closeness,
         comment=report.comment,
         custom_fields=dict(report.custom_fields_json or {}),
-        map_codes=[serialize_map_code(mc) for mc in sorted(map_codes, key=lambda c: c.map_index)],
+        results=[
+            schemas.TeamReportResultRead(
+                encounter_team_id=row.encounter_team_id,
+                score=row.score,
+                placement=row.placement,
+                wins=row.wins,
+            )
+            for row in sorted(results, key=lambda row: row.encounter_team_id)
+        ],
         created_at=report.created_at.isoformat() if report.created_at else None,
         updated_at=report.updated_at.isoformat() if report.updated_at else None,
     )
 
 
 class CaptainService:
-    """The captain-facing result flow plus the admin overrides that resolve it."""
+    """The participant-facing result flow plus the admin overrides that resolve it."""
 
     def __init__(
         self,
         *,
         encounter_repo: EncounterRepository = EncounterRepository(),
-        report_repo: EncounterCaptainReportRepository = EncounterCaptainReportRepository(),
-        map_code_repo: EncounterMapCodeRepository = EncounterMapCodeRepository(),
+        report_repo: EncounterTeamReportRepository = EncounterTeamReportRepository(),
         audit_repo: EncounterResultAuditRepository = EncounterResultAuditRepository(),
         user_repo: UserRepository = UserRepository(),
         report_forms: ReportFormService = report_form_service,
-        finalize: FinalizeService = finalize_service,
+        games: EncounterGameService = encounter_game_service,
     ) -> None:
         self.encounter_repo = encounter_repo
         self.report_repo = report_repo
-        self.map_code_repo = map_code_repo
         self.audit_repo = audit_repo
         self.user_repo = user_repo
         self.report_forms = report_forms
-        self.finalize = finalize
+        self.games = games
 
-    async def _enqueue_tournament_recalculation(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> None:
-        await enqueue_tournament_recalculation(session, tournament_id)
+    # -- loading -----------------------------------------------------------
+    async def load_encounter_any_format(self, session: AsyncSession, encounter_id: int) -> Encounter:
+        """The locked encounter row. 404 when there is none.
 
-    async def _enqueue_encounter_completed(
-        self,
-        session: AsyncSession,
-        encounter: models.Encounter,
-    ) -> None:
-        # This event has exactly one consumer: parser-service republishes it as an
-        # AchievementEvaluateEvent (serve.py:368-398). For a scrim that evaluation is
-        # verifiably empty — every achievement condition reaches its users through an
-        # inner join on Player or through MatchStatistics, and a scrim room has
-        # neither (docs/plans/2026-08-12-scrim-rooms.md §4.1, §5). It is not free
-        # though: it costs an outbox row, a queue round trip, an EvaluationRun audit
-        # row and one full query per encounter-dependent rule, per scrim result. Not
-        # publishing beats publishing and discarding.
-        if await is_scrim_container(session, encounter.tournament_id):
-            return
+        A lobby has a pre-game room like any other encounter, so chat membership
+        (``chat_access.EncounterChatAccess.resolve``) resolves through this one.
+        """
+        return await lock_encounter(session, encounter_id)
 
-        winner_team_id: int | None = None
-        if encounter.home_score > encounter.away_score:
-            winner_team_id = encounter.home_team_id
-        elif encounter.away_score > encounter.home_score:
-            winner_team_id = encounter.away_team_id
+    async def _load_encounter(self, session: AsyncSession, encounter_id: int, *, for_update: bool = True) -> Encounter:
+        """The encounter, locked or not. State polling opts out of the lock --
+        the room's state read is pure."""
+        if for_update:
+            return await lock_encounter(session, encounter_id)
+        encounter = await self.encounter_repo.get(session, encounter_id)
+        if encounter is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
+        return encounter
 
-        await enqueue_outbox_event(
-            session,
-            EncounterCompletedEvent(
-                tournament_id=encounter.tournament_id,
-                encounter_id=encounter.id,
-                home_team_id=encounter.home_team_id,
-                away_team_id=encounter.away_team_id,
-                winner_team_id=winner_team_id,
-                source_service="tournament-service",
-            ),
-            exchange=TOURNAMENT_EVENTS_EXCHANGE,
-            routing_key="tournament.encounter.completed",
-        )
+    async def resolve_participation(
+        self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter
+    ) -> tuple[EncounterTeam, int]:
+        """The participation this account captains, and the captain's player id.
 
-    async def _resolve_captain_identity(
-        self,
-        session: AsyncSession,
-        auth_user: models.AuthUser,
-        encounter: models.Encounter,
-    ) -> tuple[str, int, int]:
-        """Determine if the auth user is captain of the home or away team.
-
-        Returns ``(side, captain_user_id, team_id)`` where ``captain_user_id`` is the
-        linked ``players.user`` id and ``team_id`` the captain's team.
-        Raises 403 if the user is not a captain of either team.
+        403 when the account captains none of the encounter's live seats. There
+        is no "which side are you" here: a duel is two seats and a lobby is N,
+        and both answer the same question with a participation row.
         """
         player = await self.user_repo.get_by_auth_user_id(session, auth_user.id)
-
         if player is None:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No player profile linked to your account",
             )
-
-        if encounter.home_team and encounter.home_team.captain_id == player.id:
-            return "home", encounter.home_team.captain_id, encounter.home_team.id
-        if encounter.away_team and encounter.away_team.captain_id == player.id:
-            return "away", encounter.away_team.captain_id, encounter.away_team.id
-
+        seats = await active_teams(session, encounter.id)
+        team_ids = [seat.team_id for seat in seats if seat.team_id is not None]
+        if team_ids:
+            rows = await session.execute(
+                sa.select(models.Team.id).where(models.Team.id.in_(team_ids), models.Team.captain_id == player.id)
+            )
+            captained = set(rows.scalars())
+            for seat in seats:
+                if seat.team_id in captained:
+                    return seat, player.id
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a captain of either team in this encounter",
+            detail="You do not captain any team in this encounter",
         )
 
-    async def resolve_captain_side(
-        self,
-        session: AsyncSession,
-        auth_user: models.AuthUser,
-        encounter: models.Encounter,
-    ) -> str:
-        side, _captain_user_id, _team_id = await self._resolve_captain_identity(session, auth_user, encounter)
-        return side
+    # -- reads -------------------------------------------------------------
+    async def _position_map_ids(self, session: AsyncSession, encounter_id: int) -> dict[int, int]:
+        """``position`` (1-based, in play order) -> the map the veto settled.
 
-    async def resolve_captain_identity(
-        self,
-        session: AsyncSession,
-        auth_user: models.AuthUser,
-        encounter: models.Encounter,
-    ) -> tuple[str, int, int]:
-        """Public wrapper for callers (outside this module) that need the
-        domain ``players.user`` id and team id alongside the side, not just the
-        side ``resolve_captain_side`` returns."""
-        return await self._resolve_captain_identity(session, auth_user, encounter)
-
-    async def load_encounter_any_format(self, session: AsyncSession, encounter_id: int) -> models.Encounter:
-        """The locked row, whatever format it is. 404 when there is none.
-
-        A lobby has a pre-game room like any other encounter, so chat membership
-        (``chat_access.EncounterChatAccess.resolve``) resolves through this one.
-        Anything that reads or writes a SERIES takes :meth:`_load_encounter`.
+        ``PickBanEntry.order`` is NOT the index: it is a per-round display field
+        spaced by ``round * 1000``, so the index is the position in PLAY order,
+        which is what ``action_index`` records. Empty when there is no veto.
         """
-        encounter = await self.encounter_repo.get_for_update(
-            session, encounter_id, options=list(_ENCOUNTER_LOCK_OPTIONS)
-        )
-        if not encounter:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Encounter not found",
-            )
-        return encounter
-
-    async def _load_encounter(
-        self, session: AsyncSession, encounter_id: int, *, for_update: bool = True
-    ) -> models.Encounter:
-        """:meth:`load_encounter_any_format`, eager-loaded for a series feature.
-
-        Every caller of THIS one is a series feature -- captain reports, the
-        admin result writes, the captain's own side, the pick-ban room.
-        State polling opts out of the encounter lock entirely -- the room's state
-        read is pure, and every mutation it used to perform now belongs to
-        ``encounter.room_reconcile``. Eager team/stage loading is identical for
-        either path.
-        """
-        if for_update:
-            encounter = await self.load_encounter_any_format(session, encounter_id)
-        else:
-            encounter = await self.encounter_repo.get(session, encounter_id, options=list(_ENCOUNTER_LOCK_OPTIONS))
-            if encounter is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
-        return encounter
-
-    async def _load_encounter_with_reports(self, session: AsyncSession, encounter_id: int) -> models.Encounter:
-        """Like ``_load_encounter`` but also eager-loads captain reports + map codes."""
-        encounter = await self.encounter_repo.get_for_update(
-            session,
-            encounter_id,
-            options=[
-                *_ENCOUNTER_LOCK_OPTIONS,
-                selectinload(models.Encounter.captain_reports).selectinload(models.EncounterCaptainReport.map_codes),
-            ],
-        )
-        if not encounter:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Encounter not found",
-            )
-        return encounter
-
-    async def _picked_map_ids(self, session: AsyncSession, encounter_id: int) -> dict[int, int]:
-        """``map_index`` (1-based position in the series) -> ``map_id``, for every
-        map the veto has settled.
-
-        ``PickBanEntry.order`` is NOT the index: it is a per-round display/tiebreak
-        field that starts at 0 and is spaced by ``round * 1000``
-        (``pick_ban_session.advance_to_next_round``), so reading an index off it
-        produced ``map_index=0`` — which the ``map_index >= 1`` check on
-        ``EncounterMapCode`` rejects outright — and ``1000`` for a second map. The
-        index is the position in PLAY order, which is what ``action_index`` records.
-
-        ``picked`` is the whole settled set: a pick is never re-stamped once its
-        position is played (the result lives on ``EncounterGame``), so the veto's
-        play order is complete the moment the series ends.
-
-        Returns an empty dict when there is no veto pool (map codes then keep
-        ``map_id = NULL``). Soft binding: callers never fail on an index beyond the
-        settled count — it simply is not in the dict.
-        """
-        # Analytical: a three-column projection over a PickBanSession join, narrowed
-        # by kind and entry status — one statement no CRUD repository method can
-        # express (backend/docs/repository-boundaries.md).
         rows = await session.execute(
-            select(PickBanEntry.order, PickBanEntry.action_index, PickBanEntry.item_id)
+            sa.select(PickBanEntry.order, PickBanEntry.action_index, PickBanEntry.item_id)
             .join(PickBanSession, PickBanSession.id == PickBanEntry.session_id)
             .where(
                 PickBanSession.encounter_id == encounter_id,
@@ -315,54 +226,39 @@ class CaptainService:
         return {index: int(row[2]) for index, row in enumerate(settled, start=1)}
 
     async def get_encounter_reports(self, session: AsyncSession, encounter_id: int) -> list[dict]:
-        """Read both captains' reports for an encounter (public/read-only).
+        """Every participation's series report (public/read-only).
 
-        Reports and their map codes are fetched with explicit awaited queries rather
-        than via relationship attribute access: touching a lazily-loaded collection
-        on a materialized ORM instance emits implicit IO, which raises
-        ``MissingGreenlet`` under async SQLAlchemy. Grouping codes in Python keeps
-        this a fixed two-query read regardless of ORM load state.
+        Explicit awaited queries rather than relationship attribute access:
+        touching a lazily loaded collection on a materialized instance emits
+        implicit IO, which is ``MissingGreenlet`` under async SQLAlchemy.
         """
         encounter = await self.encounter_repo.get(session, encounter_id)
-        if not encounter:
+        if encounter is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 
         reports = list(await self.report_repo.list_for_encounter(session, encounter_id))
         if not reports:
             return []
+        results = await self.report_repo.results_for_reports(session, [row.id for row in reports])
 
-        codes = list(await self.map_code_repo.list_for_reports(session, [r.id for r in reports]))
-        codes_by_report: dict[int, list[models.EncounterMapCode]] = {}
-        for code in codes:
-            codes_by_report.setdefault(code.report_id, []).append(code)
-
-        reporter_ids = {r.reporter_user_id for r in reports if r.reporter_user_id is not None}
-        names_by_user_id: dict[int, str] = {}
+        reporter_ids = {row.reporter_user_id for row in reports if row.reporter_user_id is not None}
+        names: dict[int, str] = {}
         if reporter_ids:
-            # Analytical: an (id, name) projection for the labels, not a row load.
             rows = await session.execute(
-                select(models.User.id, models.User.name).where(models.User.id.in_(reporter_ids))
+                sa.select(models.User.id, models.User.name).where(models.User.id.in_(reporter_ids))
             )
-            names_by_user_id = dict(rows.all())
-
+            names = dict(rows.all())
         return [
-            serialize_captain_report(
-                r,
-                encounter,
-                codes_by_report.get(r.id, []),
-                reporter_name=names_by_user_id.get(r.reporter_user_id) if r.reporter_user_id else None,
+            serialize_team_report(
+                row,
+                results.get(row.id, []),
+                reporter_name=names.get(row.reporter_user_id) if row.reporter_user_id else None,
             ).model_dump(mode="json")
-            for r in reports
+            for row in reports
         ]
 
     async def get_result_audit(self, session: AsyncSession, encounter_id: int) -> list[dict]:
-        """The encounter's result history, newest first.
-
-        Explicit awaited query with the actor eagerly joined, for the same reason
-        ``get_encounter_reports`` avoids relationship access: touching a lazily
-        loaded collection on a materialized instance raises ``MissingGreenlet``
-        under async SQLAlchemy.
-        """
+        """The encounter's result history, newest first."""
         rows = list(
             await self.audit_repo.list_for_encounter(
                 session,
@@ -374,312 +270,402 @@ class CaptainService:
             {
                 "id": row.id,
                 "encounter_id": row.encounter_id,
+                "result_version": row.result_version,
                 "actor_user_id": row.actor_user_id,
                 "actor_name": row.actor.name if row.actor is not None else None,
                 "action": row.action,
                 "from_result_status": row.from_result_status,
                 "to_result_status": row.to_result_status,
-                "home_score_before": row.home_score_before,
-                "away_score_before": row.away_score_before,
-                "home_score_after": row.home_score_after,
-                "away_score_after": row.away_score_after,
+                "snapshot_scope": row.snapshot_scope,
+                "game_id": row.game_id,
+                "before": row.before,
+                "after": row.after,
                 "adopted_team_id": row.adopted_team_id,
+                "reason": row.reason,
                 "source": row.source,
                 "created_at": row.created_at,
             }
             for row in rows
         ]
 
-    async def _recompute_encounter_result(
+    # -- the participant's report ------------------------------------------
+    async def submit_team_report(
         self,
         session: AsyncSession,
-        encounter: models.Encounter,
-        *,
-        actor_user_id: int,
-        actor_auth_user_id: int | None = None,
-    ) -> bool:
-        """Recompute the derived encounter result from its captain reports.
-
-        Returns ``True`` when the encounter was auto-confirmed (so the caller can run
-        post-commit side effects like Challonge push).
-
-        ``actor_auth_user_id`` is the same person as ``actor_user_id`` seen from
-        the identity side (``players.user.id`` vs ``auth.user.id``); only the
-        dispute branch needs it, to stamp the organizers' notification with who
-        caused it.
-        """
-        # Late reports are evidence only; the official result stays authoritative.
-        if encounter.result_status == EncounterResultStatus.CONFIRMED:
-            return False
-
-        reports = list(encounter.captain_reports)
-        now = datetime.now(UTC)
-
-        from_result_status = encounter.result_status
-        home_score_before = encounter.home_score
-        away_score_before = encounter.away_score
-
-        if len(reports) < 2:
-            encounter.result_status = EncounterResultStatus.PENDING_CONFIRMATION
-            encounter.confirmed_at = None
-            encounter.closeness = None
-            await self._enqueue_tournament_recalculation(session, encounter.tournament_id)
-            return False
-
-        by_team = {r.team_id: r for r in reports}
-        home_report = by_team.get(encounter.home_team_id)
-        away_report = by_team.get(encounter.away_team_id)
-
-        # Defensive: both team reports must be present for a two-report encounter.
-        if home_report is None or away_report is None:
-            encounter.result_status = EncounterResultStatus.PENDING_CONFIRMATION
-            encounter.closeness = None
-            await self._enqueue_tournament_recalculation(session, encounter.tournament_id)
-            return False
-
-        scores_match = (
-            home_report.home_score == away_report.home_score and home_report.away_score == away_report.away_score
-        )
-        # A tournament may have the match-quality field disabled, so a report can
-        # legitimately carry no rating; there is then nothing to average.
-        if home_report.closeness is None or away_report.closeness is None:
-            avg_closeness = None
-        else:
-            avg_closeness = (home_report.closeness + away_report.closeness) / 2.0
-
-        if not scores_match:
-            encounter.result_status = EncounterResultStatus.DISPUTED
-            encounter.closeness = None
-            record_result_transition(
-                session,
-                encounter,
-                action=EncounterResultAuditAction.AUTO_DISPUTE,
-                source="captain",
-                actor_user_id=actor_user_id,
-                from_result_status=from_result_status,
-                home_score_before=home_score_before,
-                away_score_before=away_score_before,
-            )
-            # The captains learn the outcome from the response they are holding;
-            # the organizers who can actually adopt a side learn it from here.
-            # ``Encounter`` carries the tournament, not the tenant that owns it.
-            workspace_id = await session.scalar(
-                select(models.Tournament.workspace_id).where(models.Tournament.id == encounter.tournament_id)
-            )
-            await notify_dispute_review(
-                session,
-                encounter,
-                workspace_id=None if workspace_id is None else int(workspace_id),
-                home_team_name=getattr(encounter.home_team, "name", ""),
-                away_team_name=getattr(encounter.away_team, "name", ""),
-                actor_auth_user_id=actor_auth_user_id,
-            )
-            await self._enqueue_tournament_recalculation(session, encounter.tournament_id)
-            return False
-
-        encounter.closeness = None if avg_closeness is None else avg_closeness / 10.0
-        await self.finalize.finalize_encounter_score(
-            session,
-            encounter.id,
-            encounter=encounter,
-            home_score=home_report.home_score,
-            away_score=home_report.away_score,
-            source="captain",
-            result_status=EncounterResultStatus.CONFIRMED,
-            confirmed_at=now,
-        )
-        record_result_transition(
-            session,
-            encounter,
-            action=EncounterResultAuditAction.AUTO_CONFIRM,
-            source="captain",
-            actor_user_id=actor_user_id,
-            from_result_status=from_result_status,
-            home_score_before=home_score_before,
-            away_score_before=away_score_before,
-        )
-        await self._enqueue_tournament_recalculation(session, encounter.tournament_id)
-        await self._enqueue_encounter_completed(session, encounter)
-        return True
-
-    async def submit_captain_report(
-        self,
-        session: AsyncSession,
-        auth_user: models.AuthUser,
         encounter_id: int,
         *,
-        home_score: int,
-        away_score: int,
-        closeness: int | None,
-        map_codes: Sequence[MapCodeInput] = (),
+        encounter_team_id: int,
+        reporter_user_id: int | None,
+        games_played: int,
+        results: Sequence[ReportResultIn],
+        basis_version: int,
+        closeness: int | None = None,
         comment: str | None = None,
-        custom_fields: dict[str, str] | None = None,
-    ) -> models.Encounter:
-        """Upsert the calling captain's report; only unconfirmed results are recomputed.
+        custom_fields: Mapping[str, str] | None = None,
+        map_codes: Sequence[MapCodeInput] = (),
+        actor_auth_user_id: int | None = None,
+    ) -> Encounter:
+        """Upsert one participation's report of the finished encounter.
 
-        ``home_score``/``away_score`` are in the encounter's home/away orientation.
-        ``map_codes`` are ``(map_index, code)`` pairs; ``map_id`` is softly resolved
-        from the veto pool when one is complete.
-
-        Which of ``closeness``/``map_codes``/``comment`` and which custom fields are
-        offered and mandatory comes from the tournament's report-form config; values
-        for disabled fields are dropped rather than rejected, so a client holding a
-        stale config cannot fail a submit it could not have known about.
+        Which of ``closeness``/``map_codes``/``comment`` and which custom fields
+        are offered and mandatory comes from the tournament's report-form
+        config; values for disabled fields are dropped rather than rejected, so
+        a client holding a stale config cannot fail a submit it could not have
+        known about. Commits.
         """
-        if home_score < 0 or away_score < 0:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="scores must be non-negative",
-            )
-
-        seen_indices: set[int] = set()
-        for map_index, _code in map_codes:
-            if map_index < 1:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="map_index must be >= 1",
-                )
-            if map_index in seen_indices:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"duplicate map_index {map_index}",
-                )
-            seen_indices.add(map_index)
-
-        encounter = await self._load_encounter_with_reports(session, encounter_id)
-
+        encounter = await lock_encounter(session, encounter_id)
         if not await is_encounter_live(session, encounter):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Stage bracket is a preview and is not active yet; wait for the organizer to activate it",
             )
+        if encounter.result_status == EncounterResultStatus.CONFIRMED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=[
+                    ApiExc(
+                        code="result_locked",
+                        msg="This encounter's result is already confirmed; ask an organizer to reopen it",
+                    )
+                ],
+            )
+        if basis_version != encounter.result_version:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=[
+                    ApiExc(
+                        code="stale_state",
+                        msg=f"This encounter has moved on (version {encounter.result_version}); reload before reporting",
+                    )
+                ],
+            )
 
-        side, captain_user_id, team_id = await self._resolve_captain_identity(session, auth_user, encounter)
-
-        # A report is the FINAL series score, so it must actually end the
-        # series: a Bo2 cannot finish 1:0 and a Bo3 cannot finish 3:0. Admin
-        # confirm uses the same rule; a forfeit goes through technical loss,
-        # which already writes a legal score.
-        self._reject_unfinished_series(encounter, home_score, away_score)
+        seats = await active_teams(session, encounter.id)
+        live = {seat.id for seat in seats}
+        if encounter_team_id not in live:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="That participation does not play in this encounter",
+            )
+        await self._reject_impossible_report(session, encounter, seats, games_played, results)
 
         form = await self.report_forms.resolve_report_form(session, encounter.tournament_id)
-        # Resolved before validation, not just before persisting the codes: a required
-        # `map_codes` config may only demand a code for a slot the captain was offered.
-        map_id_by_index = await self._picked_map_ids(session, encounter_id)
+        map_id_by_position = await self._position_map_ids(session, encounter.id)
         submission = report_form.validate_submission(
             form,
-            home_score=home_score,
-            away_score=away_score,
+            games_played=games_played,
             closeness=closeness,
             map_codes=map_codes,
             comment=comment,
-            custom_fields=custom_fields,
-            available_map_indices=report_form.series_map_indices(map_id_by_index, encounter.best_of),
+            custom_fields=dict(custom_fields or {}),
+            available_map_indices=report_form.series_map_indices(map_id_by_position, encounter.best_of),
         )
 
-        report = next((r for r in encounter.captain_reports if r.team_id == team_id), None)
+        report = await self.report_repo.get_by(session, encounter_id=encounter.id, encounter_team_id=encounter_team_id)
         if report is None:
-            report = models.EncounterCaptainReport(encounter_id=encounter.id, team_id=team_id)
-            # An empty collection assigned BEFORE the flush below, so the append that
-            # follows it never reads the table. Once the row is persistent a
-            # ``map_codes`` touch that was never loaded emits a lazy SELECT --
-            # ``lazy="selectin"`` is a QUERY-time strategy and falls back to a plain
-            # lazy load for a single instance -- and that implicit IO from sync
-            # attribute access is ``MissingGreenlet`` under async SQLAlchemy. Only
-            # the first report of a team hit this: the branch below re-uses a report
-            # whose codes ``_load_encounter_with_reports`` already eager-loaded.
-            report.map_codes = []
-            session.add(report)
-            encounter.captain_reports.append(report)
+            report = await self.report_repo.create(
+                session,
+                EncounterTeamReport(
+                    encounter_id=encounter.id,
+                    encounter_team_id=encounter_team_id,
+                    reporter_user_id=reporter_user_id,
+                    games_played=games_played,
+                    basis_version=basis_version,
+                ),
+            )
+            changed = True
         else:
-            # Drop existing codes up front so re-inserting the same (report_id,
-            # map_index) never collides with rows pending deletion in one flush.
-            await self.map_code_repo.delete_for_report(session, report.id)
-            report.map_codes.clear()
-
-        # Captured before the write: a captain re-sending the score they already
-        # filed (to fix a comment or a map code) did not re-report the series.
-        score_changed = (report.home_score, report.away_score) != (home_score, away_score)
-        report.reporter_user_id = captain_user_id
-        report.home_score = home_score
-        report.away_score = away_score
+            changed = report.games_played != games_played or self._shape(
+                await self._results_of(session, report)
+            ) != self._claim_shape(results)
+            report.reporter_user_id = reporter_user_id
+            report.games_played = games_played
+            report.basis_version = basis_version
         report.closeness = submission.closeness
         report.comment = submission.comment
-        report.custom_fields_json = submission.custom_fields
-
-        # Ensure the (possibly new) report has an id before attaching codes.
-        await session.flush()
-
-        for map_index, code in submission.map_codes:
-            report.map_codes.append(
-                models.EncounterMapCode(
-                    map_index=map_index,
-                    code=code,
-                    map_id=map_id_by_index.get(map_index),
+        report.custom_fields_json = dict(submission.custom_fields)
+        await self.report_repo.replace_results(
+            session,
+            report,
+            [
+                EncounterTeamReportResult(
+                    report_id=report.id,
+                    encounter_id=encounter.id,
+                    encounter_team_id=item.encounter_team_id,
+                    score=float(item.score),
+                    placement=item.placement,
+                    wins=item.wins,
                 )
-            )
+                for item in results
+            ],
+        )
+        await self._write_replay_codes(session, encounter, encounter_team_id, submission.map_codes)
 
-        if score_changed:
+        if changed:
             await record_room_event(
                 session,
                 encounter.id,
                 action="series_reported",
                 source="captain",
-                side=side,
-                actor_auth_user_id=auth_user.id,
-                data={"home_score": home_score, "away_score": away_score},
+                encounter_team_id=encounter_team_id,
+                actor_auth_user_id=actor_auth_user_id,
+                data={"games_played": games_played},
             )
 
-        confirmed = await self._recompute_encounter_result(
-            session, encounter, actor_user_id=captain_user_id, actor_auth_user_id=auth_user.id
+        confirmed = await self._recompute_from_reports(
+            session, encounter, seats, actor_user_id=reporter_user_id, actor_auth_user_id=actor_auth_user_id
         )
+        await enqueue_tournament_recalculation(session, encounter.tournament_id)
         await session.commit()
 
         if confirmed:
-            challonge_links = await resolve_encounter_challonge(session, [encounter.id])
-            if challonge_links.get(encounter.id) is not None:
-                await sync_service.auto_push_on_confirm(session, encounter.id)
-
-        await session.refresh(encounter)
+            links = await resolve_encounter_challonge(session, [encounter.id])
+            if links.get(encounter.id) is not None:
+                await _challonge_sync().auto_push_on_confirm(session, encounter.id)
         return encounter
 
+    async def _reject_impossible_report(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        seats: Sequence[EncounterTeam],
+        games_played: int,
+        results: Sequence[ReportResultIn],
+    ) -> None:
+        """Refuse a standing this encounter cannot have ended on.
+
+        The whole check is :func:`series_claim_errors` -- one implementation of
+        "can this card end like that", shared with the admin write, rather than
+        a second copy of the end rule spelled out in Python.
+        """
+        errors = series_claim_errors(
+            await self.games.rules(session, encounter),
+            best_of=encounter.best_of,
+            team_ids=[seat.id for seat in seats],
+            confirmed_games=await self.games.confirmed_game_lines(session, encounter),
+            claim=SeriesClaim(
+                games_played=games_played,
+                totals={item.encounter_team_id: float(item.score) for item in results},
+                wins=(
+                    {item.encounter_team_id: int(item.wins) for item in results}
+                    if all(item.wins is not None for item in results) and results
+                    else None
+                ),
+                placements=(
+                    {item.encounter_team_id: int(item.placement) for item in results}
+                    if all(item.placement is not None for item in results) and results
+                    else None
+                ),
+            ),
+        )
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=[ApiExc(code=code, msg=f"This report contradicts the encounter: {code}") for code in errors],
+            )
+
+    async def _write_replay_codes(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        encounter_team_id: int,
+        map_codes: Sequence[MapCodeInput],
+    ) -> None:
+        """Store the reporter's replay codes on the positions they name.
+
+        The code belongs to the participation that played the position
+        (``game_team.replay_code``), which is what replaced the old per-report
+        ``encounter_map_code`` table. A code for a position the encounter does
+        not have is dropped, not an error: the form offers slots the veto may
+        never settle.
+        """
+        if not map_codes:
+            return
+        by_position = {game.position: game for game in await self.games.list_games(session, encounter.id)}
+        lines = await self.games.lines_by_game(session, list(by_position.values()))
+        for position, code in map_codes:
+            game = by_position.get(position)
+            if game is None:
+                continue
+            for row in lines.get(game.id, []):
+                if row.encounter_team_id == encounter_team_id:
+                    row.replay_code = code
+        await session.flush()
+
+    async def _results_of(self, session: AsyncSession, report: EncounterTeamReport) -> list[EncounterTeamReportResult]:
+        return (await self.report_repo.results_for_reports(session, [report.id])).get(report.id, [])
+
+    @staticmethod
+    def _shape(rows: Sequence[EncounterTeamReportResult]) -> tuple:
+        """What two reports have to agree on, order-independent."""
+        return tuple(sorted((row.encounter_team_id, row.score, row.placement, row.wins) for row in rows))
+
+    @staticmethod
+    def _claim_shape(results: Sequence[ReportResultIn]) -> tuple:
+        return tuple(sorted((item.encounter_team_id, float(item.score), item.placement, item.wins) for item in results))
+
+    async def _recompute_from_reports(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        seats: Sequence[EncounterTeam],
+        *,
+        actor_user_id: int | None,
+        actor_auth_user_id: int | None,
+    ) -> bool:
+        """Derive the encounter's result from its reports. True once confirmed."""
+        reports = list(await self.report_repo.list_for_encounter(session, encounter.id))
+        results = await self.report_repo.results_for_reports(session, [row.id for row in reports])
+        live = {seat.id for seat in seats}
+        reported = {row.encounter_team_id for row in reports}
+
+        if not live.issubset(reported):
+            encounter.result_status = EncounterResultStatus.PENDING_CONFIRMATION
+            encounter.confirmed_at = None
+            encounter.closeness = None
+            await session.flush()
+            return False
+
+        standing = {self._shape(results.get(row.id, [])) for row in reports if row.encounter_team_id in live}
+        games = {row.games_played for row in reports if row.encounter_team_id in live}
+        if len(standing) > 1 or len(games) > 1:
+            await self._mark_disputed(session, encounter, seats, actor_user_id=actor_user_id)
+            await self._notify_dispute(session, encounter, seats, actor_auth_user_id=actor_auth_user_id)
+            return False
+
+        agreed = next(row for row in reports if row.encounter_team_id in live)
+        lines = results.get(agreed.id, [])
+        ratings = [row.closeness for row in reports if row.closeness is not None]
+        encounter.closeness = (sum(ratings) / len(ratings)) / 10.0 if ratings else None
+        await apply_result(
+            session,
+            encounter,
+            source=EncounterResultSource.SERIES_CLAIM,
+            totals={row.encounter_team_id: float(row.score) for row in lines},
+            placements={row.encounter_team_id: row.placement for row in lines if row.placement is not None}
+            or self._places_from_scores(lines),
+            action=EncounterResultAuditAction.AUTO_CONFIRM,
+            audit_source="series_claim",
+            actor_user_id=actor_user_id,
+            reason=None,
+        )
+        # The card's unplayed tail is history the encounter never had: the
+        # report IS the result, so a PLANNED position left open would offer a
+        # game nobody may play (D54, D59).
+        await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
+        await enqueue_encounter_completed(session, encounter, source_service="tournament-service")
+        await advancement.advance_after_result(session, encounter)
+        return True
+
+    @staticmethod
+    def _places_from_scores(lines: Sequence[EncounterTeamReportResult]) -> dict[int, int]:
+        """Competition ranking over the reported totals, best first.
+
+        Used only when the form does not ask for places: a standing without one
+        would leave every seat unplaced, and the bracket resolves its links by
+        place.
+        """
+        ordered = sorted(lines, key=lambda row: -float(row.score))
+        places: dict[int, int] = {}
+        for index, row in enumerate(ordered):
+            previous = ordered[index - 1] if index else None
+            places[row.encounter_team_id] = (
+                places[previous.encounter_team_id]
+                if previous is not None and float(previous.score) == float(row.score)
+                else index + 1
+            )
+        return places
+
+    async def _cancel_unplayed(self, session: AsyncSession, encounter: Encounter, *, actor_user_id: int | None) -> None:
+        unplayed = [
+            game
+            for game in await self.games.list_games(session, encounter.id)
+            if game.state != EncounterGameState.CONFIRMED
+        ]
+        if unplayed:
+            await self.games.cancel_games(
+                session, encounter, unplayed, actor_user_id=actor_user_id, reason="series_reported"
+            )
+
+    async def _mark_disputed(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        seats: Sequence[EncounterTeam],
+        *,
+        actor_user_id: int | None,
+    ) -> None:
+        """Record the contradiction. The standing is untouched -- nobody's
+        numbers are adopted by a dispute, only the status moves."""
+        from_result_status = encounter.result_status
+        encounter.result_status = EncounterResultStatus.DISPUTED
+        encounter.confirmed_at = None
+        encounter.closeness = None
+        encounter.result_version += 1
+        record_result_transition(
+            session,
+            encounter,
+            action=EncounterResultAuditAction.AUTO_DISPUTE,
+            source="series_claim",
+            actor_user_id=actor_user_id,
+            from_result_status=from_result_status,
+            before=snapshot(seats),
+            after=snapshot(seats),
+        )
+        await session.flush()
+
+    async def _notify_dispute(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        seats: Sequence[EncounterTeam],
+        *,
+        actor_auth_user_id: int | None,
+    ) -> None:
+        """The participants learn the outcome from the response they are
+        holding; the organizers who can adopt a report learn it from here."""
+        workspace_id = await session.scalar(
+            sa.select(models.Tournament.workspace_id).where(models.Tournament.id == encounter.tournament_id)
+        )
+        await notify_dispute_review(
+            session,
+            encounter,
+            workspace_id=None if workspace_id is None else int(workspace_id),
+            team_names=[seat.name for seat in seats],
+            actor_auth_user_id=actor_auth_user_id,
+        )
+
+    # -- the organizer's overrides -----------------------------------------
     async def set_encounter_result(
         self,
         session: AsyncSession,
         encounter_id: int,
         *,
+        results: Sequence[ReportResultIn],
+        reason: str,
         actor_user_id: int | None,
-        home_score: int | None = None,
-        away_score: int | None = None,
-        closeness: int | None = None,
         adopt_report_team_id: int | None = None,
-    ) -> models.Encounter:
-        """Confirm an encounter result as an admin, in one transaction.
+        closeness: int | None = None,
+    ) -> Encounter:
+        """Confirm an encounter result as an organizer, in one transaction.
 
-        This is THE admin write: the score, ``status``, ``result_status`` and the
-        audit row move together, so a dispute can never be left half-resolved the
-        way "edit the score, then confirm" could. The score is taken from the first
-        source that yields one:
-
-        1. an explicit ``home_score``/``away_score``;
-        2. the report of ``adopt_report_team_id`` — "this side was right";
-        3. both reports, when they already agree;
-        4. the encounter's own score, when it is not still 0-0.
-
-        Nothing left? 422 rather than finalizing a bogus 0-0 draw (which would also
-        400 on an elimination stage, where a winner is required).
+        THE admin write: the standing, ``status``, ``result_status`` and the
+        journal row move together, so a dispute can never be left half-resolved
+        the way "edit the score, then confirm" could. ``reason`` is required --
+        an admin result overrides what the participants said, and the journal
+        has to say why. Pass ``adopt_report_team_id`` to take one participation's
+        report as truth instead of stating the numbers.
         """
-        encounter = await self._load_encounter_with_reports(session, encounter_id)
-
+        if not (reason or "").strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=[ApiExc(code="reason_required", msg="An admin result needs a stated reason")],
+            )
+        encounter = await lock_encounter(session, encounter_id)
         if encounter.result_status == EncounterResultStatus.CONFIRMED:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Encounter result is already confirmed — reopen it first",
-            )
-        if (home_score is None) != (away_score is None):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="home_score and away_score must be provided together",
+                detail=[ApiExc(code="result_locked", msg="Encounter result is already confirmed — reopen it first")],
             )
         if closeness is not None and not 1 <= closeness <= 10:
             raise HTTPException(
@@ -688,180 +674,111 @@ class CaptainService:
             )
 
         adopted_team_id: int | None = None
-        if home_score is not None and away_score is not None:
-            resolved_home, resolved_away = home_score, away_score
-        elif adopt_report_team_id is not None:
-            report = next((r for r in encounter.captain_reports if r.team_id == adopt_report_team_id), None)
+        if adopt_report_team_id is not None:
+            report = await self.report_repo.get_by(
+                session, encounter_id=encounter.id, encounter_team_id=adopt_report_team_id
+            )
             if report is None:
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="That team has not reported this encounter",
+                    detail="That participation has not reported this encounter",
                 )
-            resolved_home, resolved_away = report.home_score, report.away_score
+            lines = await self._results_of(session, report)
+            results = [
+                ReportResultIn(
+                    encounter_team_id=row.encounter_team_id,
+                    score=row.score,
+                    placement=row.placement,
+                    wins=row.wins,
+                )
+                for row in lines
+            ]
             adopted_team_id = adopt_report_team_id
-        else:
-            reported = {(r.home_score, r.away_score) for r in encounter.captain_reports}
-            if len(reported) == 1:
-                resolved_home, resolved_away = next(iter(reported))
-            elif (encounter.home_score, encounter.away_score) != (0, 0):
-                resolved_home, resolved_away = encounter.home_score, encounter.away_score
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="result_score_unresolved: pass a score or adopt one of the reports",
-                )
-        self._reject_unfinished_series(encounter, resolved_home, resolved_away)
-        await self._drop_unplayed_later_swiss_rounds(session, encounter)
+        if not results:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=[
+                    ApiExc(
+                        code="result_score_unresolved",
+                        msg="Pass a standing or adopt one of the reports",
+                    )
+                ],
+            )
 
         if closeness is not None:
             encounter.closeness = closeness / 10.0
-        else:
-            # A tournament may have the match-quality field disabled, so skip the
-            # reports that carry no rating rather than summing a None.
-            closeness_values = [r.closeness for r in encounter.captain_reports if r.closeness is not None]
-            if closeness_values:
-                encounter.closeness = (sum(closeness_values) / len(closeness_values)) / 10.0
-
-        from_result_status = encounter.result_status
-        home_score_before = encounter.home_score
-        away_score_before = encounter.away_score
-        tournament_id = encounter.tournament_id
-
-        await self.finalize.finalize_encounter_score(
-            session,
-            encounter.id,
-            encounter=encounter,
-            home_score=resolved_home,
-            away_score=resolved_away,
-            source="admin",
-            result_status=EncounterResultStatus.CONFIRMED,
-            confirmed_at=datetime.now(UTC),
-        )
-        record_result_transition(
+        placements = {item.encounter_team_id: item.placement for item in results if item.placement is not None}
+        await apply_result(
             session,
             encounter,
+            source=EncounterResultSource.ADMIN,
+            totals={item.encounter_team_id: float(item.score) for item in results},
+            placements=placements or self._places_from_claims(results),
             action=EncounterResultAuditAction.CONFIRM,
-            source="admin",
+            audit_source="admin",
             actor_user_id=actor_user_id,
-            from_result_status=from_result_status,
-            home_score_before=home_score_before,
-            away_score_before=away_score_before,
-            adopted_team_id=adopted_team_id,
+            reason=reason,
         )
-        await self._enqueue_tournament_recalculation(session, tournament_id)
-        await self._enqueue_encounter_completed(session, encounter)
+        if adopted_team_id is not None:
+            # ``apply_result`` journals the transition; the adopted report is
+            # the one thing it cannot know, so it is stamped on the row it just
+            # wrote rather than in a second row the version key would refuse.
+            latest = await self.audit_repo.get_by(
+                session, encounter_id=encounter.id, result_version=encounter.result_version
+            )
+            if latest is not None:
+                latest.adopted_team_id = adopted_team_id
+        await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
+        await enqueue_encounter_completed(session, encounter, source_service="tournament-service")
+        await advancement.advance_after_result(session, encounter)
+        await enqueue_tournament_recalculation(session, encounter.tournament_id)
         await session.commit()
 
-        challonge_links = await resolve_encounter_challonge(session, [encounter.id])
-        if challonge_links.get(encounter.id) is not None:
-            await sync_service.auto_push_on_confirm(session, encounter.id)
-
-        await session.refresh(encounter)
+        links = await resolve_encounter_challonge(session, [encounter.id])
+        if links.get(encounter.id) is not None:
+            await _challonge_sync().auto_push_on_confirm(session, encounter.id)
         return encounter
+
+    @staticmethod
+    def _places_from_claims(results: Sequence[ReportResultIn]) -> dict[int, int]:
+        ordered = sorted(results, key=lambda item: -float(item.score))
+        places: dict[int, int] = {}
+        for index, item in enumerate(ordered):
+            previous = ordered[index - 1] if index else None
+            places[item.encounter_team_id] = (
+                places[previous.encounter_team_id]
+                if previous is not None and float(previous.score) == float(item.score)
+                else index + 1
+            )
+        return places
 
     async def reopen_encounter_result(
         self,
         session: AsyncSession,
         encounter_id: int,
         *,
-        actor_user_id: int | None,
-    ) -> models.Encounter:
+        actor_user_id: int,
+        reason: str,
+    ) -> Encounter:
         """Un-confirm an encounter so it can be played or reported again.
 
-        The counterpart to :meth:`set_encounter_result`, and the only way out of a
-        dispute an admin does not want to force-confirm. Captain reports are kept —
-        reopening is a correction, not a purge, and the submissions remain the
-        evidence. Anything the old result advanced downstream is cleared with it.
-        An unplayed later Swiss round was paired off this result, so it goes too.
+        The counterpart to :meth:`set_encounter_result`, and the only way out of
+        a dispute an organizer does not want to force-confirm. Reports are kept
+        -- reopening is a correction, not a purge, and the submissions remain
+        the evidence. Whatever the old result advanced downstream is unwound
+        with it (:func:`advancement.reset_downstream`).
         """
-        encounter = await self._load_encounter_with_reports(session, encounter_id)
-
+        encounter = await lock_encounter(session, encounter_id)
         if encounter.result_status == EncounterResultStatus.NONE and encounter.status == EncounterStatus.OPEN:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Encounter has no recorded result to reopen",
             )
-
-        await self._drop_unplayed_later_swiss_rounds(session, encounter)
-        tournament_id = encounter.tournament_id
-        await advancement.reset_encounter_result(
-            session,
-            encounter,
-            action=EncounterResultAuditAction.REOPEN,
-            actor_user_id=actor_user_id,
-            source="admin",
-        )
-        await self._enqueue_tournament_recalculation(session, tournament_id)
+        await reopen(session, encounter, actor_user_id=actor_user_id, reason=reason)
+        await advancement.reset_downstream(session, encounter, actor_user_id=actor_user_id)
+        await enqueue_tournament_recalculation(session, encounter.tournament_id)
         await session.commit()
-        await session.refresh(encounter)
         return encounter
-
-    @staticmethod
-    def _reject_unfinished_series(encounter: models.Encounter, home_score: int, away_score: int) -> None:
-        """Refuse a score a best-of-N series cannot end on.
-
-        The claim is checked by the ``wins`` preset's own end rule (plan §5):
-        it must hold on the claimed card AND must not already have held a game
-        earlier, which is what makes a 3:0 in a Bo3 impossible. Slots 1 and 2
-        stand for the two seats; the claim covers no confirmed games.
-        """
-        if not series_claim_errors(
-            WINS_RULES,
-            best_of=encounter.best_of,
-            team_ids=(1, 2),
-            confirmed_games=[],
-            claim=SeriesClaim(
-                games_played=home_score + away_score,
-                totals={1: float(home_score), 2: float(away_score)},
-                wins={1: home_score, 2: away_score},
-                placements=None,
-            ),
-        ):
-            return
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(f"{home_score}:{away_score} is not a valid final score for a best-of-{encounter.best_of} series"),
-        )
-
-    @staticmethod
-    def _later_swiss_round_started(row: models.Encounter) -> bool:
-        return (
-            row.status != EncounterStatus.OPEN
-            or (row.home_score or 0) != 0
-            or (row.away_score or 0) != 0
-            or row.result_status not in (None, EncounterResultStatus.NONE)
-        )
-
-    async def _drop_unplayed_later_swiss_rounds(self, session: AsyncSession, encounter: models.Encounter) -> None:
-        """Throw away a Swiss round paired off a result we are changing.
-
-        The standings job only creates the next round when it does not already
-        exist, so a corrected score would otherwise leave 1.0 playing 0.0. A
-        later round that has already been played is not ours to invent: the
-        organizer reopens those matches first.
-        """
-        stage = encounter.stage
-        if stage is None or stage.stage_type != StageType.SWISS or encounter.round is None:
-            return
-        result = await session.execute(
-            select(models.Encounter).where(
-                models.Encounter.stage_id == encounter.stage_id,
-                models.Encounter.stage_item_id.is_not_distinct_from(encounter.stage_item_id),
-                models.Encounter.round > encounter.round,
-            )
-        )
-        later = list(result.scalars().all())
-        if not later:
-            return
-        if any(self._later_swiss_round_started(row) for row in later):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A later Swiss round already has a result — reopen it before changing this one",
-            )
-        for round_number in {row.round for row in later}:
-            await remove_swiss_bye_round(session, encounter.stage_id, encounter.stage_item_id, round_number)
-        for row in later:
-            await session.delete(row)
 
 
 captain_service = CaptainService()

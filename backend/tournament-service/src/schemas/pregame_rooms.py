@@ -121,7 +121,8 @@ class PregameRoomHistoryEntry(BaseModel):
     action: str
     kind: Literal["map", "hero"] | None = None
     source: Literal["captain", "admin", "system"]
-    side: Literal["home", "away"] | None = None
+    #: The participation acted by or for; null for a room-level row.
+    encounter_team_id: int | None = None
     actor_auth_user_id: int | None = None
     #: Display name of whoever acted; null for the clock and the engine.
     actor_name: str | None = None

@@ -19,7 +19,7 @@ from shared.domain.encounter_scoring import PLACEMENT_VARIABLES
 from shared.domain.ffa_formula import compile_formula
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
 from shared.repository import (
-    EncounterGameResultRepository,
+    EncounterGameTeamRepository,
     EncounterRepository,
     PickBanConfigRepository,
     StageItemInputRepository,
@@ -180,7 +180,7 @@ class AdminStageService:
         team_repo: TeamRepository = TeamRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
         pick_ban_config_repo: PickBanConfigRepository = PickBanConfigRepository(),
-        result_repo: EncounterGameResultRepository = EncounterGameResultRepository(),
+        result_repo: EncounterGameTeamRepository = EncounterGameTeamRepository(),
     ) -> None:
         self.stage_repo = stage_repo
         self.stage_item_repo = stage_item_repo
@@ -2568,7 +2568,7 @@ class AdminStageService:
             # A lobby's completion is derived from "confirmed games >= best_of",
             # so moving the bar here settles or reopens it (plan §5.4). A duel's
             # is decided by its series score, which this does not touch.
-            if encounter.format == enums.EncounterFormat.FFA:
+            if encounter.slot_count > 2:
                 await ffa_encounter_service.refresh_completion(session, encounter, actor_user_id=None)
 
         if changed:

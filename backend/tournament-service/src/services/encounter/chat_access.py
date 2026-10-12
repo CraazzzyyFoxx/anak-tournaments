@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import EncounterFormat
-from shared.core.errors import BaseAPIException as HTTPException
 from shared.services.chat import SPECTATOR_ROLE, ChatMembership, ChatRoom, ChatService
 from shared.services.tournament.display_name import tournament_display_name
 from shared.services.tournament.visibility import ensure_tournament_viewable
@@ -49,20 +47,10 @@ class EncounterChatAccess:
         if auth_user is None:
             return _SPECTATOR
 
-        if encounter.format == EncounterFormat.FFA:
-            # A lobby has no sides, so "which side are you?" has no answer: the
-            # seated teams are the whole roster, and captaining one of them is
-            # the same membership a duel captain gets (plan §5.6).
-            side = (
-                "captain" if await ffa_encounter_service.is_participant_captain(session, auth_user, encounter) else None
-            )
-        else:
-            try:
-                side = await captain_service.resolve_captain_side(session, auth_user, encounter)
-            except HTTPException:
-                # ``resolve_captain_side`` says "not a captain" with a 403, same as
-                # ``_captain_my_role`` reads it; here it is the fall-through to staff.
-                side = None
+        # An encounter has no sides, so "which side are you?" has no answer:
+        # the seated participations are the whole roster, and captaining one of
+        # them is one membership whether the encounter seats two or twenty.
+        side = "captain" if await ffa_encounter_service.is_participant_captain(session, auth_user, encounter) else None
         if side:
             return ChatMembership(
                 role=side,

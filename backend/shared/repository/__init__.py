@@ -34,6 +34,7 @@ from .draft import (
     DraftTeamRepository,
 )
 from .encounter import (
+    EncounterGameClaimRepository,
     EncounterGameRepository,
     EncounterGameTeamRepository,
     EncounterLinkRepository,
@@ -43,6 +44,7 @@ from .encounter import (
     EncounterSavedViewRepository,
     EncounterTeamMemberRepository,
     EncounterTeamMemberRoleRepository,
+    EncounterTeamReportRepository,
     EncounterTeamRepository,
     ScoringRuleRepository,
 )
@@ -218,6 +220,7 @@ __all__ = (
     "DraftPlayerRepository",
     "DraftSessionRepository",
     "DraftTeamRepository",
+    "EncounterGameClaimRepository",
     "EncounterGameRepository",
     "EncounterGameTeamRepository",
     "EncounterLinkRepository",
@@ -229,6 +232,7 @@ __all__ = (
     "EncounterSavedViewRepository",
     "EncounterTeamMemberRepository",
     "EncounterTeamMemberRoleRepository",
+    "EncounterTeamReportRepository",
     "EncounterTeamRepository",
     "FavoritePlayerRepository",
     "GamemodeRepository",
