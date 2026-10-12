@@ -85,14 +85,15 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
         entities.extend(
             tournament_service.tournament_entities(utils.prepare_entities(in_entities, "tournament"), tournament_entity)
         )
-    # ``stage``/``stage_item``/``home_team``/``away_team`` are no longer
-    # relationships of an encounter: the bracket position moved to
-    # ``tournament.bracket_encounter`` and the two sides became
-    # ``encounter.team`` participations (D22, D55). Any of those four words in
-    # ``entities`` therefore loads the SEATS, which is what the reader renders
-    # them from.
-    if {"teams", "home_team", "away_team"} & set(in_entities):
-        entities.append(utils.join_entity(child, models.Encounter.teams))
+    # The participations load with EVERY encounter read, not behind an entity
+    # token: the seats carry what used to be columns on the row -- both teams,
+    # the score, the places -- so ``to_pydantic`` touches them for an entity-less
+    # read too, and an unloaded collection there is implicit IO
+    # (``MissingGreenlet``) rather than a missing optional nesting. The bracket
+    # position moved to ``tournament.bracket_encounter``, which the reader
+    # fetches by id; ``stage``/``stage_item``/``home_team``/``away_team`` are no
+    # longer relationships of an encounter at all (D22, D55).
+    entities.append(utils.selectin_entity(child, models.Encounter.teams))
     if "matches" in in_entities:
         matches_entity = utils.join_entity(child, models.Encounter.matches)
         entities.append(matches_entity)
@@ -527,41 +528,68 @@ class EncounterService:
             .subquery()
         )
         avg_series_seconds_sq = sa.select(sa.func.avg(duration_by_encounter.c.seconds)).scalar_subquery()
+        # The two-seat metrics below read SEATS, not sides: slot 1 is the left
+        # seat and slot 2 the right one, and anything wider than two seats is
+        # excluded rather than given an invented "home" (D55).
+        duel = models.Encounter.slot_count == 2
+        seat_one = aliased(models.EncounterTeam)
+        seat_two = aliased(models.EncounterTeam)
         enc_upset = aliased(models.Encounter)
-        home_standing = aliased(models.Standing)
-        away_standing = aliased(models.Standing)
+        upset_seat_one = aliased(models.EncounterTeam)
+        upset_seat_two = aliased(models.EncounterTeam)
+        upset_bracket = aliased(models.BracketEncounter)
+        first_standing = aliased(models.Standing)
+        second_standing = aliased(models.Standing)
         upset_count_sq = (
             sa.select(sa.func.count(sa.distinct(enc_upset.id)))
             .select_from(enc_upset)
             .join(base_ids, base_ids.c.id == enc_upset.id)
+            .join(upset_bracket, upset_bracket.encounter_id == enc_upset.id)
             .join(
-                home_standing,
+                upset_seat_one,
                 sa.and_(
-                    home_standing.tournament_id == enc_upset.tournament_id,
-                    home_standing.team_id == enc_upset.home_team_id,
-                    home_standing.stage_id == enc_upset.stage_id,
-                    home_standing.stage_item_id == enc_upset.stage_item_id,
+                    upset_seat_one.encounter_id == enc_upset.id,
+                    upset_seat_one.slot == 1,
+                    upset_seat_one.active.is_(True),
                 ),
             )
             .join(
-                away_standing,
+                upset_seat_two,
                 sa.and_(
-                    away_standing.tournament_id == enc_upset.tournament_id,
-                    away_standing.team_id == enc_upset.away_team_id,
-                    away_standing.stage_id == enc_upset.stage_id,
-                    away_standing.stage_item_id == enc_upset.stage_item_id,
+                    upset_seat_two.encounter_id == enc_upset.id,
+                    upset_seat_two.slot == 2,
+                    upset_seat_two.active.is_(True),
+                ),
+            )
+            .join(
+                first_standing,
+                sa.and_(
+                    first_standing.tournament_id == enc_upset.tournament_id,
+                    first_standing.team_id == upset_seat_one.team_id,
+                    first_standing.stage_id == upset_bracket.stage_id,
+                    first_standing.stage_item_id == upset_bracket.stage_item_id,
+                ),
+            )
+            .join(
+                second_standing,
+                sa.and_(
+                    second_standing.tournament_id == enc_upset.tournament_id,
+                    second_standing.team_id == upset_seat_two.team_id,
+                    second_standing.stage_id == upset_bracket.stage_id,
+                    second_standing.stage_item_id == upset_bracket.stage_item_id,
                 ),
             )
             .where(
                 enc_upset.status == enums.EncounterStatus.COMPLETED,
+                enc_upset.slot_count == 2,
                 sa.or_(
                     sa.and_(
-                        enc_upset.home_score > enc_upset.away_score,
-                        home_standing.position > away_standing.position,
+                        upset_seat_one.score > upset_seat_two.score,
+                        first_standing.position > second_standing.position,
                     ),
                     sa.and_(
-                        enc_upset.away_score > enc_upset.home_score,
-                        away_standing.position > home_standing.position,
+                        upset_seat_two.score > upset_seat_one.score,
+                        second_standing.position > first_standing.position,
                     ),
                 ),
             )
@@ -581,22 +609,18 @@ class EncounterService:
                     sa.func.count()
                     .filter(
                         completed,
-                        sa.or_(models.Encounter.home_score == 0, models.Encounter.away_score == 0),
-                        models.Encounter.home_score != models.Encounter.away_score,
+                        duel,
+                        sa.or_(seat_one.score == 0, seat_two.score == 0),
+                        seat_one.score != seat_two.score,
                     )
                     .label("sweeps"),
                     sa.func.count()
-                    .filter(
-                        completed,
-                        models.Encounter.home_score + models.Encounter.away_score == models.Encounter.best_of,
-                    )
+                    .filter(completed, duel, seat_one.score + seat_two.score == models.Encounter.best_of)
                     .label("went_distance"),
-                    sa.func.count()
-                    .filter(completed, models.Encounter.home_score > models.Encounter.away_score)
-                    .label("home_wins"),
-                    sa.func.count()
-                    .filter(completed, models.Encounter.away_score > models.Encounter.home_score)
-                    .label("away_wins"),
+                    # The two SEATS' win counts, left and right; the wire still
+                    # spells them home/away until Task 9 renames the field.
+                    sa.func.count().filter(completed, duel, seat_one.score > seat_two.score).label("home_wins"),
+                    sa.func.count().filter(completed, duel, seat_two.score > seat_one.score).label("away_wins"),
                     sa.func.count()
                     .filter(models.Encounter.best_of >= 5, models.Encounter.closeness >= 0.6)
                     .label("close_bo5"),
@@ -608,8 +632,25 @@ class EncounterService:
                 )
                 .select_from(models.Encounter)
                 .join(base_ids, base_ids.c.id == models.Encounter.id)
-                .outerjoin(models.Stage, models.Encounter.stage_id == models.Stage.id)
-                .outerjoin(models.StageItem, models.Encounter.stage_item_id == models.StageItem.id)
+                .outerjoin(models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id)
+                .outerjoin(models.Stage, models.BracketEncounter.stage_id == models.Stage.id)
+                .outerjoin(models.StageItem, models.BracketEncounter.stage_item_id == models.StageItem.id)
+                .outerjoin(
+                    seat_one,
+                    sa.and_(
+                        seat_one.encounter_id == models.Encounter.id,
+                        seat_one.slot == 1,
+                        seat_one.active.is_(True),
+                    ),
+                )
+                .outerjoin(
+                    seat_two,
+                    sa.and_(
+                        seat_two.encounter_id == models.Encounter.id,
+                        seat_two.slot == 2,
+                        seat_two.active.is_(True),
+                    ),
+                )
             )
         ).one()
 
@@ -640,11 +681,26 @@ class EncounterService:
             .group_by(bucket_expr)
         )
 
+        heat_one = aliased(models.EncounterTeam)
+        heat_two = aliased(models.EncounterTeam)
+        left_score = sa.cast(heat_one.score, sa.Integer).label("left_score")
+        right_score = sa.cast(heat_two.score, sa.Integer).label("right_score")
         score_rows = await session.execute(
-            sa.select(models.Encounter.home_score, models.Encounter.away_score, sa.func.count(models.Encounter.id))
+            sa.select(left_score, right_score, sa.func.count(models.Encounter.id))
+            .select_from(models.Encounter)
             .join(base_ids, base_ids.c.id == models.Encounter.id)
-            .where(models.Encounter.status == enums.EncounterStatus.COMPLETED)
-            .group_by(models.Encounter.home_score, models.Encounter.away_score)
+            .join(
+                heat_one,
+                sa.and_(heat_one.encounter_id == models.Encounter.id, heat_one.slot == 1, heat_one.active.is_(True)),
+            )
+            .join(
+                heat_two,
+                sa.and_(heat_two.encounter_id == models.Encounter.id, heat_two.slot == 2, heat_two.active.is_(True)),
+            )
+            # A heatmap cell is a PAIR of scores, so it only means anything for
+            # a two-seat encounter; a lobby's table is the FFA read's job.
+            .where(models.Encounter.status == enums.EncounterStatus.COMPLETED, duel)
+            .group_by(left_score, right_score)
         )
 
         stage_name = sa.func.coalesce(models.StageItem.name, models.Stage.name, "Unassigned").label("stage_name")
@@ -652,8 +708,9 @@ class EncounterService:
             sa.select(stage_name, sa.func.count(models.Encounter.id))
             .select_from(models.Encounter)
             .join(base_ids, base_ids.c.id == models.Encounter.id)
-            .outerjoin(models.Stage, models.Encounter.stage_id == models.Stage.id)
-            .outerjoin(models.StageItem, models.Encounter.stage_item_id == models.StageItem.id)
+            .outerjoin(models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id)
+            .outerjoin(models.Stage, models.BracketEncounter.stage_id == models.Stage.id)
+            .outerjoin(models.StageItem, models.BracketEncounter.stage_item_id == models.StageItem.id)
             .group_by(stage_name)
             .order_by(sa.func.count(models.Encounter.id).desc())
         )

@@ -4,6 +4,7 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import EncounterGameState
+from shared.repository import TeamRepository
 from shared.services.bracket.advancement import SlotSource, resolve_slot_sources
 from shared.services.challonge_refs import (
     ChallongeRef,
@@ -30,8 +31,9 @@ def _wire_fields(encounter: models.Encounter, position: models.BracketEncounter 
     """The fields the v1 wire still spells as two sides and a bracket position.
 
     Read off the participations and ``tournament.bracket_encounter`` rather than
-    the columns that used to carry them, which are gone (D22, D55). The wire
-    SHAPE is Task 9's to change; where the numbers come from is this task's.
+    the columns that used to carry them, which are gone (D22, D55). The field
+    NAMES are Task 9's to change; their values are already the new model's --
+    slot 1 and slot 2 of the card, with no home or away behind them.
     """
     seats = _seats(encounter)
     first = next((seat for seat in seats if seat.slot == 1), None)
@@ -200,15 +202,20 @@ class EncounterFlowsService:
             if "teams" not in entities and holder not in entities:
                 continue
             seat = next((row for row in seats if row.slot == slot), None)
-            source = await session.get(models.Team, seat.team_id) if seat and seat.team_id else None
-            if source is None:
+            if seat is None or seat.team_id is None:
                 continue
-            read = await self._cached_team_read(
-                session,
-                source,
-                utils.prepare_entities(entities, "teams" if "teams" in entities else holder),
-                team_cache,
-            )
+            nested = utils.prepare_entities(entities, "teams" if "teams" in entities else holder)
+            if team_cache is not None and seat.team_id in team_cache:
+                read = team_cache[seat.team_id]
+            else:
+                # The team's own nested entities (``tournament``, ``players``,
+                # ``captain``) have to be eager-loaded here: a bare ``get`` would
+                # leave ``to_pydantic`` touching unloaded relationships, which is
+                # implicit IO and ``MissingGreenlet`` under async SQLAlchemy.
+                source = await session.get(models.Team, seat.team_id, options=TeamRepository.team_entities(nested))
+                if source is None:
+                    continue
+                read = await self._cached_team_read(session, source, nested, team_cache)
             if slot == 1:
                 home_team = read
             else:
@@ -267,6 +274,11 @@ class EncounterFlowsService:
             home_team=home_team,
             away_team=away_team,
             matches=matches_read,
+            # ``role``/``slot`` are the field NAMES the v1 wire still uses; their
+            # VALUES changed with this task -- a source POSITION in the feeding
+            # encounter's standing and a target SLOT number, both integers
+            # rendered as strings. There is no winner/loser or home/away left in
+            # them. Task 9 renames the two fields.
             sources=[
                 schemas.EncounterSlotSourceRead(
                     encounter_id=source.encounter_id,

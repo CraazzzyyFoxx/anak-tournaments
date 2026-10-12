@@ -25,11 +25,14 @@ from shared.models.tournament.team import Team
 from shared.services.bracket import advancement
 from shared.services.encounter import participants
 from shared.tests.encounter_writer_case import EncounterWriterCase
+from src import schemas
 from src.services.encounter.captain import ReportResultIn, captain_service
 from src.services.encounter.ffa import ffa_encounter_service
+from src.services.encounter.flows import flows_service, to_summary
 from src.services.encounter.game_correction import game_correction_service
 from src.services.encounter.games import GameResultIn, encounter_game_service
 from src.services.encounter.map_report import ClaimResultIn, map_report_service
+from src.services.encounter.service import encounter_service
 
 #: ``players.user.name`` is globally unique, so the extra players a second
 #: encounter needs are tagged per test.
@@ -605,3 +608,89 @@ class CascadeTests(ResultFlowCase):
             self.assertEqual([("T0", False)], list(retired))
             audit = await captain_service.get_result_audit(s, self.ids["e"])
             self.assertIn("the second map was scored backwards", [row["reason"] for row in audit])
+
+
+class ReadPathTests(ResultFlowCase):
+    """The public encounter reads, off participations and the bracket row.
+
+    These exist because the read path has no seats-shaped assertion anywhere
+    else: every attribute it used to take off the encounter row (both teams,
+    the score, the stage coordinate) is now a join, and the failure mode of
+    getting that wrong is an ``AttributeError`` at request time, not a wrong
+    number.
+    """
+
+    async def test_the_overview_counts_the_two_seats_without_a_home_column(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            await self.play(s, 1, first.id, second.id)
+            await self.play(s, 2, first.id, second.id)
+
+        async with self.Session() as s:
+            data = await encounter_service.get_overview_data(
+                s,
+                schemas.EncounterSearchParams(page=1, per_page=50, tournament_id=self.ids["t"]),
+            )
+        self.assertEqual(1, data["total"])
+        self.assertEqual(1, data["completed_series_count"])
+        # Slot 1 took both maps: a 2:0 is a sweep, and the win belongs to the
+        # LEFT seat. Nothing here reads a home column.
+        self.assertEqual(1, data["sweep_count"])
+        self.assertEqual(1, data["home_wins"])
+        self.assertEqual(0, data["away_wins"])
+        self.assertEqual([(2, 0, 1)], [tuple(row) for row in data["score_rows"]])
+
+    async def test_a_lobby_is_left_out_of_the_two_seat_metrics(self) -> None:
+        async with self.Session() as s:
+            lobby = Encounter(
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                tournament_id=self.ids["t"],
+                scoring_rule_id=self.ids["rule"],
+                name="Lobby",
+                slot_count=3,
+                best_of=1,
+                status=enums.EncounterStatus.COMPLETED,
+                result_status=enums.EncounterResultStatus.CONFIRMED,
+                result_source=enums.EncounterResultSource.GAMES.value,
+            )
+            s.add(lobby)
+            await s.commit()
+
+        async with self.Session() as s:
+            data = await encounter_service.get_overview_data(
+                s,
+                schemas.EncounterSearchParams(page=1, per_page=50, tournament_id=self.ids["t"], slot_count=3),
+            )
+        # The lobby is in scope, but it contributes to neither win column: a
+        # three-seat encounter has no left-versus-right to balance.
+        self.assertEqual(1, data["total"])
+        self.assertEqual(0, data["home_wins"])
+        self.assertEqual(0, data["away_wins"])
+        self.assertEqual([], [tuple(row) for row in data["score_rows"]])
+
+    async def test_an_entity_less_read_serializes_from_the_seats(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            await self.play(s, 1, first.id, second.id)
+
+        async with self.Session() as s:
+            encounter = await encounter_service.get_encounter(s, self.ids["e"], [])
+            read = await flows_service.to_pydantic(s, encounter, [])
+            summary = to_summary(encounter)
+        self.assertEqual(self.ids["team0"], read.home_team_id)
+        self.assertEqual(self.ids["team1"], read.away_team_id)
+        self.assertEqual((1, 0), (read.score.home, read.score.away))
+        self.assertEqual(0, read.round)
+        self.assertIsNone(read.stage_id)
+        self.assertEqual(self.ids["team0"], summary.home_team_id)
+
+    async def test_a_read_with_teams_eager_loads_their_nested_entities(self) -> None:
+        async with self.Session() as s:
+            encounter = await encounter_service.get_encounter(s, self.ids["e"], ["teams", "teams.players"])
+            read = await flows_service.to_pydantic(s, encounter, ["teams", "teams.players"])
+        self.assertEqual("T0", read.home_team.name)
+        self.assertEqual("T1", read.away_team.name)
+        # ``players`` is a to-many on the team: reaching it at all proves the
+        # seat's team was loaded with its nested entities, not bare.
+        self.assertEqual([], read.home_team.players)
