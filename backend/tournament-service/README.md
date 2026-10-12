@@ -34,9 +34,12 @@ layering.
   the shared admission resolver.
 - **Structure and brackets.** Stages, stage items and stage-item inputs; seeding, wiring and
   advancement edges; single/double elimination, round-robin and Swiss generation.
-- **Encounters and results.** Captain reports per team per map, the result state machine
-  (confirm / reopen / auto-confirm / dispute / import / cascade reset) with a full audit row per
-  transition, and downstream bracket advancement.
+- **Encounters and results.** Games and per-participation game claims, series reports, and the result
+  state machine (confirm / reopen / auto-confirm / dispute / import / cascade reset). Every result
+  change takes the encounter row `FOR UPDATE`, bumps `result_version` and writes one
+  `encounter.result_audit` row; results from a series claim, an admin or an import are never
+  overwritten by games. The API returns participants as `teams[]` with slot numbers — no home/away —
+  and bracket advancement follows the encounter's final positions.
 - **Pick/ban.** The generic pick-ban engine over map and hero pools: configs, sessions, opener
   election, acting, undo, and admin overrides.
 - **Standings.** Standing computation jobs and the recalculation triggered by results.
@@ -258,14 +261,20 @@ project at [`../migrations/`](../migrations/).
 
 **Writes:**
 
-- **`tournament`** — the whole tree: `tournament`, `tournament_phase_schedule`, `stage`, `stage_item`,
-  `stage_item_input`, `team`, `player`, `player_sub_role`, `encounter`, `encounter_link`,
-  `encounter_captain_report`, `encounter_map_report`, `encounter_map_code`, `encounter_report_form`,
-  `encounter_readiness`, `encounter_result_audit`, `encounter_pick_ban_ledger`, the `pick_ban_config*`
-  / `pick_ban_session` / `pick_ban_entry` engine tables, `standing`, `recalculation_state`,
+- **`tournament`** — the structure: `tournament`, `tournament_phase_schedule`, `stage`, `stage_item`,
+  `stage_item_input`, `stage_round_best_of`, `team`, `player`, `player_sub_role`,
+  `bracket_encounter` (an encounter's stage, stage item and round), `encounter_link`,
+  `encounter_report_form`, the `pick_ban_config*` template tables, `standing`, `recalculation_state`,
   `computation_job`, the four `challonge_*` mapping/log tables, `scrim_room`,
   `tournament_preview_access`, `tournament_link`, `slug_redirect`, `encounter_saved_view`.
-- **`balancer`** — the registration side of that schema: `registration`, `registration_role`,
+- **`encounter`** — the match layer, written through the single writers in
+  [`shared/services/encounter/`](../shared/services/encounter/): `encounter`, `team` (participations)
+  with `team_member` / `team_member_role`, `game` and `game_team`, `game_claim` /
+  `game_claim_result`, `team_report` / `team_report_result`, `scoring_rule`, `result_audit`,
+  `readiness`, `room_event`, and the `pick_ban_session` / `pick_ban_entry` / `pick_ban_submission`
+  tables of the pre-game room. Seats change only through `participants.py`, results only through
+  `result.py`.
+- **`balancer`** — the registration side of the tournament domain: `registration`, `registration_role`,
   `registration_role_hero`, `registration_form`, `registration_status`, `registration_team`,
   `registration_team_invite`, `registration_google_sheet_feed` / `_binding`. Balancing itself
   (`balancer.*` team-building tables) belongs to `balancer-service`.
@@ -278,9 +287,11 @@ project at [`../migrations/`](../migrations/).
 
 **Reads only:** `players` (player identity behind rosters and registrations), `auth` (actor columns
 on audit rows), `public.workspace` / `public.workspace_member` (tenancy anchors), `overwatch` (hero
-and map catalog for pick/ban), `matches` (parsed match rows surfaced by the admin match reads).
+and map catalog for pick/ban), `catalog` (the `discipline` registry behind a tournament's
+`discipline`), `matches` (parsed match rows surfaced by the admin match reads).
 
 Entity diagrams: [tournament](../../docs/database_erd.md#tournament--tournament-casual),
+[encounter](../../docs/database_erd.md#encounter--encounter),
 [registration](../../docs/database_erd.md#registration--balancer),
 [division_grid](../../docs/database_erd.md#division_grid--public),
 [subscriptions](../../docs/database_erd.md#subscriptions--subscriptions),

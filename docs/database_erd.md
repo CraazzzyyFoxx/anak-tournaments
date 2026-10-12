@@ -3,8 +3,8 @@
 A single PostgreSQL database shared by every Python service in the monorepo. The ORM models
 (SQLAlchemy) live in `backend/shared/models/<package>/`; the tables themselves are split across
 **Postgres schemas**, which double as domain boundaries. A package name does not always match a
-schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, and
-`tournament/` spans `tournament` and `casual`.
+schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, `tournament/`
+spans `tournament` and `casual`, and `catalog/` spans `overwatch` and `catalog`.
 
 > **Every entity diagram in this document is generated** from `Base.metadata` by
 > `backend/scripts/export_erd.py`, one diagram per model package. The prose around them is
@@ -52,9 +52,11 @@ Alembic head: **`enclayer01`** (111 revisions in `backend/migrations/versions/`)
 | `auth` | Login accounts, sessions, OAuth, API keys, RBAC | identity-service |
 | `players` | Player identity and social accounts | app-service |
 | `public` | Workspaces, membership, division grids, settings, outbox | app-service |
-| `tournament` | Tournament structure, bracket, encounters, pick/ban, reports | tournament-service |
+| `tournament` | Tournament structure, bracket position, advancement edges, pick/ban templates, scrim rooms | tournament-service |
+| `encounter` | Match layer: encounters, participations, games, claims, series reports, scoring rules, result journal, pick/ban sessions | tournament-service |
 | `casual` | Casual and scrim matches outside the tournament tree | tournament-service |
 | `overwatch` | Game catalog — heroes, maps, game modes | app-service / parser-service |
+| `catalog` | Disciplines the platform knows (`overwatch` in V1) | seeded by migration; no service writes it |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
 | `matches` | Parsed match logs and derived statistics | parser-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
@@ -74,8 +76,11 @@ The hubs almost every domain converges on:
 - **`players.user`** — the domain player. Can exist with no login account (a "virtual" or
   "shadow" player imported from match logs or a CSV).
 - **`auth.user`** — the login account. Links to `players.user` `1:0..1`.
-- **`tournament.tournament`** — the root for stages, teams, encounters, registrations and
-  analytics.
+- **`tournament.tournament`** — the root for stages, teams, registrations and analytics, and the
+  owner of its encounters.
+- **`encounter.encounter`** — the root of the match layer: participations, games, claims,
+  reports and the result journal hang off it, and parsed matches, achievement results and
+  analytics point at it.
 - **`overwatch.hero`** — referenced by statistics, registration preferences and achievements.
 
 Full identity semantics — who owns which table, what a virtual player is, how linking works —
@@ -101,9 +106,11 @@ flowchart TB
     end
 
     subgraph COMPETITION["Competition"]
-        TOUR["tournament<br/>(stages, teams, bracket, pick/ban)"]
+        TOUR["tournament<br/>(stages, teams, bracket, pick/ban templates)"]
+        ENC["encounter<br/>(match layer: participations, games, results)"]
         MATCHES["matches<br/>(match logs, statistics)"]
         OW["overwatch<br/>(hero / map / gamemode)"]
+        CAT["catalog<br/>(disciplines)"]
         RANK["overwatch_rank<br/>(rank snapshots)"]
     end
 
@@ -138,7 +145,13 @@ flowchart TB
     TOUR --> GRID
     TOUR --> PLAYERS
     TOUR --> OW
+    TOUR --> CAT
+    TOUR --> ENC
+    ENC --> TOUR
+    ENC --> WS
+    ENC --> OW
     MATCHES --> TOUR
+    MATCHES --> ENC
     MATCHES --> OW
     MATCHES --> PLAYERS
     MATCHES --> LOG
@@ -160,19 +173,25 @@ flowchart TB
 
     ACH --> WS
     ACH --> TOUR
+    ACH --> ENC
     ACH --> MATCHES
     ACH --> OW
     AN --> TOUR
+    AN --> ENC
     AN --> WS
 
     LOG --> TOUR
+    LOG --> ENC
     LOG --> PLAYERS
 ```
 
 Two edges the map does not draw, because the schema no longer has them: `balancer` does not
 reference `players` (registration identity goes through `workspace_member`), and `analytics`
-reads match data only through `tournament.player` and `tournament.encounter`, never through
-`matches` directly.
+reads match data only through `tournament.player` and `encounter.encounter`, never through
+`matches` directly. `encounter` and `tournament` reference each other: an encounter points at
+its owning tournament, and the bracket position and advancement edges point back at the
+encounter. The actor columns of `encounter` (`reporter_user_id`, `actor_user_id`) point at
+`auth` and are left out like the rest.
 
 ## identity — `auth`, `players`
 
@@ -527,7 +546,7 @@ Composite unique keys:
 - `BALANCER_MEMBER_HIDDEN_RATING` unique on (`workspace_member_id`, `role`)
 <!-- /ERD:auto -->
 
-## catalog — `overwatch`
+## catalog — `overwatch`, `catalog`
 
 The game catalog — heroes, maps, game modes — plus the misses log that records catalog names
 arriving from logs that no alias resolves.
@@ -543,6 +562,13 @@ the "add an alias" queue in the admin UI. It is keyed on `(entity_type, raw_name
 `occurrences` counter, and `resolved_at` is cleared again when a supposedly resolved name comes
 back. Its link to the log record it last arrived on is nullable, so pruning ingestion records
 does not empty the queue.
+
+`catalog.discipline` is the registry of games the platform knows: a `code` and a `name`, with
+one row, `overwatch`, in V1. It exists so that the `discipline` column on `tournament.tournament`
+and `encounter.encounter` references something and a typo cannot reach the match layer; what the
+code knows about a discipline beyond that (whether its games have sides) is in
+`backend/shared/disciplines/`. The heroes, maps and game modes above are still the Overwatch
+catalog, not yet scoped by discipline.
 
 <!-- ERD:auto catalog -->
 ```mermaid
@@ -800,9 +826,9 @@ erDiagram
 ## tournament — `tournament`, `casual`
 
 The largest domain: the tournament itself and its lifecycle, stages and stage items, teams and
-their rosters, encounters and the advancement edges that form the bracket, the pick/ban engine,
-standings and their computation jobs, match reports, Challonge synchronisation, scrim rooms, and
-preview access.
+their rosters, the bracket positions and advancement edges that tie encounters into a bracket,
+the pick/ban templates, standings and their computation jobs, Challonge synchronisation, scrim
+rooms, and preview access. The encounters themselves are in [`encounter`](#encounter--encounter).
 
 The structure is `tournament → stage → stage_item → stage_item_input`. A stage item is a group,
 a bracket or a round-robin; the legacy `tournament.group` table is gone, and a group is a stage
@@ -816,21 +842,21 @@ self-reference linking a substitute to the player they stand in for, and sub-rol
 per-workspace `player_sub_role` catalog. `tournament.team` deliberately stores no SR: team
 strength is derived from the roster, never cached on the row.
 
-`encounter` is one best-of meeting; `encounter_link` holds the advancement edges explicitly
-(`winner`/`loser` → `home`/`away` slot). Results are a small state machine rather than a score
-write: `result_status` plus `confirmed_at` on the row, and one `encounter_result_audit` row per
-transition — confirm, reopen, auto-confirm, dispute, import, cascade reset — recording the
-scores after the change and whose report was adopted. Captains report through
-`encounter_captain_report` (one per team per encounter) with per-map lobby codes, and
-`encounter_map_report` records per-map scores; `encounter_report_form` is the per-tournament
-field definition, `encounter_readiness` the per-side ready signal.
+The meetings themselves live in the [`encounter`](#encounter--encounter) schema, which this
+schema references; what stays here is the tournament's structure around them.
+`tournament.bracket_encounter` is an encounter's place in a bracket — stage, stage item and
+round, one row per bracketed encounter — and `encounter_link` holds the advancement edges
+explicitly: the team that finishes in position *k* of the source encounter fills a numbered slot
+of the target. Both carry `tournament_id` so a composite key can check that the encounters on
+both ends belong to the same tournament. `tournament.tournament` has a `discipline`
+(`catalog.discipline.code`) that every encounter under it copies, and `stage.scoring_rule_id`
+names the `encounter.scoring_rule` its encounters are scored by. `encounter_report_form` is the
+per-tournament definition of the fields a captain's series report asks for.
 
 Pick/ban is generic: `pick_ban_config` is the template (mode, first-pick rule, ban rotation,
-resolved sequence) with its pool in `pick_ban_config_item` and `pick_ban_config_slot*`;
-`pick_ban_session` is one live run per `(encounter, kind)` and `pick_ban_entry` a single step.
-`encounter_pick_ban_ledger` keeps what was banned in which round, which is what a no-repeat
-scope spanning several encounters reads. This engine replaced the earlier map-veto tables; there
-is no `map_veto_config` any more.
+resolved sequence) with its pool in `pick_ban_config_item` and `pick_ban_config_slot*`. The live
+run — session, entries, submissions — belongs to the encounter and lives in the `encounter`
+schema. This engine replaced the earlier map-veto tables; there is no `map_veto_config` any more.
 
 The Challonge bridge has exactly one source of truth: `challonge_source` (per tournament, stage
 or stage item) plus `challonge_participant_mapping`, `challonge_match_mapping` and
@@ -1301,6 +1327,38 @@ The game-neutral match layer: an encounter seats `slot_count` immutable particip
 (`encounter.team`) with their roster snapshots, games and per-participation game results, the
 claims and series reports those results are decided from, one scoring rule per stage or
 encounter, the result journal, and the pick/ban room that runs before the first game.
+
+`encounter.encounter` is the old `tournament.encounter` moved with its ids. It knows its owner
+(`tournament_id`, `workspace_id`, `discipline`, tied together by the composite
+`fk_encounter_owner`), how many slots it seats and how many games it plays (`best_of`), and the
+state of its result: `result_status`, `result_source` (`games`, `series_claim`, `admin`,
+`import`; NULL while nothing official exists) and `result_version`. There is no `format`, no
+home/away and no bracket position — a duel is `slot_count = 2`, and the bracket position is a
+`tournament.bracket_encounter` row that mixes and scrims simply do not have.
+
+A participation is append-only: replacing the occupant of a slot writes a new `team` row and
+sets the old one `active = false`, and nothing reactivates it. `team_id` is the source
+`tournament.team` and is set to NULL if that team is deleted; `name` is the snapshot that
+survives. Two partial unique indexes allow one active occupant per slot and one active seat per
+source team, and `uq_team_member_active_member` one active seat per workspace member. The
+`team_member` rows carry an `active` copy of their participation's, kept in step by an
+`ON UPDATE CASCADE` composite key.
+
+`game` is one position, with the map and the accepted result; a cancelled game keeps its
+position as history and a repeated position is a new row. `game_team` is one row per
+participation per game: raw score, placement, the organizer's column values, the side it
+started on and the replay code. Claims mirror that shape: `game_claim` is one participation's
+claim about one game (with a `basis_version`), `game_claim_result` its numbers per participation,
+and the composite keys stop a claim from naming a participation that is not in the game.
+`team_report` / `team_report_result` do the same for a whole-series report.
+
+`scoring_rule` holds the preset, columns, placement points and the two formulas (`game_formula`,
+`end_formula`) an encounter is scored by; the encounter may only point at a rule of its own
+workspace. `result_audit` is the version sequence of the encounter — one row per result change,
+unique on `(encounter_id, result_version)`, with `before` / `after` snapshots — and `room_event`
+the ordered story of the pre-game room. The pick/ban session, entry and submission tables moved
+here from `tournament`; the templates they are started from (`pick_ban_config*`) stay in
+`tournament`.
 
 <!-- ERD:auto encounter -->
 ```mermaid
@@ -2286,6 +2344,12 @@ its 1-based position in the series and is nullable for logs parsed before that c
 `log_record_id` is the provenance link back to the uploaded file and is nullable, so pruning
 ingestion records never deletes parsed matches.
 
+`matches.match` still carries `home_team_id` / `away_team_id`, and `matches.statistics`,
+`kill_feed` and `event` a `team_id`, all pointing at `tournament.team`. They are the one place
+home/away survives, until the statistics rework (V4); the parsed log is the only thing that
+writes them. The result of the map is not here: it is the `encounter.game` and its
+`game_team` rows.
+
 `statistics` is long-format — one row per `(match, round, team, player, hero, stat name)` with a
 single float — which is why it is by far the largest table in the database. `kill_feed` and
 `event` both record two sides of an interaction (killer/victim, actor/related) with team and
@@ -3199,3 +3263,20 @@ the top of this document is the only revision claim here.
   matches played inside them, tournament slugs with redirects, phase schedules, hidden and
   preview tournaments, captain and per-map reports with the result-status state machine, scrim
   rooms, division-grid import jobs, and the removal of stored team SR.
+- **Encounter layer.** The encounter tables moved from `tournament` into their own `encounter`
+  schema with `ALTER TABLE … SET SCHEMA`, which kept every id: `/encounters/{id}`, the realtime
+  topics and the external foreign keys survived. The two sides became participations
+  (`encounter.team`, one row per seat, append-only) with a roster snapshot (`team_member`,
+  `team_member_role`); `home_team_id` / `away_team_id`, `format`, the bracket position
+  (now `tournament.bracket_encounter`) and the per-side score columns left the encounter. Games
+  gained `encounter.game_team`, which replaces `encounter_game_result`, the accepted home/away
+  scores and `encounter_map_code`. `encounter_map_report` and `encounter_captain_report` became
+  `game_claim` / `game_claim_result` and `team_report` / `team_report_result`, one result row
+  per participation. `encounter.scoring_rule` took over the stage's FFA columns and formulas, and
+  `catalog.discipline` was added with a `discipline` column on `tournament` and `encounter`. The
+  result journal now stores `before` / `after` arrays of `{encounter_team_id, score, placement}`
+  and a `result_version`; every result change writes exactly one row. `enclayer01` only adds and
+  reshapes: each legacy column and table stays, made nullable and unmapped from the ORM, until the
+  gated `enclayer02` drops them in the deploy after V1. `matches.match.home_team_id` /
+  `away_team_id` and the `team_id` columns of `matches.statistics`, `kill_feed` and `event` are
+  the only home/away leftovers, until the statistics rework.
