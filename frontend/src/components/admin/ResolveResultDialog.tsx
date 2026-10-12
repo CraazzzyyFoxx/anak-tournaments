@@ -64,7 +64,14 @@ export function ResolveResultDialog({
   const format = useFormatter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
-  const [reopenReason, setReopenReason] = useState("");
+  // The reason is written verbatim into the audit journal, so it belongs to the
+  // encounter it was typed for: another row reads as empty rather than inheriting it.
+  const [reopenDraft, setReopenDraft] = useState<{ rowId: number | null; text: string }>({
+    rowId: null,
+    text: ""
+  });
+  const reopenReason = reopenDraft.rowId === row?.id ? reopenDraft.text : "";
+  const setReopenReason = (text: string) => setReopenDraft({ rowId: row?.id ?? null, text });
 
   const isConfirmed = row?.result_status === "confirmed";
 
@@ -88,6 +95,7 @@ export function ResolveResultDialog({
     mutationFn: () => adminService.reopenEncounterResult(row!.id, reopenReason.trim()),
     onSuccess: () => {
       notify.success("Result reopened");
+      setReopenDraft({ rowId: null, text: "" });
       setReopenOpen(false);
       onOpenChange(false);
       onResolved?.();

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, type ReactNode } from "react";
+import { act, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
@@ -302,6 +302,29 @@ describe("ResolveResultDialog", () => {
     });
     expect(reopenEncounterResult).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain("Reopen this result?");
+  });
+
+  it("does not carry one encounter's reopen reason over to the next", async () => {
+    // The reason is written verbatim into the audit journal: a stale one would
+    // be filed against an encounter it was never typed for.
+    function Switcher() {
+      const [id, setId] = useState(10);
+      return (
+        <>
+          <button type="button" id="next-row" onClick={() => setId(11)} />
+          <ResolveResultDialog row={row({ id, result_status: "confirmed" })} open onOpenChange={() => {}} />
+        </>
+      );
+    }
+    await mount(<Switcher />);
+    await typeInto(byLabel("Reason to reopen"), "wrong log was parsed");
+    expect(findButton("Reopen")?.disabled).toBe(false);
+
+    await act(async () => {
+      document.getElementById("next-row")?.click();
+    });
+    expect(byLabel("Reason to reopen").value).toBe("");
+    expect(findButton("Reopen")?.disabled).toBe(true);
   });
 
   it("says so when an encounter predates the audit trail", async () => {
