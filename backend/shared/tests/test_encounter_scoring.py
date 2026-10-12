@@ -112,6 +112,19 @@ def test_end_formula_rejects_column_names():
         compile_formula("kills > 3", (), variables=END_VARIABLES)
 
 
+def test_a_column_key_the_language_owns_is_refused():
+    # ``win`` became a builtin with this engine. A stage still carrying a column
+    # keyed ``win`` must stop the read, not have its recorded value silently
+    # replaced by the 0/1 flag.
+    with pytest.raises(FfaFormulaError) as refused:
+        compile_formula("win * 2", ("win",))
+    assert (refused.value.code, refused.value.name) == ("ffa_column_key_reserved", "win")
+
+    stage = SimpleNamespace(ffa_columns=[{"key": "win", "label": "Wins"}], ffa_placement_points=[], ffa_formula="win")
+    with pytest.raises(FfaFormulaError):
+        ffa_rules(stage)
+
+
 # ── an FFA lobby's game ──────────────────────────────────────────────────────
 
 

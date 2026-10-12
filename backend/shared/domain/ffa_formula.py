@@ -114,7 +114,21 @@ def compile_formula(source: str, columns: Iterable[str], *, variables: frozenset
     ``variables`` is the set of names the formula may read beside ``columns``:
     :data:`GAME_VARIABLES` for what a game pays, :data:`END_VARIABLES` for when
     an encounter is over.
+
+    A column key in :data:`RESERVED_NAMES` is refused HERE, not only by the
+    stage editor: the reserved set grows (``win`` arrived with the universal
+    engine), and a stage saved before a word was taken would otherwise keep
+    compiling while the builtin silently paid in place of the recorded value.
     """
+    keys = {str(key) for key in columns}
+    taken = sorted(keys & RESERVED_NAMES)
+    if taken:
+        raise FfaFormulaError(
+            "ffa_column_key_reserved",
+            f"`{taken[0]}` is a word the formula language owns",
+            offset=0,
+            name=taken[0],
+        )
     if not source.strip():
         raise FfaFormulaError("ffa_formula_syntax", "The formula is empty", offset=0)
     if len(source) > FORMULA_MAX_LENGTH:
@@ -136,7 +150,7 @@ def compile_formula(source: str, columns: Iterable[str], *, variables: frozenset
         raise FfaFormulaError(
             "ffa_formula_too_complex", f"The formula has more than {FORMULA_MAX_NODES} parts", offset=0
         )
-    known = variables | {str(key) for key in columns}
+    known = variables | keys
     names: set[str] = set()
     _check(tree.body, known, names, inserted)
     return Formula(source=source, names=frozenset(names), node=tree.body)

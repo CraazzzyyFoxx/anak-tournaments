@@ -39,13 +39,12 @@ from shared.core.enums import (  # noqa: E402
     VetoSeedSource,
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.domain.pick_ban_engine import SeriesScore  # noqa: E402
 from shared.models.tournament.encounter import Encounter  # noqa: E402
 from shared.models.tournament.encounter_game import EncounterGame  # noqa: E402
 from shared.models.tournament.encounter_report import EncounterMapReport  # noqa: E402
 from shared.models.tournament.encounter_result_audit import EncounterResultAudit  # noqa: E402
 from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession  # noqa: E402
-from src.services.encounter.games import encounter_game_service  # noqa: E402
+from src.services.encounter.games import MapWins, encounter_game_service  # noqa: E402
 from tests._pregame_store import _Store  # noqa: E402
 
 HOME_TEAM, AWAY_TEAM = 10, 20
@@ -275,7 +274,7 @@ class GameLifecycleTests(IsolatedAsyncioTestCase):
         )
 
         live = self._games()
-        self.assertEqual(SeriesScore(0, 0, 1), self.service.live_score(live))
+        self.assertEqual(MapWins(0, 0, 1), self.service.live_score(live))
         series = self.service.serialize_series(self.encounter, live)
         self.assertEqual((0, 0, 1), (series["home_wins"], series["away_wins"], series["played"]))
         self.assertFalse(series["complete"])
@@ -345,7 +344,7 @@ class GameLifecycleTests(IsolatedAsyncioTestCase):
             [EncounterGameState.AWAITING_RESULT, EncounterGameState.CONFIRMED],
             [game.state for game in games],
         )
-        self.assertEqual(SeriesScore(home_wins=1, away_wins=0, played=1), self.service.live_score(games))
+        self.assertEqual(MapWins(home_wins=1, away_wins=0, played=1), self.service.live_score(games))
 
 
 class GameSerializationTests(IsolatedAsyncioTestCase):
