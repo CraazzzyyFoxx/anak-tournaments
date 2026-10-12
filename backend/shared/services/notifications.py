@@ -141,7 +141,8 @@ class EncounterReportDisputedPayload(_Payload):
     #: the inbox renders.
     game_id: int
     position: int
-    map_id: int
+    #: ``None`` for a game nobody has picked a map for (no pick-ban ran); the row then omits it.
+    map_id: int | None = None
 
 
 class EncounterDisputeReviewPayload(_Payload):

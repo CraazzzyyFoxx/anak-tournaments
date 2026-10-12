@@ -18,7 +18,10 @@ import sqlalchemy as sa
 from shared.core import enums
 from shared.core.errors import BaseAPIException
 from shared.models.encounter import Encounter, EncounterGame, EncounterTeam, ScoringRule
+from shared.models.identity.auth_user import AuthUser
+from shared.models.identity.rbac import Permission, Role, role_permissions, user_roles
 from shared.models.identity.user import User
+from shared.models.platform.notification import Notification
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament.encounter_link import EncounterLink
 from shared.models.tournament.team import Team
@@ -398,6 +401,146 @@ class SeriesReportTests(ResultFlowCase):
                 )
         self.assertEqual(409, caught.exception.status_code)
         self.assertEqual(["result_locked"], _codes(caught.exception))
+
+
+class DisputeNotificationTests(ResultFlowCase):
+    """A real disagreement through the public flow reaches the inbox.
+
+    The two producers (``map_report._notify_dispute``, ``captain._notify_dispute``)
+    validate their payloads against the ``extra="forbid"`` notification schemas,
+    so a field the schema does not know is a ValidationError that rolls the
+    whole claim back. Driving the claim itself is what proves the wiring.
+    """
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        tag = f"dsp-{os.getpid()}-{next(_TAG)}"
+        self.auth_user_ids: list[int] = []
+        async with self.Session() as s:
+            accounts = [
+                AuthUser(email=f"{who}-{tag}@example.test", username=f"{who}-{tag}", is_active=True)
+                for who in ("cap0", "cap1", "ref")
+            ]
+            s.add_all(accounts)
+            await s.flush()
+            self.auth_user_ids = [account.id for account in accounts]
+            self.captain_auth = self.auth_user_ids[:2]
+            self.organizer_auth = self.auth_user_ids[2]
+            for index in (0, 1):
+                (await s.get_one(User, self.users[index])).auth_user_id = self.captain_auth[index]
+                (await s.get_one(Team, self.ids[f"team{index}"])).captain_id = self.users[index]
+            # An organizer: ``match.result`` through a role scoped to this workspace.
+            role = Role(name=f"referee-{tag}", workspace_id=self.ids["ws"])
+            permission = Permission(name=f"match:result:{tag}", resource="match", action="result")
+            s.add_all([role, permission])
+            await s.flush()
+            self.permission_id = permission.id
+            await s.execute(sa.insert(role_permissions).values(role_id=role.id, permission_id=permission.id))
+            await s.execute(sa.insert(user_roles).values(user_id=self.organizer_auth, role_id=role.id))
+            await s.commit()
+
+    async def asyncTearDown(self) -> None:
+        await super().asyncTearDown()
+        async with self.Session() as s:
+            await s.execute(sa.delete(Permission).where(Permission.id == self.permission_id))
+            await s.execute(sa.delete(AuthUser).where(AuthUser.id.in_(self.auth_user_ids)))
+            await s.commit()
+
+    async def notifications(self, kind: str) -> list[Notification]:
+        async with self.Session() as s:
+            rows = await s.scalars(
+                sa.select(Notification)
+                .where(Notification.kind == kind, Notification.recipient_auth_user_id.in_(self.auth_user_ids))
+                .order_by(Notification.id)
+            )
+            return list(rows)
+
+    async def test_disagreeing_game_claims_tell_both_captains_and_page_the_organizer(self) -> None:
+        async with self.Session() as s:
+            game = await self.open_game(s, 1)
+            first, second = await self.seats(s)
+        for claimant, other, user in ((first, second, 0), (second, first, 1)):
+            async with self.Session() as s:
+                await map_report_service.submit_game_claim(
+                    s,
+                    game.id,
+                    claimant_team_id=claimant.id,
+                    reporter_user_id=self.users[user],
+                    results=self.claim(claimant.id, other.id),
+                    basis_version=0,
+                    actor_auth_user_id=self.captain_auth[user],
+                )
+
+        disputed = await self.notifications("encounter.report_disputed")
+        self.assertEqual(sorted(self.captain_auth), sorted(row.recipient_auth_user_id for row in disputed))
+        self.assertEqual(
+            {"encounter_id": self.ids["e"], "tournament_id": self.ids["t"], "game_id": game.id, "position": 1},
+            # The game has no map picked, so the row carries none.
+            disputed[0].payload_json,
+        )
+        review = await self.notifications("encounter.dispute_review")
+        self.assertEqual([self.organizer_auth], [row.recipient_auth_user_id for row in review])
+        self.assertEqual(f"game:{game.id}", review[0].dedupe_key)
+        self.assertEqual(
+            {
+                "encounter_id": self.ids["e"],
+                "tournament_id": self.ids["t"],
+                "game_id": game.id,
+                "position": 1,
+                "team_names": ["T0", "T1"],
+                "home_team_name": "T0",
+                "away_team_name": "T1",
+            },
+            review[0].payload_json,
+        )
+
+    async def test_disagreeing_series_reports_page_the_organizer(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+            await self.play(s, 1, first.id, second.id)
+            await self.open_game(s, 2)
+        for reporter, user, wins in ((first, 0, (2.0, 1.0)), (second, 1, (1.0, 2.0))):
+            async with self.Session() as s:
+                encounter = await self.encounter(s)
+                await captain_service.submit_team_report(
+                    s,
+                    self.ids["e"],
+                    encounter_team_id=reporter.id,
+                    reporter_user_id=self.users[user],
+                    games_played=3,
+                    results=[
+                        ReportResultIn(
+                            encounter_team_id=first.id,
+                            score=wins[0],
+                            placement=1 if wins[0] > wins[1] else 2,
+                            wins=int(wins[0]),
+                        ),
+                        ReportResultIn(
+                            encounter_team_id=second.id,
+                            score=wins[1],
+                            placement=2 if wins[0] > wins[1] else 1,
+                            wins=int(wins[1]),
+                        ),
+                    ],
+                    closeness=5,
+                    basis_version=encounter.result_version,
+                    actor_auth_user_id=self.captain_auth[user],
+                )
+
+        review = await self.notifications("encounter.dispute_review")
+        self.assertEqual([self.organizer_auth], [row.recipient_auth_user_id for row in review])
+        self.assertEqual(f"series:{self.ids['e']}", review[0].dedupe_key)
+        self.assertEqual(
+            {
+                "encounter_id": self.ids["e"],
+                "tournament_id": self.ids["t"],
+                "position": 0,
+                "team_names": ["T0", "T1"],
+                "home_team_name": "T0",
+                "away_team_name": "T1",
+            },
+            review[0].payload_json,
+        )
 
 
 class AdminResultTests(ResultFlowCase):
