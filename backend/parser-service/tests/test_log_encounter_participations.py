@@ -21,6 +21,7 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 os.environ["DEBUG"] = "true"
 
 from shared.core.enums import HeroClass  # noqa: E402
+from shared.models.encounter import Encounter  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.services.encounter import participants  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
@@ -112,6 +113,54 @@ class ResolutionThroughParticipationsTests(ParticipationCase):
                 attached_encounter_id=encounter_id,
             )
             self.assertEqual(encounter_id, attached.id)
+
+    async def test_a_lobby_sharing_the_two_teams_is_not_the_duel_they_played(self) -> None:
+        async with self.Session() as s:
+            await self.seat(s, 1, "team0")
+            await self.seat(s, 2, "team1")
+            lobby = Encounter(
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                tournament_id=self.ids["t"],
+                scoring_rule_id=self.ids["rule"],
+                name="Lobby",
+                slot_count=4,
+                best_of=3,
+            )
+            s.add(lobby)
+            await s.flush()
+            for slot in range(1, 5):
+                await participants.place_team(
+                    s, lobby, slot=slot, team_id=self.ids[f"team{slot - 1}"], name=f"T{slot - 1}", seed=slot, members=[]
+                )
+            await s.commit()
+            lobby_id = lobby.id
+        duel_id, pair = self.ids["e"], (self.ids["team0"], self.ids["team1"])
+        resolve = encounter_flows.resolve_for_log
+
+        async with self.Session() as s:
+            self.assertEqual([duel_id], [e.id for e in await encounter_service.list_by_teams(s, *pair)])
+            found = await resolve(s, pair, log_name="m.txt", map_id=1, map_pools=[])
+            self.assertEqual(duel_id, found.id)
+
+            # An uploader cannot file a two-team log under the lobby either.
+            with self.assertRaises(encounter_flows.errors.ApiHTTPException) as mismatch:
+                await resolve(s, pair, log_name="m.txt", map_id=1, map_pools=[], attached_encounter_id=lobby_id)
+            self.assertEqual("attached_encounter_mismatch", mismatch.exception.detail[0]["code"])
+
+    async def test_an_encounter_with_a_third_seat_is_not_a_duel_either(self) -> None:
+        async with self.Session() as s:
+            await self.seat(s, 1, "team0")
+            await self.seat(s, 2, "team1")
+            await s.commit()
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            encounter.slot_count = 3
+            await self.seat(s, 3, "team2")
+            await s.commit()
+
+        async with self.Session() as s:
+            self.assertEqual([], list(await encounter_service.list_by_teams(s, self.ids["team0"], self.ids["team1"])))
 
 
 class SubstituteTests(ParticipationCase):

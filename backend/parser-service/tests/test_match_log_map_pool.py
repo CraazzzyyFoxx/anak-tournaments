@@ -35,7 +35,7 @@ def config(*, items=(), slots=(), stage_id=None, round=None):
 class MatchLogMapPoolTests(IsolatedAsyncioTestCase):
     async def ingest(self, configs, *, map_name="Илиос", attached_pair=(1, 2)):
         writes = []
-        encounter = SimpleNamespace(id=7, tournament_id=1)
+        encounter = SimpleNamespace(id=7, tournament_id=1, slot_count=2)
         match = SimpleNamespace(
             id=5,
             time=10.0,

@@ -31,8 +31,8 @@ async def resolve_for_log(
     while both hold an active participation in it, so a team a bracket
     correction replaced no longer resolves to the encounter it left.
 
-    The encounter the uploader attached wins, provided it is the pair the log
-    shows. Otherwise the pair has to name exactly one encounter: two teams can
+    The encounter the uploader attached wins, provided it is the duel between
+    the pair the log shows. Otherwise the pair has to name exactly one encounter: two teams can
     meet more than once in a tournament (groups then playoffs, a
     double-elimination rematch, a grand-final reset), and picking any of them
     files the map's statistics under the wrong series. A re-parse keeps the
@@ -46,7 +46,11 @@ async def resolve_for_log(
     """
     if attached_encounter_id is not None:
         encounter = await session.get(models.Encounter, attached_encounter_id)
-        if encounter is None or not set(team_ids) <= await service.active_team_ids(session, encounter.id):
+        if (
+            encounter is None
+            or encounter.slot_count != len(team_ids)
+            or set(team_ids) != await service.active_team_ids(session, encounter.id)
+        ):
             raise errors.ApiHTTPException(
                 status_code=400,
                 detail=[

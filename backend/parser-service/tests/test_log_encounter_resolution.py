@@ -26,9 +26,9 @@ os.environ["DEBUG"] = "true"
 encounter_flows = importlib.import_module("src.services.encounter.flows")
 MapVetoMode = importlib.import_module("shared.core.enums").MapVetoMode
 
-GROUP = SimpleNamespace(id=1)
-PLAYOFF = SimpleNamespace(id=2)
-OTHER_PAIR = SimpleNamespace(id=3)
+GROUP = SimpleNamespace(id=1, slot_count=2)
+PLAYOFF = SimpleNamespace(id=2, slot_count=2)
+OTHER_PAIR = SimpleNamespace(id=3, slot_count=2)
 
 #: The teams each encounter seats right now, and where each sits in the bracket.
 SEATED = {GROUP.id: {10, 20}, PLAYOFF.id: {20, 10}, OTHER_PAIR.id: {10, 30}}

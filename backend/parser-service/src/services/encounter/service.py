@@ -64,10 +64,13 @@ class EncounterService:
         return result.unique().scalars().first()
 
     async def list_by_teams(self, session: AsyncSession, *team_ids: int) -> typing.Sequence[models.Encounter]:
-        """Every encounter that currently seats all of ``team_ids``.
+        """Every duel whose active seats are exactly ``team_ids``.
 
         Only active participations count: a team a bracket correction replaced
-        no longer plays the encounter, whatever games it left behind.
+        no longer plays the encounter, whatever games it left behind. A lobby
+        (``slot_count > 2``) never matches, and neither does an encounter with
+        a third seat: two teams of one FFA group share every lobby of their
+        stage, and a log between two teams is a duel.
         """
         seated = [
             sa.exists().where(
@@ -77,7 +80,16 @@ class EncounterService:
             )
             for team_id in team_ids
         ]
-        result = await session.execute(sa.select(models.Encounter).where(*seated).order_by(models.Encounter.id))
+        strangers = sa.exists().where(
+            models.EncounterTeam.encounter_id == models.Encounter.id,
+            models.EncounterTeam.active.is_(True),
+            models.EncounterTeam.team_id.not_in(team_ids),
+        )
+        result = await session.execute(
+            sa.select(models.Encounter)
+            .where(models.Encounter.slot_count == len(team_ids), ~strangers, *seated)
+            .order_by(models.Encounter.id)
+        )
         return result.scalars().all()
 
     async def active_team_ids(self, session: AsyncSession, encounter_id: int) -> set[int]:
