@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Check, Minus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { TONE_CLASS, TONE_TEXT } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
@@ -16,7 +17,7 @@ interface AdminReportPairCellProps {
   className?: string;
 }
 
-function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCaptainReport | null }>) {
+function ReportSide({ label, report, t }: Readonly<{ label: string; report: AdminCaptainReport | null; t: (key: "unknown" | "noRating" | "noReport") => string }>) {
   return (
     <div className="min-w-0">
       <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted-foreground">
@@ -28,10 +29,10 @@ function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCa
             {report.home_score} &ndash; {report.away_score}
           </p>
           <p className="truncate text-xs text-muted-foreground">
-            {report.reporter_name ?? "unknown"} &middot;{" "}
+            {report.reporter_name ?? t("unknown")} &middot;{" "}
             {/* Match quality is configurable per tournament, so an absent rating
                 is a legitimate report — not a missing number to render as NaN. */}
-            {report.closeness == null ? "no rating" : `${report.closeness}/10`}
+            {report.closeness == null ? t("noRating") : `${report.closeness}/10`}
           </p>
           {report.comment ? (
             // Clamped rather than hidden: an organizer settling a dispute needs
@@ -47,7 +48,7 @@ function ReportSide({ label, report }: Readonly<{ label: string; report: AdminCa
       ) : (
         <p className="flex items-center gap-1 text-xs italic text-muted-foreground">
           <Minus className="size-3" aria-hidden />
-          no report
+          {t("noReport")}
         </p>
       )}
     </div>
@@ -72,19 +73,21 @@ export function AdminReportPairCell({
   seriesScoreValid,
   className
 }: Readonly<AdminReportPairCellProps>) {
+  const t = useTranslations("adminMatches.common");
+  const reportsT = useTranslations("adminMatches.reports");
   const verdict =
     scoresMatch === null
-      ? { tone: "neutral" as const, icon: Minus, label: "Awaiting second report" }
+      ? { tone: "neutral" as const, icon: Minus, label: reportsT("awaitingSecond") }
       : scoresMatch
-        ? { tone: "success" as const, icon: Check, label: "Reports agree" }
-        : { tone: "danger" as const, icon: AlertTriangle, label: "Reports disagree" };
+        ? { tone: "success" as const, icon: Check, label: reportsT("reportsAgree") }
+        : { tone: "danger" as const, icon: AlertTriangle, label: reportsT("reportsDisagree") };
   const VerdictIcon = verdict.icon;
 
   return (
     <div className={cn("space-y-2", className)}>
       <div className="grid grid-cols-2 gap-3">
-        <ReportSide label="Home" report={homeReport} />
-        <ReportSide label="Away" report={awayReport} />
+        <ReportSide label={reportsT("home")} report={homeReport} t={t} />
+        <ReportSide label={reportsT("away")} report={awayReport} t={t} />
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <span
@@ -101,10 +104,10 @@ export function AdminReportPairCell({
             className={cn("inline-flex items-center gap-1 text-xs", TONE_TEXT.warning)}
             // Advisory, not an error: reports predate per-round best-of, so this
             // flags something worth a look rather than something that is wrong.
-            title="A reported score is impossible for this encounter's best-of"
+            title={reportsT("outsideBoTitle")}
           >
             <AlertTriangle className="size-3" aria-hidden />
-            Score outside best-of
+            {t("scoreOutside")}
           </span>
         ) : null}
       </div>

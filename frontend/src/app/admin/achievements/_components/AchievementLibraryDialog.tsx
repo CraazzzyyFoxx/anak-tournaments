@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle, CircleOff, LibraryBig } from "lucide-react";
 
@@ -46,6 +47,7 @@ export function AchievementLibraryDialog({
   canImport: boolean;
   onImported: (result: AchievementRuleImportResult) => void;
 }>) {
+  const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
   const [sourceWorkspaceId, setSourceWorkspaceId] = useState<number | undefined>(undefined);
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
@@ -97,15 +99,15 @@ export function AchievementLibraryDialog({
     >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Achievement library</DialogTitle>
+          <DialogTitle>{t("library.title")}</DialogTitle>
           <DialogDescription>
-            Import achievements from another workspace into the current workspace.
+            {t("library.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="library-source-workspace">Source workspace</Label>
+            <Label htmlFor="library-source-workspace">{t("library.sourceWorkspace")}</Label>
             <Select
               value={sourceWorkspaceId ? String(sourceWorkspaceId) : ""}
               onValueChange={(value) => {
@@ -114,7 +116,7 @@ export function AchievementLibraryDialog({
               }}
             >
               <SelectTrigger id="library-source-workspace">
-                <SelectValue placeholder="Select workspace" />
+                <SelectValue placeholder={t("library.selectWorkspace")} />
               </SelectTrigger>
               <SelectContent>
                 {(libraryWorkspaces ?? []).map((workspace) => (
@@ -129,10 +131,10 @@ export function AchievementLibraryDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium">
-                Achievements{" "}
-                <span className="tabular-nums text-muted-foreground">
-                  ({selectedSlugs.size > 0 ? `${selectedSlugs.size} selected` : "none selected"})
-                </span>
+                {t.rich("library.achievementSelection", {
+                  count: selectedSlugs.size,
+                  num: (chunks) => <span className="tabular-nums text-muted-foreground">{chunks}</span>,
+                })}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -141,7 +143,7 @@ export function AchievementLibraryDialog({
                   onClick={() => setSelectedSlugs(new Set(allSlugs))}
                   disabled={allSlugs.length === 0 || allSelected}
                 >
-                  Select all
+                  {t("common.selectAll")}
                 </Button>
                 <Button
                   variant="ghost"
@@ -149,19 +151,19 @@ export function AchievementLibraryDialog({
                   onClick={() => setSelectedSlugs(new Set())}
                   disabled={selectedSlugs.size === 0}
                 >
-                  Clear
+                  {t("common.clear")}
                 </Button>
               </div>
             </div>
             <ScrollArea className="h-[40vh] rounded border p-3">
               {!sourceWorkspaceId && (
                 <p className="text-sm text-muted-foreground">
-                  Pick a source workspace above to list the achievements you can copy.
+                  {t("library.pickWorkspace")}
                 </p>
               )}
               {sourceWorkspaceId && (libraryRules?.length ?? 0) === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  That workspace has no achievements to copy. Choose another source workspace.
+                  {t("library.empty")}
                 </p>
               )}
               <div className="space-y-2">
@@ -174,19 +176,22 @@ export function AchievementLibraryDialog({
                       <Checkbox
                         checked={selectedSlugs.has(rule.slug)}
                         onCheckedChange={(checked) => toggleSlug(rule.slug, !!checked)}
-                        aria-label={`Copy ${rule.name}`}
+                        aria-label={t("library.copy", { name: rule.name })}
                       />
                       <div className="min-w-0">
                         <p className="font-medium truncate">{rule.name}</p>
                         <p className="text-xs text-muted-foreground truncate">
-                          {rule.slug} · {rule.category}
+                          {t("library.ruleMeta", {
+                            slug: rule.slug,
+                            category: t(`common.categoryValues.${rule.category}`),
+                          })}
                         </p>
                       </div>
                     </div>
                     {rule.enabled ? (
-                      <StatusIcon icon={CheckCircle} label="On" variant="success" />
+                      <StatusIcon icon={CheckCircle} label={t("common.on")} variant="success" />
                     ) : (
-                      <StatusIcon icon={CircleOff} label="Off" variant="muted" />
+                      <StatusIcon icon={CircleOff} label={t("common.off")} variant="muted" />
                     )}
                   </label>
                 ))}
@@ -197,7 +202,7 @@ export function AchievementLibraryDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={() => {
@@ -215,7 +220,7 @@ export function AchievementLibraryDialog({
             }
           >
             <LibraryBig className={`mr-2 h-4 w-4 ${importMutation.isPending ? "animate-spin" : ""}`} aria-hidden />
-            {importMutation.isPending ? "Importing…" : "Import selected"}
+            {importMutation.isPending ? t("library.importing") : t("library.importSelected")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import dynamic from "next/dynamic";
 
 import { tabFallback } from "../../hubQueries";
@@ -21,7 +23,7 @@ export default function ReportFormSettingsPage() {
   return (
     <SettingsSectionPage
       section="report-form"
-      description="What captains are asked to submit when they report a match."
+      description={useTranslations("adminTournament.screenDescriptions")("reportForm")}
     >
       {({ tournamentId }) => <MatchReportFormBuilder tournamentId={tournamentId} />}
     </SettingsSectionPage>

@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
 import { BracketView, type BracketSlotRef } from "@/components/bracket/BracketView";
@@ -18,17 +19,9 @@ import { useHubEncountersQuery } from "../../hubQueries";
 import {
   BRACKET_STAGE_TYPES,
   FFA_STAGE_TYPES,
-  type BracketTeamCountSource,
   type StageProjection
 } from "@/lib/bracket/projection";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
-
-const COUNT_SOURCE_NOTE: Record<BracketTeamCountSource, string> = {
-  seeded: "from the teams already seeded into this stage",
-  slots: "from the empty slots wired into this stage",
-  projected: "projected from the preceding group stage's advancing count",
-  unknown: "no seeds, slots or upstream group stage yet — depth falls back to Swiss max rounds"
-};
 
 /**
  * The stage as it would be generated right now.
@@ -59,7 +52,14 @@ export function BracketPreview({
   teams: Team[];
   className?: string;
 }>) {
+  const t = useTranslations("adminBracket.preview");
   const { bracketTeams, unresolved } = projection;
+  const sourceNote = {
+    seeded: t("sourceSeeded"),
+    slots: t("sourceSlots"),
+    projected: t("sourceProjected"),
+    unknown: t("sourceUnknown")
+  }[bracketTeams.source];
 
   // The hub's shared encounters query: the same cache entry the Matches tab
   // observes, so this costs nothing extra there and stays invalidated by every
@@ -103,13 +103,13 @@ export function BracketPreview({
           target_encounter_id: target.encounter.id,
           target_slot: target.slot
         });
-        notify.success("Teams swapped");
+        notify.success(t("swapSuccess"));
       } catch (error) {
-        notify.apiError(error, { title: "Could not swap teams" });
+        notify.apiError(error, { title: t("swapError") });
       }
       invalidateTournamentWorkspace(queryClient, stage.tournament_id);
     },
-    [queryClient, stage.tournament_id]
+    [queryClient, stage.tournament_id, t]
   );
   // Before generation the drawn teams ARE the stage's seed inputs, so a drag
   // trades two inputs' teams (the input PATCH swaps with whichever input holds
@@ -130,13 +130,13 @@ export function BracketPreview({
       if (!input || targetTeam <= 0 || targetTeam === sourceTeam) return;
       try {
         await adminService.updateStageItemInput(input.id, { team_id: targetTeam, input_type: "final" });
-        notify.success("Teams swapped");
+        notify.success(t("swapSuccess"));
       } catch (error) {
-        notify.apiError(error, { title: "Could not swap teams" });
+        notify.apiError(error, { title: t("swapError") });
       }
       invalidateTournamentWorkspace(queryClient, stage.tournament_id);
     },
-    [queryClient, stage]
+    [queryClient, stage, t]
   );
   const onSwapSlots = generated.length > 0 ? swapSlots : canReseed ? swapSeeds : undefined;
 
@@ -158,10 +158,10 @@ export function BracketPreview({
     const loose = matches.filter(
       (match) => match.stage_item_id == null || !itemIds.has(match.stage_item_id)
     );
-    if (loose.length > 0) sections.push({ key: 0, label: "Unassigned", matches: loose });
+    if (loose.length > 0) sections.push({ key: 0, label: t("unassigned"), matches: loose });
 
     return sections.length > 1 ? sections : null;
-  }, [matches, projection.isGroups, stage.items]);
+  }, [matches, projection.isGroups, stage.items, t]);
 
   return (
     // No frame of its own: the bracket below draws its own cards and panels,
@@ -169,69 +169,57 @@ export function BracketPreview({
     <section aria-labelledby="bracket-preview-heading" className={className}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="bracket-preview-heading" className="text-sm font-semibold text-foreground">
-          Bracket preview
+          {t("title")}
         </h3>
         <p className={EYEBROW_CLASS}>
           {generated.length > 0
-            ? "generated matches"
+            ? t("generated")
             : canReseed
-              ? "projection · drag to reseed"
-              : "read-only projection"}
+              ? t("projection")
+              : t("readonly")}
         </p>
       </div>
 
       {isBracket && generated.length === 0 && !canReseed ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          Set Bracket seeds to slot order to rearrange teams here.
+          {t("reseedHint")}
         </p>
       ) : null}
 
       <p className="mt-1 text-xs text-muted-foreground">
-        <span className="tabular-nums">{projection.itemCount}</span> item
-        {projection.itemCount === 1 ? "" : "s"} ·{" "}
-        <span className={cn("tabular-nums", unresolved > 0 && TONE_TEXT.warning)}>
-          {unresolved}
-        </span>{" "}
-        unresolved slot{unresolved === 1 ? "" : "s"} ·{" "}
-        <span className="tabular-nums">
-          {projection.assigned}/{projection.slots}
-        </span>{" "}
-        seeded
+        {t.rich("summary", {
+          items: projection.itemCount,
+          unresolved,
+          assigned: projection.assigned,
+          slots: projection.slots,
+          num: (chunks) => (
+            <span className={cn("tabular-nums", unresolved > 0 && TONE_TEXT.warning)}>{chunks}</span>
+          )
+        })}
       </p>
 
       {projection.isBracket ? (
         <p className="mt-3 text-sm text-foreground">
-          <span className="font-medium tabular-nums">{bracketTeams.count}</span> team
-          {bracketTeams.count === 1 ? "" : "s"}{" "}
-          <span className="text-muted-foreground">— {COUNT_SOURCE_NOTE[bracketTeams.source]}</span>
+          <span className="text-muted-foreground">{t("teamsSource", { count: bracketTeams.count, source: sourceNote })}</span>
         </p>
       ) : null}
 
       {projection.isBracket && projection.seeds.lower > 0 ? (
         <p className="mt-1 text-xs text-muted-foreground">
-          Upstream seeds: <span className="tabular-nums">{projection.seeds.upper}</span> upper ·{" "}
-          <span className="tabular-nums">{projection.seeds.lower}</span> lower
+          {t("upstream", { upper: projection.seeds.upper, lower: projection.seeds.lower })}
         </p>
       ) : null}
 
       {projection.isGroups ? (
         <p className="mt-3 text-sm text-foreground">
-          <span className="font-medium tabular-nums">{projection.itemCount}</span> group
-          {projection.itemCount === 1 ? "" : "s"}
+          {t("groups", { count: projection.itemCount })}
           {projection.advancingTotal > 0 ? (
             <span className="text-muted-foreground">
-              {" "}
-              — top{" "}
-              <span className="tabular-nums">
-                {[...new Set(projection.advanceCounts)].join(" / ")}
-              </span>{" "}
-              of each advance, <span className="tabular-nums">{projection.advancingTotal}</span>{" "}
-              teams onward
+              {t("advance", { counts: [...new Set(projection.advanceCounts)].join(" / "), total: projection.advancingTotal })}
             </span>
           ) : (
             <span className="text-muted-foreground">
-              {" "}
-              — advancing count auto-derived from the bracket wiring
+              {t("autoAdvance")}
             </span>
           )}
         </p>
@@ -264,10 +252,10 @@ export function BracketPreview({
         ) : (
           <p className="text-xs text-muted-foreground">
             {isBracket
-              ? "Nothing to draw yet — wire at least two teams, or set the preceding group stage's advancing count."
+              ? t("emptyBracket")
               : FFA_STAGE_TYPES.includes(stage.stage_type)
-                ? "An FFA stage's lobbies are drawn once they are generated."
-                : "A group stage's matches are drawn once they are generated."}
+                ? t("emptyFfa")
+                : t("emptyGroup")}
           </p>
         )}
       </div>

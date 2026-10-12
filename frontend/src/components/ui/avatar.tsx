@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useTranslations } from "next-intl";
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
 
 import { cn } from "@/lib/utils";
@@ -70,6 +71,7 @@ const AvatarStack = ({
   children,
   ...rest
 }: AvatarStackProps) => {
+  const t = useTranslations("kit.ui");
   const items = React.Children.toArray(children).filter(Boolean);
   const shown = max && max > 0 ? items.slice(0, max) : items;
   const extra = items.length - shown.length;
@@ -105,7 +107,7 @@ const AvatarStack = ({
             color: "var(--aqt-fg-muted, #9aa4b2)",
             boxShadow: ring
           }}
-          title={`+${extra} more`}
+          title={t("extraMore", { count: extra })}
         >
           +{extra}
         </div>

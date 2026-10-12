@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
 import { StatusPill } from "@/components/kit/StatusPill";
@@ -32,12 +33,6 @@ import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
 const STEPS = ["source", "version", "create"] as const;
 type StepKey = (typeof STEPS)[number];
 
-const STEP_LABELS: Record<StepKey, string> = {
-  source: "Source",
-  version: "Grid & version",
-  create: "Create draft"
-};
-
 /**
  * Import a division grid from another workspace (T6, F12b).
  *
@@ -52,6 +47,7 @@ const STEP_LABELS: Record<StepKey, string> = {
  * of starting over.
  */
 export default function DivisionGridImportPage() {
+  const t = useTranslations("adminSettings.divisionsImport");
   const router = useRouter();
   const { searchParams, setParams } = useQueryParams();
   const { isSuperuser, canAccessPermission } = usePermissions();
@@ -123,10 +119,10 @@ export default function DivisionGridImportPage() {
     mutationFn: () => workspaceService.importDivisionGridMarketplace(workspaceId!, request!),
     onSuccess: (started) => setParams({ step: "create", job: String(started.id) }),
     onError: (error) =>
-      notify.error("Import could not start", {
-        description: `Nothing was copied into this workspace. ${
-          error instanceof Error ? error.message : "The import request failed."
-        } Re-check the workspace, grid and version, then try again.`
+      notify.error(t("errors.start"), {
+        description: t("errors.startDescription", {
+          reason: error instanceof Error ? error.message : t("errors.requestFailed")
+        })
       })
   });
 
@@ -148,8 +144,8 @@ export default function DivisionGridImportPage() {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace to import a division grid into."
+        title={t("noWorkspace.title")}
+        description={t("noWorkspace.description")}
       />
     );
   }
@@ -158,8 +154,8 @@ export default function DivisionGridImportPage() {
     return (
       <PageStateCard
         state="not-found"
-        title="Importing is not available to you"
-        description="Creating a division grid version needs the division_grid.create permission in this workspace."
+        title={t("unavailable.title")}
+        description={t("unavailable.description")}
       />
     );
   }
@@ -167,25 +163,25 @@ export default function DivisionGridImportPage() {
   const stepIndex = STEPS.indexOf(step);
   const steps: WizardStep[] = STEPS.map((key, index) => ({
     key,
-    label: STEP_LABELS[key],
+    label: t(`steps.${key}`),
     state: index === stepIndex ? "current" : index < stepIndex ? "done" : "todo"
   }));
 
   const next =
     step === "source"
       ? {
-          label: "Continue",
+          label: t("continue"),
           disabled: sourceWorkspaceId === null,
           onClick: () => setParams({ step: "version" })
         }
       : step === "version"
         ? {
-            label: "Create draft",
+            label: t("createDraft"),
             disabled: request === null || importMutation.isPending,
             onClick: () => importMutation.mutate()
           }
         : {
-            label: "Open the draft",
+            label: t("openDraft"),
             disabled: importedVersion === null,
             onClick: () =>
               router.push(`/admin/settings/divisions/v/${importedVersion!.id}?tab=mappings`)
@@ -194,10 +190,9 @@ export default function DivisionGridImportPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="font-display text-lg font-semibold">Import from workspace</h2>
+        <h2 className="font-display text-lg font-semibold">{t("title")}</h2>
         <p className="text-sm text-muted-foreground">
-          Copies a grid version in as a new draft. Nothing in this workspace changes until you
-          publish and activate it.
+          {t("description")}
         </p>
       </div>
 
@@ -215,12 +210,12 @@ export default function DivisionGridImportPage() {
             ) : (workspacesQuery.data ?? []).length === 0 ? (
               <PageStateCard
                 state="empty"
-                title="No workspace to import from"
-                description="No other workspace exposes a division grid you can read."
+                title={t("noSource.title")}
+                description={t("noSource.description")}
               />
             ) : (
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="import-source">Source workspace</Label>
+                <Label htmlFor="import-source">{t("sourceWorkspace")}</Label>
                 <Select
                   value={sourceWorkspaceId === null ? undefined : String(sourceWorkspaceId)}
                   onValueChange={(value) =>
@@ -228,13 +223,16 @@ export default function DivisionGridImportPage() {
                   }
                 >
                   <SelectTrigger id="import-source" className="w-full max-w-md">
-                    <SelectValue placeholder="Choose a workspace" />
+                    <SelectValue placeholder={t("chooseWorkspace")} />
                   </SelectTrigger>
                   <SelectContent>
                     {(workspacesQuery.data ?? []).map((workspace) => (
                       <SelectItem key={workspace.id} value={String(workspace.id)}>
-                        {workspace.name} · {workspace.grids_count} grids, {workspace.versions_count}{" "}
-                        versions
+                        {t("workspaceOption", {
+                          name: workspace.name,
+                          grids: workspace.grids_count,
+                          versions: workspace.versions_count
+                        })}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -247,18 +245,18 @@ export default function DivisionGridImportPage() {
         {step === "version" ? (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="import-grid">Grid</Label>
+              <Label htmlFor="import-grid">{t("grid")}</Label>
               <Select
                 value={sourceGridId === null ? undefined : String(sourceGridId)}
                 onValueChange={(value) => setParams({ grid: value, version: null })}
               >
                 <SelectTrigger id="import-grid" className="w-full max-w-md">
-                  <SelectValue placeholder="Choose a grid" />
+                <SelectValue placeholder={t("chooseGrid")} />
                 </SelectTrigger>
                 <SelectContent>
                   {grids.map((grid) => (
                     <SelectItem key={grid.id} value={String(grid.id)}>
-                      {grid.name} · {grid.tiers_count} divisions
+                      {t("gridOption", { name: grid.name, count: grid.tiers_count })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -266,20 +264,24 @@ export default function DivisionGridImportPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="import-version">Version</Label>
+              <Label htmlFor="import-version">{t("version")}</Label>
               <Select
                 value={sourceVersionId === null ? undefined : String(sourceVersionId)}
                 onValueChange={(value) => setParams({ version: value })}
               >
                 <SelectTrigger id="import-version" className="w-full max-w-md">
                   <SelectValue
-                    placeholder={selectedGrid ? "Choose a version" : "Choose a grid first"}
+                    placeholder={selectedGrid ? t("chooseVersion") : t("chooseGridFirst")}
                   />
                 </SelectTrigger>
                 <SelectContent>
                   {(selectedGrid?.versions ?? []).map((version) => (
                     <SelectItem key={version.id} value={String(version.id)}>
-                      v{version.version} · {version.label} · {version.tiers_count} divisions
+                      {t("versionOption", {
+                        version: version.version,
+                        label: version.label,
+                        count: version.tiers_count
+                      })}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -287,7 +289,7 @@ export default function DivisionGridImportPage() {
             </div>
 
             <fieldset className="flex flex-col gap-2">
-              <legend className={EYEBROW_CLASS}>What to copy</legend>
+              <legend className={EYEBROW_CLASS}>{t("whatToCopy")}</legend>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="import-icons"
@@ -295,7 +297,7 @@ export default function DivisionGridImportPage() {
                   onCheckedChange={(checked) => setParams({ icons: checked ? null : "0" })}
                 />
                 <Label htmlFor="import-icons" className="font-normal">
-                  Copy the division crests
+                  {t("copyCrests")}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -305,39 +307,38 @@ export default function DivisionGridImportPage() {
                   onCheckedChange={(checked) => setParams({ ow: checked ? null : "0" })}
                 />
                 <Label htmlFor="import-ow" className="font-normal">
-                  Copy the Overwatch rank mapping
+                  {t("copyOwMapping")}
                 </Label>
               </div>
             </fieldset>
 
             {request === null ? (
               <p className="text-sm text-muted-foreground">
-                Choose a grid and a version to see what the import would bring in.
+                {t("chooseToPreview")}
               </p>
             ) : preflightQuery.isLoading ? (
               <Skeleton className="h-20 w-full rounded-xl" />
             ) : preflightQuery.isError ? (
               <PageStateCard
                 state="error"
-                title="Preview unavailable"
-                description="The source could not be inspected, so the import is not offered."
-                actionLabel="Retry"
+                title={t("previewUnavailable.title")}
+                description={t("previewUnavailable.description")}
+                actionLabel={t("retry")}
                 onAction={() => void preflightQuery.refetch()}
               />
             ) : preflightQuery.data ? (
               <div className="rounded-xl border border-border bg-card p-3 text-sm">
-                <p className={cn(EYEBROW_CLASS, "font-mono")}>Preview</p>
+                <p className={cn(EYEBROW_CLASS, "font-mono")}>{t("preview")}</p>
                 <p className="mt-1">
-                  {preflightQuery.data.tiers_count} divisions · {preflightQuery.data.mappings_count}{" "}
-                  mappings · {preflightQuery.data.assets_to_copy} crests to copy
+                  {t("previewSummary", { divisions: preflightQuery.data.tiers_count, mappings: preflightQuery.data.mappings_count, crests: preflightQuery.data.assets_to_copy })}
                 </p>
                 {preflightQuery.data.conflicts.length > 0 ? (
                   <p className="mt-2">
                     <StatusPill tone="warning">
-                      {preflightQuery.data.conflicts.length} to resolve after import
+                      {t("conflicts", { count: preflightQuery.data.conflicts.length })}
                     </StatusPill>{" "}
                     <span className="text-muted-foreground">
-                      Resolved in the draft&apos;s Mappings view, not here.
+                      {t("conflictsNote")}
                     </span>
                   </p>
                 ) : null}
@@ -362,25 +363,23 @@ export default function DivisionGridImportPage() {
             ) : job.status === "failed" ? (
               <PageStateCard
                 state="error"
-                title="Import failed"
+                title={t("importFailed")}
                 description={
-                  job.error ?? "The import job failed and nothing was written into this workspace."
+                  job.error ?? t("importFailedDescription")
                 }
               />
             ) : job.status === "completed" ? (
               <div className="rounded-xl border border-border bg-card p-3 text-sm">
-                <p className="font-medium">Draft created</p>
+                <p className="font-medium">{t("draftCreated")}</p>
                 <p className="mt-1 text-muted-foreground">
-                  {job.result?.created_versions ?? 0} versions · {job.result?.created_tiers ?? 0}{" "}
-                  divisions · {job.result?.copied_mappings ?? 0} mappings copied. Open it to resolve
-                  the mappings against the versions your tournaments still read.
+                  {t("createdSummary", { versions: job.result?.created_versions ?? 0, divisions: job.result?.created_tiers ?? 0, mappings: job.result?.copied_mappings ?? 0 })}
                 </p>
               </div>
             ) : (
               <div className="flex flex-col gap-2">
                 <p className="flex items-center gap-2 text-sm">
                   <Spinner />
-                  Copying the grid…
+                  {t("copying")}
                 </p>
                 <Progress value={job.progress} />
               </div>

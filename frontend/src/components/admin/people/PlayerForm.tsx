@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
@@ -33,7 +34,6 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 import { formatSubRoleLabel } from "@/lib/player";
 
 /** Shown on the sub-role field for a role the sub-role catalog has no rows for. */
-const NO_SUB_ROLE_CATALOG_PLACEHOLDER = "No sub-roles for this role";
 
 export type PlayerFormMode = "create" | "edit";
 
@@ -126,11 +126,13 @@ export function playerUpdatePayload(state: PlayerFormState): PlayerUpdateInput {
 }
 
 /** The first thing wrong with the form, or `undefined` when it can be sent. */
-export function playerFormError(state: PlayerFormState, mode: PlayerFormMode): string | undefined {
-  if (!state.name.trim()) return "Enter a player name before saving.";
+export type PlayerFormErrorKey = "nameRequiredBeforeSave" | "tournamentRequired" | "teamRequired";
+
+export function playerFormError(state: PlayerFormState, mode: PlayerFormMode): PlayerFormErrorKey | undefined {
+  if (!state.name.trim()) return "nameRequiredBeforeSave";
   if (mode === "edit") return undefined;
-  if (state.tournament_id <= 0) return "Pick the tournament this participation belongs to.";
-  if (state.team_id <= 0) return "Select a team before saving.";
+  if (state.tournament_id <= 0) return "tournamentRequired";
+  if (state.team_id <= 0) return "teamRequired";
   return undefined;
 }
 
@@ -217,12 +219,13 @@ function DivisionField({
   rank,
   grid
 }: Readonly<{ rank: number; grid: DivisionGridVersion | null }>) {
+  const t = useTranslations("adminPeople.form");
   const workspaceGrid = useDivisionGrid();
   const division = resolveDivisionFromRank(grid ?? workspaceGrid, rank);
 
   return (
     <div>
-      <Label>Division</Label>
+      <Label>{t("division")}</Label>
       <div className="flex h-9 items-center">
         {division == null ? (
           <span className="text-sm text-muted-foreground">—</span>
@@ -264,6 +267,7 @@ export function PlayerForm({
   tournaments = [],
   teams = []
 }: Readonly<PlayerFormProps>) {
+  const t = useTranslations("adminPeople.form");
   const prefix = mode === "edit" ? "player-edit" : "player-create";
   const role = normalizePlayerRole(value.role);
   // Flex has no sub-role catalog, so its sub-role field is inert rather than a
@@ -278,7 +282,7 @@ export function PlayerForm({
     if (!hasSubRoleCatalog) return [];
 
     const options: PlayerOption[] = [
-      { value: "none", label: "No sub-role" },
+      { value: "none", label: t("noSubRole") },
       ...subRoleOptions.map((subRole) => ({
         value: subRole.slug,
         label: subRole.label,
@@ -295,14 +299,14 @@ export function PlayerForm({
     }
 
     return options;
-  }, [value.sub_role, hasCurrentSubRoleOption, hasSubRoleCatalog, subRoleOptions]);
+  }, [t, value.sub_role, hasCurrentSubRoleOption, hasSubRoleCatalog, subRoleOptions]);
 
   return (
     <div className="space-y-4">
       {mode === "create" ? (
         <>
           <div>
-            <Label htmlFor={`${prefix}-tournament`}>Tournament *</Label>
+            <Label htmlFor={`${prefix}-tournament`}>{t("tournament")}</Label>
             <Select
               value={value.tournament_id ? String(value.tournament_id) : ""}
               onValueChange={(next) =>
@@ -310,7 +314,7 @@ export function PlayerForm({
               }
             >
               <SelectTrigger id={`${prefix}-tournament`}>
-                <SelectValue placeholder="Select tournament" />
+                <SelectValue placeholder={t("selectTournament")} />
               </SelectTrigger>
               <SelectContent>
                 {tournaments.map((tournament) => (
@@ -323,13 +327,13 @@ export function PlayerForm({
           </div>
 
           <div>
-            <Label htmlFor={`${prefix}-team`}>Team *</Label>
+            <Label htmlFor={`${prefix}-team`}>{t("team")}</Label>
             <TeamCombobox
               id={`${prefix}-team`}
               teams={teams}
               value={value.team_id || null}
-              placeholder={value.tournament_id ? "Search and select team" : "Pick a tournament first"}
-              searchPlaceholder="Search team…"
+              placeholder={value.tournament_id ? t("searchAndSelectTeam") : t("pickTournament")}
+              searchPlaceholder={t("searchTeam")}
               disabled={!value.tournament_id}
               onSelect={(team) => onChange({ ...value, team_id: team?.id ?? 0 })}
             />
@@ -338,7 +342,7 @@ export function PlayerForm({
       ) : null}
 
       <div>
-        <Label htmlFor={`${prefix}-name`}>Player name *</Label>
+        <Label htmlFor={`${prefix}-name`}>{t("playerName")}</Label>
         <Input
           id={`${prefix}-name`}
           value={value.name}
@@ -348,7 +352,7 @@ export function PlayerForm({
       </div>
 
       <div>
-        <Label htmlFor={`${prefix}-role`}>Role</Label>
+        <Label htmlFor={`${prefix}-role`}>{t("role")}</Label>
         {/* Picking a role clears sub_role: a sub-role only exists for its own role. */}
         <Select
           value={role}
@@ -368,22 +372,22 @@ export function PlayerForm({
       </div>
 
       <div>
-        <Label htmlFor={`${prefix}-sub-role`}>Sub-role</Label>
+        <Label htmlFor={`${prefix}-sub-role`}>{t("subRole")}</Label>
         <SearchableSelect
           id={`${prefix}-sub-role`}
           value={value.sub_role || "none"}
           options={subRoleSelectOptions}
           disabled={!hasSubRoleCatalog}
-          placeholder={hasSubRoleCatalog ? "Select sub-role" : NO_SUB_ROLE_CATALOG_PLACEHOLDER}
-          searchPlaceholder="Search sub-role…"
-          emptyMessage="No sub-roles match that search."
+          placeholder={hasSubRoleCatalog ? t("selectSubRole") : t("noSubRoleCatalog")}
+          searchPlaceholder={t("searchSubRole")}
+          emptyMessage={t("noSubRoleMatch")}
           onChange={(next) => onChange({ ...value, sub_role: next === "none" ? "" : next })}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <Label htmlFor={`${prefix}-rank`}>Rank</Label>
+          <Label htmlFor={`${prefix}-rank`}>{t("rank")}</Label>
           <NumberInput
             id={`${prefix}-rank`}
             integer
@@ -404,7 +408,7 @@ export function PlayerForm({
             onCheckedChange={(checked) => onChange({ ...value, is_newcomer: checked === true })}
           />
           <Label htmlFor={`${prefix}-newcomer`} className="cursor-pointer">
-            Newcomer
+            {t("newcomer")}
           </Label>
         </div>
 
@@ -415,7 +419,7 @@ export function PlayerForm({
             onCheckedChange={(checked) => onChange({ ...value, is_substitution: checked === true })}
           />
           <Label htmlFor={`${prefix}-substitution`} className="cursor-pointer">
-            Substitution
+            {t("substitution")}
           </Label>
         </div>
       </div>

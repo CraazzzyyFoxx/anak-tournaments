@@ -2,6 +2,7 @@
 
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { skipToken, useQuery } from "@tanstack/react-query";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
@@ -31,32 +32,34 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { NotificationItem } from "@/types/notification.types";
 
 function LoadingState() {
+  const t = useTranslations("adminShell.layout");
   return (
     <div className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
         <Spinner className="size-8" />
-        <p className="mt-4 text-muted-foreground">Loading…</p>
+        <p className="mt-4 text-muted-foreground">{t("loading")}</p>
       </div>
     </div>
   );
 }
 
 function UnauthorizedState() {
+  const t = useTranslations("adminShell.layout");
   return (
     <div className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
-        <h1 className="text-4xl font-bold">Unauthorized</h1>
+        <h1 className="text-4xl font-bold">{t("unauthorized")}</h1>
         <p className="mt-4 text-muted-foreground">
-          You do not have permission to access the admin panel.
+          {t("noPermission")}
         </p>
         <p className="mt-2 text-sm text-muted-foreground">
-          Please contact an administrator if you believe this is an error.
+          {t("contactAdmin")}
         </p>
         <HoverPrefetchLink
           href="/"
           className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
-          Go Home
+          {t("goHome")}
         </HoverPrefetchLink>
       </div>
     </div>
@@ -76,6 +79,7 @@ function EntityBreadcrumbName({
 }
 
 function AdminBreadcrumb() {
+  const t = useTranslations("adminShell.layout");
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const segments = pathname.split("/").filter(Boolean);
@@ -86,7 +90,7 @@ function AdminBreadcrumb() {
       <BreadcrumbList>
         <BreadcrumbItem>
           <BreadcrumbLink asChild>
-            <HoverPrefetchLink href="/admin">Admin</HoverPrefetchLink>
+            <HoverPrefetchLink href="/admin">{t("admin")}</HoverPrefetchLink>
           </BreadcrumbLink>
         </BreadcrumbItem>
         {segments.slice(1).map((segment, index) => {
@@ -96,10 +100,10 @@ function AdminBreadcrumb() {
             entityRef && index + 1 === entityRef.segmentIndex ? (
               <EntityBreadcrumbName
                 queryKey={entityRef.queryKey}
-                fallback={breadcrumbSegmentLabel(segment)}
+                fallback={breadcrumbSegmentLabel(segment, (key) => t(key as never))}
               />
             ) : (
-              breadcrumbSegmentLabel(segment)
+              breadcrumbSegmentLabel(segment, (key) => t(key as never))
             );
 
           return (
@@ -147,6 +151,7 @@ export function AdminLayoutClient({
   defaultSidebarOpen,
   announcements
 }: Readonly<AdminLayoutClientProps>) {
+  const t = useTranslations("adminShell.layout");
   const pathname = usePathname();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const { isLoaded, canAccessAdminRoute } = usePermissions();
@@ -174,7 +179,7 @@ export function AdminLayoutClient({
           href="#admin-content"
           className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:left-4 focus-visible:top-4 focus-visible:z-50 focus-visible:rounded-lg focus-visible:bg-primary focus-visible:px-3 focus-visible:py-2 focus-visible:text-sm focus-visible:font-medium focus-visible:text-primary-foreground"
         >
-          Skip to content
+          {t("skipToContent")}
         </a>
         <AdminSidebar />
         <SidebarInset className="min-w-0">

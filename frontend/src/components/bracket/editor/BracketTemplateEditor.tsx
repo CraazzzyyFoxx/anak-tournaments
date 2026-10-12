@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { cn } from "@/lib/utils";
@@ -46,6 +47,7 @@ export function BracketTemplateEditor({
   dispatch,
   highlightMatchId
 }: Readonly<BracketTemplateEditorProps>) {
+  const t = useTranslations("bracketEditor");
   const roundLabel = useBracketRoundLabel({ bareUpper: true });
   const layout = useMemo(
     () => buildLayout(draftToBracketMatches(draft), stageType, roundLabel, { includeLoserEdges: true }),
@@ -150,13 +152,13 @@ export function BracketTemplateEditor({
               </span>
               <button
                 type="button"
-                aria-label={`Add match to ${header.label}`}
+                aria-label={t("addMatchTo", { label: header.label })}
                 data-add-match={header.round}
                 className={ADD_BUTTON}
                 onClick={() => dispatch({ type: "addMatch", round: header.round })}
               >
                 <Plus className="size-3" aria-hidden />
-                match
+                {t("match")}
               </button>
             </div>
           ))}
@@ -166,7 +168,7 @@ export function BracketTemplateEditor({
           <div className="absolute" style={{ left: layout.width, top: PADDING_Y }}>
             <button
               type="button"
-              aria-label="Add upper round"
+              aria-label={t("addUpperRound")}
               className={cn(ADD_BUTTON, "whitespace-nowrap")}
               onClick={() =>
                 dispatch(
@@ -177,7 +179,7 @@ export function BracketTemplateEditor({
               }
             >
               <Plus className="size-3" aria-hidden />
-              upper round
+              {t("upperRound")}
             </button>
           </div>
           {isDE ? (
@@ -187,7 +189,7 @@ export function BracketTemplateEditor({
             >
               <button
                 type="button"
-                aria-label="Add lower round"
+                aria-label={t("addLowerRound")}
                 className={cn(ADD_BUTTON, "whitespace-nowrap")}
                 onClick={() =>
                   dispatch({
@@ -197,7 +199,7 @@ export function BracketTemplateEditor({
                 }
               >
                 <Plus className="size-3" aria-hidden />
-                lower round
+                {t("lowerRound")}
               </button>
             </div>
           ) : null}

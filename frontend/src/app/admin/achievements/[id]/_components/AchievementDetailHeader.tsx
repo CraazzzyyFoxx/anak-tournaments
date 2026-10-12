@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   ArrowLeft,
   CheckCircle,
@@ -40,9 +41,10 @@ export function AchievementDetailHeader({
   onEdit: () => void;
   onDelete: () => void;
 }>) {
+  const t = useTranslations("adminAchievements");
   return (
     <div className="flex items-start gap-3">
-      <Button variant="ghost" size="icon" asChild aria-label="Back to achievements">
+      <Button variant="ghost" size="icon" asChild aria-label={t("common.back")}>
         <Link href="/admin/achievements">
           <ArrowLeft aria-hidden className="h-4 w-4" />
         </Link>
@@ -54,23 +56,23 @@ export function AchievementDetailHeader({
           description={rule.slug}
           meta={
             rule.enabled ? (
-              <StatusIcon icon={CheckCircle} label="Enabled" variant="success" />
+              <StatusIcon icon={CheckCircle} label={t("common.enabled")} variant="success" />
             ) : (
-              <StatusIcon icon={CircleOff} label="Disabled" variant="muted" />
+              <StatusIcon icon={CircleOff} label={t("common.disabled")} variant="muted" />
             )
           }
           actions={
             <>
               <Button variant="outline" size="sm" onClick={onTest}>
                 <TestTube aria-hidden className="mr-2 h-4 w-4" />
-                Test conditions
+                {t("detail.testConditions")}
               </Button>
               <Button variant="outline" size="sm" onClick={onEvaluate}>
                 <Play
                   aria-hidden
                   className={`mr-2 h-4 w-4 ${isEvaluating ? "animate-spin" : ""}`}
                 />
-                {isEvaluating ? "Evaluating…" : "Run evaluation"}
+                {isEvaluating ? t("common.evaluating") : t("detail.runEvaluation")}
               </Button>
               {canUpdate && (
                 <Button variant="outline" size="sm" onClick={onToggle}>
@@ -79,19 +81,19 @@ export function AchievementDetailHeader({
                   ) : (
                     <Eye aria-hidden className="mr-2 h-4 w-4" />
                   )}
-                  {rule.enabled ? "Disable achievement" : "Enable achievement"}
+                  {rule.enabled ? t("detail.disableAchievement") : t("detail.enableAchievement")}
                 </Button>
               )}
               {canUpdate && (
                 <Button size="sm" onClick={onEdit}>
                   <Pencil aria-hidden className="mr-2 h-4 w-4" />
-                  Edit achievement
+                  {t("detail.editAchievement")}
                 </Button>
               )}
               {canDelete && (
                 <Button variant="destructive" size="sm" onClick={onDelete}>
                   <Trash2 aria-hidden className="mr-2 h-4 w-4" />
-                  Delete achievement
+                  {t("detail.deleteAchievement")}
                 </Button>
               )}
             </>

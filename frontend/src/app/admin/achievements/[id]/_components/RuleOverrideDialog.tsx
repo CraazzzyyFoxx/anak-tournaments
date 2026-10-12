@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
 import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
 import { Button } from "@/components/ui/button";
@@ -52,16 +53,17 @@ export function RuleOverrideDialog({
   isSaving: boolean;
   saveError?: string;
 }>) {
+  const t = useTranslations("adminAchievements");
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Manual Override: {ruleName}</DialogTitle>
-          <DialogDescription>Grant or revoke this achievement for a user</DialogDescription>
+          <DialogTitle>{t("detail.ruleOverrideTitle", { name: ruleName })}</DialogTitle>
+          <DialogDescription>{t("detail.ruleOverrideDescription")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>User</Label>
+            <Label>{t("common.user")}</Label>
             <UserSearchCombobox
               value={draft.userId}
               selectedName={draft.userName}
@@ -73,7 +75,7 @@ export function RuleOverrideDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Action</Label>
+              <Label>{t("common.action")}</Label>
               <Select
                 value={draft.action}
                 onValueChange={(v) => onDraftChange({ ...draft, action: v as "grant" | "revoke" })}
@@ -82,27 +84,27 @@ export function RuleOverrideDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="grant">Grant</SelectItem>
-                  <SelectItem value="revoke">Revoke</SelectItem>
+                  <SelectItem value="grant">{t("common.grant")}</SelectItem>
+                  <SelectItem value="revoke">{t("common.revoke")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Tournament (optional)</Label>
+              <Label>{t("common.tournament")} ({t("common.optional")})</Label>
               <TournamentCombobox
                 tournaments={tournaments}
                 value={draft.tournamentId}
                 onSelect={(t) => onDraftChange({ ...draft, tournamentId: t?.id })}
-                placeholder="None"
+                placeholder={t("condition.none")}
               />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Reason</Label>
+            <Label>{t("common.reason")}</Label>
             <Textarea
               value={draft.reason}
               onChange={(e) => onDraftChange({ ...draft, reason: e.target.value })}
-              placeholder="Why is this being granted/revoked?"
+              placeholder={t("detail.whyOverride")}
               required
             />
           </div>
@@ -110,13 +112,13 @@ export function RuleOverrideDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={onSubmit}
             disabled={!draft.userId || !draft.reason || isSaving}
           >
-            {isSaving ? "Saving…" : draft.action === "grant" ? "Grant" : "Revoke"}
+            {isSaving ? t("common.saving") : draft.action === "grant" ? t("common.grant") : t("common.revoke")}
           </Button>
         </DialogFooter>
       </DialogContent>

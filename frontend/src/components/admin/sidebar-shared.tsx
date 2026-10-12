@@ -1,9 +1,11 @@
 "use client";
 
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 import { ArrowLeft, Check, ChevronsUpDown } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -41,18 +43,18 @@ function getRoleLabel({
   globalRoles: string[];
   workspaceRoles: string[];
 }) {
-  if (isSuperuser) return "Superuser";
-  if (globalRoles.includes("admin")) return "Admin";
-  if (globalRoles.includes("moderator")) return "Moderator";
-  if (workspaceRoles.includes("owner")) return "Owner";
-  if (workspaceRoles.includes("admin")) return "Admin";
-  if (workspaceRoles.includes("referee")) return "Referee";
-  if (workspaceRoles.includes("host")) return "Host";
-  if (workspaceRoles.includes("player")) return "Player";
-  return "Operator";
+  if (isSuperuser) return "superuser";
+  if (globalRoles.includes("admin") || workspaceRoles.includes("admin")) return "admin";
+  if (globalRoles.includes("moderator")) return "moderator";
+  if (workspaceRoles.includes("owner")) return "owner";
+  if (workspaceRoles.includes("referee")) return "referee";
+  if (workspaceRoles.includes("host")) return "host";
+  if (workspaceRoles.includes("player")) return "player";
+  return "operator";
 }
 
 export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
+  const t = useTranslations("adminShell.dashboardExtra");
   const { user, status } = useAuthProfile();
   const { workspaces: allWorkspaces, currentWorkspaceId } = useWorkspaceStore();
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
@@ -66,7 +68,7 @@ export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
           size="lg"
           className="h-9 rounded-lg px-2 hover:bg-transparent group-data-[collapsible=icon]:justify-center"
         >
-          <HoverPrefetchLink href={href} aria-label={`${currentWorkspace?.name ?? SITE_NAME} admin home`}>
+          <HoverPrefetchLink href={href} aria-label={t("workspaceAdminHome", { workspace: currentWorkspace?.name ?? SITE_NAME })}>
             {currentWorkspace?.icon_url ? (
               <div className="flex size-7 items-center justify-center">
                 <Image
@@ -103,18 +105,19 @@ export function SidebarWorkspaceLogoItem({ href }: Readonly<{ href: string }>) {
 }
 
 export function SidebarBackToSite() {
+  const t = useTranslations("adminShell.sidebar");
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <SidebarMenuButton
           asChild
           size="sm"
-          tooltip="Return to site"
+          tooltip={t("returnToSite")}
           className="h-7 rounded-md px-2.5 text-sm text-sidebar-foreground/40 hover:text-sidebar-foreground/70 hover:bg-sidebar-accent/40"
         >
           <HoverPrefetchLink href="/">
             <ArrowLeft aria-hidden className="size-4 text-sidebar-foreground/30" />
-            <span>Return to site</span>
+            <span>{t("returnToSite")}</span>
           </HoverPrefetchLink>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -122,7 +125,23 @@ export function SidebarBackToSite() {
   );
 }
 
+/**
+ * The RU | EN switch, in view rather than one menu deep. Collapsed to icons the
+ * rail has no room for it; the account menu below carries the same choice.
+ */
+export function SidebarLanguageSwitch() {
+  const t = useTranslations("common");
+  return (
+    <div className="flex items-center justify-between gap-2 px-2.5 py-1 group-data-[collapsible=icon]:hidden">
+      <span className="text-xs text-sidebar-foreground/40">{t("language")}</span>
+      <LanguageSwitcher className="h-7" />
+    </div>
+  );
+}
+
 export function SidebarUserDropdown() {
+  const t = useTranslations("adminShell.sidebar");
+  const tDashboard = useTranslations("adminShell.dashboardExtra");
   const { user, status } = useAuthProfile();
   const {
     workspaces: allWorkspaces,
@@ -132,11 +151,11 @@ export function SidebarUserDropdown() {
 
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
-  const roleLabel = getRoleLabel({
+  const roleLabel = t(`roles.${getRoleLabel({
     isSuperuser: user?.isSuperuser ?? false,
     globalRoles: user?.roles ?? [],
     workspaceRoles: user?.workspaces.flatMap((ws) => ws.roles) ?? []
-  });
+  })}` as never);
 
   return (
     <div className="mt-1">
@@ -146,13 +165,13 @@ export function SidebarUserDropdown() {
             <DropdownMenuTrigger asChild>
               <SidebarMenuButton
                 size="lg"
-                tooltip={user?.username ?? "Profile"}
+                tooltip={user?.username ?? tDashboard("profile")}
                 className="h-12 rounded-lg px-2 hover:bg-sidebar-accent/60 data-[state=open]:bg-sidebar-accent/60"
               >
                 <Avatar className="size-8 rounded-lg ring-1 ring-sidebar-border/60">
                   <AvatarImage
                     src={user?.avatarUrl ?? undefined}
-                    alt={user?.username ?? "User"}
+                    alt={user?.username ?? tDashboard("user")}
                   />
                   <AvatarFallback className="rounded-lg bg-sidebar-accent text-xs font-medium text-sidebar-foreground/60">
                     {initials(user?.username)}
@@ -160,7 +179,7 @@ export function SidebarUserDropdown() {
                 </Avatar>
                 <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
                   <span className="truncate text-sm font-medium text-sidebar-foreground">
-                    {user?.username ?? "User"}
+                    {user?.username ?? tDashboard("user")}
                   </span>
                   <span className="truncate text-xs text-sidebar-foreground/40">
                     {roleLabel}
@@ -180,7 +199,7 @@ export function SidebarUserDropdown() {
                   <>
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className={cn(EYEBROW_CLASS, "px-2 py-1")}>
-                      Workspace
+                      {t("workspace")}
                     </DropdownMenuLabel>
                     {workspaces.map((ws) => (
                       <DropdownMenuItem

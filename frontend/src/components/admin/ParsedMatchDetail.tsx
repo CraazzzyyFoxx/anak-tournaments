@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, HelpCircle } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
 
@@ -53,6 +54,7 @@ export function ParsedMatchDetail({
   row: AdminMatchRow;
   workspaceId: number | null;
 }>) {
+  const t = useTranslations("adminMatches.parsed");
   const format = useFormatter();
   const detailQuery = useQuery({
     queryKey: adminQueryKeys.matchDetail(row.id, workspaceId),
@@ -69,16 +71,16 @@ export function ParsedMatchDetail({
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Field
-          label="Score"
+          label={t("score")}
           value={`${row.home_team.name ?? "?"} ${row.home_score} – ${row.away_score} ${row.away_team.name ?? "?"}`}
         />
-        <Field label="Duration" value={`${minutes}m ${String(seconds).padStart(2, "0")}s`} />
-        <Field label="Match code" value={row.code ?? "—"} />
-        <Field label="Rounds" value={detailQuery.isLoading ? "…" : (detail?.rounds ?? "—")} />
+        <Field label={t("duration")} value={`${minutes}m ${String(seconds).padStart(2, "0")}s`} />
+        <Field label={t("matchCode")} value={row.code ?? "—"} />
+        <Field label={t("rounds")} value={detailQuery.isLoading ? "…" : (detail?.rounds ?? "—")} />
       </div>
 
       <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>Provenance</p>
+        <p className={EYEBROW_CLASS}>{t("provenance")}</p>
         {record ? (
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
@@ -86,12 +88,12 @@ export function ParsedMatchDetail({
               <span className="font-mono text-xs">{record.filename}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Record" value={`#${record.id}`} />
-              <Field label="Source" value={record.source ?? "—"} />
-              <Field label="Uploader" value={record.uploader_id ?? "—"} />
-              <Field label="Attempts" value={record.attempts} />
-              <Field label="Started" value={formatDate(format, record.started_at)} />
-              <Field label="Finished" value={formatDate(format, record.finished_at)} />
+              <Field label={t("record")} value={`#${record.id}`} />
+              <Field label={t("source")} value={record.source ?? "—"} />
+              <Field label={t("uploader")} value={record.uploader_id ?? "—"} />
+              <Field label={t("attempts")} value={record.attempts} />
+              <Field label={t("started")} value={formatDate(format, record.started_at)} />
+              <Field label={t("finished")} value={formatDate(format, record.finished_at)} />
             </div>
             {record.error_message ? (
               <p
@@ -112,12 +114,10 @@ export function ParsedMatchDetail({
           <div className="mt-2 space-y-1">
             <p className="flex items-center gap-2 text-sm">
               <HelpCircle className="size-4 text-muted-foreground" aria-hidden />
-              Provenance unresolved
+              {t("provenanceUnresolvedTitle")}
             </p>
             <p className="text-xs text-muted-foreground">
-              No ingestion record is linked to this map. Matches parsed before the ingestion table
-              existed have none — the backfill left them unlinked rather than guessing from the
-              filename.
+              {t("provenanceText")}
             </p>
             <p className="font-mono text-xs text-muted-foreground">{row.log_name}</p>
           </div>
@@ -125,14 +125,14 @@ export function ParsedMatchDetail({
       </section>
 
       <section className="rounded-xl border border-border/60 p-3">
-        <p className={EYEBROW_CLASS}>Parsed volume</p>
+        <p className={EYEBROW_CLASS}>{t("parsedVolume")}</p>
         {detailQuery.isLoading ? (
           <Skeleton className="mt-2 h-10 w-full" />
         ) : (
           <div className="mt-2 grid grid-cols-3 gap-2">
-            <Field label="Statistics" value={detail?.statistics_count ?? 0} />
-            <Field label="Kill feed" value={detail?.kill_feed_count ?? 0} />
-            <Field label="Events" value={detail?.event_count ?? 0} />
+            <Field label={t("statistics")} value={detail?.statistics_count ?? 0} />
+            <Field label={t("killFeed")} value={detail?.kill_feed_count ?? 0} />
+            <Field label={t("events")} value={detail?.event_count ?? 0} />
           </div>
         )}
         {detail != null && detail.statistics_count === 0 ? (
@@ -140,7 +140,7 @@ export function ParsedMatchDetail({
           // was accepted and yielded nothing — worth surfacing, since the
           // encounter will still count it as played.
           <p className="mt-2 text-xs text-warning">
-            No player statistics were written for this map.
+            {t("noStats")}
           </p>
         ) : null}
       </section>

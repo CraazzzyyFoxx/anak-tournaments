@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -33,12 +34,13 @@ export function AdminTablePagination({
   pageSizeOptions,
   onPageSizeChange
 }: Readonly<AdminTablePaginationProps>) {
+  const t = useTranslations("kitTable.table");
   const pageButton = (page: number) => (
     <button
       key={page}
       type="button"
       onClick={() => onPageChange(page)}
-      aria-label={`Page ${page}`}
+      aria-label={t("page", { page })}
       aria-current={currentPage === page ? "page" : undefined}
       className={cn(
         "flex size-7 items-center justify-center rounded-md text-xs tabular-nums transition-colors",
@@ -71,11 +73,11 @@ export function AdminTablePagination({
   return (
     <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-2">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <span className="tabular-nums">{rangeStart}–{rangeEnd} of {total}</span>
+        <span className="tabular-nums">{t("range", { start: rangeStart, end: rangeEnd, total })}</span>
         <div className="flex items-center gap-1.5">
-          <span>Rows</span>
+          <span>{t("rows")}</span>
           <Select value={String(pageSize)} onValueChange={(v) => onPageSizeChange(Number(v))}>
-            <SelectTrigger aria-label="Rows per page" className="h-8 w-auto gap-1 border-border bg-muted/30 px-2.5 text-sm tabular-nums text-muted-foreground">
+            <SelectTrigger aria-label={t("rowsPerPage")} className="h-8 w-auto gap-1 border-border bg-muted/30 px-2.5 text-sm tabular-nums text-muted-foreground">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -92,7 +94,7 @@ export function AdminTablePagination({
           onClick={() => onPageChange(Math.max(currentPage - 1, 1))}
           disabled={currentPage <= 1}
           className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
-          aria-label="Previous page"
+          aria-label={t("previousPage")}
         >
           <ChevronLeft aria-hidden className="size-4" />
         </button>
@@ -103,7 +105,7 @@ export function AdminTablePagination({
           onClick={() => onPageChange(Math.min(currentPage + 1, totalPageCount))}
           disabled={currentPage >= totalPageCount}
           className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground disabled:opacity-30 disabled:pointer-events-none"
-          aria-label="Next page"
+          aria-label={t("nextPage")}
         >
           <ChevronRight aria-hidden className="size-4" />
         </button>

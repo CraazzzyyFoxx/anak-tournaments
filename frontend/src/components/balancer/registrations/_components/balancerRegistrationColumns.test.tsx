@@ -1,12 +1,16 @@
 import type { FilterFn, Row } from "@tanstack/react-table";
+import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 
 import { readColumnMeta, readAdminColumnFilter } from "@/components/data-table";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { StatusMeta } from "@/types/registration.types";
 import type { FormField } from "@/types/forms.types";
+import en from "@/i18n/messages/en.json";
 
 import { buildBalancerRegistrationColumns } from "./balancerRegistrationColumns";
+
+const t = createTranslator({ locale: "en", messages: en, namespace: "registrationsAdmin" });
 
 function field(key: string, overrides: Partial<FormField> = {}): FormField {
   return {
@@ -45,8 +49,10 @@ function registration(overrides: Partial<AdminRegistration> = {}): AdminRegistra
   } as unknown as AdminRegistration;
 }
 
-function column(id: string, ...args: Parameters<typeof buildBalancerRegistrationColumns>) {
-  const found = buildBalancerRegistrationColumns(...args).find((candidate) => candidate.id === id);
+type ColumnArgs = Parameters<typeof buildBalancerRegistrationColumns> extends [unknown, ...infer Rest] ? Rest : never;
+
+function column(id: string, ...args: ColumnArgs) {
+  const found = buildBalancerRegistrationColumns(t, ...args).find((candidate) => candidate.id === id);
   if (!found) {
     throw new Error(`No "${id}" column was built`);
   }
@@ -59,7 +65,7 @@ describe("balancer registration column model", () => {
     // The admin table rendered no custom fields at all: an organizer could read
     // an answer nowhere and fix it nowhere. Builtins are questions too — the
     // schema knows no difference — so they get their column the same way.
-    const ids = buildBalancerRegistrationColumns(undefined, false, SCHEMA_FIELDS).map(
+    const ids = buildBalancerRegistrationColumns(t, undefined, false, SCHEMA_FIELDS).map(
       (candidate) => candidate.id,
     );
 
@@ -69,7 +75,7 @@ describe("balancer registration column model", () => {
   });
 
   it("keeps only the roles column out of the answer set — the BattleTags get one", () => {
-    const ids = buildBalancerRegistrationColumns(undefined, false, [
+    const ids = buildBalancerRegistrationColumns(t, undefined, false, [
       field("identity_battlenet"),
       field("roles"),
     ]).map((candidate) => candidate.id);
@@ -89,7 +95,7 @@ describe("balancer registration column model", () => {
   });
 
   it("adds no answer columns when the form asks nothing", () => {
-    const ids = buildBalancerRegistrationColumns().map((candidate) => candidate.id);
+    const ids = buildBalancerRegistrationColumns(t).map((candidate) => candidate.id);
 
     expect(ids.some((id) => id?.startsWith("answer_"))).toBe(false);
   });

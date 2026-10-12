@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { auditDiffRows } from "@/components/kit/audit-log";
+import { type AuditTranslator, auditDiffRows } from "@/components/kit/audit-log";
+
+const t = Object.assign((key: string) => key, { has: () => false }) as AuditTranslator;
 
 const role = (code: string, rank: number | null) => ({
   role: code,
@@ -15,6 +17,7 @@ describe("auditDiffRows on a list of records", () => {
     const rows = auditDiffRows(
       { roles: [role("damage", null), role("support", null)] },
       { roles: [role("support", 4000)] },
+      t,
     );
 
     expect(rows).toHaveLength(1);

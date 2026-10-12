@@ -11,6 +11,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { ExternalLink, History } from "lucide-react";
 
 import { AuditTrailBody } from "@/components/kit/AuditTrail";
@@ -22,6 +23,7 @@ import {
   parseAuditTrailScope,
   sameAuditTrailScope,
   type AuditTrailScope,
+  useAuditTranslator
 } from "@/components/kit/audit-log";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,14 +126,12 @@ export function useAuditTrail(): AuditTrailContextValue {
 }
 
 /** `Tournament #12` — everything a scope alone can honestly name. */
-function describeScope(scope: AuditTrailScope): string {
-  return `${auditEntityLabel(scope.entityType) ?? "Record"} #${scope.entityId}`;
-}
-
 function AuditTrailSheet({
   scope,
   onClose,
 }: Readonly<{ scope: AuditTrailScope | null; onClose: () => void }>) {
+  const t = useTranslations("kitAudit.audit");
+  const auditT = useAuditTranslator();
   // The closing scope is held for the exit animation: dropping the content the
   // moment `scope` clears would blank the drawer out instead of sliding it away.
   // Adjusted during render rather than in an effect, which would paint the
@@ -142,8 +142,13 @@ function AuditTrailSheet({
   const shown = scope ?? lastScope;
   if (!shown) return null;
 
+  const scopeLabel = t("recordWithId", {
+    entity: auditEntityLabel(shown.entityType, auditT) ?? t("record"),
+    id: shown.entityId
+  });
+
   const feedHref = `/admin/audit?entity_type=${encodeURIComponent(shown.entityType)}&entity_id=${shown.entityId}`;
-  const noun = (auditEntityLabel(shown.entityType) ?? "record").toLowerCase();
+  const noun = (auditEntityLabel(shown.entityType, auditT) ?? t("record")).toLowerCase();
 
   return (
     <Sheet open={scope != null} onOpenChange={(next) => (next ? undefined : onClose())}>
@@ -151,10 +156,10 @@ function AuditTrailSheet({
         <SheetHeader className="space-y-1 border-b border-border/50 px-5 py-4 text-left">
           <SheetTitle className="flex items-center gap-2 text-base">
             <History aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            Change history
+            {t("changeHistory")}
           </SheetTitle>
           <SheetDescription>
-            Every admin action recorded for {describeScope(shown)}, newest first.
+            {t("everyAdminAction", { scope: scopeLabel })}
           </SheetDescription>
         </SheetHeader>
 
@@ -170,7 +175,7 @@ function AuditTrailSheet({
             className="inline-flex items-center gap-1.5 text-sm text-primary underline-offset-2 hover:underline"
           >
             <ExternalLink aria-hidden className="size-3.5" />
-            Search and filter this {noun} in the audit log
+            {t("searchAndFilter", { noun })}
           </Link>
         </div>
       </SheetContent>
@@ -205,6 +210,9 @@ export function AuditTrailButton({
   showCount = false,
   className,
 }: Readonly<AuditTrailButtonProps>) {
+  const t = useTranslations("kitAudit.audit");
+  const auditT = useAuditTranslator();
+  const tTrail = useTranslations("kitAudit.auditTrail");
   const { open } = useAuditTrail();
   const { canAccessPermission } = usePermissions();
   const allowed = canAccessPermission("audit.read", scope.workspaceId);
@@ -230,8 +238,17 @@ export function AuditTrailButton({
       className={cn("transition-transform active:scale-[0.96]", className)}
     >
       <History aria-hidden className="size-4" />
-      <span>Change history</span>
-      <span className="sr-only">{` for ${target ?? describeScope(scope)}`}</span>
+      <span>{t("changeHistory")}</span>
+      <span className="sr-only">
+        {tTrail("forTarget", {
+          target:
+            target ??
+            t("recordWithId", {
+              entity: auditEntityLabel(scope.entityType, auditT) ?? t("record"),
+              id: scope.entityId
+            }),
+        })}
+      </span>
       {count > 0 ? (
         <Badge variant="secondary" className="ms-0.5 px-1.5 font-normal tabular-nums">
           {count}

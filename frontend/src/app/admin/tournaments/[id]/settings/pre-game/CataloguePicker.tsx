@@ -123,6 +123,7 @@ function GroupFilterRow({
   onChange: (value: string) => void;
 }>) {
   const t = useTranslations("pickBan.admin");
+  const tAdmin = useTranslations("adminTournament.preGame");
   if (groups.length <= 1) return null;
 
   return (
@@ -139,7 +140,7 @@ function GroupFilterRow({
         onClick={() => onChange(ALL_GROUPS)}
         className="h-6 px-2 text-[0.6875rem]"
       >
-        {t("groupFilterAll")} ({total})
+        {tAdmin("groupFilterAllCount", { label: t("groupFilterAll"), count: total })}
       </Button>
       {groups.map((group) => (
         <Button

@@ -17,6 +17,7 @@ import { notify } from "@/lib/notify";
 import { rbacService } from "@/services/rbac.service";
 import type { AuthAdminUser } from "@/types/rbac.types";
 import type { MinimizedUser } from "@/types/user.types";
+import { useTranslations } from "next-intl";
 
 /**
  * The player identity this login plays as. One link at most, so it is one row
@@ -32,6 +33,8 @@ export function AccountLinkedPlayer({
   /** Off on the person's own page, where the link would point at itself. */
   canOpenPerson: boolean;
 }>) {
+  const t = useTranslations("adminAccess.connectionsUi");
+  const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
   const [picked, setPicked] = useState<MinimizedUser | null>(null);
   const linkedPlayer = getSingleLinkedPlayer(account.linked_players);
@@ -42,7 +45,7 @@ export function AccountLinkedPlayer({
     onSuccess: async () => {
       await invalidateAccount(queryClient);
       setPicked(null);
-      notify.success("Player identity linked");
+      notify.success(t("linked"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -51,13 +54,13 @@ export function AccountLinkedPlayer({
     mutationFn: (playerId: number) => rbacService.removeLinkedPlayer(account.id, playerId),
     onSuccess: async () => {
       await invalidateAccount(queryClient);
-      notify.success("Player identity unlinked");
+      notify.success(t("unlinked"));
     },
     onError: (error) => notify.apiError(error)
   });
 
   return (
-    <AccountSection title="Player identity">
+    <AccountSection title={tc("playerIdentity")}>
       {linkedPlayer ? (
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -68,7 +71,7 @@ export function AccountLinkedPlayer({
                 className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
               >
                 <ExternalLink aria-hidden className="size-3" />
-                Open in People
+                {tc("openPeople")}
               </Link>
             ) : (
               <p className="font-mono text-xs tabular-nums text-muted-foreground">
@@ -80,12 +83,12 @@ export function AccountLinkedPlayer({
             <Button
               variant="ghost"
               size="sm"
-              aria-label={`Unlink player ${linkedPlayer.player_name} from this account`}
+              aria-label={t("unlinkLabel", { player: linkedPlayer.player_name })}
               disabled={unlink.isPending}
               onClick={() => unlink.mutate(linkedPlayer.player_id)}
             >
               <Unlink aria-hidden className="size-3.5" />
-              Unlink
+              {tc("unlink")}
             </Button>
           ) : null}
         </div>
@@ -95,8 +98,8 @@ export function AccountLinkedPlayer({
             <UserSearchCombobox
               value={picked?.id}
               selectedName={picked?.name}
-              placeholder="Find the player this login is…"
-              searchPlaceholder="Search player identity…"
+              placeholder={tc("findPlayer")}
+              searchPlaceholder={tc("searchPlayerIdentity")}
               onSelect={(user) => setPicked(user ?? null)}
             />
           </div>
@@ -107,12 +110,12 @@ export function AccountLinkedPlayer({
             onClick={() => picked && link.mutate(picked.id)}
           >
             <Link2 aria-hidden className="size-3.5" />
-            Link
+            {tc("link")}
           </Button>
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Not linked. Nothing in the tournament history belongs to this login yet.
+          {t("notLinkedHistory")}
         </p>
       )}
     </AccountSection>
@@ -124,6 +127,8 @@ export function AccountLinkedPlayer({
  * healthy row was four icons that said nothing.
  */
 export function AccountSignInMethods({ userId }: Readonly<{ userId: number }>) {
+  const t = useTranslations("adminAccess.connectionsUi");
+  const tc = useTranslations("adminAccess.common");
   const query = useQuery({
     queryKey: accessQueryKeys.userOauthConnections(userId),
     queryFn: () => rbacService.listOAuthConnections({ auth_user_id: userId, per_page: -1 })
@@ -133,12 +138,12 @@ export function AccountSignInMethods({ userId }: Readonly<{ userId: number }>) {
   const [now] = useState(() => Date.now());
 
   return (
-    <AccountSection title="Sign-in methods" summary={query.data ? connections.length : undefined}>
+    <AccountSection title={tc("signInMethods")} summary={query.data ? connections.length : undefined}>
       {query.isLoading ? (
         <Skeleton className="h-12 w-full" />
       ) : connections.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Email and password only — no OAuth provider is connected.
+          {t("noOauth")}
         </p>
       ) : (
         <ul className="space-y-2">
@@ -158,9 +163,9 @@ export function AccountSignInMethods({ userId }: Readonly<{ userId: number }>) {
                 {expired ? (
                   <StatusPill
                     tone="warning"
-                    title="Anything that calls this provider for the account fails until it reconnects."
+                    title={t("expiredTitle")}
                   >
-                    Token expired
+                    {t("tokenExpired")}
                   </StatusPill>
                 ) : null}
               </li>

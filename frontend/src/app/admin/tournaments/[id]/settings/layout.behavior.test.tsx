@@ -47,6 +47,16 @@ vi.mock("next/link", () => ({
   })
 }));
 
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  const { default: en } = await import("@/i18n/messages/en.json");
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never })
+  };
+});
+
 let granted: string[] = [];
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({

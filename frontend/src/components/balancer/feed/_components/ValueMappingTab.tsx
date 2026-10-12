@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTranslations } from "next-intl";
 import type {
   MappingValueCategory,
   MappingValueCategoryName,
@@ -41,6 +42,7 @@ export function ValueMappingTab({
   onRemove,
   onSeedDefaults,
 }: Readonly<ValueMappingTabProps>) {
+  const t = useTranslations("sheetsFeed.valueMapping");
   const booleanDefaults = categoryEntries(valueCategories, "booleans");
   const roleDefaults = categoryEntries(valueCategories, "roles");
   const subroleDefaults = categoryEntries(valueCategories, "subroles");
@@ -50,10 +52,9 @@ export function ValueMappingTab({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Value mapping</CardTitle>
+        <CardTitle>{t("title")}</CardTitle>
         <CardDescription>
-          Translate free-text cell values into the canonical values the balancer expects. Seed the
-          catalog defaults, then add or adjust rows as needed.
+          {t("description")}
         </CardDescription>
       </CardHeader>
       {/* Five short key→value lists; two abreast at xl instead of five
@@ -61,8 +62,8 @@ export function ValueMappingTab({
           wider value column and keeps the full row. */}
       <CardContent className="grid gap-4 xl:grid-cols-2">
         <ValueMapEditor
-          title="Booleans"
-          description="Map cell text (e.g. “yes”, “да”) to true/false (used by checkbox-style fields)."
+          title={t("categories.booleans")}
+          description={t("descriptions.booleans")}
           kind="boolean"
           rows={valueState.booleans}
           canSeed={Object.keys(booleanDefaults).length > 0}
@@ -72,8 +73,8 @@ export function ValueMappingTab({
           onSeedDefaults={() => onSeedDefaults("booleans", booleanDefaults)}
         />
         <ValueMapEditor
-          title="Roles"
-          description="Map role text (e.g. “танк”, “heal”) to tank / damage / support."
+          title={t("categories.roles")}
+          description={t("descriptions.roles")}
           kind="role"
           rows={valueState.roles}
           canSeed={Object.keys(roleDefaults).length > 0}
@@ -83,8 +84,8 @@ export function ValueMappingTab({
           onSeedDefaults={() => onSeedDefaults("roles", roleDefaults)}
         />
         <ValueMapEditor
-          title="Sub-roles"
-          description="Map sub-role text from the sheet to a workspace sub-role."
+          title={t("categories.subroles")}
+          description={t("descriptions.subroles")}
           kind="subrole"
           rows={valueState.subroles}
           canSeed={Object.keys(subroleDefaults).length > 0}
@@ -95,8 +96,8 @@ export function ValueMappingTab({
           onSeedDefaults={() => onSeedDefaults("subroles", subroleDefaults)}
         />
         <ValueMapEditor
-          title="Divisions"
-          description="Map division text from the sheet directly to the numeric rank value used by the balancer."
+          title={t("categories.divisions")}
+          description={t("descriptions.divisions")}
           kind="number"
           rows={valueState.divisions}
           canSeed={Object.keys(divisionDefaults).length > 0}
@@ -107,8 +108,8 @@ export function ValueMappingTab({
         />
         <div className="xl:col-span-2">
           <ValueMapEditor
-            title="Role + Sub-role combined"
-            description={`Map a single cell value to one or more roles (e.g. "Хитскан ДПС" → Damage/Hitscan, or "Флекс, Танк или Сап" → Tank + Support). Use "Add role" to expand a value into multiple roles.`}
+            title={t("categories.roleSubroles")}
+            description={t("descriptions.roleSubroles")}
             kind="role_subrole"
             rows={valueState.role_subroles}
             canSeed={Object.keys(roleSubroleDefaults).length > 0}

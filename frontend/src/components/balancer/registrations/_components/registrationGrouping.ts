@@ -9,6 +9,16 @@ export interface RegistrationGroup {
   label: string;
   registrations: AdminRegistration[];
 }
+/** Group headers, named by the caller in its own language (the `grouping` messages). */
+export type RegistrationGroupLabelKey =
+  | "all"
+  | "checkedIn"
+  | "notCheckedIn"
+  | "admitted"
+  | "checkInPending"
+  | "notAdmitted";
+
+type GroupTranslator = (key: RegistrationGroupLabelKey) => string;
 
 const GROUPING_MODES = new Set<RegistrationGroupingMode>([
   "none",
@@ -29,10 +39,10 @@ const BALANCER_STATUS_ORDER = new Map<string, number>([
  *  mirrored a second copy in `RegistrationBadges` by hand and had already
  *  drifted from the two in the column builder. `sortOrder` reuses
  *  `ADMISSION_ORDER` so the group order and the column's sort cannot disagree. */
-const ADMISSION_GROUP_LABELS: Record<AdmissionDecision, string> = {
-  admitted: "Admitted",
-  pending_check_in: "Check-in pending",
-  not_admitted: "Not admitted"
+const ADMISSION_GROUP_LABELS: Record<AdmissionDecision, RegistrationGroupLabelKey> = {
+  admitted: "admitted",
+  pending_check_in: "checkInPending",
+  not_admitted: "notAdmitted"
 };
 
 const humanizeStatusValue = (value: string): string =>
@@ -44,12 +54,13 @@ const humanizeStatusValue = (value: string): string =>
 
 const getGroupMeta = (
   registration: AdminRegistration,
-  mode: RegistrationGroupingMode
+  mode: RegistrationGroupingMode,
+  t: GroupTranslator
 ): { key: string; label: string; sortOrder: number } => {
   if (mode === "check_in") {
     return registration.checked_in
-      ? { key: "checked_in", label: "Checked in", sortOrder: 0 }
-      : { key: "not_checked_in", label: "Not checked in", sortOrder: 1 };
+      ? { key: "checked_in", label: t("checkedIn"), sortOrder: 0 }
+      : { key: "not_checked_in", label: t("notCheckedIn"), sortOrder: 1 };
   }
 
   if (mode === "balancer_status") {
@@ -65,14 +76,14 @@ const getGroupMeta = (
     const decision = registration.admission.decision;
     return {
       key: decision,
-      label: ADMISSION_GROUP_LABELS[decision],
+      label: t(ADMISSION_GROUP_LABELS[decision]),
       // Descending: admitted first, the rows needing attention last — the order
       // organizers already read these groups in.
       sortOrder: -ADMISSION_ORDER[decision]
     };
   }
 
-  return { key: "all", label: "All registrations", sortOrder: 0 };
+  return { key: "all", label: t("all"), sortOrder: 0 };
 };
 
 export const normalizeRegistrationGroupingMode = (
@@ -84,10 +95,11 @@ export const normalizeRegistrationGroupingMode = (
 
 export const groupRegistrations = (
   registrations: AdminRegistration[],
-  mode: RegistrationGroupingMode
+  mode: RegistrationGroupingMode,
+  t: GroupTranslator
 ): RegistrationGroup[] => {
   if (mode === "none") {
-    return [{ key: "all", label: "All registrations", registrations }];
+    return [{ key: "all", label: t("all"), registrations }];
   }
 
   const groups = new Map<
@@ -96,7 +108,7 @@ export const groupRegistrations = (
   >();
 
   registrations.forEach((registration, index) => {
-    const meta = getGroupMeta(registration, mode);
+    const meta = getGroupMeta(registration, mode, t);
     const existingGroup = groups.get(meta.key);
 
     if (existingGroup) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ChevronDown, ChevronUp, ExternalLink, X } from "lucide-react";
 
@@ -68,6 +69,7 @@ export function Inspector({
   onNext,
   openHref
 }: Readonly<InspectorProps>) {
+  const t = useTranslations("kit.actions");
   const isWide = useIsWideViewport();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isOpen = openId !== null;
@@ -145,12 +147,12 @@ export function Inspector({
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         {onPrev ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Previous row" onClick={onPrev}>
+          <Button variant="ghost" size="icon" className="size-7" aria-label={t("previousRow")} onClick={onPrev}>
             <ChevronUp aria-hidden className="size-4" />
           </Button>
         ) : null}
         {onNext ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Next row" onClick={onNext}>
+          <Button variant="ghost" size="icon" className="size-7" aria-label={t("nextRow")} onClick={onNext}>
             <ChevronDown aria-hidden className="size-4" />
           </Button>
         ) : null}
@@ -159,7 +161,7 @@ export function Inspector({
             variant="ghost"
             size="icon"
             className="size-7"
-            aria-label="Close inspector"
+            aria-label={t("closeInspector")}
             onClick={onClose}
           >
             <X aria-hidden className="size-4" />
@@ -178,7 +180,7 @@ export function Inspector({
             <Button asChild variant="outline" size="sm">
               <Link href={openHref}>
                 <ExternalLink aria-hidden className="size-3.5" />
-                Open page
+                {t("openPage")}
               </Link>
             </Button>
           ) : null}
@@ -195,9 +197,9 @@ export function Inspector({
           side="right"
           className="flex w-full max-w-none flex-col gap-0 p-0 sm:max-w-none"
         >
-          <SheetTitle className="sr-only">{typeof title === "string" ? title : "Details"}</SheetTitle>
+          <SheetTitle className="sr-only">{typeof title === "string" ? title : t("details")}</SheetTitle>
           <SheetDescription className="sr-only">
-            Details for the selected row.
+            {t("detailsSelectedRow")}
           </SheetDescription>
           {renderHeader(false)}
           {body}
@@ -208,7 +210,7 @@ export function Inspector({
 
   return (
     <aside
-      aria-label="Row inspector"
+      aria-label={t("rowInspector")}
       data-inspector-mode="panel"
       className={cn(
         "flex max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-xl border border-border bg-card",

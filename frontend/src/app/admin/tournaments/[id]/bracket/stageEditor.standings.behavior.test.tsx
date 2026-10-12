@@ -55,11 +55,6 @@ vi.mock("@/hooks/usePermissions", () => ({
   })
 }));
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
-}));
-
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));

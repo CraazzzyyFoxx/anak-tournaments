@@ -6,7 +6,9 @@
 // What is left here is the palette the editor offers.
 import { describe, expect, it } from "vitest";
 
-import { SIDEBAR_GROUPS } from "./condition-flow.model";
+import { createSidebarGroups } from "./condition-flow.model";
+
+const SIDEBAR_GROUPS = createSidebarGroups((key) => key);
 
 describe("the palette offers the engine's nodes", () => {
   it("names every leaf item with a registered type", () => {

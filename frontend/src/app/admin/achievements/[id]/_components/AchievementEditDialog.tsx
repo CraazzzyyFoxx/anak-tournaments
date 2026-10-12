@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { useTranslations } from "next-intl";
 import { Upload, X } from "lucide-react";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
@@ -58,27 +59,28 @@ export function AchievementEditDialog({
   isDirty: boolean;
   errorMessage?: string;
 }>) {
+  const t = useTranslations("adminAchievements");
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <EntityFormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={`Edit: ${slug}`}
-      description="Update achievement metadata"
+      title={t("detail.editTitle", { slug })}
+      description={t("detail.updateMetadata")}
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit();
       }}
       isSubmitting={isSubmitting}
-      submittingLabel="Updating…"
+      submittingLabel={t("common.updating")}
       errorMessage={errorMessage}
       isDirty={isDirty}
     >
       <ScrollArea className="max-h-[60vh]">
         <div className="space-y-4 pr-4">
           <div className="space-y-2">
-            <Label>Name</Label>
+            <Label>{t("common.name")}</Label>
             <Input
               value={formData.name ?? ""}
               onChange={(e) => onFormDataChange({ ...formData, name: e.target.value })}
@@ -88,12 +90,12 @@ export function AchievementEditDialog({
 
           {/* Image upload */}
           <div className="space-y-2">
-            <Label>Image</Label>
+            <Label>{t("common.image")}</Label>
             <div className="flex items-center gap-4">
               {(imagePreview || formData.image_url) && (
                 <img
                   src={imagePreview ?? formData.image_url ?? ""}
-                  alt="Achievement"
+                  alt={t("detail.achievementAlt")}
                   className={ACHIEVEMENT_IMAGE_PREVIEW_CLASS}
                 />
               )}
@@ -107,7 +109,7 @@ export function AchievementEditDialog({
                     const file = e.target.files?.[0];
                     if (!file) return;
                     if (file.size > MAX_ACHIEVEMENT_IMAGE_BYTES) {
-                      alert("File too large (max 5 MB)");
+                      alert(t("detail.fileTooLarge"));
                       return;
                     }
                     onPickImage(file);
@@ -120,7 +122,7 @@ export function AchievementEditDialog({
                   onClick={() => imageInputRef.current?.click()}
                 >
                   <Upload className="mr-2 h-4 w-4" />
-                  {formData.image_url || imagePreview ? "Change Image" : "Upload Image"}
+                  {formData.image_url || imagePreview ? t("detail.changeImage") : t("detail.uploadImage")}
                 </Button>
                 {(imagePreview || formData.image_url) && (
                   <Button
@@ -133,7 +135,7 @@ export function AchievementEditDialog({
                     }}
                   >
                     <X className="mr-2 h-4 w-4" />
-                    Remove
+                    {t("detail.remove")}
                   </Button>
                 )}
               </div>
@@ -141,7 +143,7 @@ export function AchievementEditDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Description (RU)</Label>
+              <Label>{t("common.descriptionRu")}</Label>
               <Textarea
                 value={formData.description_ru ?? ""}
                 onChange={(e) => onFormDataChange({ ...formData, description_ru: e.target.value })}
@@ -149,7 +151,7 @@ export function AchievementEditDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label>Description (EN)</Label>
+              <Label>{t("common.descriptionEn")}</Label>
               <Textarea
                 value={formData.description_en ?? ""}
                 onChange={(e) => onFormDataChange({ ...formData, description_en: e.target.value })}
@@ -159,7 +161,7 @@ export function AchievementEditDialog({
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label>Category</Label>
+              <Label>{t("common.category")}</Label>
               <Select
                 value={formData.category ?? "overall"}
                 onValueChange={(v) =>
@@ -172,14 +174,14 @@ export function AchievementEditDialog({
                 <SelectContent>
                   {CATEGORIES.map((c) => (
                     <SelectItem key={c} value={c}>
-                      {c}
+                      {t(`common.categoryValues.${c}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Scope</Label>
+              <Label>{t("common.scope")}</Label>
               <Select
                 value={formData.scope ?? "global"}
                 onValueChange={(v) => onFormDataChange({ ...formData, scope: v as AchievementScope })}
@@ -190,14 +192,14 @@ export function AchievementEditDialog({
                 <SelectContent>
                   {SCOPES.map((s) => (
                     <SelectItem key={s} value={s}>
-                      {s}
+                      {t(`common.scopeValues.${s}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Grain</Label>
+              <Label>{t("common.grain")}</Label>
               <Select
                 value={formData.grain ?? "user"}
                 onValueChange={(v) => onFormDataChange({ ...formData, grain: v as AchievementGrain })}
@@ -208,7 +210,7 @@ export function AchievementEditDialog({
                 <SelectContent>
                   {GRAINS.map((g) => (
                     <SelectItem key={g} value={g}>
-                      {g}
+                      {t(`common.grainValues.${g}`)}
                     </SelectItem>
                   ))}
                 </SelectContent>

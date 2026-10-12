@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, Star } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { StatusPill } from "@/components/kit/StatusPill";
@@ -48,6 +49,7 @@ export function VersionHistory({
   onActivate,
   editorHref
 }: Readonly<VersionHistoryProps>) {
+  const t = useTranslations("adminSettings.divisions");
   const format = useFormatter();
   const ordered = [...versions].sort((left, right) => right.version - left.version);
 
@@ -62,14 +64,12 @@ export function VersionHistory({
 
         const usage =
           state === "active"
-            ? "in force"
+            ? t("inForce")
             : tournamentCounts === null
               ? null
-              : `${tournamentCounts[version.id] ?? 0} ${
-                  tournamentCounts[version.id] === 1 ? "tournament" : "tournaments"
-                }`;
+              : t("tournamentCount", { count: tournamentCounts[version.id] ?? 0 });
         const when = isDraft
-          ? "not published"
+          ? t("notPublished")
           : version.published_at
             ? format.dateTime(new Date(version.published_at), { dateStyle: "medium" })
             : null;
@@ -100,7 +100,7 @@ export function VersionHistory({
               </div>
               <LadderBar bands={bands} tone={state === "active" ? "accent" : "neutral"} />
               <p className="font-mono text-label uppercase tracking-wider text-muted-foreground">
-                {[`${bands.length} divisions`, usage, when].filter(Boolean).join(" · ")}
+                {[t("divisionCount", { count: bands.length }), usage, when].filter(Boolean).join(" · ")}
               </p>
             </div>
 
@@ -112,13 +112,13 @@ export function VersionHistory({
                   disabled={ready !== true}
                   title={
                     ready === false
-                      ? "Every older version a tournament still reads needs a complete mapping into this one first."
+                      ? t("editorDetails.mappingBlocked")
                       : undefined
                   }
                   onClick={() => onActivate(version)}
                 >
                   <Star aria-hidden className="size-3.5" />
-                  Activate v{version.version}
+                  {t("activateVersion", { version: version.version })}
                 </Button>
               ) : null}
               {isDraft ? (
@@ -126,7 +126,7 @@ export function VersionHistory({
                   href={editorHref(version.id)}
                   className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  Open editor
+                  {t("openEditor")}
                   <ArrowRight aria-hidden className="size-3.5" />
                 </Link>
               ) : (
@@ -134,7 +134,7 @@ export function VersionHistory({
                   href={editorHref(version.id)}
                   className="inline-flex items-center rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  View
+                  {t("view")}
                 </Link>
               )}
             </div>

@@ -5,6 +5,7 @@
 import "./data-table.css";
 
 import React, { useEffect, useId, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import type { Row } from "@tanstack/react-table";
 
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
@@ -53,7 +54,7 @@ export function DataTable<TData>({
   isLoading = false,
   columns,
   searchPlaceholder,
-  emptyMessage = "No records to show yet.",
+  emptyMessage,
   onRowClick,
   onRowDoubleClick,
   actions,
@@ -76,6 +77,8 @@ export function DataTable<TData>({
   inspectorId,
   renderMobileCard,
 }: Readonly<DataTableProps<TData>>) {
+  const t = useTranslations("kitTable.dataTableExtra");
+  const i18n = (key: string, values?: Record<string, unknown>) => t(key as never, values as never);
   const isClientMode = rows !== undefined;
   // Server mode has no accumulating query to grow, so it always paginates.
   const isInfinite = isClientMode && paging === "infinite";
@@ -307,9 +310,10 @@ export function DataTable<TData>({
   const cellPadding = density === "compact" ? "py-1" : "py-2.5";
   const renderItem = createBodyRenderer<TData>({
     layout,
-    cell: { layout, cellPadding, cellAlign, hasLeadingColumn, customCellIds, search: debouncedSearchValue },
+    cell: { i18n, layout, cellPadding, cellAlign, hasLeadingColumn, customCellIds, search: debouncedSearchValue },
     leading: hasLeadingColumn
       ? {
+          i18n,
           layout,
           cellPadding,
           cellAlign,
@@ -340,11 +344,12 @@ export function DataTable<TData>({
    * only chips.
    */
   const showSearch = searchPlaceholder !== undefined || toolbar === undefined;
-  const searchLabel = searchPlaceholder ?? "Search…";
+  const searchLabel = searchPlaceholder ?? t("search");
+  const resolvedEmptyMessage = emptyMessage ?? t("noRecords");
 
   const emptyState = (
     <AdminTableEmptyState
-      message={emptyMessage}
+      message={resolvedEmptyMessage}
       hasSearch={Boolean(searchValue)}
       hasFilters={Boolean(serializedFilters)}
       onClear={() => { setSearchValue(""); setFilters({}); }}
@@ -383,9 +388,9 @@ export function DataTable<TData>({
       {/* ── TABLE ───────────────────────────────────────── */}
       <div>
         <p id={rowHintId} className="sr-only">
-          Use the Up and Down arrows to move between rows
-          {enableRowSelection ? ", Space to select, Shift with an arrow to extend the selection" : ""}
-          {onRowClick ? ", Enter to open the focused row" : ""}.
+          {t("useArrows")}
+          {enableRowSelection ? t("spaceSelect") : ""}
+          {onRowClick ? t("enterOpen") : ""}.
         </p>
         {isMobile ? (
           pageRows.length > 0 ? (

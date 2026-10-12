@@ -72,6 +72,8 @@ export interface BestOfRoundSection {
   rounds: BestOfRoundOption[];
 }
 
+export type RoundLabelFormatter = (round: number, shape: BracketRoundShape) => string;
+
 export interface StageBestOfShape {
   stageType: StageType;
   /** `Stage.max_rounds`. A fallback used only when the team count is unknown. */
@@ -95,6 +97,8 @@ export interface StageBestOfShape {
   plannedRounds?: readonly number[];
   /** Round keys already configured, so an override is never hidden. */
   configuredRounds?: number[];
+  /** Translates round labels for a UI; pure callers keep the English default. */
+  formatRound?: RoundLabelFormatter;
 }
 
 /**
@@ -128,7 +132,8 @@ export function stageBestOfRoundSections({
   bracketTeamCount = 0,
   lowerBracketTeamCount = 0,
   configuredRounds = [],
-  plannedRounds
+  plannedRounds,
+  formatRound = bracketRoundLabelEn
 }: StageBestOfShape): BestOfRoundSection[] {
   const flatRounds = Math.max(1, Math.floor(maxRounds) || 1);
   // `planned-rounds` is signed the same way the generator is, so the two halves
@@ -150,9 +155,10 @@ export function stageBestOfRoundSections({
           : flatRounds;
     const shape: BracketRoundShape = { rounds: countUp(depth), finalRounds: [] };
     return withUnlistedRounds(
-      [{ key: "rounds", label: null, rounds: labelRounds(shape.rounds, shape) }],
+      [{ key: "rounds", label: null, rounds: labelRounds(shape.rounds, shape, formatRound) }],
       configuredRounds,
-      shape
+      shape,
+      formatRound
     );
   }
 
@@ -193,20 +199,24 @@ export function stageBestOfRoundSections({
   };
 
   const sections: BestOfRoundSection[] = [
-    { key: "upper", label: "Upper bracket", rounds: labelRounds(upper, shape) }
+    { key: "upper", label: "Upper bracket", rounds: labelRounds(upper, shape, formatRound) }
   ];
   if (lowerRounds > 0) {
-    sections.push({ key: "lower", label: "Lower bracket", rounds: labelRounds(lower, shape) });
+    sections.push({ key: "lower", label: "Lower bracket", rounds: labelRounds(lower, shape, formatRound) });
   }
-  return withUnlistedRounds(sections, configuredRounds, shape);
+  return withUnlistedRounds(sections, configuredRounds, shape, formatRound);
 }
 
 function countUp(count: number): number[] {
   return Array.from({ length: Math.max(0, count) }, (_, index) => index + 1);
 }
 
-function labelRounds(rounds: number[], shape: BracketRoundShape): BestOfRoundOption[] {
-  return rounds.map((round) => ({ round, label: bracketRoundLabelEn(round, shape) }));
+function labelRounds(
+  rounds: number[],
+  shape: BracketRoundShape,
+  formatRound: RoundLabelFormatter
+): BestOfRoundOption[] {
+  return rounds.map((round) => ({ round, label: formatRound(round, shape) }));
 }
 
 /**
@@ -220,7 +230,8 @@ function labelRounds(rounds: number[], shape: BracketRoundShape): BestOfRoundOpt
 function withUnlistedRounds(
   sections: BestOfRoundSection[],
   configuredRounds: number[],
-  shape: BracketRoundShape
+  shape: BracketRoundShape,
+  formatRound: RoundLabelFormatter
 ): BestOfRoundSection[] {
   const offered = new Set(sections.flatMap((section) => section.rounds.map((row) => row.round)));
   const unlisted = [...new Set(configuredRounds)]
@@ -232,7 +243,7 @@ function withUnlistedRounds(
     {
       key: "other",
       label: "Other configured rounds",
-      rounds: labelRounds(unlisted, shape)
+      rounds: labelRounds(unlisted, shape, formatRound)
     }
   ];
 }

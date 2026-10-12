@@ -1,8 +1,9 @@
 "use client";
 
 import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
+import { useTranslations } from "next-intl";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
-import { SCHEDULABLE_PHASES, TOURNAMENT_STATUS_LABELS } from "@/lib/tournament/lifecycle";
+import { SCHEDULABLE_PHASES } from "@/lib/tournament/lifecycle";
 import type { SubscriptionRequirement } from "@/types/registration.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
@@ -29,11 +30,11 @@ interface ReviewStepProps {
 
 /** Same labels the Rules step offers, so the summary cannot rename a choice.
  *  A ternary here used to read every non-draft formation as "Auto-balance". */
-const TEAM_FORMATION_LABELS: Record<string, string> = {
-  balancer: "Auto-balance (Balancer)",
-  draft: "Live draft",
-  registration: "Team registration",
-  solo: "Solo registration (FFA)"
+const TEAM_FORMATION_LABELS: Record<string, "balancer" | "draft" | "registration" | "solo"> = {
+  balancer: "balancer",
+  draft: "draft",
+  registration: "registration",
+  solo: "solo"
 };
 
 function Row({ label, value }: Readonly<{ label: string; value: string }>) {
@@ -55,10 +56,11 @@ export function ReviewStep({
   divisionGridVersions,
   subscriptionRequirement
 }: Readonly<ReviewStepProps>) {
+  const t = useTranslations("adminTournaments.review");
   const requirementRule = useRequirementDescription(subscriptionRequirement);
   const gridLabel =
     form.division_grid_version_id == null
-      ? "Workspace default"
+      ? t("workspaceDefault")
       : (divisionGridVersions.find((version) => version.id === form.division_grid_version_id)
           ?.label ?? `#${form.division_grid_version_id}`);
   const scheduledPhases = SCHEDULABLE_PHASES.filter(
@@ -68,27 +70,27 @@ export function ReviewStep({
   return (
     <div className="space-y-6">
       <section>
-        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Basics</h3>
+        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>{t("basics")}</h3>
         <dl>
-          <Row label="Source" value={source === "challonge" ? "From Challonge" : "Manual"} />
+          <Row label={t("source")} value={source === "challonge" ? t("fromChallonge") : t("manual")} />
           {source === "challonge" ? (
-            <Row label="Challonge URL or slug" value={challongeSlug || "—"} />
+            <Row label={t("challongeUrlOrSlug")} value={challongeSlug || "—"} />
           ) : (
-            <Row label="Name" value={form.name || "—"} />
+            <Row label={t("name")} value={form.name || "—"} />
           )}
-          <Row label="Date range" value={`${form.start_date || "—"} → ${form.end_date || "—"}`} />
-          <Row label="Treat as league season" value={form.is_league ? "Yes" : "No"} />
+          <Row label={t("dateRange")} value={`${form.start_date || "—"} → ${form.end_date || "—"}`} />
+          <Row label={t("leagueSeason")} value={form.is_league ? t("yes") : t("no")} />
         </dl>
       </section>
 
       <section>
-        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Schedule</h3>
+        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>{t("schedule")}</h3>
         <dl>
-          {scheduledPhases.length === 0 && <Row label="Phase schedule" value="Not configured" />}
+          {scheduledPhases.length === 0 && <Row label={t("phaseSchedule")} value={t("notConfigured")} />}
           {scheduledPhases.map((phase) => (
             <Row
               key={phase}
-              label={TOURNAMENT_STATUS_LABELS[phase]}
+              label={t(`phases.${phase}`)}
               value={`${schedule.phase_schedule[phase].starts_at}${
                 schedule.phase_schedule[phase].ends_at
                   ? ` → ${schedule.phase_schedule[phase].ends_at}`
@@ -97,22 +99,22 @@ export function ReviewStep({
             />
           ))}
           <Row
-            label="Automatic phase transitions"
-            value={schedule.auto_transitions_enabled ? "On" : "Off"}
+            label={t("automaticTransitions")}
+            value={schedule.auto_transitions_enabled ? t("on") : t("off")}
           />
         </dl>
       </section>
 
       <section>
-        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Rules</h3>
+        <h3 className={`mb-1 ${EYEBROW_CLASS}`}>{t("rules")}</h3>
         <dl>
           <Row
-            label="Team formation"
-            value={TEAM_FORMATION_LABELS[form.team_formation ?? "balancer"] ?? form.team_formation}
+            label={t("teamFormation")}
+            value={t(`formation.${TEAM_FORMATION_LABELS[form.team_formation ?? "balancer"]}`)}
           />
-          <Row label="Division grid version" value={gridLabel} />
+          <Row label={t("divisionGridVersion")} value={gridLabel} />
           <Row
-            label="Scoring points (win / draw / loss)"
+            label={t("scoringPoints")}
             value={`${form.win_points ?? 1} / ${form.draw_points ?? 0.5} / ${form.loss_points ?? 0}`}
           />
         </dl>
@@ -120,28 +122,27 @@ export function ReviewStep({
 
       {registrationVisible && (
         <section>
-          <h3 className={`mb-1 ${EYEBROW_CLASS}`}>Registration</h3>
+          <h3 className={`mb-1 ${EYEBROW_CLASS}`}>{t("registration")}</h3>
           <p className="mb-2 text-xs text-muted-foreground">
-            These choices are not applied automatically — finish them in the form builder
-            (Registration tab of the hub) after creation.
+            {t("registrationHelp")}
           </p>
           <dl>
             <Row
-              label="Auto-approve registrations"
-              value={registration.auto_approve ? "On" : "Off"}
+              label={t("autoApprove")}
+              value={registration.auto_approve ? t("on") : t("off")}
             />
             <Row
-              label="Require open profile"
-              value={registration.require_open_profile ? "Yes" : "No"}
+              label={t("openProfile")}
+              value={registration.require_open_profile ? t("yes") : t("no")}
             />
             {/* The composed workspace rule, not a bare Yes/No: an organizer
                 reviewing the draft needs to see what the toggle will enforce. */}
             <Row
-              label="Require subscription"
+              label={t("subscription")}
               value={
                 registration.require_subscription
-                  ? requirementRule || "On — but the workspace has no rule configured"
-                  : "No"
+                  ? requirementRule || t("subscriptionMissingRule")
+                  : t("no")
               }
             />
           </dl>

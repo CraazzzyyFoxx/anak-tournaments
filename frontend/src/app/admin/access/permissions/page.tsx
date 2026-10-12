@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useQuery } from "@tanstack/react-query";
 
@@ -29,6 +30,8 @@ const PAGE_SIZE = 20;
  * chip buys nothing.
  */
 export default function AccessAdminPermissionsPage() {
+  const t = useTranslations("adminAccess.common");
+  const tp = useTranslations("adminAccess.permissionsUi");
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
   const openId = searchParams?.get("id") ?? null;
 
@@ -36,7 +39,7 @@ export default function AccessAdminPermissionsPage() {
     queryKey: accessQueryKeys.permissionsInventory(),
     queryFn: () => rbacService.listPermissionsAll()
   });
-  const permissions = permissionsQuery.data ?? [];
+  const permissions = useMemo(() => permissionsQuery.data ?? [], [permissionsQuery.data]);
 
   const defs = useMemo<FilterDef[]>(() => {
     const resources = [...new Set(permissions.map((permission) => permission.resource))].sort();
@@ -44,18 +47,18 @@ export default function AccessAdminPermissionsPage() {
     return [
       {
         key: "resource",
-        label: "Resource",
+        label: t("resource"),
         kind: "single",
         options: resources.map((resource) => ({ value: resource, label: resource }))
       },
       {
         key: "action",
-        label: "Action",
+        label: t("action"),
         kind: "single",
         options: actions.map((action) => ({ value: action, label: action }))
       }
     ];
-  }, [permissions]);
+  }, [permissions, t]);
 
   const filters = useFilters(defs);
   const resourceFilter = String(filters.values.resource ?? "");
@@ -74,7 +77,7 @@ export default function AccessAdminPermissionsPage() {
     () => [
       {
         accessorKey: "name",
-        header: "Permission",
+        header: t("permission"),
         meta: columnMeta<RbacPermission>({
           searchValue: (permission) => `${permission.name} ${permission.description ?? ""}`
         }),
@@ -82,34 +85,34 @@ export default function AccessAdminPermissionsPage() {
       },
       {
         accessorKey: "resource",
-        header: "Resource",
+        header: t("resource"),
         cell: ({ row }) => <Badge variant="outline">{row.original.resource}</Badge>
       },
       {
         accessorKey: "action",
-        header: "Action",
+        header: t("action"),
         cell: ({ row }) => <Badge variant="secondary">{row.original.action}</Badge>
       },
       {
         accessorKey: "description",
-        header: "Description",
+        header: t("description"),
         enableSorting: false,
         cell: ({ row }) =>
           row.original.description || (
-            <span className="text-muted-foreground">No description</span>
+            <span className="text-muted-foreground">{t("noDescription")}</span>
           )
       }
     ],
-    []
+    [t]
   );
 
   if (permissionsQuery.isError) {
     return (
       <PageStateCard
         state="error"
-        title="Could not load the permission inventory"
+        title={tp("loadError")}
         onAction={() => void permissionsQuery.refetch()}
-        actionLabel="Try again"
+        actionLabel={t("tryAgain")}
       />
     );
   }
@@ -123,12 +126,12 @@ export default function AccessAdminPermissionsPage() {
           columns={columns}
           initialPageSize={PAGE_SIZE}
           pageSizeOptions={[10, 20, 50, 100]}
-          searchPlaceholder="Search permissions…"
+          searchPlaceholder={t("searchPermissions")}
           filterKey={filters.filterKey}
           inspectorId={openId}
           getRowId={(row) => String(row.id)}
           toolbar={<FilterBar defs={defs} filters={filters} />}
-          emptyMessage="No permission matches. Clear the filters to see the full inventory."
+          emptyMessage={tp("noMatches")}
           onRowClick={(row) => setParams({ id: String(row.original.id) })}
         />
       </div>
@@ -148,32 +151,31 @@ export default function AccessAdminPermissionsPage() {
         {openRow ? (
           <div className="space-y-3">
             <div>
-              <p className={EYEBROW_CLASS}>Description</p>
+              <p className={EYEBROW_CLASS}>{t("description")}</p>
               <p className="mt-0.5 text-sm">
-                {openRow.description || "This permission carries no description."}
+                {openRow.description || tp("noDescription")}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className={EYEBROW_CLASS}>Resource</p>
+                <p className={EYEBROW_CLASS}>{t("resource")}</p>
                 <p className="mt-0.5 font-mono text-sm">{openRow.resource}</p>
               </div>
               <div>
-                <p className={EYEBROW_CLASS}>Action</p>
+                <p className={EYEBROW_CLASS}>{t("action")}</p>
                 <p className="mt-0.5 font-mono text-sm">{openRow.action}</p>
               </div>
               <div>
-                <p className={EYEBROW_CLASS}>Id</p>
+                <p className={EYEBROW_CLASS}>{tp("id")}</p>
                 <p className="mt-0.5 font-mono text-sm tabular-nums">#{openRow.id}</p>
               </div>
               <div>
-                <p className={EYEBROW_CLASS}>Added</p>
+                <p className={EYEBROW_CLASS}>{tp("added")}</p>
                 <p className="mt-0.5 text-sm tabular-nums">{openRow.created_at.slice(0, 10)}</p>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              The inventory is defined by the platform. Grant a permission by adding it to a role
-              on the Roles tab.
+              {tp("platformNotice")}
             </p>
           </div>
         ) : null}

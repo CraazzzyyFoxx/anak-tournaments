@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "next-intl";
 import type {
   MappingParserDef,
   MappingTargetDef,
@@ -69,6 +70,7 @@ export function MappingFieldRow({
   onParserChange,
   onIsListChange,
 }: Readonly<MappingFieldRowProps>) {
+  const t = useTranslations("sheetsFeed.mappingField");
   const acceptedParsers = parsers.filter((def) => target.accepted_parsers.includes(def.parser));
   const showParser = state.mode !== "disabled" && state.mode !== "auto" && acceptedParsers.length > 1;
   const activeParser = state.parser ?? target.default_parser;
@@ -90,7 +92,7 @@ export function MappingFieldRow({
             </span>
             {target.required ? (
               <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary">
-                Required
+                {t("required")}
               </span>
             ) : null}
           </div>
@@ -138,11 +140,11 @@ export function MappingFieldRow({
               >
                 <SelectTrigger className="h-9">
                   <SelectValue
-                    placeholder={subroleOptions.length === 0 ? "No workspace sub-roles" : "Workspace sub-role"}
+                    placeholder={subroleOptions.length === 0 ? t("noSubroles") : t("subrole")}
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE}>None</SelectItem>
+                    <SelectItem value={NONE}>{t("none")}</SelectItem>
                   {subroleOptions.map((option) => (
                     <SelectItem key={option.slug} value={option.slug}>
                       {option.label}
@@ -154,7 +156,7 @@ export function MappingFieldRow({
               <Input
                 value={state.value ?? ""}
                 onChange={(event) => onValueChange(event.target.value)}
-                placeholder="Constant value applied to every row"
+                placeholder={t("constantPlaceholder")}
                 disabled={disabled}
                 className="h-9"
               />
@@ -162,11 +164,11 @@ export function MappingFieldRow({
           ) : null}
 
           {state.mode === "disabled" ? (
-            <p className="text-xs italic text-muted-foreground/60">Not synced.</p>
+            <p className="text-xs italic text-muted-foreground/60">{t("notSynced")}</p>
           ) : null}
 
           {state.mode === "auto" ? (
-            <p className="text-xs italic text-muted-foreground/60">Derived automatically.</p>
+            <p className="text-xs italic text-muted-foreground/60">{t("derivedAutomatically")}</p>
           ) : null}
 
           {showIsListToggle ? (
@@ -176,14 +178,14 @@ export function MappingFieldRow({
                 onCheckedChange={(checked) => onIsListChange(checked === true)}
                 disabled={disabled}
               />
-              <span className="text-muted-foreground">Parse as list</span>
+              <span className="text-muted-foreground">{t("parseAsList")}</span>
             </label>
           ) : null}
 
           {showParser ? (
             <div className="flex items-center gap-2">
               <span className={EYEBROW_CLASS}>
-                Parser
+                {t("parser")}
               </span>
               <Select value={activeParser} onValueChange={onParserChange} disabled={disabled}>
                 <SelectTrigger className="h-8 text-xs">
@@ -206,7 +208,7 @@ export function MappingFieldRow({
           <div className="min-w-0 space-y-1 lg:pt-2">
             {state.mode !== "disabled" && previewValue ? (
               <p className="truncate text-xs text-muted-foreground" title={previewValue}>
-                <span className="text-muted-foreground/60">Preview:</span> {previewValue}
+                <span className="text-muted-foreground/60">{t("preview")}:</span> {previewValue}
               </p>
             ) : null}
             {error ? <p className="text-xs font-medium text-destructive">{error}</p> : null}

@@ -47,7 +47,7 @@ export default function PreGameSettingsPage() {
   return (
     <SettingsSectionPage
       section="pre-game"
-      description="Map veto and hero pick/ban per scope. Child scopes inherit until overridden."
+      description={useTranslations("adminTournament.screenDescriptions")("preGame")}
     >
       {({ tournamentId, workspaceId }) => (
         <PreGamePhase tournamentId={tournamentId} workspaceId={workspaceId} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -68,6 +69,8 @@ export function PersonParticipationsTab({
   personName,
   workspaceId
 }: Readonly<{ personId: number; personName: string; workspaceId: number | null }>) {
+  const t = useTranslations("adminPeople.participations");
+  const formT = useTranslations("adminPeople.form");
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
   const canCreate = canAccessPermission("player.create", workspaceId);
@@ -153,9 +156,9 @@ export function PersonParticipationsTab({
       const created = editing == null;
       invalidate();
       closeForm();
-      notify.success(created ? "Participation added" : "Participation updated");
+      notify.success(created ? t("added") : t("updated"));
     },
-    onError: (error: Error) => setSaveError(`Could not save the participation. ${error.message}`)
+    onError: (error: Error) => setSaveError(t("saveError", { message: error.message }))
   });
 
   const deleteMutation = useMutation({
@@ -163,7 +166,7 @@ export function PersonParticipationsTab({
     onSuccess: () => {
       invalidate();
       setPendingDelete(null);
-      notify.success("Participation removed");
+      notify.success(t("removed"));
     }
   });
 
@@ -202,7 +205,7 @@ export function PersonParticipationsTab({
     () => [
       {
         accessorKey: "name",
-        header: "Name",
+        header: t("name"),
         size: 200,
         meta: columnMeta<ParticipationRow>({
           sticky: true,
@@ -212,7 +215,7 @@ export function PersonParticipationsTab({
       },
       {
         accessorKey: "team_name",
-        header: "Team",
+        header: t("team"),
         enableSorting: false,
         meta: columnMeta<ParticipationRow>({ searchValue: (row) => row.team_name }),
         cell: ({ row }) => (
@@ -226,7 +229,7 @@ export function PersonParticipationsTab({
       },
       {
         accessorKey: "tournament_name",
-        header: "Tournament",
+        header: t("tournament"),
         enableSorting: false,
         meta: columnMeta<ParticipationRow>({ searchValue: (row) => row.tournament_name }),
         cell: ({ row }) => (
@@ -240,7 +243,7 @@ export function PersonParticipationsTab({
       },
       {
         accessorKey: "role",
-        header: "Role",
+        header: t("role"),
         cell: ({ row }) => (
           <div className="flex items-center" title={normalizePlayerRole(row.original.role)}>
             <PlayerRoleIcon role={normalizePlayerRole(row.original.role)} size={18} />
@@ -251,7 +254,7 @@ export function PersonParticipationsTab({
         // Division is derived from rank, so the two ride in one column and sort
         // by the finer of the pair.
         accessorKey: "rank",
-        header: "Div · Rank",
+        header: t("divRank"),
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             <DivisionIcon
@@ -266,21 +269,21 @@ export function PersonParticipationsTab({
       },
       {
         accessorKey: "sub_role",
-        header: "Sub-role",
+        header: t("subRole"),
         cell: ({ row }) => <div>{formatSubRoleLabel(row.original.sub_role) ?? "—"}</div>
       },
       {
         id: "flags",
-        header: "Flags",
+        header: t("flags"),
         enableSorting: false,
         meta: columnMeta({ align: "center" }),
         cell: ({ row }) => (
           <div className="flex justify-center gap-1">
             {row.original.is_newcomer && (
-              <StatusIcon icon={Sparkles} label="Newcomer" variant="warning" />
+              <StatusIcon icon={Sparkles} label={t("newcomer")} variant="warning" />
             )}
             {row.original.is_substitution && (
-              <StatusIcon icon={ArrowLeftRight} label="Substitute" variant="info" />
+              <StatusIcon icon={ArrowLeftRight} label={t("substitute")} variant="info" />
             )}
           </div>
         )
@@ -288,13 +291,13 @@ export function PersonParticipationsTab({
       createKebabColumn<ParticipationRow>(
         (row) => [
           {
-            label: "Edit participation",
+            label: t("edit"),
             icon: Pencil,
             hidden: !canUpdate,
             onSelect: () => openEdit(row)
           },
           {
-            label: "Remove participation",
+            label: t("remove"),
             icon: Trash2,
             destructive: true,
             hidden: !canDelete,
@@ -307,16 +310,16 @@ export function PersonParticipationsTab({
     // `openEdit` was missing here: the kebab's "Edit participation" called
     // whichever closure the first render happened to build. It carries
     // `personId` itself, so the column list no longer needs it separately.
-    [canUpdate, canDelete, openEdit]
+    [t, canUpdate, canDelete, openEdit]
   );
 
   if (participationsQuery.isError) {
     return (
       <PageStateCard
         state="error"
-        title="Could not load participations"
+        title={t("loadError")}
         onAction={() => void participationsQuery.refetch()}
-        actionLabel="Try again"
+        actionLabel={t("retry")}
       />
     );
   }
@@ -329,13 +332,13 @@ export function PersonParticipationsTab({
         columns={columns}
         initialPageSize={20}
         getRowId={(row) => String(row.id)}
-        searchPlaceholder="Search participations…"
-        emptyMessage="This person has not played a tournament in this workspace yet."
+        searchPlaceholder={t("search")}
+        emptyMessage={t("empty")}
         actions={
           canCreate ? (
             <Button size="sm" onClick={openCreate}>
               <Plus aria-hidden className="size-4" />
-              Add participation
+              {t("add")}
             </Button>
           ) : null
         }
@@ -360,21 +363,21 @@ export function PersonParticipationsTab({
         onOpenChange={(next) => {
           if (!next) closeForm();
         }}
-        title={formMode === "edit" ? "Edit participation" : "Add participation"}
+        title={formMode === "edit" ? t("edit") : t("add")}
         description={
           formMode === "edit"
-            ? `Update how ${personName} played this tournament.`
-            : `Add ${personName} to a team in one tournament.`
+            ? t("editDescription", { name: personName })
+            : t("addDescription", { name: personName })
         }
         isSubmitting={saveMutation.isPending}
-        submittingLabel={formMode === "edit" ? "Updating…" : "Adding…"}
+        submittingLabel={formMode === "edit" ? t("updating") : t("adding")}
         errorMessage={saveError}
         isDirty={formMode != null && hasUnsavedChanges(form, formInitial)}
         onSubmit={(event) => {
           event.preventDefault();
           const invalid = playerFormError(form, formMode ?? "edit");
           if (invalid) {
-            setSaveError(invalid);
+            setSaveError(formT(invalid));
             return;
           }
           saveMutation.mutate(form);
@@ -404,9 +407,9 @@ export function PersonParticipationsTab({
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Remove participation",
-          description: `Removing “${pendingDelete?.name ?? "this player"}” from ${pendingDelete?.tournament_name ?? "the tournament"} deletes the roster row along with its match statistics. This cannot be undone.`,
-          confirmLabel: "Remove participation",
+          title: t("remove"),
+          description: t("removeDescription", { name: pendingDelete?.name ?? t("player"), tournament: pendingDelete?.tournament_name ?? t("tournament") }),
+          confirmLabel: t("remove"),
           tone: "danger"
         }}
         onConfirm={() => {

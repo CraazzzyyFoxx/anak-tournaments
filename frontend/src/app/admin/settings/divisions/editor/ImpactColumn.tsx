@@ -2,23 +2,25 @@
 
 import type { ReactNode } from "react";
 import { AlertTriangle, Check, Info } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
 import type { DivisionGridReadinessSource } from "@/types/workspace.types";
 
+import type { EditNote } from "./draftReducer";
 import type { PublishCheck } from "./publishChecks";
 
 export interface ImpactColumnProps {
   checks: PublishCheck[];
   sources: DivisionGridReadinessSource[];
-  edits: string[];
+  edits: EditNote[];
 }
 
-const SOURCE_STATUS_TEXT: Record<DivisionGridReadinessSource["status"], string> = {
-  ok: "mapping complete",
-  incomplete: "mapping incomplete",
-  missing: "no mapping yet"
+const SOURCE_STATUS_KEY: Record<DivisionGridReadinessSource["status"], "impact.mappingComplete" | "impact.mappingIncomplete" | "impact.noMapping"> = {
+  ok: "impact.mappingComplete",
+  incomplete: "impact.mappingIncomplete",
+  missing: "impact.noMapping"
 };
 
 /**
@@ -28,19 +30,20 @@ const SOURCE_STATUS_TEXT: Record<DivisionGridReadinessSource["status"], string> 
  * either way, so the two do not drift.
  */
 export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnProps>) {
+  const t = useTranslations("adminSettings.divisions");
   return (
     <div className="flex flex-col gap-3">
-      <Panel title="Impact of this draft">
-        <p className={EYEBROW_CLASS}>Players changing division</p>
+      <Panel title={t("impact.title")}>
+        <p className={EYEBROW_CLASS}>{t("impact.playersChanging")}</p>
         <p
           className="font-display text-xl font-semibold"
-          title="The player-distribution endpoint is not built yet (backend gap G1), so this cannot be counted client-side."
+          title={t("impact.distributionUnavailable")}
         >
           &mdash;
         </p>
         {sources.length === 0 ? (
           <p className="text-xs text-muted-foreground">
-            No other version is still read by a tournament.
+            {t("impact.noOtherVersion")}
           </p>
         ) : (
           <ul className="flex flex-col gap-1.5 text-xs">
@@ -52,14 +55,14 @@ export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnPr
                   {source.tournament_count === 1 ? "tournament" : "tournaments"}
                 </span>
                 <br />
-                <span className="text-muted-foreground">{SOURCE_STATUS_TEXT[source.status]}</span>
+                <span className="text-muted-foreground">{t(SOURCE_STATUS_KEY[source.status])}</span>
               </li>
             ))}
           </ul>
         )}
       </Panel>
 
-      <Panel title="Ready to publish?">
+      <Panel title={t("impact.readyToPublish")}>
         <ul className="flex flex-col gap-1.5 text-xs">
           {checks.map((check) => {
             const tone = check.ok ? "success" : check.blocking ? "warning" : "info";
@@ -67,7 +70,7 @@ export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnPr
             return (
               <li key={check.key} className="flex items-start gap-1.5">
                 <Icon aria-hidden className={cn("mt-0.5 size-3.5 shrink-0", TONE_TEXT[tone])} />
-                <span>{check.label}</span>
+                <span>{t(check.messageKey, check.values)}</span>
               </li>
             );
           })}
@@ -75,17 +78,17 @@ export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnPr
       </Panel>
 
       <Panel
-        title="Changes in the draft"
-        aside={`${edits.length} ${edits.length === 1 ? "edit" : "edits"}`}
+        title={t("impact.changesInDraft")}
+        aside={t("impact.editCount", { count: edits.length })}
       >
         {edits.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nothing edited yet.</p>
+          <p className="text-xs text-muted-foreground">{t("impact.nothingEdited")}</p>
         ) : (
           <ol className="flex flex-col gap-1 text-xs">
             {edits.map((edit, index) => (
               // Edits are positional history entries; two identical sentences
               // (the same rename undone and redone) are legitimately distinct.
-              <li key={`${index}-${edit}`}>{edit}</li>
+              <li key={`${index}-${edit.key}`}>{t(edit.key, edit.values)}</li>
             ))}
           </ol>
         )}

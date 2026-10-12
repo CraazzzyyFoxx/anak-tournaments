@@ -52,21 +52,6 @@ export const VALID_TRANSITIONS: Record<TournamentStatus, readonly TournamentStat
   archived: ["completed"]
 };
 
-/**
- * Admin-surface labels. The public site translates instead
- * (`common.statusBadge.<status>`); the hub is English-only.
- */
-export const TOURNAMENT_STATUS_LABELS: Record<TournamentStatus, string> = {
-  announcement: "Announcement",
-  registration: "Registration",
-  check_in: "Check-in",
-  draft: "Draft",
-  live: "Live",
-  playoffs: "Playoffs",
-  completed: "Completed",
-  archived: "Archived"
-};
-
 const PHASE_RANK = Object.fromEntries(
   TOURNAMENT_PHASES.map((status, index) => [status, index])
 ) as Record<TournamentStatus, number>;

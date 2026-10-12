@@ -14,9 +14,9 @@ describe("admin navigation structure", () => {
   it("is four groups: unlabelled, DATA, WORKSPACE, PLATFORM", () => {
     expect(adminNavigationGroups.map((group) => group.title)).toEqual([
       "",
-      "DATA",
-      "WORKSPACE",
-      "PLATFORM",
+      "nav.data",
+      "nav.workspace",
+      "nav.platform",
     ]);
   });
 
@@ -56,10 +56,10 @@ describe("admin navigation structure", () => {
       (item.permissions ?? []).includes("match.read"),
     );
 
-    expect(groups.map((group) => group.title)).toEqual(["", "DATA"]);
+    expect(groups.map((group) => group.title)).toEqual(["", "nav.data"]);
     expect(groups.flatMap((group) => group.items.map((item) => item.title))).toEqual([
-      "Dashboard",
-      "Matches",
+      "nav.dashboard",
+      "nav.matches",
     ]);
   });
 
@@ -84,7 +84,7 @@ describe("admin navigation structure", () => {
     // `canAccessAdminRoute` reads a permission list as OR, so a holder of any
     // one collector permission gets the entry — and the streams-only global
     // gate stays on the route, not on the menu.
-    const collectors = allItems.find((item) => item.title === "Collectors");
+    const collectors = allItems.find((item) => item.title === "nav.collectors");
 
     expect(collectors?.permissions).toEqual(["rank.read", "subscription.read", "stream.read"]);
     expect(collectors?.globalOnly).toBeUndefined();
@@ -261,22 +261,22 @@ describe("command palette", () => {
     const byAlias = (alias: string) =>
       allItems.filter((item) => item.aliases?.includes(alias)).map((item) => item.title);
 
-    expect(byAlias("identities")).toEqual(["People"]);
-    expect(byAlias("battletag")).toEqual(["People"]);
-    expect(byAlias("players")).toEqual(["People"]);
-    expect(byAlias("encounters")).toEqual(["Matches"]);
-    expect(byAlias("subroles")).toEqual(["Settings"]);
-    expect(byAlias("divisions")).toEqual(["Settings"]);
-    expect(byAlias("balancer")).toEqual(["Settings"]);
-    expect(byAlias("poller")).toEqual(["Collectors"]);
-    expect(byAlias("boosty")).toEqual(["Collectors"]);
-    expect(byAlias("api keys")).toEqual(["Access"]);
-    expect(byAlias("alias queue")).toEqual(["Game content"]);
-    expect(byAlias("who changed this")).toEqual(["Audit log"]);
+    expect(byAlias("identities")).toEqual(["nav.people"]);
+    expect(byAlias("battletag")).toEqual(["nav.people"]);
+    expect(byAlias("players")).toEqual(["nav.people"]);
+    expect(byAlias("encounters")).toEqual(["nav.matches"]);
+    expect(byAlias("subroles")).toEqual(["nav.settings"]);
+    expect(byAlias("divisions")).toEqual(["nav.settings"]);
+    expect(byAlias("balancer")).toEqual(["nav.settings"]);
+    expect(byAlias("poller")).toEqual(["nav.collectors"]);
+    expect(byAlias("boosty")).toEqual(["nav.collectors"]);
+    expect(byAlias("api keys")).toEqual(["nav.access"]);
+    expect(byAlias("alias queue")).toEqual(["nav.gameContent"]);
+    expect(byAlias("who changed this")).toEqual(["nav.auditLog"]);
   });
 
   it("offers a view for each collapsed page so it stays findable", () => {
-    const matches = allItems.find((item) => item.title === "Matches");
+    const matches = allItems.find((item) => item.title === "nav.matches");
 
     expect(matches?.views?.map((view) => view.key)).toEqual([
       "encounters",

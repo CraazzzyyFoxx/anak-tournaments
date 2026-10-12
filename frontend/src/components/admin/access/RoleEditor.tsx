@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import { rbacService } from "@/services/rbac.service";
 import type { RbacPermission, RbacRole, RbacRoleDetail } from "@/types/rbac.types";
 import { accessQueryKeys } from "@/lib/access/query-keys";
+import { useTranslations } from "next-intl";
 
 interface RoleDraft {
   name: string;
@@ -99,6 +100,8 @@ function RoleForm({
   onRequestDelete,
   onDirtyChange
 }: Readonly<Omit<RoleEditorProps, "role"> & { detail: RbacRoleDetail }>) {
+  const t = useTranslations("adminAccess.roleEditorUi");
+  const tc = useTranslations("adminAccess.common");
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<RoleDraft | null>(null);
 
@@ -111,9 +114,9 @@ function RoleForm({
         queryClient.invalidateQueries({ queryKey: accessQueryKeys.users() })
       ]);
       setDraft(null);
-      notify.success("Role updated");
+      notify.success(t("updated"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not save the role" })
+    onError: (error) => notify.apiError(error, { title: t("saveError") })
   });
 
   // A `resource.*` row in the catalogue is a wildcard, not a normal grant: it
@@ -163,7 +166,7 @@ function RoleForm({
               {detail.name}
             </h2>
             <Badge tone={detail.is_system ? "neutral" : "info"} className="shrink-0">
-              {detail.is_system ? "System role" : "Custom role"}
+              {detail.is_system ? t("systemRole") : t("customRole")}
             </Badge>
           </div>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
@@ -175,18 +178,18 @@ function RoleForm({
             ) : (
               <>
                 <Globe aria-hidden className="size-3.5" />
-                <span>Global</span>
+                <span>{tc("global")}</span>
               </>
             )}
             <span aria-hidden>·</span>
-            <span className="tabular-nums">{detail.permissions.length} permissions</span>
+            <span className="tabular-nums">{t("permissionCount", { count: detail.permissions.length })}</span>
           </p>
         </div>
 
         {canDelete && !detail.is_system ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" aria-label={`Actions for role ${detail.name}`}>
+              <Button size="icon" variant="ghost" aria-label={t("actions", { name: detail.name })}>
                 <MoreHorizontal aria-hidden className="size-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -196,7 +199,7 @@ function RoleForm({
                 onSelect={onRequestDelete}
               >
                 <Trash2 aria-hidden className="size-3.5" />
-                Delete role
+                {tc("deleteRole")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -213,15 +216,14 @@ function RoleForm({
           >
             <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
             <span>
-              System roles are defined by the platform and cannot be edited. Create a custom role
-              to change what a group of people may do.
+              {t("systemDescription")}
             </span>
           </p>
         ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="role-name">Name</Label>
+            <Label htmlFor="role-name">{tc("name")}</Label>
             <Input
               id="role-name"
               value={current.name}
@@ -231,12 +233,12 @@ function RoleForm({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="role-description">Description</Label>
+            <Label htmlFor="role-description">{tc("description")}</Label>
             <Input
               id="role-description"
               value={current.description}
               disabled={readOnly}
-              placeholder="Describe what this role is allowed to do"
+              placeholder={t("descriptionPlaceholder")}
               onChange={(event) => patch({ description: event.target.value })}
             />
           </div>
@@ -254,8 +256,8 @@ function RoleForm({
         <SaveBar
           dirty={dirty}
           saving={saveMutation.isPending}
-          primaryLabel="Save role"
-          summary={`${changedCount} change${changedCount === 1 ? "" : "s"} to ${detail.name}`}
+          primaryLabel={tc("saveRole")}
+          summary={t("changedSummary", { count: changedCount, name: detail.name })}
           onDiscard={() => setDraft(null)}
           onSave={() =>
             saveMutation.mutate({

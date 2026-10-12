@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -68,6 +69,7 @@ function InspectorField({
  * is a roster EXISTS. Auth labels still come from RBAC (`listUsersAll`).
  */
 export default function PeoplePage() {
+  const t = useTranslations("adminPeople.people");
   const queryClient = useQueryClient();
   const { canAccessPermission, hasPermission, isSuperuser, isLoaded } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
@@ -124,17 +126,17 @@ export default function PeoplePage() {
     () => [
       {
         key: TOURNAMENT_QUERY_PARAM,
-        label: "Tournament",
+        label: t("filters.tournament"),
         kind: "single",
         options: (tournamentsQuery.data?.results ?? []).map((tournament) => ({
           value: String(tournament.id),
           label: tournament.name
         }))
       },
-      { key: "has-account", label: "Has account", kind: "toggle" },
-      { key: "unlinked", label: "No identities", kind: "toggle" }
+      { key: "has-account", label: t("filters.hasAccount"), kind: "toggle" },
+      { key: "unlinked", label: t("filters.noIdentities"), kind: "toggle" }
     ],
-    [tournamentsQuery.data]
+    [t, tournamentsQuery.data]
   );
 
   const filters = useFilters(defs);
@@ -167,18 +169,18 @@ export default function PeoplePage() {
     // create a duplicate player. The admin can retry the link from Access.
     mutationFn: async (input: { name: string; authUserId: number | null }) => {
       const person = await adminService.createUser({ name: input.name });
-      if (input.authUserId == null) return { person, linkWarning: undefined as string | undefined };
+      if (input.authUserId == null) return { person, linkWarning: undefined as { name: string; detail: string } | undefined };
       try {
         await rbacService.assignLinkedPlayer(input.authUserId, {
           player_id: person.id,
           is_primary: true
         });
-        return { person, linkWarning: undefined as string | undefined };
+        return { person, linkWarning: undefined as { name: string; detail: string } | undefined };
       } catch (error) {
-        const detail = error instanceof Error ? error.message : "unknown error";
+        const detail = error instanceof Error ? error.message : t("unknownError");
         return {
           person,
-          linkWarning: `Player “${person.name}” created, but linking to the auth account failed: ${detail}. Link it from Access accounts.`
+          linkWarning: { name: person.name, detail }
         };
       }
     },
@@ -187,8 +189,8 @@ export default function PeoplePage() {
       queryClient.invalidateQueries({ queryKey: accessQueryKeys.users() });
       setCreateOpen(false);
       resetCreateForm();
-      if (linkWarning) notify.error(linkWarning);
-      else notify.success("Player identity created");
+      if (linkWarning) notify.error(t("linkFailed", linkWarning));
+      else notify.success(t("created"));
     }
   });
 
@@ -199,7 +201,7 @@ export default function PeoplePage() {
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.users() });
       setPendingDelete(null);
       if (removed && String(removed.id) === openId) setParams({ id: null });
-      notify.success("Player identity deleted");
+      notify.success(t("deleted"));
     }
   });
 
@@ -207,7 +209,7 @@ export default function PeoplePage() {
     () => [
       {
         accessorKey: "name",
-        header: "Person",
+        header: t("columns.person"),
         meta: columnMeta<User>({
           sticky: true,
           searchValue: (person) => `${person.name} ${person.id}`
@@ -231,25 +233,25 @@ export default function PeoplePage() {
       },
       {
         id: "identities",
-        header: "Identities",
+        header: t("columns.identities"),
         enableSorting: false,
         cell: ({ row }) =>
           row.original.social_accounts?.length ? (
             <SocialAccountList accounts={row.original.social_accounts} linkify={false} />
           ) : (
-            <span className="text-xs italic text-muted-foreground">No identities linked</span>
+            <span className="text-xs italic text-muted-foreground">{t("noIdentitiesLinked")}</span>
           )
       },
       {
         id: "account",
-        header: "Account",
+        header: t("columns.account"),
         enableSorting: false,
         cell: ({ row }) => {
           if (!canReadAuth) {
             return (
               <span
                 className="text-sm text-muted-foreground"
-                title="Reading auth accounts needs the global auth_user.read grant"
+                title={t("authGrant")}
               >
                 —
               </span>
@@ -257,7 +259,7 @@ export default function PeoplePage() {
           }
           const account = authByPlayerId.get(row.original.id);
           if (!account) {
-            return <span className="text-sm text-muted-foreground">Not linked</span>;
+            return <span className="text-sm text-muted-foreground">{t("notLinked")}</span>;
           }
           return (
             <span className="truncate text-sm" title={account.email}>
@@ -268,27 +270,27 @@ export default function PeoplePage() {
       },
       createKebabColumn<User>(
         (person) => [
-          { label: "Open person page", href: `/admin/people/${person.id}` },
+          { label: t("actions.openPerson"), href: `/admin/people/${person.id}` },
           {
-            label: "Edit identity",
+            label: t("actions.edit"),
             icon: Pencil,
             hidden: !canUpdate && !canManageIdentity && !canSetVisibility,
             onSelect: () => setProfileUser(person)
           },
           {
-            label: "Go to Access accounts",
+            label: t("actions.access"),
             icon: UserCog,
             hidden: !canReadAuth,
             href: accessAccountsHref(person.name)
           },
           {
-            label: "Merge into another identity",
+            label: t("actions.merge"),
             icon: ArrowRightLeft,
             hidden: !canMerge,
             onSelect: () => setMergeUser(person)
           },
           {
-            label: "Delete identity",
+            label: t("actions.delete"),
             icon: Trash2,
             destructive: true,
             hidden: !canDelete,
@@ -298,7 +300,7 @@ export default function PeoplePage() {
         { rowLabel: (person) => person.name }
       )
     ],
-    [canReadAuth, canUpdate, canManageIdentity, canSetVisibility, canMerge, canDelete, authByPlayerId]
+    [t, canReadAuth, canUpdate, canManageIdentity, canSetVisibility, canMerge, canDelete, authByPlayerId]
   );
 
   if (!isLoaded) {
@@ -309,9 +311,9 @@ export default function PeoplePage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to read player identities in this workspace.
+            {t("noPermission")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -328,8 +330,8 @@ export default function PeoplePage() {
   return (
     <div className="space-y-4">
       <AdminPageHeader
-        title="People"
-        description="Player identities, the handles linked to them, and the accounts that sign in as them."
+        title={t("title")}
+        description={t("description")}
       />
 
       <div
@@ -383,17 +385,17 @@ export default function PeoplePage() {
                       }}
                     >
                       <Plus aria-hidden className="size-4" />
-                      Create identity
+                      {t("create")}
                     </Button>
                   ) : null
                 }
               />
             }
-            searchPlaceholder="Search people…"
+            searchPlaceholder={t("search")}
             emptyMessage={
               canCreate
-                ? "No player identities match. Use “Create identity” to add one."
-                : "No player identities match. They appear once players join a roster."
+                ? t("emptyCreate")
+                : t("empty")
             }
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
           />
@@ -419,13 +421,13 @@ export default function PeoplePage() {
                 {canUpdate || canManageIdentity || canSetVisibility ? (
                   <Button variant="outline" size="sm" onClick={() => setProfileUser(openRow)}>
                     <Pencil aria-hidden className="size-3.5" />
-                    Edit identity
+                    {t("editIdentity")}
                   </Button>
                 ) : null}
                 {canMerge ? (
                   <Button variant="outline" size="sm" onClick={() => setMergeUser(openRow)}>
                     <ArrowRightLeft aria-hidden className="size-3.5" />
-                    Merge
+                    {t("mergeShort")}
                   </Button>
                 ) : null}
               </>
@@ -451,25 +453,25 @@ export default function PeoplePage() {
 
               <section className="rounded-xl border border-border/60 p-3">
                 <p className={EYEBROW_CLASS}>
-                  Social identities ({openRow.social_accounts?.length ?? 0})
+                  {t("socialIdentities", { count: openRow.social_accounts?.length ?? 0 })}
                 </p>
                 <div className="mt-2">
                   {openRow.social_accounts?.length ? (
                     <SocialAccountList accounts={openRow.social_accounts} linkify={false} />
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Nothing linked. Handles arrive from an OAuth connect or a superuser edit.
+                      {t("nothingLinked")}
                     </p>
                   )}
                 </div>
               </section>
 
               <div className="grid grid-cols-2 gap-3">
-                <InspectorField label="Account">
+                <InspectorField label={t("columns.account")}>
                   {!canReadAuth ? (
                     <span
                       className="text-muted-foreground"
-                      title="Reading auth accounts needs the global auth_user.read grant"
+                      title={t("authGrant")}
                     >
                       —
                     </span>
@@ -481,11 +483,11 @@ export default function PeoplePage() {
                       {openAccount.username || openAccount.email}
                     </Link>
                   ) : (
-                    <span className="text-muted-foreground">Not linked</span>
+                    <span className="text-muted-foreground">{t("notLinked")}</span>
                   )}
                 </InspectorField>
-                <InspectorField label="Stream">
-                  {openRow.stream_visible === false ? "Hidden by the player" : "Allowed"}
+                <InspectorField label={t("stream")}>
+                  {openRow.stream_visible === false ? t("hiddenByPlayer") : t("allowed")}
                 </InspectorField>
               </div>
             </div>
@@ -501,35 +503,35 @@ export default function PeoplePage() {
             resetCreateForm();
           }
         }}
-        title="Create player identity"
-        description="Create a new player identity in the system."
+        title={t("createTitle")}
+        description={t("createDescription")}
         onSubmit={(event) => {
           event.preventDefault();
           createMutation.mutate({ name: createName, authUserId: linkAuthUserId });
         }}
         isSubmitting={createMutation.isPending}
-        submittingLabel="Creating player identity…"
+        submittingLabel={t("creating")}
         errorMessage={
           createMutation.error instanceof Error
-            ? `Check the player name and try again. (${createMutation.error.message})`
+            ? t("createError", { detail: createMutation.error.message })
             : undefined
         }
         isDirty={isCreateDirty}
       >
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor={nameFieldId}>Name *</Label>
+            <Label htmlFor={nameFieldId}>{t("nameRequired")}</Label>
             <Input
               id={nameFieldId}
               value={createName}
               onChange={(event) => setCreateName(event.target.value)}
-              placeholder="Player name (e.g. Karnage#22778)"
+              placeholder={t("namePlaceholder")}
               required
             />
           </div>
           {canLinkAuth && (
             <div className="space-y-2">
-              <Label htmlFor="link-auth-account">Link to auth account (optional)</Label>
+              <Label htmlFor="link-auth-account">{t("linkAccount")}</Label>
               <AuthUserSearchCombobox
                 id="link-auth-account"
                 value={linkAuthUserId ?? undefined}
@@ -540,8 +542,7 @@ export default function PeoplePage() {
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                Attaches this player to an existing auth account (that account&rsquo;s profile and
-                analytics will resolve to this player).
+                {t("linkAccountDescription")}
               </p>
             </div>
           )}
@@ -585,15 +586,15 @@ export default function PeoplePage() {
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Delete player identity",
-          description: `“${pendingDelete?.name ?? "This identity"}” and everything linked to it will be permanently removed. This cannot be undone.`,
-          confirmLabel: "Delete identity",
+          title: t("deleteTitle"),
+          description: t("deleteDescription", { name: pendingDelete?.name ?? t("thisIdentity") }),
+          confirmLabel: t("deleteConfirm"),
           tone: "danger",
           cascade: [
-            "All Discord identities",
-            "All BattleTag identities",
-            "All Twitch identities",
-            "All player records"
+            t("columns.identities"),
+            t("columns.identities"),
+            t("columns.identities"),
+            t("columns.person")
           ]
         }}
         onConfirm={() => {

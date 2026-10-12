@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import type { Cell } from "@tanstack/react-table";
 import { Copy, Rows3 } from "lucide-react";
 
@@ -25,6 +26,7 @@ export function AdminRowContextMenu<TData>({
   actions: KebabAction[];
   children: React.ReactNode;
 }>) {
+  const t = useTranslations("kitTable.table");
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
@@ -32,7 +34,7 @@ export function AdminRowContextMenu<TData>({
         {contextCell ? (
           <ContextMenuItem className="gap-2" onSelect={() => void navigator.clipboard.writeText(contextCell)}>
             <Copy aria-hidden className="size-3.5" />
-            <span className="truncate">Copy “{contextCell}”</span>
+            <span className="truncate">{t("copy", { value: contextCell })}</span>
           </ContextMenuItem>
         ) : null}
         <ContextMenuItem
@@ -45,7 +47,7 @@ export function AdminRowContextMenu<TData>({
           }
         >
           <Rows3 aria-hidden className="size-3.5" />
-          Copy row
+          {t("copyRow")}
         </ContextMenuItem>
         {actions.length > 0 ? <ContextMenuSeparator /> : null}
         {actions.map((action) => {

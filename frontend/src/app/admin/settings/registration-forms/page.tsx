@@ -47,6 +47,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const tErrors = useTranslations("forms.errors");
+  const t = useTranslations("adminSettings.registrationForms");
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   /** `null` = the selected template's saved schema, untouched. */
@@ -92,13 +93,13 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
       // — the same loss the switch confirmation exists to prevent, so the
       // selection simply stays put and the row is waiting in the list.
       if (draft !== null) {
-        notify.success(`Template “${created.name}” created — open it once you have saved this one`);
+        notify.success(t("toast.createdOpenLater", { name: created.name }));
         return;
       }
       setSelectedId(created.id);
-      notify.success("Template created");
+      notify.success(t("toast.created"));
     },
-    onError: (error) => notify.error(fieldErrorsFrom(error, tErrors).form ?? "Could not create the template")
+    onError: (error) => notify.error(fieldErrorsFrom(error, tErrors).form ?? t("errors.create"))
   });
 
   const saveMutation = useMutation({
@@ -107,9 +108,9 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
     onSuccess: async () => {
       setDraft(null);
       await invalidate();
-      notify.success("Template saved");
+      notify.success(t("toast.saved"));
     },
-    onError: (error) => notify.error(fieldErrorsFrom(error, tErrors).form ?? "Could not save the template")
+    onError: (error) => notify.error(fieldErrorsFrom(error, tErrors).form ?? t("errors.save"))
   });
 
   const deleteMutation = useMutation({
@@ -120,9 +121,9 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
         setDraft(null);
       }
       await invalidate();
-      notify.success("Template deleted");
+      notify.success(t("toast.deleted"));
     },
-    onError: (error) => notify.apiError(error, { title: "Could not delete the template" })
+    onError: (error) => notify.apiError(error, { title: t("errors.delete") })
   });
 
   /** Select a template, asking first when the one on screen has unsaved edits. */
@@ -138,16 +139,15 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const confirmIntent: ConfirmIntent =
     pending?.kind === "delete"
       ? {
-          title: "Delete this template?",
-          description: `“${pending.name}” is shared by every tournament in this workspace. Forms already built from it keep their questions; the template itself cannot be restored.`,
-          confirmLabel: "Delete template",
+          title: t("confirm.deleteTitle"),
+          description: t("confirm.deleteDescription", { name: pending.name }),
+          confirmLabel: t("confirm.delete"),
           tone: "danger"
         }
       : {
-          title: "Discard unsaved questions?",
-          description:
-            "The questions you edited here have not been saved. Opening another template drops them.",
-          confirmLabel: "Discard and switch",
+          title: t("confirm.discardTitle"),
+          description: t("confirm.discardDescription"),
+          confirmLabel: t("confirm.discard"),
           tone: "warning"
         };
 
@@ -155,8 +155,8 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace in the sidebar to manage its registration form templates."
+        title={t("noWorkspace.title")}
+        description={t("noWorkspace.description")}
       />
     );
   }
@@ -182,7 +182,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                   <div className="min-w-0 flex-1">
                     <InlineEditText
                       value={template.name}
-                      label="Template name"
+                      label={t("templateName")}
                       canEdit={canEdit}
                       onSave={(name) =>
                         saveMutation.mutateAsync({
@@ -199,7 +199,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                       className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
                       onClick={() => openTemplate(template.id)}
                     >
-                      {template.id === selectedId ? "Editing" : "Edit questions"}
+                      {template.id === selectedId ? t("editing") : t("editQuestions")}
                     </button>
                   </div>
                   <Button
@@ -207,7 +207,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                     size="icon"
                     className="size-7 shrink-0"
                     disabled={!canEdit || deleteMutation.isPending}
-                    aria-label={`Delete ${template.name}`}
+                    aria-label={t("deleteNamed", { name: template.name })}
                     onClick={() =>
                       setPending({ kind: "delete", id: template.id, name: template.name })
                     }
@@ -223,7 +223,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
             <div className="flex items-center gap-2">
               <Input
                 value={newName}
-                placeholder="New template name"
+                placeholder={t("newTemplateName")}
                 className="h-8 text-xs"
                 onChange={(event) => setNewName(event.target.value)}
                 onKeyDown={(event) => {
@@ -246,7 +246,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
                 ) : (
                   <Plus className="mr-1 size-3.5" aria-hidden />
                 )}
-                Add
+                {t("add")}
               </Button>
             </div>
           )}
@@ -265,11 +265,11 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
           ) : (
             <PageStateCard
               state="empty"
-              title={templates.length === 0 ? "No templates yet" : "Pick a template"}
+              title={templates.length === 0 ? t("emptyTitle") : t("pickTitle")}
               description={
                 templates.length === 0
-                  ? "Name one on the left and it starts from the default questionnaire."
-                  : "Choose a template on the left to edit the questions it asks."
+                  ? t("emptyDescription")
+                  : t("pickDescription")
               }
             />
           )}
@@ -279,13 +279,13 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
       {selected && schema && (
         <SaveBar
           dirty={draft !== null}
-          summary={blocked && blocked.size > 0 ? "Fix the highlighted questions first" : "Unsaved changes"}
+          summary={blocked && blocked.size > 0 ? t("fixQuestions") : t("unsavedChanges")}
           saving={saveMutation.isPending}
-          primaryLabel="Save template"
+          primaryLabel={t("save")}
           onDiscard={() => setDraft(null)}
           onSave={() => {
             if (blocked && blocked.size > 0) {
-              notify.error("Fix the highlighted questions first");
+              notify.error(t("fixQuestions"));
               return;
             }
             saveMutation.mutate({

@@ -28,6 +28,7 @@ import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { Workspace } from "@/types/workspace.types";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { useTranslations } from "next-intl";
 
 const PAGE_SIZE = 15;
 
@@ -75,6 +76,8 @@ function InspectorField({
  * than reproducing a form the sections already own.
  */
 export default function WorkspacesPage() {
+  const t = useTranslations("adminAccess.common");
+  const tw = useTranslations("adminAccess.workspace");
   const { isSuperuser, isWorkspaceAdmin, canManageAnyWorkspace, canUseCapability, isLoaded } =
     usePermissions();
   const queryClient = useQueryClient();
@@ -103,7 +106,7 @@ export default function WorkspacesPage() {
       invalidate();
       setPendingDelete(null);
       if (removed && String(removed.id) === openId) setParams({ id: null });
-      notify.success("Workspace deleted");
+      notify.success(tw("deleted"));
     }
   });
 
@@ -121,7 +124,7 @@ export default function WorkspacesPage() {
       },
       {
         accessorKey: "name",
-        header: "Workspace",
+        header: t("workspace"),
         cell: ({ row }) => (
           <div className="flex min-w-0 items-center gap-2">
             <WorkspaceIcon workspace={row.original} />
@@ -134,39 +137,39 @@ export default function WorkspacesPage() {
       },
       {
         accessorKey: "slug",
-        header: "Slug",
+        header: t("slug"),
         cell: ({ row }) => (
           <span className="font-mono text-xs text-muted-foreground">{row.original.slug}</span>
         )
       },
       {
         accessorKey: "is_active",
-        header: "Status",
+        header: t("status"),
         size: 120,
         meta: columnMeta<Workspace>({ align: "center" }),
         cell: ({ row }) =>
           row.original.is_active ? (
-            <StatusIcon icon={CheckCircle} label="Active" variant="success" />
+            <StatusIcon icon={CheckCircle} label={t("active")} variant="success" />
           ) : (
-            <StatusIcon icon={XCircle} label="Inactive" variant="muted" />
+            <StatusIcon icon={XCircle} label={t("inactive")} variant="muted" />
           )
       },
       {
         accessorKey: "is_hidden",
-        header: "Visibility",
+        header: t("visibility"),
         size: 120,
         meta: columnMeta<Workspace>({ align: "center" }),
         cell: ({ row }) =>
           row.original.is_hidden ? (
-            <StatusIcon icon={EyeOff} label="Hidden" variant="warning" />
+            <StatusIcon icon={EyeOff} label={t("hidden")} variant="warning" />
           ) : (
-            <StatusIcon icon={Eye} label="Listed" variant="muted" />
+            <StatusIcon icon={Eye} label={t("listed")} variant="muted" />
           )
       },
       createKebabColumn<Workspace>(
         (row) => [
           {
-            label: "Edit workspace",
+            label: t("editWorkspace"),
             icon: Pencil,
             hidden: !(isSuperuser || isWorkspaceAdmin(row.id)),
             // The one place a workspace is edited: the settings sections under
@@ -174,7 +177,7 @@ export default function WorkspacesPage() {
             href: `/admin/workspaces/${row.id}/general`
           },
           {
-            label: "Delete workspace",
+            label: t("deleteWorkspace"),
             icon: Trash2,
             destructive: true,
             hidden: !isSuperuser,
@@ -184,7 +187,7 @@ export default function WorkspacesPage() {
         { rowLabel: (row) => row.name }
       )
     ],
-    [isSuperuser, isWorkspaceAdmin]
+    [isSuperuser, isWorkspaceAdmin, t]
   );
 
   if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
@@ -196,9 +199,9 @@ export default function WorkspacesPage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{tw("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not administer any workspace, so there is none to list here.
+            {tw("unauthorizedDescription")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -212,8 +215,8 @@ export default function WorkspacesPage() {
   return (
     <div className="flex flex-col gap-6">
       <AdminPageHeader
-        title="Workspaces"
-        description="Isolated tournament environments. Open one to edit its settings."
+        title={t("workspaces")}
+        description={tw("description")}
         actions={
           /* Creating a workspace is open to any active account now (the backend
              caps how many one account may own), so this is no longer a
@@ -223,7 +226,7 @@ export default function WorkspacesPage() {
           canUseCapability("workspace.self_create") ? (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
               <Plus className="size-3.5" aria-hidden />
-              Create workspace
+              {t("createWorkspace")}
             </Button>
           ) : null
         }
@@ -236,10 +239,10 @@ export default function WorkspacesPage() {
           <DataTable<Workspace>
             columns={columns}
             initialPageSize={PAGE_SIZE}
-            searchPlaceholder="Search workspaces…"
+            searchPlaceholder={t("searchWorkspaces")}
             inspectorId={openId}
             getRowId={(row) => String(row.id)}
-            emptyMessage="No workspaces yet. Use “Create workspace” to add the first one."
+            emptyMessage={tw("noWorkspaces")}
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
               <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -250,8 +253,8 @@ export default function WorkspacesPage() {
                     {row.original.slug}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {row.original.is_active ? "Active" : "Inactive"} ·{" "}
-                    {row.original.is_hidden ? "Hidden" : "Listed"}
+                    {row.original.is_active ? t("active") : t("inactive")} ·{" "}
+                    {row.original.is_hidden ? t("hidden") : t("listed")}
                   </p>
                 </div>
               </div>
@@ -313,7 +316,7 @@ export default function WorkspacesPage() {
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/admin/workspaces/${openRow.id}/general`}>
                       <Pencil aria-hidden className="size-3.5" />
-                      Edit
+                      {t("edit")}
                     </Link>
                   </Button>
                 ) : null}
@@ -325,7 +328,7 @@ export default function WorkspacesPage() {
                     onClick={() => setPendingDelete(openRow)}
                   >
                     <Trash2 aria-hidden className="size-3.5" />
-                    Delete
+                    {t("delete")}
                   </Button>
                 ) : null}
               </>
@@ -335,37 +338,37 @@ export default function WorkspacesPage() {
           {openRow ? (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <InspectorField label="Status">
-                  {openRow.is_active ? "Active" : "Inactive"}
+                <InspectorField label={t("status")}>
+                  {openRow.is_active ? t("active") : t("inactive")}
                 </InspectorField>
-                <InspectorField label="Visibility">
-                  {openRow.is_hidden ? "Hidden from the public list" : "Listed"}
+                <InspectorField label={t("visibility")}>
+                  {openRow.is_hidden ? tw("hiddenFromPublic") : t("listed")}
                 </InspectorField>
-                <InspectorField label="Timezone">{openRow.timezone}</InspectorField>
-                <InspectorField label="Branding">
-                  {openRow.branding_enabled ? "Custom" : "Platform default"}
+                <InspectorField label={t("timezone")}>{openRow.timezone}</InspectorField>
+                <InspectorField label={t("branding")}>
+                  {openRow.branding_enabled ? t("customBranding") : t("platformDefault")}
                 </InspectorField>
-                <InspectorField label="Subdomain">{openRow.subdomain ?? "—"}</InspectorField>
-                <InspectorField label="Custom domain">
+                <InspectorField label={t("subdomain")}>{openRow.subdomain ?? "—"}</InspectorField>
+                <InspectorField label={t("customDomain")}>
                   {openRow.custom_domain
                     ? `${openRow.custom_domain}${openRow.custom_domain_verified_at ? "" : " (unverified)"}`
                     : "—"}
                 </InspectorField>
-                <InspectorField label="Discord guild">
+                <InspectorField label={t("discordGuild")}>
                   {openRow.discord_guild_id ?? "—"}
                 </InspectorField>
-                <InspectorField label="Newcomers">
-                  {openRow.newcomer_scope === "global" ? "Any workspace" : "This workspace"}
+                <InspectorField label={t("newcomers")}>
+                  {openRow.newcomer_scope === "global" ? t("anyWorkspace") : t("thisWorkspace")}
                 </InspectorField>
-                <InspectorField label="Owner">
+                <InspectorField label={t("owner")}>
                   <WorkspaceOwnerValue workspaceId={openRow.id} />
                 </InspectorField>
               </div>
 
               <div>
-                <p className={EYEBROW_CLASS}>Description</p>
+                <p className={EYEBROW_CLASS}>{t("description")}</p>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  {openRow.description || "No description."}
+                  {openRow.description || t("noDescription")}
                 </p>
               </div>
             </div>
@@ -386,14 +389,14 @@ export default function WorkspacesPage() {
         }}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Delete workspace",
-          description: `Deleting “${pendingDelete?.name ?? "this workspace"}” permanently removes every tournament, team, player, match and member inside it. This cannot be undone.`,
-          confirmLabel: "Delete workspace",
+          title: t("deleteWorkspace"),
+          description: tw("deleteDescription", { workspace: pendingDelete?.name ?? t("thisWorkspace") }),
+          confirmLabel: t("deleteWorkspace"),
           tone: "danger",
           cascade: [
-            "All tournaments in this workspace",
-            "All teams, players, matches, and statistics",
-            "All workspace members"
+            tw("deleteTournaments"),
+            tw("deleteTeams"),
+            tw("deleteMembers")
           ],
           requireTyped: pendingDelete?.name
         }}

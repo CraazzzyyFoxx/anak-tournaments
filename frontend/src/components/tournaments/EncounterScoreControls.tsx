@@ -39,6 +39,7 @@ export function EncounterScoreControls({
   onPresetSelect,
 }: EncounterScoreControlsProps) {
   const t = useTranslations();
+  const scoreT = useTranslations("encounterScore");
   const presets: EncounterScorePreset[] =
     bestOf != null ? getScorePresetsForBestOf(bestOf) : GROUP_STAGE_SCORE_PRESETS;
   const selectedPreset = presets.find(
@@ -69,7 +70,7 @@ export function EncounterScoreControls({
         <div>
           <p className={EYEBROW_CLASS}>{t("matchEdit.matchScore")}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {showGroupStageHint ? "Group-stage quick results" : t("matchEdit.manualEntry")}
+            {showGroupStageHint ? scoreT("groupStageQuickResults") : t("matchEdit.manualEntry")}
           </p>
         </div>
         {/* Live region: stepper clicks move focus nowhere, so without it the new
@@ -107,7 +108,7 @@ export function EncounterScoreControls({
             <p className="text-xs font-semibold text-muted-foreground">{resolvedPresetLabel}</p>
             {selectedPreset ? (
               <span className="text-xs font-semibold text-foreground">
-                {t(`matchEdit.presetDescriptions.${selectedPreset.description}` as Parameters<typeof t>[0])}
+                  {scoreT(`presetDescriptions.${selectedPreset.descriptionKey}` as Parameters<typeof scoreT>[0])}
               </span>
             ) : null}
           </div>
@@ -127,8 +128,8 @@ export function EncounterScoreControls({
                       : "border border-border/60 bg-muted/10 text-foreground hover:border-border hover:bg-accent hover:text-accent-foreground"
                   )}
                   aria-pressed={isSelected}
-                  aria-label={`Set the score to ${homeLabel} ${preset.homeScore}, ${awayLabel} ${preset.awayScore}`}
-                  title={t(`matchEdit.presetDescriptions.${preset.description}` as Parameters<typeof t>[0])}
+                  aria-label={scoreT("setScore", { homeLabel, homeScore: preset.homeScore, awayLabel, awayScore: preset.awayScore })}
+                  title={scoreT(`presetDescriptions.${preset.descriptionKey}` as Parameters<typeof scoreT>[0])}
                   onClick={() =>
                     applyPreset({
                       homeScore: preset.homeScore,
@@ -155,6 +156,7 @@ type ScoreStepperProps = {
 };
 
 function ScoreStepper({ id, label, value, onChange }: Readonly<ScoreStepperProps>) {
+  const t = useTranslations("encounterScore");
   const decrement = () => onChange(value - 1);
   const increment = () => onChange(value + 1);
 
@@ -168,7 +170,7 @@ function ScoreStepper({ id, label, value, onChange }: Readonly<ScoreStepperProps
           type="button"
           variant="ghost"
           className="h-full w-12 shrink-0 rounded-r-none border-r border-border/60 px-0 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          aria-label={`Lower the score for ${label}`}
+          aria-label={t("lowerScore", { label })}
           onClick={decrement}
           disabled={value <= 0}
         >
@@ -182,13 +184,13 @@ function ScoreStepper({ id, label, value, onChange }: Readonly<ScoreStepperProps
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className="h-full rounded-none border-0 bg-transparent text-center text-base font-bold tabular-nums text-foreground shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-          aria-label={`Score for ${label}`}
+          aria-label={t("scoreFor", { label })}
         />
         <Button
           type="button"
           variant="ghost"
           className="h-full w-12 shrink-0 rounded-l-none border-l border-border/60 px-0 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          aria-label={`Raise the score for ${label}`}
+          aria-label={t("raiseScore", { label })}
           onClick={increment}
         >
           <Plus className="size-4" aria-hidden />

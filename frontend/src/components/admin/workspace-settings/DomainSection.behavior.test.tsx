@@ -59,7 +59,15 @@ vi.mock("@/stores/workspace.store", () => ({
     selector({ fetchWorkspaces })
 }));
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  const { default: en } = await import("@/i18n/messages/en.json");
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never })
+  };
+});
 
 const WORKSPACE: Workspace = {
   id: 7,

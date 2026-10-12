@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { Search } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
@@ -25,6 +26,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import {
   SidebarBackToSite,
+  SidebarLanguageSwitch,
   SidebarUserDropdown,
   SidebarWorkspaceLogoItem
 } from "@/components/admin/sidebar-shared";
@@ -55,6 +57,7 @@ function NavBadge({ value, isActive }: Readonly<{ value?: number; isActive: bool
 }
 
 export function AdminSidebar() {
+  const t = useTranslations("adminShell");
   const pathname = usePathname();
   const { canAccessAdminRoute } = usePermissions();
   const { currentWorkspaceId } = useWorkspaceStore();
@@ -89,19 +92,19 @@ export function AdminSidebar() {
         <button
           type="button"
           onClick={() => setCommandOpen(true)}
-          aria-label="Search admin pages (Ctrl or Cmd + K)"
+          aria-label={t("commandPalette.searchShortcut")}
           aria-keyshortcuts="Control+K Meta+K"
           className="mt-1 flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 px-2.5 text-sm text-sidebar-foreground/50 transition-colors hover:border-sidebar-border hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
           <Search aria-hidden className="size-3.5 shrink-0" />
           <span aria-hidden className="group-data-[collapsible=icon]:hidden">
-            Search…
+            {t("commandPalette.searchShort")}
           </span>
           <kbd
             aria-hidden
             className="ml-auto rounded border border-sidebar-border/70 bg-sidebar/80 px-1 py-0.5 text-xs font-medium leading-none text-sidebar-foreground/40 group-data-[collapsible=icon]:hidden"
           >
-            Ctrl K
+            {t("commandPalette.ctrlK")}
           </kbd>
         </button>
       </SidebarHeader>
@@ -120,7 +123,7 @@ export function AdminSidebar() {
             {group.title ? (
               <div className="flex items-center gap-2 px-3 py-1.5 group-data-[collapsible=icon]:hidden">
                 <span className={cn(EYEBROW_CLASS, "font-mono text-sidebar-foreground/40")}>
-                  {group.title}
+                  {t(group.title as never)}
                 </span>
               </div>
             ) : null}
@@ -134,7 +137,7 @@ export function AdminSidebar() {
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        tooltip={item.title}
+                        tooltip={t(item.title as never)}
                         className={cn(
                           "relative h-8 rounded-md px-2.5 text-sm transition-all",
                           "text-sidebar-foreground/55 hover:text-sidebar-foreground hover:bg-sidebar-accent/60",
@@ -154,7 +157,7 @@ export function AdminSidebar() {
                               isActive ? "text-sidebar-primary" : "text-sidebar-foreground/40"
                             )}
                           />
-                          <span className="flex-1 truncate">{item.title}</span>
+                          <span className="flex-1 truncate">{t(item.title as never)}</span>
                           <NavBadge value={item.badge?.()} isActive={isActive} />
                         </HoverPrefetchLink>
                       </SidebarMenuButton>
@@ -170,6 +173,7 @@ export function AdminSidebar() {
       {/* ── FOOTER: Admin tools + user ─────────────────── */}
       <SidebarFooter className="px-2 pb-2 pt-0 group-data-[collapsible=icon]:px-1">
         <SidebarBackToSite />
+        <SidebarLanguageSwitch />
         <SidebarUserDropdown />
       </SidebarFooter>
 

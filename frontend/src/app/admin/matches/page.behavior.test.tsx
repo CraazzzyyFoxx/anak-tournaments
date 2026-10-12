@@ -16,6 +16,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import en from "@/i18n/messages/en.json";
 import type { Encounter } from "@/types/encounter.types";
 import AdminMatchesPage from "./page";
 
@@ -33,10 +34,35 @@ const getStages = vi.fn();
 
 let permitted = true;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string) => key,
-  NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
-}));
+const MESSAGES = {
+  common: en.common,
+  kit: en.kit,
+  kitAudit: en.kitAudit,
+  kitTable: en.kitTable,
+  adminMatches: {
+    matches: en.adminMatches.matches,
+    audit: en.adminMatches.audit,
+    encounters: en.adminMatches.encounters,
+    reports: en.adminMatches.reports,
+    parsed: en.adminMatches.parsed,
+    common: en.adminMatches.common
+  }
+};
+
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next-intl")>();
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) => {
+      try {
+        return actual.createTranslator({ locale: "en", messages: MESSAGES, namespace: namespace as never });
+      } catch {
+        return ((key: string) => key) as ReturnType<typeof actual.useTranslations>;
+      }
+    },
+    NextIntlClientProvider: ({ children }: { children: ReactNode }) => children
+  };
+});
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({
     dateTime: (value: Date) => value.toISOString(),
@@ -313,7 +339,7 @@ describe("/admin/matches", () => {
 
     expect(container.querySelector('[data-pinned-filter="tournament"]')).toBeNull();
     const chip = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Remove filter Tournament: OWT 78"]'
+      'button[aria-label^="Remove filter Tournament:"]'
     );
     expect(chip).not.toBeNull();
 

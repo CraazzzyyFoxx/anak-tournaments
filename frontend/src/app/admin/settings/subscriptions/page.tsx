@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import SubscriptionProvidersCard from "@/components/admin/subscriptions/SubscriptionProviderCard";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -16,6 +18,7 @@ import { WorkspaceRequirementCard } from "./_components/workspace-requirement";
  * answers "are the checks running", this answers "what are they checking".
  */
 export default function WorkspaceSubscriptionsSettingsPage() {
+  const t = useTranslations("adminSettings.subscriptions");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { canAccessPermission } = usePermissions();
   // The provider-config RPCs behind this section are gated on team.read/team.update
@@ -27,8 +30,8 @@ export default function WorkspaceSubscriptionsSettingsPage() {
     return (
       <PageStateCard
         state="empty"
-        title="No workspace selected"
-        description="Pick a workspace in the sidebar to configure its subscription providers and admission rule."
+        title={t("noWorkspace.title")}
+        description={t("noWorkspace.description")}
       />
     );
   }
@@ -37,8 +40,8 @@ export default function WorkspaceSubscriptionsSettingsPage() {
     return (
       <PageStateCard
         state="not-found"
-        title="Not available"
-        description="Configuring subscription providers needs the team.update permission in this workspace."
+        title={t("notAvailable.title")}
+        description={t("notAvailable.description")}
       />
     );
   }

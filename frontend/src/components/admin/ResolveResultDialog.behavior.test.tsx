@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import { ResolveResultDialog } from "@/components/admin/ResolveResultDialog";
 import type { AdminCaptainReport, EncounterReportsRow } from "@/types/admin.types";
 
@@ -17,6 +18,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const setEncounterResult = vi.fn();
 const reopenEncounterResult = vi.fn();
 const getEncounterResultAudit = vi.fn();
+
+const MESSAGES = {
+  common: en.common,
+  adminMatches: { reports: en.adminMatches.reports, common: en.adminMatches.common },
+  adminTournaments: { resolve: en.adminTournaments.resolve }
+};
 
 vi.mock("@/services/admin.service", () => ({
   default: {
@@ -37,7 +44,7 @@ async function mount(node: ReactNode) {
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      <NextIntlClientProvider locale="en" messages={{}}>
+      <NextIntlClientProvider locale="en" messages={MESSAGES}>
         <QueryClientProvider client={client}>{node}</QueryClientProvider>
       </NextIntlClientProvider>
     );

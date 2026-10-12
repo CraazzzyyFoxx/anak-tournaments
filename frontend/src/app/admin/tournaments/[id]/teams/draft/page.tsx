@@ -9,7 +9,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import draftService from "@/services/draft.service";
 
-import { draftPhases } from "../../components/draft/draft-phases";
+import { useDraftPhases } from "../../components/draft/draft-phases";
 import { tabFallback, useHubTournamentQuery } from "../../hubQueries";
 
 const DraftSessionDashboard = dynamic(
@@ -38,6 +38,7 @@ export default function TeamsDraftPage() {
     queryFn: () => draftService.getTournamentBoard(tournamentId),
     enabled: Number.isFinite(tournamentId) && tournamentId > 0
   });
+  const phases = useDraftPhases(boardQuery.data?.session?.status ?? null);
 
   if (tournamentQuery.isLoading) {
     return tabFallback;
@@ -45,7 +46,7 @@ export default function TeamsDraftPage() {
 
   return (
     <div className="space-y-4">
-      <PhaseStrip phases={draftPhases(boardQuery.data?.session?.status ?? null)} />
+      <PhaseStrip phases={phases} />
       <DraftSessionDashboard
         tournamentId={tournamentId}
         canManage={canAccessPermission("team.create", workspaceId)}

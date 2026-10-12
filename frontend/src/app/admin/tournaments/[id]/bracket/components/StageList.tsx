@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { Plus } from "lucide-react";
 
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
@@ -68,6 +69,9 @@ export function StageList({
   onSelect,
   onChanged
 }: Readonly<StageListProps>) {
+  const t = useTranslations("adminBracket.list");
+  const tRoot = useTranslations("adminBracket");
+  const tr = (key: string) => tRoot(key as never);
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [stageType, setStageType] = useState<StageType>("round_robin");
@@ -116,7 +120,7 @@ export function StageList({
     },
     onError: (error) => {
       setPendingOrder(null);
-      notify.apiError(error, { title: "Could not reorder the stages" });
+      notify.apiError(error, { title: t("reorderError") });
     }
   });
 
@@ -142,20 +146,20 @@ export function StageList({
     <div className="rounded-xl border border-border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">Tournament flow</p>
+          <p className="text-sm font-semibold text-foreground">{t("flow")}</p>
           <p className="text-xs tabular-nums text-muted-foreground">
-            {stages.length} stage{stages.length === 1 ? "" : "s"} · {teamsCount} teams
+            {t("stageCount", { count: stages.length, teams: teamsCount })}
           </p>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="size-4" aria-hidden />
-          Add stage
+          {t("add")}
         </Button>
       </div>
 
       {stages.length === 0 ? (
         <p className="p-4 text-sm text-muted-foreground">
-          No stages yet. Add the first phase — groups, playoffs and finals then read as a flow.
+          {t("empty")}
         </p>
       ) : (
         <>
@@ -179,7 +183,7 @@ export function StageList({
             )}
           </SortableRows>
           <p className="border-t border-border px-4 py-2 text-xs text-muted-foreground">
-            Drag to move a stage between phases · stages sharing a number run in parallel
+            {t("drag")}
           </p>
         </>
       )}
@@ -193,10 +197,10 @@ export function StageList({
             resetForm();
           }
         }}
-        title="Add stage"
-        description="Create the next tournament phase and choose its initial generation format."
-        submitLabel="Add stage"
-        submittingLabel="Adding…"
+        title={t("dialogTitle")}
+        description={t("dialogDescription")}
+        submitLabel={t("submit")}
+        submittingLabel={t("submitting")}
         onSubmit={(event: FormEvent) => {
           event.preventDefault();
           if (!name.trim()) return;
@@ -208,25 +212,25 @@ export function StageList({
       >
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="new-stage-name">Stage name</Label>
+            <Label htmlFor="new-stage-name">{t("name")}</Label>
             <Input
               id="new-stage-name"
-              placeholder="Playoffs, Group A, Finals…"
+              placeholder={t("namePlaceholder")}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="new-stage-type">Stage type</Label>
+            <Label htmlFor="new-stage-type">{t("type")}</Label>
             <Select value={stageType} onValueChange={(value) => setStageType(value as StageType)}>
               <SelectTrigger id="new-stage-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {Object.entries(STAGE_TYPE_LABELS).map(([value, label]) => (
+                {Object.keys(STAGE_TYPE_LABELS).map((value) => (
                   <SelectItem key={value} value={value}>
-                    {label}
+                    {tr(`labels.types.${value}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -235,7 +239,7 @@ export function StageList({
 
           {stageType === "swiss" ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="new-stage-max-rounds">Swiss max rounds</Label>
+              <Label htmlFor="new-stage-max-rounds">{t("swissRounds")}</Label>
               <NumberInput
                 id="new-stage-max-rounds"
                 integer
@@ -248,7 +252,7 @@ export function StageList({
 
           {stageType === "double_elimination" ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="new-stage-grand-final">Grand final format</Label>
+              <Label htmlFor="new-stage-grand-final">{t("grandFinal")}</Label>
               <Select
                 value={grandFinalType}
                 onValueChange={(value) =>
@@ -260,10 +264,10 @@ export function StageList({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="no_reset">
-                    No reset · UB winner wins after one GF win
+                    {t("noReset")}
                   </SelectItem>
                   <SelectItem value="with_reset">
-                    With reset · LB champion can force a rematch
+                    {t("withReset")}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -286,6 +290,9 @@ function StageCard({
   selected: boolean;
   onSelect: () => void;
 }>) {
+  const t = useTranslations("adminBracket.list");
+  const tRoot = useTranslations("adminBracket");
+  const tr = (key: string) => tRoot(key as never);
   const { ref, style, handleProps } = useSortableRow(String(stage.id));
   const hasEncounters = (progress?.total ?? 0) > 0;
   const slots = getStageTeamSlots(stage);
@@ -305,12 +312,12 @@ function StageCard({
       )}
     >
       <div className="flex flex-col items-center gap-1 pt-0.5">
-        <SortableGrip handleProps={handleProps} label={`Reorder ${stage.name}`} />
+        <SortableGrip handleProps={handleProps} label={t("reorder", { name: stage.name })} />
         <span
-          title={`Phase ${stage.order}`}
+          title={t("phase", { number: stage.order })}
           className="font-mono text-xs tabular-nums text-muted-foreground"
         >
-          <span className="sr-only">Phase </span>
+          <span className="sr-only">{tRoot("extra.phaseLabel")}</span>
           {stage.order}
         </span>
       </div>
@@ -325,24 +332,24 @@ function StageCard({
             {stage.name}
           </button>
           <StatusPill tone={getStageStatusTone(stage, hasEncounters)} className="shrink-0">
-            {getStageStatus(stage, hasEncounters)}
+            {tr(`extra.statuses.${getStageStatus(stage, hasEncounters).toLowerCase()}`)}
           </StatusPill>
         </div>
 
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          <span>{STAGE_TYPE_LABELS[stage.stage_type]}</span>
+          <span>{tr(`labels.types.${stage.stage_type}`)}</span>
           <span aria-hidden>·</span>
-          <span className="tabular-nums">{stage.items.length} item(s)</span>
+          <span className="tabular-nums">{t("items", { count: stage.items.length })}</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">
-            {assigned}/{slots} slots
+            {t("slots", { assigned, total: slots })}
           </span>
         </p>
 
         {progress && progress.total > 0 ? (
           <div className="mt-2">
             <p className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Matches</span>
+              <span>{t("matches")}</span>
               <span className="tabular-nums">
                 {progress.completed}/{progress.total}
               </span>
@@ -350,7 +357,7 @@ function StageCard({
             <Progress
               value={getProgressPercent(progress.completed, progress.total)}
               className="h-1.5"
-              aria-label={`${progress.completed} of ${progress.total} matches complete`}
+              aria-label={t("progress", { completed: progress.completed, total: progress.total })}
             />
           </div>
         ) : null}

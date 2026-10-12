@@ -11,6 +11,7 @@ import RegistrationBulkActions from "@/components/balancer/registrations/_compon
 import RegistrationFormDialogs from "@/components/balancer/registrations/_components/RegistrationFormDialogs";
 import RegistrationInspectorBody from "@/components/balancer/registrations/_components/RegistrationInspectorBody";
 import { buildRegistrationRowActions } from "@/components/balancer/registrations/_components/registrationRowActions";
+import { builtinStatusName } from "@/components/balancer/registrations/_components/registrationsTranslator";
 import {
   type RegistrationGroupingMode,
   groupRegistrations,
@@ -59,6 +60,7 @@ export default function RegistrationsTable({
   // public participants page, so they live in the message catalogue rather than
   // as English literals like the rest of this admin table.
   const t = useTranslations();
+  const tRegistrations = useTranslations("registrationsAdmin");
   // `id` (the inspector) is navigation, not narrowing: it must not drop the
   // filters the way a narrowing change does.
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [] });
@@ -137,9 +139,9 @@ export default function RegistrationsTable({
     () =>
       [...registrationStatusOptions.system, ...registrationStatusOptions.custom].map((option) => ({
         value: option.value,
-        label: option.name
+        label: option.is_builtin ? builtinStatusName(option.value, tRegistrations) : option.name
       })),
-    [registrationStatusOptions]
+    [registrationStatusOptions, tRegistrations]
   );
 
   const registrations = useMemo(() => registrationsQuery.data ?? [], [registrationsQuery.data]);
@@ -201,6 +203,7 @@ export default function RegistrationsTable({
   const columns: ColumnDef<AdminRegistration>[] = useMemo(
     () => [
       ...buildBalancerRegistrationColumns(
+        tRegistrations,
         subroleCatalog,
         requireSubscription,
         schemaFields,
@@ -220,10 +223,12 @@ export default function RegistrationsTable({
             setCheckIn,
             onEdit: setEditingRegistration,
             onDelete: setPendingDelete
-          }),
+          }, tRegistrations),
         {
           rowLabel: (registration) =>
-            registration.primary_handle ?? registration.display_name ?? `registration ${registration.id}`
+            registration.primary_handle ??
+            registration.display_name ??
+            tRegistrations("table.rowFallback", { id: registration.id })
         }
       )
     ],
@@ -240,7 +245,8 @@ export default function RegistrationsTable({
       setBalancerInclusion,
       setCheckIn,
       canAccessPermission,
-      openAuditTrail
+      openAuditTrail,
+      tRegistrations
     ]
   );
 
@@ -250,15 +256,15 @@ export default function RegistrationsTable({
     const rowsById = new Map(pageRows.map((row) => [row.original.id, row]));
     return groupRegistrations(
       pageRows.map((row) => row.original),
-      groupBy
+      groupBy,
+      (key) => t(`registrationsAdmin.grouping.${key}`)
     ).map((group) => ({
       key: group.key,
       label: (
         <>
           <span className="text-foreground">{group.label}</span>
           <span className="ml-2 font-normal normal-case text-muted-foreground">
-            {group.registrations.length}{" "}
-            {group.registrations.length === 1 ? "registration" : "registrations"}
+            {t("registrationsAdmin.table.registrationCount", { count: group.registrations.length })}
           </span>
         </>
       ),
@@ -277,9 +283,9 @@ export default function RegistrationsTable({
   if (!tournamentId) {
     return (
       <Alert>
-        <AlertTitle>Select a tournament</AlertTitle>
+        <AlertTitle>{t("registrationsAdmin.table.selectTournament")}</AlertTitle>
         <AlertDescription>
-          Choose a tournament in the sidebar before managing registrations.
+          {t("registrationsAdmin.table.selectTournamentDescription")}
         </AlertDescription>
       </Alert>
     );
@@ -304,8 +310,8 @@ export default function RegistrationsTable({
           initialSort={{ field: "submitted", dir: "desc" }}
           paging="all"
           cellAlign="top"
-          searchPlaceholder="Search registrations"
-          emptyMessage="No registrations yet."
+          searchPlaceholder={t("registrationsAdmin.table.search")}
+          emptyMessage={t("registrationsAdmin.table.empty")}
           columnsStorageKey="balancer-registrations-table-columns"
           enableRowSelection={(row) => row.original.status === "pending"}
           inspectorId={openId}
@@ -326,7 +332,7 @@ export default function RegistrationsTable({
             <>
               <span
                 className="shrink-0 text-xs tabular-nums text-muted-foreground"
-                title={`${registrations.length} registrations`}
+                title={t("registrationsAdmin.table.registrationCount", { count: registrations.length })}
               >
                 {registrations.length}
               </span>
@@ -339,32 +345,32 @@ export default function RegistrationsTable({
                   onClick={() => filters.set("status", isPendingFilterOn ? [] : ["pending"])}
                   title={
                     isPendingFilterOn
-                      ? "Clear the pending filter"
-                      : `Show only the ${pendingCount} pending registrations`
+                      ? t("registrationsAdmin.table.clearPending")
+                      : t("registrationsAdmin.table.showPending", { count: pendingCount })
                   }
                 >
                   <Clock className="h-3.5 w-3.5" aria-hidden />
-                  {pendingCount} pending
+                  {t("registrationsAdmin.table.pending", { count: pendingCount })}
                 </Button>
               ) : null}
               <Select
                 value={groupBy}
                 onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
               >
-                <SelectTrigger className="h-8 w-[160px]" aria-label="Group registrations">
-                  <SelectValue placeholder="Group by" />
+                <SelectTrigger className="h-8 w-[160px]" aria-label={t("registrationsAdmin.table.groupAria")}>
+                  <SelectValue placeholder={t("registrationsAdmin.table.groupBy")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No grouping</SelectItem>
-                  <SelectItem value="check_in">Group by check-in</SelectItem>
-                  <SelectItem value="balancer_status">Group by balancer</SelectItem>
-                  <SelectItem value="admission">Group by admission</SelectItem>
+                  <SelectItem value="none">{t("registrationsAdmin.table.noGrouping")}</SelectItem>
+                  <SelectItem value="check_in">{t("registrationsAdmin.table.groupCheckIn")}</SelectItem>
+                  <SelectItem value="balancer_status">{t("registrationsAdmin.table.groupBalancer")}</SelectItem>
+                  <SelectItem value="admission">{t("registrationsAdmin.table.groupAdmission")}</SelectItem>
                 </SelectContent>
               </Select>
               {canAccessPermission("registration.create", workspaceId) && (
                 <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
                   <UserPlus className="mr-2 h-4 w-4" aria-hidden />
-                  Create registration
+                  {t("registrationsAdmin.table.create")}
                 </Button>
               )}
             </>
@@ -375,7 +381,7 @@ export default function RegistrationsTable({
       <Inspector
         openId={inspected ? openId : null}
         onClose={() => setParams({ id: null })}
-        title={inspected?.primary_handle ?? inspected?.display_name ?? "Registration"}
+        title={inspected?.primary_handle ?? inspected?.display_name ?? t("registrationsAdmin.table.registration")}
         subtitle={
           inspected
             ? `${inspected.status} · ${ADMISSION_LABELS[inspected.admission.decision]}`
@@ -410,9 +416,14 @@ export default function RegistrationsTable({
         open={pendingDelete !== null}
         onOpenChange={(open) => (open ? undefined : setPendingDelete(null))}
         intent={{
-          title: "Delete this registration?",
-          description: `${pendingDelete?.primary_handle ?? pendingDelete?.display_name ?? "The registration"} is removed from the pool. Withdraw instead to keep the record.`,
-          confirmLabel: "Delete registration",
+          title: t("registrationsAdmin.table.deleteTitle"),
+          description: t("registrationsAdmin.table.deleteDescription", {
+            name:
+              pendingDelete?.primary_handle ??
+              pendingDelete?.display_name ??
+              t("registrationsAdmin.table.registration")
+          }),
+          confirmLabel: t("registrationsAdmin.table.deleteConfirm"),
           tone: "danger"
         }}
         pending={deleteMutation.isPending}

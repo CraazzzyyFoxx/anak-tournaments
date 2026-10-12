@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { RuleBuilder, type RuleLeafFieldsProps } from "@/components/rule-builder";
 import adminService from "@/services/admin.service";
@@ -10,35 +11,7 @@ import { achievementQueryKeys } from "@/lib/achievements/query-keys";
 import { DEFAULT_CONDITION_TYPE, useConditionText } from "@/lib/achievements/condition-text";
 
 import { ConditionLeafFields } from "./ConditionLeafFields";
-import { SIDEBAR_GROUPS } from "./condition-flow.model";
-
-/** The canvas chrome, in the editor's own voice. Achievements are admin-only
- *  and English throughout, so these are literals rather than message keys. */
-const LABELS = {
-  outlineTitle: "Condition tree outline",
-  outlineGroup: (path: string, op: string) => `${path} ${op} group`,
-  paletteSearchPlaceholder: "Search nodes…",
-  paletteSearchLabel: "Search condition nodes",
-  paletteHint: "Drag onto the canvas, or click to append to the top-level group.",
-  paletteEmpty: (query: string) =>
-    `No nodes match “${query}”. Try a shorter word such as “stat” or “div”.`,
-  paletteAdd: (item: string) => `Add ${item} to the condition tree`,
-  groupName: (path: string) => `group ${path}`,
-  operatorLabel: (group: string) => `Logic operator for ${group}`,
-  addLeaf: "Add condition",
-  addLeafLabel: (group: string) => `Add condition inside ${group}`,
-  addGroup: "Add group",
-  addGroupLabel: (group: string) => `Add nested group inside ${group}`,
-  deleteGroupLabel: (group: string) => `Delete ${group} and every condition inside it`,
-  deleteLeafLabel: (label: string, path: string) => `Delete ${label} condition ${path}`,
-  leafTypeLabel: (path: string) => `Condition type for condition ${path}`,
-  leafFieldLabel: (field: string, label: string, path: string) =>
-    `${field} for ${label} condition ${path}`,
-  fullscreen: "Fullscreen",
-  fullscreenLabel: "Show the condition tree fullscreen",
-  exitFullscreen: "Exit fullscreen (Esc)",
-  exitFullscreenLabel: "Exit fullscreen, or press Escape",
-};
+import { createSidebarGroups } from "./condition-flow.model";
 
 interface ConditionFlowEditorProps {
   value: Record<string, unknown>;
@@ -55,7 +28,33 @@ interface ConditionFlowEditorProps {
  * `optional` come from the same place the validator reads.
  */
 export function ConditionFlowEditor({ value, onChange, readOnly }: Readonly<ConditionFlowEditorProps>) {
+  const t = useTranslations("adminAchievements");
   const { leafLabel, leafLine } = useConditionText(value);
+  const labels = useMemo(() => ({
+    outlineTitle: t("condition.treeOutline"),
+    outlineGroup: (path: string, op: string) =>
+      t("condition.outlineGroup", { path, operator: op }),
+    paletteSearchPlaceholder: t("condition.searchNodes"),
+    paletteSearchLabel: t("condition.searchLabel"),
+    paletteHint: t("condition.hint"),
+    paletteEmpty: (query: string) => t("condition.empty", { query }),
+    paletteAdd: (item: string) => t("condition.addToTree", { item }),
+    groupName: (path: string) => t("condition.group", { path }),
+    operatorLabel: (group: string) => t("condition.operatorFor", { group }),
+    addLeaf: t("condition.addCondition"),
+    addLeafLabel: (group: string) => t("condition.addInside", { group }),
+    addGroup: t("condition.addGroup"),
+    addGroupLabel: (group: string) => t("condition.addNested", { group }),
+    deleteGroupLabel: (group: string) => t("condition.deleteGroup", { group }),
+    deleteLeafLabel: (label: string, path: string) => t("condition.deleteCondition", { label, path }),
+    leafTypeLabel: (path: string) => t("condition.typeFor", { path }),
+    leafFieldLabel: (field: string, label: string, path: string) => t("condition.fieldFor", { field, label, path }),
+    fullscreen: t("condition.fullscreen"),
+    fullscreenLabel: t("condition.fullscreenLabel"),
+    exitFullscreen: t("condition.exitFullscreen"),
+    exitFullscreenLabel: t("condition.exitFullscreenLabel"),
+  }), [t]);
+  const palette = useMemo(() => createSidebarGroups(t as unknown as (key: string) => string), [t]);
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   // The registry only changes when the engine ships a new node, so it is cached
   // for the session rather than refetched per editor mount.
@@ -96,11 +95,11 @@ export function ConditionFlowEditor({ value, onChange, readOnly }: Readonly<Cond
       readOnly={readOnly}
       leafOptions={leafOptions}
       defaultLeafType={DEFAULT_CONDITION_TYPE}
-      palette={SIDEBAR_GROUPS}
+      palette={palette}
       renderLeafFields={renderLeafFields}
       labelForLeaf={leafLabel}
       summarizeLeaf={leafLine}
-      labels={LABELS}
+      labels={labels}
     />
   );
 }

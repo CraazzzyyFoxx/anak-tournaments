@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -68,6 +69,7 @@ function buildCaptainOptions(team: AdminTeamDetail) {
  * of a read-only summary behind an "Edit" dialog.
  */
 export default function AdminTeamWorkspacePage() {
+  const t = useTranslations("adminPeople.teams");
   const format = useFormatter();
   const params = useParams<{ id: string }>();
   const teamId = Number(params.id);
@@ -108,7 +110,7 @@ export default function AdminTeamWorkspacePage() {
     mutationFn: (file: File) => adminService.uploadTeamImage(teamId, file),
     onSuccess: async () => {
       await invalidateTeam();
-      notify.success("Team image updated");
+      notify.success(t("imageUpdated"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -117,7 +119,7 @@ export default function AdminTeamWorkspacePage() {
     mutationFn: () => adminService.deleteTeamImage(teamId),
     onSuccess: async () => {
       await invalidateTeam();
-      notify.success("Team image removed");
+      notify.success(t("imageRemoved"));
     },
     onError: (error) => notify.apiError(error)
   });
@@ -152,14 +154,16 @@ export default function AdminTeamWorkspacePage() {
       <Card>
         <CardHeader>
           <CardTitle asChild>
-            <h1>Team not found</h1>
+            <h1>{t("notFound")}</h1>
           </CardTitle>
           <CardDescription>
-            This team may have been deleted.{" "}
-            <Link href="/admin/teams" className="underline">
-              Go back to the teams list
-            </Link>{" "}
-            and pick another roster.
+            {t.rich("deletedNotice", {
+              link: (chunks) => (
+                <Link href="/admin/teams" className="underline">
+                  {chunks}
+                </Link>
+              )
+            })}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -192,16 +196,16 @@ export default function AdminTeamWorkspacePage() {
             title={
               <InlineEditText
                 value={team.name}
-                label="team name"
+                label={t("teamName")}
                 canEdit={canUpdateTeam}
                 onSave={(name) => updateTeam.mutateAsync({ name })}
               />
             }
-            status={team.captain_id > 0 ? undefined : { label: "No captain", tone: "warning" }}
+            status={team.captain_id > 0 ? undefined : { label: t("noCaptain"), tone: "warning" }}
             // Roster counts sit in the tiles one row below, so the meta line
             // carries only what those tiles do not: where this team plays.
             meta={[
-              team.tournament?.name ?? "No linked tournament",
+              team.tournament?.name ?? t("noTournament"),
               team.tournament ? (
                 <span className="tabular-nums">
                   {formatDateRange(format, team.tournament.start_date, team.tournament.end_date)}
@@ -217,7 +221,7 @@ export default function AdminTeamWorkspacePage() {
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/admin/tournaments/${team.tournament.id}`}>
                       <Trophy className="size-4" aria-hidden />
-                      Open tournament
+                      {t("openTournament")}
                     </Link>
                   </Button>
                 ) : null}
@@ -229,7 +233,7 @@ export default function AdminTeamWorkspacePage() {
                     onClick={() => setDeleteOpen(true)}
                   >
                     <Trash2 className="size-4" aria-hidden />
-                    Delete team
+                    {t("delete")}
                   </Button>
                 ) : null}
               </>
@@ -239,19 +243,19 @@ export default function AdminTeamWorkspacePage() {
       </div>
 
       <StatTileGrid>
-        <StatTile label="Average SR" value={team.avg_sr.toFixed(0)} detail="Starters only" />
-        <StatTile label="Total SR" value={team.total_sr} detail="Combined starter SR" />
+        <StatTile label={t("labels.averageSr")} value={team.avg_sr.toFixed(0)} detail={t("avgDetail")} />
+        <StatTile label={t("labels.totalSr")} value={team.total_sr} detail={t("totalDetail")} />
         <StatTile
-          label="Roster"
+          label={t("labels.roster")}
           value={starters}
-          detail={substitutes ? `+${substitutes} substitutes` : "No substitutes"}
+          detail={substitutes ? t("subCount", { count: substitutes }) : t("noSubstitutes")}
           icon={Users}
           tone="info"
         />
         <StatTile
-          label="Group"
+          label={t("labels.group")}
           value={team.group?.name ?? "—"}
-          detail={team.placement != null ? `Placement #${team.placement}` : "No placement yet"}
+          detail={team.placement != null ? t("placement", { id: team.placement }) : t("noPlacement")}
         />
       </StatTileGrid>
 
@@ -259,14 +263,14 @@ export default function AdminTeamWorkspacePage() {
         <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4">
           <div>
             <CardTitle asChild>
-              <h2>Roster</h2>
+              <h2>{t("labels.roster")}</h2>
             </CardTitle>
             <CardDescription>
-              Role, rank, sub-role and flags save as you change them.
+              {t("rosterDescription")}
             </CardDescription>
           </div>
           <div className="w-full max-w-xs space-y-1.5">
-            <Label htmlFor="team-captain">Captain</Label>
+            <Label htmlFor="team-captain">{t("labels.captain")}</Label>
             <Select
               value={team.captain_id > 0 ? String(team.captain_id) : ""}
               disabled={!canUpdateTeam || captainOptions.length === 0}
@@ -275,7 +279,7 @@ export default function AdminTeamWorkspacePage() {
               }
             >
               <SelectTrigger id="team-captain">
-                <SelectValue placeholder="Select captain from roster" />
+                <SelectValue placeholder={t("captainPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {captainOptions.map((option) => (
@@ -307,11 +311,11 @@ export default function AdminTeamWorkspacePage() {
           onOpenChange={setDeleteOpen}
           pending={deleteTeam.isPending}
           intent={{
-            title: `Delete ${team.name}`,
-            description: `Deleting “${team.name}” removes the roster from ${team.tournament?.name ?? "its tournament"} along with every player and match statistic below. This cannot be undone.`,
-            confirmLabel: "Delete team",
+            title: t("deleteNamed", { name: team.name }),
+            description: t("deleteDescription", { name: team.name }),
+            confirmLabel: t("delete"),
             tone: "danger",
-            cascade: ["All players in this team", "All related match statistics"]
+            cascade: [t("cascadePlayers"), t("cascadeStats")]
           }}
           onConfirm={() => deleteTeam.mutate()}
         />

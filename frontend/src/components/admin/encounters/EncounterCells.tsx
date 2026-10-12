@@ -6,6 +6,7 @@ import { CheckCircle, CircleAlert, Clock } from "lucide-react";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { useFormatter } from "@/lib/datetime/client";
+import { useTranslations } from "next-intl";
 import type { Encounter } from "@/types/encounter.types";
 
 /** The stage or stage item an encounter was scheduled under. */
@@ -14,17 +15,18 @@ export function encounterScopeLabel(encounter: Encounter): string {
 }
 
 export function EncounterStatusCell({ status }: Readonly<{ status?: string | null }>) {
+  const t = useTranslations("adminMatches.encounters");
   const upper = status?.toUpperCase() ?? "";
   if (upper === "COMPLETED") {
-    return <StatusIcon icon={CheckCircle} label="Completed" variant="success" />;
+    return <StatusIcon icon={CheckCircle} label={t("completed")} variant="success" />;
   }
   if (upper === "PENDING") {
-    return <StatusIcon icon={Clock} label="Pending" variant="warning" />;
+    return <StatusIcon icon={Clock} label={t("pending")} variant="warning" />;
   }
   return (
     <StatusIcon
       icon={CircleAlert}
-      label={upper ? `${upper[0]}${upper.slice(1).toLowerCase()}` : "Unknown"}
+      label={upper ? `${upper[0]}${upper.slice(1).toLowerCase()}` : t("none")}
       variant="muted"
     />
   );

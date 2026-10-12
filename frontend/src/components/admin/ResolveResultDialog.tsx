@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ChevronDown, History } from "lucide-react";
 import { useFormatter } from "@/lib/datetime/client";
@@ -33,6 +34,7 @@ import { stageNeedsWinner } from "@/lib/encounter/score";
  * dialog previews is what the server stores — the two must not drift.
  */
 type Mode = "adopt_home" | "adopt_away" | "manual";
+const BEST_OF_LABEL = "BO";
 
 export interface ResolveResultDialogProps {
   row: EncounterReportsRow | null;
@@ -57,6 +59,7 @@ export function ResolveResultDialog({
   onOpenChange,
   onResolved
 }: Readonly<ResolveResultDialogProps>) {
+  const t = useTranslations("adminTournaments.resolve");
   const format = useFormatter();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [reopenOpen, setReopenOpen] = useState(false);
@@ -72,22 +75,22 @@ export function ResolveResultDialog({
   const resolveMutation = useMutation({
     mutationFn: (payload: EncounterSetResultInput) => adminService.setEncounterResult(row!.id, payload),
     onSuccess: () => {
-      notify.success("Result confirmed");
+      notify.success(t("confirmed"));
       onOpenChange(false);
       onResolved?.();
     },
-    onError: (error: unknown) => notify.apiError(error, { title: "Could not confirm the result" })
+    onError: (error: unknown) => notify.apiError(error, { title: t("confirmError") })
   });
 
   const reopenMutation = useMutation({
     mutationFn: () => adminService.reopenEncounterResult(row!.id),
     onSuccess: () => {
-      notify.success("Result reopened");
+      notify.success(t("reopened"));
       setReopenOpen(false);
       onOpenChange(false);
       onResolved?.();
     },
-    onError: (error: unknown) => notify.apiError(error, { title: "Could not reopen the result" })
+    onError: (error: unknown) => notify.apiError(error, { title: t("reopenError") })
   });
 
   if (!row) return null;
@@ -107,9 +110,9 @@ export function ResolveResultDialog({
       >
         <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{isConfirmed ? "Result confirmed" : "Resolve result"}</DialogTitle>
+            <DialogTitle>{isConfirmed ? t("confirmed") : t("resolve")}</DialogTitle>
             <DialogDescription>
-              {row.name} &middot; {row.stage_name ?? "Unassigned"} &middot; BO{row.best_of}
+              {row.name} {"·"} {row.stage_name ?? t("unassigned")} {"·"} {BEST_OF_LABEL}{row.best_of}
             </DialogDescription>
           </DialogHeader>
 
@@ -123,13 +126,16 @@ export function ResolveResultDialog({
           {mapCodes.length > 0 ? (
             <div className="rounded-lg border border-border/60 p-3">
               <p className={EYEBROW_CLASS}>
-                Replay codes
+                {t("replayCodes")}
               </p>
               <ul className="mt-2 space-y-1">
                 {mapCodes.map(({ report, code }) => (
                   <li key={`${report!.id}-${code.id}`} className="flex gap-2 text-xs">
                     <span className="text-muted-foreground">
-                      {report!.side === "away" ? "Away" : "Home"} &middot; Map {code.map_index}
+                      {t("replayMap", {
+                        side: report!.side === "away" ? t("away") : t("home"),
+                        mapIndex: code.map_index
+                      })}
                     </span>
                     <span className="font-mono">{code.code}</span>
                   </li>
@@ -140,7 +146,7 @@ export function ResolveResultDialog({
 
           {isConfirmed ? (
             <p className="text-sm text-muted-foreground">
-              This result is already confirmed. Reopen it to replay or re-report the encounter.
+              {t("alreadyConfirmed")}
             </p>
           ) : (
             // Keyed by encounter: switching rows must start from that row's
@@ -162,7 +168,7 @@ export function ResolveResultDialog({
               onClick={() => setHistoryOpen((current) => !current)}
             >
               <History className="size-3.5" aria-hidden />
-              Change history
+              {t("history")}
               <ChevronDown
                 className={`ml-auto size-3.5 transition-transform ${historyOpen ? "rotate-180" : ""}`}
                 aria-hidden
@@ -171,21 +177,24 @@ export function ResolveResultDialog({
             {historyOpen ? (
               <div className="border-t border-border/60 p-2">
                 {auditQuery.isLoading ? (
-                  <p className="text-xs text-muted-foreground">Loading&hellip;</p>
+                  <p className="text-xs text-muted-foreground">{t("loading")}</p>
                 ) : (auditQuery.data?.length ?? 0) === 0 ? (
                   // Encounters that predate the audit trail have nothing to
                   // show; saying so beats an empty box that reads as a failure.
-                  <p className="text-xs text-muted-foreground">No recorded changes.</p>
+                  <p className="text-xs text-muted-foreground">{t("noChanges")}</p>
                 ) : (
                   <ul className="space-y-1">
                     {auditQuery.data!.map((entry) => (
                       <li key={entry.id} className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">{entry.action}</span> by{" "}
-                        {entry.actor_name ?? "an automated process"} &middot;{" "}
+                        {t.rich("historyEntry", {
+                          actionText: entry.action,
+                          action: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
+                          actor: entry.actor_name ?? t("automatedProcess")
+                        })} {"·"} {" "}
                         <span className="font-mono tabular-nums">
-                          {entry.home_score_after} &ndash; {entry.away_score_after}
+                          {entry.home_score_after} {"–"} {entry.away_score_after}
                         </span>{" "}
-                        &middot;{" "}
+                        {"·"} {" "}
                         {format.dateTime(new Date(entry.created_at), {
                           dateStyle: "medium",
                           timeStyle: "short"
@@ -201,10 +210,10 @@ export function ResolveResultDialog({
           {isConfirmed ? (
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-                Close
+                {t("close")}
               </Button>
               <Button type="button" variant="secondary" onClick={() => setReopenOpen(true)}>
-                Reopen
+                {t("reopen")}
               </Button>
             </DialogFooter>
           ) : null}
@@ -215,10 +224,10 @@ export function ResolveResultDialog({
         open={reopenOpen}
         onOpenChange={setReopenOpen}
         intent={{
-          title: "Reopen this result?",
+          title: t("reopenTitle"),
           description:
-            "The encounter leaves the confirmed state and stops counting toward standings until it is confirmed again. Any bracket progression it drove is reset.",
-          confirmLabel: "Reopen",
+            t("reopenDescription"),
+          confirmLabel: t("reopen"),
           tone: "warning"
         }}
         pending={reopenMutation.isPending}
@@ -242,6 +251,7 @@ function ResolveForm({
   pending: boolean;
   onConfirm: (payload: EncounterSetResultInput) => void;
 }>) {
+  const t = useTranslations("adminTournaments.resolve");
   const modeFieldId = useId();
   // Preselect the side with evidence. When only one captain has reported that
   // report is all there is, so defaulting to manual entry would make the
@@ -286,21 +296,21 @@ function ResolveForm({
   const options: Array<{ value: Mode; label: string; disabled: boolean; detail: string }> = [
     {
       value: "adopt_home",
-      label: `Adopt ${row.home_team?.name ?? "home"} report`,
+      label: t("adoptReport", { side: row.home_team?.name ?? t("home") }),
       disabled: row.home_report == null,
       detail: row.home_report
         ? `${row.home_report.home_score} \u2013 ${row.home_report.away_score}`
-        : "no report filed"
+        : t("noReport")
     },
     {
       value: "adopt_away",
-      label: `Adopt ${row.away_team?.name ?? "away"} report`,
+      label: t("adoptReport", { side: row.away_team?.name ?? t("away") }),
       disabled: row.away_report == null,
       detail: row.away_report
         ? `${row.away_report.home_score} \u2013 ${row.away_report.away_score}`
-        : "no report filed"
+        : t("noReport")
     },
-    { value: "manual", label: "Enter the score manually", disabled: false, detail: "" }
+    { value: "manual", label: t("manualScore"), disabled: false, detail: "" }
   ];
 
   function submit() {
@@ -322,7 +332,7 @@ function ResolveForm({
           id={`${modeFieldId}-legend`}
           className={EYEBROW_CLASS}
         >
-          Which score is right?
+          {t("whichScore")}
         </legend>
         {/* `aria-labelledby` rather than a repeated `aria-label`: the legend is
             already on screen, and duplicating it would announce it twice. */}
@@ -360,7 +370,7 @@ function ResolveForm({
         {mode === "manual" ? (
           <div className="flex flex-wrap items-end gap-2 pt-1">
             <div className="space-y-1">
-              <Label htmlFor="resolve-home">Home</Label>
+              <Label htmlFor="resolve-home">{t("home")}</Label>
               <Input
                 id="resolve-home"
                 inputMode="numeric"
@@ -370,7 +380,7 @@ function ResolveForm({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="resolve-away">Away</Label>
+              <Label htmlFor="resolve-away">{t("away")}</Label>
               <Input
                 id="resolve-away"
                 inputMode="numeric"
@@ -383,18 +393,18 @@ function ResolveForm({
         ) : null}
 
         <div className="space-y-1 pt-1">
-          <Label htmlFor="resolve-closeness">Closeness override (1&ndash;10, optional)</Label>
+          <Label htmlFor="resolve-closeness">{t("closeness")}</Label>
           <Input
             id="resolve-closeness"
             inputMode="numeric"
             className="h-8 w-20"
             value={closeness}
             onChange={(event) => setCloseness(event.target.value)}
-            placeholder="auto"
+            placeholder={t("auto")}
             aria-invalid={closenessInvalid}
           />
           <p className="text-xs text-muted-foreground">
-            Left blank, the encounter takes the average of the filed reports.
+            {t("closenessHelp")}
           </p>
         </div>
       </fieldset>
@@ -402,21 +412,24 @@ function ResolveForm({
       <p className="text-sm" aria-live="polite">
         {preview ? (
           <>
-            Will record{" "}
-            <span className="font-mono font-semibold tabular-nums">
-              {preview.home} &ndash; {preview.away}
-            </span>
+            {t.rich("willRecordScore", {
+              home: preview.home,
+              away: preview.away,
+              score: (chunks) => (
+                <span className="font-mono font-semibold tabular-nums">{chunks}</span>
+              )
+            })}
           </>
         ) : (
-          <span className="text-muted-foreground">No score selected yet.</span>
+          <span className="text-muted-foreground">{t("noScore")}</span>
         )}
         {drawBlocked ? (
           <span className="block text-danger">
-            An elimination bracket needs a winner &mdash; a draw cannot be recorded here.
+            {t("drawBlocked")}
           </span>
         ) : null}
         {closenessInvalid ? (
-          <span className="block text-danger">Closeness must be a whole number from 1 to 10.</span>
+          <span className="block text-danger">{t("closenessInvalid")}</span>
         ) : null}
       </p>
 
@@ -427,7 +440,7 @@ function ResolveForm({
           onClick={submit}
         >
           {pending ? <Spinner /> : null}
-          Confirm result
+          {t("confirm")}
         </Button>
       </DialogFooter>
     </>

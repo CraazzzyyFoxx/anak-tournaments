@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRightLeft } from "lucide-react";
@@ -36,15 +37,6 @@ const TABS = [
 ] as const;
 type PersonTab = (typeof TABS)[number];
 
-const TAB_LABELS: Record<PersonTab, string> = {
-  profile: "Profile",
-  participations: "Participations",
-  achievements: "Achievements",
-  ranks: "Ranks",
-  subscriptions: "Subscriptions",
-  account: "Account"
-};
-
 function Section({
   title,
   children
@@ -67,6 +59,7 @@ function Section({
  * `people` segment, which is how the crumb shows a name instead of "Details".
  */
 export default function PersonHubPage() {
+  const t = useTranslations("adminPeople.person");
   const params = useParams<{ id: string }>();
   const personId = Number(params.id);
   const searchParams = useSearchParams();
@@ -91,7 +84,7 @@ export default function PersonHubPage() {
     queryFn: async () => {
       const page = await adminService.getUsers({ per_page: -1 });
       const found = page.results.find((candidate) => candidate.id === personId);
-      if (!found) throw new Error(`Player identity #${personId} does not exist.`);
+      if (!found) throw new Error(t("error", { id: personId }));
       return found;
     },
     enabled: canRead && Number.isFinite(personId)
@@ -105,9 +98,9 @@ export default function PersonHubPage() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Unauthorized</CardTitle>
+          <CardTitle>{t("unauthorized")}</CardTitle>
           <CardDescription>
-            You do not have permission to read player identities in this workspace.
+            {t("noPermission")}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -118,16 +111,20 @@ export default function PersonHubPage() {
     return (
       <PageStateCard
         state="not-found"
-        title="No such player identity"
-        description={`Nothing in this workspace is player #${personId}.`}
+        title={t("notFound")}
+        description={t("notFoundDescription", { id: personId })}
       />
     );
   }
 
   const person: User | undefined = personQuery.data;
+  const tabLabels: Record<PersonTab, string> = {
+    profile: t("tabs.profile"), participations: t("tabs.participations"), achievements: t("tabs.achievements"),
+    ranks: t("tabs.ranks"), subscriptions: t("tabs.subscriptions"), account: t("tabs.account")
+  };
   const items: LinkTabItem[] = TABS.map((key) => ({
     key,
-    label: TAB_LABELS[key],
+    label: tabLabels[key],
     href: `/admin/people/${personId}?tab=${key}`
   }));
 
@@ -146,13 +143,13 @@ export default function PersonHubPage() {
           canMerge && person ? (
             <Button variant="outline" size="sm" onClick={() => setMergeOpen(true)}>
               <ArrowRightLeft aria-hidden className="size-3.5" />
-              Merge
+              {t("merge")}
             </Button>
           ) : null
         }
       />
 
-      <LinkTabs items={items} activeKey={tab} ariaLabel="Person sections" />
+      <LinkTabs items={items} activeKey={tab} ariaLabel={t("tabs.profile")} />
 
       {tab === "profile" ? (
         person ? (
@@ -162,7 +159,7 @@ export default function PersonHubPage() {
           // made this the heaviest tab; they have their own tabs now, and the
           // right column keeps one line of each.
           <div className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-            <Section title="Profile">
+            <Section title={t("tabs.profile")}>
               <PlayerProfileBody
                 key={person.id}
                 user={person}
@@ -176,7 +173,7 @@ export default function PersonHubPage() {
               />
             </Section>
 
-            <Section title="At a glance">
+            <Section title={t("tabs.profile")}>
               <PersonGlance personId={person.id} canReadAuth={canReadAuth} />
             </Section>
           </div>
@@ -201,18 +198,18 @@ export default function PersonHubPage() {
               `team.update` is the roster owner's grant, the same one the
               endpoint checks; without it the tab is just the OverFast block. */}
           {canReadRanks ? (
-            <Section title="Workspace ranks">
+            <Section title={t("tabs.ranks")}>
               <RankOverviewTable playerId={personId} />
             </Section>
           ) : null}
-          <Section title="Rank collection">
+          <Section title={t("tabs.ranks")}>
             <RankPlayerPanel userId={personId} />
           </Section>
         </div>
       ) : null}
 
       {tab === "subscriptions" ? (
-        <Section title="Subscriptions">
+        <Section title={t("tabs.subscriptions")}>
           <SubscriptionPlayerPanel userId={personId} label={person?.name ?? `Player #${personId}`} />
         </Section>
       ) : null}

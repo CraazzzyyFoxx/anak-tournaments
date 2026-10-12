@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -75,10 +76,12 @@ function getChallongeParticipantKey(participant: ChallongeTeamPreviewParticipant
   return `${participant.participant_id}:${participant.group_id ?? "none"}`;
 }
 
-const TEAM_COLUMNS: ColumnDef<Team>[] = [
+type TeamsTranslator = ReturnType<typeof useTranslations<"adminTournament.teams">>;
+
+const TEAM_COLUMNS = (t: TeamsTranslator): ColumnDef<Team>[] => [
   {
     accessorKey: "name",
-    header: "Team",
+    header: t("team"),
     cell: ({ row }) => <TeamName team={row.original} size="xs" nameClassName="font-medium" />,
     // Player names too: an admin often knows who is on a roster, not what it is called.
     meta: columnMeta<Team>({
@@ -87,23 +90,23 @@ const TEAM_COLUMNS: ColumnDef<Team>[] = [
   },
   {
     accessorKey: "avg_sr",
-    header: "Avg SR",
+    header: t("avgSr"),
     cell: ({ row }) => row.original.avg_sr.toFixed(0),
     meta: columnMeta<Team>({ align: "right", numeric: true })
   },
   {
     accessorKey: "total_sr",
-    header: "Total SR",
+    header: t("totalSr"),
     meta: columnMeta<Team>({ align: "right", numeric: true })
   },
   {
     id: "players",
     accessorFn: (team) => team.players.length,
-    header: "Players",
+    header: t("players"),
     meta: columnMeta<Team>({ align: "right", numeric: true })
   },
   createKebabColumn<Team>(
-    (team) => [{ label: "Open team", icon: Pencil, href: `/admin/teams/${team.id}` }],
+    (team) => [{ label: t("open"), icon: Pencil, href: `/admin/teams/${team.id}` }],
     { rowLabel: (team) => team.name }
   )
 ];
@@ -113,13 +116,8 @@ function summarizeChallongeSyncResult(result: {
   updated: number;
   unchanged: number;
   skipped: number;
-}) {
-  return (
-    <span className="tabular-nums">
-      {result.created} created, {result.updated} updated, {result.unchanged} unchanged,{" "}
-      {result.skipped} skipped
-    </span>
-  );
+}, t: TeamsTranslator) {
+  return <span className="tabular-nums">{t("syncSummary", result)}</span>;
 }
 
 /**
@@ -147,6 +145,7 @@ function ChallongeTeamPicker({
   value: string;
   onChange: (next: string) => void;
 }>) {
+  const t = useTranslations("adminTournament.teams");
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
 
@@ -162,18 +161,18 @@ function ChallongeTeamPicker({
     <Combobox
       open={open}
       onOpenChange={setOpen}
-      label={selected ? selected.name : "Unmapped"}
+      label={selected ? selected.name : t("unmapped")}
       // The visible label repeats down the column, so it cannot name the control.
-      triggerAriaLabel={`Internal team for ${participant.name}`}
+      triggerAriaLabel={t("internalTeamFor", { name: participant.name })}
       searchValue={searchValue}
       onSearchValueChange={setSearchValue}
-      searchPlaceholder="Search team…"
-      searchLabel={`Search internal team for ${participant.name}`}
-      emptyMessage="No teams match that search. Try the balancer name or the numeric id."
+      searchPlaceholder={t("search")}
+      searchLabel={t("searchInternalTeamFor", { name: participant.name })}
+      emptyMessage={t("noMatch")}
       clear={
         selected
           ? {
-              label: "Unmapped",
+              label: t("unmapped"),
               value: "challonge-unmap-participant",
               onSelect: () => select(UNMAPPED_TEAM_VALUE)
             }
@@ -215,6 +214,8 @@ export function TournamentTeamsTab({
   canUpdatePlayer,
   canDeletePlayer
 }: Readonly<TournamentTeamsTabProps>) {
+  const t = useTranslations("adminTournament.teams");
+  const tx = useTranslations("adminTournament.teamsExtra");
   const queryClient = useQueryClient();
   const tableStyles = getAdminDetailTableStyles("compact");
 
@@ -259,8 +260,8 @@ export function TournamentTeamsTab({
     onSuccess: (result) => {
       invalidateTournamentWorkspace(queryClient, tournamentId);
       setChallongeSyncDialogOpen(false);
-      notify.success("Teams synced from Challonge", {
-        description: summarizeChallongeSyncResult(result)
+      notify.success(tx("syncSuccess"), {
+        description: summarizeChallongeSyncResult(result, t)
       });
     }
   });
@@ -321,7 +322,7 @@ export function TournamentTeamsTab({
             key: getChallongeParticipantKey(participant),
             participant: participant.name,
             team: team.name,
-            group: participant.group_name ?? "Main"
+            group: participant.group_name ?? tx("mainGroup")
           }
         ]
       : [];
@@ -358,8 +359,8 @@ export function TournamentTeamsTab({
 
   const submitChallongeMappings = () => {
     if (!canSubmitChallongeMappings) {
-      notify.error("Mappings incomplete", {
-        description: `Map the remaining ${activeUnmappedParticipants.length} active Challonge participants before syncing.`
+      notify.error(tx("mappingsIncomplete"), {
+        description: tx("mappingsIncompleteDescription", { count: activeUnmappedParticipants.length })
       });
       return;
     }
@@ -382,7 +383,7 @@ export function TournamentTeamsTab({
       disabled={syncTeamsMutation.isPending || !hasChallongeSource}
     >
       <RefreshCw className="mr-2 h-4 w-4" aria-hidden />
-      Sync teams
+      {t("sync")}
     </Button>
   ) : null;
 
@@ -390,30 +391,30 @@ export function TournamentTeamsTab({
     <>
       <StatTileGrid className="mb-4">
         <StatTile
-          label="Teams"
+          label={t("teams")}
           value={teams.length}
-          detail={`${stagesCount} stage${stagesCount === 1 ? "" : "s"} configured`}
+          detail={tx("stages", { count: stagesCount })}
           icon={Users}
         />
         <StatTile
-          label="Roster records"
+          label={t("rosterRecords")}
           value={rosterPlayersCount}
-          detail={`${teamsWithRosterCount}/${teams.length} teams have players`}
+          detail={tx("rosterCount", { withPlayers: teamsWithRosterCount, total: teams.length })}
           icon={ClipboardList}
         />
         <StatTile
-          label="Average SR"
+          label={t("averageSr")}
           value={teams.length ? averageSr : "—"}
-          detail="Across loaded teams"
+          detail={tx("acrossLoaded")}
           icon={Gauge}
         />
         <StatTile
-          label="Empty rosters"
+          label={t("emptyRosters")}
           value={emptyRosterTeamsCount}
           detail={
             emptyRosterTeamsCount > 0
-              ? "Add players before seeding stages"
-              : "Every team has players"
+              ? t("playersBeforeSeeding")
+              : t("everyTeamHasPlayers")
           }
           icon={AlertTriangle}
           tone={emptyRosterTeamsCount > 0 ? "warning" : "success"}
@@ -424,11 +425,10 @@ export function TournamentTeamsTab({
         <CardHeader className="gap-3 pb-3">
           <div className="min-w-0">
             <CardTitle asChild className="text-base font-semibold">
-              <h2>Team operations</h2>
+              <h2>{t("operations")}</h2>
             </CardTitle>
             <CardDescription className="mt-1">
-              Review tournament rosters, sync external mappings, or jump into the dedicated team
-              workspace for detailed edits.
+              {t("operationsDescription")}
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -438,7 +438,7 @@ export function TournamentTeamsTab({
                 {/* D30/A-O2: the sole UI entry to the balancer tool after the shell removal (v3.1). */}
                 <Link href={`/balancer?tournament=${tournamentId}`}>
                   <Scale className="mr-2 h-4 w-4" aria-hidden />
-                  Open balancer
+                  {t("openBalancer")}
                 </Link>
               </Button>
             ) : null}
@@ -446,7 +446,7 @@ export function TournamentTeamsTab({
               <Button asChild>
                 <Link href={teamsAdminHref}>
                   <Plus className="mr-2 h-4 w-4" aria-hidden />
-                  Manage teams
+                  {t("manage")}
                 </Link>
               </Button>
             ) : null}
@@ -455,12 +455,12 @@ export function TournamentTeamsTab({
         <CardContent>
           <DataTable
             rows={teams}
-            columns={TEAM_COLUMNS}
+            columns={TEAM_COLUMNS(t)}
             getRowId={(team) => String(team.id)}
-            searchPlaceholder="Search teams or players…"
+            searchPlaceholder={t("searchTeamsPlayers")}
             rowUnit="teams"
             onRowClick={(row) => router.push(`/admin/teams/${row.original.id}`)}
-            emptyMessage="No teams loaded for this tournament yet. Sync from Challonge or open the teams workspace to create the first roster."
+            emptyMessage={t("empty")}
           />
         </CardContent>
       </Card>
@@ -477,9 +477,9 @@ export function TournamentTeamsTab({
       >
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
           <DialogHeader className="border-b border-border/60 pb-4">
-            <DialogTitle>Sync Challonge teams</DialogTitle>
+            <DialogTitle>{t("syncChallonge")}</DialogTitle>
             <DialogDescription>
-              Match each Challonge participant to the internal team used by analytics and matches.
+              {t("mappingDescription")}
             </DialogDescription>
           </DialogHeader>
 
@@ -489,19 +489,19 @@ export function TournamentTeamsTab({
               instead of re-scanning the picker column they just filled in. */}
           <WizardShell
             steps={[
-              { key: "map", label: "Map participants", state: onConfirmStep ? "done" : "current" },
-              { key: "confirm", label: "Confirm", state: onConfirmStep ? "current" : "todo" }
+              { key: "map", label: t("mapParticipants"), state: onConfirmStep ? "done" : "current" },
+              { key: "confirm", label: t("confirm"), state: onConfirmStep ? "current" : "todo" }
             ]}
             footer={{
               back: onConfirmStep ? () => setChallongeSyncStep("map") : undefined,
               next: onConfirmStep
                 ? {
-                    label: syncTeamsMutation.isPending ? "Syncing…" : "Sync mappings",
+                    label: syncTeamsMutation.isPending ? tx("syncing") : tx("syncMappings"),
                     onClick: submitChallongeMappings,
                     disabled: !canSubmitChallongeMappings || syncTeamsMutation.isPending
                   }
                 : {
-                    label: "Continue",
+                    label: t("continue"),
                     onClick: () => setChallongeSyncStep("confirm"),
                     disabled: !canSubmitChallongeMappings
                   },
@@ -513,7 +513,7 @@ export function TournamentTeamsTab({
                   onClick={closeChallongeSyncDialog}
                   disabled={syncTeamsMutation.isPending}
                 >
-                  Cancel
+                  {t("cancel")}
                 </Button>
               )
             }}
@@ -521,9 +521,7 @@ export function TournamentTeamsTab({
             {onConfirmStep ? (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
-                  {selectedChallongeMappings.length} of {challongeParticipants.length} Challonge
-                  participants will be written to the internal teams below. Repeating the sync
-                  produces the same result.
+                  {tx("mappingSummary", { selected: selectedChallongeMappings.length, total: challongeParticipants.length })}
                 </p>
                 <ul className="divide-y divide-border/60 rounded-md border border-border/60">
                   {confirmedChallongeRows.map((row) => (
@@ -553,16 +551,16 @@ export function TournamentTeamsTab({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <Badge variant="secondary" className="tabular-nums">
-                      {challongeParticipants.length} participants
+                      {t("participantsCount", { count: challongeParticipants.length })}
                     </Badge>
                     <Badge
                       tone={activeUnmappedParticipants.length ? "danger" : "neutral"}
                       className="tabular-nums"
                     >
-                      {activeUnmappedParticipants.length} unmapped
+                      {t("unmappedCount", { count: activeUnmappedParticipants.length })}
                     </Badge>
                     <Badge variant="secondary" className="tabular-nums">
-                      {selectedChallongeMappings.length} selected
+                      {t("selectedCount", { count: selectedChallongeMappings.length })}
                     </Badge>
                   </div>
                   <Button
@@ -578,7 +576,7 @@ export function TournamentTeamsTab({
                     }
                   >
                     <Sparkles className="mr-2 h-4 w-4" aria-hidden />
-                    Apply suggestions
+                    {t("apply")}
                   </Button>
                 </div>
 
@@ -586,11 +584,11 @@ export function TournamentTeamsTab({
                   <Table>
                     <TableHeader>
                       <TableRow className={tableStyles.headerRow}>
-                        <TableHead className={tableStyles.head}>Challonge participant</TableHead>
-                        <TableHead className={tableStyles.head}>Group</TableHead>
-                        <TableHead className={tableStyles.head}>Current</TableHead>
-                        <TableHead className={tableStyles.head}>Suggestion</TableHead>
-                        <TableHead className={tableStyles.head}>Internal team</TableHead>
+                        <TableHead className={tableStyles.head}>{tx("participant")}</TableHead>
+                        <TableHead className={tableStyles.head}>{t("group")}</TableHead>
+                        <TableHead className={tableStyles.head}>{t("current")}</TableHead>
+                        <TableHead className={tableStyles.head}>{t("suggestion")}</TableHead>
+                        <TableHead className={tableStyles.head}>{t("internalTeam")}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -599,7 +597,7 @@ export function TournamentTeamsTab({
                           <TableCell className={tableStyles.cell} colSpan={5}>
                             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
                               <Spinner />
-                              Loading Challonge participants…
+                              {t("loadingParticipants")}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -623,13 +621,15 @@ export function TournamentTeamsTab({
                                     {participant.name}
                                   </div>
                                   <div className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-                                    #{participant.participant_id} · Challonge #
-                                    {participant.challonge_id}
+                                    {tx("participantNumber", {
+                                      id: participant.participant_id,
+                                      challongeId: participant.challonge_id
+                                    })}
                                   </div>
                                 </div>
                               </TableCell>
                               <TableCell className={tableStyles.cell}>
-                                {participant.group_name ?? "Main"}
+                                {participant.group_name ?? tx("mainGroup")}
                               </TableCell>
                               <TableCell className={tableStyles.cell}>
                                 {currentTeam ? (
@@ -637,7 +637,7 @@ export function TournamentTeamsTab({
                                     {currentTeam.name}
                                   </span>
                                 ) : (
-                                  <span className="text-muted-foreground">Unmapped</span>
+                                  <span className="text-muted-foreground">{t("unmapped")}</span>
                                 )}
                               </TableCell>
                               <TableCell className={tableStyles.cell}>
@@ -647,7 +647,7 @@ export function TournamentTeamsTab({
                                     variant="ghost"
                                     size="sm"
                                     className="h-8 max-w-[180px] justify-start px-2"
-                                    aria-label={`Map ${participant.name} to ${suggestedTeam.name}`}
+                                    aria-label={t("mapAria", { participant: participant.name, team: suggestedTeam.name })}
                                     onClick={() =>
                                       setChallongeMappingDraft((current) => ({
                                         ...current,
@@ -659,7 +659,7 @@ export function TournamentTeamsTab({
                                     <span className="truncate">{suggestedTeam.name}</span>
                                   </Button>
                                 ) : (
-                                  <span className="text-muted-foreground">None</span>
+                                  <span className="text-muted-foreground">{t("none")}</span>
                                 )}
                               </TableCell>
                               <TableCell className={tableStyles.cell}>
@@ -682,8 +682,7 @@ export function TournamentTeamsTab({
                         <TableRow className={tableStyles.row}>
                           <TableCell className={tableStyles.cell} colSpan={5}>
                             <div className="py-4 text-sm text-muted-foreground">
-                              No participants came back from Challonge. Check the Challonge link on
-                              the Settings tab, then reopen this dialog.
+                              {t("noParticipants")}
                             </div>
                           </TableCell>
                         </TableRow>

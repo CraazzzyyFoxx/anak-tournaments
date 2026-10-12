@@ -63,8 +63,6 @@ vi.mock("@/stores/workspace.store", () => ({
   ) => selector({ currentWorkspaceId: 1, fetchWorkspaces: vi.fn() })
 }));
 
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
-
 const OTHER_WORKSPACE: Workspace = {
   id: 8,
   slug: "rivals",

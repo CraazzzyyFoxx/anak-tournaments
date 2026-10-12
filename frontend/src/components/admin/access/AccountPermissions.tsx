@@ -1,6 +1,7 @@
 "use client";
 
 import { AccountDisclosure } from "@/components/admin/access/AccountCard";
+import { useTranslations } from "next-intl";
 
 /**
  * What the account's roles add up to, one line per resource. A flat wall of
@@ -8,6 +9,7 @@ import { AccountDisclosure } from "@/components/admin/access/AccountCard";
  * question "can they touch matches?" is one line to scan.
  */
 export function AccountPermissions({ permissions }: Readonly<{ permissions: string[] }>) {
+  const t = useTranslations("adminAccess.common");
   const byResource = new Map<string, string[]>();
   for (const permission of permissions) {
     const dot = permission.indexOf(".");
@@ -19,9 +21,9 @@ export function AccountPermissions({ permissions }: Readonly<{ permissions: stri
   const rows = [...byResource.entries()].sort(([left], [right]) => left.localeCompare(right));
 
   return (
-    <AccountDisclosure title="Effective permissions" summary={permissions.length}>
+    <AccountDisclosure title={t("effectivePermissions")} summary={permissions.length}>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">None. Assign a role to grant access.</p>
+        <p className="text-xs text-muted-foreground">{t("none")}. {t("addRole")}.</p>
       ) : (
         <dl className="space-y-1 font-mono text-xs">
           {rows.map(([resource, actions]) => (

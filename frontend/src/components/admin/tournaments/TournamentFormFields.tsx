@@ -1,6 +1,7 @@
 "use client";
 
 import type { DivisionGridVersion } from "@/types/workspace.types";
+import { useTranslations } from "next-intl";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -68,6 +69,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
   divisionGridVersions = [],
   divisionGridLoading = false,
 }: Readonly<TournamentFormFieldsProps<T>>) {
+  const t = useTranslations("adminTournaments.form");
   const showDescription = mode !== "challonge-create";
   const showInlineChallonge = mode === "edit" || mode === "workspace-edit";
   const showSeparateChallonge = mode === "challonge-create";
@@ -83,19 +85,20 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
       {showSeparateChallonge ? (
         <div className="col-span-full">
           <Label htmlFor={`${idPrefix}-challonge-separate`}>
-            Challonge URL or slug{requiredMark}
+            {t.rich("challongeUrlOrSlugRequired", {
+              required: () => requiredMark
+            })}
           </Label>
           <Input
             id={`${idPrefix}-challonge-separate`}
-            placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
+            placeholder={t("challongePlaceholder")}
             value={challongeSlugValue ?? ""}
             onChange={(event) => onChallongeSlugValueChange?.(event.target.value)}
             required
             className="mt-1.5"
           />
           <p className="mt-1.5 text-xs text-muted-foreground">
-            The Challonge bracket must have group stages enabled (two-stage). All stages will be
-            created automatically.
+            {t("challongeHelp")}
           </p>
         </div>
       ) : null}
@@ -103,8 +106,9 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
       {mode !== "challonge-create" ? (
         <div className="col-span-full">
           <Label htmlFor={`${idPrefix}-name`}>
-            Name
-            {mode === "manual-create" ? requiredMark : null}
+            {mode === "manual-create"
+              ? t.rich("nameRequired", { required: () => requiredMark })
+              : t("name")}
           </Label>
           <Input
             id={`${idPrefix}-name`}
@@ -117,24 +121,24 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
       ) : null}
 
       <div className="col-span-full">
-        <Label htmlFor={`${idPrefix}-slug`}>Public URL slug</Label>
+        <Label htmlFor={`${idPrefix}-slug`}>{t("publicSlug")}</Label>
         <Input
           id={`${idPrefix}-slug`}
           value={value.slug ?? ""}
           onChange={(event) => onChange({ ...value, slug: event.target.value })}
-          placeholder="auto-generated from name if left blank"
+          placeholder={t("slugPlaceholder")}
           className="mt-1.5"
         />
         <p className="mt-1.5 text-xs text-muted-foreground">
           {mode === "edit" || mode === "workspace-edit"
-            ? "Used in the public tournament URL. Changing it keeps the previous link working via a redirect."
-            : "Used in the public tournament URL. Leave blank to generate one from the name."}
+            ? t("slugEditHelp")
+            : t("slugCreateHelp")}
         </p>
       </div>
 
       {showDescription ? (
         <div className="col-span-full">
-          <Label htmlFor={`${idPrefix}-description`}>Description</Label>
+          <Label htmlFor={`${idPrefix}-description`}>{t("description")}</Label>
           <Textarea
             id={`${idPrefix}-description`}
             value={value.description ?? ""}
@@ -146,10 +150,10 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
 
       {showInlineChallonge ? (
         <div className="col-span-full">
-          <Label htmlFor={`${idPrefix}-challonge`}>Challonge URL or Slug</Label>
+          <Label htmlFor={`${idPrefix}-challonge`}>{t("challongeUrlOrSlugTitleCase")}</Label>
           <Input
             id={`${idPrefix}-challonge`}
-            placeholder="e.g. my-tournament or https://challonge.com/my-tournament"
+            placeholder={t("challongePlaceholder")}
             value={value.challonge_slug ?? ""}
             onChange={(event) => onChange({ ...value, challonge_slug: event.target.value })}
             className="mt-1.5"
@@ -162,30 +166,30 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-full">
           {showTeamFormation ? (
             <div>
-              <Label htmlFor={`${idPrefix}-team-formation`}>Team formation</Label>
+              <Label htmlFor={`${idPrefix}-team-formation`}>{t("teamFormation")}</Label>
               <Select
                 value={value.team_formation ?? "balancer"}
                 onValueChange={(nextValue) => onChange({ ...value, team_formation: nextValue })}
               >
                 <SelectTrigger id={`${idPrefix}-team-formation`} className="mt-1.5">
-                  <SelectValue placeholder="Select method" />
+                  <SelectValue placeholder={t("selectMethod")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="balancer">Auto-balance (Balancer)</SelectItem>
-                  <SelectItem value="draft">Live draft</SelectItem>
-                  <SelectItem value="registration">Team registration</SelectItem>
-                  <SelectItem value="solo">Solo registration (FFA)</SelectItem>
+                  <SelectItem value="balancer">{t("formation.balancer")}</SelectItem>
+                  <SelectItem value="draft">{t("formation.draft")}</SelectItem>
+                  <SelectItem value="registration">{t("formation.registration")}</SelectItem>
+                  <SelectItem value="solo">{t("formation.solo")}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="mt-1.5 text-xs text-muted-foreground">
-                How teams are formed for this tournament.
+                {t("teamFormationHelp")}
               </p>
             </div>
           ) : null}
 
           {showDivisionGrid ? (
             <div>
-              <Label htmlFor={`${idPrefix}-division-grid-version`}>Division grid version</Label>
+              <Label htmlFor={`${idPrefix}-division-grid-version`}>{t("divisionGridVersion")}</Label>
               <Select
                 value={value.division_grid_version_id?.toString() ?? "none"}
                 onValueChange={(nextValue) =>
@@ -197,11 +201,11 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
               >
                 <SelectTrigger id={`${idPrefix}-division-grid-version`} className="mt-1.5">
                   <SelectValue
-                    placeholder={divisionGridLoading ? "Loading division grids…" : "Select version"}
+                    placeholder={divisionGridLoading ? t("loadingDivisionGrids") : t("selectVersion")}
                   />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">Workspace default</SelectItem>
+                  <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
                   {divisionGridVersions.map((version) => (
                     <SelectItem key={version.id} value={version.id.toString()}>
                       {version.label} (v{version.version}, {version.status})
@@ -224,7 +228,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
               onCheckedChange={(checked) => onChange({ ...value, is_league: checked === true })}
             />
             <Label htmlFor={`${idPrefix}-is-league`} className="cursor-pointer text-sm font-medium">
-              Treat as league season
+              {t("leagueSeason")}
             </Label>
           </div>
 
@@ -236,7 +240,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
                 onCheckedChange={(checked) => onChange({ ...value, is_finished: checked === true })}
               />
               <Label htmlFor={`${idPrefix}-is-finished`} className="cursor-pointer text-sm font-medium">
-                Mark tournament as finished
+                {t("finished")}
               </Label>
             </div>
           ) : null}
@@ -246,8 +250,9 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
       <div className="col-span-full">
         <Field>
           <FieldLabel htmlFor={`${idPrefix}-date-range`}>
-            Date range
-            {mode === "manual-create" || mode === "challonge-create" ? requiredMark : null}
+            {mode === "manual-create" || mode === "challonge-create"
+              ? t.rich("dateRangeRequired", { required: () => requiredMark })
+              : t("dateRange")}
           </FieldLabel>
           <div className="mt-1.5">
             <DateRangePicker
@@ -262,10 +267,10 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
 
       {showScoring ? (
         <div className="col-span-full border-t border-border/40 pt-4">
-          <p className="mb-3 text-sm font-medium">Scoring points</p>
+          <p className="mb-3 text-sm font-medium">{t("scoringPoints")}</p>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label htmlFor={`${idPrefix}-win-points`}>Win</Label>
+              <Label htmlFor={`${idPrefix}-win-points`}>{t("win")}</Label>
               <NumberInput
                 id={`${idPrefix}-win-points`}
                 value={value.win_points ?? 0}
@@ -274,7 +279,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
               />
             </div>
             <div>
-              <Label htmlFor={`${idPrefix}-draw-points`}>Draw</Label>
+              <Label htmlFor={`${idPrefix}-draw-points`}>{t("draw")}</Label>
               <NumberInput
                 id={`${idPrefix}-draw-points`}
                 value={value.draw_points ?? 0}
@@ -283,7 +288,7 @@ export function TournamentFormFields<T extends TournamentFormFieldsValue>({
               />
             </div>
             <div>
-              <Label htmlFor={`${idPrefix}-loss-points`}>Loss</Label>
+              <Label htmlFor={`${idPrefix}-loss-points`}>{t("loss")}</Label>
               <NumberInput
                 id={`${idPrefix}-loss-points`}
                 value={value.loss_points ?? 0}

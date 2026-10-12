@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useTranslations } from "next-intl";
 import { CheckSquare, XSquare } from "lucide-react";
 
 import { EYEBROW_CLASS, TONE_CLASS } from "@/components/kit/tone";
@@ -92,7 +93,7 @@ function sortActions(left: string, right: string): number {
 
 /** `foo_bar` → `foo bar`; `*` is the whole-resource column. */
 function humanize(value: string): string {
-  return value === "*" ? "All" : value.replaceAll("_", " ");
+  return value.replaceAll("_", " ");
 }
 
 /** Does `wildcard` already grant `entry`? */
@@ -135,6 +136,9 @@ export function PermissionPicker({
   wildcards,
   readOnly = false
 }: Readonly<PermissionPickerProps>) {
+  const t = useTranslations("adminAccess.common");
+  const tp = useTranslations("adminAccess.permissions");
+  const ti = useTranslations("adminAccess.pickerUi");
   const fieldId = useId();
   const [query, setQuery] = useState("");
   const [grantedOnly, setGrantedOnly] = useState(false);
@@ -195,7 +199,7 @@ export function PermissionPicker({
     return (
       <Checkbox
         id={`${fieldId}-${entry.key}`}
-        aria-label={`Toggle ${entry.key}`}
+        aria-label={ti("toggle", { key: entry.key })}
         checked={covered || value.has(entry.key)}
         disabled={readOnly || covered}
         onCheckedChange={(checked) => setKeys([entry.key], checked === true)}
@@ -206,21 +210,21 @@ export function PermissionPicker({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <p className={EYEBROW_CLASS}>Permissions</p>
+        <p className={EYEBROW_CLASS}>{t("permissions")}</p>
         <Badge variant="outline" className="tabular-nums">
-          {selectedCount}/{catalog.length} selected
+          {t("selectedSummary", { selected: selectedCount, total: catalog.length })}
         </Badge>
         {showBulkControls ? (
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <SearchField
               containerClassName="w-full sm:w-52"
-              label="Filter permissions"
-              placeholder="Filter permissions…"
+              label={t("filterPermissions")}
+              placeholder={t("searchPermissions")}
               value={query}
               onValueChange={setQuery}
             />
             <FilterChip active={grantedOnly} onClick={() => setGrantedOnly(!grantedOnly)}>
-              Selected only
+              {t("selectedOnly")}
             </FilterChip>
             {readOnly ? null : (
               <>
@@ -232,7 +236,7 @@ export function PermissionPicker({
                   onClick={() => setKeys(visible.map((entry) => entry.key), true)}
                 >
                   <CheckSquare aria-hidden className="size-4" />
-                  Select all
+                  {t("selectAll")}
                 </Button>
                 <Button
                   type="button"
@@ -244,7 +248,7 @@ export function PermissionPicker({
                   }
                 >
                   <XSquare aria-hidden className="size-4" />
-                  Clear all
+                  {t("clearAll")}
                 </Button>
               </>
             )}
@@ -275,8 +279,10 @@ export function PermissionPicker({
                   <span className="block font-mono text-xs font-semibold">{wildcard}</span>
                   <span className="mt-0.5 block text-xs">
                     {wildcard === GLOBAL_WILDCARD
-                      ? "Everything, including permissions added later. Grant it only where you would grant your own account."
-                      : `Every current and future action on ${wildcard.slice(0, wildcard.indexOf("."))}.`}
+                      ? tp("everything")
+                      : tp("everythingScoped", {
+                          resource: wildcard.slice(0, wildcard.indexOf("."))
+                        })}
                   </span>
                 </span>
               </label>
@@ -287,17 +293,19 @@ export function PermissionPicker({
 
       {catalog.length === 0 ? (
         <EmptyNote size="sm">
-          No permissions are available to grant here.
+          {t("actionUnavailable")}
         </EmptyNote>
       ) : groups.length === 0 ? (
         <EmptyNote size="sm">
-          Nothing matches this filter.
+          {t("nothingHere")}
         </EmptyNote>
       ) : mode === "list" ? (
         <div className="max-h-[52dvh] space-y-3 overflow-y-auto rounded-md border border-border p-2">
           {groups.map((group) => (
             <div key={group.resource} className="space-y-1">
-              <p className={EYEBROW_CLASS}>{humanize(group.resource)}</p>
+              <p className={EYEBROW_CLASS}>
+                {group.resource === "*" ? ti("all") : humanize(group.resource)}
+              </p>
               <ul className="grid gap-x-3 gap-y-1 sm:grid-cols-2">
                 {group.entries.map((entry) => (
                   <li key={entry.key} className="min-w-0">
@@ -327,7 +335,7 @@ export function PermissionPicker({
           <Table wrapperClassName="min-w-[760px] overflow-visible">
             <TableHeader className="sticky top-0 z-10 bg-background">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="sticky left-0 z-20 w-56 bg-background">Resource</TableHead>
+                <TableHead className="sticky left-0 z-20 w-56 bg-background">{t("resource")}</TableHead>
                 {actions.map((action) => {
                   const columnKeys = groups
                     .map((group) => group.byAction.get(action))
@@ -337,14 +345,16 @@ export function PermissionPicker({
                     <TableHead key={action} className="min-w-24 bg-background text-center">
                       <span className="flex flex-col items-center gap-1.5">
                         <Checkbox
-                          aria-label={`Toggle every ${action} permission`}
+                          aria-label={ti("toggleAction", { action })}
                           checked={
                             columnKeys.length > 0 && columnKeys.every((key) => value.has(key))
                           }
                           disabled={readOnly || columnKeys.length === 0}
                           onCheckedChange={(checked) => setKeys(columnKeys, checked === true)}
                         />
-                        <span className="text-xs capitalize">{humanize(action)}</span>
+                        <span className="text-xs capitalize">
+                          {action === "*" ? ti("all") : humanize(action)}
+                        </span>
                       </span>
                     </TableHead>
                   );
@@ -360,14 +370,14 @@ export function PermissionPicker({
                     <TableCell className="sticky left-0 z-[1] bg-background">
                       <span className="flex items-center gap-3">
                         <Checkbox
-                          aria-label={`Toggle every ${group.resource} permission`}
+                          aria-label={ti("toggleResource", { resource: group.resource })}
                           checked={rowGranted === rowKeys.length}
                           disabled={readOnly}
                           onCheckedChange={(checked) => setKeys(rowKeys, checked === true)}
                         />
                         <span className="min-w-0">
                           <span className="block truncate text-sm font-medium">
-                            {humanize(group.resource)}
+                            {group.resource === "*" ? ti("all") : humanize(group.resource)}
                           </span>
                           <span className="block text-xs tabular-nums text-muted-foreground">
                             {rowGranted}/{rowKeys.length}
@@ -380,8 +390,8 @@ export function PermissionPicker({
                       if (!entry) {
                         return (
                           <TableCell key={action} className="text-center text-muted-foreground">
-                            <span aria-hidden>&mdash;</span>
-                            <span className="sr-only">Not applicable</span>
+                            <span aria-hidden>—</span>
+                            <span className="sr-only">{t("notApplicable")}</span>
                           </TableCell>
                         );
                       }

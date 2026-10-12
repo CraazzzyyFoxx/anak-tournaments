@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
 
 import {
@@ -35,6 +36,8 @@ export function useEncounterForm({
   stages: Stage[];
   onSaved: () => void;
 }>) {
+  const t = useTranslations("adminMatches.encounters");
+  const tForm = useTranslations("adminMatches.form");
   const [mode, setMode] = useState<EncounterFormMode | null>(null);
   const [editing, setEditing] = useState<Encounter | null>(null);
   const [value, setValue] = useState<EncounterFormState>(emptyEncounterForm(null, null));
@@ -57,9 +60,10 @@ export function useEncounterForm({
       const created = editing == null;
       onSaved();
       close();
-      notify.success(created ? "Encounter created" : "Encounter updated");
+      notify.success(created ? t("create") : t("editTitle"));
     },
-    onError: (failure: Error) => setError(`Could not save the encounter. ${failure.message}`)
+    onError: (failure: Error) =>
+      setError(t("saveFailed", { message: t("createDescription"), error: failure.message }))
   });
 
   // `saveMutation` is rebuilt on every state transition; `reset` is not, so the
@@ -104,7 +108,7 @@ export function useEncounterForm({
     submit: () => {
       const invalid = encounterFormError(value);
       if (invalid) {
-        setError(invalid);
+        setError(tForm(invalid as "enterName" | "selectStageBefore" | "differentTeams"));
         return;
       }
       saveMutation.mutate(value);

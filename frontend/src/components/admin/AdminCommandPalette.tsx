@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useCommandState } from "cmdk";
 import { useRouter } from "next/navigation";
 
@@ -45,6 +46,7 @@ function ResultCountAnnouncer() {
 }
 
 export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<AdminCommandPaletteProps>) {
+  const t = useTranslations("adminShell");
   const router = useRouter();
   const { canAccessAdminRoute } = usePermissions();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
@@ -75,15 +77,12 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput aria-label="Search admin pages" placeholder="Search admin pages…" />
+      <CommandInput aria-label={t("commandPalette.search")} placeholder={t("commandPalette.searchPlaceholder")} />
       <ResultCountAnnouncer />
       <CommandList>
-        <CommandEmpty>
-          No admin page matches that. Try a shorter word, such as &ldquo;teams&rdquo; or
-          &ldquo;rank&rdquo;.
-        </CommandEmpty>
+        <CommandEmpty>{t("commandPalette.noMatch")}</CommandEmpty>
         {groups.map((group) => (
-          <CommandGroup key={group.title || "primary"} heading={group.title || "Overview"}>
+          <CommandGroup key={group.title || "primary"} heading={group.title ? t(group.title as never) : t("nav.overview")}>
             {group.items.map((item) => (
               <CommandItem
                 key={item.href}
@@ -92,8 +91,8 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
               >
                 <item.icon aria-hidden className="size-4 text-muted-foreground" />
                 <div className="flex flex-col gap-0.5">
-                  <span>{item.title}</span>
-                  <span className="text-xs text-muted-foreground">{item.description}</span>
+                  <span>{t(item.title as never)}</span>
+                  <span className="text-xs text-muted-foreground">{t(item.description as never)}</span>
                 </div>
               </CommandItem>
             ))}
@@ -103,18 +102,18 @@ export function AdminCommandPalette({ groups, open, onOpenChange }: Readonly<Adm
             into one browser would otherwise make "standings" unfindable: the
             page it lives on is called Matches. */}
         {viewEntries.length > 0 ? (
-          <CommandGroup heading="Views">
+          <CommandGroup heading={t("commandPalette.views")}>
             {viewEntries.map(({ item, view }) => (
               <CommandItem
                 key={view.href}
-                value={`${item.title} ${view.label}`}
+                value={`${t(item.title as never)} ${t(view.label as never)}`}
                 onSelect={() => handleSelect(view.href)}
               >
                 <item.icon aria-hidden className="size-4 text-muted-foreground" />
                 <span>
-                  {item.title}
+                  {t(item.title as never)}
                   <span aria-hidden> › </span>
-                  {view.label}
+                  {t(view.label as never)}
                 </span>
               </CommandItem>
             ))}

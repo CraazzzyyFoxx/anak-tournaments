@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
@@ -15,10 +16,11 @@ import { SettingsSectionPage } from "../SettingsSection";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 export default function DangerSettingsPage() {
+  const t = useTranslations("adminTournament.danger");
   return (
     <SettingsSectionPage
       section="danger"
-      description="Removing this tournament and everything recorded against it."
+      description={t("description")}
     >
       {({ tournament, tournamentId }) => (
         <DeleteTournament tournament={tournament} tournamentId={tournamentId} />
@@ -31,6 +33,7 @@ function DeleteTournament({
   tournament,
   tournamentId
 }: Readonly<{ tournament: Tournament; tournamentId: number }>) {
+  const t = useTranslations("adminTournament.danger");
   const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -39,10 +42,10 @@ function DeleteTournament({
     mutationFn: () => adminService.deleteTournament(tournamentId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.list() });
-      notify.success("Tournament deleted successfully");
+      notify.success(t("deleted"));
       router.push("/admin/tournaments");
     },
-    onError: (error) => notify.apiError(error, { title: "Could not delete the tournament" })
+    onError: (error) => notify.apiError(error, { title: t("deleteError") })
   });
 
   return (
@@ -50,8 +53,7 @@ function DeleteTournament({
       <Card className="border-destructive/30 bg-destructive/5">
         <CardContent className="flex flex-col gap-4 py-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-destructive/80">
-            Deleting a tournament permanently removes its logs, rosters and standings. There is no
-            undo, and nothing else on this page is irreversible.
+            {t("warning")}
           </p>
           <Button
             type="button"
@@ -61,7 +63,7 @@ function DeleteTournament({
             onClick={() => setConfirmOpen(true)}
           >
             <Trash2 aria-hidden className="mr-2 size-4" />
-            Delete tournament
+            {t("delete")}
           </Button>
         </CardContent>
       </Card>
@@ -71,15 +73,15 @@ function DeleteTournament({
         onOpenChange={setConfirmOpen}
         pending={deleteMutation.isPending}
         intent={{
-          title: "Delete tournament",
-          description: `“${tournament.name}” and every piece of workspace data linked to it will be removed. This cannot be undone.`,
-          confirmLabel: "Delete tournament",
+          title: t("delete"),
+          description: t("confirmDescription", { name: tournament.name }),
+          confirmLabel: t("delete"),
           tone: "danger",
           cascade: [
-            "Tournament stages",
-            "Teams and players",
-            "Encounters and matches",
-            "Standings rows"
+            t("stages"),
+            t("teamsPlayers"),
+            t("encountersMatches"),
+            t("standingsRows")
           ],
           // Typing the name is what separates this from every other confirm in
           // the admin: it is the one action no invalidation can walk back.

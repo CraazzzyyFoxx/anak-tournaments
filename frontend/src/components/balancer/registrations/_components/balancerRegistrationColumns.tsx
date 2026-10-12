@@ -22,13 +22,17 @@ import {
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { SubroleCatalog } from "@/types/registration.types";
 import type { FormField } from "@/types/forms.types";
+import {
+  builtinAnswerLabel,
+  localizedStatusMeta,
+  type RegistrationsTranslator
+} from "@/components/balancer/registrations/_components/registrationsTranslator";
 import { AnswerValue } from "@/components/forms/AnswerValue";
 import { answerSearchText } from "@/lib/forms/answers";
 import { identityProvider } from "@/lib/forms/builtin-keys";
 
 import {
   AdmissionReasonCell,
-  BUILTIN_ANSWER_LABELS,
   DEFAULT_VISIBLE_ANSWER_KEYS,
   ExclusionCell,
   ParticipantCell,
@@ -44,6 +48,7 @@ import {
 
 
 export function buildBalancerRegistrationColumns(
+  t: RegistrationsTranslator,
   subroleCatalog?: SubroleCatalog,
   /** Gates the presence of the Subscription chip column only. Admission itself
    *  is read off each row, so the old `requireOpenProfile` twin of this flag is
@@ -76,7 +81,7 @@ export function buildBalancerRegistrationColumns(
           // not scale, and under `any` mode a red provider cell next to a green
           // one reads as a failure when it is not.
           id: "subscription",
-          header: "Subscription",
+          header: t("columns.subscription"),
           // The old client-side sort had no case for this column.
           enableSorting: false,
           cell: ({ row }) => <SubscriptionStatusBadge outcome={row.original.subscription_outcome} />,
@@ -101,7 +106,7 @@ export function buildBalancerRegistrationColumns(
   // alike, since a schema knows no difference between them.
   const answerColumns: ColumnDef<AdminRegistration>[] = answerFields.map((field) => ({
     id: `answer_${field.key}`,
-    header: field.label || BUILTIN_ANSWER_LABELS[field.key] || field.key,
+    header: field.label || builtinAnswerLabel(field.key, t) || field.key,
     // Free-form answers: the old client-side sort had no case for them either.
     enableSorting: false,
     cell: ({ row }) => (
@@ -119,7 +124,7 @@ export function buildBalancerRegistrationColumns(
   return [
     {
       id: "participant",
-      header: "Participant",
+      header: t("columns.participant"),
       accessorFn: (registration) => registration.primary_handle || registration.display_name || "",
       sortingFn: localeTextSort,
       cell: ({ row }) => <ParticipantCell registration={row.original} identityKeys={identityKeys} />,
@@ -143,7 +148,7 @@ export function buildBalancerRegistrationColumns(
     ...answerColumns,
     {
       id: "roles",
-      header: "Roles",
+      header: t("columns.roles"),
       // Highest playable rank, so the strongest players sort together regardless
       // of which role they filled. Taken from the server's `best_rank` — maxing
       // the roles here computed the same number a second time, which is the one
@@ -167,14 +172,14 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "status",
-      header: "Status",
+      header: t("columns.status"),
       accessorFn: (registration) => registration.status || "",
       sortingFn: localeTextSort,
       filterFn: (row: Row<AdminRegistration>, _columnId: string, values: string[]) =>
         values.length === 0 || values.includes(row.original.status),
       cell: ({ row }) => (
         <div className="flex flex-col items-center gap-1">
-          <RegistrationStatusBadge status={row.original.status} meta={row.original.status_meta} />
+          <RegistrationStatusBadge status={row.original.status} meta={localizedStatusMeta(row.original.status_meta, t)} />
           {row.original.submitted_late ? <LateSignUpBadge /> : null}
         </div>
       ),
@@ -194,7 +199,7 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "balancer",
-      header: "Balancer",
+      header: t("columns.balancer"),
       accessorFn: (registration) => registration.balancer_status || "",
       sortingFn: localeTextSort,
       // Two axes on ONE chip, deliberately: `included`/`excluded` is the pool
@@ -218,7 +223,7 @@ export function buildBalancerRegistrationColumns(
         <div className="flex flex-col items-center gap-1">
           <BalancerStatusBadge
             status={row.original.balancer_status}
-            meta={row.original.balancer_status_meta}
+            meta={localizedStatusMeta(row.original.balancer_status_meta, t)}
           />
           {row.original.answers?.reserve === true ? <OnCallBadge /> : null}
         </div>
@@ -232,10 +237,10 @@ export function buildBalancerRegistrationColumns(
           param: "inclusion",
           mode: "single",
           options: [
-            { value: "included", label: "Included" },
-            { value: "excluded", label: "Excluded" },
-            { value: "reserve", label: "On call" },
-            { value: "not_reserve", label: "Not on call" },
+            { value: "included", label: t("columns.included") },
+            { value: "excluded", label: t("columns.excluded") },
+            { value: "reserve", label: t("columns.onCall") },
+            { value: "not_reserve", label: t("columns.notOnCall") },
           ],
         },
         searchValue: (registration) =>
@@ -244,7 +249,7 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "checkin",
-      header: "Check-in",
+      header: t("columns.checkIn"),
       accessorFn: (registration) => (registration.checked_in ? 1 : 0),
       cell: ({ row }) => <CheckInStatusBadge checkedIn={row.original.checked_in} />,
       meta: columnMeta<AdminRegistration>({
@@ -258,7 +263,7 @@ export function buildBalancerRegistrationColumns(
     ...subscriptionColumns,
     {
       id: "admission",
-      header: "Admission",
+      header: t("columns.admission"),
       // D6: the sort is now projected from the same `decision` the cell renders.
       // The accessor this replaced was deliberately blind to the subscription
       // condition its own cell showed, so the column could order a refused
@@ -282,7 +287,7 @@ export function buildBalancerRegistrationColumns(
       // a time to learn this, because the badge showed that something was wrong
       // and never what.
       id: "reason",
-      header: "Reason",
+      header: t("columns.reason"),
       accessorFn: (registration) =>
         primaryAdmissionReason(registration.admission)?.code ?? "",
       sortingFn: localeTextSort,
@@ -304,7 +309,7 @@ export function buildBalancerRegistrationColumns(
       // and nowhere else, and a closed profile an organizer has already checked
       // the player in past is still an admitted row.
       id: "profile",
-      header: "Profile",
+      header: t("columns.profile"),
       accessorFn: (registration) =>
         registration.profiles_open === true ? 2 : registration.profiles_open === false ? 1 : 0,
       cell: ({ row }) =>
@@ -328,7 +333,7 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "submitted",
-      header: "Submitted",
+      header: t("columns.submitted"),
       accessorFn: (registration) => parseValidDate(registration.submitted_at)?.getTime() ?? 0,
       cell: ({ row }) => <SubmittedCell submittedAt={row.original.submitted_at} />,
       meta: columnMeta<AdminRegistration>({
@@ -340,7 +345,7 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "source",
-      header: "Source",
+      header: t("columns.source"),
       accessorFn: (registration) => registration.source || "",
       sortingFn: localeTextSort,
       filterFn: (row: Row<AdminRegistration>, _columnId: string, values: string[]) =>
@@ -354,8 +359,8 @@ export function buildBalancerRegistrationColumns(
           param: "source",
           mode: "single",
           options: [
-            { value: "manual", label: "Manual" },
-            { value: "google_sheets", label: "Google Sheets" },
+            { value: "manual", label: t("columns.manual") },
+            { value: "google_sheets", label: t("columns.googleSheets") },
           ],
         },
         searchValue: (registration) =>
@@ -364,14 +369,14 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "admin_notes",
-      header: "Admin Notes",
+      header: t("columns.adminNotes"),
       accessorFn: (registration) => registration.admin_notes || "",
       sortingFn: localeTextSort,
       cell: ({ row }) =>
         adminNotesEdit ? (
           <InlineEditText
             value={row.original.admin_notes ?? ""}
-            label="Admin notes"
+            label={t("columns.adminNotesLabel")}
             canEdit={adminNotesEdit.canEdit(row.original)}
             onSave={(next) => adminNotesEdit.save(row.original, next)}
           />
@@ -388,7 +393,7 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "reviewed",
-      header: "Reviewed",
+      header: t("columns.reviewed"),
       accessorFn: (registration) => parseValidDate(registration.reviewed_at)?.getTime() ?? 0,
       cell: ({ row }) => <ReviewedCell registration={row.original} />,
       meta: columnMeta<AdminRegistration>({
@@ -402,7 +407,7 @@ export function buildBalancerRegistrationColumns(
     },
     {
       id: "excluded",
-      header: "Exclusion",
+      header: t("columns.exclusion"),
       accessorFn: (registration) => (registration.balancer_status === "excluded" ? 1 : 0),
       cell: ({ row }) => <ExclusionCell registration={row.original} />,
       meta: columnMeta<AdminRegistration>({

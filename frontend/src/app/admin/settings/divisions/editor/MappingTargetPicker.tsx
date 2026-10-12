@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { ChevronDown, RotateCcw } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -36,6 +37,7 @@ export function targetSummary(target: MappingTarget | null): string {
  * proposed, so resolving it is one click on a dot.
  */
 export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<MappingTargetPickerProps>) {
+  const t = useTranslations("adminSettings.divisions.mapping");
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<number | null>(null);
   const focusRef = useRef<HTMLButtonElement>(null);
@@ -75,16 +77,16 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
 
   const hint =
     anchor !== null
-      ? `Click another division to spread ${name} over the range, or the same one to keep it alone.`
+      ? t("spreadHint", { name })
       : proposed
-        ? "The overlap is tied — pick with a dot where the players land, or click a division to choose another."
-        : "Click a division to send the players there; click a second one to spread them over the range between.";
+        ? t("tieHint")
+        : t("chooseHint");
 
   const note = !target
     ? null
     : target.range.length === 1
-      ? `Every player of ${name} lands in ${target.primary.name}.`
-      : `${target.byOverlap ? "Shares follow the rank overlap." : "Shares are even — the range reaches past the rank overlap."} The dot marks where players land.`;
+      ? t("everyPlayer", { name, target: target.primary.name })
+      : t(target.byOverlap ? "overlapShares" : "evenShares");
 
   return (
     <Popover open={open} onOpenChange={toggle}>
@@ -92,7 +94,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
         <Button
           variant="outline"
           size="sm"
-          aria-label={`Target divisions for ${name}: ${targetSummary(target)}`}
+          aria-label={t("targetLabel", { name, summary: targetSummary(target) })}
           className="h-8 w-full min-w-56 justify-between gap-2 px-2 font-normal"
         >
           {target ? (
@@ -107,7 +109,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
               </span>
             </span>
           ) : (
-            <span className="text-warning">Choose where players go</span>
+            <span className="text-warning">{t("chooseTarget")}</span>
           )}
           <ChevronDown aria-hidden className="size-3 shrink-0 opacity-50" />
         </Button>
@@ -115,7 +117,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
       <PopoverContent
         align="start"
         className="w-[26rem] p-0"
-        aria-label={`Target divisions for ${name}`}
+        aria-label={t("targetDivisions", { name })}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           focusRef.current?.focus();
@@ -180,8 +182,8 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
                   <button
                     type="button"
                     aria-pressed={landing}
-                    aria-label={`Players of ${name} land in ${band.name}`}
-                    title={`Players of ${name} land in ${band.name}`}
+                    aria-label={t("playersLand", { source: name, target: band.name })}
+                    title={t("playersLand", { source: name, target: band.name })}
                     onClick={() => land(index)}
                     className="mr-1 grid size-6 shrink-0 place-items-center rounded-full hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
@@ -201,7 +203,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
         </ol>
 
         <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
-          <p className="min-w-0 text-xs text-muted-foreground">{note ?? "Nothing chosen yet."}</p>
+          <p className="min-w-0 text-xs text-muted-foreground">{note ?? t("nothingChosen")}</p>
           {row.kind === "auto" && target?.manual ? (
             <Button
               variant="ghost"
@@ -213,7 +215,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
               }}
             >
               <RotateCcw aria-hidden className="size-3" />
-              Automatic
+              {t("automatic")}
             </Button>
           ) : null}
         </div>

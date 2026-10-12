@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, ClipboardCheck, Gavel, Hourglass, Swords } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
@@ -35,6 +36,7 @@ const PAGE_SIZE = 25;
  */
 export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: number }>) {
   const pathname = usePathname();
+  const t = useTranslations("adminMatches.pregame");
   const roomsQuery = useQuery({
     queryKey: adminQueryKeys.pregameRooms(tournamentId),
     queryFn: () => adminService.getPregameRooms(tournamentId),
@@ -46,7 +48,7 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
 
   const rooms = useMemo(() => sortRooms(roomsQuery.data?.rooms ?? []), [roomsQuery.data]);
 
-  const defs = useMemo(() => pregameRoomFilterDefs(rooms), [rooms]);
+  const defs = useMemo(() => pregameRoomFilterDefs(rooms, (key) => t(key as Parameters<typeof t>[0])), [rooms, t]);
   const filters = useFilters(defs);
   const attentionOnly = filters.values.attention === true;
   // Joined rather than kept as an array: `filters.values` is rebuilt every
@@ -75,18 +77,17 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
   if (!roomsQuery.isLoading && rooms.length === 0) {
     return (
       <EmptyNote
-        title="No pre-game rooms"
+        title={t("noRooms")}
         icon={Swords}
         action={
           <Button asChild size="sm" variant="outline">
             <Link href={`/admin/tournaments/${tournamentId}/settings/pre-game`}>
-              Set up the pre-game phase
+              {t("setup")}
             </Link>
           </Button>
         }
       >
-        A room opens only where a map-veto or hero-ban rule set with a non-empty pool applies.
-        Nothing in this tournament has one yet.
+        {t("setupText")}
       </EmptyNote>
     );
   }
@@ -95,34 +96,34 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
     <div className="space-y-3">
       <StatTileGrid className="xl:grid-cols-5">
         <StatTile
-          label="Needs attention"
+          label={t("needsAttention")}
           value={rooms.filter((room) => room.attention.length > 0).length}
-          detail="Disputed, overdue or waiting on a choice"
+          detail={t("needsAttentionDetail")}
           icon={AlertTriangle}
           tone="danger"
         />
         <StatTile
-          label="Waiting on readiness"
+          label={t("waitingReadiness")}
           value={rooms.filter((room) => room.phase === "readiness").length}
-          detail="A captain has not confirmed"
+          detail={t("waitingReadinessDetail")}
           icon={Hourglass}
           tone="warning"
         />
         <StatTile
-          label="Veto / bans live"
+          label={t("vetoLive")}
           value={rooms.filter((room) => room.phase === "map" || room.phase === "hero").length}
           icon={Swords}
           tone="accent"
         />
         <StatTile
-          label="Reporting"
+          label={t("reporting")}
           value={rooms.filter((room) => room.phase === "report").length}
-          detail="A played map has no agreed result"
+          detail={t("reportingDetail")}
           icon={Gavel}
           tone="info"
         />
         <StatTile
-          label="Done"
+          label={t("done")}
           value={rooms.filter((room) => room.phase === "done").length}
           icon={ClipboardCheck}
           tone="success"
@@ -136,19 +137,19 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
         filterKey={filters.filterKey}
         initialPageSize={PAGE_SIZE}
         columnsStorageKey="pregame-rooms-table-columns"
-        searchPlaceholder="Search match or team"
+        searchPlaceholder={t("search")}
         getRowId={(row) => String(row.encounter_id)}
         toolbar={<FilterBar defs={defs} filters={filters} />}
-        emptyMessage="No room matches this filter."
+        emptyMessage={t("empty")}
         renderMobileCard={(row) => (
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{row.original.name}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {row.original.home_team?.name ?? "TBD"} vs {row.original.away_team?.name ?? "TBD"}
+              {t("teamsVs", { home: row.original.home_team?.name ?? "TBD", away: row.original.away_team?.name ?? "TBD" })}
             </p>
             <p className="text-xs text-muted-foreground">
-              {PHASE_LABEL[row.original.phase]}
-              {row.original.attention.length > 0 ? ` · needs attention` : ""}
+              {t(PHASE_LABEL[row.original.phase] as Parameters<typeof t>[0])}
+              {row.original.attention.length > 0 ? ` · ${t("attentionColumn")}` : ""}
             </p>
           </div>
         )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import adminService from "@/services/admin.service";
@@ -48,6 +49,7 @@ export function useAchievementRuleActions({
   onOverrideSaved: () => void;
   onOverrideRemoved: () => void;
 }) {
+  const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
   const listKey = achievementQueryKeys.adminList(workspaceId);
 
@@ -147,9 +149,7 @@ export function useAchievementRuleActions({
     try {
       parsed = JSON.parse(text) as AchievementRuleExportEnvelope;
     } catch {
-      setImportError(
-        `“${file.name}” is not valid JSON. Import a file produced by Export JSON on this page, unedited.`,
-      );
+      setImportError(t("list.invalidJson", { name: file.name }));
       if (jsonInputRef.current) {
         jsonInputRef.current.value = "";
       }
