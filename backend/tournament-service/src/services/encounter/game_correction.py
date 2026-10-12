@@ -100,7 +100,8 @@ class GameCorrectionService:
         await emit_pick_ban_update(session, encounter.id, kind=PickBanKind.HERO.value)
         await session.commit()
         lines = (await self.games.lines_by_game(session, [game])).get(game.id) or []
-        return {"game": self.games.serialize(game, lines), "reset_downstream": cascaded}
+        claims = (await self.games.claim_payloads(session, [game]))[game.id]
+        return {"game": self.games.serialize(game, lines, claims), "reset_downstream": cascaded}
 
     async def _unwind(self, session: AsyncSession, encounter: Encounter, *, actor_user_id: int, reason: str) -> bool:
         """Take a standing correction back out of the bracket before rewriting it.

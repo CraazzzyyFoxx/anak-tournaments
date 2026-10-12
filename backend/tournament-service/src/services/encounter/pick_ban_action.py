@@ -1257,7 +1257,10 @@ class PickBanActionService:
             if kind == PickBanKind.MAP:
                 games, _claims = await self._game_snapshot(session, encounter)
                 lines = await self.games.lines_by_game(session, games)
-                state["games"] = [self.games.serialize(game, lines.get(game.id, [])) for game in games]
+                payloads = await self.games.claim_payloads(session, games)
+                state["games"] = [
+                    self.games.serialize(game, lines.get(game.id, []), payloads[game.id]) for game in games
+                ]
                 state["series"] = await self._series(session, encounter)
             return state
 
@@ -1364,7 +1367,8 @@ class PickBanActionService:
             "undo": pick_ban_undo.undo_state(rt.pick_ban, rt.steps, rt.submissions),
         }
         if kind == PickBanKind.MAP:
-            state["games"] = [self.games.serialize(game, lines.get(game.id, [])) for game in games]
+            payloads = await self.games.claim_payloads(session, games)
+            state["games"] = [self.games.serialize(game, lines.get(game.id, []), payloads[game.id]) for game in games]
             state["series"] = await self._series(session, rt.encounter)
             state["starting_sides"] = self._sides_state(rt, lines)
         return state

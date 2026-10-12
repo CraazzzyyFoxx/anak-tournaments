@@ -190,6 +190,53 @@ class GameClaimTests(ResultFlowCase):
             self.assertEqual(0, stored.result_version)
             self.assertEqual({0.0}, {seat.score for seat in await self.seats(s)})
 
+    async def test_the_game_payload_carries_each_claim_as_filed(self) -> None:
+        """The room draws its claim tiles from ``claims``: one row per claimant,
+        keyed by participation, numbers exactly as filed (no server-side
+        redaction -- the room decides what a viewer sees before both are in)."""
+        async with self.Session() as s:
+            game = await self.open_game(s, 1)
+            first, second = await self.seats(s)
+
+        async with self.Session() as s:
+            answer = await map_report_service.submit_game_claim(
+                s,
+                game.id,
+                claimant_team_id=first.id,
+                reporter_user_id=self.users[0],
+                results=self.claim(first.id, second.id),
+                basis_version=0,
+            )
+        self.assertEqual(
+            [
+                {
+                    "claimant_team_id": first.id,
+                    "basis_version": 0,
+                    "results": [
+                        {"encounter_team_id": first.id, "score": 3, "placement": None, "column_values": {}},
+                        {"encounter_team_id": second.id, "score": 1, "placement": None, "column_values": {}},
+                    ],
+                }
+            ],
+            answer["game"]["claims"],
+        )
+
+        async with self.Session() as s:
+            answer = await map_report_service.submit_game_claim(
+                s,
+                game.id,
+                claimant_team_id=second.id,
+                reporter_user_id=self.users[1],
+                results=self.claim(second.id, first.id),
+                basis_version=0,
+            )
+        claims = answer["game"]["claims"]
+        self.assertEqual([first.id, second.id], [claim["claimant_team_id"] for claim in claims])
+        self.assertEqual(
+            {second.id: 3, first.id: 1},
+            {line["encounter_team_id"]: line["score"] for line in claims[1]["results"]},
+        )
+
     async def test_a_claim_against_a_superseded_result_is_stale(self) -> None:
         async with self.Session() as s:
             first, second = await self.seats(s)

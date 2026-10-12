@@ -289,7 +289,8 @@ class GameClaimService:
 
     async def _answer(self, session: AsyncSession, game: EncounterGame, *, disputed: bool, resolved: bool) -> dict:
         lines = (await self.games.lines_by_game(session, [game])).get(game.id) or []
-        return {"disputed": disputed, "resolved": resolved, "game": self.games.serialize(game, lines)}
+        claims = (await self.games.claim_payloads(session, [game]))[game.id]
+        return {"disputed": disputed, "resolved": resolved, "game": self.games.serialize(game, lines, claims)}
 
     async def _notify_dispute(
         self,

@@ -473,7 +473,42 @@ class EncounterGameService:
         )
 
     # -- serialization -----------------------------------------------------
-    def serialize(self, game: EncounterGame, lines: Sequence[EncounterGameTeam]) -> dict[str, Any]:
+    async def claim_payloads(
+        self, session: AsyncSession, games: Sequence[EncounterGame]
+    ) -> dict[int, list[dict[str, Any]]]:
+        """``game_id -> the claims filed against it``, wire-shaped, every game keyed.
+
+        Both participations' numbers go out as filed: the room decides what to
+        show a viewer before everyone has claimed, exactly as it did when the
+        claims were ``reports[]`` (spec §6).
+        """
+        grouped = await self.claims_by_game(session, games)
+        by_claim = await self.claim_repo.results_for_claims(
+            session, [claim.id for claims in grouped.values() for claim in claims]
+        )
+        return {
+            game_id: [
+                {
+                    "claimant_team_id": claim.claimant_team_id,
+                    "basis_version": claim.basis_version,
+                    "results": [
+                        {
+                            "encounter_team_id": row.encounter_team_id,
+                            "score": row.score,
+                            "placement": row.placement,
+                            "column_values": dict(row.column_values or {}),
+                        }
+                        for row in by_claim[claim.id]
+                    ],
+                }
+                for claim in claims
+            ]
+            for game_id, claims in grouped.items()
+        }
+
+    def serialize(
+        self, game: EncounterGame, lines: Sequence[EncounterGameTeam], claims: Sequence[dict[str, Any]]
+    ) -> dict[str, Any]:
         return {
             "id": game.id,
             "position": game.position,
@@ -491,6 +526,8 @@ class EncounterGameService:
                 }
                 for row in sorted(lines, key=lambda row: row.encounter_team_id)
             ],
+            #: One per claimant, by participation id; empty until somebody claims.
+            "claims": list(claims),
         }
 
 

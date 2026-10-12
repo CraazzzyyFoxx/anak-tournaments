@@ -500,7 +500,8 @@ def register(broker: Any, logger: Any) -> None:
             await encounter_game_service.select_map(session, encounter, game, map_id=body.map_id)
             await session.commit()
             lines = (await encounter_game_service.lines_by_game(session, [game])).get(game.id) or []
-            return {"game": encounter_game_service.serialize(game, lines)}
+            claims = (await encounter_game_service.claim_payloads(session, [game]))[game.id]
+            return {"game": encounter_game_service.serialize(game, lines, claims)}
 
         return await _run(logger, op)
 
