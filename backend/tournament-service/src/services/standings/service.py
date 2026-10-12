@@ -12,7 +12,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.core import enums
 from shared.core.enums import StageType
-from shared.domain.encounter_scoring import GameLine, ScoringRules, TeamTotals, ffa_rules, team_totals
+from shared.domain.encounter_scoring import GameLine, ScoringRules, TeamTotals, compile_rules, team_totals
 from shared.domain.tournament_utils import (
     completed_encounters as _shared_completed_encounters,
 )
@@ -25,7 +25,6 @@ from shared.services.bracket.swiss_state import bye_counts_by_scope, stopped_sco
 from src import models, schemas
 from src.core import utils
 from src.services.encounter.ffa import ffa_encounter_service
-from src.services.encounter.service import encounter_service
 
 GROUP_STAGE_TYPES = {StageType.ROUND_ROBIN, StageType.SWISS}
 ELIMINATION_STAGE_TYPES = {
@@ -138,22 +137,104 @@ def standing_entities(in_entities: list[str]) -> list[_AbstractLoad]:
     return entities
 
 
+@dataclass(frozen=True, slots=True)
+class Seat:
+    """One participation as the stage table reads it (D55)."""
+
+    team_id: int
+    slot: int
+    score: float
+    placement: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class StageEncounter:
+    """One encounter of a stage, flattened for the ranking engine.
+
+    Everything the engine used to read off the ``tournament.encounter`` row and
+    cannot any more: the bracket position lives in
+    ``tournament.bracket_encounter`` (D22) and the result on the participations
+    (D53, D60). Assembled once by :meth:`StandingsService.load_stage_encounters`
+    so the ranking below stays a pure function of plain data -- which is also
+    what lets the Swiss pairing preview and the tests build one by hand.
+    """
+
+    id: int
+    round: int
+    stage_id: int | None
+    stage_item_id: int | None
+    completed: bool
+    #: The LIVE seats, in slot order.
+    seats: tuple[Seat, ...]
+
+    @property
+    def is_duel(self) -> bool:
+        """Two seats: the only shape ``score_differential`` and head-to-head
+        are defined for (plan §5). A wider encounter is not given an invented
+        home side so the metric can be computed anyway."""
+        return len(self.seats) == 2
+
+    def places(self) -> dict[int, int]:
+        """Each seat's place, best first, equal results sharing a place.
+
+        ``encounter.team.placement`` is what the single result writer decided,
+        so it is the answer whenever it is there. A completed encounter without
+        one -- a Challonge import of a row nobody re-scored -- falls back to
+        competition ranking by score, which is the same rule the engine's own
+        ``_rank`` applies.
+        """
+        if self.seats and all(seat.placement is not None for seat in self.seats):
+            return {seat.team_id: typing.cast(int, seat.placement) for seat in self.seats}
+        places: dict[int, int] = {}
+        place, previous = 0, None
+        for index, seat in enumerate(sorted(self.seats, key=lambda one: (-one.score, one.slot)), 1):
+            if seat.score != previous:
+                place, previous = index, seat.score
+            places[seat.team_id] = place
+        return places
+
+    def winner(self) -> int | None:
+        """The team that finished alone in first, or ``None`` for a draw."""
+        firsts = [team_id for team_id, place in self.places().items() if place == 1]
+        return firsts[0] if len(firsts) == 1 else None
+
+    @property
+    def status(self) -> enums.EncounterStatus:
+        """What ``shared.domain.tournament_utils`` asks of an encounter.
+
+        Those helpers are the ONE definition of "counts toward standings" and
+        of "is this round closed"; they read ``.status`` and ``.id``, so the
+        flattened row answers both rather than forking the predicate here.
+        """
+        return enums.EncounterStatus.COMPLETED if self.completed else enums.EncounterStatus.OPEN
+
+
+def _rounds(encounters: typing.Sequence[StageEncounter]) -> dict[int, int]:
+    """The playable set keyed by id, as ``shared.domain.tournament_utils`` wants
+    it: an encounter with an empty seat is not playable and is left out."""
+    return {
+        encounter.id: encounter.round
+        for encounter in encounters
+        if all(seat.team_id is not None for seat in encounter.seats) and encounter.seats
+    }
+
+
 def _completed_encounters(
-    encounters: typing.Sequence[models.Encounter],
-) -> list[models.Encounter]:
+    encounters: typing.Sequence[StageEncounter],
+) -> list[StageEncounter]:
     """Phase E: delegate to shared predicate to avoid drift between services."""
     return _shared_completed_encounters(encounters)
 
 
 def _completed_encounters_in_finished_rounds(
-    encounters: typing.Sequence[models.Encounter],
-) -> list[models.Encounter]:
+    encounters: typing.Sequence[StageEncounter],
+) -> list[StageEncounter]:
     """Ignore partially completed playable rounds for standings purposes."""
-    return _shared_completed_encounters_in_finished_rounds(encounters)
+    return _shared_completed_encounters_in_finished_rounds(encounters, _rounds(encounters))
 
 
 def _assign_final_round_placements(
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
     data: dict[int, dict[str, float | int]],
 ) -> None:
     """Hand out 1st/2nd from the bracket's structural final round.
@@ -173,12 +254,13 @@ def _assign_final_round_placements(
     if not all(is_completed_encounter(encounter) for encounter in final_matches):
         return
     for match in final_matches:
-        if match.home_score > match.away_score:
-            winner, loser = match.home_team_id, match.away_team_id
-        else:
-            winner, loser = match.away_team_id, match.home_team_id
-        data[typing.cast(int, winner)]["placement"] = 1
-        data[typing.cast(int, loser)]["placement"] = 2
+        winner = match.winner()
+        if winner is None:
+            continue
+        data[winner]["placement"] = 1
+        for seat in match.seats:
+            if seat.team_id != winner:
+                data[seat.team_id]["placement"] = 2
 
 
 def _stage_max_rounds(stage: models.Stage) -> int:
@@ -237,10 +319,17 @@ def normalize_tiebreak_order(
     return ordered
 
 
+def stage_rules(stage: models.Stage) -> ScoringRules:
+    """The stage's compiled ``encounter.scoring_rule`` -- the same row every
+    encounter of the stage points at, so the table and the cards agree by
+    construction (D51)."""
+    return compile_rules(stage.scoring_rule)
+
+
 def _tiebreak_order(stage: models.Stage, *, rules: ScoringRules | None = None) -> list[str]:
     """``rules`` is passed by the FFA builder, which already compiled them."""
     if rules is None and stage.stage_type == StageType.FFA_LEAGUE:
-        rules = ffa_rules(stage)
+        rules = stage_rules(stage)
     columns = rules.column_keys if rules is not None else ()
     if stage.tiebreak_order is not None:
         normalized = normalize_tiebreak_order(stage.tiebreak_order, ffa_columns=columns)
@@ -444,8 +533,10 @@ def _calculate_buchholz(
 
 def _calculate_head_to_head(
     teams_by_id: dict[int, RankedStageTeam],
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
 ) -> None:
+    """Wins between teams level on points. Two-seat encounters only: "who beat
+    whom" has no meaning for a lobby where three teams met at once."""
     points_buckets: dict[float, set[int]] = defaultdict(set)
     for team in teams_by_id.values():
         points_buckets[team.points].add(team.team_id)
@@ -454,16 +545,15 @@ def _calculate_head_to_head(
         if len(team_ids) < 2:
             continue
         for encounter in encounters:
-            if encounter.home_team_id not in team_ids or encounter.away_team_id not in team_ids:
+            if not encounter.is_duel or not team_ids.issuperset(seat.team_id for seat in encounter.seats):
                 continue
-            if encounter.home_score > encounter.away_score:
-                teams_by_id[encounter.home_team_id].head_to_head += 1
-            elif encounter.away_score > encounter.home_score:
-                teams_by_id[encounter.away_team_id].head_to_head += 1
+            winner = encounter.winner()
+            if winner is not None:
+                teams_by_id[winner].head_to_head += 1
 
 
 def prepare_teams_for_groups(
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
     *,
     seed_team_ids: typing.Sequence[int] | None = None,
     bye_counts: dict[int, int] | None = None,
@@ -473,6 +563,15 @@ def prepare_teams_for_groups(
     loss_points: float = 0.0,
     tiebreak_order: list[str] | None = None,
 ) -> list[RankedStageTeam]:
+    """Rank one group's teams from the encounters they played.
+
+    A result is a PLACE inside the encounter now, not a pair of scores: the
+    team alone in first won, teams sharing first drew, everyone else lost. That
+    is exactly what the two score columns said for a duel, and it is also the
+    answer for a group whose encounters seat more than two -- the one thing it
+    cannot say is ``score_differential``, which is a difference between TWO
+    numbers and is therefore only summed for two-seat encounters (plan §5).
+    """
     completed_encounters = _completed_encounters_in_finished_rounds(encounters)
     team_cache: dict[int, RankedStageTeam] = {}
 
@@ -480,35 +579,27 @@ def prepare_teams_for_groups(
         team_cache.setdefault(team_id, RankedStageTeam(team_id=team_id))
 
     for encounter in completed_encounters:
-        for team_id in (encounter.home_team_id, encounter.away_team_id):
-            if team_id not in team_cache:
-                team_cache[team_id] = RankedStageTeam(team_id=team_id)
-
-        home_team = team_cache[typing.cast(int, encounter.home_team_id)]
-        away_team = team_cache[typing.cast(int, encounter.away_team_id)]
-
-        home_team.matches += 1
-        away_team.matches += 1
-        home_team.opponents.append(away_team.team_id)
-        away_team.opponents.append(home_team.team_id)
-        home_team.score_differential += encounter.home_score - encounter.away_score
-        away_team.score_differential += encounter.away_score - encounter.home_score
-
-        if encounter.home_score > encounter.away_score:
-            home_team.wins += 1
-            home_team.points += win_points
-            away_team.loses += 1
-            away_team.points += loss_points
-        elif encounter.home_score < encounter.away_score:
-            away_team.wins += 1
-            away_team.points += win_points
-            home_team.loses += 1
-            home_team.points += loss_points
-        else:
-            home_team.draws += 1
-            home_team.points += draw_points
-            away_team.draws += 1
-            away_team.points += draw_points
+        seats = encounter.seats
+        for seat in seats:
+            team_cache.setdefault(seat.team_id, RankedStageTeam(team_id=seat.team_id))
+        places = encounter.places()
+        drawn = sum(1 for place in places.values() if place == 1) > 1
+        for seat in seats:
+            team = team_cache[seat.team_id]
+            team.matches += 1
+            team.opponents.extend(other.team_id for other in seats if other is not seat)
+            if encounter.is_duel:
+                opponent = next(other for other in seats if other is not seat)
+                team.score_differential += int(seat.score) - int(opponent.score)
+            if places[seat.team_id] != 1:
+                team.loses += 1
+                team.points += loss_points
+            elif drawn:
+                team.draws += 1
+                team.points += draw_points
+            else:
+                team.wins += 1
+                team.points += win_points
 
     for team_id, bye_count in (bye_counts or {}).items():
         team_cache.setdefault(team_id, RankedStageTeam(team_id=team_id))
@@ -524,29 +615,42 @@ def prepare_teams_for_groups(
     return ordered
 
 
+def _participants(encounters: typing.Sequence[StageEncounter]) -> list[int]:
+    """Every team that played one of these encounters, in first-seen order."""
+    return list(dict.fromkeys(seat.team_id for encounter in encounters for seat in encounter.seats))
+
+
+def _loser_ids(encounter: StageEncounter) -> list[int]:
+    """Everyone this encounter did NOT hand first place to.
+
+    A drawn elimination match has no winner and therefore no loser -- it is a
+    result the bracket cannot advance either, which is why nothing here invents
+    one from the slot order.
+    """
+    winner = encounter.winner()
+    return [] if winner is None else [seat.team_id for seat in encounter.seats if seat.team_id != winner]
+
+
 def prepare_teams_for_playoffs_double_elimination(
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for double elimination playoffs")
     completed_encounters = _completed_encounters_in_finished_rounds(encounters)
-    participants = list(
-        {match.home_team_id for match in completed_encounters} | {match.away_team_id for match in completed_encounters}
-    )
+    participants = _participants(completed_encounters)
     data: dict[int, dict[str, float | int]] = {
-        typing.cast(int, participant): {"win": 0, "lose": 0, "placement": 0} for participant in participants
+        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
     }
 
     _assign_final_round_placements(encounters, data)
 
     for encounter in completed_encounters:
-        if encounter.home_score > encounter.away_score:
-            data[typing.cast(int, encounter.home_team_id)]["win"] += 1
-            data[typing.cast(int, encounter.away_team_id)]["lose"] += 1
-        else:
-            data[typing.cast(int, encounter.away_team_id)]["win"] += 1
-            data[typing.cast(int, encounter.home_team_id)]["lose"] += 1
+        winner = encounter.winner()
+        if winner is not None:
+            data[winner]["win"] += 1
+        for loser in _loser_ids(encounter):
+            data[loser]["lose"] += 1
 
-    lower_bracket_games: dict[int, list[models.Encounter]] = {}
+    lower_bracket_games: dict[int, list[StageEncounter]] = {}
     global_placement = len(participants)
 
     for encounter in [encounter for encounter in completed_encounters if encounter.round < 0]:
@@ -555,10 +659,7 @@ def prepare_teams_for_playoffs_double_elimination(
     for matches in lower_bracket_games.values():
         losers: list[int] = []
         for match in matches:
-            if match.home_score > match.away_score:
-                losers.append(typing.cast(int, match.away_team_id))
-            else:
-                losers.append(typing.cast(int, match.home_team_id))
+            losers.extend(_loser_ids(match))
 
         global_placement -= len(losers) - 1
         for loser in losers:
@@ -583,32 +684,25 @@ def prepare_teams_for_playoffs_double_elimination(
 
 
 def prepare_teams_for_playoffs_single_elimination(
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
 ) -> list[schemas.StandingTeamDataWithRanking]:
     logger.info("Preparing teams for single elimination playoffs")
     completed_encounters = _completed_encounters_in_finished_rounds(encounters)
-    participants = list(
-        {match.home_team_id for match in completed_encounters} | {match.away_team_id for match in completed_encounters}
-    )
+    participants = _participants(completed_encounters)
 
     data: dict[int, dict[str, float | int]] = {
-        typing.cast(int, participant): {"win": 0, "lose": 0, "placement": 0} for participant in participants
+        participant: {"win": 0, "lose": 0, "placement": 0} for participant in participants
     }
-    round_of_loss: dict[int, int | None] = {typing.cast(int, team): None for team in participants}
+    round_of_loss: dict[int, int | None] = dict.fromkeys(participants)
 
     for encounter in completed_encounters:
-        if encounter.home_score > encounter.away_score:
-            winner_id = typing.cast(int, encounter.home_team_id)
-            loser_id = typing.cast(int, encounter.away_team_id)
-        else:
-            winner_id = typing.cast(int, encounter.away_team_id)
-            loser_id = typing.cast(int, encounter.home_team_id)
-
-        data[winner_id]["win"] += 1
-        data[loser_id]["lose"] += 1
-
-        if round_of_loss[loser_id] is None:
-            round_of_loss[loser_id] = encounter.round
+        winner = encounter.winner()
+        if winner is not None:
+            data[winner]["win"] += 1
+        for loser_id in _loser_ids(encounter):
+            data[loser_id]["lose"] += 1
+            if round_of_loss[loser_id] is None:
+                round_of_loss[loser_id] = encounter.round
 
     valid_rounds = [encounter.round for encounter in completed_encounters if encounter.round > 0]
     if not valid_rounds:
@@ -660,7 +754,7 @@ def prepare_teams_for_playoffs_single_elimination(
 PLAYOFF_CALCULATORS: dict[
     StageType,
     Callable[
-        [typing.Sequence[models.Encounter]],
+        [typing.Sequence[StageEncounter]],
         list[schemas.StandingTeamDataWithRanking],
     ],
 ] = {
@@ -670,7 +764,7 @@ PLAYOFF_CALCULATORS: dict[
 
 
 def _infer_stage_type_from_encounters(
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
 ) -> StageType:
     has_negative = any(encounter.round < 0 for encounter in encounters)
     return StageType.DOUBLE_ELIMINATION if has_negative else StageType.SINGLE_ELIMINATION
@@ -694,7 +788,7 @@ def _build_group_stage_standings(
     tournament: models.Tournament,
     stage: models.Stage,
     stage_item: models.StageItem | None,
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
     *,
     pins: typing.Mapping[int, int] = _EMPTY,
     bye_counts: typing.Mapping[int, int] = _EMPTY,
@@ -781,7 +875,7 @@ def _build_ffa_stage_standings(
     if not seed_ids:
         return []
 
-    rules = ffa_rules(stage)
+    rules = stage_rules(stage)
     totals = team_totals(seed_ids, games, rules)
     teams = [
         RankedStageTeam(
@@ -829,7 +923,7 @@ def _build_ffa_stage_standings(
 def _build_elimination_stage_standings(
     tournament: models.Tournament,
     stage: models.Stage,
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[StageEncounter],
     *,
     pins: typing.Mapping[int, int] = _EMPTY,
 ) -> list[models.Standing]:
@@ -971,8 +1065,8 @@ def calculate_overall_positions(
 
 
 def sort_matches(
-    matches: typing.Sequence[models.Encounter],
-) -> typing.Sequence[models.Encounter]:
+    matches: typing.Sequence[StageEncounter],
+) -> list[StageEncounter]:
     """Phase E: delegate to shared utility."""
     return sort_bracket_matches(matches)
 
@@ -1015,11 +1109,67 @@ class StandingsService:
         logger.debug(f"Retrieved {len(standings)} standings for tournament {tournament_id}")
         return standings
 
+    async def _seats_by_encounter(
+        self, session: AsyncSession, encounter_ids: typing.Sequence[int]
+    ) -> dict[int, list[Seat]]:
+        """The live seats of each encounter, in slot order."""
+        seats: defaultdict[int, list[Seat]] = defaultdict(list)
+        if not encounter_ids:
+            return seats
+        rows = await session.execute(
+            sa.select(models.EncounterTeam)
+            .where(
+                models.EncounterTeam.encounter_id.in_(tuple(encounter_ids)),
+                models.EncounterTeam.active.is_(True),
+                models.EncounterTeam.team_id.is_not(None),
+            )
+            .order_by(models.EncounterTeam.encounter_id, models.EncounterTeam.slot)
+        )
+        for row in rows.scalars():
+            seats[row.encounter_id].append(
+                Seat(team_id=row.team_id, slot=row.slot, score=row.score, placement=row.placement)
+            )
+        return seats
+
+    async def load_stage_encounters(
+        self, session: AsyncSession, stage_id: int
+    ) -> list[StageEncounter]:
+        """One stage's encounters, flattened for the ranking engine.
+
+        Two queries for the whole stage: the cards with their bracket positions,
+        then every live participation of them. The engine never touches an ORM
+        row afterwards, which is what keeps it testable without a database.
+        """
+        rows = (
+            (
+                await session.execute(
+                    sa.select(models.Encounter, models.BracketEncounter)
+                    .join(models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id)
+                    .where(models.BracketEncounter.stage_id == stage_id)
+                    .order_by(models.Encounter.id)
+                )
+            )
+            .tuples()
+            .all()
+        )
+        seats = await self._seats_by_encounter(session, [encounter.id for encounter, _position in rows])
+        return [
+            StageEncounter(
+                id=encounter.id,
+                round=position.round,
+                stage_id=position.stage_id,
+                stage_item_id=position.stage_item_id,
+                completed=is_completed_encounter(encounter),
+                seats=tuple(seats.get(encounter.id, ())),
+            )
+            for encounter, position in rows
+        ]
+
     async def get_completed_match_history_by_tournament(
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> typing.Sequence[models.Encounter]:
+    ) -> list[tuple[models.Encounter, models.BracketEncounter]]:
         """Completed encounters of *closed* rounds, for the standings history.
 
         Deliberately the same set the ranking engine counts
@@ -1034,32 +1184,45 @@ class StandingsService:
         be seen from the completed ones alone. Rounds are scoped per
         (stage, stage_item) — the same scope ``_history_for_standing`` slices by
         — so an unfinished round in group A cannot hide group B's results.
+
+        The bracket position rides along: the caller renders the round and the
+        scope off it, and an encounter with no position (a scrim, a mix) is not
+        part of any stage's history and never enters the join.
         """
         query = (
-            self.encounter_repo.select()
-            .where(
-                models.Encounter.tournament_id == tournament_id,
-                models.Encounter.home_team_id.isnot(None),
-                models.Encounter.away_team_id.isnot(None),
-            )
+            sa.select(models.Encounter, models.BracketEncounter)
+            .join(models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id)
+            .options(selectinload(models.Encounter.teams))
+            .where(models.Encounter.tournament_id == tournament_id)
             .order_by(
-                models.Encounter.stage_id.asc().nullslast(),
-                models.Encounter.stage_item_id.asc().nullslast(),
-                sa.func.abs(models.Encounter.round).asc(),
-                models.Encounter.round.desc(),
+                models.BracketEncounter.stage_id.asc().nullslast(),
+                models.BracketEncounter.stage_item_id.asc().nullslast(),
+                sa.func.abs(models.BracketEncounter.round).asc(),
+                models.BracketEncounter.round.desc(),
                 models.Encounter.id.asc(),
             )
         )
-        result = await session.execute(query)
-        by_scope: defaultdict[tuple[int | None, int | None], list[models.Encounter]] = defaultdict(list)
-        for encounter in result.scalars().all():
-            by_scope[(encounter.stage_id, encounter.stage_item_id)].append(encounter)
+        rows = (await session.execute(query)).tuples().all()
+        seats = await self._seats_by_encounter(session, [encounter.id for encounter, _position in rows])
+        by_id = {encounter.id: (encounter, position) for encounter, position in rows}
+        by_scope: defaultdict[tuple[int | None, int | None], list[StageEncounter]] = defaultdict(list)
+        for encounter, position in rows:
+            by_scope[(position.stage_id, position.stage_item_id)].append(
+                StageEncounter(
+                    id=encounter.id,
+                    round=position.round,
+                    stage_id=position.stage_id,
+                    stage_item_id=position.stage_item_id,
+                    completed=is_completed_encounter(encounter),
+                    seats=tuple(seats.get(encounter.id, ())),
+                )
+            )
         # Groups are keyed by the leading ORDER BY columns and each keeps its
         # rows' relative order, so concatenating them restores the query order.
         return [
-            encounter
+            by_id[flat.id]
             for scope_encounters in by_scope.values()
-            for encounter in _completed_encounters_in_finished_rounds(scope_encounters)
+            for flat in _completed_encounters_in_finished_rounds(scope_encounters)
         ]
 
     async def delete_by_tournament(self, session: AsyncSession, tournament_id: int, *, commit: bool = True) -> None:
@@ -1121,8 +1284,8 @@ class StandingsService:
         stage_ids = [s.id for s in stages]
         counts_result = await session.execute(
             sa.select(
-                models.Encounter.stage_id,
-                models.Encounter.stage_item_id,
+                models.BracketEncounter.stage_id,
+                models.BracketEncounter.stage_item_id,
                 sa.func.count(models.Encounter.id).label("total"),
                 sa.func.sum(
                     sa.case(
@@ -1133,10 +1296,11 @@ class StandingsService:
                         else_=0,
                     )
                 ).label("completed"),
-                sa.func.coalesce(sa.func.max(models.Encounter.round), 0).label("max_round"),
+                sa.func.coalesce(sa.func.max(models.BracketEncounter.round), 0).label("max_round"),
             )
-            .where(models.Encounter.stage_id.in_(stage_ids))
-            .group_by(models.Encounter.stage_id, models.Encounter.stage_item_id)
+            .join(models.Encounter, models.Encounter.id == models.BracketEncounter.encounter_id)
+            .where(models.BracketEncounter.stage_id.in_(stage_ids))
+            .group_by(models.BracketEncounter.stage_id, models.BracketEncounter.stage_item_id)
         )
         rows_by_stage: dict[int, list[tuple[int | None, int, int, int]]] = defaultdict(list)
         for row in counts_result:
@@ -1217,9 +1381,7 @@ class StandingsService:
             # results, so fetching its lobbies here would be a query per stage
             # whose rows nothing reads.
             if stage.stage_type in GROUP_STAGE_TYPES:
-                stage_encounters = sort_matches(
-                    await encounter_service.get_by_stage_id(session, tournament.id, stage.id, [])
-                )
+                stage_encounters = sort_matches(await self.load_stage_encounters(session, stage.id))
                 stage_items = sorted(stage.items, key=lambda item: item.order) if stage.items else []
                 if stage_items:
                     for stage_item in stage_items:
@@ -1248,9 +1410,7 @@ class StandingsService:
                         )
                     )
             elif stage.stage_type in ELIMINATION_STAGE_TYPES:
-                stage_encounters = sort_matches(
-                    await encounter_service.get_by_stage_id(session, tournament.id, stage.id, [])
-                )
+                stage_encounters = sort_matches(await self.load_stage_encounters(session, stage.id))
                 all_standings.extend(
                     _build_elimination_stage_standings(
                         tournament, stage, stage_encounters, pins=pins.get((stage.id, None), _EMPTY)

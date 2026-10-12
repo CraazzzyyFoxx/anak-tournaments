@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
+from shared.models.encounter.scoring_rule import ScoringRule
 from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
@@ -173,10 +174,36 @@ class Stage(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="StageRoundBestOf.round",
     )
+    #: Levels 1-2 of the scoring (D51): what one game pays and when the
+    #: encounter is over. Loaded with the stage because ``scoring`` -- which
+    #: every stage read carries -- is built from it.
+    scoring_rule: Mapped[ScoringRule] = relationship(lazy="selectin")
 
     @property
-    def scoring(self) -> dict[str, float | None]:
-        return {"win": self.win_points, "draw": self.draw_points, "loss": self.loss_points}
+    def scoring(self) -> dict[str, typing.Any]:
+        """How this stage scores, as one API block.
+
+        Levels 1-2 come from ``encounter.scoring_rule`` (the row every encounter
+        of the stage also points at), level 3 -- the points a result pays in the
+        table -- from the stage's own columns. One block because an organizer
+        edits them as one thing, and because splitting them put the FFA half
+        under a name (``ffa_scoring``) that stopped being true the moment a duel
+        had a rule row too.
+
+        ``preset``/``formula`` read as the ``wins`` preset while the rule is not
+        loaded yet (a stage being built in memory); a flushed stage always has
+        one.
+        """
+        rule = self.__dict__.get("scoring_rule")
+        return {
+            "win": self.win_points,
+            "draw": self.draw_points,
+            "loss": self.loss_points,
+            "preset": rule.preset if rule is not None else "wins",
+            "columns": [dict(column) for column in (rule.columns or ())] if rule is not None else [],
+            "placement_points": [float(points) for points in (rule.placement_points or ())] if rule is not None else [],
+            "formula": rule.game_formula if rule is not None else "win",
+        }
 
     @property
     def has_custom_bracket(self) -> bool:
@@ -188,22 +215,6 @@ class Stage(db.TimeStampIntegerMixin):
             "default": self.best_of_default,
             "by_round": {row.round: row.best_of for row in self.round_best_of},
             "final": self.best_of_final,
-        }
-
-    @property
-    def ffa_scoring(self) -> dict[str, typing.Any]:
-        """The ``ffa_scoring`` block of the API, rebuilt from the columns.
-
-        An empty column list is a placement-only league and is shown as such;
-        only a stage not yet flushed (column still ``None``, the server default
-        not applied) reads the default block.
-        """
-        return {
-            "columns": [
-                dict(column) for column in (self.ffa_columns if self.ffa_columns is not None else DEFAULT_FFA_COLUMNS)
-            ],
-            "placement_points": list(self.ffa_placement_points or ()),
-            "formula": self.ffa_formula or DEFAULT_FFA_FORMULA,
         }
 
 

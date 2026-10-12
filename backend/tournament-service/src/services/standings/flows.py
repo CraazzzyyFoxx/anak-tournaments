@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.domain.tournament_utils import sort_bracket_matches
 from src import models, schemas
 from src.core import config, utils
+from src.services.encounter.flows import to_summary
 from src.services.team.flows import flows_service as team_flows_service
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
@@ -32,28 +33,35 @@ def _loaded_relationship(model: typing.Any, name: str) -> typing.Any | None:
     return getattr(model, name)
 
 
-def _history_by_team(encounters: typing.Sequence[models.Encounter]) -> dict[int, list[models.Encounter]]:
-    histories: defaultdict[int, list[models.Encounter]] = defaultdict(list)
-    for encounter in encounters:
-        if encounter.home_team_id is not None:
-            histories[encounter.home_team_id].append(encounter)
-        if encounter.away_team_id is not None:
-            histories[encounter.away_team_id].append(encounter)
+#: One completed encounter of the history, with the bracket position its scope
+#: and round come from.
+HistoryRow = tuple[models.Encounter, models.BracketEncounter]
+
+
+def _history_by_team(encounters: typing.Sequence[HistoryRow]) -> dict[int, list[HistoryRow]]:
+    """Index the history by the teams that actually sat in each encounter.
+
+    Off the participations, not two team columns: a lobby of four belongs in
+    four teams' histories, and a seat that changed hands belongs to whoever
+    holds it now.
+    """
+    histories: defaultdict[int, list[HistoryRow]] = defaultdict(list)
+    for encounter, position in encounters:
+        for seat in encounter.teams:
+            if seat.active and seat.team_id is not None:
+                histories[seat.team_id].append((encounter, position))
     return dict(histories)
 
 
 def _history_for_standing(
     standing: models.Standing,
-    encounters: typing.Sequence[models.Encounter],
+    encounters: typing.Sequence[HistoryRow],
 ) -> list[schemas.EncounterSummaryRead]:
     return [
-        schemas.EncounterSummaryRead(
-            **encounter.to_dict(),
-            score=schemas.Score(home=encounter.home_score, away=encounter.away_score),
-        )
-        for encounter in encounters
-        if encounter.stage_id == standing.stage_id
-        and (standing.stage_item_id is None or encounter.stage_item_id == standing.stage_item_id)
+        to_summary(encounter, position)
+        for encounter, position in encounters
+        if position.stage_id == standing.stage_id
+        and (standing.stage_item_id is None or position.stage_item_id == standing.stage_item_id)
     ]
 
 
@@ -67,7 +75,7 @@ class StandingsFlowsService:
         standing: models.Standing,
         entities: list[str],
         *,
-        histories_by_team: dict[int, list[models.Encounter]] | None = None,
+        histories_by_team: dict[int, list[HistoryRow]] | None = None,
         tournament_cache: schemas.TournamentRead | None = None,
         team_cache: dict[int, schemas.TeamRead] | None = None,
     ) -> schemas.StandingRead:

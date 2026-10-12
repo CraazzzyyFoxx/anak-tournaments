@@ -166,7 +166,12 @@ def bracket_seeds(
 
 
 def resolve_seeds(skeleton: BracketSkeleton, teams: dict[int, int]) -> BracketSkeleton:
-    """Swap placeholder negative seed ids for the teams they stand for."""
+    """Swap placeholder negative seed ids for the teams they stand for.
+
+    Over every SLOT of a pairing, not two sides: a pairing is ``team_ids[i]``
+    seeded into slot ``i + 1`` (D55), and a placeholder nobody named resolves
+    to an empty seat.
+    """
 
     def team_for(seed: int | None) -> int | None:
         if seed is None or seed >= 0:
@@ -176,7 +181,7 @@ def resolve_seeds(skeleton: BracketSkeleton, teams: dict[int, int]) -> BracketSk
     return replace(
         skeleton,
         pairings=[
-            replace(pairing, home_team_id=team_for(pairing.home_team_id), away_team_id=team_for(pairing.away_team_id))
+            replace(pairing, team_ids=tuple(team_for(team_id) for team_id in pairing.team_ids))
             for pairing in skeleton.pairings
         ],
     )
