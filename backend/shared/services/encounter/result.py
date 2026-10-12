@@ -69,7 +69,7 @@ async def apply_result(
     session: AsyncSession,
     encounter: Encounter,
     *,
-    source: EncounterResultSource | None,
+    source: EncounterResultSource,
     totals: Mapping[int, float],
     placements: Mapping[int, int],
     action: EncounterResultAuditAction,
@@ -81,18 +81,63 @@ async def apply_result(
 ) -> EncounterResultAudit:
     """Write one standing onto the participations and journal the transition.
 
-    ``totals``/``placements`` state the WHOLE standing: a live seat the caller
-    left out scored nothing and holds no place. Partial writes are how a
-    corrected result used to keep a stale number next to a fresh one.
+    ``source`` is the result that stands after this write, and there is no way
+    to spell "none" here: an encounter loses its official result through
+    :func:`reopen`, or through :func:`refresh_from_games` finding the series
+    unfinished — never through a caller that left a keyword out.
 
-    ``source`` is the result that stands after this write; ``None`` means no
-    official result — the numbers are the running tally of the confirmed games
-    (D57) and the encounter is not complete. The caller must hold the row's
-    lock (:func:`lock_encounter`): ``result_version`` is read, bumped and
-    journalled here, and the journal's one-row-per-version constraint is what
-    catches a caller who did not.
+    ``totals``/``placements`` state the WHOLE standing, keyed by
+    ``encounter_team_id``: a live seat the caller left out scored nothing and
+    holds no place, and an id that is not a live seat is refused rather than
+    ignored. Passing a ``tournament.team`` id here -- two ints, both called
+    "team" -- would otherwise zero every seat and confirm that.
+
+    The caller must hold the row's lock (:func:`lock_encounter`):
+    ``result_version`` is read, bumped and journalled here, and the journal's
+    one-row-per-version constraint is what catches a caller who did not.
     """
+    if source is None:
+        raise ValueError("apply_result writes a standing result; use reopen() to take one off")
+    return await _write(
+        session,
+        encounter,
+        source=source,
+        totals=totals,
+        placements=placements,
+        action=action,
+        audit_source=audit_source,
+        actor_user_id=actor_user_id,
+        reason=reason,
+        game=game,
+        scope=scope,
+    )
+
+
+async def _write(
+    session: AsyncSession,
+    encounter: Encounter,
+    *,
+    source: EncounterResultSource | None,
+    totals: Mapping[int, float],
+    placements: Mapping[int, int],
+    action: EncounterResultAuditAction,
+    audit_source: str,
+    actor_user_id: int | None,
+    reason: str | None,
+    game: EncounterGame | None = None,
+    scope: AuditSnapshotScope = AuditSnapshotScope.ENCOUNTER,
+) -> EncounterResultAudit:
+    """The one writer. ``source=None`` leaves no official result standing, and
+    only :func:`reopen` and the unfinished branch of :func:`refresh_from_games`
+    may say that -- which is why this half is private."""
     seats = await active_teams(session, encounter.id)
+    live = {seat.id for seat in seats}
+    unknown = sorted((set(totals) | set(placements)) - live)
+    if unknown:
+        raise ValueError(
+            f"Encounter {encounter.id}: {unknown} are not live participations of it "
+            f"(its seats are {sorted(live)}); a standing is keyed by encounter_team_id"
+        )
     before = snapshot(seats)
     from_result_status = encounter.result_status
 
@@ -147,8 +192,17 @@ async def refresh_from_games(
     caller can show the two side by side. Confirms with source ``games`` once
     the rule's end condition holds; until then the standing is materialized
     but no official result exists.
+
+    A game whose line-up includes a seat that has since been taken over counts
+    for nobody. ``vacate_slot`` deliberately leaves a CONFIRMED game with the
+    participation that played it, so after a mid-series correction those rows
+    are still on record -- and they are the OLD line-up's result, not the live
+    one's. Dropping only the retired LINE would be worse than keeping it: a
+    two-seat game left with one line ranks the survivor first and pays it a
+    win it never earned, so the whole game goes.
     """
     seats = await active_teams(session, encounter.id)
+    live = {seat.id for seat in seats}
     rule = await _rules.get(session, encounter.scoring_rule_id)
     if rule is None:
         raise BaseAPIException(
@@ -171,13 +225,14 @@ async def refresh_from_games(
                 for line in lines
             ]
             for lines in await _game_teams.confirmed_lines(session, encounter.id)
+            if live.issuperset(row.encounter_team_id for row in lines)
         ],
     )
 
     if encounter.result_source not in (None, EncounterResultSource.GAMES.value):
         return outcome
 
-    await apply_result(
+    await _write(
         session,
         encounter,
         source=EncounterResultSource.GAMES if outcome.ended else None,
@@ -197,25 +252,26 @@ async def reopen(
     session: AsyncSession,
     encounter: Encounter,
     *,
-    actor_user_id: int | None,
+    actor_user_id: int,
     reason: str,
 ) -> EncounterResultAudit:
     """Take the standing result off the encounter, keeping the numbers.
 
     The only way an ``admin``/``series_claim``/``import`` result stops
-    standing. The materialized scores are left alone: with no source they read
-    as the running tally again, and the next
-    :func:`refresh_from_games` replaces them with what the games actually say.
+    standing, and the one action that unmakes a human decision -- so a human
+    signs it. The materialized scores are left alone: with no source they read
+    as the running tally again, and the next :func:`refresh_from_games`
+    replaces them with what the games actually say.
     """
     seats = await active_teams(session, encounter.id)
-    return await apply_result(
+    return await _write(
         session,
         encounter,
         source=None,
         totals={seat.id: seat.score for seat in seats},
         placements={seat.id: seat.placement for seat in seats if seat.placement is not None},
         action=EncounterResultAuditAction.REOPEN,
-        audit_source="admin" if actor_user_id is not None else "system",
+        audit_source="admin",
         actor_user_id=actor_user_id,
         reason=reason,
     )

@@ -56,8 +56,15 @@ class ResultWriterCase(EncounterWriterCase):
             ]
             await s.commit()
 
-    async def confirm_game(self, session, position: int, winner_index: int) -> EncounterGame:
-        """One confirmed game of the series, won 1:0 by ``self.seats[winner_index]``."""
+    async def confirm_game(
+        self, session, position: int, winner_index: int, *, seats: list[int] | None = None
+    ) -> EncounterGame:
+        """One confirmed game, won 1:0 by ``seats[winner_index]``.
+
+        ``seats`` defaults to the line-up placed in ``asyncSetUp``; a case that
+        replaces an occupant passes the line-up that actually played.
+        """
+        line_up = self.seats if seats is None else seats
         game = EncounterGame(
             encounter_id=self.ids["e"],
             position=position,
@@ -67,7 +74,7 @@ class ResultWriterCase(EncounterWriterCase):
         )
         session.add(game)
         await session.flush()
-        for index, seat_id in enumerate(self.seats):
+        for index, seat_id in enumerate(line_up):
             session.add(
                 EncounterGameTeam(
                     game_id=game.id,
@@ -191,25 +198,209 @@ class ApplyResultTests(ResultWriterCase):
             audit = await result.apply_result(
                 s,
                 encounter,
-                source=None,
+                source=enums.EncounterResultSource.ADMIN,
                 totals={self.seats[0]: 1.0, self.seats[1]: 0.0},
                 placements={self.seats[0]: 1, self.seats[1]: 2},
-                action=enums.EncounterResultAuditAction.GAME_CONFIRM,
+                action=enums.EncounterResultAuditAction.GAME_CORRECT,
                 audit_source="admin",
                 actor_user_id=None,
-                reason=None,
+                reason="map 1 re-entered by hand",
                 game=game,
                 scope=enums.AuditSnapshotScope.GAME,
             )
             await s.commit()
             self.assertEqual(game.id, audit.game_id)
+            self.assertEqual(enums.AuditSnapshotScope.GAME.value, audit.snapshot_scope)
 
         encounter = await self.reload()
-        # The series is not over, so nothing was decided at the series level.
+        self.assertEqual(1, encounter.result_version)
+
+    async def test_there_is_no_way_to_un_complete_an_encounter_through_it(self) -> None:
+        """``source`` has no "none": a Task 6/7 caller that leaves the keyword
+        out gets a TypeError, and one that spells ``None`` gets told to use
+        ``reopen`` -- never a silent un-completion."""
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            with self.assertRaises(TypeError):
+                await result.apply_result(
+                    s,
+                    encounter,
+                    totals={self.seats[0]: 1.0, self.seats[1]: 0.0},
+                    placements={self.seats[0]: 1, self.seats[1]: 2},
+                    action=enums.EncounterResultAuditAction.CONFIRM,
+                    audit_source="admin",
+                    actor_user_id=None,
+                    reason=None,
+                )
+            with self.assertRaises(ValueError):
+                await result.apply_result(
+                    s,
+                    encounter,
+                    source=None,
+                    totals={self.seats[0]: 1.0, self.seats[1]: 0.0},
+                    placements={self.seats[0]: 1, self.seats[1]: 2},
+                    action=enums.EncounterResultAuditAction.CONFIRM,
+                    audit_source="admin",
+                    actor_user_id=None,
+                    reason=None,
+                )
+            await s.rollback()
+        self.assertEqual(0, (await self.reload()).result_version)
+
+    async def test_an_id_that_is_not_a_live_seat_is_refused(self) -> None:
+        """``team_id`` and ``encounter_team_id`` are two ints both called
+        "team". Reading the mapping by seat and ignoring the rest would zero
+        every seat and confirm that."""
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            for totals, placements in (
+                ({self.ids["team0"]: 2.0}, {self.ids["team0"]: 1}),
+                ({self.seats[0]: 2.0}, {self.seats[0]: 1, self.ids["team1"]: 2}),
+            ):
+                with self.assertRaises(ValueError):
+                    await result.apply_result(
+                        s,
+                        encounter,
+                        source=enums.EncounterResultSource.ADMIN,
+                        totals=totals,
+                        placements=placements,
+                        action=enums.EncounterResultAuditAction.CONFIRM,
+                        audit_source="admin",
+                        actor_user_id=None,
+                        reason=None,
+                    )
+            await s.rollback()
+        self.assertEqual(0, (await self.reload()).result_version)
+        self.assertEqual([(self.seats[0], 0.0, None), (self.seats[1], 0.0, None)], await self.standing())
+
+    async def test_a_live_seat_left_out_simply_scored_nothing(self) -> None:
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            await result.apply_result(
+                s,
+                encounter,
+                source=enums.EncounterResultSource.ADMIN,
+                totals={self.seats[0]: 2.0},
+                placements={self.seats[0]: 1},
+                action=enums.EncounterResultAuditAction.CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                reason=None,
+            )
+            await s.commit()
+        self.assertEqual([(self.seats[0], 2.0, 1), (self.seats[1], 0.0, None)], await self.standing())
+        self.assertEqual(1, encounter.result_version)
+
+
+class RetiredLineupTests(ResultWriterCase):
+    """A confirmed game stays with the participation that played it, so after a
+    seat changes hands those rows are still on record -- and they are the OLD
+    line-up's result. They must not reach the live standing, in either
+    direction: not as points, not as wins, and not as a rank."""
+
+    async def _replace_slot_one(self) -> int:
+        """Retire slot 1's occupant and seat ``team2`` in its place."""
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            await participants.vacate_slot(s, encounter, slot=1)
+            replacement = await participants.place_team(
+                s,
+                encounter,
+                slot=1,
+                team_id=self.ids["team2"],
+                name="T2",
+                seed=1,
+                members=[
+                    participants.MemberSnapshot(
+                        workspace_member_id=self.ids["m2"],
+                        display_name="m2",
+                        rank=2500,
+                        is_substitute=False,
+                        roles=(),
+                    )
+                ],
+            )
+            await s.commit()
+            return replacement.id
+
+    async def test_a_retired_occupants_wins_neither_score_nor_end_the_series(self) -> None:
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            for position in (1, 2):
+                game = await self.confirm_game(s, position, 0)
+                outcome = await result.refresh_from_games(
+                    s,
+                    encounter,
+                    action=enums.EncounterResultAuditAction.GAME_CONFIRM,
+                    audit_source="admin",
+                    actor_user_id=None,
+                    game=game,
+                )
+            await s.commit()
+        # Slot 1 took the Bo3 2:0 and the encounter confirmed itself.
+        self.assertTrue(outcome.ended)
+        self.assertEqual(enums.EncounterResultSource.GAMES.value, (await self.reload()).result_source)
+
+        replacement = await self._replace_slot_one()
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            outcome = await result.refresh_from_games(
+                s,
+                encounter,
+                action=enums.EncounterResultAuditAction.CASCADE_RESET,
+                audit_source="system",
+                actor_user_id=None,
+            )
+            await s.commit()
+
+        # Both games belong to a line-up that no longer exists: nothing counts.
+        self.assertEqual(0, outcome.games)
+        self.assertEqual({replacement: 0.0, self.seats[1]: 0.0}, dict(outcome.totals))
+        self.assertEqual({replacement: 0, self.seats[1]: 0}, dict(outcome.wins))
+        self.assertFalse(outcome.ended)
+
+        encounter = await self.reload()
         self.assertIsNone(encounter.result_source)
         self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
         self.assertEqual(enums.EncounterResultStatus.NONE, encounter.result_status)
-        self.assertEqual(1, encounter.result_version)
+        # Level on nothing: both live seats share first, and the retired seat
+        # is nowhere in the standing.
+        self.assertEqual([(replacement, 0.0, 1), (self.seats[1], 0.0, 1)], await self.standing())
+
+    async def test_the_survivor_is_ranked_by_the_games_its_new_opponent_played(self) -> None:
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            game = await self.confirm_game(s, 1, 0)
+            await result.refresh_from_games(
+                s,
+                encounter,
+                action=enums.EncounterResultAuditAction.GAME_CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                game=game,
+            )
+            await s.commit()
+
+        replacement = await self._replace_slot_one()
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            # Position 2, played by the new line-up and won by slot 2.
+            game = await self.confirm_game(s, 2, 1, seats=[replacement, self.seats[1]])
+            outcome = await result.refresh_from_games(
+                s,
+                encounter,
+                action=enums.EncounterResultAuditAction.GAME_CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                game=game,
+            )
+            await s.commit()
+
+        self.assertEqual(1, outcome.games)
+        # Position 1 went to the retired occupant; it pays the survivor nothing
+        # and leaves nobody at place 1 above it.
+        self.assertEqual([(replacement, 0.0, 2), (self.seats[1], 1.0, 1)], await self.standing())
+        self.assertFalse(outcome.ended)
 
 
 class RefreshFromGamesTests(ResultWriterCase):
@@ -314,7 +505,7 @@ class ReopenTests(ResultWriterCase):
 
         async with self.Session() as s:
             encounter = await result.lock_encounter(s, self.ids["e"])
-            audit = await result.reopen(s, encounter, actor_user_id=None, reason="wrong bracket")
+            audit = await result.reopen(s, encounter, actor_user_id=self.users[0], reason="wrong bracket")
             await s.commit()
             self.assertEqual(enums.EncounterResultAuditAction.REOPEN, audit.action)
 
@@ -340,7 +531,7 @@ class ReopenTests(ResultWriterCase):
                 actor_user_id=None,
                 reason=None,
             )
-            await result.reopen(s, encounter, actor_user_id=None, reason="replay ordered")
+            await result.reopen(s, encounter, actor_user_id=self.users[0], reason="replay ordered")
             game = await self.confirm_game(s, 1, 1)
             await result.refresh_from_games(
                 s,
