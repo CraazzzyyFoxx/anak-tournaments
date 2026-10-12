@@ -23,7 +23,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
-from shared.core.enums import EncounterGameResultSource, EncounterGameState
+from shared.core.enums import EncounterGameResultSource, EncounterGameState, EncounterResultStatus
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_scoring import (
@@ -54,6 +54,7 @@ from src.services.encounter.games import (
     GameResultIn,
     encounter_game_service,
 )
+from src.services.encounter.settle import push_confirmed_to_challonge
 from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = ("FfaEncounterService", "FfaStageResults", "ffa_encounter_service", "public_view")
@@ -191,7 +192,10 @@ class FfaEncounterService:
             reason=reason,
         )
         await enqueue_tournament_recalculation(session, lobby.tournament_id)
+        confirmed, lobby_id = lobby.result_status == EncounterResultStatus.CONFIRMED, lobby.id
         await session.commit()
+        if confirmed:
+            await push_confirmed_to_challonge(session, lobby_id)
         return lobby
 
     async def cancel_game(

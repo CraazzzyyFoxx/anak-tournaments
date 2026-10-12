@@ -38,7 +38,6 @@ from src.services.encounter.games import (
     encounter_game_service,
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
-from src.services.notifications.lifecycle import advance_and_announce
 from src.services.tournament.events import enqueue_tournament_recalculation
 
 __all__ = ("GameCorrectionService", "game_correction_service")
@@ -88,8 +87,6 @@ class GameCorrectionService:
             actor_user_id=actor_user_id,
             reason=reason,
         )
-        if encounter.result_status == EncounterResultStatus.CONFIRMED:
-            await advance_and_announce(session, encounter)
         # A correction moves the encounter's standing and may reseat a whole
         # bracket branch through ``reset_downstream``: every cached
         # tournament-encounters read is stale and the standings have to be

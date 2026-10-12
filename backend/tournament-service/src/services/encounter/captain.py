@@ -57,32 +57,18 @@ from shared.repository import (
 )
 from shared.services.bracket import advancement
 from shared.services.bracket.usability import is_encounter_live
-from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import apply_result, hold_result, lock_encounter, reopen
 from src import models, schemas
-
-# ``src.services.challonge.sync`` is not imported at module scope: the exporter
-# is a different vertical, it is only reached when the encounter actually has a
-# Challonge link, and importing it here would make every result flow depend on
-# the whole Challonge stack loading.
 from src.services.encounter import report_form
 from src.services.encounter.dispute_review import notify_dispute_review
-from src.services.encounter.games import EncounterGameService, encounter_game_service
+from src.services.encounter.games import EncounterGameService, encounter_game_service, require_filled_seats
 from src.services.encounter.report_form import ReportFormService, report_form_service
 from src.services.encounter.room_journal import record_room_event
-from src.services.notifications.lifecycle import advance_and_announce
+from src.services.encounter.settle import push_confirmed_to_challonge, settle_confirmed
 from src.services.tournament.events import enqueue_encounter_completed, enqueue_tournament_recalculation
 
 __all__ = ("CaptainService", "ReportResultIn", "captain_service", "serialize_team_report")
-
-
-def _challonge_sync():
-    """The Challonge exporter, loaded on first use (see the import note above)."""
-    from src.services.challonge.sync import sync_service  # noqa: PLC0415
-
-    return sync_service
-
 
 # One per-position replay/match code: (position 1-based, code string). Defined
 # by the report-form service, which validates them.
@@ -351,6 +337,7 @@ class CaptainService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="That participation does not play in this encounter",
             )
+        require_filled_seats(encounter, seats)
         await self._reject_impossible_report(session, encounter, seats, games_played, results)
 
         form = await self.report_forms.resolve_report_form(session, encounter.tournament_id)
@@ -419,13 +406,12 @@ class CaptainService:
         confirmed = await self._recompute_from_reports(
             session, encounter, seats, actor_user_id=reporter_user_id, actor_auth_user_id=actor_auth_user_id
         )
-        await enqueue_tournament_recalculation(session, encounter.tournament_id)
+        if not confirmed:
+            await enqueue_tournament_recalculation(session, encounter.tournament_id)
         await session.commit()
 
         if confirmed:
-            links = await resolve_encounter_challonge(session, [encounter.id])
-            if links.get(encounter.id) is not None:
-                await _challonge_sync().auto_push_on_confirm(session, encounter.id)
+            await push_confirmed_to_challonge(session, encounter.id)
         return encounter
 
     async def _reject_impossible_report(
@@ -573,7 +559,7 @@ class CaptainService:
         # game nobody may play (D54, D59).
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
         await enqueue_encounter_completed(session, encounter)
-        await advance_and_announce(session, encounter)
+        await settle_confirmed(session, encounter)
         return True
 
     @staticmethod
@@ -740,13 +726,10 @@ class CaptainService:
                 latest.adopted_team_id = adopted_team_id
         await self._cancel_unplayed(session, encounter, actor_user_id=actor_user_id)
         await enqueue_encounter_completed(session, encounter)
-        await advance_and_announce(session, encounter)
-        await enqueue_tournament_recalculation(session, encounter.tournament_id)
+        await settle_confirmed(session, encounter)
         await session.commit()
 
-        links = await resolve_encounter_challonge(session, [encounter.id])
-        if links.get(encounter.id) is not None:
-            await _challonge_sync().auto_push_on_confirm(session, encounter.id)
+        await push_confirmed_to_challonge(session, encounter.id)
         return encounter
 
     @staticmethod

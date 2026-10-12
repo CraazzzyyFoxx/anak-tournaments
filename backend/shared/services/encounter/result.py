@@ -128,10 +128,13 @@ async def _write(
     reason: str | None,
     game: EncounterGame | None = None,
     scope: AuditSnapshotScope = AuditSnapshotScope.ENCOUNTER,
+    hold: EncounterResultStatus | None = None,
 ) -> EncounterResultAudit:
     """The one writer. ``source=None`` leaves no official result standing, and
     only :func:`reopen` and the unfinished branch of :func:`refresh_from_games`
-    may say that -- which is why this half is private."""
+    may say that -- which is why this half is private. ``hold`` is the
+    ``pending_confirmation``/``disputed`` status such a write keeps (the
+    unfinished branch must not erase a hold somebody earned)."""
     seats = await active_teams(session, encounter.id)
     live = {seat.id for seat in seats}
     unknown = sorted((set(totals) | set(placements)) - live)
@@ -149,7 +152,7 @@ async def _write(
 
     confirmed = source is not None
     encounter.result_source = source.value if source is not None else None
-    encounter.result_status = EncounterResultStatus.CONFIRMED if confirmed else EncounterResultStatus.NONE
+    encounter.result_status = EncounterResultStatus.CONFIRMED if confirmed else (hold or EncounterResultStatus.NONE)
     if confirmed:
         encounter.status = EncounterStatus.COMPLETED
         encounter.confirmed_at = datetime.now(UTC)
@@ -289,6 +292,14 @@ async def refresh_from_games(
     if encounter.result_source not in (None, EncounterResultSource.GAMES.value):
         return outcome
 
+    # Games that say "not finished" say nothing about a pending report or a
+    # dispute: those are about the captains' series claim, so they stay.
+    hold = (
+        encounter.result_status
+        if not outcome.ended
+        and encounter.result_status in (EncounterResultStatus.PENDING_CONFIRMATION, EncounterResultStatus.DISPUTED)
+        else None
+    )
     await _write(
         session,
         encounter,
@@ -301,6 +312,7 @@ async def refresh_from_games(
         reason=reason,
         game=game,
         scope=AuditSnapshotScope.GAME if game is not None else AuditSnapshotScope.ENCOUNTER,
+        hold=hold,
     )
     return outcome
 

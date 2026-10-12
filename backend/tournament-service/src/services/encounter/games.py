@@ -57,10 +57,11 @@ from shared.repository import (
 from shared.services.encounter.game_audit import cancel_games as _cancel_games
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import refresh_from_games
+from src.services.encounter.settle import settle_confirmed
 from src.services.encounter.veto_session import side_pick_pending
 from src.services.tournament.events import enqueue_encounter_completed
 
-__all__ = ("GameResultIn", "EncounterGameService", "OPEN_STATES", "encounter_game_service")
+__all__ = ("GameResultIn", "EncounterGameService", "OPEN_STATES", "encounter_game_service", "require_filled_seats")
 
 # States a game can still move out of. ``cancelled`` is terminal history and
 # ``confirmed`` only moves via the admin correction command.
@@ -69,6 +70,24 @@ OPEN_STATES = (
     EncounterGameState.AWAITING_RESULT,
     EncounterGameState.DISPUTED,
 )
+
+
+def require_filled_seats(encounter: Encounter, seats: Sequence) -> None:
+    """409 while a slot of the encounter has nobody in it (D64).
+
+    A game does not start before its slots are filled, and a result with an
+    empty slot would let the one seated captain decide an encounter alone.
+    """
+    if len(seats) < encounter.slot_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=[
+                ApiExc(
+                    code="seats_incomplete",
+                    msg="Every slot of this encounter has to be filled before a result can be reported",
+                )
+            ],
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,6 +397,7 @@ class EncounterGameService:
         await self.assert_side_settled(session, encounter, game)
         rules = await self.rules(session, encounter)
         seats = await active_teams(session, encounter.id)
+        require_filled_seats(encounter, seats)
         normalized = normalize_results(results, [seat.id for seat in seats], rules)
         # Only an ENTERED place is stored: a rule that derives the place does so
         # again on every read, so persisting today's ranking would freeze it
@@ -418,11 +438,13 @@ class EncounterGameService:
         )
         # Under D57 this is the MAIN way an encounter completes: the last map
         # being accepted is what ends the series, and a lobby finishes its card
-        # the same way. The announcement has exactly one consumer (achievement
-        # and MVP evaluation), so losing it here loses it for every
-        # claim-decided series and for every lobby.
+        # the same way. So it owes what every confirmation owes -- the
+        # announcement (one consumer: achievement and MVP evaluation), the
+        # bracket advancing and the standings -- or a claim-decided series
+        # would leave its winner out of the next round.
         if not was_confirmed and encounter.result_status == EncounterResultStatus.CONFIRMED:
             await enqueue_encounter_completed(session, encounter)
+            await settle_confirmed(session, encounter)
         return outcome
 
     async def select_map(

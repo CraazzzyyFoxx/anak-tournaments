@@ -306,7 +306,8 @@ class AdminEncounterService:
                 round=data.round,
             )
         )
-        for seat in sorted(data.teams, key=lambda row: row.slot):
+        # ``None`` seats nobody: a TBD slot is a slot with no active participation (D55).
+        for seat in sorted((row for row in data.teams if row.team_id is not None), key=lambda row: row.slot):
             await place_team(
                 session,
                 encounter,

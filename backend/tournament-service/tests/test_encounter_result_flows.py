@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import itertools
 import os
+from unittest.mock import ANY, AsyncMock, patch
 
 import sqlalchemy as sa
 
@@ -630,6 +631,56 @@ class SeriesReportTests(ResultFlowCase):
         self.assertEqual(409, caught.exception.status_code)
         self.assertEqual(["result_locked"], _codes(caught.exception))
 
+    async def test_cancelling_a_game_keeps_a_pending_report_and_a_dispute(self) -> None:
+        """Games saying "not finished" say nothing about what the captains filed."""
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+
+        async def file(seat, user, *, games_played, second_wins):
+            async with self.Session() as s:
+                encounter = await self.encounter(s)
+                await captain_service.submit_team_report(
+                    s,
+                    self.ids["e"],
+                    encounter_team_id=seat.id,
+                    reporter_user_id=user,
+                    games_played=games_played,
+                    closeness=5,
+                    results=[
+                        ReportResultIn(encounter_team_id=first.id, score=2.0, placement=1, wins=2),
+                        ReportResultIn(
+                            encounter_team_id=second.id, score=float(second_wins), placement=2, wins=second_wins
+                        ),
+                    ],
+                    basis_version=encounter.result_version,
+                )
+
+        async def cancel(game):
+            async with self.Session() as s:
+                encounter = await self.encounter(s)
+                await encounter_game_service.cancel_games(
+                    s, encounter, [await s.get_one(EncounterGame, game.id)], actor_user_id=None, reason="map reset"
+                )
+                await s.commit()
+
+        async def status():
+            async with self.Session() as s:
+                return (await self.encounter(s)).result_status
+
+        async with self.Session() as s:
+            game = await self.play(s, 1, first.id, second.id)
+        await file(first, self.users[0], games_played=3, second_wins=1)
+        self.assertEqual(enums.EncounterResultStatus.PENDING_CONFIRMATION, await status())
+        await cancel(game)
+        self.assertEqual(enums.EncounterResultStatus.PENDING_CONFIRMATION, await status())
+
+        async with self.Session() as s:
+            game = await self.play(s, 1, first.id, second.id)
+        await file(second, self.users[1], games_played=2, second_wins=0)
+        self.assertEqual(enums.EncounterResultStatus.DISPUTED, await status())
+        await cancel(game)
+        self.assertEqual(enums.EncounterResultStatus.DISPUTED, await status())
+
 
 class DisputeNotificationTests(ResultFlowCase):
     """A real disagreement through the public flow reaches the inbox.
@@ -887,6 +938,31 @@ class LobbyResultTests(ResultFlowCase):
             self.assertEqual({1, 2, 3}, {row[1] for row in rows})
             self.assertEqual([{}] * 6, [row[2] for row in rows])
 
+    async def test_the_game_that_finishes_a_lobby_runs_the_confirm_effects(self) -> None:
+        async with self.Session() as s:
+            order = [seat.id for seat in await self.seats(s)]
+
+        with (
+            patch("src.services.encounter.settle.enqueue_tournament_recalculation", AsyncMock()) as recalc,
+            patch("src.services.encounter.ffa.push_confirmed_to_challonge", AsyncMock()) as push,
+        ):
+            for position, ranked in enumerate((order, order[::-1]), 1):
+                async with self.Session() as s:
+                    await ffa_encounter_service.record_lobby_game(
+                        s,
+                        self.ids["e"],
+                        position,
+                        [GameResultIn(encounter_team_id=team, placement=place) for place, team in enumerate(ranked, 1)],
+                        actor_user_id=self.users[0],
+                        reason=None,
+                    )
+                if position == 1:
+                    recalc.assert_not_awaited()
+                    push.assert_not_awaited()
+
+        recalc.assert_awaited_once_with(ANY, self.ids["t"])
+        push.assert_awaited_once_with(ANY, self.ids["e"])
+
 
 class CascadeTests(ResultFlowCase):
     """An admin correction unwinds the bracket below it (Task 5)."""
@@ -1051,6 +1127,8 @@ class ReadPathTests(ResultFlowCase):
         self.assertEqual(0, read.round)
         self.assertIsNone(read.stage_id)
         self.assertEqual([self.ids["team0"], self.ids["team1"]], [seat.team_id for seat in summary.teams])
+        # How it is scored, not how many seats it has, says duel from lobby.
+        self.assertEqual(("wins", "wins"), (read.scoring_preset, summary.scoring_preset))
 
     async def test_a_read_with_teams_eager_loads_their_nested_entities(self) -> None:
         async with self.Session() as s:
@@ -1079,3 +1157,19 @@ class ReadPathTests(ResultFlowCase):
             self.assertNotIn("players", sa.inspect(bare).unloaded)
         self.assertEqual("T0", read.teams[0].team.name)
         self.assertEqual([], read.teams[0].team.players)
+
+
+class PointsPresetReadTests(ResultFlowCase):
+    """A two-seat lobby is still a lobby: the wire says so by the preset."""
+
+    preset = "points"
+    game_formula = "place_pts"
+    end_formula = "games >= best_of"
+
+    async def test_a_two_seat_points_encounter_reads_as_points(self) -> None:
+        async with self.Session() as s:
+            encounter = await encounter_service.get_encounter(s, self.ids["e"], [])
+            read = await flows_service.to_pydantic(s, encounter, [])
+            summary = to_summary(encounter)
+        self.assertEqual(2, read.slot_count)
+        self.assertEqual(("points", "points"), (read.scoring_preset, summary.scoring_preset))
