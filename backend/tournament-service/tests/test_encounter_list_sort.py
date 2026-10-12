@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -28,8 +29,11 @@ class EncounterListSortTests(TestCase):
         # textual ``ORDER BY has_logs`` would hit UndefinedColumnError.
         sql = self._compile("has_logs")
         self.assertNotIn("ORDER BY has_logs", sql)
-        self.assertIn("ORDER BY anon_1", sql)
-        self.assertIn("AS anon_1", sql)
+        # The EXISTS carries an anonymous label and the sort names that very label
+        # (the encounter's other derived column takes a different one).
+        label = re.search(r"EXISTS \(.*?\) AS (anon_\d+)", sql, re.DOTALL)
+        self.assertIsNotNone(label)
+        self.assertIn(f"ORDER BY {label.group(1)}", sql)
 
     def test_plain_column_sort_still_works(self) -> None:
         self.assertIn("ORDER BY encounter.encounter.closeness ASC", self._compile("closeness"))

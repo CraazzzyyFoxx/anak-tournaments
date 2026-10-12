@@ -67,6 +67,7 @@ TABLE_NAMES = (
     "tournament.team",
     "tournament.player",
     "tournament.stage",
+    "encounter.scoring_rule",
     "encounter.encounter",
     "encounter.team",
     "encounter.result_audit",

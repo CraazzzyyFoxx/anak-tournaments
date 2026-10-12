@@ -52,11 +52,12 @@ def install_postgres_type_shims() -> None:
 def create_sqlite_tables(conn: sa.Connection, tables: Sequence[sa.Table]) -> None:
     """``CREATE`` ``tables`` on SQLite, for the suites that fake the database in memory.
 
-    SQLite cannot spell three things the encounter layer uses: ``ON DELETE SET NULL
+    SQLite cannot spell four things the encounter layer uses: ``ON DELETE SET NULL
     (column)``, a partial unique index (it would build a plain one, and a retired
-    seat beside its replacement would collide) and a ``jsonb_typeof`` CHECK (the
-    function does not exist). All three are left out of the DDL -- these suites
-    exercise queries and flushes, not the constraints.
+    seat beside its replacement would collide), a ``jsonb_typeof`` CHECK (the
+    function does not exist) and a ``'[]'::jsonb`` server default (the cast is a
+    syntax error). All four are left out of the DDL -- these suites exercise
+    queries and flushes, not the constraints or the defaults.
     """
     for table in tables:
         constraints = [
@@ -68,10 +69,19 @@ def create_sqlite_tables(conn: sa.Connection, tables: Sequence[sa.Table]) -> Non
             or (isinstance(constraint, sa.CheckConstraint) and "jsonb_typeof" in str(constraint.sqltext))
         ]
         indexes = [index for index in table.indexes if index.dialect_options["postgresql"]["where"] is not None]
+        pg_defaults = {
+            column: column.server_default
+            for column in table.columns
+            if column.server_default is not None and "::" in str(getattr(column.server_default, "arg", ""))
+        }
         table.constraints.difference_update(constraints)
         table.indexes.difference_update(indexes)
+        for column in pg_defaults:
+            column.server_default = None
         try:
             table.create(conn)
         finally:
             table.constraints.update(constraints)
             table.indexes.update(indexes)
+            for column, default in pg_defaults.items():
+                column.server_default = default

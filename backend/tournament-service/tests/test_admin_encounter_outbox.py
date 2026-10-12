@@ -47,7 +47,7 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             if execute_count == 1:
                 calls.append("loaded_tournament")
                 return _result(SimpleNamespace(id=1, workspace_id=7, discipline="overwatch"))
-            # The stage, read twice: once to validate the reference, once for its rule.
+            # The stage reference is validated by a query ...
             calls.append("loaded_stage")
             return _result(SimpleNamespace(id=10, scoring_rule_id=3))
 
@@ -59,6 +59,8 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=fake_execute),
+            # ... and its rule comes from an identity-map lookup.
+            get=AsyncMock(return_value=SimpleNamespace(id=10, scoring_rule_id=3)),
             add=Mock(),
             commit=AsyncMock(side_effect=fake_commit),
             refresh=AsyncMock(),
