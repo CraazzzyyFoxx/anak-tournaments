@@ -35,11 +35,16 @@ from .draft import (
 )
 from .encounter import (
     EncounterGameRepository,
+    EncounterGameTeamRepository,
     EncounterLinkRepository,
     EncounterReportFormRepository,
     EncounterResultAuditRepository,
     EncounterRoomEventRepository,
     EncounterSavedViewRepository,
+    EncounterTeamMemberRepository,
+    EncounterTeamMemberRoleRepository,
+    EncounterTeamRepository,
+    ScoringRuleRepository,
 )
 from .identity import (
     ApiKeyRepository,
@@ -214,6 +219,7 @@ __all__ = (
     "DraftSessionRepository",
     "DraftTeamRepository",
     "EncounterGameRepository",
+    "EncounterGameTeamRepository",
     "EncounterLinkRepository",
     "EncounterReadinessRepository",
     "EncounterReportFormRepository",
@@ -221,6 +227,9 @@ __all__ = (
     "EncounterResultAuditRepository",
     "EncounterRoomEventRepository",
     "EncounterSavedViewRepository",
+    "EncounterTeamMemberRepository",
+    "EncounterTeamMemberRoleRepository",
+    "EncounterTeamRepository",
     "FavoritePlayerRepository",
     "GamemodeRepository",
     "GoogleSheetBindingRepository",
@@ -259,6 +268,7 @@ __all__ = (
     "RegistrationFormVersionRepository",
     "RegistrationStatusRepository",
     "RoleRepository",
+    "ScoringRuleRepository",
     "ScrimRoomRepository",
     "SelfDeclaredChannelRow",
     "SettingsRepository",

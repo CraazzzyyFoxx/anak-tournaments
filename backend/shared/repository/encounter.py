@@ -40,6 +40,80 @@ class EncounterGameRepository(BaseRepository[models.EncounterGame]):
         return result.scalars().first()
 
 
+class EncounterGameTeamRepository(BaseRepository[models.EncounterGameTeam]):
+    """``encounter.game_team`` — one participation's side and numbers in one game."""
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterGameTeam)
+
+    async def confirmed_lines(self, session: AsyncSession, encounter_id: int) -> list[list[models.EncounterGameTeam]]:
+        """Every confirmed game's rows, oldest position first, grouped per game.
+
+        The shape the scoring engine is handed: one inner list per game, in the
+        order they count. Cancelled and unfinished positions are not part of a
+        standing, so they never reach it.
+        """
+        result = await session.execute(
+            sa.select(models.EncounterGameTeam, models.EncounterGame.id)
+            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameTeam.game_id)
+            .where(
+                models.EncounterGame.encounter_id == encounter_id,
+                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
+            )
+            .order_by(
+                models.EncounterGame.position,
+                models.EncounterGame.id,
+                models.EncounterGameTeam.encounter_team_id,
+            )
+        )
+        games: dict[int, list[models.EncounterGameTeam]] = {}
+        for line, game_id in result.tuples():
+            games.setdefault(game_id, []).append(line)
+        return list(games.values())
+
+
+class EncounterTeamRepository(BaseRepository[models.EncounterTeam]):
+    """``encounter.team`` — the participations (D55).
+
+    Append-only by design: there is no reactivate and no delete here. A seat
+    changes hands by retiring one row and writing the next, which is what keeps
+    the games, claims and journal that point at it answerable afterwards.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeam)
+
+    async def list_active(self, session: AsyncSession, encounter_id: int) -> Sequence[models.EncounterTeam]:
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterTeam.encounter_id == encounter_id, models.EncounterTeam.active.is_(True))
+            .order_by(models.EncounterTeam.slot, models.EncounterTeam.id)
+        )
+        return result.scalars().all()
+
+    async def get_active_slot(self, session: AsyncSession, encounter_id: int, slot: int) -> models.EncounterTeam | None:
+        return await self.get_by(session, encounter_id=encounter_id, slot=slot, active=True)
+
+
+class EncounterTeamMemberRepository(BaseRepository[models.EncounterTeamMember]):
+    """``encounter.team_member`` — one participation's snapshotted roster.
+
+    No deactivate: ``team_member.active`` is carried by the participation's
+    through ``fk_team_member_team``'s ON UPDATE CASCADE (A2), and a second
+    writer of that column could only disagree with the first.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeamMember)
+
+
+class EncounterTeamMemberRoleRepository(BaseRepository[models.EncounterTeamMemberRole]):
+    """``encounter.team_member_role`` — a roster member's roles, per dimension."""
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeamMemberRole)
+
+
 class EncounterResultAuditRepository(BaseRepository[models.EncounterResultAudit]):
     def __init__(self) -> None:
         super().__init__(models.EncounterResultAudit)
@@ -180,11 +254,23 @@ class EncounterLinkRepository(BaseRepository[models.EncounterLink]):
         return result.scalars().all()
 
 
+class ScoringRuleRepository(BaseRepository[models.ScoringRule]):
+    """``encounter.scoring_rule`` — how an encounter turns games into a standing."""
+
+    def __init__(self) -> None:
+        super().__init__(models.ScoringRule)
+
+
 __all__ = (
     "EncounterGameRepository",
+    "EncounterGameTeamRepository",
     "EncounterLinkRepository",
     "EncounterReportFormRepository",
     "EncounterResultAuditRepository",
     "EncounterRoomEventRepository",
     "EncounterSavedViewRepository",
+    "EncounterTeamMemberRepository",
+    "EncounterTeamMemberRoleRepository",
+    "EncounterTeamRepository",
+    "ScoringRuleRepository",
 )

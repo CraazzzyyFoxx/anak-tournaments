@@ -15,7 +15,7 @@ quietly undo them:
 
 Runs under stdlib unittest with a fake session and cashews' in-memory backend
 -- no Postgres, no Redis, matching the repo's IsolatedAsyncioTestCase
-convention (see ``test_finalize_encounter_score.py`` for the fake-session
+convention (see ``test_resolve_subscriptions.py`` for the fake-session
 pattern, ``app-service/tests/test_user_read_caches.py`` for ``mem://``).
 """
 

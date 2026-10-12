@@ -1,29 +1,36 @@
+"""The display name of an encounter: its seats, in slot order, joined by "vs".
+
+An encounter seats ``slot_count`` participations, not two sides, so the name is
+built from a sequence: a duel reads exactly as it always did ("A vs B") and a
+lobby of four reads "A vs B vs C vs D". An empty seat is "TBD".
+"""
+
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 __all__ = (
     "build_encounter_name",
     "build_encounter_name_from_ids",
 )
 
+_SEPARATOR = " vs "
+_UNKNOWN = "TBD"
+
 
 def _normalize_team_name(name: str | None) -> str:
     if name is None:
-        return "TBD"
+        return _UNKNOWN
     normalized = name.strip()
-    return normalized or "TBD"
+    return normalized or _UNKNOWN
 
 
-def build_encounter_name(home_team_name: str | None, away_team_name: str | None) -> str:
-    return f"{_normalize_team_name(home_team_name)} vs {_normalize_team_name(away_team_name)}"
+def build_encounter_name(team_names: Sequence[str | None]) -> str:
+    return _SEPARATOR.join(_normalize_team_name(name) for name in team_names)
 
 
 def build_encounter_name_from_ids(
-    home_team_id: int | None,
-    away_team_id: int | None,
+    team_ids: Sequence[int | None],
     team_names_by_id: Mapping[int, str],
 ) -> str:
-    home_team_name = team_names_by_id.get(home_team_id) if home_team_id is not None else None
-    away_team_name = team_names_by_id.get(away_team_id) if away_team_id is not None else None
-    return build_encounter_name(home_team_name, away_team_name)
+    return build_encounter_name([None if team_id is None else team_names_by_id.get(team_id) for team_id in team_ids])

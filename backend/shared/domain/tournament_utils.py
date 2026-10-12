@@ -10,7 +10,7 @@ app-service/services/standings/flows.py.
 from __future__ import annotations
 
 import typing
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from shared.core import enums
 from shared.models.encounter.encounter import Encounter
@@ -28,14 +28,17 @@ __all__ = (
 def is_completed_encounter(encounter: Encounter) -> bool:
     """Canonical "this encounter counts toward standings" predicate.
 
-    ``status == COMPLETED`` is the single form. Since encres0001 a CHECK
-    constraint makes it equivalent to ``result_status == CONFIRMED``, so the
-    old OR of both was redundant — and the risk was never the OR itself but
-    three call sites each free to phrase the question their own way. Non-zero
-    scores alone do NOT count: that rule previously masked state desyncs.
+    ``status == COMPLETED`` is the single form. A CHECK constraint makes it
+    equivalent to ``result_status == CONFIRMED``, so the old OR of both was
+    redundant — and the risk was never the OR itself but three call sites each
+    free to phrase the question their own way. Non-zero scores alone do NOT
+    count: that rule previously masked state desyncs.
+
+    It no longer asks whether both seats are filled. An unplaced seat has no
+    participation row at all now, and an encounter that was never played
+    cannot be COMPLETED: the constraint above is the guard the team columns
+    used to be.
     """
-    if encounter.home_team_id is None or encounter.away_team_id is None:
-        return False
     return encounter.status == enums.EncounterStatus.COMPLETED
 
 
@@ -48,26 +51,38 @@ def completed_encounters(
 
 def _playable_rounds(
     encounters: Sequence[Encounter],
+    rounds: Mapping[int, int],
 ) -> dict[int, list[Encounter]]:
-    rounds: dict[int, list[Encounter]] = {}
+    """Group the playable encounters by bracket round.
+
+    ``rounds`` maps encounter id to its ``tournament.bracket_encounter.round``
+    and IS the playable set: the round lives off the encounter now, and whether
+    every seat of a fixture is filled is a participation query only the caller
+    can run. An encounter the caller left out — no bracket position, or a seat
+    still waiting on an upstream result — is skipped, exactly as an encounter
+    missing a team used to be.
+    """
+    grouped: dict[int, list[Encounter]] = {}
     for encounter in encounters:
-        if encounter.home_team_id is None or encounter.away_team_id is None:
+        round_number = rounds.get(encounter.id)
+        if round_number is None:
             continue
-        rounds.setdefault(encounter.round, []).append(encounter)
-    return rounds
+        grouped.setdefault(round_number, []).append(encounter)
+    return grouped
 
 
 def completed_encounters_in_finished_rounds(
     encounters: Sequence[Encounter],
+    rounds: Mapping[int, int],
 ) -> list[Encounter]:
     """Return completed encounters that belong to fully closed playable rounds.
 
-    A round is considered playable only when both participants are known.
-    If at least one playable encounter in a round is still open/pending, the
-    whole round is ignored for standings/reseeding purposes.
+    ``rounds`` is the playable set, keyed by encounter id — see
+    :func:`_playable_rounds`. If at least one playable encounter in a round is
+    still open/pending, the whole round is ignored for standings/reseeding.
     """
     completed: list[Encounter] = []
-    for round_encounters in _playable_rounds(encounters).values():
+    for round_encounters in _playable_rounds(encounters, rounds).values():
         if all(is_completed_encounter(encounter) for encounter in round_encounters):
             completed.extend(round_encounters)
     return completed
@@ -75,11 +90,12 @@ def completed_encounters_in_finished_rounds(
 
 def has_incomplete_playable_rounds(
     encounters: Sequence[Encounter],
+    rounds: Mapping[int, int],
 ) -> bool:
     """Return True when any playable round still has unfinished encounters."""
     return any(
         any(not is_completed_encounter(encounter) for encounter in round_encounters)
-        for round_encounters in _playable_rounds(encounters).values()
+        for round_encounters in _playable_rounds(encounters, rounds).values()
     )
 
 
