@@ -79,6 +79,10 @@ Take a backup first. `enclayer01` has no downgrade: going back means restoring t
    replay code at a position with no live game, a journal line of a team without a participation, a roster
    row collapsed into its twin. The legacy tables stay, so nothing is lost yet, but `enclayer02` (the gated
    drop of the legacy columns and tables, next deploy) must not run while this report has a finding.
+   A claim, team report, readiness or replay code counts as carried only if it still carries what the legacy
+   row carried (creation time and author; the code itself), so a V1 row written at the same key never hides a
+   skipped one. The converse: a migrated replay code that a captain has since re-filed is listed too; look at
+   it and resolve it in the data before `enclayer02`.
    Also check `SELECT conrelid::regclass, conname FROM pg_constraint WHERE NOT convalidated` returns no row.
 
 ## Not yet measured

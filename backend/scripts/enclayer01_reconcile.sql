@@ -13,11 +13,16 @@
 -- enclayer02 MUST NOT run while the second result set below has any row, or the
 -- first has any status but ok.
 --
--- Every check is one legacy row and whether its image exists in the new tables,
--- matched on what the migration keyed on (encounter and slot, game and slot,
--- team and encounter) and not on values the V1 writers have since changed, so
--- the report stays true after V1 has been running. Legacy encounters are the
--- ones whose old round column is set: V1 never writes it.
+-- Every check is one legacy row and whether its image exists in the new tables.
+-- The image is found by what the migration keyed on (encounter and slot, game and
+-- slot, team and encounter), and where V1 can write a row of its own at that same
+-- key (a claim, a team report, a readiness, a replay code) it must also carry what
+-- the legacy row carried: its creation time and author for the first three, the
+-- code itself for the last. A V1 row that merely sits at the key proves nothing, so
+-- a skipped legacy row stays listed while V1 runs. The price is the opposite error:
+-- a migrated row V1 has since replaced (a replay code a captain re-filed) reads as
+-- not carried; look at it, then resolve it by hand before enclayer02. Legacy
+-- encounters are the ones whose old round column is set: V1 never writes it.
 --
 -- Result set 1: one line per class, legacy rows against rows carried across.
 -- Result set 2: every skipped row, with the legacy id that identifies it.
@@ -67,18 +72,24 @@ UNION ALL
 SELECT 'map reports -> claims', mr.id, 'game ' || mr.game_id || ' side ' || mr.side,
        EXISTS (SELECT 1 FROM encounter.game_claim c JOIN encounter.team t ON t.id = c.claimant_team_id
                 WHERE c.game_id = mr.game_id
-                  AND t.slot = CASE mr.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END)
+                  AND t.slot = CASE mr.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+                  AND c.created_at = mr.created_at
+                  AND c.reporter_user_id IS NOT DISTINCT FROM mr.reporter_user_id)
   FROM tournament.encounter_map_report mr
 UNION ALL
 SELECT 'captain reports -> team reports', cr.id, 'encounter ' || cr.encounter_id || ' team ' || cr.team_id,
        EXISTS (SELECT 1 FROM encounter.team_report tr JOIN encounter.team t ON t.id = tr.encounter_team_id
-                WHERE tr.encounter_id = cr.encounter_id AND t.team_id = cr.team_id)
+                WHERE tr.encounter_id = cr.encounter_id AND t.team_id = cr.team_id
+                  AND tr.created_at = cr.created_at
+                  AND tr.reporter_user_id IS NOT DISTINCT FROM cr.reporter_user_id)
   FROM tournament.encounter_captain_report cr
 UNION ALL
 SELECT 'readiness', rd.id, 'encounter ' || rd.encounter_id || ' side ' || rd.side,
        EXISTS (SELECT 1 FROM encounter.readiness r JOIN encounter.team t ON t.id = r.encounter_team_id
                 WHERE r.encounter_id = rd.encounter_id
-                  AND t.slot = CASE rd.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END)
+                  AND t.slot = CASE rd.side WHEN 'home' THEN 1 WHEN 'away' THEN 2 END
+                  AND r.created_at = rd.created_at
+                  AND r.ready_user_id IS NOT DISTINCT FROM rd.ready_user_id)
   FROM tournament.encounter_readiness rd
 UNION ALL
 SELECT 'room events with a side', re.id, 'encounter ' || re.encounter_id || ' side ' || re.side,
@@ -93,7 +104,7 @@ SELECT 'replay codes', c.id, 'report ' || c.report_id || ' position ' || c.map_i
                  JOIN encounter.game g ON g.encounter_id = r.encounter_id AND g.position = c.map_index
                                       AND g.state::text <> 'cancelled'
                  JOIN encounter.game_team gt ON gt.game_id = g.id AND gt.encounter_team_id = t.id
-                WHERE r.id = c.report_id AND gt.replay_code IS NOT NULL)
+                WHERE r.id = c.report_id AND gt.replay_code = c.code)
   FROM tournament.encounter_map_code c
 UNION ALL
 SELECT 'result journal lines', a.id, 'encounter ' || a.encounter_id,
@@ -143,13 +154,15 @@ SELECT 'notification payloads', n.id, n.kind,
   FROM public.notification n
  WHERE n.kind IN ('encounter.scheduled', 'encounter.dispute_review')
 UNION ALL
-SELECT 'roster rows collapsed by the snapshot', min(p.id),
-       'team ' || p.team_id || ' member ' || p.workspace_member_id,
-       count(DISTINCT (p.sub_role, p.is_substitution, p.name)) = 1
+SELECT 'roster rows collapsed by the snapshot', p.id,
+       'team ' || p.team_id || ' member ' || p.workspace_member_id || ', kept player ' || k.id,
+       (p.sub_role, p.is_substitution, p.name) IS NOT DISTINCT FROM (k.sub_role, k.is_substitution, k.name)
   FROM tournament.player p
- WHERE EXISTS (SELECT 1 FROM encounter.team t WHERE t.team_id = p.team_id)
- GROUP BY p.team_id, p.workspace_member_id
-HAVING count(*) > 1;
+  JOIN tournament.player k ON k.id = (SELECT min(m.id) FROM tournament.player m
+                                       WHERE m.team_id = p.team_id
+                                         AND m.workspace_member_id IS NOT DISTINCT FROM p.workspace_member_id)
+ WHERE p.id <> k.id
+   AND EXISTS (SELECT 1 FROM encounter.team t WHERE t.team_id = p.team_id);
 
 \echo '--- legacy rows against rows carried across; every status must be ok'
 SELECT class, count(*) AS legacy, count(*) FILTER (WHERE ok) AS migrated,

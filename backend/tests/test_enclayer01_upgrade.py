@@ -1001,7 +1001,66 @@ def test_the_reconcile_report_names_every_row_the_migration_could_not_carry(migr
     assert statuses["roster rows collapsed by the snapshot"] == "MISMATCH"
     assert ("map reports -> claims", report) in listed
     assert ("replay codes", code) in listed
-    assert any(cls == "roster rows collapsed by the snapshot" and legacy_id <= twin for cls, legacy_id in listed)
+    assert ("roster rows collapsed by the snapshot", twin) in listed  # the discarded twin, not the row kept
+
+
+def test_a_v1_write_at_the_same_key_does_not_stand_in_for_a_row_the_migration_skipped(migrated) -> None:
+    ids = migrated["ids"]
+    long_ago = "2026-01-01T00:00:00Z"
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        seat = {
+            slot: _scalar(
+                tx, "SELECT id FROM encounter.team WHERE encounter_id = %s AND slot = %s", (ids["e_played"], slot)
+            )
+            for slot in (1, 2)
+        }
+        # Legacy rows the migration never carried: a second game's home report, the away side's readiness,
+        # and a replay code for a position B's seat has no code at.
+        report = _insert(
+            tx,
+            "tournament.encounter_map_report",
+            game_id=ids["games"][1],
+            side="home",
+            home_score=0,
+            away_score=1,
+            created_at=long_ago,
+        )
+        readiness = _insert(
+            tx, "tournament.encounter_readiness", encounter_id=ids["e_played"], side="away", created_at=long_ago
+        )
+        code = _insert(tx, "tournament.encounter_map_code", report_id=ids["captain_B"], map_index=2, code="ZZZ999")
+        create, _summary, skipped = _statements(RECONCILE_SQL)
+        tx.execute(create)
+        assert {("map reports -> claims", report), ("readiness", readiness), ("replay codes", code)} <= {
+            (row[0], row[1]) for row in _rows(tx, skipped)
+        }
+
+        # V1 now writes its own claim, readiness and replay code at those very keys.
+        tx.execute(
+            "INSERT INTO encounter.game_claim (encounter_id, game_id, claimant_team_id, basis_version)"
+            " VALUES (%s, %s, %s, 1)",
+            (ids["e_played"], ids["games"][1], seat[1]),
+        )
+        tx.execute(
+            "INSERT INTO encounter.readiness (encounter_id, encounter_team_id) VALUES (%s, %s)",
+            (ids["e_played"], seat[2]),
+        )
+        tx.execute(
+            "UPDATE encounter.game_team SET replay_code = 'V1CODE' WHERE game_id = %s AND encounter_team_id = %s",
+            (
+                ids["games"][1],
+                _scalar(
+                    tx,
+                    "SELECT id FROM encounter.team WHERE encounter_id = %s AND team_id = %s",
+                    (ids["e_played"], ids["team_B"]),
+                ),
+            ),
+        )
+        still_listed = {(row[0], row[1]) for row in _rows(tx, skipped)}
+        tx.rollback()
+    assert ("map reports -> claims", report) in still_listed
+    assert ("readiness", readiness) in still_listed
+    assert ("replay codes", code) in still_listed
 
 
 def test_deleting_a_team_after_the_upgrade_keeps_the_encounters_it_played(migrated) -> None:
