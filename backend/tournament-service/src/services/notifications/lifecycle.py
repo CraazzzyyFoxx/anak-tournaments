@@ -40,6 +40,7 @@ from shared.repository.tournament import (
     TournamentRepository,
 )
 from shared.services.bracket.usability import is_encounter_live
+from shared.services.encounter.participants import active_teams
 from shared.services.notifications import broadcast, notify
 from shared.services.registration_window import is_registration_window_open
 from src import models
@@ -195,20 +196,29 @@ class LifecycleNotifier:
         *,
         channel: bool = True,
     ) -> None:
-        """Tell both rosters they have a match ready to play, and against whom.
+        """Tell every seated roster they have a match ready to play, and against whom.
 
-        A time is not what makes it news -- knowing the opponent is -- so an
-        encounter with both slots filled notifies whether or not it is
-        scheduled. What silences it is the match being unplayable or already
-        under way: an empty slot, a preview bracket nobody can enter, a
-        started or completed encounter (backfilled results, Challonge
-        imports), a finished tournament.
+        A time is not what makes it news -- knowing the opponent is -- so a fully
+        seated encounter notifies whether or not it is scheduled. What silences
+        it is the match being unplayable or already under way: an empty seat, a
+        preview bracket nobody can enter, a started or completed encounter
+        (backfilled results, Challonge imports), a finished tournament.
+
+        "Fully seated" is as many live participations as the card has slots
+        (D55), which is the same question for a duel and for a lobby.
 
         ``channel=False`` keeps the event personal. Bulk producers (stage
         activation, Swiss rounds, requalification, Challonge sync) fill a
         dozen encounters in one go, and a dozen channel posts is spam.
         """
-        if encounter.home_team_id is None or encounter.away_team_id is None:
+        if encounter.id is None:
+            # ``create_encounter`` calls this before its own flush when the
+            # recalculation enqueue was skipped (scrim containers); the id is
+            # part of the dedupe key, and the seats are read by it.
+            await session.flush()
+
+        seats = await active_teams(session, encounter.id)
+        if len(seats) < encounter.slot_count or any(seat.team_id is None for seat in seats):
             return
         if encounter.started_at is not None or encounter.status == enums.EncounterStatus.COMPLETED:
             return
@@ -219,31 +229,33 @@ class LifecycleNotifier:
         if tournament is None or tournament_state.is_finished_for_status(tournament.status):
             return
 
-        if encounter.id is None:
-            # ``create_encounter`` calls this before its own flush when the
-            # recalculation enqueue was skipped (scrim containers); the id is
-            # part of the dedupe key.
-            await session.flush()
-
         # Normalized to UTC first: the same instant arriving as a naive column
         # value and as an offset-aware payload must produce the same key, or a
         # re-save of an unchanged time would read as a reschedule.
         scheduled_at = _as_utc(encounter.scheduled_at) if encounter.scheduled_at is not None else None
-        team_ids: Sequence[int] = (encounter.home_team_id, encounter.away_team_id)
+        team_ids: Sequence[int] = [seat.team_id for seat in seats]
+        # The participation's own snapshot is the name this encounter was played
+        # under; the source team's current name is the fallback for a seat
+        # written before snapshots existed.
         names = {team.id: team.name for team in await self.team_repo.bulk_get(session, list(team_ids))}
+        team_names = [names.get(seat.team_id) or seat.name for seat in seats]
         payload = {
             "encounter_id": encounter.id,
             "tournament_id": tournament.id,
             "tournament_name": tournament.name,
-            "home_team_name": names.get(encounter.home_team_id, ""),
-            "away_team_name": names.get(encounter.away_team_id, ""),
+            "team_names": team_names,
+            # The v1 wire's two keys, which app-service's notification_render
+            # still interpolates; Task 13 moves the locale strings onto
+            # ``team_names``. The VALUES are slot 1 and slot 2.
+            "home_team_name": team_names[0] if team_names else "",
+            "away_team_name": team_names[1] if len(team_names) > 1 else "",
             "scheduled_at": scheduled_at,
             "pick_ban": await self._has_pick_ban(session, encounter),
         }
         # The opponent is half the event: a slot refilled with another team is
         # a new match to prepare for, not a repeat of the old one.
         dedupe_key = (
-            f"encounter:{encounter.id}:{encounter.home_team_id}:{encounter.away_team_id}:"
+            f"encounter:{encounter.id}:{':'.join(str(team_id) for team_id in team_ids)}:"
             f"{scheduled_at.isoformat() if scheduled_at is not None else 'tbd'}"
         )
         for auth_user_id in await self.recipient_repo.team_roster_auth_user_ids(session, team_ids):
@@ -269,16 +281,20 @@ class LifecycleNotifier:
         """Whether this encounter's coordinate resolves to a pick-ban with a
         pool -- the same question ``PregameRoomLink`` asks on the frontend.
 
+        The coordinate is the bracket POSITION now (D22): an encounter with no
+        row there -- a scrim, a mix -- resolves at the tournament level only.
+
         Sessions are not consulted: they only exist once both captains are
         ready, which is after the message this flag is for.
         """
+        position = await session.get(models.BracketEncounter, encounter.id)
         for kind in (enums.PickBanKind.MAP, enums.PickBanKind.HERO):
             config = await _pick_ban_sessions().resolve_config_at_level(
                 session,
                 tournament_id=encounter.tournament_id,
                 kind=kind,
-                stage_id=encounter.stage_id,
-                round=encounter.round,
+                stage_id=None if position is None else position.stage_id,
+                round=0 if position is None else position.round,
             )
             if config is not None and has_pool(config):
                 return True

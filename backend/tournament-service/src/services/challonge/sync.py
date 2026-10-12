@@ -19,10 +19,9 @@ app-service correction pass walked back.
 import asyncio
 import re
 import traceback
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from loguru import logger
@@ -34,6 +33,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import enums
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_naming import build_encounter_name
+from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.repository import (
     ChallongeMatchMappingRepository,
     ChallongeParticipantMappingRepository,
@@ -47,15 +47,16 @@ from shared.repository import (
     TeamRepository,
     TournamentRepository,
 )
+from shared.services.bracket.advancement import advance_after_result
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.distributed_lock import distributed_lock
-from shared.services.encounter.result_audit import record_result_transition
+from shared.services.encounter.participants import active_teams, place_team, vacate_slot
+from shared.services.encounter.result import apply_result
 from shared.services.realtime import Resource
 from shared.services.stage_refs import StageRefs, resolve_stage_refs_from_group
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.core import config
-from src.services.encounter.finalize import finalize_service
 from src.services.notifications.lifecycle import after_encounter_teams_changed
 from src.services.team.service import team_service
 from src.services.tournament.events import (
@@ -165,11 +166,18 @@ class _UpsertResult:
 
 @dataclass(frozen=True)
 class _ChallongeLinkSpec:
+    """One Challonge prereq edge, in the encounter layer's terms (D13, D65).
+
+    Challonge's "player1/player2 comes from the winner/loser of match X" is a
+    PLACE in that match feeding a SEAT of this one: ``source_position`` 1 is the
+    winner and 2 the loser, ``target_slot`` 1 is player1 and 2 player2.
+    """
+
     source_key: int
     source_challonge_id: int
     target_challonge_id: int
-    role: enums.EncounterLinkRole
-    target_slot: enums.EncounterLinkSlot
+    source_position: int
+    target_slot: int
 
 
 SYNC_LOCK_TTL_SECONDS = 5 * 60
@@ -414,17 +422,24 @@ async def _fetch_all_sources(
     return list(zip(sources, results, strict=True))
 
 
-def _encounter_sync_snapshot(encounter: models.Encounter) -> dict:
+def _encounter_sync_snapshot(
+    encounter: models.Encounter,
+    seats: Sequence[models.EncounterTeam],
+    position: models.BracketEncounter | None,
+) -> dict:
+    """What the sync log records about an encounter before/after a write.
+
+    Seats, not two columns: the log is read by a human comparing an import
+    against what stood here, and a lobby's four numbers have to fit in it too.
+    """
     return {
         "id": encounter.id,
-        "home_team_id": encounter.home_team_id,
-        "away_team_id": encounter.away_team_id,
-        "home_score": encounter.home_score,
-        "away_score": encounter.away_score,
-        "round": encounter.round,
+        "team_ids": [seat.team_id for seat in seats],
+        "scores": [seat.score for seat in seats],
+        "round": None if position is None else position.round,
         "status": encounter.status.value if hasattr(encounter.status, "value") else encounter.status,
-        "stage_id": encounter.stage_id,
-        "stage_item_id": encounter.stage_item_id,
+        "stage_id": None if position is None else position.stage_id,
+        "stage_item_id": None if position is None else position.stage_item_id,
     }
 
 
@@ -449,16 +464,8 @@ def _iter_challonge_link_specs(
     specs: list[_ChallongeLinkSpec] = []
     source_key = _source_lookup_key(source)
     for prereq_id, is_loser, slot in (
-        (
-            match.player1_prereq_match_id,
-            match.player1_is_prereq_match_loser,
-            enums.EncounterLinkSlot.HOME,
-        ),
-        (
-            match.player2_prereq_match_id,
-            match.player2_is_prereq_match_loser,
-            enums.EncounterLinkSlot.AWAY,
-        ),
+        (match.player1_prereq_match_id, match.player1_is_prereq_match_loser, 1),
+        (match.player2_prereq_match_id, match.player2_is_prereq_match_loser, 2),
     ):
         if prereq_id is None or prereq_id == match.id:
             continue
@@ -467,7 +474,8 @@ def _iter_challonge_link_specs(
                 source_key=source_key,
                 source_challonge_id=prereq_id,
                 target_challonge_id=match.id,
-                role=(enums.EncounterLinkRole.LOSER if is_loser else enums.EncounterLinkRole.WINNER),
+                # Challonge's winner/loser IS a place: first or second.
+                source_position=2 if is_loser else 1,
                 target_slot=slot,
             )
         )
@@ -494,12 +502,85 @@ def _import_invalidated_resources(stats: dict) -> tuple[Resource, ...]:
     return ()
 
 
-def _source_matches_encounter(source: _ImportSource, encounter: models.Encounter) -> bool:
-    if source.stage_item_id is not None and encounter.stage_item_id == source.stage_item_id:
+def _source_matches_encounter(source: _ImportSource, position: models.BracketEncounter | None) -> bool:
+    if position is not None and source.stage_item_id is not None and position.stage_item_id == source.stage_item_id:
         return True
-    if source.stage is not None and encounter.stage_id == source.stage.id:
+    if position is not None and source.stage is not None and position.stage_id == source.stage.id:
         return True
     return source.source_type == "tournament"
+
+
+def _places(totals: Mapping[int, float]) -> dict[int, int]:
+    """Competition ranking over a scoreline: 2-0 -> 1, 2; 1-1 -> 1, 1."""
+    places: dict[int, int] = {}
+    place, previous = 0, None
+    for index, (key, value) in enumerate(sorted(totals.items(), key=lambda pair: (-pair[1], pair[0])), 1):
+        if value != previous:
+            place, previous = index, value
+        places[key] = place
+    return places
+
+
+async def _reseat(
+    session: AsyncSession,
+    encounter: models.Encounter,
+    team_ids: Sequence[int | None],
+    names: Mapping[int, str],
+) -> bool:
+    """Make the encounter's seats match ``team_ids`` -- index ``i`` is slot ``i + 1``.
+
+    Challonge's participant 1 and 2 ARE slots 1 and 2; there is no orientation
+    to preserve. A seat that changes hands is retired and a new participation
+    written (D55), never updated in place, so the games the old occupant played
+    stay attached to the row that played them. Returns whether anything moved.
+    """
+    changed = False
+    current = {seat.slot: seat for seat in await active_teams(session, encounter.id)}
+    for index, team_id in enumerate(team_ids, 1):
+        seat = current.get(index)
+        if seat is not None and seat.team_id == team_id:
+            continue
+        if seat is not None:
+            await vacate_slot(session, encounter, slot=index)
+            changed = True
+        if team_id is not None:
+            await place_team(
+                session,
+                encounter,
+                slot=index,
+                team_id=team_id,
+                name=names.get(team_id, "TBD"),
+                seed=None,
+                members=(),
+            )
+            changed = True
+    return changed
+
+
+async def _write_import_result(
+    session: AsyncSession,
+    encounter: models.Encounter,
+    scores: Sequence[float],
+) -> None:
+    """Record Challonge's scoreline as this encounter's standing.
+
+    Source ``import``: a remote system decided it, which is what stops a later
+    ``refresh_from_games`` from overwriting it with whatever the local game rows
+    add up to (D57). ``actor_user_id`` stays NULL for the same reason.
+    """
+    seats = await active_teams(session, encounter.id)
+    totals = {seat.id: float(score) for seat, score in zip(seats, scores, strict=False)}
+    await apply_result(
+        session,
+        encounter,
+        source=enums.EncounterResultSource.IMPORT,
+        totals=totals,
+        placements=_places(totals),
+        action=enums.EncounterResultAuditAction.IMPORT,
+        audit_source="challonge",
+        actor_user_id=None,
+        reason=None,
+    )
 
 
 class ChallongeSyncLogService:
@@ -873,11 +954,14 @@ class ChallongeStructureService:
     ) -> int:
         if encounter is None:
             return 0
+        position = await session.get(models.BracketEncounter, encounter.id)
+        if position is None:
+            return 0
         return await self._ensure_stage_item_team_inputs(
             session,
             tournament,
-            stage_item_id=encounter.stage_item_id,
-            team_ids=[encounter.home_team_id, encounter.away_team_id],
+            stage_item_id=position.stage_item_id,
+            team_ids=[seat.team_id for seat in await active_teams(session, encounter.id)],
         )
 
 
@@ -1194,24 +1278,35 @@ class ChallongeMappingService:
         # match yet.
         unlinked_by_slot: dict[tuple[int | None, int, frozenset[int]], models.Encounter] = {}
         encounters_result = await session.execute(
-            sa.select(models.Encounter).where(
+            sa.select(models.Encounter, models.BracketEncounter)
+            .join(models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id)
+            .where(
                 models.Encounter.tournament_id == tournament_id,
                 # A Challonge match is a duel; a lobby sitting in the same
                 # tournament must never be claimed as one of its slots.
-                models.Encounter.format == enums.EncounterFormat.DUEL,
-                models.Encounter.home_team_id.is_not(None),
-                models.Encounter.away_team_id.is_not(None),
+                models.Encounter.slot_count == 2,
             )
         )
-        for encounter in encounters_result.scalars().all():
+        rows = encounters_result.tuples().all()
+        seats_by_encounter: dict[int, list[int]] = {}
+        for seat in (
+            await session.execute(
+                sa.select(models.EncounterTeam).where(
+                    models.EncounterTeam.encounter_id.in_([encounter.id for encounter, _ in rows] or [0]),
+                    models.EncounterTeam.active.is_(True),
+                    models.EncounterTeam.team_id.is_not(None),
+                )
+            )
+        ).scalars():
+            seats_by_encounter.setdefault(seat.encounter_id, []).append(seat.team_id)
+        for encounter, position in rows:
             if encounter.id in mapped_encounter_ids:
                 continue
-            key = (
-                encounter.stage_id,
-                encounter.round,
-                frozenset({encounter.home_team_id, encounter.away_team_id}),
-            )
-            unlinked_by_slot.setdefault(key, encounter)
+            team_ids = seats_by_encounter.get(encounter.id, [])
+            # TBD slots are left for the create-path: there is nothing to match yet.
+            if len(team_ids) != 2:
+                continue
+            unlinked_by_slot.setdefault((position.stage_id, position.round, frozenset(team_ids)), encounter)
 
         # Existing encounters are located via challonge_match_mapping (by_source_key)
         # only — the deprecated encounter.challonge_id column is no longer consulted.
@@ -1446,6 +1541,45 @@ class ChallongeSyncService:
 
     # ── Import (Challonge -> local) ──────────────────────────────────────
 
+    async def _scoring_rule_id(self, session: AsyncSession, tournament: models.Tournament, refs: StageRefs) -> int:
+        """The rule an imported encounter is scored by (D51).
+
+        The stage's own when the match resolved to one -- so an imported bracket
+        is scored exactly like a locally generated one. A match with no stage
+        gets the tournament's own ``wins`` rule, created once and reused, because
+        ``encounter.scoring_rule_id`` is NOT NULL and an import must not invent a
+        rule row per match.
+        """
+        if refs.stage_id is not None:
+            rule_id = await session.scalar(
+                sa.select(models.Stage.scoring_rule_id).where(models.Stage.id == refs.stage_id)
+            )
+            if rule_id is not None:
+                return rule_id
+        # Looked up rather than cached on the service: this is a singleton shared
+        # by every workspace, and a rule belongs to exactly one of them.
+        existing = await session.scalar(
+            sa.select(models.ScoringRule.id)
+            .where(
+                models.ScoringRule.workspace_id == tournament.workspace_id,
+                models.ScoringRule.preset == "wins",
+                models.ScoringRule.game_formula == "win",
+            )
+            .order_by(models.ScoringRule.id)
+            .limit(1)
+        )
+        if existing is not None:
+            return existing
+        rule = models.ScoringRule(
+            workspace_id=tournament.workspace_id,
+            preset="wins",
+            game_formula="win",
+            end_formula=WINS_END_FORMULA,
+        )
+        session.add(rule)
+        await session.flush()
+        return rule.id
+
     async def _upsert_encounter_from_challonge(
         self,
         session: AsyncSession,
@@ -1502,24 +1636,33 @@ class ChallongeSyncService:
             # this exact slot (same stage, round, team pair) with no Challonge
             # mapping yet — adopt it instead of creating a sibling next to it.
             encounter = match_lookup.claim_unlinked(refs.stage_id, match.round, frozenset({home_team_id, away_team_id}))
+        names = {
+            team_id: team.name
+            for team_id, team in ((home_team_id, home_team), (away_team_id, away_team))
+            if team_id is not None and team is not None
+        }
         if encounter is None:
             initial_status = enums.EncounterStatus.OPEN if status == enums.EncounterStatus.COMPLETED else status
             encounter = models.Encounter(
-                name=build_encounter_name(
-                    home_team.name if home_team is not None else None,
-                    away_team.name if away_team is not None else None,
-                ),
-                home_team_id=home_team_id,
-                away_team_id=away_team_id,
-                home_score=home_score,
-                away_score=away_score,
-                round=match.round,
+                name=build_encounter_name([names.get(home_team_id), names.get(away_team_id)]),
+                workspace_id=tournament.workspace_id,
+                discipline=tournament.discipline,
                 tournament_id=tournament.id,
-                stage_id=refs.stage_id,
-                stage_item_id=refs.stage_item_id,
+                scoring_rule_id=await self._scoring_rule_id(session, tournament, refs),
+                slot_count=2,
                 status=initial_status,
             )
             await self.encounter_repo.create(session, encounter)
+            session.add(
+                models.BracketEncounter(
+                    encounter_id=encounter.id,
+                    tournament_id=tournament.id,
+                    stage_id=refs.stage_id,
+                    stage_item_id=refs.stage_item_id,
+                    round=match.round,
+                )
+            )
+            await _reseat(session, encounter, [home_team_id, away_team_id], names)
             match_lookup.set(source, match.id, encounter)
             # challonge_match_mapping is the sole persistence of the encounter↔match
             # link now (the legacy encounter.challonge_id column is no longer written).
@@ -1529,48 +1672,30 @@ class ChallongeSyncService:
             if newly_completed:
                 # A match can already be complete on the Challonge side the first
                 # time we see it (e.g. importing a finished tournament) — route it
-                # through the same finalize+audit path as a live completion so
-                # ``result_status``/``confirmed_at`` and bracket advancement stay in
-                # sync with ``status`` (ck_encounter_result_status_matches_status).
-                await finalize_service.finalize_encounter_score(
-                    session,
-                    encounter.id,
-                    encounter=encounter,
-                    home_score=home_score,
-                    away_score=away_score,
-                    source="challonge",
-                    result_status=enums.EncounterResultStatus.CONFIRMED,
-                    confirmed_at=datetime.now(UTC),
-                )
-                record_result_transition(
-                    session,
-                    encounter,
-                    action=enums.EncounterResultAuditAction.IMPORT,
-                    source="challonge",
-                    actor_user_id=None,
-                    from_result_status=enums.EncounterResultStatus.NONE,
-                    home_score_before=None,
-                    away_score_before=None,
-                )
+                # through the single result writer so ``result_status``,
+                # ``confirmed_at``, the journal and ``status`` stay in step
+                # (ck_encounter_confirmed_completed).
+                await _write_import_result(session, encounter, [home_score, away_score])
             return _UpsertResult(action="created", encounter=encounter, newly_completed=newly_completed)
 
+        position = await session.get(models.BracketEncounter, encounter.id)
+        seats = await active_teams(session, encounter.id)
         was_completed = encounter.status == enums.EncounterStatus.COMPLETED
         has_local_decision = _has_local_decision(encounter)
-        before = _encounter_sync_snapshot(encounter)
+        before = _encounter_sync_snapshot(encounter, seats, position)
         after = {
-            "home_team_id": home_team_id,
-            "away_team_id": away_team_id,
-            "home_score": home_score,
-            "away_score": away_score,
+            "id": encounter.id,
+            "team_ids": [home_team_id, away_team_id],
+            "scores": [float(home_score), float(away_score)],
             "round": match.round,
             "status": status.value,
             "stage_id": refs.stage_id,
             "stage_item_id": refs.stage_item_id,
         }
         if has_local_decision:
-            local_score = (encounter.home_score, encounter.away_score)
-            remote_score = (home_score, away_score)
-            local_teams = (encounter.home_team_id, encounter.away_team_id)
+            local_score = tuple(seat.score for seat in seats)
+            remote_score = (float(home_score), float(away_score))
+            local_teams = tuple(seat.team_id for seat in seats)
             remote_teams = (home_team_id, away_team_id)
             if (
                 status != enums.EncounterStatus.COMPLETED
@@ -1592,18 +1717,22 @@ class ChallongeSyncService:
 
         teams_changed = False
         if not missing_team_mapping and not missing_local_team:
-            teams_changed = (encounter.home_team_id, encounter.away_team_id) != (home_team_id, away_team_id)
-            encounter.name = build_encounter_name(
-                home_team.name if home_team is not None else None,
-                away_team.name if away_team is not None else None,
+            teams_changed = await _reseat(session, encounter, [home_team_id, away_team_id], names)
+            encounter.name = build_encounter_name([names.get(home_team_id), names.get(away_team_id)])
+        if position is None:
+            session.add(
+                models.BracketEncounter(
+                    encounter_id=encounter.id,
+                    tournament_id=tournament.id,
+                    stage_id=refs.stage_id,
+                    stage_item_id=refs.stage_item_id,
+                    round=match.round,
+                )
             )
-            encounter.home_team_id = home_team_id
-            encounter.away_team_id = away_team_id
-        encounter.home_score = home_score
-        encounter.away_score = away_score
-        encounter.round = match.round
-        encounter.stage_id = refs.stage_id
-        encounter.stage_item_id = refs.stage_item_id
+        else:
+            position.round = match.round
+            position.stage_id = refs.stage_id
+            position.stage_item_id = refs.stage_item_id
         newly_completed = not was_completed and status == enums.EncounterStatus.COMPLETED
         if not newly_completed:
             encounter.status = status
@@ -1617,30 +1746,13 @@ class ChallongeSyncService:
         await self.mapping._ensure_match_mapping(session, source, match.id, encounter, match_lookup)
 
         if newly_completed:
-            from_result_status = encounter.result_status
-            home_score_before, away_score_before = before.get("home_score"), before.get("away_score")
-            await finalize_service.finalize_encounter_score(
-                session,
-                encounter.id,
-                encounter=encounter,
-                home_score=encounter.home_score,
-                away_score=encounter.away_score,
-                source="challonge",
-                result_status=enums.EncounterResultStatus.CONFIRMED,
-                confirmed_at=datetime.now(UTC),
-            )
-            # actor_user_id stays NULL: an external system decided this, and that is
-            # exactly what distinguishes it from an admin resolution in the trail.
-            record_result_transition(
-                session,
-                encounter,
-                action=enums.EncounterResultAuditAction.IMPORT,
-                source="challonge",
-                actor_user_id=None,
-                from_result_status=from_result_status,
-                home_score_before=home_score_before,
-                away_score_before=away_score_before,
-            )
+            await _write_import_result(session, encounter, [home_score, away_score])
+        else:
+            # Not complete remotely: the scoreline is the running tally, so it is
+            # materialized onto the seats with no standing result behind it (D57).
+            for seat, score in zip(await active_teams(session, encounter.id), (home_score, away_score), strict=False):
+                seat.score = float(score)
+            await session.flush()
 
         return _UpsertResult(
             action="updated",
@@ -1657,35 +1769,32 @@ class ChallongeSyncService:
         *,
         match_lookup: _MatchLookup,
     ) -> dict[str, int]:
-        specs_by_source_role: dict[
-            tuple[int, int, enums.EncounterLinkRole],
-            _ChallongeLinkSpec,
-        ] = {}
+        specs_by_source_position: dict[tuple[int, int, int], _ChallongeLinkSpec] = {}
         sources_by_key = {_source_lookup_key(source): source for source, _match in matches}
         for source, match in matches:
             for spec in _iter_challonge_link_specs(source, match):
-                specs_by_source_role[(spec.source_key, spec.source_challonge_id, spec.role)] = spec
+                specs_by_source_position[(spec.source_key, spec.source_challonge_id, spec.source_position)] = spec
 
-        if not specs_by_source_role:
+        if not specs_by_source_position:
             return {"bracket_links_created": 0, "bracket_links_updated": 0}
 
         source_encounter_ids = [
             encounter.id
-            for spec in specs_by_source_role.values()
+            for spec in specs_by_source_position.values()
             if (source := sources_by_key.get(spec.source_key)) is not None
             and (encounter := match_lookup.get(source, spec.source_challonge_id)) is not None
         ]
         if not source_encounter_ids:
             return {"bracket_links_created": 0, "bracket_links_updated": 0}
 
-        existing_by_source_role = {
-            (link.source_encounter_id, link.role): link
+        existing_by_source_position = {
+            (link.source_encounter_id, link.source_position): link
             for link in await self.encounter_link_repo.list_by_source_ids(session, source_encounter_ids)
         }
 
         new_links: list[models.EncounterLink] = []
         updated = 0
-        for spec in specs_by_source_role.values():
+        for spec in specs_by_source_position.values():
             source_ref = sources_by_key.get(spec.source_key)
             if source_ref is None:
                 continue
@@ -1694,17 +1803,18 @@ class ChallongeSyncService:
             if source is None or target is None:
                 continue
 
-            key = (source.id, spec.role)
-            existing = existing_by_source_role.get(key)
+            key = (source.id, spec.source_position)
+            existing = existing_by_source_position.get(key)
             if existing is None:
                 link = models.EncounterLink(
+                    tournament_id=source.tournament_id,
                     source_encounter_id=source.id,
+                    source_position=spec.source_position,
                     target_encounter_id=target.id,
-                    role=spec.role,
                     target_slot=spec.target_slot,
                 )
                 new_links.append(link)
-                existing_by_source_role[key] = link
+                existing_by_source_position[key] = link
                 continue
 
             if existing.target_encounter_id != target.id or existing.target_slot != spec.target_slot:
@@ -1737,27 +1847,12 @@ class ChallongeSyncService:
             encounter = match_lookup.get(source, match.id)
             if encounter is not None:
                 # Re-fires advancement for every complete match (idempotent), so it
-                # must not re-stamp result_status or append a second audit row for
-                # an encounter that is already settled.
-                already_confirmed = encounter.result_status == enums.EncounterResultStatus.CONFIRMED
-                await finalize_service.finalize_encounter_score(
-                    session,
-                    encounter.id,
-                    encounter=encounter,
-                    home_score=encounter.home_score,
-                    away_score=encounter.away_score,
-                    source="challonge",
-                    result_status=None if already_confirmed else enums.EncounterResultStatus.CONFIRMED,
-                    confirmed_at=None if already_confirmed else datetime.now(UTC),
-                )
-                if not already_confirmed:
-                    record_result_transition(
-                        session,
-                        encounter,
-                        action=enums.EncounterResultAuditAction.IMPORT,
-                        source="challonge",
-                        actor_user_id=None,
-                    )
+                # must not re-stamp a standing an earlier pass already wrote: only
+                # an encounter without an ``import`` result gets one here.
+                if encounter.result_source != enums.EncounterResultSource.IMPORT.value:
+                    seats = await active_teams(session, encounter.id)
+                    await _write_import_result(session, encounter, [seat.score for seat in seats])
+                await advance_after_result(session, encounter)
 
     async def import_tournament(self, session: AsyncSession, tournament_id: int, *, dry_run: bool = False) -> dict:
         """Full import from Challonge: upsert encounters with scores and status."""
@@ -2069,7 +2164,8 @@ class ChallongeSyncService:
         # id — the caller treats a missing match id as "skip".
         if sources is None:
             sources = await self.mapping.discover_sources(session, tournament)
-        candidates = [source for source in sources if _source_matches_encounter(source, encounter)]
+        position = await session.get(models.BracketEncounter, encounter.id)
+        candidates = [source for source in sources if _source_matches_encounter(source, position)]
         source = candidates[0] if candidates else (sources[0] if len(sources) == 1 else None)
         return source, None
 
@@ -2142,15 +2238,12 @@ class ChallongeSyncService:
                     models.Encounter.tournament_id == tournament_id,
                     models.Encounter.status == enums.EncounterStatus.COMPLETED,
                     # Challonge matches are two-sided: a completed lobby has no
-                    # home/away score to push, so push_single_result would 409
+                    # two-number scoreline to push, so push_single_result would 409
                     # once per export and fill the sync log with it.
-                    models.Encounter.format == enums.EncounterFormat.DUEL,
+                    models.Encounter.slot_count == 2,
                     models.Encounter.id.in_(tuple(linked_encounter_ids)),
                 )
-                .options(
-                    selectinload(models.Encounter.home_team),
-                    selectinload(models.Encounter.away_team),
-                )
+                .options(selectinload(models.Encounter.teams))
             )
             encounters = enc_result.scalars().all()
 
@@ -2229,30 +2322,37 @@ class ChallongeSyncService:
         if source is None or challonge_match_id is None:
             return False
 
+        # Slots 1 and 2 ARE Challonge's participants 1 and 2, in that order.
+        seats = await active_teams(session, encounter.id)
+        if len(seats) != 2:
+            raise ValueError(f"Encounter {encounter.id} does not seat two participations to push")
+        first, second = seats
+
         winner_challonge_id: int | str
-        if encounter.home_score == encounter.away_score:
+        if first.score == second.score:
             # Challonge's documented draw encoding (RR/Swiss). The old `else`
-            # branch handed the win to the away team on an equal score.
+            # branch handed the win to the second seat on an equal score.
             winner_challonge_id = "tie"
         else:
-            winner_team = encounter.home_team if encounter.home_score > encounter.away_score else encounter.away_team
-            if not winner_team:
+            winner_seat = first if first.score > second.score else second
+            if winner_seat.team_id is None:
                 raise ValueError(f"Encounter {encounter.id} has no winner team")
 
             resolved = await self._resolve_winner_challonge_id(
                 session,
                 source,
-                winner_team.id,
+                winner_seat.team_id,
                 encounter,
                 participant_mappings=participant_mappings,
             )
             if resolved is None:
                 raise ValueError(
-                    f"Winner team {winner_team.id} has no Challonge participant mapping for source {source.challonge_id}"
+                    f"Winner team {winner_seat.team_id} has no Challonge participant mapping "
+                    f"for source {source.challonge_id}"
                 )
             winner_challonge_id = resolved
 
-        scores_csv = f"{encounter.home_score}-{encounter.away_score}"
+        scores_csv = f"{int(first.score)}-{int(second.score)}"
 
         # Commit (and thereby release the pgBouncer-backed connection) before the
         # external HTTP call: holding a transaction open across a third-party,
@@ -2298,8 +2398,7 @@ class ChallongeSyncService:
                 selectinload(models.Encounter.tournament)
                 .selectinload(models.Tournament.stages)
                 .selectinload(models.Stage.items),
-                selectinload(models.Encounter.home_team),
-                selectinload(models.Encounter.away_team),
+                selectinload(models.Encounter.teams),
             ],
         )
         if not encounter:
