@@ -44,6 +44,19 @@ Take a backup first. `enclayer01` has no downgrade: going back means restoring t
    cross-tournament links, `best_of < 1`, one team on both sides, a team of another tournament, a stage of
    another tournament, pick-ban entries on an unseated side, FFA encounters outside an `ffa_league` stage).
    The revision runs the same queries first and stops with the ids; the file only buys time.
+   Check 2 resolves a regular-vs-substitute clash itself: a member who is a regular on one seat of an
+   encounter and only a substitute on the other seat keeps just the regular seat in that encounter's roster
+   snapshot, and the check lists only what that cannot settle (a regular on two seats, or a substitute on
+   two seats with no regular). If the pre-flight still lists them, fix these two rows of the dev data
+   first:
+
+   ```sql
+   -- encounter 94 seats team 63 on both sides; its name is "Freezzle vs zuuuuuuuuuuz"
+   UPDATE tournament.encounter SET away_team_id = 79 WHERE id = 94;
+   -- player 11833 is a substitute (support/3000) next to row 11834 of the same member (damage/4100)
+   -- in team 2230; the member played only damage heroes there
+   UPDATE tournament.player SET role = 'damage', rank = 4100 WHERE id = 11833;
+   ```
 2. **Upgrade.** Quiet or stop the services that write encounters, then:
 
    ```sh
