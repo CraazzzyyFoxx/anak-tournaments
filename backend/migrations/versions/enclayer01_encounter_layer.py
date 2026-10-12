@@ -125,6 +125,9 @@ _SCHEMAS_AND_TYPES = (
     "INSERT INTO catalog.discipline (code, name) VALUES ('overwatch', 'Overwatch')",
     *(f"ALTER TYPE tournament.{name} SET SCHEMA encounter" for name in _MOVED_TYPES),
     "ALTER TYPE encounter.pickbanseedsource RENAME VALUE 'fallback_home' TO 'fallback_first_slot'",
+    # Label only: nothing in this revision writes it (PostgreSQL forbids using a
+    # value in the transaction that added it).
+    "ALTER TYPE encounter.encounterresultauditaction ADD VALUE IF NOT EXISTS 'auto_pending'",
     "CREATE TYPE encounter.pickbanactor AS ENUM ('team', 'decider', 'admin', 'system')",
 )
 

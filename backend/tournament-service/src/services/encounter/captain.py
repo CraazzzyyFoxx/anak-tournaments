@@ -59,8 +59,7 @@ from shared.services.bracket import advancement
 from shared.services.bracket.usability import is_encounter_live
 from shared.services.challonge_refs import resolve_encounter_challonge
 from shared.services.encounter.participants import active_teams
-from shared.services.encounter.result import apply_result, lock_encounter, reopen
-from shared.services.encounter.result_audit import record_result_transition, snapshot
+from shared.services.encounter.result import apply_result, hold_result, lock_encounter, reopen
 from src import models, schemas
 
 # ``src.services.challonge.sync`` is not imported at module scope: the exporter
@@ -528,16 +527,24 @@ class CaptainService:
         reported = {row.encounter_team_id for row in reports}
 
         if not live.issubset(reported):
-            encounter.result_status = EncounterResultStatus.PENDING_CONFIRMATION
-            encounter.confirmed_at = None
             encounter.closeness = None
-            await session.flush()
+            # A captain re-filing while the others are still owed changes nothing
+            # the result can show; only the move INTO pending is a transition.
+            if encounter.result_status != EncounterResultStatus.PENDING_CONFIRMATION:
+                await hold_result(
+                    session,
+                    encounter,
+                    status=EncounterResultStatus.PENDING_CONFIRMATION,
+                    action=EncounterResultAuditAction.AUTO_PENDING,
+                    audit_source="series_claim",
+                    actor_user_id=actor_user_id,
+                )
             return False
 
         standing = {self._shape(results.get(row.id, [])) for row in reports if row.encounter_team_id in live}
         games = {row.games_played for row in reports if row.encounter_team_id in live}
         if len(standing) > 1 or len(games) > 1:
-            await self._mark_disputed(session, encounter, seats, actor_user_id=actor_user_id)
+            await self._mark_disputed(session, encounter, actor_user_id=actor_user_id)
             await self._notify_dispute(session, encounter, seats, actor_auth_user_id=actor_auth_user_id)
             return False
 
@@ -599,28 +606,20 @@ class CaptainService:
         self,
         session: AsyncSession,
         encounter: Encounter,
-        seats: Sequence[EncounterTeam],
         *,
         actor_user_id: int | None,
     ) -> None:
         """Record the contradiction. The standing is untouched -- nobody's
         numbers are adopted by a dispute, only the status moves."""
-        from_result_status = encounter.result_status
-        encounter.result_status = EncounterResultStatus.DISPUTED
-        encounter.confirmed_at = None
         encounter.closeness = None
-        encounter.result_version += 1
-        record_result_transition(
+        await hold_result(
             session,
             encounter,
+            status=EncounterResultStatus.DISPUTED,
             action=EncounterResultAuditAction.AUTO_DISPUTE,
-            source="series_claim",
+            audit_source="series_claim",
             actor_user_id=actor_user_id,
-            from_result_status=from_result_status,
-            before=snapshot(seats),
-            after=snapshot(seats),
         )
-        await session.flush()
 
     async def _notify_dispute(
         self,

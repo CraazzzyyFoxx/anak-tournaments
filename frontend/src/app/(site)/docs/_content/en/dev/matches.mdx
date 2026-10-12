@@ -42,7 +42,7 @@ There is at most one claim per game per participation. Every `results` line name
 
 Only an admin can change a confirmed result: `POST /api/v1/admin/encounters/{encounter_id}/games/{game_id}/result`, and the correction must carry a reason, which goes into the journal. The correction is dependency-aware: position N's outcome is what opened map N+1's bans, so flipping who won N makes the round that followed it wrong — it was opened by the losing side. That round is rebuilt on the new outcome, but only while it is untouched: once anyone has banned in it, or a later position has a claim, the correction is refused with `downstream_started` rather than deleting real history. A correction that leaves the outcome alone (2:1 to 3:1) changes no round at all.
 
-The result journal is read from `GET /api/v1/admin/encounters/{encounter_id}/result-audit`. Its actions are `confirm`, `reopen`, `auto_confirm`, `auto_dispute`, `import`, `cascade_reset`, plus the three per-game ones: `game_confirm`, `game_correct`, `game_cancel`.
+The result journal is read from `GET /api/v1/admin/encounters/{encounter_id}/result-audit`. Its actions are `confirm`, `reopen`, `auto_confirm`, `auto_dispute`, `auto_pending`, `import`, `cascade_reset`, plus the three per-game ones: `game_confirm`, `game_correct`, `game_cancel`.
 
 ## The series score
 

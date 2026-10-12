@@ -725,6 +725,7 @@ type EncounterResultAuditAction =
   | "reopen"
   | "auto_confirm"
   | "auto_dispute"
+  | "auto_pending"
   | "import"
   | "cascade_reset"
   | "game_confirm"

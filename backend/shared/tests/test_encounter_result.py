@@ -403,6 +403,88 @@ class RetiredLineupTests(ResultWriterCase):
         self.assertFalse(outcome.ended)
 
 
+class HoldResultTests(ResultWriterCase):
+    async def hold(self, status: enums.EncounterResultStatus, action: enums.EncounterResultAuditAction) -> None:
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            await result.hold_result(
+                s,
+                encounter,
+                status=status,
+                action=action,
+                audit_source="series_claim",
+                actor_user_id=None,
+            )
+            await s.commit()
+
+    async def test_each_hold_is_one_version_and_one_journal_row_and_adopts_nothing(self) -> None:
+        await self.hold(enums.EncounterResultStatus.PENDING_CONFIRMATION, enums.EncounterResultAuditAction.AUTO_PENDING)
+        await self.hold(enums.EncounterResultStatus.DISPUTED, enums.EncounterResultAuditAction.AUTO_DISPUTE)
+
+        encounter = await self.reload()
+        self.assertEqual(enums.EncounterResultStatus.DISPUTED, encounter.result_status)
+        self.assertIsNone(encounter.result_source)
+        self.assertIsNone(encounter.confirmed_at)
+        self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
+        self.assertEqual(2, encounter.result_version)
+        self.assertEqual([(self.seats[0], 0.0, None), (self.seats[1], 0.0, None)], await self.standing())
+
+        rows = await self.audits()
+        self.assertEqual([1, 2], [row.result_version for row in rows])
+        self.assertEqual(
+            [enums.EncounterResultAuditAction.AUTO_PENDING, enums.EncounterResultAuditAction.AUTO_DISPUTE],
+            [row.action for row in rows],
+        )
+        self.assertEqual(
+            [
+                (enums.EncounterResultStatus.NONE, enums.EncounterResultStatus.PENDING_CONFIRMATION),
+                (enums.EncounterResultStatus.PENDING_CONFIRMATION, enums.EncounterResultStatus.DISPUTED),
+            ],
+            [(row.from_result_status, row.to_result_status) for row in rows],
+        )
+        self.assertTrue(all(row.before == row.after for row in rows))
+
+    async def test_only_a_pending_or_disputed_status_can_be_held(self) -> None:
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            with self.assertRaises(ValueError):
+                await result.hold_result(
+                    s,
+                    encounter,
+                    status=enums.EncounterResultStatus.CONFIRMED,
+                    action=enums.EncounterResultAuditAction.CONFIRM,
+                    audit_source="admin",
+                    actor_user_id=None,
+                )
+            await s.rollback()
+        self.assertEqual(0, (await self.reload()).result_version)
+
+    async def test_a_confirmed_result_leaves_only_through_reopen(self) -> None:
+        async with self.Session() as s:
+            encounter = await result.lock_encounter(s, self.ids["e"])
+            await result.apply_result(
+                s,
+                encounter,
+                source=enums.EncounterResultSource.ADMIN,
+                totals={self.seats[0]: 2.0, self.seats[1]: 0.0},
+                placements={self.seats[0]: 1, self.seats[1]: 2},
+                action=enums.EncounterResultAuditAction.CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                reason=None,
+            )
+            with self.assertRaises(ValueError):
+                await result.hold_result(
+                    s,
+                    encounter,
+                    status=enums.EncounterResultStatus.DISPUTED,
+                    action=enums.EncounterResultAuditAction.AUTO_DISPUTE,
+                    audit_source="series_claim",
+                    actor_user_id=None,
+                )
+            await s.rollback()
+
+
 class RefreshFromGamesTests(ResultWriterCase):
     async def test_an_unfinished_series_materializes_without_confirming(self) -> None:
         async with self.Session() as s:

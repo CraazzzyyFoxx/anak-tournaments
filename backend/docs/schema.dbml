@@ -42,6 +42,7 @@ Enum encounterresultauditaction {
   reopen
   auto_confirm
   auto_dispute
+  auto_pending
   import
   cascade_reset
   game_confirm
@@ -3440,8 +3441,8 @@ Ref: encounter.pick_ban_entry.encounter_id > encounter.team.encounter_id [delete
 Ref: encounter.pick_ban_entry.encounter_id > encounter.team.encounter_id [delete: set null (picked_by_team_id)]
 Ref: encounter.pick_ban_entry.picked_by_team_id > encounter.team.id [delete: set null (picked_by_team_id)]
 Ref: encounter.pick_ban_entry.protected_by_team_id > encounter.team.id [delete: set null (protected_by_team_id)]
-Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (pending_chooser_team_id)]
 Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (first_team_id)]
+Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (pending_chooser_team_id)]
 Ref: encounter.pick_ban_session.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (undo_requested_by_team_id)]
 Ref: encounter.pick_ban_session.first_team_id > encounter.team.id [delete: set null (first_team_id)]
@@ -3562,10 +3563,10 @@ Ref: subscriptions.entitlement.auth_user_id > auth.user.id [delete: cascade]
 Ref: subscriptions.provider_config.workspace_id > workspace.id [delete: cascade]
 Ref: subscriptions.requirement.workspace_id > workspace.id [delete: cascade]
 Ref: tournament.bracket_encounter.encounter_id > encounter.encounter.id [delete: cascade]
-Ref: tournament.bracket_encounter.tournament_id > encounter.encounter.tournament_id [delete: cascade]
 Ref: tournament.bracket_encounter.tournament_id > tournament.stage.tournament_id [delete: set null (stage_id)]
-Ref: tournament.bracket_encounter.stage_id > tournament.stage_item.stage_id [delete: set null (stage_item_id)]
+Ref: tournament.bracket_encounter.tournament_id > encounter.encounter.tournament_id [delete: cascade]
 Ref: tournament.bracket_encounter.stage_id > tournament.stage.id [delete: set null (stage_id)]
+Ref: tournament.bracket_encounter.stage_id > tournament.stage_item.stage_id [delete: set null (stage_item_id)]
 Ref: tournament.bracket_encounter.stage_item_id > tournament.stage_item.id [delete: set null (stage_item_id)]
 Ref: tournament.challonge_match_mapping.source_id > tournament.challonge_source.id [delete: cascade]
 Ref: tournament.challonge_match_mapping.encounter_id > encounter.encounter.id [delete: cascade]

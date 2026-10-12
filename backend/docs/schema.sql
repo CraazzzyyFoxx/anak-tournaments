@@ -30,7 +30,7 @@ CREATE TYPE encounter.pickbanentrystatus AS ENUM ('available', 'picked', 'banned
 CREATE TYPE encounter.pickbankind AS ENUM ('map', 'hero');
 CREATE TYPE encounter.pickbanseedsource AS ENUM ('bracket_slot', 'standings', 'fallback_first_slot', 'admin');
 CREATE TYPE encounter.pickbansessionstatus AS ENUM ('active', 'completed', 'cancelled');
-CREATE TYPE encounter.encounterresultauditaction AS ENUM ('confirm', 'reopen', 'auto_confirm', 'auto_dispute', 'import', 'cascade_reset', 'game_confirm', 'game_correct', 'game_cancel');
+CREATE TYPE encounter.encounterresultauditaction AS ENUM ('confirm', 'reopen', 'auto_confirm', 'auto_dispute', 'auto_pending', 'import', 'cascade_reset', 'game_confirm', 'game_correct', 'game_cancel');
 CREATE TYPE log_processing_status AS ENUM ('pending', 'processing', 'done', 'failed');
 CREATE TYPE log_processing_source AS ENUM ('upload', 'discord', 'manual');
 CREATE TYPE matchevent AS ENUM ('OffensiveAssist', 'DefensiveAssist', 'UltimateCharged', 'UltimateStart', 'UltimateEnd', 'HeroSwap', 'MercyRez', 'EchoDuplicateStart', 'EchoDuplicateEnd');

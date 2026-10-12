@@ -463,15 +463,17 @@ class EncounterResultAuditAction(StrEnum):
     """What moved an encounter's result. One row per transition.
 
     ``confirm``/``reopen`` are admin actions; ``auto_confirm``/``auto_dispute``
-    are derived from the two captain reports; ``import`` is Challonge pulling a
-    remote result in; ``cascade_reset`` is the bracket un-playing an encounter
-    whose team slots changed upstream.
+    are derived from the captains' series reports, and ``auto_pending`` is the
+    first of them arriving while the others are still owed; ``import`` is
+    Challonge pulling a remote result in; ``cascade_reset`` is the bracket
+    un-playing an encounter whose team slots changed upstream.
     """
 
     CONFIRM = "confirm"
     REOPEN = "reopen"
     AUTO_CONFIRM = "auto_confirm"
     AUTO_DISPUTE = "auto_dispute"
+    AUTO_PENDING = "auto_pending"
     IMPORT = "import"
     CASCADE_RESET = "cascade_reset"
     # Per-map decisions (Vertical 1). Score columns on the audit row carry the
@@ -508,7 +510,7 @@ class MapVetoSessionStatus(StrEnum):
 
 
 class EncounterGameState(StrEnum):
-    """Lifecycle of one position of a series (``tournament.encounter_game``)."""
+    """Lifecycle of one position of a series (``encounter.game``)."""
 
     PLANNED = "planned"  # position exists, map not chosen yet (freeplay)
     AWAITING_RESULT = "awaiting_result"  # map known; waiting for both captains' claims

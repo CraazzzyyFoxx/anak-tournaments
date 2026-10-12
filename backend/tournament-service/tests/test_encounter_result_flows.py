@@ -336,6 +336,10 @@ class SeriesReportTests(ResultFlowCase):
         async with self.Session() as s:
             encounter = await self.encounter(s)
             self.assertEqual(enums.EncounterResultStatus.PENDING_CONFIRMATION, encounter.result_status)
+            self.assertEqual(version + 1, encounter.result_version)
+            audit = await captain_service.get_result_audit(s, self.ids["e"])
+            self.assertEqual(enums.EncounterResultAuditAction.AUTO_PENDING, audit[0]["action"])
+            self.assertEqual(encounter.result_version, audit[0]["result_version"])
             await captain_service.submit_team_report(
                 s,
                 self.ids["e"],
@@ -445,6 +449,56 @@ class SeriesReportTests(ResultFlowCase):
             self.assertEqual(enums.EncounterStatus.OPEN, encounter.status)
             audit = await captain_service.get_result_audit(s, self.ids["e"])
             self.assertEqual(enums.EncounterResultAuditAction.AUTO_DISPUTE, audit[0]["action"])
+            # One journal row per version: the pending step and the dispute step
+            # each took their own, and the second report's did not skip one.
+            self.assertEqual(
+                [enums.EncounterResultAuditAction.AUTO_DISPUTE, enums.EncounterResultAuditAction.AUTO_PENDING],
+                [row["action"] for row in audit[:2]],
+            )
+            self.assertEqual(
+                [encounter.result_version, encounter.result_version - 1], [row["result_version"] for row in audit[:2]]
+            )
+            self.assertEqual(
+                (enums.EncounterResultStatus.PENDING_CONFIRMATION, enums.EncounterResultStatus.DISPUTED),
+                (audit[0]["from_result_status"], audit[0]["to_result_status"]),
+            )
+
+    async def test_refiling_while_the_others_are_owed_does_not_move_the_version(self) -> None:
+        async with self.Session() as s:
+            first, second = await self.seats(s)
+        standing = [
+            ReportResultIn(encounter_team_id=first.id, score=2.0, placement=1, wins=2),
+            ReportResultIn(encounter_team_id=second.id, score=1.0, placement=2, wins=1),
+        ]
+        versions = []
+        for closeness in (4, 7):
+            async with self.Session() as s:
+                encounter = await self.encounter(s)
+                await captain_service.submit_team_report(
+                    s,
+                    self.ids["e"],
+                    encounter_team_id=first.id,
+                    reporter_user_id=self.users[0],
+                    games_played=3,
+                    results=standing,
+                    closeness=closeness,
+                    basis_version=encounter.result_version,
+                )
+            async with self.Session() as s:
+                encounter = await self.encounter(s)
+                versions.append(encounter.result_version)
+                self.assertEqual(enums.EncounterResultStatus.PENDING_CONFIRMATION, encounter.result_status)
+        self.assertEqual(versions[0], versions[1])
+        async with self.Session() as s:
+            audit = await captain_service.get_result_audit(s, self.ids["e"])
+        self.assertEqual(
+            [enums.EncounterResultAuditAction.AUTO_PENDING],
+            [
+                row["action"]
+                for row in audit
+                if row["to_result_status"] == enums.EncounterResultStatus.PENDING_CONFIRMATION
+            ],
+        )
 
     async def test_a_game_claim_after_the_series_is_confirmed_is_refused(self) -> None:
         async with self.Session() as s:

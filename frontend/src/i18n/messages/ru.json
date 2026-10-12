@@ -4127,6 +4127,7 @@
           "result_reopen": "Результат переоткрыт",
           "result_auto_confirm": "Результат подтверждён автоматически: {score}",
           "result_auto_dispute": "Отчёты расходятся — результат оспорен",
+          "result_auto_pending": "Серия отчитана — ждём остальные отчёты",
           "result_import": "Результат импортирован: {score}",
           "result_cascade_reset": "Результат сброшен из-за изменения сетки",
           "result_game_confirm": "Карта {position} подтверждена: {score}",

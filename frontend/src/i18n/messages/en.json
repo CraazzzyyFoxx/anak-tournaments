@@ -4127,6 +4127,7 @@
           "result_reopen": "Result reopened",
           "result_auto_confirm": "Result auto-confirmed: {score}",
           "result_auto_dispute": "Reports disagree — result disputed",
+          "result_auto_pending": "Series report filed — waiting for the other reports",
           "result_import": "Result imported: {score}",
           "result_cascade_reset": "Result reset by a bracket change",
           "result_game_confirm": "Map {position} confirmed: {score}",

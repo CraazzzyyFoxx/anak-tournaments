@@ -53,6 +53,7 @@ const ACTIONS = {
   result_reopen: "warning",
   result_auto_confirm: "plain",
   result_auto_dispute: "warning",
+  result_auto_pending: "plain",
   result_import: "plain",
   result_cascade_reset: "warning",
   result_game_confirm: "plain",

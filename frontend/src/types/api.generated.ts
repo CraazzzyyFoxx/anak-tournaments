@@ -6213,7 +6213,7 @@ export interface paths {
         };
         /**
          * Read a pre-game room's journal
-         * @description Permission: workspace `match.read` on the encounter's workspace. One room's whole story, newest first: the pre-game journal (readiness, session opened/reset/completed, rounds, every captain and organizer action, step reveals, timeouts, disputes, undo, map and series reports, pause/extend/cancel/technical loss) merged with the encounter's result audit (confirm, reopen, auto_confirm, auto_dispute, import, cascade_reset, game_confirm, game_correct, game_cancel). Each entry carries `id` (`room:<id>`/`result:<id>`), `at`, `origin`, `action`, `kind`, `source` (`captain`/`admin`/`system`), `side`, `actor_auth_user_id`, `actor_name` (null for machine actors), `reason` and an action-specific `data` object. Query `limit` is clamped to 1..500, default 200. The journal is keyed by ENCOUNTER, so resetting a session never erases what it did.
+         * @description Permission: workspace `match.read` on the encounter's workspace. One room's whole story, newest first: the pre-game journal (readiness, session opened/reset/completed, rounds, every captain and organizer action, step reveals, timeouts, disputes, undo, map and series reports, pause/extend/cancel/technical loss) merged with the encounter's result audit (confirm, reopen, auto_confirm, auto_dispute, auto_pending, import, cascade_reset, game_confirm, game_correct, game_cancel). Each entry carries `id` (`room:<id>`/`result:<id>`), `at`, `origin`, `action`, `kind`, `source` (`captain`/`admin`/`system`), `side`, `actor_auth_user_id`, `actor_name` (null for machine actors), `reason` and an action-specific `data` object. Query `limit` is clamped to 1..500, default 200. The journal is keyed by ENCOUNTER, so resetting a session never erases what it did.
          *
          *     RPC subject: `rpc.tournament.admin_pregame_room_history`
          */
@@ -16721,7 +16721,7 @@ export interface components {
         };
         /**
          * EncounterGameState
-         * @description Lifecycle of one position of a series (``tournament.encounter_game``).
+         * @description Lifecycle of one position of a series (``encounter.game``).
          * @enum {string}
          */
         "tournament.EncounterGameState": TournamentEncounterGameState;
@@ -25148,9 +25148,10 @@ export interface components {
          * @description What moved an encounter's result. One row per transition.
          *
          *     ``confirm``/``reopen`` are admin actions; ``auto_confirm``/``auto_dispute``
-         *     are derived from the two captain reports; ``import`` is Challonge pulling a
-         *     remote result in; ``cascade_reset`` is the bracket un-playing an encounter
-         *     whose team slots changed upstream.
+         *     are derived from the captains' series reports, and ``auto_pending`` is the
+         *     first of them arriving while the others are still owed; ``import`` is
+         *     Challonge pulling a remote result in; ``cascade_reset`` is the bracket
+         *     un-playing an encounter whose team slots changed upstream.
          * @enum {string}
          */
         "tournament.EncounterResultAuditAction": TournamentEncounterResultAuditAction;
@@ -74522,6 +74523,7 @@ export enum TournamentEncounterResultAuditAction {
     reopen = "reopen",
     auto_confirm = "auto_confirm",
     auto_dispute = "auto_dispute",
+    auto_pending = "auto_pending",
     import = "import",
     cascade_reset = "cascade_reset",
     game_confirm = "game_confirm",

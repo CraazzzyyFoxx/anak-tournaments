@@ -2,10 +2,12 @@
 
 Every path that moves a result — the confirmed games adding up, a captain's
 series claim, an admin decision, a Challonge import, a bracket reset — ends in
-:func:`apply_result`. One write is one transaction holding the encounter row's
-own lock (:func:`lock_encounter`), one ``result_version`` step, and exactly one
-``encounter.result_audit`` row, which is what makes the journal a readable
-version sequence instead of a pile of entries nobody can order.
+:func:`apply_result`; reports that are incomplete or contradict each other move
+only the status, through :func:`hold_result`. One write is one transaction
+holding the encounter row's own lock (:func:`lock_encounter`), one
+``result_version`` step, and exactly one ``encounter.result_audit`` row, which
+is what makes the journal a readable version sequence instead of a pile of
+entries nobody can order.
 
 ``result_source`` records WHOSE result is standing. ``games`` is the aggregate
 of the confirmed games and the only source a recalculation may overwrite;
@@ -47,7 +49,7 @@ from shared.repository import (
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result_audit import record_result_transition, snapshot
 
-__all__ = ("apply_result", "lock_encounter", "refresh_from_games", "reopen")
+__all__ = ("apply_result", "hold_result", "lock_encounter", "refresh_from_games", "reopen")
 
 _encounters = EncounterRepository()
 _game_teams = EncounterGameTeamRepository()
@@ -171,6 +173,54 @@ async def _write(
         scope=scope,
         game=game,
         reason=reason,
+    )
+    await session.flush()
+    return audit
+
+
+async def hold_result(
+    session: AsyncSession,
+    encounter: Encounter,
+    *,
+    status: EncounterResultStatus,
+    action: EncounterResultAuditAction,
+    audit_source: str,
+    actor_user_id: int | None,
+) -> EncounterResultAudit:
+    """Move the result to ``pending_confirmation`` or ``disputed``, adopting nothing.
+
+    Reports that are still incomplete or contradict each other do not decide a
+    standing: the seats' numbers and ``result_source`` are left exactly as they
+    were, only the status moves and ``confirmed_at`` is cleared. It is still a
+    change of the result, so it takes the same version step and writes the same
+    one journal row as :func:`apply_result` does -- the journal stays the
+    complete, ordered version sequence.
+
+    Refuses ``confirmed`` (that is :func:`apply_result`, and it needs a source)
+    and refuses an encounter that already stands confirmed: a decided result
+    leaves through :func:`reopen`. The caller holds the row's lock.
+    """
+    if status not in (EncounterResultStatus.PENDING_CONFIRMATION, EncounterResultStatus.DISPUTED):
+        raise ValueError(f"hold_result moves a result to pending_confirmation or disputed, not {status.value}")
+    if encounter.result_status == EncounterResultStatus.CONFIRMED:
+        raise ValueError(f"Encounter {encounter.id} stands confirmed; reopen() it before holding its result")
+    seats = await active_teams(session, encounter.id)
+    from_result_status = encounter.result_status
+    standing = snapshot(seats)
+
+    encounter.result_status = status
+    encounter.confirmed_at = None
+    encounter.result_version += 1
+
+    audit = record_result_transition(
+        session,
+        encounter,
+        action=action,
+        source=audit_source,
+        actor_user_id=actor_user_id,
+        from_result_status=from_result_status,
+        before=standing,
+        after=standing,
     )
     await session.flush()
     return audit
