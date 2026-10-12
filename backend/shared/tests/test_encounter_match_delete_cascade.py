@@ -55,6 +55,9 @@ class EncounterMatchDeleteCascadeTests(TestCase):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
             for table in tables:
                 table.create(conn)
+            # ``Encounter.scoring_preset`` reads the rule in every encounter SELECT; its real
+            # table needs Postgres' jsonb defaults, so only the two columns that read uses.
+            conn.exec_driver_sql("CREATE TABLE encounter.scoring_rule (id INTEGER PRIMARY KEY, preset TEXT)")
 
         self.statements: list[str] = []
 
