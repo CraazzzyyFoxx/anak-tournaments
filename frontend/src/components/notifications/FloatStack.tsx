@@ -76,8 +76,9 @@ export function FloatStack({ initialAnnouncements, tenantWorkspaceId }: Readonly
         // "hidden until the next visit" lives inside and `display:none` would
         // silence it. With no card the grid has no height of its own.
         "pointer-events-none fixed bottom-[calc(12px+env(safe-area-inset-bottom))] left-3 right-3 z-40 grid grid-cols-[minmax(0,1fr)] gap-2.5",
-        // From 640 the stack is in the flow, centred under the header plate.
-        "sm:sticky sm:bottom-auto sm:left-auto sm:right-auto sm:top-[calc(10px+var(--aqt-header-h)+8px)] sm:mx-auto sm:mt-2.5 sm:w-[min(680px,calc(100%-2rem))] sm:gap-2 md:w-[min(680px,calc(100%-3rem))] xl:w-[min(680px,calc(100%-5rem))]"
+        // From 640 the stack is in the flow, centred under the header plate. The
+        // margin only comes with a card: empty, it would widen the header gap.
+        "sm:sticky sm:bottom-auto sm:left-auto sm:right-auto sm:top-[calc(10px+var(--aqt-header-h)+8px)] sm:mx-auto sm:has-[section]:mt-2.5 sm:w-[min(680px,calc(100%-2rem))] sm:gap-2 md:w-[min(680px,calc(100%-3rem))] xl:w-[min(680px,calc(100%-5rem))]"
       )}
     >
       {announcement}
