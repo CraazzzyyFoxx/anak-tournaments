@@ -21,7 +21,6 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import enums
-from shared.domain import pick_ban_engine as engine
 from shared.domain.encounter_naming import build_encounter_name_from_ids
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
@@ -281,8 +280,10 @@ async def reset_encounter_result(
                 )
             )
         ).all()
-        score = engine.series_score(rows)
-        encounter.home_score, encounter.away_score = score.home_wins, score.away_wins
+        # A drawn map is played and won by nobody, so the two counts need not
+        # add up to the number of rows (spec §6.3).
+        encounter.home_score = sum(1 for home, away in rows if home > away)
+        encounter.away_score = sum(1 for home, away in rows if away > home)
     record_result_transition(
         session,
         encounter,

@@ -414,7 +414,7 @@ class StageType(StrEnum):
     DOUBLE_ELIMINATION = "double_elimination"
     SWISS = "swiss"
     #: Scored by lobby placement and raw score, not head-to-head: its rules are
-    #: the stage's ``ffa_*`` columns (shared.domain.ffa_scoring).
+    #: the stage's ``ffa_*`` columns (``shared.domain.encounter_scoring``).
     FFA_LEAGUE = "ffa_league"
 
 

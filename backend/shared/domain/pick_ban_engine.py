@@ -6,8 +6,9 @@ to ``shared.domain.pick_ban_rules`` (design
 ``docs/plans/2026-09-28-pick-ban-constructor.md``). What stays here is the
 encounter-level arithmetic both kinds still share: which round a board is on,
 the play order of its settled picks, who opens the next round under a
-result-dependent rotation, and how two captains' map reports reconcile into a
-series score.
+result-dependent rotation, and how two captains' map reports reconcile into one
+map's score. What a series ADDS UP to is not here: that is one engine for every
+encounter, ``shared.domain.encounter_scoring``.
 
 Deliberately free of any AsyncSession/DB call — every function takes plain
 data and returns plain data or raises ``ValueError`` (the RPC layer translates
@@ -16,7 +17,6 @@ to HTTP), so the whole module is unit-testable without a database.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -158,51 +158,10 @@ MapOutcome = Literal["home", "away", "draw"]
 
 
 def map_outcome(home_score: int, away_score: int) -> MapOutcome:
+    """Who won ONE map. The result-dependent rotation reads it to pick the next
+    round's opener; what the series adds up to is the scoring engine's."""
     if home_score > away_score:
         return "home"
     if away_score > home_score:
         return "away"
     return "draw"
-
-
-@dataclass(frozen=True)
-class SeriesScore:
-    home_wins: int
-    away_wins: int
-    played: int  # confirmed positions, draws included
-
-
-def series_score(results: Iterable[tuple[int, int]]) -> SeriesScore:
-    """Wins and played positions over CONFIRMED games' accepted (home, away) scores."""
-    home = away = played = 0
-    for home_score, away_score in results:
-        played += 1
-        outcome = map_outcome(home_score, away_score)
-        home += outcome == "home"
-        away += outcome == "away"
-    return SeriesScore(home, away, played)
-
-
-def series_complete(score: SeriesScore, best_of: int) -> bool:
-    """Every position played (Bo2 1:1, or a draw consuming the last map), or one
-    side past half. Wins alone cannot say this: a drawn map adds no win but does
-    use a position (spec §6.3)."""
-    if best_of < 1:
-        return False
-    return score.played >= best_of or max(score.home_wins, score.away_wins) * 2 > best_of
-
-
-def legal_series_result(home_score: int, away_score: int, best_of: int) -> bool:
-    """A score a best-of-N series can actually end on.
-
-    The winner has exactly ``floor(N/2)+1`` maps and the loser has no more than
-    the rest. An even N may also be drawn down the middle (Bo2 → 1:1). A 1:0 on
-    Bo2 has a map left; a 2:1 has played one map too many.
-    """
-    if best_of < 1 or home_score < 0 or away_score < 0:
-        return False
-    wins_needed = best_of // 2 + 1
-    if home_score == away_score:
-        return best_of % 2 == 0 and home_score == best_of // 2
-    winner, loser = max(home_score, away_score), min(home_score, away_score)
-    return winner == wins_needed and loser <= best_of - wins_needed

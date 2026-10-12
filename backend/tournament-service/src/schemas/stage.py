@@ -4,14 +4,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
-from shared.domain.ffa_formula import FORMULA_MAX_LENGTH, RESERVED_NAMES, FfaFormulaError, compile_formula
-from shared.domain.ffa_scoring import (
+from shared.domain.encounter_scoring import (
     DEFAULT_COLUMN_KEY,
     DEFAULT_COLUMN_LABEL,
     DEFAULT_FORMULA,
     FFA_MAX_COLUMNS,
     FFA_MAX_LOBBY_SIZE,
 )
+from shared.domain.ffa_formula import FORMULA_MAX_LENGTH, RESERVED_NAMES, FfaFormulaError, compile_formula
 from shared.services.bracket.template import BracketTemplate
 from src.core import enums
 from src.schemas.base import BaseRead

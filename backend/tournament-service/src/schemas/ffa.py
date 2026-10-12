@@ -18,7 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from shared.core import enums
-from shared.domain.ffa_scoring import FFA_MAX_LOBBY_SIZE
+from shared.domain.encounter_scoring import FFA_MAX_LOBBY_SIZE
 
 __all__ = (
     "FfaColumnRead",

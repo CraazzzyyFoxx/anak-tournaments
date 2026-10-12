@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core import enums  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.domain.ffa_scoring import FfaGameLine  # noqa: E402
+from shared.domain.encounter_scoring import GameLine  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
@@ -160,17 +160,21 @@ async def _drop(session: Any, seeded: SimpleNamespace) -> None:
     await session.commit()
 
 
-def _lines(team_ids: list[int], scores: list[int], placements: list[int | None] | None = None) -> list[FfaGameLine]:
+def _line(team_id: int, *, placement: int | None = None, values: dict[str, float]) -> GameLine:
+    return GameLine(encounter_team_id=team_id, score=None, placement=placement, values=values)
+
+
+def _lines(team_ids: list[int], scores: list[int], placements: list[int | None] | None = None) -> list[GameLine]:
     places = placements or [None] * len(team_ids)
     return [
-        FfaGameLine(team_id=team_id, placement=place, stats={"score": score})
+        GameLine(encounter_team_id=team_id, score=None, placement=place, values={"score": score})
         for team_id, place, score in zip(team_ids, places, scores, strict=True)
     ]
 
 
-def _stat_lines(team_ids: list[int], stats: list[dict[str, float]]) -> list[FfaGameLine]:
+def _stat_lines(team_ids: list[int], stats: list[dict[str, float]]) -> list[GameLine]:
     return [
-        FfaGameLine(team_id=team_id, placement=None, stats=values)
+        GameLine(encounter_team_id=team_id, score=None, placement=None, values=values)
         for team_id, values in zip(team_ids, stats, strict=True)
     ]
 
@@ -594,57 +598,51 @@ def test_a_position_past_the_planned_games_is_refused(db_session) -> None:
     [
         (
             SCORING,
-            lambda ids: [FfaGameLine(team_id=ids[0], placement=None, stats={"score": 1})],
+            lambda ids: [_line(ids[0], values={"score": 1})],
             "ffa_result_missing_team",
         ),
         (
             SCORING,
-            lambda ids: [
-                FfaGameLine(team_id=team_id, placement=None, stats={"score": 1}) for team_id in [*ids, ids[0]]
-            ],
+            lambda ids: [_line(team_id, values={"score": 1}) for team_id in [*ids, ids[0]]],
             "ffa_result_duplicate_team",
         ),
         (
             SCORING,
-            lambda ids: [
-                FfaGameLine(team_id=team_id, placement=None, stats={"score": 1}) for team_id in [*ids[:2], -1]
-            ],
+            lambda ids: [_line(team_id, values={"score": 1}) for team_id in [*ids[:2], -1]],
             "ffa_result_unknown_team",
         ),
         (
             SCORING,
-            lambda ids: [FfaGameLine(team_id=team_id, placement=None, stats={"score": -1}) for team_id in ids],
+            lambda ids: [_line(team_id, values={"score": -1}) for team_id in ids],
             "ffa_result_invalid_stat",
         ),
         (
             SCORING,
-            lambda ids: [
-                FfaGameLine(team_id=team_id, placement=None, stats={"score": 1, "kills": 2}) for team_id in ids
-            ],
+            lambda ids: [_line(team_id, values={"score": 1, "kills": 2}) for team_id in ids],
             "ffa_result_unknown_stat",
         ),
         (
             SCORING,
-            lambda ids: [FfaGameLine(team_id=team_id, placement=None, stats={}) for team_id in ids],
+            lambda ids: [_line(team_id, values={}) for team_id in ids],
             "ffa_result_missing_stat",
         ),
         (
             SCORING,
             lambda ids: [
-                FfaGameLine(team_id=team_id, placement=place, stats={"score": 1})
+                _line(team_id, placement=place, values={"score": 1})
                 for team_id, place in zip(ids, [1, None, None], strict=True)
             ],
             "ffa_result_mixed_placement",
         ),
         (
             PLACEMENT_SCORING,
-            lambda ids: [FfaGameLine(team_id=team_id, placement=None, stats={"score": 1}) for team_id in ids],
+            lambda ids: [_line(team_id, values={"score": 1}) for team_id in ids],
             "ffa_result_placement_required",
         ),
         (
             PLACEMENT_SCORING,
             lambda ids: [
-                FfaGameLine(team_id=team_id, placement=place, stats={"score": 1})
+                _line(team_id, placement=place, values={"score": 1})
                 for team_id, place in zip(ids, [1, 1, 2], strict=True)
             ],
             "ffa_result_invalid_placement",

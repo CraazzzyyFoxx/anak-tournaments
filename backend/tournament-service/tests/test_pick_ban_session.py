@@ -173,7 +173,7 @@ def _encounter(
         away_team_id=away,
         home_score=0,
         away_score=0,
-        # `EncounterGameService.materialize_series_score` refuses to touch an
+        # `EncounterGameService.materialize_live_score` refuses to touch an
         # official (COMPLETED) encounter, so every path that lists games reads it.
         status=EncounterStatus.OPEN,
     )

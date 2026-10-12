@@ -16,6 +16,7 @@ docs/plans/2026-09-20-pregame-results-statistics-separation.md §5.1/§5.2/§6.3
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.enums import (
-    EncounterFormat,
     EncounterGameResultSource,
     EncounterGameState,
     EncounterResultAuditAction,
@@ -32,7 +32,7 @@ from shared.core.enums import (
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_engine as engine
-from shared.domain.encounter_format import ensure_format
+from shared.domain.encounter_scoring import WINS_RULES, encounter_ended
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.encounter_game import EncounterGame
 from shared.models.tournament.encounter_report import EncounterMapReport
@@ -52,6 +52,16 @@ OPEN_STATES = (
     EncounterGameState.AWAITING_RESULT,
     EncounterGameState.DISPUTED,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class MapWins:
+    """What the confirmed positions add up to. A draw is played but won by
+    nobody, so the two win counts need not sum to ``played`` (spec §6.3)."""
+
+    home_wins: int
+    away_wins: int
+    played: int
 
 
 class EncounterGameService:
@@ -165,9 +175,8 @@ class EncounterGameService:
     async def ensure_freeplay_game(self, session: AsyncSession, encounter: Encounter) -> EncounterGame | None:
         """The position captains should be reporting right now, opening a new one
         if the series has room. ``None`` once the series is decided."""
-        ensure_format(encounter, EncounterFormat.DUEL)
         games = await self.list_games(session, encounter.id)
-        if engine.series_complete(self.live_score(games), encounter.best_of):
+        if self.series_settled(encounter, games):
             return None
         open_game = next((game for game in games if game.state in OPEN_STATES), None)
         if open_game is not None:
@@ -184,15 +193,27 @@ class EncounterGameService:
         )
 
     # -- the score ---------------------------------------------------------
-    def live_score(self, games: Sequence[EncounterGame]) -> engine.SeriesScore:
+    def live_score(self, games: Sequence[EncounterGame]) -> MapWins:
         """Wins over confirmed positions. A draw is played but won by nobody."""
-        return engine.series_score(
-            (game.accepted_home_score, game.accepted_away_score)
-            for game in games
-            if game.state == EncounterGameState.CONFIRMED
+        confirmed = [game for game in games if game.state == EncounterGameState.CONFIRMED]
+        return MapWins(
+            home_wins=sum(1 for game in confirmed if game.accepted_home_score > game.accepted_away_score),
+            away_wins=sum(1 for game in confirmed if game.accepted_away_score > game.accepted_home_score),
+            played=len(confirmed),
         )
 
-    def materialize_series_score(self, encounter: Encounter, games: Sequence[EncounterGame]) -> None:
+    def series_settled(self, encounter: Encounter, games: Sequence[EncounterGame]) -> bool:
+        """Is the series over? The ``wins`` preset's end rule (plan §5), asked
+        through the one engine rather than spelled out again per caller."""
+        score = self.live_score(games)
+        return encounter_ended(
+            WINS_RULES,
+            best_of=encounter.best_of,
+            games=score.played,
+            max_wins=max(score.home_wins, score.away_wins),
+        )
+
+    def materialize_live_score(self, encounter: Encounter, games: Sequence[EncounterGame]) -> None:
         """Mirror the live score onto the encounter — only while it is unofficial."""
         if encounter.status == EncounterStatus.COMPLETED:
             return
@@ -214,7 +235,6 @@ class EncounterGameService:
     ) -> EncounterGame:
         """Write one position's accepted score. First write confirms it; a later
         one is a correction — both bump ``result_version`` and journal a row."""
-        ensure_format(encounter, EncounterFormat.DUEL)
         before = (game.accepted_home_score, game.accepted_away_score)
         game.accepted_home_score = home_score
         game.accepted_away_score = away_score
@@ -237,7 +257,7 @@ class EncounterGameService:
             away_score_before=before[1],
             reason=reason,
         )
-        self.materialize_series_score(encounter, await self.list_games(session, encounter.id))
+        self.materialize_live_score(encounter, await self.list_games(session, encounter.id))
         await session.flush()
         return game
 
@@ -246,7 +266,6 @@ class EncounterGameService:
     ) -> EncounterGame:
         """Name the map a live position is played on (freeplay's half of what the
         pick-ban does automatically)."""
-        ensure_format(encounter, EncounterFormat.DUEL)
         if game.state not in OPEN_STATES:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -276,7 +295,7 @@ class EncounterGameService:
         """Retire positions as history. A cancelled confirmed game loses its wins
         from the live score, so the journal has to say who dropped them."""
         _cancel_games(session, encounter, games, actor_user_id=actor_user_id, reason=reason)
-        self.materialize_series_score(encounter, await self.list_games(session, encounter.id))
+        self.materialize_live_score(encounter, await self.list_games(session, encounter.id))
         await session.flush()
 
     # -- serialization -----------------------------------------------------
@@ -303,7 +322,7 @@ class EncounterGameService:
             "home_wins": score.home_wins,
             "away_wins": score.away_wins,
             "played": score.played,
-            "complete": engine.series_complete(score, encounter.best_of),
+            "complete": self.series_settled(encounter, games),
             "official": (
                 {"home_score": encounter.home_score, "away_score": encounter.away_score}
                 if encounter.status == EncounterStatus.COMPLETED

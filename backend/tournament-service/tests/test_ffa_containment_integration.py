@@ -29,7 +29,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from shared.core import enums  # noqa: E402
 from shared.core.enums import PickBanKind  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.domain.encounter_format import ensure_format  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Encounter, Team, Tournament  # noqa: E402
 from shared.services.chat import ChatRoom, ChatRoomKind  # noqa: E402
@@ -332,14 +331,3 @@ def test_lobby_chat_membership_resolves_instead_of_refusing(db_session) -> None:
     role, can_write = asyncio.run(_run())
     assert role == "spectator"
     assert can_write is False
-
-
-def test_ensure_format_accepts_an_encounter_whose_default_is_not_written_yet() -> None:
-    """``Encounter.format`` is filled by the column default at flush; before that
-    it is ``None``, and every duel writer creates rows that way."""
-    ensure_format(Encounter(), enums.EncounterFormat.DUEL)
-
-    with pytest.raises(BaseAPIException) as raised:
-        ensure_format(Encounter(format=enums.EncounterFormat.FFA), enums.EncounterFormat.DUEL)
-    assert raised.value.status_code == 409
-    assert [item.code for item in raised.value.detail] == ["encounter_not_duel"]

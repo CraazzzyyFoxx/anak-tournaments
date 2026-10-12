@@ -22,11 +22,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
-from shared.core.enums import EncounterFormat, EncounterGameResultSource, EncounterGameState, PickBanKind
+from shared.core.enums import EncounterGameResultSource, EncounterGameState, PickBanKind
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_engine as engine
-from shared.domain.encounter_format import ensure_format
 from shared.models.identity.user import User
 from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.encounter_game import EncounterGame
@@ -142,7 +141,6 @@ class MapReportService:
         The claim targets a GAME, never a map: a series may play the same map
         twice, and only the position tells the two plays apart.
         """
-        ensure_format(encounter, EncounterFormat.DUEL)
         if not await is_encounter_live(session, encounter):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -301,7 +299,7 @@ class MapReportService:
         # `pick_ban_session.sync_hero_rounds`, because heroes are banned for a
         # known map, not for a map that is still being vetoed.
         games = await self.games.list_games(session, encounter.id)
-        if engine.series_complete(self.games.live_score(games), encounter.best_of):
+        if self.games.series_settled(encounter, games):
             return
         try:
             await pick_ban_session_service.advance_to_next_round(

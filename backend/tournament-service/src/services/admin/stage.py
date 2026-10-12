@@ -15,8 +15,8 @@ from shared.core import http_status as status
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_naming import build_encounter_name_from_ids
+from shared.domain.encounter_scoring import PLACEMENT_VARIABLES
 from shared.domain.ffa_formula import compile_formula
-from shared.domain.ffa_scoring import PLACEMENT_VARIABLES
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigSlot
 from shared.repository import (
     EncounterGameResultRepository,

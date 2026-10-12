@@ -25,7 +25,7 @@ os.environ["DEBUG"] = "true"
 
 schemas = importlib.import_module("src.schemas")
 
-from shared.domain.ffa_scoring import FFA_MAX_COLUMNS, FFA_MAX_LOBBY_SIZE  # noqa: E402
+from shared.domain.encounter_scoring import FFA_MAX_COLUMNS, FFA_MAX_LOBBY_SIZE  # noqa: E402
 
 
 class FfaScoringSchemaTests(TestCase):

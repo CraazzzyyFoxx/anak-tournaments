@@ -1211,7 +1211,7 @@ class PickBanSessionService:
         """
         games = await self.games.list_games(session, encounter.id)
         score = self.games.live_score(games)
-        if engine.series_complete(score, encounter.best_of):
+        if self.games.series_settled(encounter, games):
             return 0
         map_config = await self._resolve_config(session, encounter, PickBanKind.MAP)
         map_session = await self.get_pick_ban_session(

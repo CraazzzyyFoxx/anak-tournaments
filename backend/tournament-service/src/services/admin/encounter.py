@@ -7,7 +7,6 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.encounter_format import ensure_format
 from shared.domain.encounter_naming import build_encounter_name
 from shared.repository import (
     EncounterRepository,
@@ -418,7 +417,6 @@ class AdminEncounterService:
             )
             if not row:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
-            ensure_format(row, enums.EncounterFormat.DUEL)
             locked[locked_id] = row
 
         source = locked[encounter_id]

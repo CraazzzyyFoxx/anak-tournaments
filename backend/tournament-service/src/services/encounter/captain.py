@@ -24,7 +24,6 @@ from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.enums import (
-    EncounterFormat,
     EncounterResultAuditAction,
     EncounterResultStatus,
     EncounterStatus,
@@ -33,8 +32,7 @@ from shared.core.enums import (
     StageType,
 )
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain import pick_ban_engine as engine
-from shared.domain.encounter_format import ensure_format
+from shared.domain.encounter_scoring import WINS_RULES, SeriesClaim, series_claim_errors
 from shared.messaging.config import (
     TOURNAMENT_EVENTS_EXCHANGE,
 )
@@ -248,15 +246,14 @@ class CaptainService:
     async def _load_encounter(
         self, session: AsyncSession, encounter_id: int, *, for_update: bool = True
     ) -> models.Encounter:
-        """:meth:`load_encounter_any_format`, refused for a lobby.
+        """:meth:`load_encounter_any_format`, eager-loaded for a series feature.
 
         Every caller of THIS one is a series feature -- captain reports, the
-        admin result writes, the captain's own side, the pick-ban room -- so the
-        format is checked once here instead of at each command.
+        admin result writes, the captain's own side, the pick-ban room.
         State polling opts out of the encounter lock entirely -- the room's state
         read is pure, and every mutation it used to perform now belongs to
-        ``encounter.room_reconcile``. Eager team/stage loading and the DUEL guard
-        are identical for either path.
+        ``encounter.room_reconcile``. Eager team/stage loading is identical for
+        either path.
         """
         if for_update:
             encounter = await self.load_encounter_any_format(session, encounter_id)
@@ -264,7 +261,6 @@ class CaptainService:
             encounter = await self.encounter_repo.get(session, encounter_id, options=list(_ENCOUNTER_LOCK_OPTIONS))
             if encounter is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
-        ensure_format(encounter, EncounterFormat.DUEL)
         return encounter
 
     async def _load_encounter_with_reports(self, session: AsyncSession, encounter_id: int) -> models.Encounter:
@@ -282,7 +278,6 @@ class CaptainService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Encounter not found",
             )
-        ensure_format(encounter, EncounterFormat.DUEL)
         return encounter
 
     async def _picked_map_ids(self, session: AsyncSession, encounter_id: int) -> dict[int, int]:
@@ -562,20 +557,10 @@ class CaptainService:
         side, captain_user_id, team_id = await self._resolve_captain_identity(session, auth_user, encounter)
 
         # A report is the FINAL series score, so it must actually end the
-        # series: a Bo2 cannot finish 1:0, and no side can win more maps than
-        # the format has to give. Admin confirm uses the same rule
-        # (``_reject_unfinished_series``); a forfeit goes through technical loss,
-        # which already writes a legal winning score.
-        if (
-            not engine.series_complete(
-                engine.SeriesScore(home_score, away_score, home_score + away_score), encounter.best_of
-            )
-            or max(home_score, away_score) > encounter.best_of // 2 + 1
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"{home_score}:{away_score} is not a valid final score for a best-of-{encounter.best_of} series",
-            )
+        # series: a Bo2 cannot finish 1:0 and a Bo3 cannot finish 3:0. Admin
+        # confirm uses the same rule; a forfeit goes through technical loss,
+        # which already writes a legal score.
+        self._reject_unfinished_series(encounter, home_score, away_score)
 
         form = await self.report_forms.resolve_report_form(session, encounter.tournament_id)
         # Resolved before validation, not just before persisting the codes: a required
@@ -813,7 +798,25 @@ class CaptainService:
 
     @staticmethod
     def _reject_unfinished_series(encounter: models.Encounter, home_score: int, away_score: int) -> None:
-        if engine.legal_series_result(home_score, away_score, encounter.best_of):
+        """Refuse a score a best-of-N series cannot end on.
+
+        The claim is checked by the ``wins`` preset's own end rule (plan §5):
+        it must hold on the claimed card AND must not already have held a game
+        earlier, which is what makes a 3:0 in a Bo3 impossible. Slots 1 and 2
+        stand for the two seats; the claim covers no confirmed games.
+        """
+        if not series_claim_errors(
+            WINS_RULES,
+            best_of=encounter.best_of,
+            team_ids=(1, 2),
+            confirmed_games=[],
+            claim=SeriesClaim(
+                games_played=home_score + away_score,
+                totals={1: float(home_score), 2: float(away_score)},
+                wins={1: home_score, 2: away_score},
+                placements=None,
+            ),
+        ):
             return
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

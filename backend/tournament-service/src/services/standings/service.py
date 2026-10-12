@@ -12,7 +12,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.core import enums
 from shared.core.enums import StageType
-from shared.domain.ffa_scoring import FfaGameLine, FfaRules, FfaTeamTotals, ffa_rules, team_totals
+from shared.domain.encounter_scoring import GameLine, ScoringRules, TeamTotals, ffa_rules, team_totals
 from shared.domain.tournament_utils import (
     completed_encounters as _shared_completed_encounters,
 )
@@ -237,7 +237,7 @@ def normalize_tiebreak_order(
     return ordered
 
 
-def _tiebreak_order(stage: models.Stage, *, rules: FfaRules | None = None) -> list[str]:
+def _tiebreak_order(stage: models.Stage, *, rules: ScoringRules | None = None) -> list[str]:
     """``rules`` is passed by the FFA builder, which already compiled them."""
     if rules is None and stage.stage_type == StageType.FFA_LEAGUE:
         rules = ffa_rules(stage)
@@ -749,7 +749,7 @@ def _build_group_stage_standings(
     return standings
 
 
-def _ranking_stats(row: FfaTeamTotals, rules: FfaRules) -> dict[str, float]:
+def _ranking_stats(row: TeamTotals, rules: ScoringRules) -> dict[str, float]:
     """Column sums oriented so that more is better for every key.
 
     ``_metric_value`` sorts descending, so a ``better="lower"`` column (deaths,
@@ -767,7 +767,7 @@ def _build_ffa_stage_standings(
     stage: models.Stage,
     stage_item: models.StageItem,
     participant_ids: typing.Sequence[int],
-    games: typing.Sequence[typing.Sequence[FfaGameLine]],
+    games: typing.Sequence[typing.Sequence[GameLine]],
     *,
     pins: typing.Mapping[int, int] = _EMPTY,
 ) -> list[models.Standing]:

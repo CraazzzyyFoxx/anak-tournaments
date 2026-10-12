@@ -26,7 +26,7 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
-from shared.domain.ffa_scoring import FfaGameLine
+from shared.domain.encounter_scoring import GameLine
 from shared.repository import UserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.services.audit import record_admin_audit
@@ -126,7 +126,7 @@ def register(broker: Any, logger: Any) -> None:
                 encounter_id,
                 position,
                 [
-                    FfaGameLine(team_id=line.team_id, placement=line.placement, stats=line.stats)
+                    GameLine(encounter_team_id=line.team_id, score=None, placement=line.placement, values=line.stats)
                     for line in body.results
                 ],
                 actor_user_id=await _actor_player_id(session, user),

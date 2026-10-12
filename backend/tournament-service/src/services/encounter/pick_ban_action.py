@@ -859,7 +859,7 @@ class PickBanActionService:
             encounter.home_team_id is not None
             and encounter.away_team_id is not None
             and len(games) < encounter.best_of
-            and not engine.series_complete(self.games.live_score(games), encounter.best_of)
+            and not self.games.series_settled(encounter, games)
             and not any(
                 game.state
                 in (

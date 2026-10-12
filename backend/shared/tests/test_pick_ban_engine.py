@@ -206,19 +206,3 @@ def test_map_outcome_away():
 
 def test_map_outcome_draw_on_a_level_score():
     assert engine.map_outcome(0, 0) == "draw"
-
-
-# ── series_score / series_complete ───────────────────────────────────────────
-
-
-def test_series_score_counts_wins_and_played_positions_separately() -> None:
-    score = engine.series_score([(3, 1), (2, 2), (0, 2)])
-    assert (score.home_wins, score.away_wins, score.played) == (1, 1, 3)
-
-
-def test_series_complete_by_positions_and_by_majority() -> None:
-    assert engine.series_complete(engine.SeriesScore(1, 1, 2), best_of=2)  # Bo2 1:1 ends
-    assert engine.series_complete(engine.SeriesScore(2, 0, 2), best_of=3)  # majority
-    assert not engine.series_complete(engine.SeriesScore(1, 1, 2), best_of=3)
-    assert not engine.series_complete(engine.SeriesScore(1, 0, 1), best_of=2)  # Bo2 1:0 has a map left
-    assert engine.series_complete(engine.SeriesScore(1, 1, 3), best_of=3)  # a draw used the last position

@@ -1,7 +1,8 @@
-"""The organizer's points formula: parse once, evaluate per team per game.
+"""The organizer's scoring formula: parse once, evaluate per team per game.
 
-A formula is an expression over the stage's column keys plus ``place``,
-``place_pts`` and ``teams`` (docs/plans/2026-09-26-ffa-custom-scoring.md §4).
+A formula is an expression over the stage's column keys plus a fixed set of
+variables -- :data:`GAME_VARIABLES` for what a game pays, :data:`END_VARIABLES`
+for when an encounter is over (docs/plans/2026-10-12-multi-game-architecture.md §5).
 It is parsed with the standard :mod:`ast` against a whitelist of nodes and run
 by a recursive interpreter: ``eval`` and ``compile`` are never called, so a
 saved formula cannot reach anything except arithmetic on the numbers it is
@@ -21,10 +22,11 @@ from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 __all__ = (
-    "BUILTIN_VARIABLES",
+    "END_VARIABLES",
     "FORMULA_MAX_LENGTH",
     "FORMULA_MAX_NODES",
     "FUNCTIONS",
+    "GAME_VARIABLES",
     "RESERVED_NAMES",
     "FfaFormulaError",
     "Formula",
@@ -38,12 +40,18 @@ __all__ = (
 FORMULA_MAX_LENGTH = 500
 FORMULA_MAX_NODES = 100
 
-#: Readable in every formula, whatever the stage's columns are.
-BUILTIN_VARIABLES: frozenset[str] = frozenset({"place", "place_pts", "teams"})
+#: Readable in every game formula, whatever the stage's columns are. ``win`` is
+#: 1 only for a sole first place, so a duel's "one point per map won" is a
+#: formula like every other (plan §5).
+GAME_VARIABLES: frozenset[str] = frozenset({"place", "place_pts", "teams", "win"})
+#: Readable in an end formula -- the question "is this encounter over?", asked
+#: after every confirmed game. A column key is NOT readable there: the end of a
+#: series is a property of the series, not of one team's kills.
+END_VARIABLES: frozenset[str] = frozenset({"best_of", "games", "max_wins"})
 FUNCTIONS: frozenset[str] = frozenset({"min", "max", "abs", "round", "if"})
 #: Refused as a column key: a column called ``place`` or ``min`` would shadow
 #: the builtin and silently change every formula that already reads it.
-RESERVED_NAMES: frozenset[str] = BUILTIN_VARIABLES | FUNCTIONS | {"if_", "and", "or", "not"}
+RESERVED_NAMES: frozenset[str] = GAME_VARIABLES | END_VARIABLES | FUNCTIONS | {"if_", "and", "or", "not"}
 
 #: ``if`` is a Python keyword, so ``if(a, b, c)`` cannot be parsed as a call.
 #: Renaming it before the parse is unambiguous: the language has no strings and
@@ -89,7 +97,7 @@ class FfaFormulaError(ValueError):
 class Formula:
     source: str
     #: The variables the formula reads -- column keys and builtins, never
-    #: function names. ``FfaRules.requires_placement`` is a question about this.
+    #: function names. ``ScoringRules.requires_placement`` is a question about this.
     names: frozenset[str]
     #: The checked tree. Compared by nothing: two formulas are the same formula
     #: when their source is.
@@ -100,8 +108,13 @@ class Formula:
         return _finite(_eval(self.node, values))
 
 
-def compile_formula(source: str, columns: Iterable[str]) -> Formula:
-    """Parse and check ``source``; raise :class:`FfaFormulaError` if it cannot run."""
+def compile_formula(source: str, columns: Iterable[str], *, variables: frozenset[str] = GAME_VARIABLES) -> Formula:
+    """Parse and check ``source``; raise :class:`FfaFormulaError` if it cannot run.
+
+    ``variables`` is the set of names the formula may read beside ``columns``:
+    :data:`GAME_VARIABLES` for what a game pays, :data:`END_VARIABLES` for when
+    an encounter is over.
+    """
     if not source.strip():
         raise FfaFormulaError("ffa_formula_syntax", "The formula is empty", offset=0)
     if len(source) > FORMULA_MAX_LENGTH:
@@ -123,7 +136,7 @@ def compile_formula(source: str, columns: Iterable[str]) -> Formula:
         raise FfaFormulaError(
             "ffa_formula_too_complex", f"The formula has more than {FORMULA_MAX_NODES} parts", offset=0
         )
-    known = BUILTIN_VARIABLES | {str(key) for key in columns}
+    known = variables | {str(key) for key in columns}
     names: set[str] = set()
     _check(tree.body, known, names, inserted)
     return Formula(source=source, names=frozenset(names), node=tree.body)
