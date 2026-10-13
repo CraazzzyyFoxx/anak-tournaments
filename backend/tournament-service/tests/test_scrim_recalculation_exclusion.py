@@ -49,6 +49,7 @@ tournament_events = importlib.import_module("src.services.tournament.events")
 captain = importlib.import_module("src.services.encounter.captain")
 scrim_scope = importlib.import_module("shared.services.scrim_scope")
 ScrimRoom = importlib.import_module("shared.models.tournament.scrim").ScrimRoom
+create_sqlite_tables = importlib.import_module("shared.testing").create_sqlite_tables
 
 
 # Only Postgres-only column types need help; rendering them as JSON keeps the
@@ -169,8 +170,7 @@ class _Fixture:
                 " encounter_id INTEGER PRIMARY KEY, tournament_id INTEGER NOT NULL,"
                 " stage_id INTEGER, stage_item_id INTEGER, round INTEGER NOT NULL)"
             )
-            for table in tables:
-                table.create(conn)
+            create_sqlite_tables(conn, tables)
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 1000

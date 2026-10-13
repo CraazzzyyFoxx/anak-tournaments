@@ -73,7 +73,7 @@ class EncounterTeam(db.TimeStampIntegerMixin):
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"))
     #: Copy of the encounter's owner, so the source team can be checked against
     #: the same tournament (V2: NULL for mixes and scrims).
-    tournament_id: Mapped[int] = mapped_column(BigInteger())
+    tournament_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     #: ``1..encounter.slot_count``; the participation writer checks the range.
     slot: Mapped[int] = mapped_column(Integer())
     #: The source ``tournament.team``; NULL when there is no roster behind the

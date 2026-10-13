@@ -79,6 +79,7 @@ class Encounter(db.TimeStampIntegerMixin):
             ),
         ),
         Index("ix_encounter_workspace_id", "workspace_id"),
+        Index("ix_encounter_custom_game_id", "custom_game_id"),
         # Target of the participations' and the bracket row's composite FKs.
         UniqueConstraint("id", "tournament_id", name="uq_encounter_id_tournament"),
         # Owner, workspace and discipline in one key (D62): a copied column can
@@ -89,6 +90,14 @@ class Encounter(db.TimeStampIntegerMixin):
             ondelete="CASCADE",
             name="fk_encounter_owner",
         ),
+        # The pickup-mix owner (D71): same workspace and discipline as the mix.
+        ForeignKeyConstraint(
+            ["custom_game_id", "workspace_id", "discipline"],
+            ["balancer.custom_game.id", "balancer.custom_game.workspace_id", "balancer.custom_game.discipline"],
+            ondelete="CASCADE",
+            name="fk_encounter_custom_game",
+        ),
+        CheckConstraint("num_nonnulls(tournament_id, custom_game_id) = 1", name="ck_encounter_owner"),
         # Deferred: deleting a workspace removes its rules and its encounters in
         # one statement, and an immediate check would fire between the two.
         ForeignKeyConstraint(
@@ -102,7 +111,7 @@ class Encounter(db.TimeStampIntegerMixin):
         CheckConstraint("slot_count >= 2", name="ck_encounter_slot_count"),
         CheckConstraint("result_version >= 0", name="ck_encounter_result_version"),
         CheckConstraint(
-            "result_source IN ('games', 'series_claim', 'admin', 'import')", name="ck_encounter_result_source"
+            "result_source IN ('games', 'series_claim', 'admin', 'import', 'host')", name="ck_encounter_result_source"
         ),
         CheckConstraint(
             "(result_status = 'confirmed') = (status = 'COMPLETED')", name="ck_encounter_confirmed_completed"
@@ -118,7 +127,9 @@ class Encounter(db.TimeStampIntegerMixin):
     workspace_id: Mapped[int] = mapped_column(BigInteger())
     #: Copy of the owner's discipline (``catalog.discipline.code``).
     discipline: Mapped[str] = mapped_column(String(32))
-    tournament_id: Mapped[int] = mapped_column(BigInteger())
+    tournament_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    #: The mix that recorded this round (D71); exactly one of the two owners is set.
+    custom_game_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     scoring_rule_id: Mapped[int] = mapped_column(BigInteger())
     name: Mapped[str] = mapped_column(String())
     #: How many slots this encounter seats: a duel is 2, a lobby is N (D55).

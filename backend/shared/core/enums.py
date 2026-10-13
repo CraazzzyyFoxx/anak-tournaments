@@ -422,14 +422,16 @@ class EncounterResultSource(StrEnum):
     """Where an encounter's official result came from (D57).
 
     ``games`` is the aggregate of the confirmed games and is the only one a
-    rule recalculation may overwrite; the other three are decisions and are
-    changed only by a reopen.
+    rule recalculation may overwrite; the other four are decisions and are
+    changed only by a reopen. ``host`` -- a mix host or co-host recorded the
+    round directly (D75); a decision like the other three.
     """
 
     GAMES = "games"
     SERIES_CLAIM = "series_claim"
     ADMIN = "admin"
     IMPORT = "import"
+    HOST = "host"
 
 
 class AuditSnapshotScope(StrEnum):
@@ -523,6 +525,7 @@ class EncounterGameResultSource(StrEnum):
     CAPTAIN_AGREEMENT = "captain_agreement"
     ADMIN = "admin"
     ADMIN_LOG = "admin_log"
+    HOST = "host"
 
 
 class VetoSeedSource(StrEnum):

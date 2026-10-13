@@ -32,7 +32,7 @@ sys.path.insert(0, str(backend_root))
 from shared.core import enums  # noqa: E402
 from shared.models.encounter.encounter import Encounter  # noqa: E402
 from shared.models.matches.match import Match, MatchEvent, MatchKillFeed, MatchStatistics  # noqa: E402
-from shared.testing import install_postgres_type_shims  # noqa: E402
+from shared.testing import create_sqlite_tables, install_postgres_type_shims  # noqa: E402
 
 install_postgres_type_shims()
 
@@ -53,8 +53,7 @@ class EncounterMatchDeleteCascadeTests(TestCase):
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in tables if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in tables:
-                table.create(conn)
+            create_sqlite_tables(conn, tables)
             # ``Encounter.scoring_preset`` reads the rule in every encounter SELECT; its real
             # table needs Postgres' jsonb defaults, so only the two columns that read uses.
             conn.exec_driver_sql("CREATE TABLE encounter.scoring_rule (id INTEGER PRIMARY KEY, preset TEXT)")

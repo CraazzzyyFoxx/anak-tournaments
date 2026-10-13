@@ -337,7 +337,17 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                 )
             )
 
-            game = models.CustomGame(workspace_id=workspace.id, host_user_id=author.id, name=f"Mix {suffix}")
+            rule = models.ScoringRule(
+                workspace_id=workspace.id,
+                preset="wins",
+                game_formula="win",
+                end_formula="games >= best_of or max_wins * 2 > best_of",
+            )
+            s.add(rule)
+            await s.flush()
+            game = models.CustomGame(
+                workspace_id=workspace.id, host_user_id=author.id, name=f"Mix {suffix}", scoring_rule_id=rule.id
+            )
             s.add(game)
             await s.flush()
             match = models.CasualMatch(custom_game_id=game.id, lobby_index=1, points_per_win_applied=25)

@@ -54,6 +54,7 @@ from shared.models.tournament.pick_ban import (  # noqa: E402
     PickBanConfigSlot,
     PickBanConfigSlotItem,
 )
+from shared.testing import create_sqlite_tables  # noqa: E402
 from src import models  # noqa: E402
 from src.services.scrim import service as scrim  # noqa: E402
 
@@ -157,8 +158,7 @@ class _Fixture:
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in tables if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in tables:
-                table.create(conn)
+            create_sqlite_tables(conn, tables)
             # The pick-ban config cascade resolves its (stage, round) coordinate
             # from the bracket position now (D22), so every room read touches
             # this table -- but its FKs use Postgres-only ``SET NULL (col)``

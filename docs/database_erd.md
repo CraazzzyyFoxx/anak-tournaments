@@ -12,7 +12,7 @@ spans `tournament` and `casual`, and `catalog/` spans `overwatch` and `catalog`.
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`enclayer02`** (113 revisions in `backend/migrations/versions/`).
+Alembic head: **`mixround01`** (114 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -1366,7 +1366,8 @@ erDiagram
         timestamptz updated_at "nullable"
         bigint workspace_id FK
         varchar(32) discipline FK
-        bigint tournament_id FK
+        bigint tournament_id FK "nullable"
+        bigint custom_game_id FK "nullable"
         bigint scoring_rule_id FK
         varchar name
         int slot_count
@@ -1530,7 +1531,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint encounter_id FK
-        bigint tournament_id FK
+        bigint tournament_id FK "nullable"
         int slot
         bigint team_id FK "nullable"
         varchar(255) name
@@ -1579,6 +1580,10 @@ erDiagram
     }
 
     AUTH_USER |o--o{ ENCOUNTER_ROOM_EVENT : "actor_auth_user_id"
+    BALANCER_CUSTOM_GAME |o--o{ ENCOUNTER_ENCOUNTER : "custom_game_id"
+    BALANCER_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "discipline"
+    BALANCER_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
+    ENCOUNTER_ENCOUNTER |o--o{ ENCOUNTER_TEAM : "tournament_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME_CLAIM : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME_TEAM : "encounter_id"
@@ -1587,7 +1592,6 @@ erDiagram
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_RESULT_AUDIT : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_ROOM_EVENT : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM : "encounter_id"
-    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM : "tournament_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM_MEMBER : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM_REPORT : "encounter_id"
     ENCOUNTER_GAME |o--o{ ENCOUNTER_RESULT_AUDIT : "game_id"
@@ -1643,9 +1647,9 @@ erDiagram
     PUBLIC_WORKSPACE ||--o{ ENCOUNTER_SCORING_RULE : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ ENCOUNTER_TEAM_MEMBER : "workspace_member_id"
     TOURNAMENT_TEAM |o--o{ ENCOUNTER_TEAM : "team_id"
-    TOURNAMENT_TEAM ||--o{ ENCOUNTER_TEAM : "tournament_id"
+    TOURNAMENT_TEAM |o--o{ ENCOUNTER_TEAM : "tournament_id"
+    TOURNAMENT_TOURNAMENT |o--o{ ENCOUNTER_ENCOUNTER : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o{ ENCOUNTER_ENCOUNTER : "discipline"
-    TOURNAMENT_TOURNAMENT ||--o{ ENCOUNTER_ENCOUNTER : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
 ```
 
@@ -2212,6 +2216,8 @@ erDiagram
         varchar(16) self_signup
         boolean self_role_edit
         bigint general_voice_channel_id "nullable"
+        varchar(32) discipline FK
+        bigint scoring_rule_id FK
     }
     BALANCER_CUSTOM_GAME_CO_HOST {
         bigint custom_game_id PK,FK
@@ -2250,6 +2256,17 @@ erDiagram
         int team_index PK
         varchar(60) name
     }
+    BALANCER_MIX_ROUND {
+        bigint encounter_id PK,FK
+        int lobby_index
+        int points_per_win_applied "nullable"
+    }
+    BALANCER_MIX_ROUND_MEMBER {
+        bigint encounter_id PK,FK
+        bigint workspace_member_id PK,FK
+        boolean busy
+        int rank_delta_applied "nullable"
+    }
 
     AUTH_USER |o--o{ BALANCER_CUSTOM_GAME : "host_user_id"
     AUTH_USER ||--o| BALANCER_CUSTOM_GAME_CO_HOST : "user_id"
@@ -2258,13 +2275,20 @@ erDiagram
     BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_LOBBY : "custom_game_id"
     BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_TEAM_NAME : "custom_game_id"
     BALANCER_CUSTOM_GAME_PLAYER ||--o| BALANCER_CUSTOM_GAME_PLAYER_ROLE : "custom_game_player_id"
+    BALANCER_MIX_ROUND ||--o| BALANCER_MIX_ROUND_MEMBER : "encounter_id"
+    CATALOG_DISCIPLINE ||--o{ BALANCER_CUSTOM_GAME : "discipline"
+    ENCOUNTER_ENCOUNTER ||--o| BALANCER_MIX_ROUND : "encounter_id"
+    ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "scoring_rule_id"
+    ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
     OVERWATCH_MAP |o--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_CUSTOM_GAME_PLAYER : "workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o| BALANCER_MIX_ROUND_MEMBER : "workspace_member_id"
 ```
 
 Composite unique keys:
 
+- `BALANCER_CUSTOM_GAME` unique on (`id`, `workspace_id`, `discipline`)
 - `BALANCER_CUSTOM_GAME_PLAYER` unique on (`custom_game_id`, `workspace_member_id`)
 - `BALANCER_CUSTOM_GAME_PLAYER_ROLE` unique on (`custom_game_player_id`, `priority`)
 <!-- /ERD:auto -->

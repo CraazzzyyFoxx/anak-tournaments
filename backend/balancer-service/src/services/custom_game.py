@@ -27,6 +27,7 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
 from shared.division_grid import DEFAULT_GRID
+from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.domain.roster_shape import resolve_roster_shape
@@ -42,6 +43,7 @@ from shared.repository import (
     CustomGameRepository,
     CustomGameTeamNameRepository,
     MapRepository,
+    ScoringRuleRepository,
     UserBalancerConfigRepository,
     UserRepository,
     WorkspaceMemberRepository,
@@ -416,6 +418,7 @@ class CustomGameService:
         maps: MapRepository = MapRepository(),
         host_prefs: UserBalancerConfigRepository = UserBalancerConfigRepository(),
         ranks: MemberRankService | None = None,
+        scoring_rules: ScoringRuleRepository = ScoringRuleRepository(),
         load_roster=list_roster,
         load_hosts=hosts_by_user_id,
         load_member_user_ids=workspace_member_user_ids,
@@ -428,6 +431,7 @@ class CustomGameService:
         ranker: MixRankerService | None = None,
     ) -> None:
         self.games = games
+        self.scoring_rules = scoring_rules
         self.roster = roster
         self.co_hosts = co_hosts
         self.lobbies = lobbies
@@ -679,7 +683,15 @@ class CustomGameService:
             source_rows = [row for row in candidates if row.workspace_member_id in surviving]
             members.update(surviving)
 
+        # The mix's own wins rule (D73): every round encounter it records is scored by it.
+        rule = await self.scoring_rules.create(
+            session,
+            models.ScoringRule(
+                workspace_id=workspace_id, preset="wins", game_formula="win", end_formula=WINS_END_FORMULA
+            ),
+        )
         game = models.CustomGame(
+            scoring_rule_id=rule.id,
             workspace_id=workspace_id,
             host_user_id=host_user_id,
             name=trimmed,
@@ -3057,7 +3069,11 @@ class CustomGameService:
         commands = await discord_messages.delete_commands(
             session, await discord_messages.repository.for_subject(session, mix_subject(custom_game_id))
         )
+        rule = await self.scoring_rules.get(session, game.scoring_rule_id)
         await self.games.delete(session, game)
+        # The rule is the mix's alone (D73); its round encounters went with the mix.
+        if rule is not None:
+            await self.scoring_rules.delete(session, rule)
         return commands
 
 

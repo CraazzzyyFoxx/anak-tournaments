@@ -57,7 +57,8 @@ def create_sqlite_tables(conn: sa.Connection, tables: Sequence[sa.Table]) -> Non
     seat beside its replacement would collide), a ``jsonb_typeof`` CHECK (the
     function does not exist) and a ``'[]'::jsonb`` server default (the cast is a
     syntax error). All four are left out of the DDL -- these suites exercise
-    queries and flushes, not the constraints or the defaults.
+    queries and flushes, not the constraints or the defaults. ``num_nonnulls`` (the
+    encounter's owner CHECK) is a function SQLite lacks as well and goes the same way.
     """
     for table in tables:
         constraints = [
@@ -66,7 +67,10 @@ def create_sqlite_tables(conn: sa.Connection, tables: Sequence[sa.Table]) -> Non
             if (
                 isinstance(constraint, sa.ForeignKeyConstraint) and (constraint.ondelete or "").startswith("SET NULL (")
             )
-            or (isinstance(constraint, sa.CheckConstraint) and "jsonb_typeof" in str(constraint.sqltext))
+            or (
+                isinstance(constraint, sa.CheckConstraint)
+                and any(name in str(constraint.sqltext) for name in ("jsonb_typeof", "num_nonnulls"))
+            )
         ]
         indexes = [index for index in table.indexes if index.dialect_options["postgresql"]["where"] is not None]
         pg_defaults = {

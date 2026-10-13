@@ -141,6 +141,8 @@ def _game(**overrides) -> SimpleNamespace:
         "self_signup": "closed",
         "self_role_edit": False,
         "general_voice_channel_id": None,
+        "discipline": "overwatch",
+        "scoring_rule_id": 5,
     }
     fields.update(overrides)
     return _row(**fields)
@@ -454,6 +456,10 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # The real ranker over dicts: the hidden book advances on every recorded
         # match and is empty unless a test seeds ``self.ranker.hidden.book``.
         self.ranker = in_memory_ranker()
+        self.scoring_rules = MagicMock()
+        self.scoring_rules.create = AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)
+        self.scoring_rules.get = AsyncMock(return_value=None)
+        self.scoring_rules.delete = AsyncMock()
         self.service = CustomGameService(
             games=self.games,
             roster=self.roster,
@@ -467,6 +473,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             maps=self.maps,
             host_prefs=self.host_prefs,
             ranks=self.ranks,
+            scoring_rules=self.scoring_rules,
             load_roster=self.load_roster,
             load_hosts=self.load_hosts,
             load_member_user_ids=self.load_member_user_ids,
@@ -563,6 +570,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
     async def test_create_without_members_is_an_empty_mix(self) -> None:
         await self.service.create(self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9)
         self.roster.create_many.assert_not_called()
+
+    async def test_create_opens_the_mixs_own_wins_rule(self) -> None:
+        game = await self.service.create(self.session, workspace_id=1, host_user_id=9, name="Scrim", actor_user_id=9)
+
+        rule = self.scoring_rules.create.await_args.args[1]
+        self.assertEqual((rule.workspace_id, rule.preset, rule.game_formula), (1, "wins", "win"))
+        self.assertEqual(rule.end_formula, "games >= best_of or max_wins * 2 > best_of")
+        self.assertEqual(game.scoring_rule_id, 5)
 
     async def test_member_of_another_workspace_404(self) -> None:
         self.load_roster.side_effect = None
@@ -4269,12 +4284,15 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_hard_delete_removes_the_game_row(self) -> None:
         game = _game()
+        rule = _row(id=5)
         self.games.get.return_value = game
         self.games.delete = AsyncMock()
+        self.scoring_rules.get.return_value = rule
 
         await self.service.hard_delete(self.session, workspace_id=1, custom_game_id=11)
 
         self.games.delete.assert_awaited_once_with(self.session, game)
+        self.scoring_rules.delete.assert_awaited_once_with(self.session, rule)
 
     async def test_hard_delete_404s_a_game_from_another_workspace(self) -> None:
         self.games.get.return_value = _game(workspace_id=2)
@@ -4333,6 +4351,7 @@ class HostedActiveMixesTests(IsolatedAsyncioTestCase):
                 lobby_count=fields.pop("lobby_count", 1),
                 self_signup="closed",
                 self_role_edit=False,
+                scoring_rule_id=5,
                 **fields,
             )
         )

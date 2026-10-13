@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import typing
 from datetime import datetime
 from typing import Any
 
@@ -9,15 +10,20 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
 from shared.domain.mix_lobby import MAX_LOBBIES
+
+if typing.TYPE_CHECKING:
+    from shared.models.encounter.encounter import Encounter
 
 __all__ = (
     "CustomGame",
@@ -26,6 +32,8 @@ __all__ = (
     "CustomGamePlayer",
     "CustomGamePlayerRole",
     "CustomGameTeamName",
+    "MixRound",
+    "MixRoundMember",
 )
 
 
@@ -52,6 +60,16 @@ class CustomGame(db.TimeStampIntegerMixin):
             name="ck_custom_game_self_signup",
         ),
         CheckConstraint(f"lobby_count BETWEEN 1 AND {MAX_LOBBIES}", name="ck_custom_game_lobby_count"),
+        # Target of ``fk_encounter_custom_game``: owner, workspace and discipline in one key (D62).
+        UniqueConstraint("id", "workspace_id", "discipline", name="uq_custom_game_owner_key"),
+        # Deferred like ``fk_encounter_scoring_rule``: a workspace delete removes rule and mix in one statement.
+        ForeignKeyConstraint(
+            ["scoring_rule_id", "workspace_id"],
+            ["encounter.scoring_rule.id", "encounter.scoring_rule.workspace_id"],
+            name="fk_custom_game_scoring_rule",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
         # (no per-mix points_per_win check: the knob is the host's, see above)
         {"schema": "balancer"},
     )
@@ -78,6 +96,15 @@ class CustomGame(db.TimeStampIntegerMixin):
     # The mix's general voice: where "return" sends everyone. One of the
     # workspace's general voices (``workspace_config.mix_general_voice_channel_ids``).
     general_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    #: Which game this mix is played in (``catalog.discipline.code``, D72); not on the API until V3.
+    discipline: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("catalog.discipline.code", name="fk_custom_game_discipline"),
+        default="overwatch",
+        server_default="overwatch",
+    )
+    #: The mix's own ``wins`` rule: Bo1, draws allowed (D73). Every round encounter points at it.
+    scoring_rule_id: Mapped[int] = mapped_column(BigInteger())
 
 
 class CustomGameCoHost(db.Base):
@@ -191,7 +218,7 @@ class CustomGamePlayerRole(db.Base):
 class CustomGameTeamName(db.Base):
     __tablename__ = "custom_game_team_name"
     __table_args__ = (
-        CheckConstraint("team_index BETWEEN 0 AND 7", name="ck_custom_game_team_name_index"),
+        CheckConstraint(f"team_index BETWEEN 0 AND {2 * MAX_LOBBIES - 1}", name="ck_custom_game_team_name_index"),
         {"schema": "balancer"},
     )
 
@@ -200,3 +227,53 @@ class CustomGameTeamName(db.Base):
     )
     team_index: Mapped[int] = mapped_column(Integer(), primary_key=True)
     name: Mapped[str] = mapped_column(String(60), nullable=False)
+
+
+class MixRound(db.Base):
+    """Balancer-only facts of one recorded mix round (D74). The round itself is ``encounter.encounter``."""
+
+    __tablename__ = "mix_round"
+    __table_args__ = (
+        CheckConstraint(f"lobby_index BETWEEN 0 AND {MAX_LOBBIES - 1}", name="ck_mix_round_lobby_index"),
+        {"schema": "balancer"},
+    )
+
+    encounter_id: Mapped[int] = mapped_column(
+        ForeignKey("encounter.encounter.id", ondelete="CASCADE", name="fk_mix_round_encounter"), primary_key=True
+    )
+    lobby_index: Mapped[int] = mapped_column(Integer(), nullable=False)
+    #: The points-per-win this round moved both teams by; undo gives back exactly this. NULL for a draw or points off.
+    points_per_win_applied: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+
+    encounter: Mapped[Encounter] = relationship()
+    members: Mapped[list[MixRoundMember]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, order_by="MixRoundMember.workspace_member_id"
+    )
+
+
+class MixRoundMember(db.Base):
+    """One member's balancer facts in one round: seated (with its frozen rank delta) or busy next door (D74).
+
+    Who sat on which seat is ``encounter.team_member`` only. The writer never stores a member both busy and seated.
+    """
+
+    __tablename__ = "mix_round_member"
+    __table_args__ = (
+        CheckConstraint("NOT busy OR rank_delta_applied IS NULL", name="ck_mix_round_member_busy"),
+        Index("ix_mix_round_member_workspace_member_id", "workspace_member_id"),
+        {"schema": "balancer"},
+    )
+
+    encounter_id: Mapped[int] = mapped_column(
+        ForeignKey("balancer.mix_round.encounter_id", ondelete="CASCADE", name="fk_mix_round_member_round"),
+        primary_key=True,
+    )
+    # NO ACTION, deferred: the D66 anchor rule of ``encounter.team_member``.
+    workspace_member_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "workspace_member.id", name="fk_mix_round_member_workspace_member", deferrable=True, initially="DEFERRED"
+        ),
+        primary_key=True,
+    )
+    busy: Mapped[bool] = mapped_column(Boolean(), nullable=False)
+    rank_delta_applied: Mapped[int | None] = mapped_column(Integer(), nullable=True)

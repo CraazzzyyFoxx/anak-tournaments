@@ -21,11 +21,13 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.core import enums
+from shared.models.custom_game import CustomGame
 from shared.models.encounter import Encounter, ScoringRule
 from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament.team import Team
 from shared.models.tournament.tournament import Tournament
+from shared.services.encounter.participants import place_team
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 
@@ -120,3 +122,30 @@ class EncounterWriterCase(IsolatedAsyncioTestCase):
     async def encounter(self, session: AsyncSession) -> Encounter:
         """The seeded encounter, loaded into ``session``."""
         return await session.get_one(Encounter, self.ids["e"])
+
+    async def mix_encounter(self, session: AsyncSession) -> Encounter:
+        """A two-seat encounter owned by a pickup mix of the seeded workspace (D71).
+
+        No tournament and no source teams -- the shape every recorded mix round has. Flushed, not committed.
+        """
+        rule = ScoringRule(workspace_id=self.ids["ws"], preset="wins", game_formula="win", end_formula=WINS_END)
+        session.add(rule)
+        await session.flush()
+        mix = CustomGame(workspace_id=self.ids["ws"], name="Mix", scoring_rule_id=rule.id)
+        session.add(mix)
+        await session.flush()
+        encounter = Encounter(
+            workspace_id=self.ids["ws"],
+            discipline="overwatch",
+            custom_game_id=mix.id,
+            scoring_rule_id=rule.id,
+            name="A vs B",
+            slot_count=2,
+            best_of=1,
+            status=enums.EncounterStatus.OPEN,
+        )
+        session.add(encounter)
+        await session.flush()
+        for slot, name in ((1, "A"), (2, "B")):
+            await place_team(session, encounter, slot=slot, team_id=None, name=name, seed=None, members=())
+        return encounter

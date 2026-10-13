@@ -280,6 +280,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             casual_teams=SimpleNamespace(create_many=self.casual.create_many),
             casual_players=SimpleNamespace(create=self.casual.create_player),
             ranks=self.ranks,
+            scoring_rules=SimpleNamespace(create=AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)),
             load_roster=AsyncMock(
                 side_effect=lambda _s, *, workspace_id, member_ids: {
                     member_id: RosterMember(
