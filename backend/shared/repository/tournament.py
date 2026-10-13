@@ -401,6 +401,9 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         get/lock/list here starts from this one predicate instead of trusting a join to the tournament."""
         return super().select().where(models.Encounter.tournament_id.is_not(None))
 
+    def count_select(self) -> sa.Select[tuple[int]]:
+        return super().count_select().where(models.Encounter.tournament_id.is_not(None))
+
     async def get_for_update(
         self,
         session: AsyncSession,

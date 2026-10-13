@@ -24,6 +24,10 @@ class BaseRepository[ModelType: Base]:
     def select(self) -> sa.Select[tuple[ModelType]]:
         return sa.select(self.model)
 
+    def count_select(self) -> sa.Select[tuple[int]]:
+        """The row count ``list`` totals over; a repository whose ``select()`` narrows the rows narrows this too."""
+        return sa.select(sa.func.count(self.model.id))
+
     def _apply_options(
         self,
         query: sa.Select[tuple[Any]],
@@ -85,7 +89,7 @@ class BaseRepository[ModelType: Base]:
         order_by: Sequence[sa.ColumnElement[Any]] | None = None,
     ) -> tuple[Sequence[ModelType], int]:
         query = self._apply_options(self.select(), options)
-        total_query = sa.select(sa.func.count(self.model.id))
+        total_query = self.count_select()
 
         query = self._apply_filters(query, filters)
         total_query = self._apply_filters(total_query, filters)
