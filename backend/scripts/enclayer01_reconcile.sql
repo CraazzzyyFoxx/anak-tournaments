@@ -154,6 +154,12 @@ SELECT 'notification payloads', n.id, n.kind,
   FROM public.notification n
  WHERE n.kind IN ('encounter.scheduled', 'encounter.dispute_review')
 UNION ALL
+SELECT 'pick-ban entry teams', en.id, 'session ' || en.session_id || ' team ' || en.team_id,
+       EXISTS (SELECT 1 FROM encounter.team t
+                WHERE t.id IN (en.picked_by_team_id, en.protected_by_team_id) AND t.team_id = en.team_id)
+  FROM encounter.pick_ban_entry en
+ WHERE en.team_id IS NOT NULL
+UNION ALL
 SELECT 'roster rows collapsed by the snapshot', p.id,
        'team ' || p.team_id || ' member ' || p.workspace_member_id || ', kept player ' || k.id,
        (p.sub_role, p.is_substitution, p.name) IS NOT DISTINCT FROM (k.sub_role, k.is_substitution, k.name)

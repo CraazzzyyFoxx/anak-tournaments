@@ -12,7 +12,7 @@ spans `tournament` and `casual`, and `catalog/` spans `overwatch` and `catalog`.
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`enclayer01b`** (112 revisions in `backend/migrations/versions/`).
+Alembic head: **`enclayer02`** (113 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**

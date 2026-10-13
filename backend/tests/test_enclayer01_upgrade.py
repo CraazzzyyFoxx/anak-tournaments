@@ -42,6 +42,7 @@ TEMPLATE_DB = "enclayer01_legacy_tpl"
 MIGRATED_DB = "enclayer01_migrated"
 REJECTED_DB = "enclayer01_rejected"
 LIVE_DB = "enclayer01_live_named"
+ENCLAYER02_DB = "enclayer02_gate"
 
 
 def _load(name: str, path: pathlib.Path):
@@ -87,11 +88,11 @@ def _recreate(dbname: str, template: str | None = None) -> None:
         admin.execute(f'CREATE DATABASE "{dbname}"' + (f' TEMPLATE "{template}"' if template else ""))
 
 
-def _alembic(dbname: str, target: str) -> subprocess.CompletedProcess[str]:
+def _alembic(dbname: str, target: str, **env: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", target],
         cwd=str(BACKEND),
-        env={**os.environ, "DATABASE_URL": _url(dbname)},
+        env={**os.environ, "DATABASE_URL": _url(dbname), **env},
         capture_output=True,
         text=True,
         timeout=300,
@@ -562,7 +563,7 @@ def legacy_template():
         preflight = _run_checks(conn, _preflight_queries())
     yield {"ids": ids, "before": before, "preflight": preflight}
     with _connect("postgres") as admin:
-        for name in (MIGRATED_DB, REJECTED_DB, LIVE_DB, TEMPLATE_DB):
+        for name in (MIGRATED_DB, REJECTED_DB, LIVE_DB, ENCLAYER02_DB, TEMPLATE_DB):
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
@@ -573,7 +574,7 @@ def _preflight_queries():
 @pytest.fixture(scope="module")
 def migrated(legacy_template):
     _recreate(MIGRATED_DB, TEMPLATE_DB)
-    done = _alembic(MIGRATED_DB, "head")
+    done = _alembic(MIGRATED_DB, "enclayer01b")
     assert done.returncode == 0, done.stderr[-3000:]
     with _connect(MIGRATED_DB) as conn:
         yield {**legacy_template, "conn": conn}
@@ -686,7 +687,7 @@ def test_every_class_the_converter_rejects_is_reported_with_its_ids_and_stops_th
     assert ids_of("pick-ban entry", 0) == {entry}
     assert ids_of("not in an ffa_league stage", 0) == {ffa_in_bracket}
 
-    done = _alembic(REJECTED_DB, "head")
+    done = _alembic(REJECTED_DB, "enclayer01b")
     assert done.returncode != 0
     assert "pre-flight failed" in done.stderr
     for fragment, expected in (
@@ -732,7 +733,7 @@ def test_a_regular_seat_beats_a_substitute_row_of_the_same_encounter(legacy_temp
         # Regular of team A, registered as a substitute on its opponent D: they sit in A's encounters as a regular.
         member = _spare_member_on(conn, ids, A=False, D=True)
         assert _check_two(conn) == []
-    done = _alembic(REJECTED_DB, "head")
+    done = _alembic(REJECTED_DB, "enclayer01b")
     assert done.returncode == 0, done.stderr[-3000:]
 
     def snapshots(encounter: str) -> list[tuple]:
@@ -760,7 +761,7 @@ def test_check_two_still_refuses_what_the_rule_cannot_settle(legacy_template, fl
     with _connect(REJECTED_DB) as conn:
         member = _spare_member_on(conn, ids, **flags)
         assert _check_two(conn) == [(ids["e_hero"], member, [ids["team_A"], ids["team_D"]])]
-    done = _alembic(REJECTED_DB, "head")
+    done = _alembic(REJECTED_DB, "enclayer01b")
     assert done.returncode != 0
     assert "pre-flight failed" in done.stderr
     line = next(line for line in done.stderr.splitlines() if "two rosters" in line)
@@ -1057,6 +1058,17 @@ def test_the_reconcile_report_names_every_row_the_migration_could_not_carry(migr
             ),
             team_id=ids["team_A"],
         )
+        stray = _insert(
+            tx,
+            "encounter.pick_ban_entry",
+            session_id=ids["s_slots"],
+            encounter_id=_scalar(
+                tx, "SELECT encounter_id FROM encounter.pick_ban_session WHERE id = %s", (ids["s_slots"],)
+            ),
+            item_id=99,
+            order=99,
+            team_id=ids["team_A"],
+        )
         create, summary, skipped = _statements(RECONCILE_SQL)
         tx.execute(create)
         statuses = {row[0]: row[3] for row in _rows(tx, summary)}
@@ -1065,9 +1077,11 @@ def test_the_reconcile_report_names_every_row_the_migration_could_not_carry(migr
     assert statuses["map reports -> claims"] == "MISMATCH"
     assert statuses["replay codes"] == "MISMATCH"
     assert statuses["roster rows collapsed by the snapshot"] == "MISMATCH"
+    assert statuses["pick-ban entry teams"] == "MISMATCH"
     assert ("map reports -> claims", report) in listed
     assert ("replay codes", code) in listed
     assert ("roster rows collapsed by the snapshot", twin) in listed  # the discarded twin, not the row kept
+    assert ("pick-ban entry teams", stray) in listed
 
 
 def test_a_v1_write_at_the_same_key_does_not_stand_in_for_a_row_the_migration_skipped(migrated) -> None:
@@ -1202,7 +1216,7 @@ def live_named(legacy_template):
     with _connect(LIVE_DB) as conn:
         for statement in LIVE_NAMES:
             conn.execute(statement)
-    done = _alembic(LIVE_DB, "head")
+    done = _alembic(LIVE_DB, "enclayer01b")
     assert done.returncode == 0, done.stderr[-3000:]
     with _connect(LIVE_DB) as conn:
         yield conn
@@ -1265,3 +1279,94 @@ def test_the_match_team_keys_keep_their_live_names_and_come_back_deferred_and_va
         ("matches.statistics", "match_statistics_team_id_fkey"),
     ]
     assert all(deferrable and validated for _, _, deferrable, validated in rows)
+
+
+# --------------------------------------------------------------------------- #
+# enclayer02: the gated contract
+# --------------------------------------------------------------------------- #
+
+
+def _columns(conn: psycopg.Connection, schema: str, table: str) -> set[str]:
+    return {
+        name
+        for (name,) in _rows(
+            conn,
+            "SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s",
+            (schema, table),
+        )
+    }
+
+
+def _contract_copy() -> None:
+    _recreate(ENCLAYER02_DB, TEMPLATE_DB)
+    done = _alembic(ENCLAYER02_DB, "enclayer01b")
+    assert done.returncode == 0, done.stderr[-3000:]
+
+
+def test_enclayer02_without_the_flag_is_a_stamp(legacy_template) -> None:
+    _contract_copy()
+    done = _alembic(ENCLAYER02_DB, "enclayer02")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(ENCLAYER02_DB) as conn:
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == "enclayer02"
+        assert {"home_team_id", "format"} <= _columns(conn, "encounter", "encounter")
+        assert _scalar(conn, "SELECT to_regclass('tournament.encounter_map_report') IS NOT NULL")
+
+
+def test_enclayer02_with_the_flag_drops_the_legacy_shape(legacy_template) -> None:
+    _contract_copy()
+    done = _alembic(ENCLAYER02_DB, "enclayer02", OWT_APPLY_ENCOUNTER_LAYER_DROP="1")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(ENCLAYER02_DB) as conn:
+        legacy = {
+            "format",
+            "home_team_id",
+            "away_team_id",
+            "home_score",
+            "away_score",
+            "stage_id",
+            "stage_item_id",
+            "round",
+        }
+        assert not legacy & _columns(conn, "encounter", "encounter")
+        assert not {"format", "accepted_home_score", "accepted_away_score"} & _columns(conn, "encounter", "game")
+        assert not {"picked_by", "protected_by", "team_id"} & _columns(conn, "encounter", "pick_ban_entry")
+        assert not {"first_side", "home_seed", "away_seed", "config_id"} & _columns(
+            conn, "encounter", "pick_ban_session"
+        )
+        assert not {"home_score_before", "home_score_after", "ffa_results_json"} & _columns(
+            conn, "encounter", "result_audit"
+        )
+        assert "side" not in _columns(conn, "encounter", "room_event")
+        assert not {"role", "legacy_target_slot"} & _columns(conn, "tournament", "encounter_link")
+        assert not {"ffa_columns", "ffa_formula", "ffa_placement_points", "split_lower_bracket"} & _columns(
+            conn, "tournament", "stage"
+        )
+        for table in ("participant", "game_result", "map_report", "captain_report", "map_code", "readiness"):
+            assert _scalar(conn, "SELECT to_regclass(%s) IS NULL", (f"tournament.encounter_{table}",))
+        assert (
+            _scalar(
+                conn,
+                "SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace"
+                " WHERE n.nspname = 'tournament' AND t.typname IN ('encounterlinkrole', 'encounterlinkslot',"
+                " 'pickbanside', 'firstbanrotation', 'firstpickrule', 'mappickside', 'mappoolentrystatus',"
+                " 'mapvetomode', 'mapvetosessionstatus', 'vetoseedsource')",
+            )
+            == 0
+        )
+
+
+def test_enclayer02_refuses_while_the_reconcile_lists_a_skipped_row(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    _contract_copy()
+    with _connect(ENCLAYER02_DB) as conn:
+        orphan_game = _insert(conn, "encounter.game", encounter_id=ids["e_tbd"], position=1)
+        report = _insert(
+            conn, "tournament.encounter_map_report", game_id=orphan_game, side="away", home_score=1, away_score=0
+        )
+    done = _alembic(ENCLAYER02_DB, "enclayer02", OWT_APPLY_ENCOUNTER_LAYER_DROP="1")
+    assert done.returncode != 0
+    assert "map reports -> claims" in done.stderr
+    assert str(report) in done.stderr
+    with _connect(ENCLAYER02_DB) as conn:
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == "enclayer01b"
