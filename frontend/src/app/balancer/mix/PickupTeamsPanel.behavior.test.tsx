@@ -195,11 +195,11 @@ function game(overrides: Partial<CustomGame> = {}): CustomGame {
 function match(overrides: Partial<CustomGameMatch> = {}): CustomGameMatch {
   return {
     id: 2,
-    home_team_name: "Wolves",
-    away_team_name: "Bears",
-    home_score: 1,
-    away_score: 0,
-    winner: 1,
+    teams: [
+      { slot: 1, name: "Wolves", score: 1 },
+      { slot: 2, name: "Bears", score: 0 },
+    ],
+    winner_slot: 1,
     map_id: 5,
     map_name: "King's Row",
     map_image_path: null,
@@ -209,6 +209,15 @@ function match(overrides: Partial<CustomGameMatch> = {}): CustomGameMatch {
     lobby_index: 0,
     ...overrides,
   };
+}
+
+// The history row paints the winning team's name in the full foreground tone and the other in the dim one.
+const WINNER_TONE = "text-[color:var(--aqt-fg)]";
+
+function teamNameClass(scope: ParentNode, name: string) {
+  const el = [...scope.querySelectorAll("li span")].find((s) => s.textContent === name);
+  if (!el) throw new Error(`no history team named ${name}`);
+  return el.className;
 }
 
 function tick() {
@@ -600,6 +609,34 @@ describe("PickupTeamsPanel", () => {
     expect(scope.textContent).toContain("Wolves");
     expect(scope.textContent).toContain("Bears");
     expect(scope.textContent).toContain("King's Row");
+  });
+
+  it("marks only the winning team of a recorded round as ahead", async () => {
+    const scope = await mount(game(), { matches: [match()] });
+
+    expect(scope.textContent).toContain("1 : 0");
+    expect(teamNameClass(scope, "Wolves")).toContain(WINNER_TONE);
+    expect(teamNameClass(scope, "Bears")).not.toContain(WINNER_TONE);
+  });
+
+  it("shows a drawn round as nil-nil with neither team ahead", async () => {
+    const scope = await mount(game(), {
+      matches: [
+        match({
+          teams: [
+            { slot: 1, name: "Wolves", score: 0 },
+            { slot: 2, name: "Bears", score: 0 },
+          ],
+          winner_slot: null,
+        }),
+      ],
+    });
+
+    expect(scope.textContent).toContain("0 : 0");
+    expect(scope.textContent).toContain("Wolves");
+    expect(scope.textContent).toContain("Bears");
+    expect(teamNameClass(scope, "Wolves")).not.toContain(WINNER_TONE);
+    expect(teamNameClass(scope, "Bears")).not.toContain(WINNER_TONE);
   });
 
   it("offers the undo only on the newest recorded match", async () => {

@@ -263,19 +263,17 @@ export type MixVoicePatch = {
   }[];
 };
 
+/** One team of a recorded round, by slot (1 = the lineup's first team). */
+export type CustomGameMatchTeam = { slot: number; name: string; score: number };
+
 /**
- * One match recorded by `recordOutcome`, as it comes back from the permanent
- * `casual.match` log -- the only record of a played match. `winner` is derived
- * server-side from the scoreline, the same 1-based/`null` shape as
- * `CustomGameOutcome`.
+ * One round recorded by `recordOutcome` -- an encounter owned by the mix. `teams` is in slot order;
+ * `winner_slot` is null for a draw. `recorded_by` is the recorder's player id.
  */
 export type CustomGameMatch = {
   id: number;
-  home_team_name: string;
-  away_team_name: string;
-  home_score: number;
-  away_score: number;
-  winner: number | null;
+  teams: CustomGameMatchTeam[];
+  winner_slot: number | null;
   map_id: number | null;
   map_name: string | null;
   map_image_path: string | null;
@@ -283,11 +281,7 @@ export type CustomGameMatch = {
   recorded_at: string | null;
   /** Which lobby of the mix played it (0-based, 0 = A). A one-lobby mix records only 0. */
   lobby_index: number;
-  /**
-   * The rank points this match moved each player by when it was recorded --
-   * `null` for a draw, or when the mix had no rank adjustment configured. An
-   * undo rolls back by this, never by the mix's current `points_per_win`.
-   */
+  /** The rank points this round moved each player by; null for a draw or no adjustment. Undo rolls back by this. */
   points_per_win_applied: number | null;
 };
 

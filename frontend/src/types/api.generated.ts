@@ -10155,7 +10155,7 @@ export interface paths {
         };
         /**
          * List custom game matches
-         * @description Permission: public; no authentication required. Returns every match recorded for the mix, newest first, with team names, scores, winner and map.
+         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot with name and score, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
          *
          *     RPC subject: `rpc.balancer.custom.match_history`
          */

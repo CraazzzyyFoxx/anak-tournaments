@@ -95,8 +95,9 @@ function MatchHistoryRow({
 }>) {
   const t = useTranslations("mixes.lobbies");
   const format = useFormatter();
-  const homeAccent = teamAccent(0);
-  const awayAccent = teamAccent(1);
+  const [first, second] = match.teams;
+  const firstAccent = teamAccent(0);
+  const secondAccent = teamAccent(1);
   const lobbyAccent = teamAccent(match.lobby_index);
   const letter = lobbyLetter(match.lobby_index);
   const [undoOpen, setUndoOpen] = useState(false);
@@ -129,27 +130,27 @@ function MatchHistoryRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-1.5 text-caption font-semibold leading-tight">
-          <StatusDot className={cn("inline-block", homeAccent.bar)} />
+          <StatusDot className={cn("inline-block", firstAccent.bar)} />
           <span
             className={cn(
               "truncate",
-              match.winner === 1 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
+              match.winner_slot === 1 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {match.home_team_name}
+            {first?.name}
           </span>
           <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">
-            {match.home_score} : {match.away_score}
+            {first?.score} : {second?.score}
           </span>
           <span
             className={cn(
               "truncate",
-              match.winner === 2 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
+              match.winner_slot === 2 ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {match.away_team_name}
+            {second?.name}
           </span>
-          <StatusDot className={cn("inline-block", awayAccent.bar)} />
+          <StatusDot className={cn("inline-block", secondAccent.bar)} />
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 truncate text-label text-[color:var(--aqt-fg-dim)]">
           <span className="truncate">{match.map_name ?? "No map"}</span>
