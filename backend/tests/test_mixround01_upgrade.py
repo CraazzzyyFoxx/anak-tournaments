@@ -27,6 +27,7 @@ TEMPLATE_DB = "mixround01_legacy_tpl"
 MIGRATED_DB = "mixround01_migrated"
 REJECTED_DB = "mixround01_rejected"
 ORDERING_DB = "mixround01_ordering"
+COLLIDING_DB = "mixround01_colliding"
 WINS_END = "games >= best_of or max_wins * 2 > best_of"
 
 _spec = importlib.util.spec_from_file_location(
@@ -203,7 +204,7 @@ def legacy_template():
         dropped_seats = _scalar(conn, revision.SEATS_WITHOUT_MEMBER)
     yield {"ids": ids, "preflight": preflight, "dropped_seats": dropped_seats}
     with _connect("postgres") as admin:
-        for name in (MIGRATED_DB, REJECTED_DB, ORDERING_DB, TEMPLATE_DB):
+        for name in (MIGRATED_DB, REJECTED_DB, ORDERING_DB, COLLIDING_DB, TEMPLATE_DB):
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
 
 
@@ -404,6 +405,50 @@ def test_the_reconcile_report_lists_exactly_what_the_move_dropped(migrated) -> N
         tx.rollback()
     assert listed == {("seats", ids["r3-home-1"]), ("busy players", ids["r3"]), ("rounds", ids["r2"])}
     assert statuses == {"rounds": "MISMATCH", "seats": "MISMATCH", "busy players": "MISMATCH", "sides": "ok"}
+
+
+def _listed_rounds(tx) -> set[int]:
+    create, _summary, skipped = _statements(RECONCILE_SQL)
+    tx.execute(create)
+    return {row[1] for row in _rows(tx, skipped) if row[0] == "rounds"}
+
+
+def test_the_reconcile_key_is_counted_when_two_rounds_share_it(legacy_template) -> None:
+    """Two rounds recorded in one transaction share ``created_at``: a lone survivor must not vouch for both."""
+    ids = dict(legacy_template["ids"])
+    _recreate(COLLIDING_DB, TEMPLATE_DB)
+    with _connect(COLLIDING_DB) as conn:
+        for key, member in (("c1", "m0"), ("c2", "m1")):
+            _round(
+                conn,
+                ids,
+                key,
+                mix="cg_empty",
+                lobby=0,
+                first=[(member, "tank", 2400, None)],
+                second=[("m5", None, 2300, None)],
+                scores=(1, 0),
+                at="2026-09-02T10:00:00Z",
+            )
+    done = _alembic(COLLIDING_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(COLLIDING_DB, autocommit=False) as tx:
+        assert _listed_rounds(tx).isdisjoint({ids["c1"], ids["c2"]})
+        tx.execute("DROP VIEW mixround01_reconcile")
+        tx.execute("DELETE FROM encounter.encounter WHERE name = 'c1-A vs c1-B'")
+        assert {ids["c1"], ids["c2"]} <= _listed_rounds(tx)
+        tx.rollback()
+
+
+def test_the_reconcile_report_lists_a_journal_actor_that_is_not_the_recorder(migrated) -> None:
+    ids = migrated["ids"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        tx.execute(
+            "UPDATE encounter.result_audit SET actor_user_id = %s WHERE encounter_id = %s",
+            (ids["u1"], _encounter_of(tx, ids["r1"])),
+        )
+        assert ids["r1"] in _listed_rounds(tx)
+        tx.rollback()
 
 
 def test_the_chain_ends_at_mixround01_with_every_constraint_validated(migrated) -> None:

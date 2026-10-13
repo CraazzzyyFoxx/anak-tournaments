@@ -3,12 +3,26 @@
 --     psql "$DATABASE_URL" -f backend/scripts/mixround01_reconcile.sql
 --
 -- Run after mixround01 and again before mixround02. mixround02 refuses while result set 1 has a status other
--- than ok or result set 2 has a row. The key of a legacy round is its mix, lobby and created_at.
+-- than ok or result set 2 has a row. The key of a legacy round is its mix, lobby and created_at; it is not unique
+-- (rounds recorded in one transaction share now()), so a key counts as carried only when as many encounters of
+-- that mix carry it as legacy rounds do.
 
 CREATE TEMP VIEW mixround01_reconcile AS
-WITH image AS (
+WITH legacy_key AS (
+    SELECT custom_game_id, lobby_index, created_at, count(*) AS rounds
+      FROM casual.match
+     GROUP BY custom_game_id, lobby_index, created_at
+), carried_key AS (
+    SELECT e.custom_game_id, r.lobby_index, e.created_at, count(*) AS rounds
+      FROM encounter.encounter e JOIN balancer.mix_round r ON r.encounter_id = e.id
+     GROUP BY e.custom_game_id, r.lobby_index, e.created_at
+), image AS (
     SELECT m.id AS match_id, e.id AS encounter_id
       FROM casual.match m
+      JOIN legacy_key lk ON lk.custom_game_id = m.custom_game_id AND lk.lobby_index = m.lobby_index
+                        AND lk.created_at = m.created_at
+      JOIN carried_key ck ON ck.custom_game_id = lk.custom_game_id AND ck.lobby_index = lk.lobby_index
+                         AND ck.created_at = lk.created_at AND ck.rounds = lk.rounds
       JOIN encounter.encounter e ON e.custom_game_id = m.custom_game_id AND e.created_at = m.created_at
       JOIN balancer.mix_round r ON r.encounter_id = e.id AND r.lobby_index = m.lobby_index
 )
@@ -20,7 +34,8 @@ SELECT 'rounds' AS class, m.id AS legacy_id, ''::text AS detail,
                 WHERE i.match_id = m.id
                   AND r.points_per_win_applied IS NOT DISTINCT FROM m.points_per_win_applied
                   AND g.map_id IS NOT DISTINCT FROM m.map_id
-                  AND (a.actor_user_id IS NULL) = (m.recorded_by IS NULL)) AS ok
+                  AND (   (m.recorded_by IS NULL AND a.actor_user_id IS NULL)
+                       OR a.actor_user_id = (SELECT u.id FROM players."user" u WHERE u.auth_user_id = m.recorded_by))) AS ok
   FROM casual.match m
 UNION ALL
 SELECT 'sides', t.id, 'round ' || t.match_id || ' ' || t.side,
