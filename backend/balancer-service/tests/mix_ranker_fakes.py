@@ -46,15 +46,17 @@ class _Configs:
 
 
 class _History:
-    """``casual.*`` as the replay query returns it: one row per frozen seat, in order."""
+    """``MixRoundRepository.seats`` as the replay reads it: one row per recorded seat, oldest round first."""
 
     def __init__(self) -> None:
-        self.rows: list[tuple[Any, ...]] = []
+        self.rows: list[Any] = []
 
-    async def replay_seats_for_workspace(self, _session: Any, _workspace_id: int) -> list[tuple[Any, ...]]:
+    async def seats(
+        self, _session: Any, *, workspace_id: int, encounter_id: int | None = None, since: Any = None
+    ) -> list[Any]:
         return list(self.rows)
 
 
 def in_memory_ranker(ranker_json: Mapping[str, Any] | None = None) -> MixRankerService:
-    """A real ``MixRankerService`` over dicts; reach the fakes via ``.hidden`` / ``.casual_matches``."""
-    return MixRankerService(hidden=InMemoryHiddenRatings(), configs=_Configs(ranker_json), casual_matches=_History())
+    """A real ``MixRankerService`` over dicts; reach the fakes via ``.hidden`` / ``.mix_rounds``."""
+    return MixRankerService(hidden=InMemoryHiddenRatings(), configs=_Configs(ranker_json), mix_rounds=_History())

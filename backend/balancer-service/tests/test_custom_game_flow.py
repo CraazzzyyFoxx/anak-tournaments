@@ -25,7 +25,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from shared.core.enums import CasualTeamSide, MixParticipation, MixRoleSelectionMode  # noqa: E402
+from shared.core.enums import MixParticipation, MixRoleSelectionMode  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
@@ -164,42 +164,28 @@ class _CoHosts:
             granted.remove(user_id)
 
 
-class _CasualStore:
-    """``casual.match`` and its owned sides/seats, wired like the real cascade."""
+class _RoundStore:
+    """Recorded rounds as the writer would leave them, shaped like ``MixRoundRepository`` rows."""
 
     def __init__(self) -> None:
-        self.matches: list[Any] = []
-        self.teams: list[Any] = []
-        self.players: list[Any] = []
-        self._match_ids = count(500)
-        self._team_ids = count(100)
+        self.drafts: list[Any] = []
+        self.rounds: list[Any] = []
 
-    # match repository ----------------------------------------------------
-    async def create(self, _session: Any, row: Any) -> Any:
-        row.id = next(self._match_ids)
-        row.created_at = len(self.matches) + 1
-        row.teams = []
-        self.matches.append(row)
-        return row
+    async def record(self, _session: Any, draft: Any) -> Any:
+        self.drafts.append(draft)
+        seated = [seat.workspace_member_id for team in draft.seats for seat in team]
+        self.rounds.append(
+            SimpleNamespace(
+                encounter_id=500 + len(self.rounds),
+                custom_game_id=draft.custom_game_id,
+                encounter=SimpleNamespace(created_at=len(self.rounds) + 1),
+                members=[SimpleNamespace(workspace_member_id=m, busy=False) for m in seated]
+                + [SimpleNamespace(workspace_member_id=m, busy=True) for m in sorted(draft.busy - set(seated))],
+            )
+        )
 
     async def list_for_custom_game(self, _session: Any, game_id: int) -> list[Any]:
-        return [row for row in reversed(self.matches) if row.custom_game_id == game_id]
-
-    # team repository -----------------------------------------------------
-    async def create_many(self, _session: Any, rows: list[Any]) -> list[Any]:
-        for row in rows:
-            row.id = next(self._team_ids)
-            row.players = []
-            self.teams.append(row)
-            match = next(item for item in self.matches if item.id == row.match_id)
-            match.teams.append(row)
-        return rows
-
-    # player repository ---------------------------------------------------
-    async def create_player(self, _session: Any, row: Any) -> Any:
-        self.players.append(row)
-        next(team for team in self.teams if team.id == row.team_id).players.append(row)
-        return row
+        return [row for row in reversed(self.rounds) if row.custom_game_id == game_id]
 
 
 def _solver_result(lineup: list[Any]) -> dict[str, Any]:
@@ -239,7 +225,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         self.team_names = _TeamNames()
         self.host_prefs = _HostPrefs()
         self.co_hosts = _CoHosts()
-        self.casual = _CasualStore()
+        self.store = _RoundStore()
         self.lobbies = _Lobbies()
 
         self.ranks = MagicMock()
@@ -273,12 +259,9 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             team_names=self.team_names,
             # The host's own row: solver knobs, roster shape, points per win.
             host_prefs=self.host_prefs,
-            casual_matches=SimpleNamespace(
-                create=self.casual.create,
-                list_for_custom_game=self.casual.list_for_custom_game,
-            ),
-            casual_teams=SimpleNamespace(create_many=self.casual.create_many),
-            casual_players=SimpleNamespace(create=self.casual.create_player),
+            mix_rounds=SimpleNamespace(list_for_custom_game=self.store.list_for_custom_game),
+            write_round=self.store.record,
+            players=SimpleNamespace(get_id_by_auth_user_id=AsyncMock(return_value=90)),
             ranks=self.ranks,
             scoring_rules=SimpleNamespace(create=AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)),
             load_roster=AsyncMock(
@@ -383,14 +366,12 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         )
         # Repeatable: the mix stays open, and the match is the only record.
         self.assertEqual(recorded.status, "balanced")
-        self.assertEqual(len(self.casual.matches), 1)
-        match = self.casual.matches[0]
-        self.assertEqual(
-            [(team.side, team.name, team.score) for team in match.teams],
-            [(CasualTeamSide.HOME, "Wolves", 1), (CasualTeamSide.AWAY, "Team 2", 0)],
-        )
-        self.assertEqual(sorted(seat.workspace_member_id for seat in self.casual.players), [7, 8, 9, 10])
-        self.assertTrue(all(seat.display_name_snapshot for seat in self.casual.players))
+        self.assertEqual(len(self.store.drafts), 1)
+        draft = self.store.drafts[0]
+        self.assertEqual((draft.names, draft.winner_slot), (("Wolves", "Team 2"), 1))
+        seats = [seat for team in draft.seats for seat in team]
+        self.assertEqual(sorted(seat.workspace_member_id for seat in seats), [7, 8, 9, 10])
+        self.assertTrue(all(seat.display_name for seat in seats))
         # The pin was redeemed by the seat it guaranteed; the win moved ranks.
         self.assertEqual(by_member[7].participation, MixParticipation.POOL)
         self.assertEqual(len(self.ranks.set_ranks.await_args_list), 9)

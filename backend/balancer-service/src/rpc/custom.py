@@ -51,8 +51,9 @@ from pydantic import BaseModel, ValidationError
 
 from shared import models
 from shared.core import http_status as status
-from shared.core.enums import CasualTeamSide, MixRoleSelectionMode
+from shared.core.enums import MixRoleSelectionMode
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.mix_round import winner_slot
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.services import discord_messages
 from shared.services.discord_client import DiscordClient
@@ -430,9 +431,9 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     host_names = await custom_game_service.hosts(session, game.workspace_id, [game.host_user_id, *co_host_user_ids])
     host_display_name = host_names.get(game.host_user_id)
     co_hosts = [{"user_id": user_id, "display_name": host_names.get(user_id)} for user_id in co_host_user_ids]
-    activity = (await custom_game_service.casual_matches.activity_for_games(session, [game.id])).get(game.id)
+    activity = (await custom_game_service.mix_rounds.activity_for_games(session, [game.id])).get(game.id)
     lobbies = list(await custom_game_service.lobbies.list_for_game(session, game.id))
-    lobby_activity = await custom_game_service.casual_matches.activity_for_lobbies(session, game.id)
+    lobby_activity = await custom_game_service.mix_rounds.activity_for_lobbies(session, game.id)
     # Derived once, here: the board, the player sheet and the bot all ask the
     # same question, and none of them should re-parse a solver document.
     current_lobby = {
@@ -499,45 +500,42 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     )
 
 
-def _dump_match(match: Any, map_info: dict[int, tuple[str, str]]) -> dict[str, Any]:
-    sides = {team.side: team for team in match.teams}
-    home = sides.get(CasualTeamSide.HOME)
-    away = sides.get(CasualTeamSide.AWAY)
-    home_score = home.score if home is not None else 0
-    away_score = away.score if away is not None else 0
-    winner = 1 if home_score > away_score else 2 if away_score > home_score else None
-    map_name, map_image_path = map_info.get(match.map_id, (None, None)) if match.map_id is not None else (None, None)
+def _dump_round(round_: Any, map_info: dict[int, tuple[str, str]]) -> dict[str, Any]:
+    """One recorded round as the history wire spells it (D78): the two seats by slot, the winning slot."""
+    encounter = round_.encounter
+    teams = sorted(encounter.teams, key=lambda team: team.slot)
+    map_id = encounter.games[0].map_id if encounter.games else None
+    map_name, map_image_path = map_info.get(map_id, (None, None)) if map_id is not None else (None, None)
     return {
-        "id": match.id,
+        # The round's encounter id: also what undo takes.
+        "id": encounter.id,
         # Which lobby played it: the history chips and the per-lobby undo both
         # read this.
-        "lobby_index": match.lobby_index,
-        "home_team_name": home.name if home is not None else None,
-        "away_team_name": away.name if away is not None else None,
-        "home_score": home_score,
-        "away_score": away_score,
-        "winner": winner,
-        "map_id": match.map_id,
+        "lobby_index": round_.lobby_index,
+        "teams": [{"slot": team.slot, "name": team.name, "score": int(team.score)} for team in teams],
+        "winner_slot": winner_slot(1, teams[0].score, teams[1].score),
+        "map_id": map_id,
         "map_name": map_name,
         "map_image_path": map_image_path,
-        # What undoing this match would give back, frozen at record time -- the
+        # What undoing this round gives back, frozen at record time -- the
         # mix's current points_per_win may say something else entirely.
-        "points_per_win_applied": match.points_per_win_applied,
-        "recorded_by": match.recorded_by,
-        "recorded_at": match.created_at.isoformat() if match.created_at else None,
+        "points_per_win_applied": round_.points_per_win_applied,
+        # The journal's actor: a ``players.user`` id.
+        "recorded_by": encounter.result_audit[0].actor_user_id if encounter.result_audit else None,
+        "recorded_at": encounter.created_at.isoformat() if encounter.created_at else None,
     }
 
 
-async def _dump_matches(session: Any, matches: list[Any]) -> list[dict[str, Any]]:
+async def _dump_rounds(session: Any, rounds: list[Any]) -> list[dict[str, Any]]:
     """Bulk-resolves map name + thumbnail in one query instead of one per row."""
-    map_ids = {match.map_id for match in matches if match.map_id is not None}
+    map_ids = {round_.encounter.games[0].map_id for round_ in rounds if round_.encounter.games} - {None}
     map_info: dict[int, tuple[str, str]] = {}
     if map_ids:
         rows = await session.execute(
             sa.select(models.Map.id, models.Map.name, models.Map.image_path).where(models.Map.id.in_(map_ids))
         )
         map_info = {row.id: (row.name, row.image_path) for row in rows}
-    return [_dump_match(match, map_info) for match in matches]
+    return [_dump_round(round_, map_info) for round_ in rounds]
 
 
 def _dump_rotation(recommendations: list[Any]) -> list[dict[str, Any]]:
@@ -610,7 +608,7 @@ def register(broker: Any, logger: Any) -> None:
             host_names = await custom_game_service.hosts(session, workspace_id, [row.host_user_id for row in rows])
             # One grouped read per per-row column (activity, team names, points
             # knob) instead of a query per mix.
-            activity = await custom_game_service.casual_matches.activity_for_games(session, game_ids)
+            activity = await custom_game_service.mix_rounds.activity_for_games(session, game_ids)
             team_names = await custom_game_service.team_names.mapping_for_games(session, game_ids)
             lobbies_by_game = await custom_game_service.lobbies.list_for_games(session, game_ids)
             # One query for the workspace's channel, for every row: the setting
@@ -1319,7 +1317,7 @@ def register(broker: Any, logger: Any) -> None:
             matches = await custom_game_service.list_matches(
                 session, workspace_id=workspace_id, custom_game_id=_game_id(data)
             )
-            return await _dump_matches(session, matches)
+            return await _dump_rounds(session, matches)
 
         return await c.envelope(logger, "custom.match_history", op, session_factory=_SF)
 
@@ -1421,7 +1419,7 @@ def register(broker: Any, logger: Any) -> None:
                     await custom_game_service.host_points_per_win(session, game.host_user_id),
                 ),
                 lobbies=(await custom_game_service.lobbies.list_for_games(session, [game.id])).get(game.id, []),
-                activity=(await custom_game_service.casual_matches.activity_for_games(session, [game.id])).get(game.id),
+                activity=(await custom_game_service.mix_rounds.activity_for_games(session, [game.id])).get(game.id),
                 discord_posts=await _discord_posts(session, game, guild_id),
             )
 

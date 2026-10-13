@@ -1,10 +1,10 @@
 """Win/loss bookkeeping for every member who ever sat in a workspace's mixes.
 
 Pure domain algorithm: no I/O, no ORM, no async. The caller (custom game
-service) reads one row per recorded seat -- ``casual.player`` joined to its own
-team, the other team and the match -- turns each into a :class:`SeatOutcome`
-via :func:`outcome_for`, and hands the whole list to
-:func:`aggregate_mix_stats`.
+service) reads one row per recorded seat -- ``encounter.team_member`` joined
+to its own team, the other team and the round (``balancer.mix_round``) --
+turns each into a :class:`SeatOutcome` via :func:`outcome_for`, and hands the
+whole list to :func:`aggregate_mix_stats`.
 
 One seat is one counted game: a member who played five maps across three
 different mixes has five seats, and the mix they belong to never enters the
@@ -20,6 +20,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
+
+from shared.domain.mix_round import winner_slot
 
 __all__ = ("Outcome", "SeatOutcome", "RoleTally", "MemberMixStats", "aggregate_mix_stats", "outcome_for")
 
@@ -65,18 +67,15 @@ class MemberMixStats:
     by_role: dict[str, RoleTally]
 
 
-def outcome_for(own_score: int, other_score: int) -> Outcome:
+def outcome_for(own_score: float, other_score: float) -> Outcome:
     """A seat's result is its own team's score against the other side's.
 
-    Relative, never absolute: a casual match stores two scored sides and no
+    Relative, never absolute: a recorded round stores two scored sides and no
     winner flag, so "did this seat win" is only answerable next to the other
     team's number.
     """
-    if own_score > other_score:
-        return "win"
-    if own_score < other_score:
-        return "loss"
-    return "draw"
+    winner = winner_slot(1, own_score, other_score)
+    return "draw" if winner is None else "win" if winner == 1 else "loss"
 
 
 def _streak(outcomes: Sequence[Outcome]) -> int:

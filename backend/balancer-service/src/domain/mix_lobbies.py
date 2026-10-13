@@ -49,7 +49,7 @@ def seated_member_ids(balance_result_json: Mapping[str, Any] | None, variant_ind
     Empty for a lobby that was never balanced and for an index past the stored
     options: both mean "nobody is playing this lobby", which is what every
     caller wants to hear. A seat uuid IS the member id -- the same mapping
-    ``record_outcome`` freezes into ``casual.player`` -- and a uuid that is not
+    ``record_outcome`` freezes into the round's seats -- and a uuid that is not
     one is skipped rather than failing the read.
     """
     return frozenset(member for team in seated_teams(balance_result_json, variant_index) for member in team)

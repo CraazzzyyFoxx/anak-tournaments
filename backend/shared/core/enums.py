@@ -345,11 +345,6 @@ class MixRatingMode(StrEnum):
     RANKER = "ranker"
 
 
-class CasualTeamSide(StrEnum):
-    HOME = "home"
-    AWAY = "away"
-
-
 class DraftStatus(StrEnum):
     SETUP = "setup"
     READY = "ready"

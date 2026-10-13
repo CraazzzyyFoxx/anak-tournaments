@@ -10,7 +10,6 @@ import X`` before the domain-subpackage split remains importable.
 from .achievements import *
 from .analytics import *
 from .balancer import *
-from .casual import *
 from .custom_game import *
 from .catalog import *
 from .division_grid import *

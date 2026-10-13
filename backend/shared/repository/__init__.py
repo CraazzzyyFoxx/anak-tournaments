@@ -154,7 +154,6 @@ from .workspace import (
     get_or_create_workspace_member,
     resolve_workspace_member_id,
 )
-from .casual import CasualMatchRepository, CasualPlayerRepository, CasualTeamRepository
 from .mix_round import MixRoundRepository
 from .custom_game import (
     CustomGameCoHostRepository,
@@ -307,9 +306,6 @@ __all__ = (
     "VerifiedChannelRow",
     "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
-    "CasualMatchRepository",
-    "CasualPlayerRepository",
-    "CasualTeamRepository",
     "MixRoundRepository",
     "CustomGameCoHostRepository",
     "CustomGameLobbyRepository",

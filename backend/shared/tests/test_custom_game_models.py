@@ -105,28 +105,3 @@ class TestCustomGameModel:
             if isinstance(constraint, sa.UniqueConstraint)
         }
         assert ("custom_game_player_id", "priority") in unique_columns
-
-
-class TestCasualHistoryModel:
-    def test_match_is_the_history_aggregate_root(self):
-        match_columns = models.CasualMatch.__table__.columns
-        team_columns = models.CasualTeam.__table__.columns
-        assert "workspace_id" not in match_columns
-        assert "home_team_id" not in match_columns
-        assert "away_team_id" not in match_columns
-        assert "home_score" not in match_columns
-        assert "away_score" not in match_columns
-        assert {"match_id", "side", "score"} <= set(team_columns.keys())
-        assert "workspace_id" not in team_columns
-
-    def test_historical_player_survives_workspace_member_deletion(self):
-        column = models.CasualPlayer.__table__.columns["workspace_member_id"]
-        assert column.nullable is True
-        assert next(iter(column.foreign_keys)).ondelete == "SET NULL"
-        assert "display_name_snapshot" in models.CasualPlayer.__table__.columns
-
-    def test_a_match_records_which_lobby_played_it(self):
-        assert "lobby_index" in models.CasualMatch.__table__.columns
-        busy = models.CasualMatchBusyPlayer.__table__
-        assert busy.schema == "casual"
-        assert [column.name for column in busy.primary_key] == ["match_id", "workspace_member_id"]

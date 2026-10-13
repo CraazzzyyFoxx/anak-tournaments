@@ -32,6 +32,7 @@ from shared.core.social import SocialProvider
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.models.ranks.overwatch_rank import BattleTagRankState, UserRankSnapshot
+from shared.repository.mix_round import MIX_ROLE_DIMENSION
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.rank_snapshots import OW_RANK_MAX_AGE
 
@@ -469,22 +470,25 @@ def _branches(
         )
 
     if "casual" in wanted:
-        seat = models.CasualPlayer
-        side = models.CasualTeam
-        match = models.CasualMatch
+        seat = models.EncounterTeamMember
+        side = models.EncounterTeam
+        encounter = models.Encounter
+        round_ = models.MixRound
+        round_member = models.MixRoundMember
+        role = models.EncounterTeamMemberRole
         game = models.CustomGame
-        opponent = orm.aliased(models.CasualTeam, name="rank_casual_opponent")
-        points = match.points_per_win_applied
+        opponent = orm.aliased(models.EncounterTeam, name="rank_casual_opponent")
+        points = round_.points_per_win_applied
         out.append(
             sa.select(
                 *_row(
                     "casual",
                     members,
-                    role=seat.role,
+                    role=role.role,
                     rank_value=seat.rank,
                     author_user_id=game.host_user_id,
                     delta=sa.func.coalesce(
-                        seat.rank_delta_applied,
+                        round_member.rank_delta_applied,
                         sa.case(
                             (sa.or_(points.is_(None), side.score == opponent.score), sa.null()),
                             (side.score > opponent.score, points),
@@ -494,16 +498,25 @@ def _branches(
                     context_kind=sa.literal("mix"),
                     context_id=game.id,
                     context_label=game.name,
-                    context_lobby_index=match.lobby_index,
-                    at=match.created_at,
+                    context_lobby_index=round_.lobby_index,
+                    at=encounter.created_at,
                     row_id=seat.id,
                 )
             )
             .join_from(members, seat, seat.workspace_member_id == members.c.member_id)
-            .join(side, side.id == seat.team_id)
-            .join(match, match.id == side.match_id)
-            .join(game, game.id == match.custom_game_id)
-            .outerjoin(opponent, sa.and_(opponent.match_id == match.id, opponent.id != side.id))
+            .join(side, side.id == seat.encounter_team_id)
+            .join(encounter, encounter.id == seat.encounter_id)
+            .join(round_, round_.encounter_id == encounter.id)
+            .join(game, game.id == encounter.custom_game_id)
+            .outerjoin(role, sa.and_(role.team_member_id == seat.id, role.dimension == MIX_ROLE_DIMENSION))
+            .outerjoin(
+                round_member,
+                sa.and_(
+                    round_member.encounter_id == encounter.id,
+                    round_member.workspace_member_id == seat.workspace_member_id,
+                ),
+            )
+            .outerjoin(opponent, sa.and_(opponent.encounter_id == encounter.id, opponent.id != side.id))
             .where(game.workspace_id == workspace_id)
         )
 

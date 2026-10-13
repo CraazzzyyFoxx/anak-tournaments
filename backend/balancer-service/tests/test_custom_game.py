@@ -24,8 +24,6 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from shared import models  # noqa: E402
 from shared.core.enums import (  # noqa: E402
-    CasualTeamSide,
-    HeroClass,
     MixParticipation,
     MixRoleSelectionMode,
     MixStatus,
@@ -43,6 +41,7 @@ from src.domain.mix_ranker import Ranker  # noqa: E402
 from src.domain.mix_self_service import MAX_ROSTER  # noqa: E402
 from src.services import mix_discord_projector  # noqa: E402
 from src.services.custom_game import _MAX_CO_HOSTS, CustomGameService  # noqa: E402
+from src.services.mix_rounds import MixRoundDraft  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
 
@@ -81,53 +80,51 @@ def _roster_row(row_id: int, member_id: int, sort_order: int, **overrides) -> Si
     return _row(**fields)
 
 
-def _seat_row(spec) -> SimpleNamespace:
-    """A frozen ``casual.player``: a bare member id, or ``(id, role, rank[, rank_delta_applied])``.
-
-    Undo reads back the role and the balance-time rank the recording wrote;
-    the rotation reader only cares who played, hence the short form.
-    """
-    if isinstance(spec, tuple):
-        member_id, role, rank, *delta = spec
-        return _row(workspace_member_id=member_id, role=role, rank=rank, rank_delta_applied=delta[0] if delta else None)
-    return _row(workspace_member_id=spec, role=None, rank=0, rank_delta_applied=None)
-
-
-def _match(
-    match_id: int,
+def _round(
+    round_id: int,
     *,
     created_at: int,
-    home: list,
-    away: list,
-    scores: tuple[int, int] = (1, 0),
+    first: list[int],
+    second: list[int],
+    scores: tuple[float, float] = (1.0, 0.0),
     busy: Sequence[int] = (),
-    **overrides,
+    lobby_index: int = 0,
+    points_per_win_applied: int | None = None,
 ) -> SimpleNamespace:
-    """One frozen ``casual.match`` with both scored sides, their seats, and who
-    was playing the mix's other lobby at the time."""
-    fields = {
-        "id": match_id,
-        "created_at": created_at,
-        "lobby_index": 0,
-        "map_id": None,
-        "recorded_by": 9,
-        "points_per_win_applied": None,
-        "busy_players": [_row(workspace_member_id=member_id) for member_id in busy],
-        "teams": [
-            _row(
-                id=match_id * 100 + index,
-                side=side,
-                name=f"Team {index}",
-                score=score,
-                players=[_seat_row(spec) for spec in members],
+    """One recorded round as ``MixRoundRepository.list_for_custom_game`` returns it."""
+    return _row(
+        encounter_id=round_id,
+        lobby_index=lobby_index,
+        points_per_win_applied=points_per_win_applied,
+        encounter=_row(
+            id=round_id,
+            created_at=created_at,
+            teams=[_row(slot=1, name="Team 1", score=scores[0]), _row(slot=2, name="Team 2", score=scores[1])],
+            games=[_row(map_id=None)],
+            result_audit=[_row(actor_user_id=70)],
+        ),
+        members=[_row(workspace_member_id=m, busy=False) for m in (*first, *second)]
+        + [_row(workspace_member_id=m, busy=True) for m in busy],
+    )
+
+
+def _seats(first: list[tuple], second: list[tuple], scores: tuple[float, float] = (1.0, 0.0)) -> list[SimpleNamespace]:
+    """``MixRoundRepository.seats`` rows for one round; a seat is ``(member, role, rank[, delta])``."""
+    rows = []
+    for slot, (team, own, other) in enumerate(((first, scores[0], scores[1]), (second, scores[1], scores[0])), start=1):
+        for member, role, rank, *delta in team:
+            rows.append(
+                _row(
+                    slot=slot,
+                    workspace_member_id=member,
+                    role=role,
+                    rank=rank,
+                    rank_delta_applied=delta[0] if delta else None,
+                    own_score=own,
+                    other_score=other,
+                )
             )
-            for index, (side, members, score) in enumerate(
-                ((CasualTeamSide.HOME, home, scores[0]), (CasualTeamSide.AWAY, away, scores[1])), start=1
-            )
-        ],
-    }
-    fields.update(overrides)
-    return _row(**fields)
+    return rows
 
 
 def _game(**overrides) -> SimpleNamespace:
@@ -338,21 +335,18 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get = AsyncMock()
         self.games.list_for_workspace = AsyncMock(return_value=[])
         self.roster.create_many = AsyncMock(side_effect=lambda _s, rows: rows)
-        self.casual_teams = MagicMock()
-        self.casual_teams.create_many = AsyncMock(side_effect=self._assign_casual_team_ids)
-        self.casual_players = MagicMock()
-        self.casual_players.create = AsyncMock(side_effect=lambda _s, row: row)
-        self.casual_matches = MagicMock()
-        self.casual_matches.create = AsyncMock(side_effect=self._assign_match_id)
-        # No match history recorded unless a test says otherwise -- `balance`'s
+        self.mix_rounds = MagicMock()
+        # No round history recorded unless a test says otherwise -- `balance`'s
         # rotation-priority read and `rotation()` itself both need this to resolve
         # to something awaitable by default.
-        self.casual_matches.list_for_custom_game = AsyncMock(return_value=[])
+        self.mix_rounds.list_for_custom_game = AsyncMock(return_value=[])
         # Nothing to undo unless a test records something.
-        self.casual_matches.get_for_game = AsyncMock(return_value=None)
-        self.casual_matches.newest_id_for_lobby = AsyncMock(return_value=None)
-        self.casual_matches.set_busy_players = AsyncMock()
-        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={})
+        self.mix_rounds.get_for_game = AsyncMock(return_value=None)
+        self.mix_rounds.newest_id_for_lobby = AsyncMock(return_value=None)
+        self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
+        self.mix_rounds.seats = AsyncMock(return_value=[])
+        self.mix_rounds.delete_round = AsyncMock()
+        self.write_round = AsyncMock()
         # The normalized child tables of a mix. Empty by default: no co-hosts, no
         # per-team name override, no own role mask -- exactly what a fresh mix has.
         self.co_hosts = MagicMock()
@@ -385,7 +379,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # The map catalogue: every id resolves unless a test says otherwise.
         self.maps = MagicMock()
         self.maps.get = AsyncMock(return_value=None)
-        self.casual_matches.delete = AsyncMock()
         self.roster.list_for_game = AsyncMock(return_value=[])
         self.roster.delete_for_game = AsyncMock()
         self.roster.get_by = AsyncMock(return_value=None)
@@ -397,6 +390,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # workspace_member. Linked and enrolled unless a test says otherwise.
         self.players = MagicMock()
         self.players.get_by_auth_user_id = AsyncMock(return_value=_row(id=70, auth_user_id=42))
+        self.players.get_id_by_auth_user_id = AsyncMock(return_value=70)
         self.workspace_members = MagicMock()
         self.workspace_members.get_by_player = AsyncMock(return_value=None)
         # Both required OAuth links present unless a test removes one.
@@ -467,9 +461,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             lobbies=self.lobbies,
             player_roles=self.player_roles,
             team_names=self.team_names,
-            casual_matches=self.casual_matches,
-            casual_teams=self.casual_teams,
-            casual_players=self.casual_players,
+            mix_rounds=self.mix_rounds,
+            write_round=self.write_round,
             maps=self.maps,
             host_prefs=self.host_prefs,
             ranks=self.ranks,
@@ -525,17 +518,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             row.id = 11
         return row
 
-    @staticmethod
-    async def _assign_casual_team_ids(_session, rows):
-        for index, row in enumerate(rows, start=101):
-            row.id = index
-        return rows
-
-    @staticmethod
-    async def _assign_match_id(_session, row):
-        if getattr(row, "id", None) is None:
-            row.id = 501
-        return row
+    def _draft(self) -> MixRoundDraft:
+        return self.write_round.await_args.args[1]
 
     async def _roles_for_players(self, _session, player_ids):
         """The explicit role order of whichever rows the test put in the roster."""
@@ -2029,7 +2013,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 self.session.flush.assert_not_called()
                 self.session.flush.reset_mock()
 
-    async def test_record_outcome_snapshots_a_casual_match_and_stays_open(self) -> None:
+    async def test_record_outcome_records_a_round_and_stays_open(self) -> None:
         result = {
             "variants": [
                 {
@@ -2066,29 +2050,20 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # Repeatable: recording a result never closes the mix.
         self.assertEqual(game.status, "balanced")
 
-        created_match = self.casual_matches.create.await_args.args[1]
-        self.assertEqual(created_match.custom_game_id, 11)
-        self.assertEqual(created_match.recorded_by, 9)
-
-        created_teams = self.casual_teams.create_many.await_args.args[1]
-        self.assertEqual([team.match_id for team in created_teams], [501, 501])
+        draft = self._draft()
         self.assertEqual(
-            [(team.side, team.name, team.score) for team in created_teams],
-            [(CasualTeamSide.HOME, "Wolves", 1), (CasualTeamSide.AWAY, "Team 2", 0)],
+            (draft.custom_game_id, draft.recorder_player_id, draft.names, draft.winner_slot),
+            (11, 70, ("Wolves", "Team 2"), 1),
         )
-
-        created_players = [call.args[1] for call in self.casual_players.create.await_args_list]
         self.assertEqual(
             sorted(
-                (row.workspace_member_id, row.team_id, row.rank, row.display_name_snapshot) for row in created_players
+                (s.workspace_member_id, slot, s.rank, s.display_name)
+                for slot, team in enumerate(draft.seats, start=1)
+                for s in team
             ),
-            [
-                (7, 101, 3200, "Alpha"),
-                (8, 101, 2900, "Bravo"),
-                (9, 102, 2600, "Charlie"),
-                (10, 102, 3000, "Delta"),
-            ],
+            [(7, 1, 3200, "Alpha"), (8, 1, 2900, "Bravo"), (9, 2, 2600, "Charlie"), (10, 2, 3000, "Delta")],
         )
+        self.players.get_id_by_auth_user_id.assert_awaited_once_with(self.session, 9)
 
     async def test_record_outcome_redeems_the_pin_of_whoever_played(self) -> None:
         result = {
@@ -2151,8 +2126,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        created_match = self.casual_matches.create.await_args.args[1]
-        self.assertEqual(created_match.map_id, 42)
+        self.assertEqual(self._draft().map_id, 42)
 
     async def test_record_outcome_takes_the_next_map_and_clears_it(self) -> None:
         result = {
@@ -2178,8 +2152,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        created_match = self.casual_matches.create.await_args.args[1]
-        self.assertEqual(created_match.map_id, 42)
+        self.assertEqual(self._draft().map_id, 42)
         # Consumed: the following match starts from a fresh roll, not a stale one.
         self.assertIsNone(lobby.next_map_id)
 
@@ -2209,8 +2182,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        created_match = self.casual_matches.create.await_args.args[1]
-        self.assertEqual(created_match.map_id, 5)
+        self.assertEqual(self._draft().map_id, 5)
         self.assertIsNone(lobby.next_map_id)
 
     async def test_record_outcome_unknown_map_404(self) -> None:
@@ -2236,9 +2208,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 actor_user_id=9,
             )
         self.assertEqual(ctx.exception.status_code, 404)
-        self.casual_matches.create.assert_not_called()
+        self.write_round.assert_not_awaited()
 
-    async def test_record_outcome_draw_scores_zero_zero(self) -> None:
+    async def test_record_outcome_draw_has_no_winner(self) -> None:
         result = {
             "variants": [
                 {
@@ -2261,8 +2233,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        created_teams = self.casual_teams.create_many.await_args.args[1]
-        self.assertEqual([team.score for team in created_teams], [0, 0])
+        self.assertIsNone(self._draft().winner_slot)
 
     async def test_record_outcome_without_a_host_points_knob_never_adjusts_ranks(self) -> None:
         result = {
@@ -2388,7 +2359,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
 
         self.host_prefs.get_by_user.assert_awaited_with(self.session, 9)
-        self.assertEqual(self.casual_matches.create.await_args.args[1].points_per_win_applied, 25)
+        self.assertEqual(self._draft().points_per_win_applied, 25)
 
     async def test_record_outcome_freezes_nothing_on_a_draw(self) -> None:
         result = {
@@ -2414,7 +2385,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        self.assertIsNone(self.casual_matches.create.await_args.args[1].points_per_win_applied)
+        self.assertIsNone(self._draft().points_per_win_applied)
 
     def _one_v_one(self) -> dict[str, object]:
         return {
@@ -2445,10 +2416,10 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         }
         self.assertGreater(moved[7], 2400)
         self.assertLess(moved[9], 2400)
-        seats = {call.args[1].workspace_member_id: call.args[1] for call in self.casual_players.create.await_args_list}
+        seats = {s.workspace_member_id: s for team in self._draft().seats for s in team}
         self.assertEqual(seats[7].rank_delta_applied, moved[7] - 2400)
         self.assertEqual(seats[9].rank_delta_applied, moved[9] - 2400)
-        self.assertIsNone(self.casual_matches.create.await_args.args[1].points_per_win_applied)
+        self.assertIsNone(self._draft().points_per_win_applied)
 
     async def test_record_outcome_in_points_mode_still_advances_the_hidden_ratings(self) -> None:
         self.games.get.return_value = _game(status="balanced")
@@ -2462,21 +2433,16 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         book = self.ranker.hidden.book
         self.assertGreater(book[(7, "tank")][0], book[(9, "tank")][0])
-        seats = [call.args[1] for call in self.casual_players.create.await_args_list]
-        self.assertTrue(all(seat.rank_delta_applied is None for seat in seats))
+        self.assertTrue(all(s.rank_delta_applied is None for team in self._draft().seats for s in team))
 
     async def test_undo_gives_back_each_ranker_delta_and_rebuilds_the_hidden_book(self) -> None:
-        match = _match(
-            501,
-            created_at=1,
-            home=[(7, HeroClass.tank, 2400, 31)],
-            away=[(9, HeroClass.tank, 2400, -28)],
-        )
+        match = _round(501, created_at=1, first=[7], second=[9])
+        self.mix_rounds.seats.return_value = _seats([(7, "tank", 2400, 31)], [(9, "tank", 2400, -28)])
         self.games.get.return_value = _game()
         # Switched back to points since: undo still gives back what was frozen.
         self.host_prefs.get_by_user.return_value = _prefs(points_per_win=25)
-        self.casual_matches.get_for_game.return_value = match
-        self.casual_matches.newest_id_for_lobby.return_value = 501
+        self.mix_rounds.get_for_game.return_value = match
+        self.mix_rounds.newest_id_for_lobby.return_value = 501
         self.ranks.list_layer = AsyncMock(return_value={(7, "tank"): 2431, (9, "tank"): 2372})
         self.ranker.hidden.book = {(7, "tank"): (5.0, 24.0), (9, "tank"): (-5.0, 24.0)}
 
@@ -2532,12 +2498,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(ctx.exception.status_code, 404)
-        self.casual_matches.delete.assert_not_awaited()
+        self.mix_rounds.delete_round.assert_not_awaited()
 
     async def test_undo_only_applies_to_the_newest_match(self) -> None:
         self.games.get.return_value = _game()
-        self.casual_matches.get_for_game.return_value = _match(501, created_at=1, home=[7], away=[9])
-        self.casual_matches.newest_id_for_lobby.return_value = 502
+        self.mix_rounds.get_for_game.return_value = _round(501, created_at=1, first=[7], second=[9])
+        self.mix_rounds.newest_id_for_lobby.return_value = 502
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.undo_last_match(
@@ -2546,22 +2512,17 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 409)
         self.assertEqual(ctx.exception.detail, "Only the most recent match of this lobby can be undone")
-        self.casual_matches.delete.assert_not_awaited()
+        self.mix_rounds.delete_round.assert_not_awaited()
 
     async def test_undo_reverses_the_points_the_match_stored(self) -> None:
-        match = _match(
-            501,
-            created_at=1,
-            home=[(7, HeroClass.tank, 3200), (8, HeroClass.damage, 2900)],
-            away=[(9, HeroClass.tank, 2600)],
-            points_per_win_applied=25,
-        )
+        match = _round(501, created_at=1, first=[7, 8], second=[9], points_per_win_applied=25)
+        self.mix_rounds.seats.return_value = _seats([(7, "tank", 3200), (8, "damage", 2900)], [(9, "tank", 2600)])
         # The host's knob has since been turned up; the rollback must ignore it
         # and give back the 25 that was actually applied.
         self.games.get.return_value = _game()
         self.host_prefs.get_by_user.return_value = _prefs(points_per_win=999)
-        self.casual_matches.get_for_game.return_value = match
-        self.casual_matches.newest_id_for_lobby.return_value = 501
+        self.mix_rounds.get_for_game.return_value = match
+        self.mix_rounds.newest_id_for_lobby.return_value = 501
         self.ranks.list_layer = AsyncMock(return_value={(7, "tank"): 2525, (8, "damage"): 2825, (9, "tank"): 2575})
 
         await self.service.undo_last_match(
@@ -2580,57 +2541,53 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 (9, 9, (("tank", 2600),)),
             },
         )
-        self.casual_matches.delete.assert_awaited_once_with(self.session, match)
+        self.mix_rounds.delete_round.assert_awaited_once_with(self.session, 501)
+        self.mix_rounds.seats.assert_awaited_once_with(self.session, workspace_id=1, encounter_id=501)
 
     async def test_undo_a_draw_deletes_without_touching_ranks(self) -> None:
-        match = _match(
-            501,
-            created_at=1,
-            home=[(7, HeroClass.tank, 3200)],
-            away=[(9, HeroClass.tank, 2600)],
-            scores=(0, 0),
-        )
+        round_ = _round(501, created_at=1, first=[7], second=[9], scores=(0.0, 0.0))
         self.games.get.return_value = _game()
         self.host_prefs.get_by_user.return_value = _prefs(points_per_win=25)
-        self.casual_matches.get_for_game.return_value = match
-        self.casual_matches.newest_id_for_lobby.return_value = 501
+        self.mix_rounds.get_for_game.return_value = round_
+        self.mix_rounds.newest_id_for_lobby.return_value = 501
+        self.mix_rounds.seats.return_value = _seats([(7, "tank", 3200)], [(9, "tank", 2600)], scores=(0.0, 0.0))
 
         await self.service.undo_last_match(
             self.session, workspace_id=1, custom_game_id=11, match_id=501, actor_user_id=9
         )
 
         self.ranks.set_ranks.assert_not_awaited()
-        self.casual_matches.delete.assert_awaited_once_with(self.session, match)
+        self.mix_rounds.delete_round.assert_awaited_once_with(self.session, 501)
 
     async def test_list_matches_returns_the_recorded_history(self) -> None:
         self.games.get.return_value = _game()
         matches = [object(), object()]
-        self.casual_matches.list_for_custom_game = AsyncMock(return_value=matches)
+        self.mix_rounds.list_for_custom_game = AsyncMock(return_value=matches)
 
         result = await self.service.list_matches(self.session, workspace_id=1, custom_game_id=11)
 
         self.assertEqual(result, matches)
-        self.casual_matches.list_for_custom_game.assert_awaited_once_with(self.session, 11)
+        self.mix_rounds.list_for_custom_game.assert_awaited_once_with(self.session, 11)
 
     async def test_mix_stats_merges_the_current_roster_into_the_scoreboard(self) -> None:
         played_at = datetime(2026, 3, 1, 21, 30)
-        self.casual_matches.seats_for_workspace = AsyncMock(
+        self.mix_rounds.seats = AsyncMock(
             return_value=[
                 _row(
                     workspace_member_id=7,
-                    role=HeroClass.damage,
-                    match_id=1,
+                    role="damage",
+                    encounter_id=1,
                     created_at=played_at,
-                    own_score=2,
-                    other_score=1,
+                    own_score=2.0,
+                    other_score=1.0,
                 ),
                 _row(
                     workspace_member_id=8,
                     role=None,
-                    match_id=1,
+                    encounter_id=1,
                     created_at=played_at,
-                    own_score=1,
-                    other_score=2,
+                    own_score=1.0,
+                    other_score=2.0,
                 ),
             ]
         )
@@ -2641,7 +2598,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         members = await self.service.mix_stats(self.session, workspace_id=1, since=None)
 
-        self.casual_matches.seats_for_workspace.assert_awaited_once_with(self.session, 1, None)
+        self.mix_rounds.seats.assert_awaited_once_with(self.session, workspace_id=1, since=None)
         self.assertEqual(
             members,
             [
@@ -2741,7 +2698,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get.return_value = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json={"variants": [{"teams": []}]})
         self.team_names.mapping_for_game.return_value = {}
-        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={})
+        self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
         self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
 
         channel_id, _commands = await self.service.discord_lineup(
@@ -2791,7 +2748,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.lobby_rows[0] = _lobby(0, next_map_id=42, balance_result_json=lobby_document(result["variants"]))
         self.host_prefs.get_by_user.return_value = _prefs(points_per_win=25)
         self.team_names.mapping_for_game.return_value = {0: "Blue"}
-        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={0: (3, datetime(2026, 1, 1, 20, 0))})
+        self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={0: (3, datetime(2026, 1, 1, 20, 0))})
         # Two scalar reads in order: the workspace's channel, then the map.
         self.session.scalar = AsyncMock(
             side_effect=[
@@ -2840,7 +2797,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get.return_value = _game()
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(result["variants"]))
         self.team_names.mapping_for_game.return_value = {}
-        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={})
+        self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
         self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})
         self._discord_links({})
 
@@ -2969,12 +2926,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             subject="mix:11", slot="lineup:0:1", kind="mix.lineup", status="posted", card_json=_voice_card_json("11-0")
         )
         before = dict(row.card_json)
-        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={0: (1, datetime(2026, 1, 1, 20, 0))})
+        self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={0: (1, datetime(2026, 1, 1, 20, 0))})
 
         self.assertEqual(
             [], await self.service.redraw_lineups(self.session, _game(), board_url_base="https://owt.example")
         )
-        self.casual_matches.activity_for_lobbies = AsyncMock(return_value={})
+        self.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
         closed = _game(status=MixStatus.COMPLETED)
         self.assertEqual(
             [], await self.service.redraw_lineups(self.session, closed, board_url_base="https://owt.example")
@@ -3956,11 +3913,11 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             _roster_row(2, 8, 1, created_at=0),
             _roster_row(3, 9, 2, created_at=0),
         ]
-        # Newest-first, as CasualMatchRepository.list_for_custom_game returns it.
-        self.casual_matches.list_for_custom_game = AsyncMock(
+        # Newest-first, as MixRoundRepository.list_for_custom_game returns it.
+        self.mix_rounds.list_for_custom_game = AsyncMock(
             return_value=[
-                _match(2, created_at=2, home=[9], away=[7]),  # 7 & 9 played, 8 sat
-                _match(1, created_at=1, home=[7], away=[8]),  # 7 & 8 played, 9 sat
+                _round(2, created_at=2, first=[9], second=[7]),  # 7 & 9 played, 8 sat
+                _round(1, created_at=1, first=[7], second=[8]),  # 7 & 8 played, 9 sat
             ]
         )
 
@@ -3985,7 +3942,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             _roster_row(2, 8, 1, created_at=0),
             _roster_row(3, 9, 2, created_at=5),  # joined after the only map recorded so far
         ]
-        self.casual_matches.list_for_custom_game = AsyncMock(return_value=[_match(1, created_at=1, home=[7], away=[])])
+        self.mix_rounds.list_for_custom_game = AsyncMock(return_value=[_round(1, created_at=1, first=[7], second=[])])
 
         recommendations = await self.service.rotation(self.session, workspace_id=1, custom_game_id=11)
         by_id = {rec.member_id: rec for rec in recommendations}
@@ -4012,10 +3969,10 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             _roster_row(2, 8, 1, created_at=0),
             _roster_row(3, 9, 2, created_at=0),
         ]
-        self.casual_matches.list_for_custom_game = AsyncMock(
+        self.mix_rounds.list_for_custom_game = AsyncMock(
             return_value=[
-                _match(2, created_at=2, home=[7], away=[8]),  # 7 & 8 played, 9 sat
-                _match(1, created_at=1, home=[7], away=[8], busy=[9]),  # 9 was in lobby B
+                _round(2, created_at=2, first=[7], second=[8]),  # 7 & 8 played, 9 sat
+                _round(1, created_at=1, first=[7], second=[8], busy=[9]),  # 9 was in lobby B
             ]
         )
 
@@ -4040,10 +3997,10 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             _roster_row(2, 8, 1, created_at=0),
             _roster_row(3, 9, 2, created_at=0),
         ]
-        self.casual_matches.list_for_custom_game = AsyncMock(
+        self.mix_rounds.list_for_custom_game = AsyncMock(
             return_value=[
-                _match(2, created_at=2, home=[7], away=[8]),
-                _match(1, created_at=1, home=[7], away=[8]),
+                _round(2, created_at=2, first=[7], second=[8]),
+                _round(1, created_at=1, first=[7], second=[8]),
             ]
         )
 
@@ -4131,10 +4088,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        created_match = self.casual_matches.create.await_args.args[1]
-        self.assertEqual(created_match.lobby_index, 1)
-        self.assertEqual(created_match.map_id, 7)
-        self.casual_matches.set_busy_players.assert_awaited_once_with(self.session, 501, [9, 10])
+        draft = self._draft()
+        self.assertEqual((draft.lobby_index, draft.map_id, draft.busy), (1, 7, frozenset({9, 10})))
         # Only this lobby's roll is consumed; lobby A still has its own.
         self.assertIsNone(self.lobby_rows[1].next_map_id)
         self.assertEqual(self.lobby_rows[0].next_map_id, 42)
@@ -4164,8 +4119,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        created_teams = self.casual_teams.create_many.await_args.args[1]
-        self.assertEqual([team.name for team in created_teams], ["Owls", "Team 2"])
+        self.assertEqual(self._draft().names, ("Owls", "Team 2"))
 
     async def test_record_outcome_of_a_one_lobby_mix_records_no_busy_players(self) -> None:
         result = {
@@ -4185,28 +4139,27 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             self.session, workspace_id=1, custom_game_id=11, winner=1, variant_index=0, actor_user_id=9
         )
 
-        self.assertEqual(self.casual_matches.create.await_args.args[1].lobby_index, 0)
-        self.casual_matches.set_busy_players.assert_not_awaited()
+        self.assertEqual((self._draft().lobby_index, self._draft().busy), (0, frozenset()))
 
     async def test_undo_targets_the_newest_match_of_its_own_lobby(self) -> None:
         """Lobby A's last match is undoable even while lobby B has recorded a
         newer one: the rank book compounds per mix, but the pair a host is
         looking at is their own lobby's."""
         self.games.get.return_value = _game(lobby_count=2)
-        self.casual_matches.get_for_game.return_value = _match(501, created_at=1, home=[7], away=[9], lobby_index=0)
-        self.casual_matches.newest_id_for_lobby.return_value = 501
+        self.mix_rounds.get_for_game.return_value = _round(501, created_at=1, first=[7], second=[9], lobby_index=0)
+        self.mix_rounds.newest_id_for_lobby.return_value = 501
 
         await self.service.undo_last_match(
             self.session, workspace_id=1, custom_game_id=11, match_id=501, actor_user_id=9
         )
 
-        self.casual_matches.newest_id_for_lobby.assert_awaited_once_with(self.session, 11, 0)
-        self.casual_matches.delete.assert_awaited_once()
+        self.mix_rounds.newest_id_for_lobby.assert_awaited_once_with(self.session, 11, 0)
+        self.mix_rounds.delete_round.assert_awaited_once()
 
     async def test_undo_refuses_an_older_match_of_the_same_lobby_409(self) -> None:
         self.games.get.return_value = _game(lobby_count=2)
-        self.casual_matches.get_for_game.return_value = _match(501, created_at=1, home=[7], away=[9], lobby_index=1)
-        self.casual_matches.newest_id_for_lobby.return_value = 503
+        self.mix_rounds.get_for_game.return_value = _round(501, created_at=1, first=[7], second=[9], lobby_index=1)
+        self.mix_rounds.newest_id_for_lobby.return_value = 503
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.undo_last_match(
@@ -4214,8 +4167,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(ctx.exception.status_code, 409)
-        self.casual_matches.newest_id_for_lobby.assert_awaited_once_with(self.session, 11, 1)
-        self.casual_matches.delete.assert_not_awaited()
+        self.mix_rounds.newest_id_for_lobby.assert_awaited_once_with(self.session, 11, 1)
+        self.mix_rounds.delete_round.assert_not_awaited()
 
     async def test_discord_lineup_names_the_lobby_and_counts_its_own_games(self) -> None:
         """Two lobbies keep two paces: "game 3" of B is not "game 3" of A."""
@@ -4232,7 +4185,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get.return_value = _game(lobby_count=2)
         self.lobby_rows[1] = _lobby(1, balance_result_json=lobby_document(result["variants"]))
         self.team_names.mapping_for_game.return_value = {}
-        self.casual_matches.activity_for_lobbies = AsyncMock(
+        self.mix_rounds.activity_for_lobbies = AsyncMock(
             return_value={0: (5, datetime(2026, 1, 1, 20, 0)), 1: (2, datetime(2026, 1, 1, 20, 5))}
         )
         self.session.scalar = AsyncMock(return_value={"mix_discord_channel_id": "555"})

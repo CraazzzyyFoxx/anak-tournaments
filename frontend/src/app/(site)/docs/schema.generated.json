@@ -171,28 +171,6 @@
       ]
     },
     {
-      "key": "casual",
-      "mermaid": "erDiagram\n    CASUAL_MATCH {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint custom_game_id FK\n        int lobby_index\n        bigint map_id FK \"nullable\"\n        bigint recorded_by FK \"nullable\"\n        int points_per_win_applied \"nullable\"\n    }\n    CASUAL_MATCH_BUSY_PLAYER {\n        bigint match_id PK,FK\n        bigint workspace_member_id PK,FK\n    }\n    CASUAL_PLAYER {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint team_id FK\n        bigint workspace_member_id FK \"nullable\"\n        varchar(255) display_name_snapshot\n        heroclass role \"nullable\"\n        int rank\n        int rank_delta_applied \"nullable\"\n    }\n    CASUAL_TEAM {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint match_id FK\n        varchar(8) side\n        varchar(255) name\n        int score\n    }\n\n    AUTH_USER |o--o{ CASUAL_MATCH : \"recorded_by\"\n    BALANCER_CUSTOM_GAME ||--o{ CASUAL_MATCH : \"custom_game_id\"\n    CASUAL_MATCH ||--o{ CASUAL_TEAM : \"match_id\"\n    CASUAL_MATCH ||--o| CASUAL_MATCH_BUSY_PLAYER : \"match_id\"\n    CASUAL_TEAM ||--o{ CASUAL_PLAYER : \"team_id\"\n    OVERWATCH_MAP |o--o{ CASUAL_MATCH : \"map_id\"\n    PUBLIC_WORKSPACE_MEMBER |o--o{ CASUAL_PLAYER : \"workspace_member_id\"\n    PUBLIC_WORKSPACE_MEMBER ||--o| CASUAL_MATCH_BUSY_PLAYER : \"workspace_member_id\"",
-      "schemas": [
-        "casual"
-      ],
-      "tables": [
-        "casual.match",
-        "casual.match_busy_player",
-        "casual.player",
-        "casual.team"
-      ],
-      "unique_keys": [
-        {
-          "columns": [
-            "match_id",
-            "side"
-          ],
-          "table": "CASUAL_TEAM"
-        }
-      ]
-    },
-    {
       "key": "catalog",
       "mermaid": "erDiagram\n    CATALOG_DISCIPLINE {\n        varchar(32) code PK\n        varchar(64) name\n        timestamptz created_at\n    }\n    OVERWATCH_CATALOG_ALIAS_MISS {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        catalogentitytype entity_type\n        varchar(128) raw_name\n        int occurrences\n        timestamptz first_seen_at\n        timestamptz last_seen_at\n        bigint last_log_record_id FK \"nullable\"\n        timestamptz resolved_at \"nullable\"\n    }\n    OVERWATCH_GAMEMODE {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar slug UK\n        varchar name UK\n        varchar image_path\n        varchar description \"nullable\"\n        jsonb aliases\n    }\n    OVERWATCH_HERO {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar slug UK\n        varchar name UK\n        varchar image_path\n        heroclass type\n        varchar color\n        jsonb aliases\n    }\n    OVERWATCH_MAP {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint gamemode_id FK\n        varchar name UK\n        varchar image_path\n        boolean in_competitive\n        jsonb aliases\n    }\n\n    LOG_PROCESSING_RECORD |o--o{ OVERWATCH_CATALOG_ALIAS_MISS : \"last_log_record_id\"\n    OVERWATCH_GAMEMODE ||--o{ OVERWATCH_MAP : \"gamemode_id\"",
       "schemas": [

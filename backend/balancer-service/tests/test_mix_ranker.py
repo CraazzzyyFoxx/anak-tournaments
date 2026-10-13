@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -13,7 +14,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from shared.core.enums import CasualTeamSide, HeroClass  # noqa: E402
+from shared.domain.mix_round import winner_slot  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker, RankerSettings  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
@@ -120,15 +121,19 @@ class HistoryFoldTests(IsolatedAsyncioTestCase):
         ([(1, "tank", 2400), (4, "damage", 2300)], [(2, "tank", 2600), (3, "damage", 2500)], 0, 0),
     )
 
-    def _history_rows(self) -> list[tuple[object, ...]]:
+    def _history_rows(self) -> list[SimpleNamespace]:
         rows = []
         for match_id, (home, away, home_score, away_score) in enumerate(self._MATCHES, start=1):
-            for side, seats, score in (
-                (CasualTeamSide.HOME, home, home_score),
-                (CasualTeamSide.AWAY, away, away_score),
-            ):
+            for slot, seats, score in ((1, home, home_score), (2, away, away_score)):
                 rows.extend(
-                    (match_id, side.value, score, member, HeroClass.from_slot_code(role), rank)
+                    SimpleNamespace(
+                        encounter_id=match_id,
+                        slot=slot,
+                        own_score=float(score),
+                        workspace_member_id=member,
+                        role=role,
+                        rank=rank,
+                    )
                     for member, role, rank in seats
                 )
         return rows
@@ -138,11 +143,11 @@ class HistoryFoldTests(IsolatedAsyncioTestCase):
         paths must agree or an undo would silently re-rate everyone."""
         service = in_memory_ranker()
         for home, away, home_score, away_score in self._MATCHES:
-            winner = 1 if home_score > away_score else 2 if away_score > home_score else None
+            winner = winner_slot(1, home_score, away_score)
             await service.rate_match(None, workspace_id=1, teams=[home, away], winner=winner)
         recorded = dict(service.hidden.book)
 
-        service.casual_matches.rows = self._history_rows()
+        service.mix_rounds.rows = self._history_rows()
         matches, ratings = await service.rebuild(None, 1)
 
         self.assertEqual((matches, ratings), (3, len(recorded)))
@@ -151,13 +156,13 @@ class HistoryFoldTests(IsolatedAsyncioTestCase):
             self.assertAlmostEqual(service.hidden.book[key][0], mu, places=9)
             self.assertAlmostEqual(service.hidden.book[key][1], sigma, places=9)
 
-    async def test_a_departed_seat_counts_for_its_team_but_is_not_stored(self) -> None:
+    async def test_a_seat_without_a_role_counts_for_its_team_but_is_not_stored(self) -> None:
         service = in_memory_ranker()
-        service.casual_matches.rows = [
-            (1, "home", 1, None, HeroClass.tank, 4000),
-            (1, "away", 0, 2, HeroClass.tank, 2400),
+        service.mix_rounds.rows = [
+            SimpleNamespace(encounter_id=1, slot=1, own_score=1.0, workspace_member_id=9, role=None, rank=4000),
+            SimpleNamespace(encounter_id=1, slot=2, own_score=0.0, workspace_member_id=2, role="tank", rank=2400),
             # A one-sided record is skipped rather than rated against nobody.
-            (2, "home", 1, 2, HeroClass.tank, 2400),
+            SimpleNamespace(encounter_id=2, slot=1, own_score=1.0, workspace_member_id=2, role="tank", rank=2400),
         ]
         matches, ratings = await service.rebuild(None, 1)
 
@@ -167,7 +172,7 @@ class HistoryFoldTests(IsolatedAsyncioTestCase):
 
     async def test_saving_knobs_rebuilds_only_when_the_hidden_scale_changes(self) -> None:
         service = in_memory_ranker()
-        service.casual_matches.rows = self._history_rows()
+        service.mix_rounds.rows = self._history_rows()
         service.configs.row = None
         service.configs.create = _record_create(service.configs)
 

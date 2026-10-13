@@ -4,8 +4,8 @@ The formulas live in :mod:`src.domain.mix_ranker` (idea and specification by
 Dmitriy, @dmelackov -- https://github.com/mixtura-dev/mixtura-ranker). This
 module only loads and stores what they read and write.
 
-The hidden book is derived data: a fold over the workspace's ``casual.match``
-history in recording order. A recorded match advances it in place; anything
+The hidden book is derived data: a fold over the workspace's recorded mix rounds
+in recording order. A recorded match advances it in place; anything
 that rewrites history (an undo) or the scale it is expressed in (the hidden
 knobs) rebuilds it from scratch, so it never depends on the order edits came in.
 """
@@ -19,11 +19,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import CasualTeamSide
+from shared.domain.mix_round import winner_slot
 from shared.models.balancer import WorkspaceBalancerConfig
 from shared.repository import (
-    CasualMatchRepository,
     MemberHiddenRatingRepository,
+    MixRoundRepository,
     WorkspaceBalancerConfigRepository,
 )
 from src.domain.mix_ranker import HiddenRating, Ranker, RankerSettings
@@ -50,11 +50,11 @@ class MixRankerService:
         *,
         hidden: MemberHiddenRatingRepository = MemberHiddenRatingRepository(),
         configs: WorkspaceBalancerConfigRepository = WorkspaceBalancerConfigRepository(),
-        casual_matches: CasualMatchRepository = CasualMatchRepository(),
+        mix_rounds: MixRoundRepository = MixRoundRepository(),
     ) -> None:
         self.hidden = hidden
         self.configs = configs
-        self.casual_matches = casual_matches
+        self.mix_rounds = mix_rounds
 
     async def settings(self, session: AsyncSession, workspace_id: int) -> RankerSettings:
         config = await self.configs.get_by_workspace(session, workspace_id)
@@ -127,21 +127,21 @@ class MixRankerService:
         if a workspace's history ever makes this slow.
         """
         ranker = Ranker(await self.settings(session, workspace_id))
-        rows = await self.casual_matches.replay_seats_for_workspace(session, workspace_id)
+        rows = await self.mix_rounds.seats(session, workspace_id=workspace_id)
         book: dict[tuple[int, str], HiddenRating] = {}
         matches = 0
-        for _match_id, seats in groupby(rows, key=lambda row: row[0]):
-            sides: dict[str, tuple[int, list[Seat]]] = {}
-            for _id, side, score, member_id, role, rank in seats:
-                sides.setdefault(side, (score, []))[1].append(
+        for _encounter_id, round_seats in groupby(rows, key=lambda row: row.encounter_id):
+            sides: dict[int, tuple[float, list[Seat]]] = {}
+            for row in round_seats:
+                sides.setdefault(row.slot, (row.own_score, []))[1].append(
                     # A seat with no role cannot be keyed; it still counts for its team, unstored.
-                    (member_id if role is not None else None, role.slot_code if role is not None else "", rank)
+                    (row.workspace_member_id if row.role is not None else None, row.role or "", row.rank)
                 )
-            home, away = sides.get(CasualTeamSide.HOME), sides.get(CasualTeamSide.AWAY)
-            if home is None or away is None or not home[1] or not away[1]:
+            first, second = sides.get(1), sides.get(2)
+            if first is None or second is None or not first[1] or not second[1]:
                 continue
-            winner = 1 if home[0] > away[0] else 2 if away[0] > home[0] else None
-            teams = (home[1], away[1])
+            winner = winner_slot(1, first[0], second[0])
+            teams = (first[1], second[1])
             # A seat never seen before (or one that cannot be stored) enters at its snapshot.
             before = [
                 [book.get((member_id, role)) or ranker.initial(rank) for member_id, role, rank in team]

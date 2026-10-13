@@ -90,7 +90,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         service = MagicMock()
         service.list = AsyncMock(return_value=[])
         service.hosts = AsyncMock(return_value={})
-        service.casual_matches.activity_for_games = AsyncMock(return_value={})
+        service.mix_rounds.activity_for_games = AsyncMock(return_value={})
         service.team_names.mapping_for_games = AsyncMock(return_value={})
         service.workspace_discord_channel_id = AsyncMock(return_value=None)
         service.host_prefs.points_per_win_by_user = AsyncMock(return_value={})
@@ -134,7 +134,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         service = MagicMock()
         service.list = AsyncMock(return_value=[row])
         service.hosts = AsyncMock(return_value={5: "Host"})
-        service.casual_matches.activity_for_games = AsyncMock(return_value={})
+        service.mix_rounds.activity_for_games = AsyncMock(return_value={})
         service.team_names.mapping_for_games = AsyncMock(return_value={3: {1: "Ravens"}})
         service.lobbies.list_for_games = AsyncMock(return_value={3: [lobby]})
         service.workspace_discord_channel_id = AsyncMock(return_value=None)
@@ -245,9 +245,9 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         )
         service.co_hosts.user_ids_for_game = AsyncMock(return_value=[])
         service.hosts = AsyncMock(return_value={5: "Host"})
-        service.casual_matches.activity_for_games = AsyncMock(return_value={})
+        service.mix_rounds.activity_for_games = AsyncMock(return_value={})
         # Lobby 0 recorded a match after it was balanced; lobby 1 never did.
-        service.casual_matches.activity_for_lobbies = AsyncMock(
+        service.mix_rounds.activity_for_lobbies = AsyncMock(
             return_value={0: (2, datetime(2026, 1, 1, 22, 0, tzinfo=UTC))}
         )
         service.members = AsyncMock(return_value={})
@@ -343,8 +343,8 @@ class DiscordPostsPayloadTests(IsolatedAsyncioTestCase):
         service.roster_shape = AsyncMock(return_value=SimpleNamespace(model_dump=lambda: {"slots": {}}))
         service.co_hosts.user_ids_for_game = AsyncMock(return_value=[])
         service.hosts = AsyncMock(return_value={5: "Host"})
-        service.casual_matches.activity_for_games = AsyncMock(return_value={})
-        service.casual_matches.activity_for_lobbies = AsyncMock(return_value={})
+        service.mix_rounds.activity_for_games = AsyncMock(return_value={})
+        service.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
         self.for_subject = AsyncMock(
             # The query filters ``deleted`` out in SQL; everything else comes back.
             return_value=[row for row in rows if row.status != "deleted"]

@@ -42,6 +42,7 @@ from shared.testing import create_test_async_engine, division_grid  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
 from src.rpc import ranks as ranks_rpc  # noqa: E402
 from src.schemas.ranks import LAYERS  # noqa: E402
+from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
 from src.services.rank_overview import (  # noqa: E402
     RankOverviewFilters,
     _grid_rank_case,
@@ -350,21 +351,22 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             )
             s.add(game)
             await s.flush()
-            match = models.CasualMatch(custom_game_id=game.id, lobby_index=1, points_per_win_applied=25)
-            s.add(match)
-            await s.flush()
-            home = models.CasualTeam(match_id=match.id, side="home", name="Home", score=2)
-            away = models.CasualTeam(match_id=match.id, side="away", name="Away", score=1)
-            s.add_all([home, away])
-            await s.flush()
-            s.add(
-                models.CasualPlayer(
-                    team_id=home.id,
-                    workspace_member_id=member.id,
-                    display_name_snapshot="Parity",
-                    role=enums.HeroClass.tank,
-                    rank=2050,
-                )
+            await record_mix_round(
+                s,
+                MixRoundDraft(
+                    custom_game_id=game.id,
+                    workspace_id=workspace.id,
+                    discipline="overwatch",
+                    scoring_rule_id=rule.id,
+                    lobby_index=1,
+                    map_id=None,
+                    names=("Alpha", "Bravo"),
+                    seats=((MixRoundSeat(member.id, "Parity", "tank", 2050),), ()),
+                    winner_slot=1,
+                    points_per_win_applied=25,
+                    busy=frozenset(),
+                    recorder_player_id=None,
+                ),
             )
             await s.commit()
 

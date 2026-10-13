@@ -823,7 +823,7 @@ erDiagram
 ```
 <!-- /ERD:auto -->
 
-## tournament — `tournament`, `casual`
+## tournament — `tournament`
 
 The largest domain: the tournament itself and its lifecycle, stages and stage items, teams and
 their rosters, the bracket positions and advancement edges that tie encounters into a bracket,
@@ -2291,68 +2291,6 @@ Composite unique keys:
 - `BALANCER_CUSTOM_GAME` unique on (`id`, `workspace_id`, `discipline`)
 - `BALANCER_CUSTOM_GAME_PLAYER` unique on (`custom_game_id`, `workspace_member_id`)
 - `BALANCER_CUSTOM_GAME_PLAYER_ROLE` unique on (`custom_game_player_id`, `priority`)
-<!-- /ERD:auto -->
-
-## casual — `casual`
-
-Casual matches recorded outside a tournament bracket.
-
-A casual match is not free-floating: `custom_game_id` is NOT NULL, so every row here is a played
-round of a mix. Each match has exactly two teams (unique on `match_id, side`). A player row
-stores `display_name_snapshot` and allows a NULL `workspace_member_id` for the same reason — the
-result must stay readable after a rename or after the member leaves the workspace.
-
-<!-- ERD:auto casual -->
-```mermaid
-erDiagram
-    CASUAL_MATCH {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint custom_game_id FK
-        int lobby_index
-        bigint map_id FK "nullable"
-        bigint recorded_by FK "nullable"
-        int points_per_win_applied "nullable"
-    }
-    CASUAL_MATCH_BUSY_PLAYER {
-        bigint match_id PK,FK
-        bigint workspace_member_id PK,FK
-    }
-    CASUAL_PLAYER {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint team_id FK
-        bigint workspace_member_id FK "nullable"
-        varchar(255) display_name_snapshot
-        heroclass role "nullable"
-        int rank
-        int rank_delta_applied "nullable"
-    }
-    CASUAL_TEAM {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint match_id FK
-        varchar(8) side
-        varchar(255) name
-        int score
-    }
-
-    AUTH_USER |o--o{ CASUAL_MATCH : "recorded_by"
-    BALANCER_CUSTOM_GAME ||--o{ CASUAL_MATCH : "custom_game_id"
-    CASUAL_MATCH ||--o{ CASUAL_TEAM : "match_id"
-    CASUAL_MATCH ||--o| CASUAL_MATCH_BUSY_PLAYER : "match_id"
-    CASUAL_TEAM ||--o{ CASUAL_PLAYER : "team_id"
-    OVERWATCH_MAP |o--o{ CASUAL_MATCH : "map_id"
-    PUBLIC_WORKSPACE_MEMBER |o--o{ CASUAL_PLAYER : "workspace_member_id"
-    PUBLIC_WORKSPACE_MEMBER ||--o| CASUAL_MATCH_BUSY_PLAYER : "workspace_member_id"
-```
-
-Composite unique keys:
-
-- `CASUAL_TEAM` unique on (`match_id`, `side`)
 <!-- /ERD:auto -->
 
 ## matches — `matches`
