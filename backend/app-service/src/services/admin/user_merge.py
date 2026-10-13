@@ -29,6 +29,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle
+from shared.models.custom_game import MixRoundMember
 from shared.rbac import RBAC_USER_KEY_PREFIX
 from shared.repository import SocialAccountRepository, UserMergeAuditRepository, get_or_create_workspace_member
 from shared.schemas.user_merge_auth import AuthMergeResult
@@ -620,7 +621,8 @@ class UserMergeService:
         a seat that would duplicate a seat the survivor already holds (same
         participation, or both active in the same encounter) is dropped, since
         it is the same person twice. The now seat-free source row is the one
-        duplicate-identity row the user delete cascades away.
+        duplicate-identity row the user delete cascades away. The same holds for
+        ``balancer.mix_round_member`` rows (one per round and member).
         """
         source_rows = (
             await session.execute(
@@ -676,6 +678,29 @@ class UserMergeService:
             await session.execute(
                 update(seat)
                 .where(seat.workspace_member_id == source_member_id)
+                .values(workspace_member_id=target_member_id)
+                .execution_options(synchronize_session=False)
+            )
+            # Mix-round rows hang on the member the same way (D74): one per (round, member), so a row the
+            # survivor already holds in that round wins.
+            round_member = MixRoundMember
+            survivor_round = sa.orm.aliased(MixRoundMember)
+            await session.execute(
+                delete(round_member)
+                .where(
+                    round_member.workspace_member_id == source_member_id,
+                    sa.exists()
+                    .where(
+                        survivor_round.workspace_member_id == target_member_id,
+                        survivor_round.encounter_id == round_member.encounter_id,
+                    )
+                    .correlate(round_member),
+                )
+                .execution_options(synchronize_session=False)
+            )
+            await session.execute(
+                update(round_member)
+                .where(round_member.workspace_member_id == source_member_id)
                 .values(workspace_member_id=target_member_id)
                 .execution_options(synchronize_session=False)
             )

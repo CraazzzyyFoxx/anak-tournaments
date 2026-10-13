@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import enums
+from shared.models.custom_game import CustomGame, MixRound, MixRoundMember
 from shared.models.encounter import Encounter, EncounterTeam, EncounterTeamMember, ScoringRule
 from shared.testing.db import create_test_async_engine, ensure_test_postgres
 from src import schemas
@@ -162,3 +163,54 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
                 sa.select(models.WorkspaceMember.id).where(models.WorkspaceMember.id == source_member.id)
             )
         )
+
+    async def test_merging_onto_a_survivor_member_moves_mix_round_rows_and_drops_a_duplicate(self):
+        source_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id)
+        target_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id)
+        mix_rule = ScoringRule(workspace_id=self.workspace.id, preset="wins", game_formula="win", end_formula=_WINS_END)
+        self.session.add_all([source_member, target_member, mix_rule])
+        await self.session.flush()
+        mix = CustomGame(workspace_id=self.workspace.id, name="Mix", scoring_rule_id=mix_rule.id)
+        self.session.add(mix)
+        await self.session.flush()
+        rounds = []
+        for name in ("shared", "own"):
+            encounter = Encounter(
+                workspace_id=self.workspace.id,
+                discipline="overwatch",
+                custom_game_id=mix.id,
+                scoring_rule_id=mix_rule.id,
+                name=name,
+                slot_count=2,
+                best_of=1,
+                status=enums.EncounterStatus.OPEN,
+            )
+            self.session.add(encounter)
+            await self.session.flush()
+            self.session.add(MixRound(encounter_id=encounter.id, lobby_index=0))
+            rounds.append(encounter.id)
+        await self.session.flush()
+        shared_round, own_round = rounds
+        self.session.add_all(
+            [
+                MixRoundMember(encounter_id=shared_round, workspace_member_id=source_member.id, busy=True),
+                MixRoundMember(
+                    encounter_id=shared_round, workspace_member_id=target_member.id, busy=False, rank_delta_applied=4
+                ),
+                MixRoundMember(
+                    encounter_id=own_round, workspace_member_id=source_member.id, busy=False, rank_delta_applied=-3
+                ),
+            ]
+        )
+        await self.session.flush()
+
+        await self._merge()
+
+        rows = (
+            await self.session.execute(
+                sa.select(
+                    MixRoundMember.encounter_id, MixRoundMember.workspace_member_id, MixRoundMember.rank_delta_applied
+                ).where(MixRoundMember.encounter_id.in_(rounds))
+            )
+        ).all()
+        self.assertEqual({(shared_round, target_member.id, 4), (own_round, target_member.id, -3)}, set(rows))
