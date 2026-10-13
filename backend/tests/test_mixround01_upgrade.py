@@ -186,7 +186,44 @@ def _seed(conn) -> dict:
         busy=("m4", "m2"),
         at="2026-09-01T20:30:00Z",
     )
+    _tournament_seat(conn, ids)
     return ids
+
+
+def _tournament_seat(conn, ids) -> None:
+    """A tournament seat on the V1 shape: role + sub-role are two ``player_role`` rows. It sits ahead of the mix seats
+    and shares member, name and rank with a legacy seat, so the reconcile meets it before the mix seat it vouches for."""
+    tournament = _insert(conn, "tournament.tournament", workspace_id=ids["ws"], name="T", slug="mixr-t", status="live")
+    rule = _insert(
+        conn, "encounter.scoring_rule", workspace_id=ids["ws"], preset="wins", game_formula="1", end_formula="1"
+    )
+    encounter = _insert(
+        conn,
+        "encounter.encounter",
+        workspace_id=ids["ws"],
+        discipline="overwatch",
+        tournament_id=tournament,
+        scoring_rule_id=rule,
+        name="T1",
+        slot_count=2,
+        status="PENDING",
+    )
+    team = _insert(conn, "encounter.team", encounter_id=encounter, tournament_id=tournament, slot=1, name="T-A")
+    ids["tournament-seat"] = _insert(
+        conn,
+        "encounter.team_member",
+        encounter_id=encounter,
+        encounter_team_id=team,
+        active=True,
+        workspace_member_id=ids["m0"],
+        display_name_snapshot="m0@r1",
+        rank=2400,
+    )
+    for role in ("tank", "flex"):
+        conn.execute(
+            "INSERT INTO encounter.team_member_role (team_member_id, dimension, role) VALUES (%s, 'player_role', %s)",
+            (ids["tournament-seat"], role),
+        )
 
 
 @pytest.fixture(scope="module")
@@ -405,6 +442,29 @@ def test_the_reconcile_report_lists_exactly_what_the_move_dropped(migrated) -> N
         tx.rollback()
     assert listed == {("seats", ids["r3-home-1"]), ("busy players", ids["r3"]), ("rounds", ids["r2"])}
     assert statuses == {"rounds": "MISMATCH", "seats": "MISMATCH", "busy players": "MISMATCH", "sides": "ok"}
+
+
+def test_the_reconcile_survives_a_tournament_seat_with_two_player_roles(migrated) -> None:
+    """The seed's tournament seat carries role + sub-role (two ``player_role`` rows), as V1 writes them."""
+    ids = migrated["ids"]
+    assert (
+        _scalar(
+            migrated["conn"],
+            "SELECT count(*) FROM encounter.team_member_role WHERE team_member_id = %s AND dimension = 'player_role'",
+            (ids["tournament-seat"],),
+        )
+        == 2
+    )
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        create, summary, skipped = _statements(RECONCILE_SQL)
+        tx.execute(create)
+        assert {row[3] for row in _rows(tx, summary) if row[0] == "sides"} == {"ok"}
+        assert {(row[0], row[1]) for row in _rows(tx, skipped)} == {
+            ("seats", ids["r3-home-1"]),
+            ("busy players", ids["r3"]),
+            ("rounds", ids["r2"]),
+        }
+        tx.rollback()
 
 
 def _listed_rounds(tx) -> set[int]:

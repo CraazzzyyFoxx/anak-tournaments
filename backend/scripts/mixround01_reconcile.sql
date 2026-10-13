@@ -7,7 +7,9 @@
 -- (rounds recorded in one transaction share now()), so a key counts as carried only when as many encounters of
 -- that mix carry it as legacy rounds do, and its rounds are paired with those encounters one to one by ordinal
 -- (mixround01 numbered encounters in legacy casual.match.id order): every class below is checked against
--- the encounter of its own round, so a swap of content between two rounds of one key is listed.
+-- the encounter of its own round, so a swap of content between two rounds of one key is listed. A seat's roles are
+-- compared as a set (a carried seat has exactly its legacy role row, or none), so a seat with several player_role rows
+-- is a mismatch, never an error.
 
 CREATE TEMP VIEW mixround01_reconcile AS
 WITH legacy_key AS (
@@ -45,7 +47,7 @@ SELECT 'rounds' AS class, m.id AS legacy_id, ''::text AS detail,
                   AND r.points_per_win_applied IS NOT DISTINCT FROM m.points_per_win_applied
                   AND g.map_id IS NOT DISTINCT FROM m.map_id
                   AND (   (m.recorded_by IS NULL AND a.actor_user_id IS NULL)
-                       OR a.actor_user_id = (SELECT u.id FROM players."user" u WHERE u.auth_user_id = m.recorded_by))) AS ok
+                       OR a.actor_user_id IN (SELECT u.id FROM players."user" u WHERE u.auth_user_id = m.recorded_by))) AS ok
   FROM casual.match m
 UNION ALL
 SELECT 'sides', t.id, 'round ' || t.match_id || ' ' || t.side,
@@ -68,8 +70,9 @@ SELECT 'seats', p.id, 'round ' || t.match_id || ' member ' || coalesce(p.workspa
                   AND tm.display_name_snapshot = p.display_name_snapshot
                   AND tm.rank = p.rank
                   AND rm.rank_delta_applied IS NOT DISTINCT FROM p.rank_delta_applied
-                  AND (SELECT r.role FROM encounter.team_member_role r
-                        WHERE r.team_member_id = tm.id AND r.dimension = 'player_role') IS NOT DISTINCT FROM p.role::text)
+                  AND ARRAY(SELECT r.role::text FROM encounter.team_member_role r
+                             WHERE r.team_member_id = tm.id AND r.dimension = 'player_role' ORDER BY r.role)
+                      = CASE WHEN p.role IS NULL THEN ARRAY[]::text[] ELSE ARRAY[p.role::text] END)
   FROM casual.player p JOIN casual.team t ON t.id = p.team_id
 UNION ALL
 SELECT 'busy players', b.match_id, 'member ' || b.workspace_member_id,
