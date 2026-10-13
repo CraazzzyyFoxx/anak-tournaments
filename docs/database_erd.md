@@ -1079,9 +1079,6 @@ erDiagram
         varchar(16) seed_ranking
         int best_of_default
         int best_of_final "nullable"
-        float[] ffa_placement_points
-        jsonb ffa_columns
-        varchar(500) ffa_formula
         bigint challonge_group_id "nullable"
         jsonb bracket_template "nullable"
     }

@@ -20,7 +20,6 @@ from shared.domain.encounter_scoring import (
     SeriesClaim,
     compile_rules,
     evaluate_encounter,
-    ffa_rules,
     game_points,
     normalize_game_lines,
     resolve_placements,
@@ -28,6 +27,18 @@ from shared.domain.encounter_scoring import (
     team_totals,
 )
 from shared.domain.ffa_formula import END_VARIABLES, FfaFormulaError, compile_formula
+from shared.models.tournament.stage import Stage
+
+
+def points_rule(columns, placement_points, formula) -> SimpleNamespace:
+    """An ``encounter.scoring_rule`` row of the ``points`` preset, as a lobby stage writes it."""
+    return SimpleNamespace(
+        preset="points",
+        columns=columns,
+        placement_points=placement_points,
+        game_formula=formula,
+        end_formula="games >= best_of",
+    )
 
 
 def wins_rules() -> ScoringRules:
@@ -120,9 +131,9 @@ def test_a_column_key_the_language_owns_is_refused():
         compile_formula("win * 2", ("win",))
     assert (refused.value.code, refused.value.name) == ("ffa_column_key_reserved", "win")
 
-    stage = SimpleNamespace(ffa_columns=[{"key": "win", "label": "Wins"}], ffa_placement_points=[], ffa_formula="win")
+    rule = points_rule([{"key": "win", "label": "Wins"}], [], "win")
     with pytest.raises(FfaFormulaError):
-        ffa_rules(stage)
+        compile_rules(rule)
 
 
 # ── an FFA lobby's game ──────────────────────────────────────────────────────
@@ -279,37 +290,34 @@ def test_totals_sum_every_column_and_seed_the_whole_roster() -> None:
 # ── where the rules come from ────────────────────────────────────────────────
 
 
-def test_no_stage_reads_as_one_score_column() -> None:
-    default = ffa_rules(None)
-
-    assert default.column_keys == ("score",)
-    assert default.requires_placement is False
-    assert game_points(default, [line(1, 1, score=7)]) == {1: 7.0}
+def test_a_stage_carries_no_lobby_rules_of_its_own() -> None:
+    # Lobby rules live on encounter.scoring_rule only; the stage's old ffa_* columns are gone (enclayer02).
+    columns = Stage.__table__.columns
+    assert not {"ffa_columns", "ffa_formula", "ffa_placement_points"} & set(columns.keys())
+    assert "scoring_rule_id" in columns
 
 
 def test_a_stage_without_columns_scores_placement_only() -> None:
-    # An empty column list is a legal stage, not a missing one: a placement-only
+    # An empty column list is a legal rule, not a missing one: a placement-only
     # league must not fall back to the score column and score everyone zero.
-    stage = SimpleNamespace(ffa_columns=[], ffa_placement_points=[10, 6, 3], ffa_formula="place_pts")
-
-    rules = ffa_rules(stage)
+    rules = compile_rules(points_rule([], [10, 6, 3], "place_pts"))
 
     assert rules.column_keys == ()
     assert rules.requires_placement is True
     assert game_points(rules, [line(1, 2)]) == {1: 6.0}
 
 
-def test_rules_read_the_stage_columns() -> None:
-    stage = SimpleNamespace(
-        ffa_columns=[
-            {"key": "kills", "label": "Убийства"},
-            {"key": "deaths", "label": "Смерти", "public": False, "better": "lower"},
-        ],
-        ffa_placement_points=[10, 6, 5],
-        ffa_formula="place_pts + kills * 2 - deaths",
+def test_rules_read_the_rule_columns() -> None:
+    parsed = compile_rules(
+        points_rule(
+            [
+                {"key": "kills", "label": "Убийства"},
+                {"key": "deaths", "label": "Смерти", "public": False, "better": "lower"},
+            ],
+            [10, 6, 5],
+            "place_pts + kills * 2 - deaths",
+        )
     )
-
-    parsed = ffa_rules(stage)
 
     assert parsed.columns == (
         ScoringColumn(key="kills", label="Убийства"),

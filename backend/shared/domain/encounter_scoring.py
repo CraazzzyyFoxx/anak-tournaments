@@ -51,7 +51,6 @@ __all__ = (
     "compile_rules",
     "encounter_ended",
     "evaluate_encounter",
-    "ffa_rules",
     "game_points",
     "normalize_game_lines",
     "resolve_placements",
@@ -172,34 +171,6 @@ def _column(item: Mapping[str, Any]) -> ScoringColumn:
         label=str(item["label"]),
         public=bool(item.get("public", True)),
         better="lower" if item.get("better") == "lower" else "higher",
-    )
-
-
-def ffa_rules(stage: Any | None) -> ScoringRules:
-    """A stage's scoring from its columns (``Stage.ffa_columns``/``ffa_formula``).
-
-    The pre-``enclayer02`` source of a lobby's rules: ``tournament.stage`` still
-    carries them until the columns are dropped. No stage at all reads as the
-    default block. A stage always carries its own columns -- the column default
-    is the score column -- so an empty list is a legal placement-only league,
-    never "not configured".
-    """
-    end_formula = compile_formula(POINTS_END_FORMULA, (), variables=END_VARIABLES)
-    if stage is None:
-        return ScoringRules(
-            preset="points",
-            columns=(ScoringColumn(key=DEFAULT_COLUMN_KEY, label=DEFAULT_COLUMN_LABEL),),
-            placement_points=(),
-            game_formula=compile_formula(DEFAULT_FORMULA, (DEFAULT_COLUMN_KEY,)),
-            end_formula=end_formula,
-        )
-    columns = tuple(_column(item) for item in stage.ffa_columns or ())
-    return ScoringRules(
-        preset="points",
-        columns=columns,
-        placement_points=tuple(float(value) for value in stage.ffa_placement_points or ()),
-        game_formula=compile_formula(stage.ffa_formula, [column.key for column in columns]),
-        end_formula=end_formula,
     )
 
 

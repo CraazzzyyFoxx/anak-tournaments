@@ -12,7 +12,6 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -25,22 +24,11 @@ if typing.TYPE_CHECKING:
     from shared.models.tournament.team import Team
 
 
-# text[] / float8[] in Postgres. JSON under SQLite, where several test harnesses
+# text[] in Postgres. JSON under SQLite, where several test harnesses
 # build this schema: a PostgreSQL ARRAY has no SQLite bind, so a list would
 # reach the driver raw.
 _TEXT_ARRAY = ARRAY(String()).with_variant(JSON(), "sqlite")
-_FLOAT_ARRAY = ARRAY(Float()).with_variant(JSON(), "sqlite")
 
-#: What an ffa_league stage pays for until the organizer says otherwise: one
-#: column called "score", and points = that column. Mirrors migration ffa0002.
-DEFAULT_FFA_COLUMNS: tuple[dict[str, typing.Any], ...] = (
-    {"key": "score", "label": "Счёт", "public": True, "better": "higher"},
-)
-DEFAULT_FFA_FORMULA = "score"
-#: No ``::jsonb`` cast: Postgres coerces the bare literal to the column's type
-#: anyway, and several tests build ``tournament.stage`` on SQLite, where the
-#: cast is a syntax error inside ``DEFAULT``.
-_DEFAULT_FFA_COLUMNS_SQL = """'[{"key": "score", "label": "Счёт", "public": true, "better": "higher"}]'"""
 
 __all__ = (
     "Stage",
@@ -140,20 +128,6 @@ class Stage(db.TimeStampIntegerMixin):
     best_of_default: Mapped[int] = mapped_column(Integer(), default=3, server_default="3")
     #: An elimination stage's last round; NULL = resolved like any other round.
     best_of_final: Mapped[int | None] = mapped_column(Integer(), nullable=True)
-    #: FFA league only: points for 1st, 2nd, ... place; empty = the formula
-    #: pays nothing for placement.
-    ffa_placement_points: Mapped[list[float]] = mapped_column(_FLOAT_ARRAY, default=list, server_default="{}")
-    #: FFA league only: what the organizer enters per game -- ``{"key", "label",
-    #: "public", "better"}`` per column, validated by ``FfaScoring`` (plan §3.1).
-    ffa_columns: Mapped[list[dict[str, typing.Any]]] = mapped_column(
-        JSONB,
-        default=lambda: [dict(column) for column in DEFAULT_FFA_COLUMNS],
-        server_default=text(_DEFAULT_FFA_COLUMNS_SQL),
-    )
-    #: FFA league only: the expression a game's points are computed with.
-    ffa_formula: Mapped[str] = mapped_column(
-        String(500), default=DEFAULT_FFA_FORMULA, server_default=DEFAULT_FFA_FORMULA
-    )
     #: The Challonge group this stage mirrors (Challonge sync's only link to it).
     challonge_group_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     # A custom bracket drawn in the admin editor (``shared.services.bracket.template``);

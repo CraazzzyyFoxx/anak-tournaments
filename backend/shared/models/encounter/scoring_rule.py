@@ -3,8 +3,7 @@
 One row holds both levels the engine needs: ``game_formula`` pays a single game,
 ``end_formula`` says when the series or lobby is over. The ``wins`` preset is the
 old duel behaviour written down (``win`` per game, "best of" as the end rule);
-``points`` carries what used to live on ``tournament.stage`` as ``ffa_columns`` /
-``ffa_formula`` / ``ffa_placement_points``.
+``points`` carries what used to live on ``tournament.stage`` (dropped by ``enclayer02``).
 """
 
 from __future__ import annotations
