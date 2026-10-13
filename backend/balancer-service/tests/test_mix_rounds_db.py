@@ -13,8 +13,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-serv
 import sqlalchemy as sa  # noqa: E402
 
 from shared import models  # noqa: E402
+from shared.domain.mix_round import winner_slot  # noqa: E402
 from shared.repository import MixRoundRepository  # noqa: E402
-from shared.repository.mix_round import winner_slot  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
 

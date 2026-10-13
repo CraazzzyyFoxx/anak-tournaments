@@ -17,21 +17,10 @@ from sqlalchemy.orm import aliased, selectinload
 from shared import models
 from shared.repository.base import BaseRepository
 
-__all__ = ("MIX_ROLE_DIMENSION", "MixRoundRepository", "winner_slot")
+__all__ = ("MIX_ROLE_DIMENSION", "MixRoundRepository")
 
 #: The role dimension a mix seat is recorded under (D67).
 MIX_ROLE_DIMENSION = "player_role"
-
-
-def winner_slot(slot: int, own_score: float, other_score: float) -> int | None:
-    """The winning slot (1 | 2) of a round, ``None`` for a draw -- the one place that reads it off the scores.
-
-    ``slot`` is the side ``own_score`` belongs to (a ``seats()`` row's ``slot``/``own_score``/``other_score``; for a
-    round's two teams pass slot 1 with the first team's score first).
-    """
-    if own_score == other_score:
-        return None
-    return slot if own_score > other_score else 3 - slot
 
 
 class MixRoundRepository(BaseRepository[models.MixRound]):
