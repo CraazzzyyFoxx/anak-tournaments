@@ -681,18 +681,34 @@ class UserMergeService:
                 .values(workspace_member_id=target_member_id)
                 .execution_options(synchronize_session=False)
             )
-            # Mix-round rows hang on the member the same way (D74): one per (round, member), so a row the
-            # survivor already holds in that round wins.
+            # Mix-round rows hang on the member the same way (D74): one per (round, member). On a collision
+            # the seated (non-busy) row wins, so the seat the survivor keeps never pairs with a busy row; on
+            # a tie (both busy or both seated) the survivor's row wins.
             round_member = MixRoundMember
-            survivor_round = sa.orm.aliased(MixRoundMember)
+            other_round = sa.orm.aliased(MixRoundMember)
+            await session.execute(
+                delete(round_member)
+                .where(
+                    round_member.workspace_member_id == target_member_id,
+                    round_member.busy.is_(True),
+                    sa.exists()
+                    .where(
+                        other_round.workspace_member_id == source_member_id,
+                        other_round.encounter_id == round_member.encounter_id,
+                        other_round.busy.is_(False),
+                    )
+                    .correlate(round_member),
+                )
+                .execution_options(synchronize_session=False)
+            )
             await session.execute(
                 delete(round_member)
                 .where(
                     round_member.workspace_member_id == source_member_id,
                     sa.exists()
                     .where(
-                        survivor_round.workspace_member_id == target_member_id,
-                        survivor_round.encounter_id == round_member.encounter_id,
+                        other_round.workspace_member_id == target_member_id,
+                        other_round.encounter_id == round_member.encounter_id,
                     )
                     .correlate(round_member),
                 )

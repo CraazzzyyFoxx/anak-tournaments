@@ -214,3 +214,69 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
             )
         ).all()
         self.assertEqual({(shared_round, target_member.id, 4), (own_round, target_member.id, -3)}, set(rows))
+
+    async def test_mix_round_collision_keeps_the_seated_row_and_the_survivors_on_a_tie(self):
+        source_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id)
+        target_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id)
+        mix_rule = ScoringRule(workspace_id=self.workspace.id, preset="wins", game_formula="win", end_formula=_WINS_END)
+        self.session.add_all([source_member, target_member, mix_rule])
+        await self.session.flush()
+        mix = CustomGame(workspace_id=self.workspace.id, name="Mix", scoring_rule_id=mix_rule.id)
+        self.session.add(mix)
+        await self.session.flush()
+        rounds = []
+        for name in ("seated-vs-busy", "both-busy", "both-seated"):
+            encounter = Encounter(
+                workspace_id=self.workspace.id,
+                discipline="overwatch",
+                custom_game_id=mix.id,
+                scoring_rule_id=mix_rule.id,
+                name=name,
+                slot_count=2,
+                best_of=1,
+                status=enums.EncounterStatus.OPEN,
+            )
+            self.session.add(encounter)
+            await self.session.flush()
+            self.session.add(MixRound(encounter_id=encounter.id, lobby_index=0))
+            rounds.append(encounter.id)
+        await self.session.flush()
+        seated_vs_busy, both_busy, both_seated = rounds
+        self.session.add_all(
+            [
+                MixRoundMember(
+                    encounter_id=seated_vs_busy, workspace_member_id=source_member.id, busy=False, rank_delta_applied=7
+                ),
+                MixRoundMember(encounter_id=seated_vs_busy, workspace_member_id=target_member.id, busy=True),
+                MixRoundMember(encounter_id=both_busy, workspace_member_id=source_member.id, busy=True),
+                MixRoundMember(encounter_id=both_busy, workspace_member_id=target_member.id, busy=True),
+                MixRoundMember(
+                    encounter_id=both_seated, workspace_member_id=source_member.id, busy=False, rank_delta_applied=1
+                ),
+                MixRoundMember(
+                    encounter_id=both_seated, workspace_member_id=target_member.id, busy=False, rank_delta_applied=2
+                ),
+            ]
+        )
+        await self.session.flush()
+
+        await self._merge()
+
+        rows = (
+            await self.session.execute(
+                sa.select(
+                    MixRoundMember.encounter_id,
+                    MixRoundMember.workspace_member_id,
+                    MixRoundMember.busy,
+                    MixRoundMember.rank_delta_applied,
+                ).where(MixRoundMember.encounter_id.in_(rounds))
+            )
+        ).all()
+        self.assertEqual(
+            {
+                (seated_vs_busy, target_member.id, False, 7),
+                (both_busy, target_member.id, True, None),
+                (both_seated, target_member.id, False, 2),
+            },
+            set(rows),
+        )
