@@ -13,6 +13,8 @@ import os
 import sys
 from pathlib import Path
 
+import sqlalchemy as sa
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
@@ -155,3 +157,30 @@ class SeriesConditionsOnPostgresTests(EncounterWriterCase):
             await self.run_node("encounter_result", {"outcome": "loss", "opponent_score": 0}),
         )
         self.assertEqual(set(), await self.run_node("encounter_score", {"scores": [[5, 3]], "side": "winner"}))
+
+    async def test_a_decided_mix_round_in_the_workspace_awards_nothing(self) -> None:
+        async with self.Session() as s:
+            mix = await self.mix_encounter(s)
+            seats = (
+                await s.scalars(
+                    sa.select(models.EncounterTeam)
+                    .where(models.EncounterTeam.encounter_id == mix.id)
+                    .order_by(models.EncounterTeam.slot)
+                )
+            ).all()
+            await apply_result(
+                s,
+                mix,
+                source=enums.EncounterResultSource.ADMIN,
+                totals={seats[0].id: 1.0, seats[1].id: 0.0},
+                placements={seats[0].id: 1, seats[1].id: 2},
+                action=enums.EncounterResultAuditAction.CONFIRM,
+                audit_source="admin",
+                actor_user_id=None,
+                reason="test",
+            )
+            await s.commit()
+
+        # A 1:0 series exists only as the mix round: the tournament's are 2:0 and 1:2.
+        self.assertEqual(set(), await self.run_node("encounter_score", {"scores": [[1, 0]], "side": "winner"}))
+        self.assertEqual({(self.user(0),)}, await self.run_node("global_winrate", {"metric": "won_maps", "limit": 1}))

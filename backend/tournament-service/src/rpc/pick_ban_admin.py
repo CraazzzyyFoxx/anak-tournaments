@@ -23,7 +23,6 @@ from typing import Any, Literal
 import sqlalchemy as sa
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 
 from shared.core import http_status as status
 from shared.core.enums import (
@@ -34,6 +33,7 @@ from shared.core.enums import (
 )
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_rules as pbr
+from shared.repository import EncounterRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_admin_audit
 from shared.services.bracket.usability import assert_encounter_live
@@ -65,12 +65,7 @@ async def _load_encounter(session: Any, encounter_id: int) -> models.Encounter:
     the identity map would otherwise be served at the version this session first
     saw, defeating the lock.
     """
-    encounter = await session.scalar(
-        select(models.Encounter)
-        .where(models.Encounter.id == encounter_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    encounter = await EncounterRepository().get_for_update(session, encounter_id)
     if encounter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
     return encounter

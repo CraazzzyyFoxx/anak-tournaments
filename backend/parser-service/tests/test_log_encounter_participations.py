@@ -21,6 +21,7 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 os.environ["DEBUG"] = "true"
 
 from shared.core.enums import HeroClass  # noqa: E402
+from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.encounter import Encounter  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.services.encounter import participants  # noqa: E402
@@ -32,6 +33,7 @@ encounter_service = importlib.import_module("src.services.encounter.service")
 match_logs_flows = importlib.import_module("src.services.match_logs.flows")
 match_logs_service = importlib.import_module("src.services.match_logs.service")
 roster = importlib.import_module("src.services.match_logs.roster")
+admin_reads = importlib.import_module("src.services.match_logs.admin_reads")
 
 
 class ParticipationCase(EncounterWriterCase):
@@ -161,6 +163,32 @@ class ResolutionThroughParticipationsTests(ParticipationCase):
 
         async with self.Session() as s:
             self.assertEqual([], list(await encounter_service.list_by_teams(s, self.ids["team0"], self.ids["team1"])))
+
+    async def test_a_log_cannot_attach_to_a_mix_round(self) -> None:
+        async with self.Session() as s:
+            mix_id = (await self.mix_encounter(s)).id
+            await s.commit()
+        async with self.Session() as s:
+            with self.assertRaises(encounter_flows.errors.ApiHTTPException) as missing:
+                await encounter_flows.resolve_for_log(
+                    s,
+                    (self.ids["team0"], self.ids["team1"]),
+                    log_name="m.txt",
+                    map_id=1,
+                    map_pools=[],
+                    attached_encounter_id=mix_id,
+                )
+        self.assertEqual(404, missing.exception.status_code)
+        self.assertEqual("encounter_not_found", missing.exception.detail[0]["code"])
+
+    async def test_the_upload_refuses_a_mix_round_as_its_encounter(self) -> None:
+        async with self.Session() as s:
+            mix_id = (await self.mix_encounter(s)).id
+            await s.commit()
+        async with self.Session() as s:
+            with self.assertRaises(BaseAPIException) as ctx:
+                await admin_reads._validate_attached_encounter(s, tournament_id=self.ids["t"], encounter_id=mix_id)
+        self.assertEqual(404, ctx.exception.status_code)
 
 
 class SubstituteTests(ParticipationCase):

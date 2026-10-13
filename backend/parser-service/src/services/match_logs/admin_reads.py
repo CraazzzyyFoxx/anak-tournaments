@@ -17,11 +17,12 @@ import asyncio
 
 import httpx
 from loguru import logger
-from sqlalchemy import ColumnElement, or_, select
+from sqlalchemy import ColumnElement, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import EncounterRepository
 from src import models, schemas
 from src.core import config
 
@@ -141,7 +142,7 @@ async def _validate_attached_encounter(
     if encounter_id is None:
         return None
 
-    result = await session.execute(select(models.Encounter).where(models.Encounter.id == encounter_id).limit(1))
+    result = await session.execute(EncounterRepository().select().where(models.Encounter.id == encounter_id).limit(1))
     encounter = result.scalar_one_or_none()
     if encounter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")

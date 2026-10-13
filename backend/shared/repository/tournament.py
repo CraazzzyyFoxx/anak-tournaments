@@ -396,6 +396,11 @@ class EncounterRepository(BaseRepository[models.Encounter]):
     def __init__(self) -> None:
         super().__init__(models.Encounter)
 
+    def select(self) -> sa.Select[tuple[models.Encounter]]:
+        """Tournament-owned encounters only (D77): a mix round is not a tournament encounter, and every
+        get/lock/list here starts from this one predicate instead of trusting a join to the tournament."""
+        return super().select().where(models.Encounter.tournament_id.is_not(None))
+
     async def get_for_update(
         self,
         session: AsyncSession,

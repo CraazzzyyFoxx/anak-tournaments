@@ -60,6 +60,7 @@ from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.pick_ban import PickBanConfig
 from shared.repository import (
     EncounterReadinessRepository,
+    EncounterRepository,
     PickBanConfigRepository,
     PickBanEntryRepository,
     PickBanSessionRepository,
@@ -82,6 +83,8 @@ from src.services.encounter.veto_session import (
     SLOT_CANDIDATE_FLOOR,
     resolve_seeds,
 )
+
+_encounters = EncounterRepository()
 
 # Session-creation blocker distinct from the ``veto_session``-derived
 # REASON_* set above: not every participation's captain has confirmed
@@ -647,7 +650,7 @@ class PickBanSessionService:
         self, session: AsyncSession, encounter_id: int, *, skip_locked: bool
     ) -> Encounter | None:
         result = await session.execute(
-            select(Encounter)
+            _encounters.select()
             .where(Encounter.id == encounter_id)
             .with_for_update(skip_locked=skip_locked)
             .execution_options(populate_existing=True)

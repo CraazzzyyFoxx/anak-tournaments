@@ -19,6 +19,14 @@ func TestEncounterTournamentSQLReadsTheEncounterSchema(t *testing.T) {
 	}
 }
 
+// A mix round has no tournament (V2, D71): the lookup must answer "not found"
+// instead of scanning NULL into an int64.
+func TestEncounterTournamentSQLSkipsOwnerlessEncounters(t *testing.T) {
+	if !strings.Contains(encounterTournamentSQL, "tournament_id IS NOT NULL") {
+		t.Fatalf("encounterTournamentSQL must skip encounters without a tournament, got: %s", encounterTournamentSQL)
+	}
+}
+
 func TestIsEncounterCaptainSQLReadsParticipations(t *testing.T) {
 	for _, want := range []string{
 		"encounter.team",

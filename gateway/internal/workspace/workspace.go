@@ -65,7 +65,7 @@ const (
 	// is required here.
 	tournamentHiddenSQL    = `SELECT t.is_hidden OR w.is_hidden FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id WHERE t.id = $1`
 	previewAllowedSQL      = `SELECT EXISTS(SELECT 1 FROM tournament.tournament_preview_access WHERE tournament_id = $1 AND auth_user_id = $2)`
-	encounterTournamentSQL = `SELECT tournament_id FROM encounter.encounter WHERE id = $1`
+	encounterTournamentSQL = `SELECT tournament_id FROM encounter.encounter WHERE id = $1 AND tournament_id IS NOT NULL`
 	// Same players."user" bridge as isMemberSQL above, for the other direction:
 	// tournament.team.captain_id references players."user".id, while the gateway
 	// only ever holds an auth user id (from the JWT). An encounter's participants
@@ -408,7 +408,7 @@ func (s *Store) IsPreviewAllowed(ctx context.Context, userID, tournamentID int64
 }
 
 // EncounterTournamentID returns the tournament that owns an encounter. found is
-// false when the encounter does not exist.
+// false when the encounter does not exist or is owned by a mix (no tournament).
 func (s *Store) EncounterTournamentID(ctx context.Context, encounterID int64) (int64, bool, error) {
 	if v, ok := s.encTournament.get(encounterID); ok {
 		return v, true, nil

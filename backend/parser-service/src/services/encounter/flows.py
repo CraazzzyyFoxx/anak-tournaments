@@ -46,10 +46,13 @@ async def resolve_for_log(
     """
     if attached_encounter_id is not None:
         encounter = await session.get(models.Encounter, attached_encounter_id)
-        if (
-            encounter is None
-            or encounter.slot_count != len(team_ids)
-            or set(team_ids) != await service.active_team_ids(session, encounter.id)
+        if encounter is None or encounter.tournament_id is None:  # a mix round is not a tournament encounter (D77)
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="encounter_not_found", msg=f"Encounter {attached_encounter_id} not found")],
+            )
+        if encounter.slot_count != len(team_ids) or set(team_ids) != await service.active_team_ids(
+            session, encounter.id
         ):
             raise errors.ApiHTTPException(
                 status_code=400,
