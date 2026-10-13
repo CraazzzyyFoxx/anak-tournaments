@@ -276,9 +276,12 @@ Writes, all in the `balancer` schema unless noted:
 - `member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from the recorded rounds).
 - `mix_round`, `mix_round_member` — what only the balancer reads about a recorded round: its lobby,
   the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy in another lobby".
-- `encounter.encounter`, `encounter.team`, `encounter.team_member`(`_role`), `encounter.game`,
-  `encounter.game_team` (owned by the mix, `custom_game_id`, result source `host`) — the frozen
-  per-round record a mix writes on `record_outcome`; the only durable trace of a played mix game.
+- `encounter.encounter`, `encounter.team` (two participations), `encounter.team_member` (+
+  `team_member_role` when a seat has a role), `encounter.game` (one confirmed game),
+  `encounter.game_team`, and one `encounter.result_audit` journal row, written through the shared
+  result writer (`apply_result`) — all owned by the mix (`custom_game_id`, result source `host`).
+  `record_outcome` writes them in one transaction through `record_mix_round`; they are the only
+  durable trace of a played mix game.
 
 Reads only: `balancer.registration*` (tournament-service owns those writes — a draft pool entry *is*
 a registration, which is why roles, ranks and top heroes are never copied into draft-local tables),
