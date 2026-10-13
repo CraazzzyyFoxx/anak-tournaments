@@ -47,7 +47,7 @@ export const STAGE_TYPE_LABELS: Record<StageType, string> = {
   single_elimination: "Single Elimination",
   double_elimination: "Double Elimination",
   swiss: "Swiss",
-  ffa_league: "FFA League"
+  ffa_league: "FFA"
 };
 export const STAGE_TYPE_LABEL_KEYS: Record<StageType, string> = {
   round_robin: "round_robin",

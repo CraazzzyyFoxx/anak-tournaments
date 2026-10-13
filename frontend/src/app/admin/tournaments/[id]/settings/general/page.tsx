@@ -136,6 +136,7 @@ function GeneralForm({
                   <SelectItem value="balancer">{t("balancer")}</SelectItem>
                   <SelectItem value="draft">{t("liveDraft")}</SelectItem>
                   <SelectItem value="registration">{t("teamRegistration")}</SelectItem>
+                  <SelectItem value="solo">{t("soloRegistration")}</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">{t("formationHint")}</p>
