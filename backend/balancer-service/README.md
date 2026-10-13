@@ -231,7 +231,7 @@ because it shows every author's book at once.
 
 ### Mix ranker
 
-How a recorded mix match moves ranks is the **host's** choice (`user_config.rating_mode`): `points`
+How a recorded mix round moves ranks is the **host's** choice (`user_config.rating_mode`): `points`
 adds/subtracts the flat `points_per_win`; `ranker` moves every seat by its own amount and the host's
 mixes balance on the **effective rating**. The idea and its specification are
 [mixtura-ranker](https://github.com/mixtura-dev/mixtura-ranker) by Dmitriy
@@ -243,12 +243,12 @@ mixes balance on the **effective rating**. The idea and its specification are
   `balancer.member_hidden_rating`, one per `workspace_member` and role — never per platform player, so
   no host of another workspace can move it. It advances on **every** recorded match, in both modes.
 - **Effective rating** = open rating + gate × (hidden projected onto the open scale − open). In ranker
-  mode the solver gets it, `casual.player.rank` freezes it, and the lineup document keeps the open
+  mode the solver gets it, `encounter.team_member.rank` freezes it, and the lineup document keeps the open
   rank beside it as `players[uuid].open_ratings`.
 - **After a match** the open rating moves by the match's impulse on the hidden projection plus a pull
   towards the hidden rating, never against the result. The applied amount is frozen per seat in
-  `casual.player.rank_delta_applied`; undo gives back exactly that.
-- **The hidden book is derived** — a fold over the workspace's `casual.match` history. Undo, a change
+  `balancer.mix_round_member.rank_delta_applied`; undo gives back exactly that.
+- **The hidden book is derived** — a fold over the workspace's recorded mix rounds. Undo, a change
   of `rating_min`/`rating_max`/`rating_avg`/`sigma_init`, and the admin's *Recalculate hidden ratings*
   (`admin.workspace_ranker_rebuild`, a button on the admin *Ranks* page next to *Ranker settings*)
   replay it from scratch; a workspace starts empty until the first rebuild or recorded match.
@@ -273,9 +273,12 @@ Writes, all in the `balancer` schema unless noted:
 - `custom_game`, `custom_game_co_host`, `custom_game_player`, `custom_game_player_role`,
   `custom_game_team_name` — mixes.
 - `member_rank` — both rank layers.
-- `member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from `casual.*`).
-- `casual.match`, `casual.team`, `casual.player` — the frozen per-match record a mix writes on
-  `record_outcome`; the only durable trace of a played mix game.
+- `member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from the recorded rounds).
+- `mix_round`, `mix_round_member` — what only the balancer reads about a recorded round: its lobby,
+  the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy in another lobby".
+- `encounter.encounter`, `encounter.team`, `encounter.team_member`(`_role`), `encounter.game`,
+  `encounter.game_team` (owned by the mix, `custom_game_id`, result source `host`) — the frozen
+  per-round record a mix writes on `record_outcome`; the only durable trace of a played mix game.
 
 Reads only: `balancer.registration*` (tournament-service owns those writes — a draft pool entry *is*
 a registration, which is why roles, ranks and top heroes are never copied into draft-local tables),
@@ -285,7 +288,7 @@ Entity diagrams: [`../../docs/database_erd.md`](../../docs/database_erd.md) —
 [`balancer`](../../docs/database_erd.md#balancer--balancer),
 [`custom_game`](../../docs/database_erd.md#custom_game--balancer),
 [`member_rank`](../../docs/database_erd.md#member_rank--balancer),
-[`casual`](../../docs/database_erd.md#casual--casual).
+[`encounter`](../../docs/database_erd.md#encounter--encounter).
 
 ## Dependencies
 

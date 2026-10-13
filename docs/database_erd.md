@@ -3,8 +3,8 @@
 A single PostgreSQL database shared by every Python service in the monorepo. The ORM models
 (SQLAlchemy) live in `backend/shared/models/<package>/`; the tables themselves are split across
 **Postgres schemas**, which double as domain boundaries. A package name does not always match a
-schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, `tournament/`
-spans `tournament` and `casual`, and `catalog/` spans `overwatch` and `catalog`.
+schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, and
+`catalog/` spans `overwatch` and `catalog`; `custom_game` and `registration` write into `balancer`.
 
 > **Every entity diagram in this document is generated** from `Base.metadata` by
 > `backend/scripts/export_erd.py`, one diagram per model package. The prose around them is
@@ -54,7 +54,7 @@ Alembic head: **`mixround01`** (114 revisions in `backend/migrations/versions/`)
 | `public` | Workspaces, membership, division grids, settings, outbox | app-service |
 | `tournament` | Tournament structure, bracket position, advancement edges, pick/ban templates, scrim rooms | tournament-service |
 | `encounter` | Match layer: encounters, participations, games, claims, series reports, scoring rules, result journal, pick/ban sessions | tournament-service |
-| `casual` | Casual and scrim matches outside the tournament tree | tournament-service |
+| `casual` | Legacy mix history (matches, teams, players). Read by nothing since V2 and mapped by no model; dropped by the gated `mixround02` | — (no service) |
 | `overwatch` | Game catalog — heroes, maps, game modes | app-service / parser-service |
 | `catalog` | Disciplines the platform knows (`overwatch` in V1) | seeded by migration; no service writes it |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
@@ -118,8 +118,7 @@ flowchart TB
         REG["balancer.registration*<br/>(applications, teams)"]
         BAL["balancer<br/>(balance, member_rank)"]
         DRAFT["balancer.draft_*<br/>(live draft)"]
-        MIX["balancer.custom_game*<br/>(mixes)"]
-        CAS["casual<br/>(mix matches)"]
+        MIX["balancer.custom_game*, mix_round*<br/>(mixes, mix rounds)"]
     end
 
     subgraph INSIGHT["Post-processing"]
@@ -167,9 +166,8 @@ flowchart TB
     DRAFT --> REG
     DRAFT --> TOUR
     MIX --> WS
-    CAS --> MIX
-    CAS --> WS
-    CAS --> OW
+    MIX --> ENC
+    ENC --> MIX
 
     ACH --> WS
     ACH --> TOUR
@@ -409,7 +407,7 @@ decoupled from the RBAC `owner` role: the role is mutable and may have several h
 ownership is an accountability fact about one account.
 
 `workspace_member` is the identity anchor for everything tenant-scoped — rosters, registrations,
-member ranks, draft entries, custom-game lineups, casual players, achievements — and is unique
+member ranks, draft entries, custom-game lineups, mix round members, achievements — and is unique
 on `(workspace_id, player_id)`. It carries no denormalized role: the role is derived from RBAC,
 so there is exactly one place where a permission answer comes from.
 
@@ -1325,13 +1323,18 @@ The game-neutral match layer: an encounter seats `slot_count` immutable particip
 claims and series reports those results are decided from, one scoring rule per stage or
 encounter, the result journal, and the pick/ban room that runs before the first game.
 
-`encounter.encounter` is the old `tournament.encounter` moved with its ids. It knows its owner
-(`tournament_id`, `workspace_id`, `discipline`, tied together by the composite
-`fk_encounter_owner`), how many slots it seats and how many games it plays (`best_of`), and the
-state of its result: `result_status`, `result_source` (`games`, `series_claim`, `admin`,
-`import`; NULL while nothing official exists) and `result_version`. There is no `format`, no
-home/away and no bracket position — a duel is `slot_count = 2`, and the bracket position is a
-`tournament.bracket_encounter` row that mixes and scrims simply do not have.
+`encounter.encounter` is the old `tournament.encounter` moved with its ids. It knows its owner —
+exactly one of `tournament_id` (a tournament round) or `custom_game_id` (a recorded round of a
+pickup mix), enforced by `ck_encounter_owner`; each owner is tied to `workspace_id` and
+`discipline` by its own composite foreign key (`fk_encounter_owner`, `fk_encounter_custom_game`).
+It also knows how many slots it seats and how many games it plays (`best_of`), and the state of
+its result: `result_status`,
+`result_source` (`games`, `series_claim`, `admin`, `import`, `host`; NULL while nothing official
+exists) and `result_version`. There is no `format`, no home/away and no bracket position — a duel
+is `slot_count = 2`, and the bracket position is a `tournament.bracket_encounter` row that mix
+rounds and scrims simply do not have. A mix round is a Bo1 encounter with source `host`; what only
+the balancer reads about it is in `balancer.mix_round` and `balancer.mix_round_member` (see
+[custom_game](#custom_game--balancer)).
 
 A participation is append-only: replacing the occupant of a slot writes a new `team` row and
 sets the old one `active = false`, and nothing reactivates it. `team_id` is the source
@@ -2200,6 +2203,12 @@ a team per role. The balancer input and its output are kept as versioned JSON on
 (`balancer_config_json` / `balance_result_json` with their `*_version` counters), so a re-balance
 is a new version rather than an in-place overwrite. The child tables use composite primary keys
 rather than surrogate ids — the pair *is* the fact.
+
+Recorded rounds of a mix are not stored here: each is an `encounter.encounter` owned by the game
+(`custom_game_id`), and `mix_round` / `mix_round_member` hold only the balancer's own facts about
+it — the lobby it was played in, the points-per-win it applied, and per member whether they were
+seated (with the rank delta frozen at record time) or busy in another lobby. `discipline` and
+`scoring_rule_id` on the game give those encounters their game and their `wins` rule.
 
 <!-- ERD:auto custom_game -->
 ```mermaid
@@ -3219,7 +3228,8 @@ the top of this document is the only revision claim here.
   from the current holder of that role only when there was exactly one; with none or several it
   stayed NULL.
 - **Later additions.** Team registration with invites, custom games ("mixes") and the casual
-  matches played inside them, tournament slugs with redirects, phase schedules, hidden and
+  matches played inside them (since V2 recorded as encounters, see below), tournament slugs with
+  redirects, phase schedules, hidden and
   preview tournaments, captain and per-map reports with the result-status state machine, scrim
   rooms, division-grid import jobs, and the removal of stored team SR.
 - **Encounter layer.** The encounter tables moved from `tournament` into their own `encounter`
@@ -3239,3 +3249,12 @@ the top of this document is the only revision claim here.
   gated `enclayer02` drops them in the deploy after V1. `matches.match.home_team_id` /
   `away_team_id` and the `team_id` columns of `matches.statistics`, `kill_feed` and `event` are
   the only home/away leftovers, until the statistics rework.
+- **Mix rounds on the encounter layer.** A recorded round of a pickup mix became an
+  `encounter.encounter` owned by the mix (`custom_game_id`; exactly one of the two owners is
+  set, `tournament_id` is nullable), Bo1 under the mix's own `wins` scoring rule, with result
+  source `host`. `balancer.custom_game` gained `discipline` and `scoring_rule_id`; what only the
+  balancer reads moved to `balancer.mix_round` (lobby index, the points-per-win applied) and
+  `balancer.mix_round_member` (a member seated with a frozen `rank_delta_applied`, or busy in
+  another lobby). `mixround01` moved every `casual.match` across; the `casual` tables stay as
+  legacy, mapped by no model and read by nothing, until the gated `mixround02` drops them in the
+  deploy after V2.

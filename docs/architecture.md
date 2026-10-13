@@ -167,7 +167,8 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
 `public`, `tournament`, `encounter`, `catalog`, `matches`, `overwatch`, `overwatch_rank`,
-`balancer`, `achievements`, `analytics`, `log_processing`, `realtime`. Full entity diagrams are
+`balancer`, `achievements`, `analytics`, `log_processing`, `realtime`, plus `casual` — legacy mix
+history that nothing reads since V2, dropped by the gated `mixround02`. Full entity diagrams are
 in [`docs/database_erd.md`](./database_erd.md).
 
 - **Multitenancy.** `public.workspace` is the tenant root. Nearly every business table
@@ -181,14 +182,18 @@ in [`docs/database_erd.md`](./database_erd.md).
   player can exist without a login ("shadow player"). Full reference: [`docs/users-identity.md`](./users-identity.md).
 - **Match layer (`encounter`) and disciplines (`catalog`).** A meeting of N participants is
   one `encounter.encounter` whatever its owner or format: a duel is `slot_count = 2`, a lobby is
-  N, and the API returns `teams[]` with slot numbers, never home/away. Each seat is an
+  N, and the API returns `teams[]` with slot numbers, never home/away. An encounter has exactly
+  one owner — a tournament (`tournament_id`) or a pickup mix (`custom_game_id`, a recorded mix
+  round with result source `host`; its balancer facts are `balancer.mix_round` and
+  `balancer.mix_round_member`). Tournament code reads tournament-owned encounters only, through
+  `EncounterRepository`. Each seat is an
   append-only participation (`encounter.team`) with a roster snapshot; games, per-participation
   game results, game claims, series reports, the result journal, the scoring rule and the
   pre-game pick/ban room hang off the encounter in the same schema. The bracket position
   (stage, stage item, round) and the advancement edges stay in `tournament`
   (`bracket_encounter`, `encounter_link`), so the match layer carries no tournament structure.
-  `catalog.discipline` lists the games the platform knows (`overwatch` in V1); every tournament
-  and encounter carries its `discipline`, and one composite foreign key keeps the copy from
+  `catalog.discipline` lists the games the platform knows (`overwatch` in V1); every tournament,
+  mix and encounter carries its `discipline`, and one composite foreign key keeps the copy from
   disagreeing with its owner. Every result change goes through one writer,
   `backend/shared/services/encounter/result.py`: one transaction, the encounter row locked,
   `result_version` bumped, one `encounter.result_audit` row. Scoring is one engine,

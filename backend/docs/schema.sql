@@ -1,13 +1,12 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 157
+-- Tables: 155
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
 CREATE SCHEMA IF NOT EXISTS analytics;
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS balancer;
-CREATE SCHEMA IF NOT EXISTS casual;
 CREATE SCHEMA IF NOT EXISTS catalog;
 CREATE SCHEMA IF NOT EXISTS encounter;
 CREATE SCHEMA IF NOT EXISTS log_processing;
@@ -20,11 +19,10 @@ CREATE SCHEMA IF NOT EXISTS realtime;
 CREATE SCHEMA IF NOT EXISTS subscriptions;
 CREATE SCHEMA IF NOT EXISTS tournament;
 
-CREATE TYPE heroclass AS ENUM ('tank', 'damage', 'support', 'flex');
 CREATE TYPE encounter.encounterstatus AS ENUM ('COMPLETED', 'PENDING', 'OPEN');
 CREATE TYPE encounter.encounterresultstatus AS ENUM ('none', 'pending_confirmation', 'confirmed', 'disputed');
 CREATE TYPE encounter.encountergamestate AS ENUM ('planned', 'awaiting_result', 'disputed', 'confirmed', 'cancelled');
-CREATE TYPE encounter.encountergameresultsource AS ENUM ('captain_agreement', 'admin', 'admin_log');
+CREATE TYPE encounter.encountergameresultsource AS ENUM ('captain_agreement', 'admin', 'admin_log', 'host');
 CREATE TYPE encounter.pickbanactor AS ENUM ('team', 'decider', 'admin', 'system');
 CREATE TYPE encounter.pickbanentrystatus AS ENUM ('available', 'picked', 'banned', 'protected');
 CREATE TYPE encounter.pickbankind AS ENUM ('map', 'hero');
@@ -36,6 +34,7 @@ CREATE TYPE log_processing_source AS ENUM ('upload', 'discord', 'manual');
 CREATE TYPE matchevent AS ENUM ('OffensiveAssist', 'DefensiveAssist', 'UltimateCharged', 'UltimateStart', 'UltimateEnd', 'HeroSwap', 'MercyRez', 'EchoDuplicateStart', 'EchoDuplicateEnd');
 CREATE TYPE abilityevent AS ENUM ('PrimaryFire', 'SecondaryFire', 'Ability1', 'Ability2', 'Ultimate', 'Melee', 'Crouch');
 CREATE TYPE matches.matchsource AS ENUM ('log_parser', 'captain_report');
+CREATE TYPE heroclass AS ENUM ('tank', 'damage', 'support', 'flex');
 CREATE TYPE logstatsname AS ENUM ('Eliminations', 'FinalBlows', 'Deaths', 'AllDamageDealt', 'BarrierDamageDealt', 'HeroDamageDealt', 'HealingDealt', 'HealingReceived', 'SelfHealing', 'DamageTaken', 'DamageBlocked', 'DefensiveAssists', 'OffensiveAssists', 'UltimatesEarned', 'UltimatesUsed', 'MultikillBest', 'Multikills', 'SoloKills', 'ObjectiveKills', 'EnvironmentalKills', 'EnvironmentalDeaths', 'CriticalHits', 'CriticalHitAccuracy', 'ScopedAccuracy', 'ScopedCriticalHitAccuracy', 'ScopedCriticalHitKills', 'ShotsFired', 'ShotsHit', 'ShotsMissed', 'ScopedShotsFired', 'ScopedShotsHit', 'WeaponAccuracy', 'HeroTimePlayed', 'FirstPicks', 'FirstDeaths', 'UltimateKills', 'SupportKills', 'Performance', 'PerformancePoints', 'KD', 'KDA', 'DamageDelta', 'FBE', 'DamageFB', 'Assists', 'ImpactPoints', 'ImpactRank', 'OverperformanceScore');
 CREATE TYPE catalogentitytype AS ENUM ('hero', 'map', 'gamemode');
 CREATE TYPE tournament.pickbanmode AS ENUM ('pool', 'slots');
@@ -653,12 +652,17 @@ CREATE TABLE balancer.custom_game (
 	self_signup VARCHAR(16) DEFAULT 'closed' NOT NULL,
 	self_role_edit BOOLEAN DEFAULT 'false' NOT NULL,
 	general_voice_channel_id BIGINT,
+	discipline VARCHAR(32) DEFAULT 'overwatch' NOT NULL,
+	scoring_rule_id BIGINT NOT NULL,
 	PRIMARY KEY (id),
 	CONSTRAINT ck_custom_game_status CHECK (status IN ('draft', 'balanced', 'completed', 'cancelled')),
 	CONSTRAINT ck_custom_game_self_signup CHECK (self_signup IN ('closed', 'pool', 'benched')),
 	CONSTRAINT ck_custom_game_lobby_count CHECK (lobby_count BETWEEN 1 AND 6),
+	CONSTRAINT uq_custom_game_owner_key UNIQUE (id, workspace_id, discipline),
+	CONSTRAINT fk_custom_game_scoring_rule FOREIGN KEY(scoring_rule_id, workspace_id) REFERENCES encounter.scoring_rule (id, workspace_id) DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
-	FOREIGN KEY(host_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL
+	FOREIGN KEY(host_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	CONSTRAINT fk_custom_game_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
 );
 
 CREATE INDEX ix_balancer_custom_game_host_user_id ON balancer.custom_game (host_user_id);
@@ -728,7 +732,7 @@ CREATE TABLE balancer.custom_game_team_name (
 	team_index INTEGER NOT NULL,
 	name VARCHAR(60) NOT NULL,
 	PRIMARY KEY (custom_game_id, team_index),
-	CONSTRAINT ck_custom_game_team_name_index CHECK (team_index BETWEEN 0 AND 7),
+	CONSTRAINT ck_custom_game_team_name_index CHECK (team_index BETWEEN 0 AND 11),
 	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE
 );
 
@@ -921,6 +925,28 @@ CREATE INDEX ix_balancer_member_rank_workspace_member_id ON balancer.member_rank
 CREATE UNIQUE INDEX uq_member_rank_author ON balancer.member_rank (workspace_id, author_user_id, workspace_member_id, role) WHERE author_user_id IS NOT NULL;
 
 CREATE UNIQUE INDEX uq_member_rank_canon ON balancer.member_rank (workspace_id, workspace_member_id, role) WHERE author_user_id IS NULL;
+
+CREATE TABLE balancer.mix_round (
+	encounter_id BIGINT NOT NULL,
+	lobby_index INTEGER NOT NULL,
+	points_per_win_applied INTEGER,
+	PRIMARY KEY (encounter_id),
+	CONSTRAINT ck_mix_round_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
+	CONSTRAINT fk_mix_round_encounter FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE
+);
+
+CREATE TABLE balancer.mix_round_member (
+	encounter_id BIGINT NOT NULL,
+	workspace_member_id BIGINT NOT NULL,
+	busy BOOLEAN NOT NULL,
+	rank_delta_applied INTEGER,
+	PRIMARY KEY (encounter_id, workspace_member_id),
+	CONSTRAINT ck_mix_round_member_busy CHECK (NOT busy OR rank_delta_applied IS NULL),
+	CONSTRAINT fk_mix_round_member_round FOREIGN KEY(encounter_id) REFERENCES balancer.mix_round (encounter_id) ON DELETE CASCADE,
+	CONSTRAINT fk_mix_round_member_workspace_member FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX ix_mix_round_member_workspace_member_id ON balancer.mix_round_member (workspace_member_id);
 
 CREATE TABLE balancer.registration (
 	id BIGSERIAL NOT NULL,
@@ -1349,70 +1375,6 @@ CREATE TABLE balancer.workspace_config (
 
 CREATE INDEX ix_balancer_workspace_config_workspace_id ON balancer.workspace_config (workspace_id);
 
-CREATE TABLE casual.match (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	custom_game_id BIGINT NOT NULL,
-	lobby_index INTEGER DEFAULT '0' NOT NULL,
-	map_id BIGINT,
-	recorded_by BIGINT,
-	points_per_win_applied INTEGER,
-	PRIMARY KEY (id),
-	CONSTRAINT ck_casual_match_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
-	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE,
-	FOREIGN KEY(map_id) REFERENCES overwatch.map (id) ON DELETE SET NULL,
-	FOREIGN KEY(recorded_by) REFERENCES auth."user" (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_casual_match_custom_game_id ON casual.match (custom_game_id);
-
-CREATE INDEX ix_casual_match_map_id ON casual.match (map_id);
-
-CREATE TABLE casual.match_busy_player (
-	match_id BIGINT NOT NULL,
-	workspace_member_id BIGINT NOT NULL,
-	PRIMARY KEY (match_id, workspace_member_id),
-	FOREIGN KEY(match_id) REFERENCES casual.match (id) ON DELETE CASCADE,
-	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE CASCADE
-);
-
-CREATE TABLE casual.player (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	team_id BIGINT NOT NULL,
-	workspace_member_id BIGINT,
-	display_name_snapshot VARCHAR(255) NOT NULL,
-	role heroclass,
-	rank INTEGER NOT NULL,
-	rank_delta_applied INTEGER,
-	PRIMARY KEY (id),
-	FOREIGN KEY(team_id) REFERENCES casual.team (id) ON DELETE CASCADE,
-	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_casual_player_team_id ON casual.player (team_id);
-
-CREATE INDEX ix_casual_player_workspace_member_id ON casual.player (workspace_member_id);
-
-CREATE TABLE casual.team (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	match_id BIGINT NOT NULL,
-	side VARCHAR(8) NOT NULL,
-	name VARCHAR(255) NOT NULL,
-	score INTEGER NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_casual_team_match_side UNIQUE (match_id, side),
-	CONSTRAINT ck_casual_team_side CHECK (side IN ('home', 'away')),
-	CONSTRAINT ck_casual_team_score CHECK (score >= 0),
-	FOREIGN KEY(match_id) REFERENCES casual.match (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_casual_team_match_id ON casual.team (match_id);
-
 CREATE TABLE catalog.discipline (
 	code VARCHAR(32) NOT NULL,
 	name VARCHAR(64) NOT NULL,
@@ -1426,7 +1388,8 @@ CREATE TABLE encounter.encounter (
 	updated_at TIMESTAMP WITH TIME ZONE,
 	workspace_id BIGINT NOT NULL,
 	discipline VARCHAR(32) NOT NULL,
-	tournament_id BIGINT NOT NULL,
+	tournament_id BIGINT,
+	custom_game_id BIGINT,
 	scoring_rule_id BIGINT NOT NULL,
 	name VARCHAR NOT NULL,
 	slot_count INTEGER NOT NULL,
@@ -1444,14 +1407,18 @@ CREATE TABLE encounter.encounter (
 	PRIMARY KEY (id),
 	CONSTRAINT uq_encounter_id_tournament UNIQUE (id, tournament_id),
 	CONSTRAINT fk_encounter_owner FOREIGN KEY(tournament_id, workspace_id, discipline) REFERENCES tournament.tournament (id, workspace_id, discipline) ON DELETE CASCADE,
+	CONSTRAINT fk_encounter_custom_game FOREIGN KEY(custom_game_id, workspace_id, discipline) REFERENCES balancer.custom_game (id, workspace_id, discipline) ON DELETE CASCADE,
+	CONSTRAINT ck_encounter_owner CHECK (num_nonnulls(tournament_id, custom_game_id) = 1),
 	CONSTRAINT fk_encounter_scoring_rule FOREIGN KEY(scoring_rule_id, workspace_id) REFERENCES encounter.scoring_rule (id, workspace_id) DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT ck_encounter_best_of CHECK (best_of >= 1),
 	CONSTRAINT ck_encounter_slot_count CHECK (slot_count >= 2),
 	CONSTRAINT ck_encounter_result_version CHECK (result_version >= 0),
-	CONSTRAINT ck_encounter_result_source CHECK (result_source IN ('games', 'series_claim', 'admin', 'import')),
+	CONSTRAINT ck_encounter_result_source CHECK (result_source IN ('games', 'series_claim', 'admin', 'import', 'host')),
 	CONSTRAINT ck_encounter_confirmed_completed CHECK ((result_status = 'confirmed') = (status = 'COMPLETED')),
 	CONSTRAINT ck_encounter_confirmed_source CHECK (result_status <> 'confirmed' OR result_source IS NOT NULL)
 );
+
+CREATE INDEX ix_encounter_custom_game_id ON encounter.encounter (custom_game_id);
 
 CREATE INDEX ix_encounter_status_live_upcoming ON encounter.encounter (tournament_id, status) WHERE status IN ('PENDING'::encounter.encounterstatus, 'OPEN'::encounter.encounterstatus);
 
@@ -1709,7 +1676,7 @@ CREATE TABLE encounter.team (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	updated_at TIMESTAMP WITH TIME ZONE,
 	encounter_id BIGINT NOT NULL,
-	tournament_id BIGINT NOT NULL,
+	tournament_id BIGINT,
 	slot INTEGER NOT NULL,
 	team_id BIGINT,
 	name VARCHAR(255) NOT NULL,
@@ -3214,9 +3181,6 @@ CREATE TABLE tournament.stage (
 	seed_ranking VARCHAR(16) DEFAULT 'slot' NOT NULL,
 	best_of_default INTEGER DEFAULT '3' NOT NULL,
 	best_of_final INTEGER,
-	ffa_placement_points FLOAT[] DEFAULT '{}' NOT NULL,
-	ffa_columns JSONB DEFAULT '[{"key": "score", "label": "Счёт", "public": true, "better": "higher"}]' NOT NULL,
-	ffa_formula VARCHAR(500) DEFAULT 'score' NOT NULL,
 	challonge_group_id BIGINT,
 	bracket_template JSONB,
 	PRIMARY KEY (id),
