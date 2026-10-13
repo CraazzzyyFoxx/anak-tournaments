@@ -1373,3 +1373,68 @@ def test_enclayer02_refuses_while_the_reconcile_lists_a_skipped_row(legacy_templ
     assert str(report) in done.stderr
     with _connect(ENCLAYER02_DB) as conn:
         assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == "enclayer01b"
+
+
+def _clone_session(conn: psycopg.Connection, session_id: int, **overrides) -> int:
+    """A second room of the same encounter: every column copied from ``session_id`` bar the overrides."""
+    types = dict(
+        _rows(
+            conn,
+            "SELECT a.attname, format_type(a.atttypid, a.atttypmod) FROM pg_attribute a"
+            " WHERE a.attrelid = 'encounter.pick_ban_session'::regclass AND a.attnum > 0 AND NOT a.attisdropped",
+        )
+    )
+    columns = sorted(set(types) - {"id"})
+    names = ", ".join(f'"{c}"' for c in columns)
+    values = ", ".join(f"CAST(%({c})s AS {types[c]})" if c in overrides else f'"{c}"' for c in columns)
+    return conn.execute(
+        f"INSERT INTO encounter.pick_ban_session ({names})"
+        f" SELECT {values} FROM encounter.pick_ban_session WHERE id = %(source)s RETURNING id",
+        {**overrides, "source": session_id},
+    ).fetchone()[0]
+
+
+def test_enclayer02_refuses_while_two_rooms_of_one_encounter_disagree_on_the_seeds(legacy_template) -> None:
+    """The seeds became the seat's, taken from the lowest-id room; the other room's would be lost silently."""
+    ids = legacy_template["ids"]
+    _contract_copy()
+    with _connect(ENCLAYER02_DB) as conn:
+        other = _clone_session(conn, ids["s_slots"], kind="hero", home_seed=3, away_seed=4)
+    done = _alembic(ENCLAYER02_DB, "enclayer02", OWT_APPLY_ENCOUNTER_LAYER_DROP="1")
+    assert done.returncode != 0
+    assert "pick-ban seeds" in done.stderr
+    assert f"pick-ban seeds {ids['s_slots']}" in done.stderr and f"pick-ban seeds {other}" in done.stderr
+    with _connect(ENCLAYER02_DB) as conn:
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == "enclayer01b"
+        assert "home_seed" in _columns(conn, "encounter", "pick_ban_session")
+
+
+@pytest.mark.parametrize(
+    ("lose", "listed"),
+    [
+        (
+            "UPDATE encounter.pick_ban_session SET pending_chooser_team_id = NULL WHERE id = %s",
+            "pick-ban pending chooser",
+        ),
+        (
+            "UPDATE encounter.pick_ban_session SET undo_requested_by_team_id = NULL WHERE id = %s",
+            "pick-ban undo requester",
+        ),
+        (
+            "UPDATE encounter.team SET seed = NULL WHERE slot = 1 AND encounter_id ="
+            " (SELECT encounter_id FROM encounter.pick_ban_session WHERE id = %s)",
+            "pick-ban seeds",
+        ),
+    ],
+    ids=["pending-chooser", "undo-requester", "seed"],
+)
+def test_enclayer02_refuses_while_a_converted_pick_ban_actor_or_seed_is_missing(legacy_template, lose, listed) -> None:
+    ids = legacy_template["ids"]
+    _contract_copy()
+    with _connect(ENCLAYER02_DB) as conn:
+        conn.execute(lose, (ids["s_slots"],))
+    done = _alembic(ENCLAYER02_DB, "enclayer02", OWT_APPLY_ENCOUNTER_LAYER_DROP="1")
+    assert done.returncode != 0
+    assert f"{listed} {ids['s_slots']}" in done.stderr
+    with _connect(ENCLAYER02_DB) as conn:
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == "enclayer01b"

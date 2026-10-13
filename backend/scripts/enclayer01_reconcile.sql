@@ -139,6 +139,28 @@ SELECT 'pick-ban first side', s.id, 'encounter ' || s.encounter_id,
   FROM encounter.pick_ban_session s
  WHERE s.first_side::text IN ('home', 'away')
 UNION ALL
+SELECT 'pick-ban pending chooser', s.id, 'encounter ' || s.encounter_id,
+       s.pending_chooser_team_id IS NOT NULL
+  FROM encounter.pick_ban_session s
+ WHERE s.pending_loser_side::text IN ('home', 'away')
+UNION ALL
+SELECT 'pick-ban undo requester', s.id, 'encounter ' || s.encounter_id,
+       s.undo_requested_by_team_id IS NOT NULL
+  FROM encounter.pick_ban_session s
+ WHERE s.undo_requested_by::text IN ('home', 'away')
+UNION ALL
+SELECT 'pick-ban seeds', s.id, 'encounter ' || s.encounter_id || ' seeds ' || coalesce(s.home_seed::text, '-')
+                              || '/' || coalesce(s.away_seed::text, '-'),
+       (s.home_seed IS NULL OR EXISTS (SELECT 1 FROM encounter.team t
+                                        WHERE t.encounter_id = s.encounter_id AND t.slot = 1 AND t.seed = s.home_seed))
+       AND (s.away_seed IS NULL OR EXISTS (SELECT 1 FROM encounter.team t
+                                            WHERE t.encounter_id = s.encounter_id AND t.slot = 2 AND t.seed = s.away_seed))
+       AND NOT EXISTS (SELECT 1 FROM encounter.pick_ban_session o
+                        WHERE o.encounter_id = s.encounter_id AND o.id <> s.id
+                          AND (o.home_seed <> s.home_seed OR o.away_seed <> s.away_seed))
+  FROM encounter.pick_ban_session s
+ WHERE s.home_seed IS NOT NULL OR s.away_seed IS NOT NULL
+UNION ALL
 SELECT 'pick-ban pool snapshots', s.id, 'encounter ' || s.encounter_id,
        s.pool_json::jsonb ?& ARRAY['mode', 'rotation', 'progressive', 'items', 'slots']
   FROM encounter.pick_ban_session s
