@@ -1001,6 +1001,9 @@ def _run_recompute(dry_run: bool) -> int:
 
 def test_the_lobby_recompute_fills_standings_dry_then_for_real_then_does_nothing(migrated) -> None:
     conn, ids = migrated["conn"], migrated["ids"]
+    # The script is a post-upgrade one-shot and the ORM it uses always reflects the head, so bring the database there first.
+    done = _alembic(MIGRATED_DB, "head")
+    assert done.returncode == 0, done.stderr[-3000:]
     standings = "SELECT t.slot, t.score, t.placement FROM encounter.team t WHERE t.encounter_id = %s ORDER BY t.slot"
     assert _rows(conn, standings, (ids["e_lobby"],)) == [(1, 0.0, None), (2, 0.0, None), (3, 0.0, None)]
 
