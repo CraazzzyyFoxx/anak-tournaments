@@ -1,7 +1,7 @@
 """Mix rounds on the encounter layer (V2, D71-D79).
 
 An encounter is owned by a tournament OR a pickup mix (``custom_game_id``); each mix gets a discipline and its
-own ``wins`` rule; ``balancer.mix_round`` / ``balancer.mix_round_member`` hold what only the balancer reads.
+own ``wins`` rule; ``balancer.custom_game_round`` / ``balancer.custom_game_round_member`` hold what only the balancer reads.
 The data half moves every ``casual.match`` across; ``casual.*`` itself stays until the gated ``mixround02``.
 
 ``'host'`` is added to ``encounter.encountergameresultsource`` in its own committed transaction first:
@@ -130,27 +130,27 @@ _SCHEMA = (
     "CREATE INDEX ix_encounter_custom_game_id ON encounter.encounter (custom_game_id)",
     "ALTER TABLE encounter.team ALTER COLUMN tournament_id DROP NOT NULL",
     """
-    CREATE TABLE balancer.mix_round (
+    CREATE TABLE balancer.custom_game_round (
       encounter_id           BIGINT PRIMARY KEY
-        CONSTRAINT fk_mix_round_encounter REFERENCES encounter.encounter (id) ON DELETE CASCADE,
+        CONSTRAINT fk_custom_game_round_encounter REFERENCES encounter.encounter (id) ON DELETE CASCADE,
       lobby_index            INTEGER NOT NULL,
       points_per_win_applied INTEGER,
-      CONSTRAINT ck_mix_round_lobby_index CHECK (lobby_index BETWEEN 0 AND 5)
+      CONSTRAINT ck_custom_game_round_lobby_index CHECK (lobby_index BETWEEN 0 AND 5)
     )
     """,
     """
-    CREATE TABLE balancer.mix_round_member (
+    CREATE TABLE balancer.custom_game_round_member (
       encounter_id        BIGINT NOT NULL
-        CONSTRAINT fk_mix_round_member_round REFERENCES balancer.mix_round (encounter_id) ON DELETE CASCADE,
+        CONSTRAINT fk_custom_game_round_member_round REFERENCES balancer.custom_game_round (encounter_id) ON DELETE CASCADE,
       workspace_member_id BIGINT NOT NULL
-        CONSTRAINT fk_mix_round_member_workspace_member REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED,
+        CONSTRAINT fk_custom_game_round_member_workspace_member REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED,
       busy                BOOLEAN NOT NULL,
       rank_delta_applied  INTEGER,
       PRIMARY KEY (encounter_id, workspace_member_id),
-      CONSTRAINT ck_mix_round_member_busy CHECK (NOT busy OR rank_delta_applied IS NULL)
+      CONSTRAINT ck_custom_game_round_member_busy CHECK (NOT busy OR rank_delta_applied IS NULL)
     )
     """,
-    "CREATE INDEX ix_mix_round_member_workspace_member_id ON balancer.mix_round_member (workspace_member_id)",
+    "CREATE INDEX ix_custom_game_round_member_workspace_member_id ON balancer.custom_game_round_member (workspace_member_id)",
 )
 
 
@@ -254,21 +254,21 @@ _BACKFILL = (
       LEFT JOIN players."user" u ON u.auth_user_id = m.recorded_by
     """,
     """
-    INSERT INTO balancer.mix_round (encounter_id, lobby_index, points_per_win_applied)
+    INSERT INTO balancer.custom_game_round (encounter_id, lobby_index, points_per_win_applied)
     SELECT r.encounter_id, m.lobby_index, m.points_per_win_applied
       FROM mixround01_round r JOIN casual.match m ON m.id = r.match_id
     """,
     """
-    INSERT INTO balancer.mix_round_member (encounter_id, workspace_member_id, busy, rank_delta_applied)
+    INSERT INTO balancer.custom_game_round_member (encounter_id, workspace_member_id, busy, rank_delta_applied)
     SELECT x.encounter_id, p.workspace_member_id, false, p.rank_delta_applied
       FROM mixround01_seat x JOIN casual.player p ON p.id = x.casual_player_id
     """,
     # The seat wins: a busy row of a member seated in the same round is dropped (and reconciled).
     """
-    INSERT INTO balancer.mix_round_member (encounter_id, workspace_member_id, busy)
+    INSERT INTO balancer.custom_game_round_member (encounter_id, workspace_member_id, busy)
     SELECT r.encounter_id, b.workspace_member_id, true
       FROM casual.match_busy_player b JOIN mixround01_round r ON r.match_id = b.match_id
-     WHERE NOT EXISTS (SELECT 1 FROM balancer.mix_round_member rm
+     WHERE NOT EXISTS (SELECT 1 FROM balancer.custom_game_round_member rm
                         WHERE rm.encounter_id = r.encounter_id AND rm.workspace_member_id = b.workspace_member_id)
     """,
 )

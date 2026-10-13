@@ -727,6 +727,28 @@ CREATE TABLE balancer.custom_game_player_role (
 	FOREIGN KEY(custom_game_player_id) REFERENCES balancer.custom_game_player (id) ON DELETE CASCADE
 );
 
+CREATE TABLE balancer.custom_game_round (
+	encounter_id BIGINT NOT NULL,
+	lobby_index INTEGER NOT NULL,
+	points_per_win_applied INTEGER,
+	PRIMARY KEY (encounter_id),
+	CONSTRAINT ck_custom_game_round_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
+	CONSTRAINT fk_custom_game_round_encounter FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE
+);
+
+CREATE TABLE balancer.custom_game_round_member (
+	encounter_id BIGINT NOT NULL,
+	workspace_member_id BIGINT NOT NULL,
+	busy BOOLEAN NOT NULL,
+	rank_delta_applied INTEGER,
+	PRIMARY KEY (encounter_id, workspace_member_id),
+	CONSTRAINT ck_custom_game_round_member_busy CHECK (NOT busy OR rank_delta_applied IS NULL),
+	CONSTRAINT fk_custom_game_round_member_round FOREIGN KEY(encounter_id) REFERENCES balancer.custom_game_round (encounter_id) ON DELETE CASCADE,
+	CONSTRAINT fk_custom_game_round_member_workspace_member FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX ix_custom_game_round_member_workspace_member_id ON balancer.custom_game_round_member (workspace_member_id);
+
 CREATE TABLE balancer.custom_game_team_name (
 	custom_game_id BIGINT NOT NULL,
 	team_index INTEGER NOT NULL,
@@ -925,28 +947,6 @@ CREATE INDEX ix_balancer_member_rank_workspace_member_id ON balancer.member_rank
 CREATE UNIQUE INDEX uq_member_rank_author ON balancer.member_rank (workspace_id, author_user_id, workspace_member_id, role) WHERE author_user_id IS NOT NULL;
 
 CREATE UNIQUE INDEX uq_member_rank_canon ON balancer.member_rank (workspace_id, workspace_member_id, role) WHERE author_user_id IS NULL;
-
-CREATE TABLE balancer.mix_round (
-	encounter_id BIGINT NOT NULL,
-	lobby_index INTEGER NOT NULL,
-	points_per_win_applied INTEGER,
-	PRIMARY KEY (encounter_id),
-	CONSTRAINT ck_mix_round_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
-	CONSTRAINT fk_mix_round_encounter FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE
-);
-
-CREATE TABLE balancer.mix_round_member (
-	encounter_id BIGINT NOT NULL,
-	workspace_member_id BIGINT NOT NULL,
-	busy BOOLEAN NOT NULL,
-	rank_delta_applied INTEGER,
-	PRIMARY KEY (encounter_id, workspace_member_id),
-	CONSTRAINT ck_mix_round_member_busy CHECK (NOT busy OR rank_delta_applied IS NULL),
-	CONSTRAINT fk_mix_round_member_round FOREIGN KEY(encounter_id) REFERENCES balancer.mix_round (encounter_id) ON DELETE CASCADE,
-	CONSTRAINT fk_mix_round_member_workspace_member FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED
-);
-
-CREATE INDEX ix_mix_round_member_workspace_member_id ON balancer.mix_round_member (workspace_member_id);
 
 CREATE TABLE balancer.registration (
 	id BIGSERIAL NOT NULL,

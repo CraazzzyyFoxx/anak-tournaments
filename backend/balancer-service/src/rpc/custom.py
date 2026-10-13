@@ -53,7 +53,7 @@ from shared import models
 from shared.core import http_status as status
 from shared.core.enums import MixRoleSelectionMode
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.mix_round import winner_slot
+from shared.domain.custom_game_round import winner_slot
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.services import discord_messages
 from shared.services.discord_client import DiscordClient

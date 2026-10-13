@@ -825,6 +825,22 @@ Table balancer.custom_game_player_role {
   }
 }
 
+Table balancer.custom_game_round {
+  encounter_id bigint [pk]
+  lobby_index int [not null]
+  points_per_win_applied int
+}
+
+Table balancer.custom_game_round_member {
+  encounter_id bigint [pk]
+  workspace_member_id bigint [pk]
+  busy boolean [not null]
+  rank_delta_applied int
+  indexes {
+    (workspace_member_id) [name: "ix_custom_game_round_member_workspace_member_id"]
+  }
+}
+
 Table balancer.custom_game_team_name {
   custom_game_id bigint [pk]
   team_index int [pk, increment]
@@ -979,22 +995,6 @@ Table balancer.member_rank {
     (workspace_member_id) [name: "ix_balancer_member_rank_workspace_member_id"]
     (workspace_id, author_user_id, workspace_member_id, role) [unique, name: "uq_member_rank_author"]
     (workspace_id, workspace_member_id, role) [unique, name: "uq_member_rank_canon"]
-  }
-}
-
-Table balancer.mix_round {
-  encounter_id bigint [pk]
-  lobby_index int [not null]
-  points_per_win_applied int
-}
-
-Table balancer.mix_round_member {
-  encounter_id bigint [pk]
-  workspace_member_id bigint [pk]
-  busy boolean [not null]
-  rank_delta_applied int
-  indexes {
-    (workspace_member_id) [name: "ix_mix_round_member_workspace_member_id"]
   }
 }
 
@@ -1359,6 +1359,8 @@ TableGroup balancer {
   balancer.custom_game_lobby
   balancer.custom_game_player
   balancer.custom_game_player_role
+  balancer.custom_game_round
+  balancer.custom_game_round_member
   balancer.custom_game_team_name
   balancer.draft_audit_event
   balancer.draft_pick
@@ -1367,8 +1369,6 @@ TableGroup balancer {
   balancer.draft_team
   balancer.member_hidden_rating
   balancer.member_rank
-  balancer.mix_round
-  balancer.mix_round_member
   balancer.registration
   balancer.registration_form
   balancer.registration_form_template
@@ -3301,6 +3301,9 @@ Ref: balancer.custom_game_lobby.next_map_id > overwatch.map.id [delete: set null
 Ref: balancer.custom_game_player.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: balancer.custom_game_player.workspace_member_id > workspace_member.id [delete: cascade]
 Ref: balancer.custom_game_player_role.custom_game_player_id > balancer.custom_game_player.id [delete: cascade]
+Ref: balancer.custom_game_round.encounter_id > encounter.encounter.id [delete: cascade]
+Ref: balancer.custom_game_round_member.encounter_id > balancer.custom_game_round.encounter_id [delete: cascade]
+Ref: balancer.custom_game_round_member.workspace_member_id > workspace_member.id
 Ref: balancer.custom_game_team_name.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: balancer.draft_audit_event.session_id > balancer.draft_session.id [delete: cascade]
 Ref: balancer.draft_audit_event.actor_auth_user_id > auth.user.id [delete: set null]
@@ -3325,9 +3328,6 @@ Ref: balancer.member_hidden_rating.workspace_member_id > workspace_member.id [de
 Ref: balancer.member_rank.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.member_rank.workspace_member_id > workspace_member.id [delete: cascade]
 Ref: balancer.member_rank.author_user_id > auth.user.id [delete: cascade]
-Ref: balancer.mix_round.encounter_id > encounter.encounter.id [delete: cascade]
-Ref: balancer.mix_round_member.encounter_id > balancer.mix_round.encounter_id [delete: cascade]
-Ref: balancer.mix_round_member.workspace_member_id > workspace_member.id
 Ref: balancer.registration.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: balancer.registration.workspace_member_id > workspace_member.id [delete: set null]
 Ref: balancer.registration.form_version_id > balancer.registration_form_version.id [delete: set null]

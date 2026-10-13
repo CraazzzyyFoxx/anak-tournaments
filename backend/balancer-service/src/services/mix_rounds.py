@@ -2,7 +2,7 @@
 
 An encounter owned by the mix (2 slots, Bo1), two participations with the roster snapshot of the selected
 variant, one confirmed game, a ``host`` result through the single result writer (one journal row, actor = the
-recorder), and the balancer's ``mix_round``/``mix_round_member`` rows. No tournament event, outbox, standings or
+recorder), and the balancer's ``custom_game_round``/``custom_game_round_member`` rows. No tournament event, outbox, standings or
 achievement is raised: nothing listens for a mix. A draw is 0:0.
 """
 
@@ -23,13 +23,13 @@ from shared.core.enums import (
 )
 from shared.domain.encounter_scoring import GameLine, compile_rules, evaluate_encounter
 from shared.repository import (
+    CustomGameRoundRepository,
     EncounterGameRepository,
     EncounterGameTeamRepository,
     EncounterRepository,
-    MixRoundRepository,
     ScoringRuleRepository,
 )
-from shared.repository.mix_round import MIX_ROLE_DIMENSION
+from shared.repository.custom_game_round import MIX_ROLE_DIMENSION
 from shared.services.encounter.participants import MemberSnapshot, place_team
 from shared.services.encounter.result import apply_result
 
@@ -39,7 +39,7 @@ _encounters = EncounterRepository()
 _games = EncounterGameRepository()
 _game_teams = EncounterGameTeamRepository()
 _rules = ScoringRuleRepository()
-_rounds = MixRoundRepository()
+_rounds = CustomGameRoundRepository()
 #: Game score per slot for winner slot 1, 2 and a draw.
 _SCORES = {1: (1, 0), 2: (0, 1), None: (0, 0)}
 
@@ -155,13 +155,13 @@ async def record_mix_round(session: AsyncSession, draft: MixRoundDraft) -> model
     seated = {seat.workspace_member_id for team in draft.seats for seat in team}
     await _rounds.create(
         session,
-        models.MixRound(
+        models.CustomGameRound(
             encounter_id=encounter.id,
             lobby_index=draft.lobby_index,
             points_per_win_applied=draft.points_per_win_applied,
             members=[
                 *(
-                    models.MixRoundMember(
+                    models.CustomGameRoundMember(
                         workspace_member_id=seat.workspace_member_id,
                         busy=False,
                         rank_delta_applied=seat.rank_delta_applied,
@@ -170,7 +170,7 @@ async def record_mix_round(session: AsyncSession, draft: MixRoundDraft) -> model
                     for seat in team
                 ),
                 *(
-                    models.MixRoundMember(workspace_member_id=member_id, busy=True)
+                    models.CustomGameRoundMember(workspace_member_id=member_id, busy=True)
                     for member_id in sorted(draft.busy - seated)
                 ),
             ],

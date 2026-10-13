@@ -14,7 +14,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from shared.domain.mix_round import winner_slot  # noqa: E402
+from shared.domain.custom_game_round import winner_slot  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker, RankerSettings  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 

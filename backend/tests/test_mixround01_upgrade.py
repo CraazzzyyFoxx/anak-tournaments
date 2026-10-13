@@ -258,7 +258,7 @@ def _encounter_of(conn, match_id: int) -> int:
     """The legacy round's encounter: same mix, lobby and time (the reconcile key)."""
     return _scalar(
         conn,
-        "SELECT e.id FROM encounter.encounter e JOIN balancer.mix_round r ON r.encounter_id = e.id"
+        "SELECT e.id FROM encounter.encounter e JOIN balancer.custom_game_round r ON r.encounter_id = e.id"
         " JOIN casual.match m ON m.custom_game_id = e.custom_game_id AND m.lobby_index = r.lobby_index"
         " AND m.created_at = e.created_at WHERE m.id = %s",
         (match_id,),
@@ -375,7 +375,7 @@ def test_seats_roles_and_rank_deltas_are_carried(migrated) -> None:
     ]
     assert _rows(
         conn,
-        "SELECT workspace_member_id, busy, rank_delta_applied FROM balancer.mix_round_member"
+        "SELECT workspace_member_id, busy, rank_delta_applied FROM balancer.custom_game_round_member"
         " WHERE encounter_id = %s ORDER BY workspace_member_id",
         (r2,),
     ) == [(ids["m4"], False, 12), (ids["m5"], False, -12)]
@@ -387,7 +387,7 @@ def test_a_member_less_seat_and_a_busy_row_under_a_seat_are_dropped(migrated) ->
     assert _scalar(conn, "SELECT count(*) FROM encounter.team_member WHERE encounter_id = %s", (r3,)) == 2
     assert _rows(
         conn,
-        "SELECT workspace_member_id, busy FROM balancer.mix_round_member WHERE encounter_id = %s"
+        "SELECT workspace_member_id, busy FROM balancer.custom_game_round_member WHERE encounter_id = %s"
         " ORDER BY workspace_member_id",
         (r3,),
     ) == [(ids["m0"], False), (ids["m2"], False), (ids["m4"], True)]
@@ -396,7 +396,10 @@ def test_a_member_less_seat_and_a_busy_row_under_a_seat_are_dropped(migrated) ->
 def test_points_recorder_and_journal_are_carried(migrated) -> None:
     conn, ids = migrated["conn"], migrated["ids"]
     r1, r2 = _encounter_of(conn, ids["r1"]), _encounter_of(conn, ids["r2"])
-    assert _scalar(conn, "SELECT points_per_win_applied FROM balancer.mix_round WHERE encounter_id = %s", (r1,)) == 25
+    assert (
+        _scalar(conn, "SELECT points_per_win_applied FROM balancer.custom_game_round WHERE encounter_id = %s", (r1,))
+        == 25
+    )
     audit = _rows(
         conn,
         "SELECT result_version, actor_user_id, action::text, source, snapshot_scope,"
@@ -536,7 +539,7 @@ def test_the_reconcile_lists_content_swapped_between_two_rounds_of_one_key(legac
             {"m0": ids["m0"], "m1": ids["m1"]},
         )
         tx.execute(
-            "UPDATE balancer.mix_round_member SET workspace_member_id = CASE workspace_member_id"
+            "UPDATE balancer.custom_game_round_member SET workspace_member_id = CASE workspace_member_id"
             " WHEN %(m0)s THEN %(m1)s ELSE %(m0)s END"
             " WHERE workspace_member_id IN (%(m0)s, %(m1)s) AND encounter_id IN"
             " (SELECT encounter_id FROM encounter.team WHERE name IN ('c1-A', 'c2-A'))",

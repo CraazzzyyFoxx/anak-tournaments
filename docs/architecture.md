@@ -184,8 +184,8 @@ in [`docs/database_erd.md`](./database_erd.md).
   one `encounter.encounter` whatever its owner or format: a duel is `slot_count = 2`, a lobby is
   N, and the API returns `teams[]` with slot numbers, never home/away. An encounter has exactly
   one owner — a tournament (`tournament_id`) or a pickup mix (`custom_game_id`, a recorded mix
-  round with result source `host`; its balancer facts are `balancer.mix_round` and
-  `balancer.mix_round_member`). Tournament code reads tournament-owned encounters only, through
+  round with result source `host`; its balancer facts are `balancer.custom_game_round` and
+  `balancer.custom_game_round_member`). Tournament code reads tournament-owned encounters only, through
   `EncounterRepository`. Each seat is an
   append-only participation (`encounter.team`) with a roster snapshot; games, per-participation
   game results, game claims, series reports, the result journal, the scoring rule and the

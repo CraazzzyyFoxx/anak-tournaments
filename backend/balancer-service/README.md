@@ -247,7 +247,7 @@ mixes balance on the **effective rating**. The idea and its specification are
   rank beside it as `players[uuid].open_ratings`.
 - **After a match** the open rating moves by the match's impulse on the hidden projection plus a pull
   towards the hidden rating, never against the result. The applied amount is frozen per seat in
-  `balancer.mix_round_member.rank_delta_applied`; undo gives back exactly that.
+  `balancer.custom_game_round_member.rank_delta_applied`; undo gives back exactly that.
 - **The hidden book is derived** — a fold over the workspace's recorded mix rounds. Undo, a change
   of `rating_min`/`rating_max`/`rating_avg`/`sigma_init`, and the admin's *Recalculate hidden ratings*
   (`admin.workspace_ranker_rebuild`, a button on the admin *Ranks* page next to *Ranker settings*)
@@ -274,7 +274,7 @@ Writes, all in the `balancer` schema unless noted:
   `custom_game_team_name` — mixes.
 - `member_rank` — both rank layers.
 - `member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from the recorded rounds).
-- `mix_round`, `mix_round_member` — what only the balancer reads about a recorded round: its lobby,
+- `custom_game_round`, `custom_game_round_member` — what only the balancer reads about a recorded round: its lobby,
   the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy in another lobby".
 - `encounter.encounter`, `encounter.team` (two participations), `encounter.team_member` (+
   `team_member_role` when a seat has a role), `encounter.game` (one confirmed game),

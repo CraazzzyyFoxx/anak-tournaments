@@ -2,7 +2,7 @@
 
 Pure domain algorithm: no I/O, no ORM, no async. The caller (custom game
 service) reads one row per recorded seat -- ``encounter.team_member`` joined
-to its own team, the other team and the round (``balancer.mix_round``) --
+to its own team, the other team and the round (``balancer.custom_game_round``) --
 turns each into a :class:`SeatOutcome` via :func:`outcome_for`, and hands the
 whole list to :func:`aggregate_mix_stats`.
 
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from shared.domain.mix_round import winner_slot
+from shared.domain.custom_game_round import winner_slot
 
 __all__ = ("Outcome", "SeatOutcome", "RoleTally", "MemberMixStats", "aggregate_mix_stats", "outcome_for")
 

@@ -7,18 +7,18 @@ import os
 import sqlalchemy as sa
 from sqlalchemy.exc import DBAPIError
 
-from shared.models.custom_game import CustomGame, MixRound, MixRoundMember
+from shared.models.custom_game import CustomGame, CustomGameRound, CustomGameRoundMember
 from shared.models.encounter import ScoringRule
 from shared.models.tenancy.workspace import Workspace
 from shared.tests.encounter_writer_case import WINS_END, EncounterWriterCase
 
 
-class MixRoundConstraintTests(EncounterWriterCase):
+class CustomGameRoundConstraintTests(EncounterWriterCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         async with self.Session() as s:
             mix = await self.mix_encounter(s)
-            s.add(MixRound(encounter_id=mix.id, lobby_index=0, points_per_win_applied=None))
+            s.add(CustomGameRound(encounter_id=mix.id, lobby_index=0, points_per_win_applied=None))
             await s.commit()
             self.ids["mix"] = mix.id
             self.ids["cg"] = mix.custom_game_id
@@ -75,20 +75,21 @@ class MixRoundConstraintTests(EncounterWriterCase):
 
     async def test_a_busy_member_carries_no_rank_delta(self) -> None:
         await self._rejected(
-            "INSERT INTO balancer.mix_round_member (encounter_id, workspace_member_id, busy, rank_delta_applied)"
+            "INSERT INTO balancer.custom_game_round_member (encounter_id, workspace_member_id, busy, rank_delta_applied)"
             " VALUES (:mix, :m0, true, 5)",
-            "ck_mix_round_member_busy",
+            "ck_custom_game_round_member_busy",
         )
 
     async def test_a_round_sits_in_one_of_six_lobbies(self) -> None:
         await self._rejected(
-            "UPDATE balancer.mix_round SET lobby_index = 6 WHERE encounter_id = :mix", "ck_mix_round_lobby_index"
+            "UPDATE balancer.custom_game_round SET lobby_index = 6 WHERE encounter_id = :mix",
+            "ck_custom_game_round_lobby_index",
         )
 
     async def test_deleting_a_mix_deletes_its_rounds(self) -> None:
         async with self.Session() as s:
             s.add(
-                MixRoundMember(
+                CustomGameRoundMember(
                     encounter_id=self.ids["mix"], workspace_member_id=self.ids["m0"], busy=False, rank_delta_applied=3
                 )
             )
@@ -97,7 +98,7 @@ class MixRoundConstraintTests(EncounterWriterCase):
             await s.execute(sa.delete(CustomGame).where(CustomGame.id == self.ids["cg"]))
             await s.commit()
         self.assertEqual(0, await self._scalar("SELECT count(*) FROM encounter.encounter WHERE id = :mix"))
-        for table in ("encounter.team", "balancer.mix_round", "balancer.mix_round_member"):
+        for table in ("encounter.team", "balancer.custom_game_round", "balancer.custom_game_round_member"):
             self.assertEqual(0, await self._scalar(f"SELECT count(*) FROM {table} WHERE encounter_id = :mix"))
 
     async def test_host_is_a_result_source_of_the_encounter_and_of_a_game(self) -> None:

@@ -118,7 +118,7 @@ flowchart TB
         REG["balancer.registration*<br/>(applications, teams)"]
         BAL["balancer<br/>(balance, member_rank)"]
         DRAFT["balancer.draft_*<br/>(live draft)"]
-        MIX["balancer.custom_game*, mix_round*<br/>(mixes, mix rounds)"]
+        MIX["balancer.custom_game*<br/>(mixes, mix rounds)"]
     end
 
     subgraph INSIGHT["Post-processing"]
@@ -1333,7 +1333,7 @@ its result: `result_status`,
 exists) and `result_version`. There is no `format`, no home/away and no bracket position — a duel
 is `slot_count = 2`, and the bracket position is a `tournament.bracket_encounter` row that mix
 rounds and scrims simply do not have. A mix round is a Bo1 encounter with source `host`; what only
-the balancer reads about it is in `balancer.mix_round` and `balancer.mix_round_member` (see
+the balancer reads about it is in `balancer.custom_game_round` and `balancer.custom_game_round_member` (see
 [custom_game](#custom_game--balancer)).
 
 A participation is append-only: replacing the occupant of a slot writes a new `team` row and
@@ -2205,7 +2205,7 @@ is a new version rather than an in-place overwrite. The child tables use composi
 rather than surrogate ids — the pair *is* the fact.
 
 Recorded rounds of a mix are not stored here: each is an `encounter.encounter` owned by the game
-(`custom_game_id`), and `mix_round` / `mix_round_member` hold only the balancer's own facts about
+(`custom_game_id`), and `custom_game_round` / `custom_game_round_member` hold only the balancer's own facts about
 it — the lobby it was played in, the points-per-win it applied, and per member whether they were
 seated (with the rank delta frozen at record time) or busy in another lobby. `discipline` and
 `scoring_rule_id` on the game give those encounters their game and their `wins` rule.
@@ -2260,21 +2260,21 @@ erDiagram
         varchar(16) role PK
         int priority
     }
-    BALANCER_CUSTOM_GAME_TEAM_NAME {
-        bigint custom_game_id PK,FK
-        int team_index PK
-        varchar(60) name
-    }
-    BALANCER_MIX_ROUND {
+    BALANCER_CUSTOM_GAME_ROUND {
         bigint encounter_id PK,FK
         int lobby_index
         int points_per_win_applied "nullable"
     }
-    BALANCER_MIX_ROUND_MEMBER {
+    BALANCER_CUSTOM_GAME_ROUND_MEMBER {
         bigint encounter_id PK,FK
         bigint workspace_member_id PK,FK
         boolean busy
         int rank_delta_applied "nullable"
+    }
+    BALANCER_CUSTOM_GAME_TEAM_NAME {
+        bigint custom_game_id PK,FK
+        int team_index PK
+        varchar(60) name
     }
 
     AUTH_USER |o--o{ BALANCER_CUSTOM_GAME : "host_user_id"
@@ -2284,15 +2284,15 @@ erDiagram
     BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_LOBBY : "custom_game_id"
     BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_TEAM_NAME : "custom_game_id"
     BALANCER_CUSTOM_GAME_PLAYER ||--o| BALANCER_CUSTOM_GAME_PLAYER_ROLE : "custom_game_player_id"
-    BALANCER_MIX_ROUND ||--o| BALANCER_MIX_ROUND_MEMBER : "encounter_id"
+    BALANCER_CUSTOM_GAME_ROUND ||--o| BALANCER_CUSTOM_GAME_ROUND_MEMBER : "encounter_id"
     CATALOG_DISCIPLINE ||--o{ BALANCER_CUSTOM_GAME : "discipline"
-    ENCOUNTER_ENCOUNTER ||--o| BALANCER_MIX_ROUND : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o| BALANCER_CUSTOM_GAME_ROUND : "encounter_id"
     ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "scoring_rule_id"
     ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
     OVERWATCH_MAP |o--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_CUSTOM_GAME_PLAYER : "workspace_member_id"
-    PUBLIC_WORKSPACE_MEMBER ||--o| BALANCER_MIX_ROUND_MEMBER : "workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o| BALANCER_CUSTOM_GAME_ROUND_MEMBER : "workspace_member_id"
 ```
 
 Composite unique keys:
@@ -3253,8 +3253,8 @@ the top of this document is the only revision claim here.
   `encounter.encounter` owned by the mix (`custom_game_id`; exactly one of the two owners is
   set, `tournament_id` is nullable), Bo1 under the mix's own `wins` scoring rule, with result
   source `host`. `balancer.custom_game` gained `discipline` and `scoring_rule_id`; what only the
-  balancer reads moved to `balancer.mix_round` (lobby index, the points-per-win applied) and
-  `balancer.mix_round_member` (a member seated with a frozen `rank_delta_applied`, or busy in
+  balancer reads moved to `balancer.custom_game_round` (lobby index, the points-per-win applied) and
+  `balancer.custom_game_round_member` (a member seated with a frozen `rank_delta_applied`, or busy in
   another lobby). `mixround01` moved every `casual.match` across; the `casual` tables stay as
   legacy, mapped by no model and read by nothing, until the gated `mixround02` drops them in the
   deploy after V2.

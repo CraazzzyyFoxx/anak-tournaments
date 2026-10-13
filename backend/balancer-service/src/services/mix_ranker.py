@@ -19,11 +19,11 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.domain.mix_round import winner_slot
+from shared.domain.custom_game_round import winner_slot
 from shared.models.balancer import WorkspaceBalancerConfig
 from shared.repository import (
+    CustomGameRoundRepository,
     MemberHiddenRatingRepository,
-    MixRoundRepository,
     WorkspaceBalancerConfigRepository,
 )
 from src.domain.mix_ranker import HiddenRating, Ranker, RankerSettings
@@ -50,7 +50,7 @@ class MixRankerService:
         *,
         hidden: MemberHiddenRatingRepository = MemberHiddenRatingRepository(),
         configs: WorkspaceBalancerConfigRepository = WorkspaceBalancerConfigRepository(),
-        mix_rounds: MixRoundRepository = MixRoundRepository(),
+        mix_rounds: CustomGameRoundRepository = CustomGameRoundRepository(),
     ) -> None:
         self.hidden = hidden
         self.configs = configs

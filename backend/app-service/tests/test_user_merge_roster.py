@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import enums
-from shared.models.custom_game import CustomGame, MixRound, MixRoundMember
+from shared.models.custom_game import CustomGame, CustomGameRound, CustomGameRoundMember
 from shared.models.encounter import Encounter, EncounterTeam, EncounterTeamMember, ScoringRule
 from shared.testing.db import create_test_async_engine, ensure_test_postgres
 from src import schemas
@@ -164,7 +164,7 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
             )
         )
 
-    async def test_merging_onto_a_survivor_member_moves_mix_round_rows_and_drops_a_duplicate(self):
+    async def test_merging_onto_a_survivor_member_moves_custom_game_round_rows_and_drops_a_duplicate(self):
         source_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id)
         target_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id)
         mix_rule = ScoringRule(workspace_id=self.workspace.id, preset="wins", game_formula="win", end_formula=_WINS_END)
@@ -187,17 +187,17 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
             )
             self.session.add(encounter)
             await self.session.flush()
-            self.session.add(MixRound(encounter_id=encounter.id, lobby_index=0))
+            self.session.add(CustomGameRound(encounter_id=encounter.id, lobby_index=0))
             rounds.append(encounter.id)
         await self.session.flush()
         shared_round, own_round = rounds
         self.session.add_all(
             [
-                MixRoundMember(encounter_id=shared_round, workspace_member_id=source_member.id, busy=True),
-                MixRoundMember(
+                CustomGameRoundMember(encounter_id=shared_round, workspace_member_id=source_member.id, busy=True),
+                CustomGameRoundMember(
                     encounter_id=shared_round, workspace_member_id=target_member.id, busy=False, rank_delta_applied=4
                 ),
-                MixRoundMember(
+                CustomGameRoundMember(
                     encounter_id=own_round, workspace_member_id=source_member.id, busy=False, rank_delta_applied=-3
                 ),
             ]
@@ -209,13 +209,15 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
         rows = (
             await self.session.execute(
                 sa.select(
-                    MixRoundMember.encounter_id, MixRoundMember.workspace_member_id, MixRoundMember.rank_delta_applied
-                ).where(MixRoundMember.encounter_id.in_(rounds))
+                    CustomGameRoundMember.encounter_id,
+                    CustomGameRoundMember.workspace_member_id,
+                    CustomGameRoundMember.rank_delta_applied,
+                ).where(CustomGameRoundMember.encounter_id.in_(rounds))
             )
         ).all()
         self.assertEqual({(shared_round, target_member.id, 4), (own_round, target_member.id, -3)}, set(rows))
 
-    async def test_mix_round_collision_keeps_the_seated_row_and_the_survivors_on_a_tie(self):
+    async def test_custom_game_round_collision_keeps_the_seated_row_and_the_survivors_on_a_tie(self):
         source_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id)
         target_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id)
         mix_rule = ScoringRule(workspace_id=self.workspace.id, preset="wins", game_formula="win", end_formula=_WINS_END)
@@ -238,22 +240,22 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
             )
             self.session.add(encounter)
             await self.session.flush()
-            self.session.add(MixRound(encounter_id=encounter.id, lobby_index=0))
+            self.session.add(CustomGameRound(encounter_id=encounter.id, lobby_index=0))
             rounds.append(encounter.id)
         await self.session.flush()
         seated_vs_busy, both_busy, both_seated = rounds
         self.session.add_all(
             [
-                MixRoundMember(
+                CustomGameRoundMember(
                     encounter_id=seated_vs_busy, workspace_member_id=source_member.id, busy=False, rank_delta_applied=7
                 ),
-                MixRoundMember(encounter_id=seated_vs_busy, workspace_member_id=target_member.id, busy=True),
-                MixRoundMember(encounter_id=both_busy, workspace_member_id=source_member.id, busy=True),
-                MixRoundMember(encounter_id=both_busy, workspace_member_id=target_member.id, busy=True),
-                MixRoundMember(
+                CustomGameRoundMember(encounter_id=seated_vs_busy, workspace_member_id=target_member.id, busy=True),
+                CustomGameRoundMember(encounter_id=both_busy, workspace_member_id=source_member.id, busy=True),
+                CustomGameRoundMember(encounter_id=both_busy, workspace_member_id=target_member.id, busy=True),
+                CustomGameRoundMember(
                     encounter_id=both_seated, workspace_member_id=source_member.id, busy=False, rank_delta_applied=1
                 ),
-                MixRoundMember(
+                CustomGameRoundMember(
                     encounter_id=both_seated, workspace_member_id=target_member.id, busy=False, rank_delta_applied=2
                 ),
             ]
@@ -265,11 +267,11 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
         rows = (
             await self.session.execute(
                 sa.select(
-                    MixRoundMember.encounter_id,
-                    MixRoundMember.workspace_member_id,
-                    MixRoundMember.busy,
-                    MixRoundMember.rank_delta_applied,
-                ).where(MixRoundMember.encounter_id.in_(rounds))
+                    CustomGameRoundMember.encounter_id,
+                    CustomGameRoundMember.workspace_member_id,
+                    CustomGameRoundMember.busy,
+                    CustomGameRoundMember.rank_delta_applied,
+                ).where(CustomGameRoundMember.encounter_id.in_(rounds))
             )
         ).all()
         self.assertEqual(

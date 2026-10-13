@@ -29,7 +29,7 @@ from sqlalchemy.orm import selectinload
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle
-from shared.models.custom_game import MixRoundMember
+from shared.models.custom_game import CustomGameRoundMember
 from shared.rbac import RBAC_USER_KEY_PREFIX
 from shared.repository import SocialAccountRepository, UserMergeAuditRepository, get_or_create_workspace_member
 from shared.schemas.user_merge_auth import AuthMergeResult
@@ -622,7 +622,7 @@ class UserMergeService:
         participation, or both active in the same encounter) is dropped, since
         it is the same person twice. The now seat-free source row is the one
         duplicate-identity row the user delete cascades away. The same holds for
-        ``balancer.mix_round_member`` rows (one per round and member).
+        ``balancer.custom_game_round_member`` rows (one per round and member).
         """
         source_rows = (
             await session.execute(
@@ -684,8 +684,8 @@ class UserMergeService:
             # Mix-round rows hang on the member the same way (D74): one per (round, member). On a collision
             # the seated (non-busy) row wins, so the seat the survivor keeps never pairs with a busy row; on
             # a tie (both busy or both seated) the survivor's row wins.
-            round_member = MixRoundMember
-            other_round = sa.orm.aliased(MixRoundMember)
+            round_member = CustomGameRoundMember
+            other_round = sa.orm.aliased(CustomGameRoundMember)
             await session.execute(
                 delete(round_member)
                 .where(

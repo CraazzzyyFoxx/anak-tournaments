@@ -91,7 +91,7 @@ def _round(
     lobby_index: int = 0,
     points_per_win_applied: int | None = None,
 ) -> SimpleNamespace:
-    """One recorded round as ``MixRoundRepository.list_for_custom_game`` returns it."""
+    """One recorded round as ``CustomGameRoundRepository.list_for_custom_game`` returns it."""
     return _row(
         encounter_id=round_id,
         lobby_index=lobby_index,
@@ -109,7 +109,7 @@ def _round(
 
 
 def _seats(first: list[tuple], second: list[tuple], scores: tuple[float, float] = (1.0, 0.0)) -> list[SimpleNamespace]:
-    """``MixRoundRepository.seats`` rows for one round; a seat is ``(member, role, rank[, delta])``."""
+    """``CustomGameRoundRepository.seats`` rows for one round; a seat is ``(member, role, rank[, delta])``."""
     rows = []
     for slot, (team, own, other) in enumerate(((first, scores[0], scores[1]), (second, scores[1], scores[0])), start=1):
         for member, role, rank, *delta in team:
@@ -3913,7 +3913,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             _roster_row(2, 8, 1, created_at=0),
             _roster_row(3, 9, 2, created_at=0),
         ]
-        # Newest-first, as MixRoundRepository.list_for_custom_game returns it.
+        # Newest-first, as CustomGameRoundRepository.list_for_custom_game returns it.
         self.mix_rounds.list_for_custom_game = AsyncMock(
             return_value=[
                 _round(2, created_at=2, first=[9], second=[7]),  # 7 & 9 played, 8 sat

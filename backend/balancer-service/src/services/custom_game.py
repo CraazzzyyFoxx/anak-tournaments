@@ -26,9 +26,9 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
 from shared.division_grid import DEFAULT_GRID
+from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.mix_lobby import LOBBY_LETTERS
-from shared.domain.mix_round import winner_slot
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.domain.roster_shape import resolve_roster_shape
 from shared.rbac import assign_workspace_system_role
@@ -38,9 +38,9 @@ from shared.repository import (
     CustomGamePlayerRepository,
     CustomGamePlayerRoleRepository,
     CustomGameRepository,
+    CustomGameRoundRepository,
     CustomGameTeamNameRepository,
     MapRepository,
-    MixRoundRepository,
     ScoringRuleRepository,
     UserBalancerConfigRepository,
     UserRepository,
@@ -411,7 +411,7 @@ class CustomGameService:
         lobbies: CustomGameLobbyRepository = CustomGameLobbyRepository(),
         player_roles: CustomGamePlayerRoleRepository = CustomGamePlayerRoleRepository(),
         team_names: CustomGameTeamNameRepository = CustomGameTeamNameRepository(),
-        mix_rounds: MixRoundRepository = MixRoundRepository(),
+        mix_rounds: CustomGameRoundRepository = CustomGameRoundRepository(),
         write_round=record_mix_round,
         maps: MapRepository = MapRepository(),
         host_prefs: UserBalancerConfigRepository = UserBalancerConfigRepository(),
@@ -2842,7 +2842,7 @@ class CustomGameService:
 
     async def list_matches(
         self, session: AsyncSession, *, workspace_id: int, custom_game_id: int
-    ) -> list[models.MixRound]:
+    ) -> list[models.CustomGameRound]:
         """Every round recorded for this mix, newest first -- read is open to
         any workspace member, same as :meth:`get` (no host gate: watching the
         history is not writing it).

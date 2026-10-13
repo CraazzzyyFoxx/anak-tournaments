@@ -32,8 +32,8 @@ __all__ = (
     "CustomGamePlayer",
     "CustomGamePlayerRole",
     "CustomGameTeamName",
-    "MixRound",
-    "MixRoundMember",
+    "CustomGameRound",
+    "CustomGameRoundMember",
 )
 
 
@@ -229,49 +229,55 @@ class CustomGameTeamName(db.Base):
     name: Mapped[str] = mapped_column(String(60), nullable=False)
 
 
-class MixRound(db.Base):
+class CustomGameRound(db.Base):
     """Balancer-only facts of one recorded mix round (D74). The round itself is ``encounter.encounter``."""
 
-    __tablename__ = "mix_round"
+    __tablename__ = "custom_game_round"
     __table_args__ = (
-        CheckConstraint(f"lobby_index BETWEEN 0 AND {MAX_LOBBIES - 1}", name="ck_mix_round_lobby_index"),
+        CheckConstraint(f"lobby_index BETWEEN 0 AND {MAX_LOBBIES - 1}", name="ck_custom_game_round_lobby_index"),
         {"schema": "balancer"},
     )
 
     encounter_id: Mapped[int] = mapped_column(
-        ForeignKey("encounter.encounter.id", ondelete="CASCADE", name="fk_mix_round_encounter"), primary_key=True
+        ForeignKey("encounter.encounter.id", ondelete="CASCADE", name="fk_custom_game_round_encounter"),
+        primary_key=True,
     )
     lobby_index: Mapped[int] = mapped_column(Integer(), nullable=False)
     #: The points-per-win this round moved both teams by; undo gives back exactly this. NULL for a draw or points off.
     points_per_win_applied: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
     encounter: Mapped[Encounter] = relationship()
-    members: Mapped[list[MixRoundMember]] = relationship(
-        cascade="all, delete-orphan", passive_deletes=True, order_by="MixRoundMember.workspace_member_id"
+    members: Mapped[list[CustomGameRoundMember]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, order_by="CustomGameRoundMember.workspace_member_id"
     )
 
 
-class MixRoundMember(db.Base):
+class CustomGameRoundMember(db.Base):
     """One member's balancer facts in one round: seated (with its frozen rank delta) or busy next door (D74).
 
     Who sat on which seat is ``encounter.team_member`` only. The writer never stores a member both busy and seated.
     """
 
-    __tablename__ = "mix_round_member"
+    __tablename__ = "custom_game_round_member"
     __table_args__ = (
-        CheckConstraint("NOT busy OR rank_delta_applied IS NULL", name="ck_mix_round_member_busy"),
-        Index("ix_mix_round_member_workspace_member_id", "workspace_member_id"),
+        CheckConstraint("NOT busy OR rank_delta_applied IS NULL", name="ck_custom_game_round_member_busy"),
+        Index("ix_custom_game_round_member_workspace_member_id", "workspace_member_id"),
         {"schema": "balancer"},
     )
 
     encounter_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.mix_round.encounter_id", ondelete="CASCADE", name="fk_mix_round_member_round"),
+        ForeignKey(
+            "balancer.custom_game_round.encounter_id", ondelete="CASCADE", name="fk_custom_game_round_member_round"
+        ),
         primary_key=True,
     )
     # NO ACTION, deferred: the D66 anchor rule of ``encounter.team_member``.
     workspace_member_id: Mapped[int] = mapped_column(
         ForeignKey(
-            "workspace_member.id", name="fk_mix_round_member_workspace_member", deferrable=True, initially="DEFERRED"
+            "workspace_member.id",
+            name="fk_custom_game_round_member_workspace_member",
+            deferrable=True,
+            initially="DEFERRED",
         ),
         primary_key=True,
     )

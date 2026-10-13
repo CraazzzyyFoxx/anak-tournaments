@@ -154,7 +154,7 @@ from .workspace import (
     get_or_create_workspace_member,
     resolve_workspace_member_id,
 )
-from .mix_round import MixRoundRepository
+from .custom_game_round import CustomGameRoundRepository
 from .custom_game import (
     CustomGameCoHostRepository,
     CustomGameLobbyRepository,
@@ -306,7 +306,7 @@ __all__ = (
     "VerifiedChannelRow",
     "WorkspaceBalancerConfigRepository",
     "WorkspaceMemberRepository",
-    "MixRoundRepository",
+    "CustomGameRoundRepository",
     "CustomGameCoHostRepository",
     "CustomGameLobbyRepository",
     "CustomGamePlayerRepository",

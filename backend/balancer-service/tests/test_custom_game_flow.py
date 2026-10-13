@@ -165,7 +165,7 @@ class _CoHosts:
 
 
 class _RoundStore:
-    """Recorded rounds as the writer would leave them, shaped like ``MixRoundRepository`` rows."""
+    """Recorded rounds as the writer would leave them, shaped like ``CustomGameRoundRepository`` rows."""
 
     def __init__(self) -> None:
         self.drafts: list[Any] = []

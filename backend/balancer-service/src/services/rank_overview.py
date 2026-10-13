@@ -31,7 +31,7 @@ from shared.core.social import SocialProvider
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.models.ranks.overwatch_rank import BattleTagRankState, UserRankSnapshot
-from shared.repository import MixRoundRepository
+from shared.repository import CustomGameRoundRepository
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.rank_snapshots import OW_RANK_MAX_AGE
 
@@ -469,7 +469,7 @@ def _branches(
         )
 
     if "casual" in wanted:
-        seat_rows = MixRoundRepository.seat_rows_select(workspace_id).subquery("rank_casual_seat")
+        seat_rows = CustomGameRoundRepository.seat_rows_select(workspace_id).subquery("rank_casual_seat")
         game = models.CustomGame
         points = seat_rows.c.points_per_win_applied
         out.append(

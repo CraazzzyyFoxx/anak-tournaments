@@ -46,7 +46,7 @@ class _Configs:
 
 
 class _History:
-    """``MixRoundRepository.seats`` as the replay reads it: one row per recorded seat, oldest round first."""
+    """``CustomGameRoundRepository.seats`` as the replay reads it: one row per recorded seat, oldest round first."""
 
     def __init__(self) -> None:
         self.rows: list[Any] = []

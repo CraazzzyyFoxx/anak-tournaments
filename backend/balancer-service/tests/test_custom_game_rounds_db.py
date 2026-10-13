@@ -13,13 +13,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-serv
 import sqlalchemy as sa  # noqa: E402
 
 from shared import models  # noqa: E402
-from shared.domain.mix_round import winner_slot  # noqa: E402
-from shared.repository import MixRoundRepository  # noqa: E402
+from shared.domain.custom_game_round import winner_slot  # noqa: E402
+from shared.repository import CustomGameRoundRepository  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
 
 
-class MixRoundStoreTests(EncounterWriterCase):
+class CustomGameRoundStoreTests(EncounterWriterCase):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
         async with self.Session() as s:
@@ -27,7 +27,7 @@ class MixRoundStoreTests(EncounterWriterCase):
             self.cg = await s.get_one(models.CustomGame, mix.custom_game_id)
             await s.execute(sa.delete(models.Encounter).where(models.Encounter.id == mix.id))
             await s.commit()
-        self.rounds = MixRoundRepository()
+        self.rounds = CustomGameRoundRepository()
 
     def _draft(self, *, lobby=0, winner=1, busy=frozenset(), deltas=(None, None), points=25) -> MixRoundDraft:
         m0, m1, m2, m3 = (self.ids[f"m{i}"] for i in range(4))
@@ -106,7 +106,7 @@ class MixRoundStoreTests(EncounterWriterCase):
         seats = await self._rows(
             "SELECT tm.workspace_member_id, tm.display_name_snapshot, tm.rank, r.role, rm.busy, rm.rank_delta_applied"
             " FROM encounter.team_member tm LEFT JOIN encounter.team_member_role r ON r.team_member_id = tm.id"
-            " JOIN balancer.mix_round_member rm ON rm.encounter_id = tm.encounter_id"
+            " JOIN balancer.custom_game_round_member rm ON rm.encounter_id = tm.encounter_id"
             " AND rm.workspace_member_id = tm.workspace_member_id WHERE tm.encounter_id = :id"
             " ORDER BY tm.workspace_member_id",
             id=encounter_id,
@@ -127,7 +127,7 @@ class MixRoundStoreTests(EncounterWriterCase):
             [
                 tuple(r)
                 for r in await self._rows(
-                    "SELECT workspace_member_id, busy FROM balancer.mix_round_member WHERE encounter_id = :id"
+                    "SELECT workspace_member_id, busy FROM balancer.custom_game_round_member WHERE encounter_id = :id"
                     " ORDER BY workspace_member_id",
                     id=encounter_id,
                 )
@@ -197,8 +197,8 @@ class MixRoundStoreTests(EncounterWriterCase):
             ("encounter.team_member", "encounter_id"),
             ("encounter.game", "encounter_id"),
             ("encounter.result_audit", "encounter_id"),
-            ("balancer.mix_round", "encounter_id"),
-            ("balancer.mix_round_member", "encounter_id"),
+            ("balancer.custom_game_round", "encounter_id"),
+            ("balancer.custom_game_round_member", "encounter_id"),
         ):
             [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = :id", id=encounter_id)
             self.assertEqual(0, count, table)

@@ -18,7 +18,7 @@ WITH legacy_key AS (
      GROUP BY custom_game_id, lobby_index, created_at
 ), carried_key AS (
     SELECT e.custom_game_id, r.lobby_index, e.created_at, count(*) AS rounds
-      FROM encounter.encounter e JOIN balancer.mix_round r ON r.encounter_id = e.id
+      FROM encounter.encounter e JOIN balancer.custom_game_round r ON r.encounter_id = e.id
      GROUP BY e.custom_game_id, r.lobby_index, e.created_at
 ), legacy_ord AS (
     SELECT m.id AS match_id, m.custom_game_id, m.lobby_index, m.created_at,
@@ -27,7 +27,7 @@ WITH legacy_key AS (
 ), carried_ord AS (
     SELECT e.id AS encounter_id, e.custom_game_id, r.lobby_index, e.created_at,
            row_number() OVER (PARTITION BY e.custom_game_id, r.lobby_index, e.created_at ORDER BY e.id) AS ord
-      FROM encounter.encounter e JOIN balancer.mix_round r ON r.encounter_id = e.id
+      FROM encounter.encounter e JOIN balancer.custom_game_round r ON r.encounter_id = e.id
 ), image AS (
     SELECT lo.match_id, co.encounter_id
       FROM legacy_ord lo
@@ -40,7 +40,7 @@ WITH legacy_key AS (
 )
 SELECT 'rounds' AS class, m.id AS legacy_id, ''::text AS detail,
        EXISTS (SELECT 1 FROM image i
-                 JOIN balancer.mix_round r ON r.encounter_id = i.encounter_id
+                 JOIN balancer.custom_game_round r ON r.encounter_id = i.encounter_id
                  JOIN encounter.game g ON g.encounter_id = i.encounter_id
                  JOIN encounter.result_audit a ON a.encounter_id = i.encounter_id
                 WHERE i.match_id = m.id
@@ -62,7 +62,7 @@ SELECT 'seats', p.id, 'round ' || t.match_id || ' member ' || coalesce(p.workspa
        EXISTS (SELECT 1 FROM image i
                  JOIN encounter.team_member tm ON tm.encounter_id = i.encounter_id
                  JOIN encounter.team et ON et.id = tm.encounter_team_id
-                 JOIN balancer.mix_round_member rm ON rm.encounter_id = i.encounter_id
+                 JOIN balancer.custom_game_round_member rm ON rm.encounter_id = i.encounter_id
                                                   AND rm.workspace_member_id = tm.workspace_member_id AND NOT rm.busy
                 WHERE i.match_id = t.match_id
                   AND tm.workspace_member_id = p.workspace_member_id
@@ -77,7 +77,7 @@ SELECT 'seats', p.id, 'round ' || t.match_id || ' member ' || coalesce(p.workspa
 UNION ALL
 SELECT 'busy players', b.match_id, 'member ' || b.workspace_member_id,
        EXISTS (SELECT 1 FROM image i
-                 JOIN balancer.mix_round_member rm ON rm.encounter_id = i.encounter_id
+                 JOIN balancer.custom_game_round_member rm ON rm.encounter_id = i.encounter_id
                 WHERE i.match_id = b.match_id AND rm.workspace_member_id = b.workspace_member_id AND rm.busy)
   FROM casual.match_busy_player b;
 
