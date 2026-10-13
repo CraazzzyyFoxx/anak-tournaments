@@ -46,25 +46,26 @@ async def execute_captain_report_activity(
     value = params["value"]
     op_fn = OPERATORS[op]
 
+    # Every metric counts the filer's own rows, each of which names its encounter.
     if metric == "series_reported":
-        source = models.EncounterCaptainReport
-        user_col = models.EncounterCaptainReport.reporter_user_id
-        encounter_col = models.EncounterCaptainReport.encounter_id
-        counted = models.EncounterCaptainReport.id
+        # One report of the whole series per participation.
+        source = models.EncounterTeamReport
+        user_col = models.EncounterTeamReport.reporter_user_id
+        encounter_col = models.EncounterTeamReport.encounter_id
+        counted = models.EncounterTeamReport.id
     elif metric == "map_reports":
-        # A claim is keyed by the GAME, not the encounter: the position it
-        # belongs to is what carries the encounter.
-        source = models.EncounterMapReport
-        user_col = models.EncounterMapReport.reporter_user_id
-        encounter_col = models.EncounterGame.encounter_id
-        counted = models.EncounterMapReport.id
+        # A claim about one game's result.
+        source = models.EncounterGameClaim
+        user_col = models.EncounterGameClaim.reporter_user_id
+        encounter_col = models.EncounterGameClaim.encounter_id
+        counted = models.EncounterGameClaim.id
     elif metric == "map_codes":
-        # Codes hang off the filer's own captain report, which is what carries
-        # both the reporter identity and the encounter.
-        source = models.EncounterMapCode
-        user_col = models.EncounterCaptainReport.reporter_user_id
-        encounter_col = models.EncounterCaptainReport.encounter_id
-        counted = models.EncounterMapCode.id
+        # The replay code is written on the filer's own participation in the
+        # game, so it is credited through the claim that participation filed.
+        source = models.EncounterGameClaim
+        user_col = models.EncounterGameClaim.reporter_user_id
+        encounter_col = models.EncounterGameClaim.encounter_id
+        counted = models.EncounterGameClaim.id
     elif metric == "readiness":
         source = models.EncounterReadiness
         user_col = models.EncounterReadiness.ready_user_id
@@ -78,13 +79,12 @@ async def execute_captain_report_activity(
 
     if metric == "map_codes":
         query = query.join(
-            models.EncounterCaptainReport,
-            models.EncounterCaptainReport.id == models.EncounterMapCode.report_id,
-        )
-    if metric == "map_reports":
-        query = query.join(
-            models.EncounterGame,
-            models.EncounterGame.id == models.EncounterMapReport.game_id,
+            models.EncounterGameTeam,
+            sa.and_(
+                models.EncounterGameTeam.game_id == models.EncounterGameClaim.game_id,
+                models.EncounterGameTeam.encounter_team_id == models.EncounterGameClaim.claimant_team_id,
+                models.EncounterGameTeam.replay_code.is_not(None),
+            ),
         )
 
     query = (

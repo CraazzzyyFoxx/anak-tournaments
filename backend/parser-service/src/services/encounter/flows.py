@@ -10,10 +10,15 @@ from src.core import errors
 from . import service
 
 
+def _pool_scope(positions: dict[int, tuple[int | None, int]], encounter_id: int) -> dict[str, int | None]:
+    """The ``(stage, round)`` a map pool is keyed on; an encounter outside any bracket has neither."""
+    stage_id, round_ = positions.get(encounter_id, (None, None))
+    return {"stage_id": stage_id, "round": round_}
+
+
 async def resolve_for_log(
     session: AsyncSession,
-    home_team_id: int,
-    away_team_id: int,
+    team_ids: tuple[int, int],
     *,
     log_name: str,
     map_id: int,
@@ -22,8 +27,12 @@ async def resolve_for_log(
 ) -> models.Encounter:
     """The encounter a parsed log's two teams played.
 
-    The encounter the uploader attached wins, provided it is the pair the log
-    shows. Otherwise the pair has to name exactly one encounter: two teams can
+    ``team_ids`` are the tournament teams the log shows; an encounter is theirs
+    while both hold an active participation in it, so a team a bracket
+    correction replaced no longer resolves to the encounter it left.
+
+    The encounter the uploader attached wins, provided it is the duel between
+    the pair the log shows. Otherwise the pair has to name exactly one encounter: two teams can
     meet more than once in a tournament (groups then playoffs, a
     double-elimination rematch, a grand-final reset), and picking any of them
     files the map's statistics under the wrong series. A re-parse keeps the
@@ -37,7 +46,11 @@ async def resolve_for_log(
     """
     if attached_encounter_id is not None:
         encounter = await session.get(models.Encounter, attached_encounter_id)
-        if encounter is None or {encounter.home_team_id, encounter.away_team_id} != {home_team_id, away_team_id}:
+        if (
+            encounter is None
+            or encounter.slot_count != len(team_ids)
+            or set(team_ids) != await service.active_team_ids(session, encounter.id)
+        ):
             raise errors.ApiHTTPException(
                 status_code=400,
                 detail=[
@@ -45,14 +58,14 @@ async def resolve_for_log(
                         code="attached_encounter_mismatch",
                         msg=(
                             f"Attached encounter {attached_encounter_id} is not the one between teams "
-                            f"[{home_team_id}, {away_team_id}] this log shows"
+                            f"[{team_ids[0]}, {team_ids[1]}] this log shows"
                         ),
                     )
                 ],
             )
         return encounter
 
-    candidates = await service.list_by_teams(session, home_team_id, away_team_id)
+    candidates = await service.list_by_teams(session, *team_ids)
     if len(candidates) == 1:
         return candidates[0]
     if not candidates:
@@ -61,7 +74,7 @@ async def resolve_for_log(
             detail=[
                 errors.ApiExc(
                     code="not_found",
-                    msg=f"Encounter with teams [{home_team_id}, {away_team_id}] not found",
+                    msg=f"Encounter with teams [{team_ids[0]}, {team_ids[1]}] not found",
                 )
             ],
         )
@@ -72,10 +85,11 @@ async def resolve_for_log(
 
     # Each narrowing only applies when it leaves someone: a map outside every
     # pool is the map-pool check's refusal to make, not this one's.
+    positions = await service.bracket_positions(session, [encounter.id for encounter in candidates])
     candidates = [
         encounter
         for encounter in candidates
-        if pool_allows(map_pools, stage_id=encounter.stage_id, round=encounter.round, item_id=map_id)
+        if pool_allows(map_pools, **_pool_scope(positions, encounter.id), item_id=map_id)
     ] or candidates
     if len(candidates) > 1:
         played = await service.encounter_ids_with_map(session, [encounter.id for encounter in candidates], map_id)
@@ -90,7 +104,7 @@ async def resolve_for_log(
             errors.ApiExc(
                 code="encounter_ambiguous",
                 msg=(
-                    f"Teams [{home_team_id}, {away_team_id}] play several encounters ({candidate_ids}) "
+                    f"Teams [{team_ids[0]}, {team_ids[1]}] play several encounters ({candidate_ids}) "
                     f"that map {map_id} fits; attach the log to one of them"
                 ),
             )

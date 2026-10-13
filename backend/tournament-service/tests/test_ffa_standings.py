@@ -27,7 +27,7 @@ os.environ["DEBUG"] = "true"
 standings_service = importlib.import_module("src.services.standings.service")
 
 from shared.core.enums import StageType  # noqa: E402
-from shared.domain.ffa_scoring import FfaGameLine  # noqa: E402
+from shared.domain.encounter_scoring import GameLine  # noqa: E402
 from tests._stage_regulation import stage_regulation  # noqa: E402
 
 #: Places pay 10/6/4/2 and every kill pays 1 -- enough for two teams to reach
@@ -69,9 +69,14 @@ def _item(team_ids: list[int], *, item_id: int = 147) -> SimpleNamespace:
     )
 
 
-def _game(rows: list[tuple[int, int, int, int]]) -> tuple[FfaGameLine, ...]:
+def _game(rows: list[tuple[int, int, int, int]]) -> tuple[GameLine, ...]:
     return tuple(
-        FfaGameLine(team_id=team_id, placement=placement, stats={"kills": kills, "deaths": deaths})
+        GameLine(
+            encounter_team_id=team_id,
+            score=None,
+            placement=placement,
+            values={"kills": kills, "deaths": deaths},
+        )
         for team_id, placement, kills, deaths in rows
     )
 

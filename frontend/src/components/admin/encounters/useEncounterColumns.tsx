@@ -10,6 +10,7 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
 import TeamName from "@/components/TeamName";
 import { pregameRoomHref } from "@/lib/encounter/pregame-room";
+import { duelSeats, isLobby, seatsBySlot, seatTeam } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
 
 import { EncounterStatusCell, ScheduledAtCell, encounterScopeLabel } from "./EncounterCells";
@@ -31,6 +32,7 @@ export function useEncounterColumns({
   onDelete: (encounter: Encounter) => void;
 }>): ColumnDef<Encounter>[] {
   const t = useTranslations("adminMatches.encounters");
+  const commonT = useTranslations("adminMatches.common");
   return useMemo<ColumnDef<Encounter>[]>(
     () => [
       {
@@ -52,9 +54,15 @@ export function useEncounterColumns({
               {row.original.name}
             </p>
             <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-              <TeamName team={row.original.home_team} fallback="TBD" size="xs" />
-              <span>{t("vs")}</span>
-              <TeamName team={row.original.away_team} fallback="TBD" size="xs" />
+              {isLobby(row.original) ? (
+                <span>{t("teamsCount", { count: row.original.teams.length, total: row.original.slot_count })}</span>
+              ) : (
+                <>
+                  <TeamName team={seatTeam(duelSeats(row.original.teams)[0])} fallback={commonT("tbd")} size="xs" />
+                  <span>{t("vs")}</span>
+                  <TeamName team={seatTeam(duelSeats(row.original.teams)[1])} fallback={commonT("tbd")} size="xs" />
+                </>
+              )}
             </p>
           </div>
         )
@@ -78,13 +86,13 @@ export function useEncounterColumns({
         cell: ({ row }) => <ScheduledAtCell value={row.original.scheduled_at} />
       },
       {
-        accessorKey: "score",
+        id: "score",
         header: t("score"),
         size: 92,
         enableSorting: false,
         cell: ({ row }) => (
           <span className="font-mono text-sm font-semibold tabular-nums">
-            {row.original.score.home} &ndash; {row.original.score.away}
+            {seatsBySlot(row.original.teams).map((seat) => seat.score).join(" \u2013 ")}
           </span>
         )
       },
@@ -124,7 +132,7 @@ export function useEncounterColumns({
             label: t("openRoom"),
             icon: ListChecks,
             // An FFA lobby has no captain room to open.
-            hidden: row.format === "ffa",
+            hidden: isLobby(row),
             href: pregameRoomHref(row.tournament_id, row.id, returnTo)
           },
           { label: t("edit"), icon: Pencil, hidden: !canUpdate, onSelect: () => onEdit(row) },
@@ -141,6 +149,6 @@ export function useEncounterColumns({
     ],
     // `onEdit` was missing here once: the kebab's "Edit encounter" called
     // whichever closure the first render happened to build.
-    [canUpdate, canDelete, returnTo, onEdit, onDelete, t]
+    [canUpdate, canDelete, returnTo, onEdit, onDelete, t, commonT]
   );
 }

@@ -204,16 +204,7 @@ export default class userService {
     perPage: number = 10,
     sort: string = "played_at",
     order: string = "desc",
-    entities: string[] = [
-      "tournament",
-      "stage",
-      "stage_item",
-      "home_team",
-      "home_team.players",
-      "away_team",
-      "away_team.players",
-      "matches.map"
-    ],
+    entities: string[],
     filters?: {
       result?: "win" | "loss" | "draw";
       stage?: "group" | "playoffs" | "finals";

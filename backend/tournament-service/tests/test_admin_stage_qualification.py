@@ -47,13 +47,25 @@ class _Result:
         return self._rows
 
 
-def _session(results: list) -> SimpleNamespace:
+def _session(results: list, *, position: SimpleNamespace | None = None) -> SimpleNamespace:
+    """``position`` is what ``session.get(BracketEncounter, …)`` answers: an
+    encounter's stage item lives there now (D22)."""
     return SimpleNamespace(
         execute=AsyncMock(side_effect=[_Result(rows) for rows in results]),
         scalar=AsyncMock(return_value=None),
+        get=AsyncMock(return_value=position),
         commit=AsyncMock(),
         flush=AsyncMock(),
     )
+
+
+def _position(stage_item_id: int | None = 200) -> SimpleNamespace:
+    return SimpleNamespace(encounter_id=500, stage_id=2, stage_item_id=stage_item_id, round=1)
+
+
+def _seat(slot: int, team_id: int) -> SimpleNamespace:
+    """One live participation of the encounter being requalified."""
+    return SimpleNamespace(id=500 * 10 + slot, encounter_id=500, slot=slot, team_id=team_id, seed=slot, active=True)
 
 
 def _standing(*, stage_item_id: int, position: int, team_id: int, tie_group: int | None) -> SimpleNamespace:
@@ -100,12 +112,11 @@ def _playoff(inputs: list) -> SimpleNamespace:
 
 
 def _encounter(*, home_team_id: int, away_team_id: int) -> SimpleNamespace:
+    """``home_team_id``/``away_team_id`` name the teams seated in slots 1 and 2;
+    the encounter row itself carries neither column."""
     return SimpleNamespace(
         id=500,
-        stage_id=2,
-        stage_item_id=200,
-        home_team_id=home_team_id,
-        away_team_id=away_team_id,
+        slot_count=2,
         name="A vs B",
         status=enums.EncounterStatus.OPEN,
         home_score=0,
@@ -181,6 +192,7 @@ class DownstreamRequalificationTests(IsolatedAsyncioTestCase):
                 ],
                 [],  # no touched stage items
                 [encounter],  # the encounter holding the outgoing team
+                [_seat(1, 1), _seat(2, 2)],  # its live participations
                 [(3, "Charlie"), (2, "Bravo")],  # team names
             ]
         )
@@ -188,12 +200,18 @@ class DownstreamRequalificationTests(IsolatedAsyncioTestCase):
         with (
             patch.object(service, "get_stages_by_tournament", AsyncMock(return_value=[stage])),
             patch.object(stage_service, "after_encounter_teams_changed", sync),
+            patch.object(stage_service, "vacate_slot", AsyncMock()) as vacate,
+            patch.object(stage_service, "place_team", AsyncMock()) as seat,
+            patch.object(stage_service, "active_teams", AsyncMock(return_value=[_seat(1, 3), _seat(2, 2)])),
         ):
             applied = await service.requalify_downstream_inputs(session, 99)
 
         self.assertEqual(1, applied)
         self.assertEqual(3, inp.team_id)
-        self.assertEqual(3, encounter.home_team_id)
+        # The outgoing occupant is RETIRED and the replacement seated: a
+        # participation is never updated in place (D55).
+        self.assertEqual([1], [call.kwargs["slot"] for call in vacate.await_args_list])
+        self.assertEqual([(1, 3)], [(call.kwargs["slot"], call.kwargs["team_id"]) for call in seat.await_args_list])
         self.assertEqual("Charlie vs Bravo", encounter.name)
         sync.assert_awaited_once()
 
@@ -213,18 +231,25 @@ class DownstreamRequalificationTests(IsolatedAsyncioTestCase):
                 ],
                 [],  # no touched stage items
                 [encounter],  # one query for the whole item
+                [_seat(1, 1), _seat(2, 2)],
                 [(1, "Alpha"), (2, "Bravo")],
             ]
         )
         with (
             patch.object(service, "get_stages_by_tournament", AsyncMock(return_value=[stage])),
             patch.object(stage_service, "after_encounter_teams_changed", AsyncMock()),
+            patch.object(stage_service, "vacate_slot", AsyncMock()),
+            patch.object(stage_service, "place_team", AsyncMock()) as seat,
+            patch.object(stage_service, "active_teams", AsyncMock(return_value=[_seat(1, 2), _seat(2, 1)])),
         ):
             applied = await service.requalify_downstream_inputs(session, 99)
 
         self.assertEqual(2, applied)
         self.assertEqual((2, 1), (first.team_id, second.team_id))
-        self.assertEqual((2, 1), (encounter.home_team_id, encounter.away_team_id))
+        # Both seats move in one pass, so neither rename reads the other's result.
+        self.assertEqual(
+            [(1, 2), (2, 1)], [(call.kwargs["slot"], call.kwargs["team_id"]) for call in seat.await_args_list]
+        )
         self.assertEqual("Bravo vs Alpha", encounter.name)
 
     async def test_started_downstream_is_left_alone(self) -> None:
@@ -289,7 +314,7 @@ class SourceCorrectionGuardTests(IsolatedAsyncioTestCase):
     """Item 10, other half: refuse what re-qualification can no longer repair."""
 
     async def test_started_downstream_blocks_the_correction(self) -> None:
-        session = _session([[200], [200]])
+        session = _session([[200], [200]], position=_position())
         with self.assertRaises(Exception) as ctx:
             await service.assert_source_correction_allowed(session, _encounter(home_team_id=1, away_team_id=2))
 
@@ -297,11 +322,11 @@ class SourceCorrectionGuardTests(IsolatedAsyncioTestCase):
         self.assertIn("downstream stage already in progress", str(ctx.exception.detail))
 
     async def test_untouched_downstream_allows_the_correction(self) -> None:
-        session = _session([[200], []])
+        session = _session([[200], []], position=_position())
         await service.assert_source_correction_allowed(session, _encounter(home_team_id=1, away_team_id=2))
 
     async def test_no_downstream_inputs_short_circuits(self) -> None:
-        session = _session([[]])
+        session = _session([[]], position=_position())
         await service.assert_source_correction_allowed(session, _encounter(home_team_id=1, away_team_id=2))
         self.assertEqual(1, session.execute.await_count)
 

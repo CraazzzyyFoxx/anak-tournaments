@@ -32,9 +32,19 @@ TOURNAMENT_STATUS_ENUM = Enum(
 
 class Tournament(db.TimeStampIntegerMixin):
     __tablename__ = "tournament"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        # Target of ``fk_encounter_owner``: a match-layer row copies all three
+        # and the database checks the copy against this key (D62).
+        UniqueConstraint("id", "workspace_id", "discipline", name="uq_tournament_owner_key"),
+        {"schema": "tournament"},
+    )
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey(Workspace.id, ondelete="CASCADE"), index=True)
+    #: Which game this tournament is played in (``catalog.discipline.code``).
+    #: ``overwatch`` everywhere in V1; the registry is a stub until V3 (D48).
+    discipline: Mapped[str] = mapped_column(
+        String(32), ForeignKey("catalog.discipline.code"), default="overwatch", server_default="overwatch"
+    )
     name: Mapped[str] = mapped_column(String())
     # Public-URL identity (``/tournaments/{slug}``), globally unique across every
     # workspace -- the public tournament route carries no workspace segment, so a

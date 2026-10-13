@@ -1,7 +1,17 @@
 """Shared pick-ban helpers that outlived the legacy map-veto session.
 
 ``VetoSessionService`` and the ``MapVetoConfig`` tables are gone. What remains
-is the sequence/seed vocabulary ``pick_ban_session`` still calls.
+is the seed vocabulary ``pick_ban_session`` still calls -- which PARTICIPATION
+opens round 1, and where that answer came from -- plus the one gate the RESULT
+paths have to ask of the room: :func:`side_pick_pending`.
+
+Seeding reads the bracket, never the card's order: a seat's slot says where a
+team sits, not how it was ranked. The bracket slot it was fed into comes first,
+the previous stage's standing second, and with neither the first seat opens --
+``VetoSeedSource.FALLBACK_FIRST_SLOT``.
+
+This module imports no service, which is what lets ``games``, ``map_report``
+and ``pick_ban_session`` all read it without a cycle.
 """
 
 from __future__ import annotations
@@ -12,8 +22,12 @@ import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import MapPickSide, VetoSeedSource
+from shared.core.enums import VetoSeedSource
+from shared.models.encounter.team import EncounterTeam
+from shared.repository import BracketEncounterRepository
 from src import models
+
+_positions = BracketEncounterRepository()
 
 REASON_TEAMS_UNKNOWN = "teams_unknown"
 REASON_NOT_CONFIGURED = "not_configured"
@@ -23,105 +37,163 @@ REASON_BRACKET_PREVIEW = "bracket_preview"
 
 SLOT_CANDIDATE_FLOOR = 2
 
+#: A pick-ban room is a contest between two seats; a lobby has nobody to veto
+#: against. Lives here rather than on ``pick_ban_session`` so ``room_reconcile``
+#: -- which that module imports -- can read it without a cycle.
+ROOM_SLOT_COUNT = 2
+
+
+async def side_pick_pending(session: AsyncSession, encounter_id: int, position: int) -> bool:
+    """Whether series position ``position`` still owes a ``side_pick`` an answer.
+
+    A game cannot START while the side it is played on is undecided (spec §6
+    row 9): the position may be named, but no claim and no accepted result may
+    land on it until the pick resolves -- or the clock flips a coin for it.
+
+    Read straight off ``resolved_sequence_json`` and the submission log rather
+    than through the step objects: the result paths must not have to load a
+    room's whole runtime to ask one question, and an UNBOUND step (``actors:
+    []``, waiting on this very pick) counts as pending by the same rule.
+    """
+    rows = (
+        await session.execute(
+            select(models.PickBanSession.id, models.PickBanSession.resolved_sequence_json).where(
+                models.PickBanSession.encounter_id == encounter_id
+            )
+        )
+    ).all()
+    owed: dict[int, set[int | None]] = {}
+    for session_id, sequence in rows:
+        for step in sequence or []:
+            if step.get("action") != "side_pick" or (step.get("round") or 1) != position:
+                continue
+            actors = step.get("actors") or []
+            if not actors:
+                return True  # unbound: the pick itself has not been resolved
+            owed.setdefault(session_id, set())
+            for actor in actors:
+                owed[session_id].add((step["index"], actor))
+    if not owed:
+        return False
+    for session_id, keys in owed.items():
+        answered = {
+            (row.step_index, row.encounter_team_id)
+            for row in (
+                await session.execute(
+                    select(models.PickBanSubmission).where(
+                        models.PickBanSubmission.session_id == session_id,
+                        models.PickBanSubmission.state == "revealed",
+                    )
+                )
+            ).scalars()
+        }
+        if keys - answered:
+            return True
+    return False
+
 
 @dataclass(frozen=True)
 class SeedResolution:
-    home_seed: int | None
-    away_seed: int | None
+    """Who opens round 1, and on what evidence.
+
+    ``opener`` is a participation id; ``seeds`` is ``{participation: seed}`` for
+    every seat the source could rank, kept so the journal records what the
+    decision was made on (the session row stores only the two).
+    """
+
+    opener: int
     seed_source: VetoSeedSource
-    first_side: MapPickSide
+    seeds: dict[int, int]
 
 
-def decide_seeds(
-    home_slot: int | None,
-    away_slot: int | None,
-    home_position: int | None,
-    away_position: int | None,
+def decide_seeds(ordered: list[EncounterTeam], seeds: dict[int, int], source: VetoSeedSource) -> SeedResolution:
+    """Pure seed decision: the lowest seed opens, ties fall back to the first slot.
+
+    ``ordered`` is the encounter's live seats in slot order, so "the first
+    slot" is simply the first of them -- the same tiebreak the two-sided
+    version spelled ``home``.
+    """
+    ranked = [(seeds[team.id], team.slot, team.id) for team in ordered if team.id in seeds]
+    if len(ranked) == len(ordered) and len({seed for seed, _slot, _id in ranked}) == len(ranked):
+        return SeedResolution(opener=min(ranked)[2], seed_source=source, seeds=seeds)
+    return SeedResolution(opener=ordered[0].id, seed_source=VetoSeedSource.FALLBACK_FIRST_SLOT, seeds=seeds)
+
+
+async def resolve_seeds(
+    session: AsyncSession, encounter: models.Encounter, teams: list[EncounterTeam]
 ) -> SeedResolution:
-    """Pure seed decision: bracket slot -> previous-stage standings -> fallback home."""
-    if home_slot is not None and away_slot is not None:
-        if home_slot == away_slot:
-            return SeedResolution(home_slot, away_slot, VetoSeedSource.FALLBACK_HOME, MapPickSide.HOME)
-        first = MapPickSide.HOME if home_slot < away_slot else MapPickSide.AWAY
-        return SeedResolution(home_slot, away_slot, VetoSeedSource.BRACKET_SLOT, first)
-    if home_position is not None and away_position is not None:
-        if home_position == away_position:
-            return SeedResolution(home_position, away_position, VetoSeedSource.FALLBACK_HOME, MapPickSide.HOME)
-        first = MapPickSide.HOME if home_position < away_position else MapPickSide.AWAY
-        return SeedResolution(home_position, away_position, VetoSeedSource.STANDINGS, first)
-    return SeedResolution(None, None, VetoSeedSource.FALLBACK_HOME, MapPickSide.HOME)
+    """Resolve every seat's seed for the encounter (snapshot at session init).
 
+    ``teams`` are the live participations in slot order; the caller has them
+    already, and loading them twice would let the two reads disagree.
+    """
+    if not teams:
+        raise ValueError("an encounter with no participations has no pick-ban opener")
+    position = await _positions.get_position(session, encounter.id)
+    source_team_ids = {team.team_id: team.id for team in teams if team.team_id is not None}
+    if not source_team_ids or position is None:
+        return SeedResolution(teams[0].id, VetoSeedSource.FALLBACK_FIRST_SLOT, {})
 
-async def resolve_seeds(session: AsyncSession, encounter: models.Encounter) -> SeedResolution:
-    """Resolve both teams' seeds for the encounter (snapshot at session init)."""
-    home_team_id = encounter.home_team_id
-    away_team_id = encounter.away_team_id
-    if home_team_id is None or away_team_id is None:
-        return decide_seeds(None, None, None, None)
-    team_ids = (home_team_id, away_team_id)
-
-    home_slot: int | None = None
-    away_slot: int | None = None
-    if encounter.stage_item_id is not None:
+    if position.stage_item_id is not None:
         rows = await session.execute(
             select(models.StageItemInput.team_id, models.StageItemInput.slot).where(
-                models.StageItemInput.stage_item_id == encounter.stage_item_id,
-                models.StageItemInput.team_id.in_(team_ids),
+                models.StageItemInput.stage_item_id == position.stage_item_id,
+                models.StageItemInput.team_id.in_(tuple(source_team_ids)),
             )
         )
-        for team_id, slot in rows.all():
-            if team_id == home_team_id:
-                home_slot = slot
-            elif team_id == away_team_id:
-                away_slot = slot
-    if home_slot is not None and away_slot is not None:
-        return decide_seeds(home_slot, away_slot, None, None)
+        slots = {source_team_ids[team_id]: slot for team_id, slot in rows.all() if team_id in source_team_ids}
+        if len(slots) == len(teams):
+            return decide_seeds(teams, slots, VetoSeedSource.BRACKET_SLOT)
 
-    home_position: int | None = None
-    away_position: int | None = None
-    if encounter.stage_id is not None:
-        # The stage that actually feeds this bracket: follow the TENTATIVE
-        # inputs' ``source_stage_item_id`` back to its stage. Plain stage order
-        # cannot answer it once a phase runs parallel divisions — "the earlier
-        # stage" is then two stages, only one of which holds these teams.
-        previous_stage_id = None
-        if encounter.stage_item_id is not None:
-            previous_stage_id = await session.scalar(
-                select(models.StageItem.stage_id)
-                .join(
-                    models.StageItemInput,
-                    models.StageItemInput.source_stage_item_id == models.StageItem.id,
-                )
-                .where(models.StageItemInput.stage_item_id == encounter.stage_item_id)
-                .limit(1)
+    previous_stage_id = await _previous_stage_id(session, encounter, position)
+    if previous_stage_id is not None:
+        rows = await session.execute(
+            select(models.Standing.team_id, sa.func.min(models.Standing.position))
+            .where(
+                models.Standing.stage_id == previous_stage_id,
+                models.Standing.team_id.in_(tuple(source_team_ids)),
             )
-        if previous_stage_id is None:
-            current_order = await session.scalar(
-                select(models.Stage.order).where(models.Stage.id == encounter.stage_id)
-            )
-            if current_order is not None:
-                previous_stage_id = await session.scalar(
-                    select(models.Stage.id)
-                    .where(
-                        models.Stage.tournament_id == encounter.tournament_id,
-                        models.Stage.order < current_order,
-                    )
-                    .order_by(models.Stage.order.desc(), models.Stage.id.desc())
-                    .limit(1)
-                )
-        if previous_stage_id is not None:
-            rows = await session.execute(
-                select(models.Standing.team_id, sa.func.min(models.Standing.position))
-                .where(
-                    models.Standing.stage_id == previous_stage_id,
-                    models.Standing.team_id.in_(team_ids),
-                )
-                .group_by(models.Standing.team_id)
-            )
-            for team_id, position in rows.all():
-                if team_id == home_team_id:
-                    home_position = position
-                elif team_id == away_team_id:
-                    away_position = position
+            .group_by(models.Standing.team_id)
+        )
+        positions = {source_team_ids[team_id]: place for team_id, place in rows.all() if team_id in source_team_ids}
+        if len(positions) == len(teams):
+            return decide_seeds(teams, positions, VetoSeedSource.STANDINGS)
 
-    return decide_seeds(home_slot, away_slot, home_position, away_position)
+    return SeedResolution(teams[0].id, VetoSeedSource.FALLBACK_FIRST_SLOT, {})
+
+
+async def _previous_stage_id(
+    session: AsyncSession, encounter: models.Encounter, position: models.BracketEncounter
+) -> int | None:
+    """The stage that actually feeds this bracket.
+
+    Follow the TENTATIVE inputs' ``source_stage_item_id`` back to its stage.
+    Plain stage order cannot answer it once a phase runs parallel divisions —
+    "the earlier stage" is then two stages, only one of which holds these teams.
+    """
+    if position.stage_id is None:
+        return None
+    if position.stage_item_id is not None:
+        source = await session.scalar(
+            select(models.StageItem.stage_id)
+            .join(
+                models.StageItemInput,
+                models.StageItemInput.source_stage_item_id == models.StageItem.id,
+            )
+            .where(models.StageItemInput.stage_item_id == position.stage_item_id)
+            .limit(1)
+        )
+        if source is not None:
+            return source
+    current_order = await session.scalar(select(models.Stage.order).where(models.Stage.id == position.stage_id))
+    if current_order is None:
+        return None
+    return await session.scalar(
+        select(models.Stage.id)
+        .where(
+            models.Stage.tournament_id == encounter.tournament_id,
+            models.Stage.order < current_order,
+        )
+        .order_by(models.Stage.order.desc(), models.Stage.id.desc())
+        .limit(1)
+    )

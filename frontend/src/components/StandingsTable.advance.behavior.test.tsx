@@ -58,12 +58,20 @@ function stage(items: StageItem[]): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
     best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    has_custom_bracket: false,
     challonge_id: null,
     challonge_slug: null,
     items
@@ -168,6 +176,34 @@ describe("standings cut-line", () => {
 
     expect(advancingRanks()).toEqual([1, 2, 3]);
     expect(cutAfterRow()).toBe(3);
+  });
+});
+
+describe("standings form", () => {
+  it("reads each result from the team's own seat, whichever slot it holds", async () => {
+    const group = groupItem(101, null);
+    const groups = stage([group]);
+    const seat = (slot: number, teamId: number, score: number) => ({
+      id: slot,
+      slot,
+      team_id: teamId,
+      name: `T${teamId}`,
+      seed: null,
+      score,
+      placement: null,
+      active: true
+    });
+    // Team 1 sits in slot 2 and wins 2–0, then sits in slot 1 and draws 1–1.
+    const history = [
+      { teams: [seat(1, 2, 0), seat(2, 1, 2)] },
+      { teams: [seat(1, 1, 1), seat(2, 2, 1)] }
+    ] as unknown as Standings["matches_history"];
+
+    await mount([standing(1, group, groups, { matches_history: history })], [groups]);
+
+    const chips = [...container.querySelectorAll(".form-chips .fc")].map((chip) => chip.textContent);
+    expect(chips).toEqual(["W", "T"]);
+    expect(container.querySelector(".st-diff")?.textContent).toBe("+2");
   });
 });
 

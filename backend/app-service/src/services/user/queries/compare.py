@@ -10,6 +10,7 @@ from shared.division_grid import DivisionGrid, division_filter_predicates
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models
 from src.core import enums
+from src.domain.encounter_seats import Seat
 
 from ._scope import (
     _compare_user_scope_exists,
@@ -177,31 +178,23 @@ class UserCompareQueries:
 
         encounter_tournament = aliased(models.Tournament)
 
-        def _maps_for_side(team_fk: typing.Any, won: typing.Any, lost: typing.Any) -> sa.Select:
-            # One equality join per side. `home_team_id = team.id OR away_team_id =
-            # team.id` cannot use either FK index and is what timed the compare
-            # page out (OWT-TOURNAMENTS-21T) even after the cohort pushdown.
-            return (
+        map_seat = Seat(name="map_seat")
+        map_sides = (
+            map_seat.join(
                 sa.select(
                     scoped_players.c.user_id,
-                    won.label("maps_won"),
-                    lost.label("maps_lost"),
+                    map_seat.maps_won.label("maps_won"),
+                    map_seat.maps_lost.label("maps_lost"),
                 )
                 .select_from(scoped_players)
-                .join(models.Team, models.Team.id == scoped_players.c.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .join(encounter_tournament, encounter_tournament.id == models.Encounter.tournament_id)
-                .where(
-                    encounter_tournament.is_finished.is_(True),
-                    encounter_tournament.is_league.is_(False),
-                    *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
-                )
+                .join(models.Team, models.Team.id == scoped_players.c.team_id),
+                models.Team.id,
             )
-
-        map_sides = (
-            _maps_for_side(models.Encounter.home_team_id, models.Encounter.home_score, models.Encounter.away_score)
-            .union_all(
-                _maps_for_side(models.Encounter.away_team_id, models.Encounter.away_score, models.Encounter.home_score)
+            .join(encounter_tournament, encounter_tournament.id == models.Encounter.tournament_id)
+            .where(
+                encounter_tournament.is_finished.is_(True),
+                encounter_tournament.is_league.is_(False),
+                *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
             )
             .subquery("compare_map_sides")
         )
@@ -262,24 +255,22 @@ class UserCompareQueries:
             .cte("compare_phase_placements")
         )
 
-        def _closeness_for_side(team_fk: typing.Any) -> sa.Select:
-            return (
+        closeness_seat = Seat(name="closeness_seat")
+        closeness_sides = (
+            closeness_seat.join(
                 sa.select(
                     scoped_players.c.user_id,
                     models.Encounter.closeness.label("closeness"),
                 )
                 .select_from(scoped_players)
-                .join(models.Team, models.Team.id == scoped_players.c.team_id)
-                .join(models.Encounter, team_fk == models.Team.id)
-                .where(
-                    models.Encounter.closeness.isnot(None),
-                    *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
-                )
+                .join(models.Team, models.Team.id == scoped_players.c.team_id),
+                models.Team.id,
+                duel=False,
             )
-
-        closeness_sides = (
-            _closeness_for_side(models.Encounter.home_team_id)
-            .union_all(_closeness_for_side(models.Encounter.away_team_id))
+            .where(
+                models.Encounter.closeness.isnot(None),
+                *([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []),
+            )
             .subquery("compare_closeness_sides")
         )
         average_closeness = (

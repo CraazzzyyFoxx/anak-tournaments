@@ -14,9 +14,10 @@ function match(
     id,
     round,
     status: score ? "completed" : "open",
-    score: { home: score?.[0] ?? 0, away: score?.[1] ?? 0 },
-    home_team_id: home,
-    away_team_id: away
+    teams: [
+      { slot: 1, team_id: home, name: `T${home}`, score: score?.[0] ?? 0 },
+      { slot: 2, team_id: away, name: `T${away}`, score: score?.[1] ?? 0 }
+    ]
   };
 }
 
@@ -56,7 +57,7 @@ describe("swissPools", () => {
       ])
     );
     expect(result.rounds[2].pools.map((pool) => pool.label)).toEqual(["2-0"]);
-    expect(result.floats.get(5)).toEqual({ side: "home", label: "1-1" });
+    expect(result.floats.get(5)).toEqual({ slot: 1, label: "1-1" });
   });
 
   it("scores a sat-out round as a bye win, round one included", () => {

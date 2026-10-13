@@ -9,7 +9,7 @@ import type { StreamEntry, TournamentStreams } from "@/types/stream.types";
  * import-free is what makes it testable without a render or a query client.
  *
  * The key is `StreamTeam.id` — the tournament team id, the same value
- * `Encounter.home_team_id`/`away_team_id` carry — so a bracket slot looks itself
+ * `EncounterTeam.team_id` carries — so a bracket slot looks itself
  * up directly with no second mapping in between.
  */
 export function buildLiveTeamStreams(

@@ -20,7 +20,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
-import type { Encounter, Match } from "@/types/encounter.types";
+import type { Encounter, EncounterTeam, Match } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
 import type { StageSummary, StageType, Tournament } from "@/types/tournament.types";
 
@@ -95,12 +95,20 @@ function stage(id: number, name: string, order: number, stageType: StageType): S
     is_completed: true,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
     best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    has_custom_bracket: false,
     challonge_id: null,
     challonge_slug: null
   };
@@ -195,6 +203,21 @@ function mapRow(id: number, encounterId: number, home: Team, away: Team): Match 
   };
 }
 
+/** The live seat a team holds in an encounter; `score` is its standing there. */
+function seat(slot: number, team: Team, score: number): EncounterTeam {
+  return {
+    id: team.id * 10 + slot,
+    slot,
+    team_id: team.id,
+    name: team.name,
+    seed: null,
+    score,
+    placement: null,
+    active: true,
+    team
+  };
+}
+
 /**
  * One settled encounter. `at` is midday UTC on purpose: a fixture timed near
  * midnight would fall on a different calendar day depending on the machine's
@@ -204,8 +227,8 @@ function encounter(
   id: number,
   stageSummary: StageSummary,
   round: number,
-  home: Team,
-  away: Team,
+  one: Team,
+  two: Team,
   at: string,
   options: { group?: string; scheduled?: boolean } = {}
 ): Encounter {
@@ -214,10 +237,8 @@ function encounter(
     id,
     created_at: new Date(0),
     updated_at: null,
-    name: `${home.name} vs ${away.name}`,
-    home_team_id: home.id,
-    away_team_id: away.id,
-    score: { home: 2, away: 0 },
+    name: `${one.name} vs ${two.name}`,
+    slot_count: 2,
     round,
     best_of: 2,
     tournament_id: TOURNAMENT_ID,
@@ -228,15 +249,17 @@ function encounter(
     closeness: 6,
     has_logs: true,
     result_status: "confirmed",
+    result_source: "series_claim",
+    result_version: 1,
     scheduled_at: options.scheduled === true ? ended : null,
     started_at: ended,
     ended_at: ended,
     current_map_index: null,
     confirmed_at: ended,
     sources: [],
-    matches: [mapRow(id * 10, id, home, away)],
-    home_team: home,
-    away_team: away,
+    matches: [mapRow(id * 10, id, one, two)],
+    games: [],
+    teams: [seat(1, one, 2), seat(2, two, 0)],
     tournament: TOURNAMENT,
     stage: { ...stageSummary, items: [] },
     stage_item: options.group
@@ -414,7 +437,7 @@ describe("tournament matches", () => {
     const live: Encounter = {
       ...encounter(506, PLAYOFFS, 3, ALPHA, BRAVO, "2025-09-01T11:00:00Z", { scheduled: true }),
       status: "in_progress",
-      score: { home: 1, away: 1 },
+      teams: [seat(1, ALPHA, 1), seat(2, BRAVO, 1)],
       ended_at: null,
       confirmed_at: null
     };

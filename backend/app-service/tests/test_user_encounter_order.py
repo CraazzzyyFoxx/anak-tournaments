@@ -72,27 +72,29 @@ def test_settled_map_ids_ignores_bans_and_sorts_by_action_index():
     assert settled_map_ids(rows) == [31, 44, 15]
 
 
+def _seats(first: int | None, second: int | None) -> list[SimpleNamespace]:
+    return [SimpleNamespace(slot=1, team_id=first), SimpleNamespace(slot=2, team_id=second)]
+
+
 def test_encounter_oriented_score_flips_swapped_log():
-    encounter = SimpleNamespace(home_team_id=2155, away_team_id=2152)
     match = SimpleNamespace(
         home_team_id=2152,
         away_team_id=2155,
         home_score=0,
         away_score=3,
     )
-    score = encounter_oriented_score(match, encounter)
+    score = encounter_oriented_score(match, _seats(2155, 2152))
     assert score.home == 3
     assert score.away == 0
 
 
 def test_encounter_oriented_score_keeps_aligned_log():
-    encounter = SimpleNamespace(home_team_id=2155, away_team_id=2152)
     match = SimpleNamespace(
         home_team_id=2155,
         away_team_id=2152,
         home_score=2,
         away_score=1,
     )
-    score = encounter_oriented_score(match, encounter)
+    score = encounter_oriented_score(match, _seats(2155, 2152))
     assert score.home == 2
     assert score.away == 1

@@ -69,6 +69,7 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`dev-site.md`](./dev-site.md) | A second deployment of the stack (dev/staging): what differs from production, deploy, data refresh |
 | [`workspace-domains.md`](./workspace-domains.md) | Workspace subdomains and custom domains: DNS, certificates, verification |
 | [`../backend/analytics-service/docs/runbook-shift-recompute.md`](../backend/analytics-service/docs/runbook-shift-recompute.md) | Recomputing OpenSkill rating shifts |
+| [`encounter-layer-v1-release.md`](./encounter-layer-v1-release.md) | Shipping the encounter layer V1: breaking API changes, the preflight → upgrade → recompute → reconcile cutover, what is unmeasured |
 
 ## Designs, plans and reviews
 

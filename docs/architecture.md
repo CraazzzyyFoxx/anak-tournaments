@@ -166,9 +166,9 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
-`public`, `tournament`, `matches`, `overwatch`, `overwatch_rank`, `balancer`,
-`achievements`, `analytics`, `log_processing`, `realtime`. Full entity diagrams are in
-[`docs/database_erd.md`](./database_erd.md).
+`public`, `tournament`, `encounter`, `catalog`, `matches`, `overwatch`, `overwatch_rank`,
+`balancer`, `achievements`, `analytics`, `log_processing`, `realtime`. Full entity diagrams are
+in [`docs/database_erd.md`](./database_erd.md).
 
 - **Multitenancy.** `public.workspace` is the tenant root. Nearly every business table
   carries `workspace_id` (directly or transitively via `tournament` / `workspace_member`);
@@ -179,6 +179,25 @@ All services share **one PostgreSQL database** with **one SQLAlchemy metadata** 
 - **Dual identity.** `auth.user` (login account, owned by identity-svc) is distinct from
   `players.user` (domain player, owned by app-svc), linked 1:0..1 via `auth_user_id`. A
   player can exist without a login ("shadow player"). Full reference: [`docs/users-identity.md`](./users-identity.md).
+- **Match layer (`encounter`) and disciplines (`catalog`).** A meeting of N participants is
+  one `encounter.encounter` whatever its owner or format: a duel is `slot_count = 2`, a lobby is
+  N, and the API returns `teams[]` with slot numbers, never home/away. Each seat is an
+  append-only participation (`encounter.team`) with a roster snapshot; games, per-participation
+  game results, game claims, series reports, the result journal, the scoring rule and the
+  pre-game pick/ban room hang off the encounter in the same schema. The bracket position
+  (stage, stage item, round) and the advancement edges stay in `tournament`
+  (`bracket_encounter`, `encounter_link`), so the match layer carries no tournament structure.
+  `catalog.discipline` lists the games the platform knows (`overwatch` in V1); every tournament
+  and encounter carries its `discipline`, and one composite foreign key keeps the copy from
+  disagreeing with its owner. Every result change goes through one writer,
+  `backend/shared/services/encounter/result.py`: one transaction, the encounter row locked,
+  `result_version` bumped, one `encounter.result_audit` row. Scoring is one engine,
+  `backend/shared/domain/encounter_scoring.py`, driven by the `encounter.scoring_rule` formulas.
+  The legacy columns and tables the old model used (home/away columns, `encounter_participant`,
+  `encounter_map_report`, `encounter_captain_report` and the rest) stay in the database, unmapped
+  by the ORM, until a gated second revision (`enclayer02`, run with
+  `OWT_APPLY_ENCOUNTER_LAYER_DROP=1` in the deploy after V1; see CONTRIBUTING) drops them.
+  Vocabulary: [`glossary.md`](./glossary.md).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
   `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only

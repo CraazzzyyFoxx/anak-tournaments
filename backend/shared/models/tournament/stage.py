@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
+from shared.models.encounter.scoring_rule import ScoringRule
 from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
@@ -83,10 +84,17 @@ class Stage(db.TimeStampIntegerMixin):
         CheckConstraint("seed_ranking IN ('slot', 'avg_sr', 'total_sr', 'random')", name="ck_stage_seed_ranking"),
         CheckConstraint("best_of_default >= 1", name="ck_stage_best_of_default"),
         CheckConstraint("best_of_final IS NULL OR best_of_final >= 1", name="ck_stage_best_of_final"),
+        #: Target of ``tournament.bracket_encounter``'s composite FK.
+        UniqueConstraint("id", "tournament_id", name="uq_stage_id_tournament"),
         {"schema": "tournament"},
     )
 
     tournament_id: Mapped[int] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), index=True)
+    # Deferred: a stage and the rule it points at are written in one
+    # transaction, and the rule may be inserted after the stage.
+    scoring_rule_id: Mapped[int] = mapped_column(
+        BigInteger(), ForeignKey("encounter.scoring_rule.id", deferrable=True, initially="DEFERRED")
+    )
     name: Mapped[str] = mapped_column(String())
     description: Mapped[str | None] = mapped_column(String(), nullable=True)
     stage_type: Mapped[enums.StageType] = mapped_column(STAGE_TYPE_ENUM)
@@ -166,10 +174,36 @@ class Stage(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="StageRoundBestOf.round",
     )
+    #: Levels 1-2 of the scoring (D51): what one game pays and when the
+    #: encounter is over. Loaded with the stage because ``scoring`` -- which
+    #: every stage read carries -- is built from it.
+    scoring_rule: Mapped[ScoringRule] = relationship(lazy="selectin")
 
     @property
-    def scoring(self) -> dict[str, float | None]:
-        return {"win": self.win_points, "draw": self.draw_points, "loss": self.loss_points}
+    def scoring(self) -> dict[str, typing.Any]:
+        """How this stage scores, as one API block.
+
+        Levels 1-2 come from ``encounter.scoring_rule`` (the row every encounter
+        of the stage also points at), level 3 -- the points a result pays in the
+        table -- from the stage's own columns. One block because an organizer
+        edits them as one thing, and because splitting them put the FFA half
+        under a name (``ffa_scoring``) that stopped being true the moment a duel
+        had a rule row too.
+
+        ``preset``/``formula`` read as the ``wins`` preset while the rule is not
+        loaded yet (a stage being built in memory); a flushed stage always has
+        one.
+        """
+        rule = self.__dict__.get("scoring_rule")
+        return {
+            "win": self.win_points,
+            "draw": self.draw_points,
+            "loss": self.loss_points,
+            "preset": rule.preset if rule is not None else "wins",
+            "columns": [dict(column) for column in (rule.columns or ())] if rule is not None else [],
+            "placement_points": [float(points) for points in (rule.placement_points or ())] if rule is not None else [],
+            "formula": rule.game_formula if rule is not None else "win",
+        }
 
     @property
     def has_custom_bracket(self) -> bool:
@@ -181,22 +215,6 @@ class Stage(db.TimeStampIntegerMixin):
             "default": self.best_of_default,
             "by_round": {row.round: row.best_of for row in self.round_best_of},
             "final": self.best_of_final,
-        }
-
-    @property
-    def ffa_scoring(self) -> dict[str, typing.Any]:
-        """The ``ffa_scoring`` block of the API, rebuilt from the columns.
-
-        An empty column list is a placement-only league and is shown as such;
-        only a stage not yet flushed (column still ``None``, the server default
-        not applied) reads the default block.
-        """
-        return {
-            "columns": [
-                dict(column) for column in (self.ffa_columns if self.ffa_columns is not None else DEFAULT_FFA_COLUMNS)
-            ],
-            "placement_points": list(self.ffa_placement_points or ()),
-            "formula": self.ffa_formula or DEFAULT_FFA_FORMULA,
         }
 
 
@@ -220,7 +238,11 @@ class StageRoundBestOf(db.Base):
 
 class StageItem(db.TimeStampIntegerMixin):
     __tablename__ = "stage_item"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        #: Target of ``tournament.bracket_encounter``'s composite FK.
+        UniqueConstraint("id", "stage_id", name="uq_stage_item_id_stage"),
+        {"schema": "tournament"},
+    )
 
     stage_id: Mapped[int] = mapped_column(ForeignKey(Stage.id, ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String())

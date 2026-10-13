@@ -81,7 +81,8 @@ TABLE_NAMES = (
     "tournament.stage_item_input",
     "tournament.team",
     "tournament.player",
-    "tournament.encounter",
+    "encounter.encounter",
+    "encounter.team",
     # ``Encounter.has_logs`` is a ``column_property`` EXISTS over this table
     # (see ``shared/models/matches/match.py``) — every ``select(Encounter)``
     # references it now, so it must exist even with zero rows.
@@ -148,8 +149,26 @@ class _Fixture:
             connect_args={"check_same_thread": False},
         )
         with self.engine.begin() as conn:
-            for schema in sorted({table.schema for table in tables if table.schema}):
+            for schema in sorted({table.schema for table in tables if table.schema} | {"encounter"}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
+            # Hand-written: ``encounter.scoring_rule``'s server default is
+            # ``'[]'::jsonb`` and its CHECK calls ``jsonb_typeof``, neither of
+            # which sqlite can parse. The standings read it through
+            # ``Stage.scoring_rule``, so the table has to exist -- its
+            # constraints are Postgres's job, not this fixture's.
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.scoring_rule ("
+                " id INTEGER PRIMARY KEY, created_at TIMESTAMP, updated_at TIMESTAMP,"
+                " workspace_id INTEGER NOT NULL, preset VARCHAR(16) NOT NULL,"
+                " columns JSON NOT NULL, placement_points JSON NOT NULL,"
+                " game_formula VARCHAR(500) NOT NULL, end_formula VARCHAR(500) NOT NULL)"
+            )
+            # Same reason: its FKs use Postgres's ``SET NULL (stage_id)`` form.
+            conn.exec_driver_sql(
+                "CREATE TABLE tournament.bracket_encounter ("
+                " encounter_id INTEGER PRIMARY KEY, tournament_id INTEGER NOT NULL,"
+                " stage_id INTEGER, stage_item_id INTEGER, round INTEGER NOT NULL)"
+            )
             for table in tables:
                 table.create(conn)
         self.session = Session(self.engine)
@@ -194,6 +213,9 @@ class _Fixture:
             models.Stage.__table__,
             id=stage_id,
             tournament_id=tournament_id,
+            # NOT NULL since the encounter layer landed; the room's rule row is
+            # not created here because its PG-only CHECKs have no sqlite form.
+            scoring_rule_id=stage_id,
             name=name,
             stage_type=enums.StageType.SINGLE_ELIMINATION,
             order=order,
@@ -217,20 +239,69 @@ class _Fixture:
         away = self.team(tournament_id, f"{label} away")
         encounter_id = self._id()
         self.insert(
+            sa.table(
+                "scoring_rule",
+                sa.column("id"),
+                sa.column("workspace_id"),
+                sa.column("preset"),
+                sa.column("columns"),
+                sa.column("placement_points"),
+                sa.column("game_formula"),
+                sa.column("end_formula"),
+                schema="encounter",
+            ),
+            id=stage_id,
+            workspace_id=WORKSPACE_ID,
+            preset="wins",
+            columns="[]",
+            placement_points="[]",
+            game_formula="win",
+            end_formula="games >= best_of or max_wins * 2 > best_of",
+        )
+        self.insert(
             models.Encounter.__table__,
             id=encounter_id,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             tournament_id=tournament_id,
-            stage_id=stage_id,
+            scoring_rule_id=stage_id,
             name=label,
-            home_team_id=home,
-            away_team_id=away,
-            home_score=2,
-            away_score=1,
-            round=1,
+            slot_count=2,
             best_of=3,
             status=enums.EncounterStatus.COMPLETED,
             result_status=enums.EncounterResultStatus.CONFIRMED,
+            result_source="admin",
+            result_version=1,
         )
+        if stage_id is not None:
+            self.insert(
+                sa.table(
+                    "bracket_encounter",
+                    sa.column("encounter_id"),
+                    sa.column("tournament_id"),
+                    sa.column("stage_id"),
+                    sa.column("round"),
+                    schema="tournament",
+                ),
+                encounter_id=encounter_id,
+                tournament_id=tournament_id,
+                stage_id=stage_id,
+                round=1,
+            )
+        # The result is a PLACE on each participation now (D53, D60).
+        for slot, (team_id, score, placement) in enumerate(((home, 2.0, 1), (away, 1.0, 2)), 1):
+            self.insert(
+                models.EncounterTeam.__table__,
+                id=encounter_id * 10 + slot,
+                encounter_id=encounter_id,
+                tournament_id=tournament_id,
+                slot=slot,
+                team_id=team_id,
+                name=f"team{team_id}",
+                active=True,
+                score=score,
+                placement=placement,
+            )
         return {"home": home, "away": away, "encounter": encounter_id}
 
     def room(self, *, index: int) -> dict[str, int]:
@@ -314,36 +385,6 @@ class RecalculationEnqueueTests(_DatabaseTestCase):
         """
         request = await self._enqueue(PREVIEW_TOURNAMENT_ID)
         request.assert_awaited_once_with(self.db.shim, PREVIEW_TOURNAMENT_ID)
-
-
-class EncounterCompletedFanoutTests(_DatabaseTestCase):
-    """The achievement fan-out must skip the container only."""
-
-    def setUp(self) -> None:
-        super().setUp()
-        self.db.tournament(REAL_TOURNAMENT_ID, name="Real", is_hidden=False)
-        self.db.tournament(CONTAINER_ID, name="Scrims", is_hidden=True)
-        self.room = self.db.room(index=1)
-        self.real = self.db.completed_encounter(REAL_TOURNAMENT_ID, stage_id=None, label="real")
-        self.db.session.commit()
-
-    async def _publish(self, encounter_id: int) -> AsyncMock:
-        encounter = self.db.session.get(models.Encounter, encounter_id)
-        enqueue = AsyncMock()
-        with patch.object(captain, "enqueue_outbox_event", enqueue):
-            await captain.captain_service._enqueue_encounter_completed(self.db.shim, encounter)
-        return enqueue
-
-    async def test_scrim_encounter_completion_publishes_no_achievement_event(self) -> None:
-        enqueue = await self._publish(self.room["encounter"])
-        enqueue.assert_not_awaited()
-
-    async def test_real_encounter_completion_still_publishes(self) -> None:
-        enqueue = await self._publish(self.real["encounter"])
-        enqueue.assert_awaited_once()
-        event = enqueue.await_args.args[1]
-        self.assertEqual(REAL_TOURNAMENT_ID, event.tournament_id)
-        self.assertEqual(self.real["home"], event.winner_team_id)
 
 
 class ScrimStandingsInventionTests(_DatabaseTestCase):

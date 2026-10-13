@@ -303,13 +303,13 @@ export function ConditionLeafFields({
             <p className="text-muted-foreground text-xs">{t("fields.scorePatterns")}</p>
             {((params.scores as number[][]) ?? [[2, 3]]).map((pair, i) => (
               <div key={i} className="flex gap-1 items-center">
-                <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName(t("fields.homeScore", { index: i + 1 }))} value={pair[0]} onValueChange={(next) => {
+                <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName(t("fields.firstScore", { index: i + 1 }))} value={pair[0]} onValueChange={(next) => {
                   const scores = [...((params.scores as number[][]) ?? [[2, 3]])];
                   scores[i] = [next ?? 0, scores[i][1]];
                   setParam("scores", scores);
                 }} />
                 <span className="text-xs text-muted-foreground" aria-hidden>–</span>
-                <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName(t("fields.awayScore", { index: i + 1 }))} value={pair[1]} onValueChange={(next) => {
+                <NumberInput integer className="h-7 text-xs w-12" aria-label={controlName(t("fields.secondScore", { index: i + 1 }))} value={pair[1]} onValueChange={(next) => {
                   const scores = [...((params.scores as number[][]) ?? [[2, 3]])];
                   scores[i] = [scores[i][0], next ?? 0];
                   setParam("scores", scores);

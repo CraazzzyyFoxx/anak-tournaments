@@ -31,9 +31,10 @@ __all__ = (
 
 
 class ScrimTeamRead(BaseModel):
+    slot: int
     id: int
     name: str
-    #: Whether this side has a captain yet. The away side starts unclaimed —
+    #: Whether this slot has a captain yet. Slot 2 starts unclaimed —
     #: that is what the room's share link is for.
     captain_claimed: bool
 
@@ -50,13 +51,13 @@ class ScrimRoomRead(BaseModel):
     stage_id: int
     encounter_id: int
     best_of: int
-    #: Never null: both sides are provisioned with the room, and the encounter's
-    #: team FKs cascade on delete, so neither can outlive the other.
-    home_team: ScrimTeamRead
-    away_team: ScrimTeamRead
-    #: The viewer's own side, or null for a spectator. Never inferred client-side:
+    #: Always two, in slot order; never null: both seats are provisioned with the
+    #: room, and the encounter's team FKs cascade on delete, so neither can
+    #: outlive the other.
+    teams: list[ScrimTeamRead]
+    #: The viewer's own slot, or null for a spectator. Never inferred client-side:
     #: authority lives in ``Team.captain_id``.
-    viewer_side: Literal["home", "away"] | None
+    viewer_slot: int | None
     can_claim: bool
     #: Whether the viewer may retire this room: its creator, a captain of either
     #: side, or workspace staff holding ``match.result``. False once closed, so the
@@ -123,6 +124,6 @@ class ScrimCreateRequest(BaseModel):
     #: Upper bound comes from ``Settings["tournament.scrim"].max_best_of``, not
     #: from here: it is an operational limit, raisable without a deploy.
     best_of: int = Field(ge=1)
-    home_team_name: str = Field(min_length=1, max_length=255)
-    away_team_name: str = Field(min_length=1, max_length=255)
+    #: Slot order: the first name is the creator's team, the second the opponent's.
+    team_names: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(min_length=2, max_length=2)
     pool: ScrimPoolInput

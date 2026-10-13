@@ -17,6 +17,7 @@ import pytest
 import sqlalchemy as sa
 
 from shared.core import enums
+from shared.models.encounter import ScoringRule
 from shared.models.registration.registration import (
     BalancerRegistration,
     BalancerRegistrationForm,
@@ -40,6 +41,7 @@ def seeded(db):
     t = Tournament(
         workspace_id=ws.id,
         name=f"Readiness {suffix}",
+        slug=f"readiness-{suffix}",
         status=enums.TournamentStatus.REGISTRATION,
     )
     db.add(t)
@@ -51,7 +53,10 @@ def seeded(db):
             starts_at=datetime.now(UTC),
         )
     )
-    db.add(Stage(tournament_id=t.id, name="Groups", stage_type=enums.StageType.ROUND_ROBIN))
+    rule = ScoringRule(workspace_id=ws.id, preset="wins", game_formula="win", end_formula="games >= best_of")
+    db.add(rule)
+    db.flush()
+    db.add(Stage(tournament_id=t.id, name="Groups", stage_type=enums.StageType.ROUND_ROBIN, scoring_rule_id=rule.id))
     db.add(BalancerRegistrationForm(tournament_id=t.id, workspace_id=ws.id, is_open=True))
     regs = [
         BalancerRegistration(

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
 from src import models
+from src.domain.achievement_duel import active_seat
 
 from ..context import EvalContext
 from . import ResultSet, register
@@ -67,6 +68,7 @@ async def _execute_encounter_field(
     projected. ``AND`` with a map-level leaf can then hit any map of the series.
     """
     column = ENCOUNTER_FIELD_MAP[field]
+    seat, on_seat = active_seat()
 
     query = (
         sa.select(
@@ -77,17 +79,11 @@ async def _execute_encounter_field(
         .select_from(models.Encounter)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-        .join(
-            models.Team,
-            sa.or_(
-                models.Team.id == models.Encounter.home_team_id,
-                models.Team.id == models.Encounter.away_team_id,
-            ),
-        )
+        .join(seat, on_seat)
         .join(
             models.Player,
             sa.and_(
-                models.Player.team_id == models.Team.id,
+                models.Player.team_id == seat.team_id,
                 models.Player.tournament_id == models.Encounter.tournament_id,
             ),
         )

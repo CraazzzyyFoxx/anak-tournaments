@@ -16,6 +16,8 @@ caller removes both the duplication and the footgun.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.compiler import compiles
@@ -45,3 +47,41 @@ def install_postgres_type_shims() -> None:
     @compiles(sa.BigInteger, "sqlite")
     def _compile_bigint_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
         return "INTEGER"
+
+
+def create_sqlite_tables(conn: sa.Connection, tables: Sequence[sa.Table]) -> None:
+    """``CREATE`` ``tables`` on SQLite, for the suites that fake the database in memory.
+
+    SQLite cannot spell four things the encounter layer uses: ``ON DELETE SET NULL
+    (column)``, a partial unique index (it would build a plain one, and a retired
+    seat beside its replacement would collide), a ``jsonb_typeof`` CHECK (the
+    function does not exist) and a ``'[]'::jsonb`` server default (the cast is a
+    syntax error). All four are left out of the DDL -- these suites exercise
+    queries and flushes, not the constraints or the defaults.
+    """
+    for table in tables:
+        constraints = [
+            constraint
+            for constraint in table.constraints
+            if (
+                isinstance(constraint, sa.ForeignKeyConstraint) and (constraint.ondelete or "").startswith("SET NULL (")
+            )
+            or (isinstance(constraint, sa.CheckConstraint) and "jsonb_typeof" in str(constraint.sqltext))
+        ]
+        indexes = [index for index in table.indexes if index.dialect_options["postgresql"]["where"] is not None]
+        pg_defaults = {
+            column: column.server_default
+            for column in table.columns
+            if column.server_default is not None and "::" in str(getattr(column.server_default, "arg", ""))
+        }
+        table.constraints.difference_update(constraints)
+        table.indexes.difference_update(indexes)
+        for column in pg_defaults:
+            column.server_default = None
+        try:
+            table.create(conn)
+        finally:
+            table.constraints.update(constraints)
+            table.indexes.update(indexes)
+            for column, default in pg_defaults.items():
+                column.server_default = default

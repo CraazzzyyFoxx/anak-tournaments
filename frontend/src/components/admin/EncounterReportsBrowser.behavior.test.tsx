@@ -170,14 +170,16 @@ function report(overrides: Partial<AdminCaptainReport> = {}): AdminCaptainReport
   return {
     id: 1,
     encounter_id: 11,
-    team_id: 1,
-    side: "home",
+    encounter_team_id: 1,
     reporter_user_id: 5,
     reporter_name: "captain-alpha",
-    home_score: 3,
-    away_score: 1,
+    games_played: 4,
+    basis_version: 1,
+    results: [
+      { encounter_team_id: 1, score: 3, placement: null, wins: 3 },
+      { encounter_team_id: 2, score: 1, placement: null, wins: 1 }
+    ],
     closeness: 4,
-    map_codes: [],
     comment: null,
     custom_fields: {},
     created_at: "2026-01-01T00:00:00Z",
@@ -199,12 +201,24 @@ function row(overrides: Partial<EncounterReportsRow> = {}): EncounterReportsRow 
     status: "completed",
     result_status: "disputed",
     scheduled_at: null,
-    home_team: { id: 1, name: "Alpha" },
-    away_team: { id: 2, name: "Beta" },
-    home_report: report(),
-    away_report: report({ id: 2, side: "away", home_score: 1, away_score: 3 }),
+    participations: [
+      { encounter_team_id: 1, slot: 1, team_id: 11, name: "Alpha" },
+      { encounter_team_id: 2, slot: 2, team_id: 22, name: "Beta" }
+    ],
+    reports: [
+      report(),
+      report({
+        id: 2,
+        encounter_team_id: 2,
+        results: [
+          { encounter_team_id: 1, score: 1, placement: null, wins: 1 },
+          { encounter_team_id: 2, score: 3, placement: null, wins: 3 }
+        ]
+      })
+    ],
+    replay_codes: [],
     reported_count: 2,
-    scores_match: false,
+    standings_match: false,
     series_score_valid: true,
     last_resolution: null,
     ...overrides
@@ -356,8 +370,7 @@ describe("EncounterReportsBrowser", () => {
     listEncounterReports.mockResolvedValue(
       pageOf([
         row({
-          home_report: report({ closeness: 9 }),
-          away_report: report({ id: 2, side: "away", closeness: 2 })
+          reports: [report({ closeness: 9 }), report({ id: 2, encounter_team_id: 2, closeness: 2 })]
         })
       ])
     );
@@ -386,14 +399,15 @@ describe("EncounterReportsBrowser", () => {
     listEncounterReports.mockResolvedValue(
       pageOf([
         row({
-          home_report: report({
-            comment: "they left early",
-            map_codes: [{ id: 1, map_index: 1, map_id: null, code: "B2C3" }],
-            custom_fields: { vod: "https://twitch.tv/clip" }
-          }),
-          away_report: null,
+          reports: [
+            report({
+              comment: "they left early",
+              custom_fields: { vod: "https://twitch.tv/clip" }
+            })
+          ],
+          replay_codes: [{ position: 2, encounter_team_id: 1, code: "B2C3" }],
           reported_count: 1,
-          scores_match: null
+          standings_match: null
         })
       ])
     );
@@ -418,7 +432,7 @@ describe("EncounterReportsBrowser", () => {
 
   it("labels an already confirmed result Review rather than Resolve", async () => {
     listEncounterReports.mockResolvedValue(
-      pageOf([row({ result_status: "confirmed", scores_match: true })])
+      pageOf([row({ result_status: "confirmed", standings_match: true })])
     );
     window.history.replaceState(null, "", "/admin/matches?id=11");
     const container = await mount(() => (

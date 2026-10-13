@@ -542,39 +542,39 @@
 
 /* One match row. Under 640px it is the bracket node: each team on its own
    line with its score on the right, so neither name is cut to fit the other.
-   From 640px it is the scoreboard line: home · score · away, the names
+   From 640px it is the scoreboard line: slot 1 · score · slot 2, the names
    leaning on the score. Every cell is placed by area, so the DOM is one. */
 .matchRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas:
     "lead lead act"
-    "home hs hs"
-    "away as as";
+    "t1 s1 s1"
+    "t2 s2 s2";
   align-items: center;
   column-gap: 0.75rem;
   row-gap: 0.25rem;
 }
 
 .matchRow > [data-cell="lead"] { grid-area: lead; }
-.matchRow > [data-cell="home"] { grid-area: home; }
-.matchRow > [data-cell="hs"] { grid-area: hs; justify-self: end; }
+.matchRow > [data-cell="t1"] { grid-area: t1; }
+.matchRow > [data-cell="s1"] { grid-area: s1; justify-self: end; }
 .matchRow > [data-cell="dash"] { display: none; }
-.matchRow > [data-cell="as"] { grid-area: as; justify-self: end; }
-.matchRow > [data-cell="away"] { grid-area: away; }
+.matchRow > [data-cell="s2"] { grid-area: s2; justify-self: end; }
+.matchRow > [data-cell="t2"] { grid-area: t2; }
 .matchRow > [data-cell="act"] { grid-area: act; }
 
 @media (min-width: 640px) {
   .matchRow {
     grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr) 1.5rem auto 1.5rem minmax(0, 1fr) auto;
-    grid-template-areas: "lead home hs dash as away act";
+    grid-template-areas: "lead t1 s1 dash s2 t2 act";
     row-gap: 0;
   }
 
-  .matchRow > [data-cell="home"] { justify-self: end; }
-  .matchRow > [data-cell="hs"] { justify-self: end; }
+  .matchRow > [data-cell="t1"] { justify-self: end; }
+  .matchRow > [data-cell="s1"] { justify-self: end; }
   .matchRow > [data-cell="dash"] { display: block; grid-area: dash; }
-  .matchRow > [data-cell="as"] { justify-self: start; }
+  .matchRow > [data-cell="s2"] { justify-self: start; }
 }
 
 /* The bracket canvas is intrinsically wider than any viewport. It owns its own

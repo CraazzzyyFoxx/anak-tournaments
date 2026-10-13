@@ -20,9 +20,9 @@ from shared.models.catalog.hero import Hero
 from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
+    from shared.models.encounter.encounter import Encounter
     from shared.models.matches.match import Match
     from shared.models.tenancy.workspace import Workspace, WorkspaceMember
-    from shared.models.tournament.encounter import Encounter
 
 __all__ = (
     "AchievementCategory",
@@ -174,7 +174,7 @@ class AchievementEvaluationResult(db.TimeStampIntegerMixin):
     # declares one grain, and ``user_match`` rows carry the map while
     # ``user_encounter`` rows carry the series.
     encounter_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tournament.encounter.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("encounter.encounter.id", ondelete="CASCADE"), nullable=True
     )
     match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.match.id", ondelete="CASCADE"), nullable=True)
     qualified_at: Mapped[db.datetime] = mapped_column(db.DateTime(timezone=True), server_default=func.now())

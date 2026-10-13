@@ -6,6 +6,7 @@ import { useFormatter } from "@/lib/datetime/client";
 
 import TeamName, { type TeamNameInput } from "@/components/TeamName";
 import { StatusDot } from "@/components/ui/status-dot";
+import { duelSeats, seatTeam } from "@/lib/encounter/seats";
 import { getEncounterState, getEncounterWinner } from "@/lib/encounter/status";
 import { cn } from "@/lib/utils";
 import type { Encounter, EncounterOverview } from "@/types/encounter.types";
@@ -69,6 +70,7 @@ function FeaturedPanel({
         {encounters.length ? (
           encounters.slice(0, 4).map((encounter) => {
             const winner = getEncounterWinner(encounter);
+            const [one, two] = duelSeats(encounter.teams);
             const state = getEncounterState(encounter);
             const isLive = variant === "live" && state === "Live";
             const isUpcoming = variant === "live" && state === "Upcoming";
@@ -91,9 +93,9 @@ function FeaturedPanel({
                         {t("encounters.state.soon")}
                       </span>
                     ) : null}
-                    <TeamChip team={encounter.home_team} />
+                    <TeamChip team={seatTeam(one)} />
                     <span className={styles.vs}>{t("common.vs")}</span>
-                    <TeamChip team={encounter.away_team} />
+                    <TeamChip team={seatTeam(two)} />
                   </div>
                   <div className={styles.featMeta}>
                     {[
@@ -120,18 +122,18 @@ function FeaturedPanel({
                     <span className={cn(styles.featScore, "tabular-nums")}>
                       <span
                         className={
-                          winner === "home" ? styles.featScoreWinner : styles.featScoreLoser
+                          winner === 1 ? styles.featScoreWinner : styles.featScoreLoser
                         }
                       >
-                        {encounter.score.home}
+                        {one?.score ?? 0}
                       </span>
                       <span className={styles.scoreSep}>–</span>
                       <span
                         className={
-                          winner === "away" ? styles.featScoreWinner : styles.featScoreLoser
+                          winner === 2 ? styles.featScoreWinner : styles.featScoreLoser
                         }
                       >
-                        {encounter.score.away}
+                        {two?.score ?? 0}
                       </span>
                     </span>
                   )}

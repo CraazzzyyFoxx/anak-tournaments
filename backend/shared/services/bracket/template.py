@@ -3,6 +3,10 @@
 A template is a ``BracketSkeleton`` written slot-first so an editor can store it.
 ``U3`` is the third upper-bracket seed and ``L1`` the first lower one, in engine
 seed order (``placeholder_seeds``: ``Uk`` -> ``-k``, ``Lk`` -> ``-(upper_seeds + k)``).
+
+A match lists its ``slots``, numbered ``1..n`` the way the encounter seats them
+(D55), and a slot that waits for a result names the match it waits on plus the
+``source_position`` it takes -- 1 being the old "winner" and 2 the old "loser".
 Generation, preview and seed fill consume ``template_to_skeleton`` like any
 generated skeleton; ``validate_template`` keeps a template to the conventions
 they rely on (spec 2026-10-01 §5.2).
@@ -31,21 +35,26 @@ __all__ = (
 )
 
 SeedRef = Annotated[str, StringConstraints(pattern=r"^[UL][1-9][0-9]*$", max_length=5)]
-Side = Literal["home", "away"]
-_SIDES: tuple[Side, Side] = ("home", "away")
+#: The biggest card a drawn match may have, matching the FFA lobby ceiling.
+MAX_SLOTS = 100
 
 
 class TemplateSlot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    #: Seat of the match, ``1..len(match.slots)``.
+    slot: int = Field(ge=1, le=MAX_SLOTS)
     seed: SeedRef | None = None
-    winner_of: int | None = None
-    loser_of: int | None = None
+    source_match: int | None = None
+    #: Place in ``source_match``'s standing; 1 is first.
+    source_position: int | None = Field(default=None, ge=1, le=MAX_SLOTS)
 
     @model_validator(mode="after")
     def _exactly_one_origin(self) -> TemplateSlot:
-        if sum(value is not None for value in (self.seed, self.winner_of, self.loser_of)) != 1:
-            raise ValueError("a slot takes exactly one of seed, winner_of, loser_of")
+        if (self.seed is None) == (self.source_match is None):
+            raise ValueError("a slot takes either a seed or a source match, not both and not neither")
+        if (self.source_match is None) != (self.source_position is None):
+            raise ValueError("a slot fed by a match names the position it takes, and only such a slot does")
         return self
 
 
@@ -54,8 +63,13 @@ class TemplateMatch(BaseModel):
 
     id: int = Field(ge=0, le=10_000)
     round: int = Field(ge=-256, le=256)
-    home: TemplateSlot
-    away: TemplateSlot
+    slots: list[TemplateSlot] = Field(min_length=2, max_length=MAX_SLOTS)
+
+    @model_validator(mode="after")
+    def _slots_are_the_whole_card(self) -> TemplateMatch:
+        if [slot.slot for slot in self.slots] != list(range(1, len(self.slots) + 1)):
+            raise ValueError("slots must be numbered 1..n in order, with no gap and no repeat")
+        return self
 
 
 class BracketTemplate(BaseModel):
@@ -70,7 +84,7 @@ class BracketTemplate(BaseModel):
 @dataclass(frozen=True)
 class TemplateProblem:
     match_id: int | None
-    slot: Side | None
+    slot: int | None
     code: str
     message: str
 
@@ -86,24 +100,21 @@ def template_to_skeleton(template: BracketTemplate) -> BracketSkeleton:
     pairings: list[Pairing] = []
     edges: list[AdvancementEdge] = []
     for position, match in enumerate(template.matches):
-        teams: dict[str, int | None] = {}
-        for side in _SIDES:
-            slot: TemplateSlot = getattr(match, side)
-            teams[side] = _seed_id(slot.seed, template.upper_seeds) if slot.seed is not None else None
-            source = slot.winner_of if slot.winner_of is not None else slot.loser_of
-            if source is not None:
+        team_ids: list[int | None] = []
+        for slot in match.slots:
+            team_ids.append(_seed_id(slot.seed, template.upper_seeds) if slot.seed is not None else None)
+            if slot.source_match is not None:
                 edges.append(
                     AdvancementEdge(
-                        source_local_id=position_of[source],
+                        source_local_id=position_of[slot.source_match],
+                        source_position=slot.source_position,
                         target_local_id=position,
-                        role="winner" if slot.winner_of is not None else "loser",
-                        target_slot=side,
+                        target_slot=slot.slot,
                     )
                 )
         pairings.append(
             Pairing(
-                home_team_id=teams["home"],
-                away_team_id=teams["away"],
+                team_ids=tuple(team_ids),
                 round_number=match.round,
                 local_id=position,
             )
@@ -116,15 +127,16 @@ def skeleton_to_template(skeleton: BracketSkeleton, *, upper_seeds: int, lower_s
     """A generated placeholder skeleton as an editable template (``id`` = ``local_id``)."""
     incoming = {(edge.target_local_id, edge.target_slot): edge for edge in skeleton.advancement_edges}
 
-    def slot(pairing: Pairing, side: Side) -> TemplateSlot:
-        team = pairing.home_team_id if side == "home" else pairing.away_team_id
+    def slot(pairing: Pairing, index: int) -> TemplateSlot:
+        team = pairing.team_ids[index]
         if team is not None:
             number = -team
-            return TemplateSlot(seed=f"U{number}" if number <= upper_seeds else f"L{number - upper_seeds}")
-        edge = incoming[(pairing.local_id, side)]
-        if edge.role == "winner":
-            return TemplateSlot(winner_of=edge.source_local_id)
-        return TemplateSlot(loser_of=edge.source_local_id)
+            return TemplateSlot(
+                slot=index + 1,
+                seed=f"U{number}" if number <= upper_seeds else f"L{number - upper_seeds}",
+            )
+        edge = incoming[(pairing.local_id, index + 1)]
+        return TemplateSlot(slot=index + 1, source_match=edge.source_local_id, source_position=edge.source_position)
 
     return BracketTemplate(
         upper_seeds=upper_seeds,
@@ -133,8 +145,7 @@ def skeleton_to_template(skeleton: BracketSkeleton, *, upper_seeds: int, lower_s
             TemplateMatch(
                 id=pairing.local_id,
                 round=pairing.round_number,
-                home=slot(pairing, "home"),
-                away=slot(pairing, "away"),
+                slots=[slot(pairing, index) for index in range(pairing.slot_count)],
             )
             for pairing in skeleton.pairings
         ],
@@ -145,7 +156,7 @@ def validate_template(template: BracketTemplate, stage_type: StageType) -> list[
     """Every way ``template`` breaks spec §5.2, in match order; ``[]`` when it is sound."""
     problems: list[TemplateProblem] = []
 
-    def add(code: str, message: str, match_id: int | None = None, slot: Side | None = None) -> None:
+    def add(code: str, message: str, match_id: int | None = None, slot: int | None = None) -> None:
         problems.append(TemplateProblem(match_id=match_id, slot=slot, code=code, message=message))
 
     by_id: dict[int, TemplateMatch] = {}
@@ -159,60 +170,70 @@ def validate_template(template: BracketTemplate, stage_type: StageType) -> list[
         # References cannot be judged until ids and rounds are sound.
         return problems
 
-    seeded = Counter(
-        slot.seed for match in template.matches for slot in (match.home, match.away) if slot.seed is not None
-    )
-    feeds: dict[tuple[int, str], tuple[int, Side]] = {}  # (source, role) -> (target, slot)
-    lower_to_upper: list[tuple[int, Side]] = []
+    seeded = Counter(slot.seed for match in template.matches for slot in match.slots if slot.seed is not None)
+    feeds: dict[tuple[int, int], tuple[int, int]] = {}  # (source, position) -> (target, slot)
+    lower_to_upper: list[tuple[int, int]] = []
     for match in template.matches:
-        for side in _SIDES:
-            slot: TemplateSlot = getattr(match, side)
+        for slot in match.slots:
             if slot.seed is not None:
                 pool, number = slot.seed[0], int(slot.seed[1:])
                 limit = template.upper_seeds if pool == "U" else template.lower_seeds
                 bracket = "upper" if pool == "U" else "lower"
                 if number > limit:
-                    add("seed_out_of_range", f"{slot.seed} is past the {limit} {bracket} seeds", match.id, side)
+                    add("seed_out_of_range", f"{slot.seed} is past the {limit} {bracket} seeds", match.id, slot.slot)
                 elif seeded[slot.seed] > 1:
                     # Both slots are flagged: an editor highlights the conflict, not one side of it.
-                    add("seed_duplicate", f"{slot.seed} is seeded twice", match.id, side)
+                    add("seed_duplicate", f"{slot.seed} is seeded twice", match.id, slot.slot)
                 if (pool == "U") != (match.round > 0):
                     # Round 0 is already out (``zero_round`` returns early).
                     add(
                         "seed_bracket",
-                        f"{slot.seed} is {'an upper' if bracket == 'upper' else 'a lower'} seed; it starts in the {bracket} bracket",
+                        f"{slot.seed} is {'an upper' if bracket == 'upper' else 'a lower'} seed; "
+                        f"it starts in the {bracket} bracket",
                         match.id,
-                        side,
+                        slot.slot,
                     )
                 continue
-            role = "winner" if slot.winner_of is not None else "loser"
-            source_id = slot.winner_of if slot.winner_of is not None else slot.loser_of
-            source = by_id.get(source_id)
-            if source is None or source_id == match.id:
-                add("unknown_match", f"Match {source_id} does not exist", match.id, side)
+            source = by_id.get(slot.source_match)
+            if source is None or slot.source_match == match.id:
+                add("unknown_match", f"Match {slot.source_match} does not exist", match.id, slot.slot)
                 continue
-            if (source_id, role) in feeds:
-                target_id = feeds[(source_id, role)][0]
+            if slot.source_position > len(source.slots):
                 add(
-                    "result_reused",
-                    f"The {role} of match {source_id} already goes to match {target_id}",
+                    "position_out_of_range",
+                    f"Match {source.id} seats {len(source.slots)}; it has no position {slot.source_position}",
                     match.id,
-                    side,
+                    slot.slot,
                 )
                 continue
-            feeds[(source_id, role)] = (match.id, side)
+            key = (slot.source_match, slot.source_position)
+            if key in feeds:
+                add(
+                    "result_reused",
+                    f"Position {slot.source_position} of match {slot.source_match} "
+                    f"already goes to match {feeds[key][0]}",
+                    match.id,
+                    slot.slot,
+                )
+                continue
+            feeds[key] = (match.id, slot.slot)
             source_upper, target_upper = source.round > 0, match.round > 0
             if source_upper and target_upper and match.round <= source.round:
-                add("edge_direction", f"Round {source.round} cannot feed round {match.round}", match.id, side)
+                add("edge_direction", f"Round {source.round} cannot feed round {match.round}", match.id, slot.slot)
             elif not source_upper and not target_upper and -match.round <= -source.round:
-                add("edge_direction", f"Round {source.round} cannot feed round {match.round}", match.id, side)
-            elif source_upper and not target_upper and role != "loser":
-                add("edge_direction", "Only a loser drops from the upper bracket to the lower one", match.id, side)
+                add("edge_direction", f"Round {source.round} cannot feed round {match.round}", match.id, slot.slot)
+            elif source_upper and not target_upper and slot.source_position == 1:
+                add(
+                    "edge_direction",
+                    "Only a losing position drops from the upper bracket to the lower one",
+                    match.id,
+                    slot.slot,
+                )
             elif not source_upper and target_upper:
-                if role != "winner":
-                    add("edge_direction", "Only a winner leaves the lower bracket", match.id, side)
+                if slot.source_position != 1:
+                    add("edge_direction", "Only the first place leaves the lower bracket", match.id, slot.slot)
                 else:
-                    lower_to_upper.append((match.id, side))
+                    lower_to_upper.append((match.id, slot.slot))
 
     for pool, count in (("U", template.upper_seeds), ("L", template.lower_seeds)):
         for number in range(1, count + 1):
@@ -220,7 +241,6 @@ def validate_template(template: BracketTemplate, stage_type: StageType) -> list[
                 add("seed_unused", f"{pool}{number} is not seeded into any match")
 
     upper_rounds = sorted({match.round for match in template.matches if match.round > 0})
-    lower_rounds = sorted({-match.round for match in template.matches if match.round < 0})
     if upper_rounds != list(range(1, len(upper_rounds) + 1)):
         add("round_gap", "Upper rounds must run 1, 2, 3… without a gap")
     # Lower rounds carry no contiguity rule: the generator numbers an LB round after
@@ -228,37 +248,43 @@ def validate_template(template: BracketTemplate, stage_type: StageType) -> list[
     # so a valid bracket's lower rounds may start below -1 and have holes.
     # ``edge_direction`` and ``final`` still keep them forward-only and connected.
 
-    terminals = [match for match in template.matches if (match.id, "winner") not in feeds]
+    terminals = [match for match in template.matches if (match.id, 1) not in feeds]
     final: TemplateMatch | None = None
     if not terminals:
         add("final", "Every match feeds another one, so the bracket has no final")
     elif len(terminals) > 1:
         for match in terminals:
-            add("final", f"The winner of match {match.id} goes nowhere: only the final may end the bracket", match.id)
+            add(
+                "final",
+                f"The first place of match {match.id} goes nowhere: only the final may end the bracket",
+                match.id,
+            )
     else:
         final = terminals[0]
         top_round = upper_rounds[-1] if upper_rounds else None
         if final.round != top_round or sum(1 for match in template.matches if match.round == top_round) != 1:
             add("final", "The final must be the only match of the last upper round", final.id)
 
-    for target_id, side in lower_to_upper:
+    for target_id, slot_number in lower_to_upper:
         if final is None or target_id != final.id:
-            add("edge_direction", "A lower-bracket winner can only go to the final", target_id, side)
+            add("edge_direction", "A lower-bracket winner can only go to the final", target_id, slot_number)
 
-    loser_target = {source: by_id[target] for (source, role), (target, _) in feeds.items() if role == "loser"}
+    # Where every losing position of a match ends up, if anywhere.
+    drops = {source: by_id[target] for (source, position), (target, _) in feeds.items() if position > 1}
     if stage_type == StageType.DOUBLE_ELIMINATION and final is not None:
         if not any(
-            slot.winner_of is not None and slot.winner_of in by_id and by_id[slot.winner_of].round < 0
-            for slot in (final.home, final.away)
+            slot.source_match is not None and by_id.get(slot.source_match, final).round < 0 for slot in final.slots
         ):
             add("de_final_needs_lower", "The final needs the lower bracket's winner in one of its slots", final.id)
         for match in template.matches:
             is_final = match.id == final.id
-            drop = loser_target.get(match.id)
+            drop = drops.get(match.id)
             if match.round > 0 and not is_final and (drop is None or drop.round > 0):
                 add("de_upper_loser", f"The loser of match {match.id} must drop to the lower bracket", match.id)
             if (match.round < 0 or is_final) and drop is not None:
                 add("de_lower_loser", f"The loser of match {match.id} is out; it cannot go to another match", drop.id)
-    if stage_type == StageType.SINGLE_ELIMINATION and (template.lower_seeds or lower_rounds or loser_target):
-        add("se_shape", "Single elimination has no lower bracket and no loser drops")
+    if stage_type == StageType.SINGLE_ELIMINATION:
+        has_lower = any(match.round < 0 for match in template.matches)
+        if template.lower_seeds or drops or has_lower:
+            add("se_shape", "Single elimination has no lower bracket and no loser drops")
     return problems

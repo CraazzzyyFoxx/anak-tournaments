@@ -35,14 +35,7 @@ def config(*, items=(), slots=(), stage_id=None, round=None):
 class MatchLogMapPoolTests(IsolatedAsyncioTestCase):
     async def ingest(self, configs, *, map_name="Илиос", attached_pair=(1, 2)):
         writes = []
-        encounter = SimpleNamespace(
-            id=7,
-            tournament_id=1,
-            stage_id=4,
-            round=2,
-            home_team_id=attached_pair[0],
-            away_team_id=attached_pair[1],
-        )
+        encounter = SimpleNamespace(id=7, tournament_id=1, slot_count=2)
         match = SimpleNamespace(
             id=5,
             time=10.0,
@@ -87,6 +80,13 @@ class MatchLogMapPoolTests(IsolatedAsyncioTestCase):
             )
             stack.enter_context(
                 patch.object(flows.encounter_service, "get_match_by_encounter_and_map", AsyncMock(return_value=match))
+            )
+            # The encounter sits in stage 4, round 2, and seats the log's two teams.
+            stack.enter_context(
+                patch.object(flows.encounter_service, "bracket_positions", AsyncMock(return_value={7: (4, 2)}))
+            )
+            stack.enter_context(
+                patch.object(flows.encounter_service, "active_team_ids", AsyncMock(return_value=set(attached_pair)))
             )
             stack.enter_context(
                 patch.object(flows._match_repo, "create", AsyncMock(side_effect=lambda *args: writes.append("match")))

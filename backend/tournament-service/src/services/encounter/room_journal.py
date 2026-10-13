@@ -56,8 +56,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.tournament.encounter_result_audit import EncounterResultAudit
-from shared.models.tournament.encounter_room_event import EncounterRoomEvent
+from shared.models.encounter.audit import EncounterResultAudit
+from shared.models.encounter.room_event import EncounterRoomEvent
 from shared.repository import EncounterResultAuditRepository, EncounterRoomEventRepository
 from src.schemas import pregame_rooms as schemas
 
@@ -80,7 +80,7 @@ async def record_room_event(
     action: str,
     source: str,
     kind: str | None = None,
-    side: str | None = None,
+    encounter_team_id: int | None = None,
     actor_auth_user_id: int | None = None,
     reason: str | None = None,
     data: dict[str, Any] | None = None,
@@ -92,7 +92,7 @@ async def record_room_event(
             action=action,
             source=source,
             kind=kind,
-            side=side,
+            encounter_team_id=encounter_team_id,
             actor_auth_user_id=actor_auth_user_id,
             # A reason that is only whitespace is no reason at all, and NULL is
             # what every reader branches on.
@@ -151,7 +151,7 @@ def _room_entry(row: EncounterRoomEvent, actor_name: str | None) -> schemas.Preg
         action=row.action,
         kind=row.kind,
         source=row.source,
-        side=row.side,
+        encounter_team_id=row.encounter_team_id,
         actor_auth_user_id=row.actor_auth_user_id,
         actor_name=actor_name,
         reason=row.reason,
@@ -169,10 +169,8 @@ def _result_entry(
     two different id spaces look like one. The name still renders.
     """
     data: dict[str, Any] = {
-        "home_score_before": row.home_score_before,
-        "away_score_before": row.away_score_before,
-        "home_score": row.home_score_after,
-        "away_score": row.away_score_after,
+        "before": row.before,
+        "after": row.after,
         "result_status": str(getattr(row.to_result_status, "value", row.to_result_status)),
     }
     if position is not None:
@@ -189,7 +187,7 @@ def _result_entry(
         # vocabulary than the room's three actors: everything that is not a
         # person acting as one of the two is the machine deciding.
         source=row.source if row.source in ("admin", "captain") else "system",
-        side=None,
+        encounter_team_id=None,
         actor_auth_user_id=None,
         actor_name=actor_name,
         reason=row.reason,

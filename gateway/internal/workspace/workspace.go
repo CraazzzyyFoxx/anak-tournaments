@@ -27,7 +27,7 @@ const (
 		SELECT 1
 		FROM workspace_member wm
 		JOIN players."user" u ON u.id = wm.player_id
-		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2
+		WHERE u.auth_user_id = $1 AND wm.workspace_id = $2 AND wm.removed_at IS NULL
 	)`
 	// Organizer staff of a workspace, as opposed to anyone on its roster. Mirror
 	// of AuthUser.has_admin_panel_access(workspace_id) on the REST side: a role
@@ -65,24 +65,26 @@ const (
 	// is required here.
 	tournamentHiddenSQL    = `SELECT t.is_hidden OR w.is_hidden FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id WHERE t.id = $1`
 	previewAllowedSQL      = `SELECT EXISTS(SELECT 1 FROM tournament.tournament_preview_access WHERE tournament_id = $1 AND auth_user_id = $2)`
-	encounterTournamentSQL = `SELECT tournament_id FROM tournament.encounter WHERE id = $1`
+	encounterTournamentSQL = `SELECT tournament_id FROM encounter.encounter WHERE id = $1`
 	// Same players."user" bridge as isMemberSQL above, for the other direction:
 	// tournament.team.captain_id references players."user".id, while the gateway
-	// only ever holds an auth user id (from the JWT). An encounter's teams are
-	// its two sides for a duel and its participant rows for an ffa lobby; one of
-	// the two lists is always empty, and both are indexed lookups by encounter
-	// id, so the union costs one extra index probe
-	// (ix_tournament_team_captain_id still covers the captain side).
+	// only ever holds an auth user id (from the JWT). An encounter's participants
+	// are the LIVE rows of encounter.team (spec §13.3) -- one per seat, however
+	// many seats the card has, so a duel and an ffa lobby answer through the same
+	// lookup. A retired participation (active = false) is history and no longer
+	// captains anything; a seat whose source team was deleted (team_id IS NULL)
+	// has no captain to find. Both ends are indexed:
+	// uq_team_active_slot covers the encounter_id probe and
+	// ix_tournament_team_captain_id the captain side.
 	isEncounterCaptainSQL = `SELECT EXISTS(
 		SELECT 1
-		FROM tournament.team t
+		FROM encounter.team et
+		JOIN tournament.team t ON t.id = et.team_id
 		JOIN players."user" u ON u.id = t.captain_id
-		WHERE u.auth_user_id = $2
-		  AND t.id IN (
-			SELECT e.home_team_id FROM tournament.encounter e WHERE e.id = $1
-			UNION ALL SELECT e.away_team_id FROM tournament.encounter e WHERE e.id = $1
-			UNION ALL SELECT p.team_id FROM tournament.encounter_participant p WHERE p.encounter_id = $1
-		  )
+		WHERE et.encounter_id = $1
+		  AND et.active
+		  AND et.team_id IS NOT NULL
+		  AND u.auth_user_id = $2
 	)`
 	// The draft room's participants. balancer.draft_team carries the captain's
 	// AUTH id directly (captain_auth_user_id), so this needs no players."user"
@@ -311,8 +313,8 @@ func (s *Store) IsWorkspaceOrganizer(ctx context.Context, userID, workspaceID in
 	return organizer, nil
 }
 
-// IsEncounterCaptain reports whether the auth user captains a team of the
-// encounter — either side of a duel, or any team seated in an ffa lobby.
+// IsEncounterCaptain reports whether the auth user captains one of the
+// encounter's live participations — any seat of the card, duel or lobby alike.
 // Both outcomes are cached like IsWorkspaceMember; on a query error
 // nothing is cached and the error is returned, so a transient DB failure is
 // never memoized as "allowed" (callers must treat an error as denied).

@@ -11,13 +11,14 @@ import typing
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 
 from shared.core.enums import PickBanKind
-from shared.models.tournament.pick_ban import PickBanEntry, PickBanSession
+from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
 from src import models
 from src.core import enums, pagination
 from src.core.workspace import workspace_filter
+from src.domain.encounter_seats import Seat
 from src.services.user import _mappers
 
 _LAST_MATCH_AT = (
@@ -69,42 +70,6 @@ def _encounter_match_identity(
     return encounter.id, match.id if match is not None else None
 
 
-def _user_win_case():
-    """1 when the viewer's team (Player.team_id) won the encounter, else 0."""
-    ut = models.Player.team_id
-    return sa.case(
-        (
-            sa.or_(
-                sa.and_(models.Encounter.home_team_id == ut, models.Encounter.home_score > models.Encounter.away_score),
-                sa.and_(models.Encounter.away_team_id == ut, models.Encounter.away_score > models.Encounter.home_score),
-            ),
-            1,
-        ),
-        else_=0,
-    )
-
-
-def _user_loss_case():
-    """1 when the viewer's team (Player.team_id) lost the encounter, else 0."""
-    ut = models.Player.team_id
-    return sa.case(
-        (
-            sa.or_(
-                sa.and_(models.Encounter.home_team_id == ut, models.Encounter.home_score < models.Encounter.away_score),
-                sa.and_(models.Encounter.away_team_id == ut, models.Encounter.away_score < models.Encounter.home_score),
-            ),
-            1,
-        ),
-        else_=0,
-    )
-
-
-_USER_ENCOUNTER_JOIN = sa.or_(
-    models.Encounter.home_team_id == models.Player.team_id,
-    models.Encounter.away_team_id == models.Player.team_id,
-)
-
-
 def _user_player_where(user_id: int):
     return (
         models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
@@ -138,9 +103,8 @@ class UserEncounterQueries:
         lazily per selected dossier entry rather than pulling the user's entire
         encounter history up front. Loads:
           - Match.map — for `MatchReadWithUserStats.map`
-          - Encounter.home_team / away_team + their players (so the encounter
-            mapper can identify the viewer side and roster)
-          - Encounter.stage / stage_item — to surface the bracket stage label
+          - Encounter.tournament; the live seats, their roster snapshots and the
+            bracket position come from :meth:`get_encounter_contexts`
 
         Row shape: (team, encounter, match, performance, heroes, impact_rank,
         impact_points, overperformance_score, overperf_pos). ``overperf_pos`` is
@@ -241,6 +205,7 @@ class UserEncounterQueries:
             .cte("heroes_cte")
         )
 
+        seat = Seat()
         query = (
             sa.select(
                 models.Team,
@@ -257,23 +222,11 @@ class UserEncounterQueries:
             .options(
                 joinedload(models.Match.map).joinedload(models.Map.gamemode),
                 joinedload(models.Encounter.tournament),
-                joinedload(models.Encounter.stage),
-                joinedload(models.Encounter.stage_item),
-                selectinload(models.Encounter.home_team)
-                .selectinload(models.Team.players)
-                .selectinload(models.Player.workspace_member),
-                selectinload(models.Encounter.away_team)
-                .selectinload(models.Team.players)
-                .selectinload(models.Player.workspace_member),
-            )
-            .join(
-                models.Encounter,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Player.team_id,
-                    models.Encounter.away_team_id == models.Player.team_id,
-                ),
             )
             .join(models.Team, models.Player.team_id == models.Team.id)
+        )
+        query = (
+            seat.join(query, models.Player.team_id, duel=False)
             .join(models.Match, models.Encounter.id == models.Match.encounter_id, isouter=True)
             .outerjoin(performance_cte, performance_cte.c.match_id == models.Match.id)
             .outerjoin(heroes_cte, heroes_cte.c.match_id == models.Match.id)
@@ -331,9 +284,9 @@ class UserEncounterQueries:
     ]:
         """Paginated user encounters with the viewer's per-match performance + heroes.
 
-        Loads `Encounter.tournament`, `Encounter.home_team`, `Encounter.away_team`
-        and `Match.map` so the mapper can populate the narrow EncounterReadWithUserStats
-        shape without any further round-trips.
+        Loads `Encounter.tournament` and `Match.map`; the seats, rosters and bracket
+        position come from :meth:`get_encounter_contexts`, so the mapper can populate
+        the narrow EncounterReadWithUserStats shape without any further round-trips.
 
         Row shape: (encounter, match, performance, heroes, impact_rank,
         impact_points, overperformance_score, overperf_pos). ``overperf_pos`` is
@@ -345,30 +298,18 @@ class UserEncounterQueries:
             models.Player.is_substitution.is_(False),
         )
 
-        total_query = (
-            sa.select(sa.func.count(models.Encounter.id))
-            .join(
-                models.Player,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Player.team_id,
-                    models.Encounter.away_team_id == models.Player.team_id,
-                ),
-            )
-            .where(user_player_filter)
-        )
+        seat = Seat()
+        total_query = seat.join(
+            sa.select(sa.func.count(models.Encounter.id)).select_from(models.Player), models.Player.team_id, duel=False
+        ).where(user_player_filter)
 
-        encounters_query = (
-            sa.select(models.Encounter, models.Player.id.label("player_id"), _PLAYED_AT.label("played_at"))
-            .select_from(models.Player)
-            .join(
-                models.Encounter,
-                sa.or_(
-                    models.Encounter.home_team_id == models.Player.team_id,
-                    models.Encounter.away_team_id == models.Player.team_id,
-                ),
-            )
-            .where(user_player_filter)
-        )
+        encounters_query = seat.join(
+            sa.select(models.Encounter, models.Player.id.label("player_id"), _PLAYED_AT.label("played_at")).select_from(
+                models.Player
+            ),
+            models.Player.team_id,
+            duel=False,
+        ).where(user_player_filter)
 
         if workspace_id is not None:
             total_query = total_query.join(
@@ -377,6 +318,15 @@ class UserEncounterQueries:
             encounters_query = encounters_query.join(
                 models.Tournament, models.Encounter.tournament_id == models.Tournament.id
             ).where(*workspace_filter(workspace_id))
+        if params.sort == "round" or stage in ("group", "playoffs", "finals"):
+            # The bracket position moved to ``tournament.bracket_encounter``; an
+            # encounter outside any bracket has no round or stage and sorts last.
+            total_query = total_query.outerjoin(
+                models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id
+            )
+            encounters_query = encounters_query.outerjoin(
+                models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id
+            )
 
         def apply_filters(q: sa.Select) -> sa.Select:
             """Apply the Matches-tab filters server-side. Both the count and the
@@ -387,39 +337,17 @@ class UserEncounterQueries:
                 q = q.where(models.Encounter.has_logs.is_(has_logs))
 
             if result == "win":
-                q = q.where(
-                    sa.or_(
-                        sa.and_(
-                            models.Encounter.home_team_id == models.Player.team_id,
-                            models.Encounter.home_score > models.Encounter.away_score,
-                        ),
-                        sa.and_(
-                            models.Encounter.away_team_id == models.Player.team_id,
-                            models.Encounter.away_score > models.Encounter.home_score,
-                        ),
-                    )
-                )
+                q = q.where(seat.won)
             elif result == "loss":
-                q = q.where(
-                    sa.or_(
-                        sa.and_(
-                            models.Encounter.home_team_id == models.Player.team_id,
-                            models.Encounter.home_score < models.Encounter.away_score,
-                        ),
-                        sa.and_(
-                            models.Encounter.away_team_id == models.Player.team_id,
-                            models.Encounter.away_score < models.Encounter.home_score,
-                        ),
-                    )
-                )
+                q = q.where(seat.lost)
             elif result == "draw":
-                q = q.where(models.Encounter.home_score == models.Encounter.away_score)
+                q = q.where(seat.drew)
 
             if stage in ("group", "playoffs", "finals"):
                 stage_item = sa.orm.aliased(models.StageItem)
                 stage_obj = sa.orm.aliased(models.Stage)
-                q = q.outerjoin(stage_item, models.Encounter.stage_item_id == stage_item.id).outerjoin(
-                    stage_obj, models.Encounter.stage_id == stage_obj.id
+                q = q.outerjoin(stage_item, models.BracketEncounter.stage_item_id == stage_item.id).outerjoin(
+                    stage_obj, models.BracketEncounter.stage_id == stage_obj.id
                 )
                 stage_name = sa.func.coalesce(stage_item.name, stage_obj.name)
                 if stage == "finals":
@@ -473,16 +401,15 @@ class UserEncounterQueries:
                 q = q.where(models.Encounter.id.in_(mvp_subq))
 
             if opponent:
-                home_t = sa.orm.aliased(models.Team)
-                away_t = sa.orm.aliased(models.Team)
-                like = f"%{opponent}%"
-                q = q.outerjoin(home_t, models.Encounter.home_team_id == home_t.id).outerjoin(
-                    away_t, models.Encounter.away_team_id == away_t.id
-                )
+                others = sa.orm.aliased(models.EncounterTeam, name="opponent_seat")
                 q = q.where(
-                    sa.or_(
-                        sa.and_(models.Encounter.home_team_id == models.Player.team_id, away_t.name.ilike(like)),
-                        sa.and_(models.Encounter.away_team_id == models.Player.team_id, home_t.name.ilike(like)),
+                    sa.exists(
+                        sa.select(1).where(
+                            others.encounter_id == seat.team.encounter_id,
+                            others.active.is_(True),
+                            others.id != seat.team.id,
+                            others.name.ilike(f"%{opponent}%"),
+                        )
                     )
                 )
 
@@ -491,12 +418,17 @@ class UserEncounterQueries:
         total_query = apply_filters(total_query)
         encounters_query = apply_filters(encounters_query)
 
-        if params.sort == "played_at":
+        if params.sort in ("played_at", "round"):
             descending = params.order == pagination.SortOrder.DESC or params.order == "desc"
+            # ``round`` lives on the bracket row; the page query reads it back off this
+            # subquery, and an encounter outside any bracket sorts last.
+            sort_column = _PLAYED_AT if params.sort == "played_at" else models.BracketEncounter.round
             encounters_query = encounters_query.order_by(
-                _PLAYED_AT.desc() if descending else _PLAYED_AT.asc(),
+                (sort_column.desc() if descending else sort_column.asc()).nulls_last(),
                 models.Encounter.id.desc() if descending else models.Encounter.id.asc(),
             )
+            if params.sort == "round":
+                encounters_query = encounters_query.add_columns(models.BracketEncounter.round.label("round"))
             encounters_query = params.apply_pagination(encounters_query)
         else:
             encounters_query = params.apply_pagination_sort(encounters_query)
@@ -617,14 +549,6 @@ class UserEncounterQueries:
             .select_from(encounters_query)
             .options(
                 joinedload(models.Encounter.tournament),
-                joinedload(models.Encounter.stage),
-                joinedload(models.Encounter.stage_item),
-                selectinload(models.Encounter.home_team)
-                .selectinload(models.Team.players)
-                .selectinload(models.Player.workspace_member),
-                selectinload(models.Encounter.away_team)
-                .selectinload(models.Team.players)
-                .selectinload(models.Player.workspace_member),
                 joinedload(models.Match.map).joinedload(models.Map.gamemode),
             )
             .join(models.Encounter, encounters_query.c.id == models.Encounter.id)
@@ -639,10 +563,11 @@ class UserEncounterQueries:
                 isouter=True,
             )
         )
-        if params.sort == "played_at":
+        if params.sort in ("played_at", "round"):
             descending = params.order == pagination.SortOrder.DESC or params.order == "desc"
+            sort_column = encounters_query.c[params.sort]
             query = query.order_by(
-                encounters_query.c.played_at.desc() if descending else encounters_query.c.played_at.asc(),
+                (sort_column.desc() if descending else sort_column.asc()).nulls_last(),
                 encounters_query.c.id.desc() if descending else encounters_query.c.id.asc(),
                 models.Match.map_index.asc().nulls_last(),
                 models.Match.id.asc(),
@@ -687,6 +612,83 @@ class UserEncounterQueries:
             grouped.setdefault(int(encounter_id), []).append((item_id, status, action_index, order))
         return {encounter_id: _mappers.settled_map_ids(rows) for encounter_id, rows in grouped.items() if rows}
 
+    async def get_encounter_contexts(
+        self, session: AsyncSession, encounter_ids: typing.Collection[int]
+    ) -> dict[int, _mappers.EncounterContext]:
+        """Live seats (with their roster snapshots) and the bracket position, per encounter.
+
+        Three bulk reads for any number of encounters: the active participations,
+        their roster rows with the account each belongs to, and the bracket
+        coordinate with its stage and stage item. An encounter outside a bracket
+        has no position; one without seats gets an empty list.
+        """
+        if not encounter_ids:
+            return {}
+        ids = tuple(encounter_ids)
+        seats = (
+            await session.scalars(
+                sa.select(models.EncounterTeam)
+                .where(models.EncounterTeam.encounter_id.in_(ids), models.EncounterTeam.active.is_(True))
+                .order_by(models.EncounterTeam.encounter_id, models.EncounterTeam.slot)
+            )
+        ).all()
+
+        roles: dict[int, list[str]] = {}
+        for member_id, role in (
+            await session.execute(
+                sa.select(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role)
+                .join(
+                    models.EncounterTeamMember,
+                    models.EncounterTeamMember.id == models.EncounterTeamMemberRole.team_member_id,
+                )
+                .where(
+                    models.EncounterTeamMember.encounter_id.in_(ids),
+                    models.EncounterTeamMember.active.is_(True),
+                    models.EncounterTeamMemberRole.dimension == "player_role",
+                )
+                .order_by(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role)
+            )
+        ).all():
+            roles.setdefault(member_id, []).append(role)
+        rosters: dict[int, list[_mappers.RosterEntry]] = {}
+        for member, user_id in (
+            await session.execute(
+                sa.select(models.EncounterTeamMember, models.WorkspaceMember.player_id)
+                .join(
+                    models.WorkspaceMember, models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id
+                )
+                .where(models.EncounterTeamMember.encounter_id.in_(ids), models.EncounterTeamMember.active.is_(True))
+                .order_by(models.EncounterTeamMember.id)
+            )
+        ).all():
+            rosters.setdefault(member.encounter_team_id, []).append(
+                _mappers.RosterEntry(member=member, user_id=user_id, roles=tuple(roles.get(member.id, ())))
+            )
+
+        stage_item = sa.orm.aliased(models.StageItem)
+        positions = {
+            bracket.encounter_id: (bracket, stage, item)
+            for bracket, stage, item in (
+                await session.execute(
+                    sa.select(models.BracketEncounter, models.Stage, stage_item)
+                    .outerjoin(models.Stage, models.Stage.id == models.BracketEncounter.stage_id)
+                    .outerjoin(stage_item, stage_item.id == models.BracketEncounter.stage_item_id)
+                    .where(models.BracketEncounter.encounter_id.in_(ids))
+                )
+            ).all()
+        }
+
+        grouped: dict[int, list[tuple[models.EncounterTeam, list[_mappers.RosterEntry]]]] = {}
+        for seat in seats:
+            grouped.setdefault(seat.encounter_id, []).append((seat, rosters.get(seat.id, [])))
+        contexts: dict[int, _mappers.EncounterContext] = {}
+        for encounter_id in ids:
+            bracket, stage, item = positions.get(encounter_id, (None, None, None))
+            contexts[encounter_id] = _mappers.EncounterContext(
+                seats=grouped.get(encounter_id, []), position=bracket, stage=stage, stage_item=item
+            )
+        return contexts
+
     async def get_user_opponents(
         self,
         session: AsyncSession,
@@ -697,26 +699,30 @@ class UserEncounterQueries:
     ):
         """Most-fought opponents across ALL of the user's encounters: opponent team
         name + win/loss/draw record, ordered by number of meetings (desc)."""
-        user_team = models.Player.team_id
-        home_t = sa.orm.aliased(models.Team)
-        away_t = sa.orm.aliased(models.Team)
-        opp_name = sa.case(
-            (models.Encounter.home_team_id == user_team, away_t.name),
-            else_=home_t.name,
-        )
-        draw = sa.case((models.Encounter.home_score == models.Encounter.away_score, 1), else_=0)
+        seat = Seat()
+        # The snapshot name the opponent seat played under; each other live seat
+        # of the encounter is one opponent, so a lobby credits every rival.
+        opponent = sa.orm.aliased(models.EncounterTeam, name="opponent_seat")
 
         query = (
-            sa.select(
-                opp_name.label("name"),
-                sa.func.sum(_user_win_case()).label("wins"),
-                sa.func.sum(_user_loss_case()).label("losses"),
-                sa.func.sum(draw).label("draws"),
+            seat.join(
+                sa.select(
+                    opponent.name.label("name"),
+                    sa.func.sum(seat.count(seat.won)).label("wins"),
+                    sa.func.sum(seat.count(seat.lost)).label("losses"),
+                    sa.func.sum(seat.count(seat.drew)).label("draws"),
+                ).select_from(models.Player),
+                models.Player.team_id,
+                duel=False,
             )
-            .select_from(models.Player)
-            .join(models.Encounter, _USER_ENCOUNTER_JOIN)
-            .join(home_t, models.Encounter.home_team_id == home_t.id)
-            .join(away_t, models.Encounter.away_team_id == away_t.id)
+            .join(
+                opponent,
+                sa.and_(
+                    opponent.encounter_id == seat.team.encounter_id,
+                    opponent.active.is_(True),
+                    opponent.id != seat.team.id,
+                ),
+            )
             .where(*_user_player_where(user_id))
         )
 
@@ -725,7 +731,7 @@ class UserEncounterQueries:
                 *workspace_filter(workspace_id)
             )
 
-        query = query.group_by(opp_name).order_by(sa.func.count(models.Encounter.id).desc()).limit(limit)
+        query = query.group_by(opponent.name).order_by(sa.func.count(models.Encounter.id).desc()).limit(limit)
 
         return (await session.execute(query)).all()
 
@@ -748,16 +754,21 @@ class UserEncounterQueries:
             else_=None,
         )
 
+        seat = Seat()
+        bracket = sa.orm.aliased(models.BracketEncounter)
         query = (
-            sa.select(
-                stage_kind.label("kind"),
-                sa.func.sum(_user_win_case()).label("w"),
-                sa.func.sum(_user_loss_case()).label("l"),
+            seat.join(
+                sa.select(
+                    stage_kind.label("kind"),
+                    sa.func.sum(seat.count(seat.won)).label("w"),
+                    sa.func.sum(seat.count(seat.lost)).label("l"),
+                ).select_from(models.Player),
+                models.Player.team_id,
+                duel=False,
             )
-            .select_from(models.Player)
-            .join(models.Encounter, _USER_ENCOUNTER_JOIN)
-            .outerjoin(stage_item, models.Encounter.stage_item_id == stage_item.id)
-            .outerjoin(stage_obj, models.Encounter.stage_id == stage_obj.id)
+            .outerjoin(bracket, bracket.encounter_id == models.Encounter.id)
+            .outerjoin(stage_item, bracket.stage_item_id == stage_item.id)
+            .outerjoin(stage_obj, bracket.stage_id == stage_obj.id)
             .where(*_user_player_where(user_id))
         )
 

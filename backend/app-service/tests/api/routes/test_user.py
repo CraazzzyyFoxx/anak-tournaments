@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from src import models
 from src.core import enums
 from tests.conftest import RpcHarness, build_query
+from tests.encounter_seed import add_duel
 
 _COMPARE_FIXTURE_IDS = {
     "subject_user": 9_100_000_001,
@@ -144,6 +145,8 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
         "subject_cohort_standing": 9_100_000_501,
         "subject_other_standing": 9_100_000_502,
         "baseline_cohort_standing": 9_100_000_503,
+        "workspace": 9_100_000_901,
+        "scoring_rule": 9_100_000_902,
         "subject_cohort_encounter": 9_100_000_601,
         "subject_other_encounter": 9_100_000_602,
         "baseline_cohort_encounter": 9_100_000_603,
@@ -160,6 +163,18 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
         "baseline_cohort_performance": 9_100_000_808,
     }
 
+    db.add(models.Workspace(id=ids["workspace"], slug="compare-division-ws", name="Compare Division Workspace"))
+    db.flush()
+    db.add(
+        models.ScoringRule(
+            id=ids["scoring_rule"],
+            workspace_id=ids["workspace"],
+            preset="wins",
+            game_formula="win",
+            end_formula="games >= best_of",
+        )
+    )
+    db.flush()
     db.add_all(
         [
             models.User(id=ids["subject_user"], name="compare-division-subject"),
@@ -168,6 +183,7 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 id=ids["subject_cohort_tournament"],
                 name="Compare Division Subject Cohort",
                 slug="compare-division-subject-cohort",
+                workspace_id=ids["workspace"],
                 is_finished=True,
                 is_league=False,
             ),
@@ -175,6 +191,7 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 id=ids["subject_other_tournament"],
                 name="Compare Division Subject Other",
                 slug="compare-division-subject-other",
+                workspace_id=ids["workspace"],
                 is_finished=True,
                 is_league=False,
             ),
@@ -182,6 +199,7 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 id=ids["baseline_cohort_tournament"],
                 name="Compare Division Baseline Cohort",
                 slug="compare-division-baseline-cohort",
+                workspace_id=ids["workspace"],
                 is_finished=True,
                 is_league=False,
             ),
@@ -302,39 +320,41 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 buchholz=None,
                 tb=None,
             ),
-            models.Encounter(
-                id=ids["subject_cohort_encounter"],
-                name="Compare Subject Cohort Encounter",
-                home_team_id=ids["subject_cohort_team"],
-                away_team_id=ids["subject_cohort_enemy_team"],
-                home_score=2,
-                away_score=1,
-                round=1,
-                closeness=0.75,
-                tournament_id=ids["subject_cohort_tournament"],
-            ),
-            models.Encounter(
-                id=ids["subject_other_encounter"],
-                name="Compare Subject Other Encounter",
-                home_team_id=ids["subject_other_team"],
-                away_team_id=ids["subject_other_enemy_team"],
-                home_score=2,
-                away_score=1,
-                round=1,
-                closeness=0.5,
-                tournament_id=ids["subject_other_tournament"],
-            ),
-            models.Encounter(
-                id=ids["baseline_cohort_encounter"],
-                name="Compare Baseline Cohort Encounter",
-                home_team_id=ids["baseline_cohort_team"],
-                away_team_id=ids["baseline_cohort_enemy_team"],
-                home_score=2,
-                away_score=1,
-                round=1,
-                closeness=0.65,
-                tournament_id=ids["baseline_cohort_tournament"],
-            ),
+        ]
+    )
+    db.flush()
+    add_duel(
+        db,
+        encounter_id=ids["subject_cohort_encounter"],
+        tournament_id=ids["subject_cohort_tournament"],
+        workspace_id=ids["workspace"],
+        scoring_rule_id=ids["scoring_rule"],
+        name="Compare Subject Cohort Encounter",
+        seats=[(ids["subject_cohort_team"], 2), (ids["subject_cohort_enemy_team"], 1)],
+        closeness=0.75,
+    )
+    add_duel(
+        db,
+        encounter_id=ids["subject_other_encounter"],
+        tournament_id=ids["subject_other_tournament"],
+        workspace_id=ids["workspace"],
+        scoring_rule_id=ids["scoring_rule"],
+        name="Compare Subject Other Encounter",
+        seats=[(ids["subject_other_team"], 2), (ids["subject_other_enemy_team"], 1)],
+        closeness=0.5,
+    )
+    add_duel(
+        db,
+        encounter_id=ids["baseline_cohort_encounter"],
+        tournament_id=ids["baseline_cohort_tournament"],
+        workspace_id=ids["workspace"],
+        scoring_rule_id=ids["scoring_rule"],
+        name="Compare Baseline Cohort Encounter",
+        seats=[(ids["baseline_cohort_team"], 2), (ids["baseline_cohort_enemy_team"], 1)],
+        closeness=0.65,
+    )
+    db.add_all(
+        [
             models.Match(
                 id=ids["subject_cohort_match"],
                 home_team_id=ids["subject_cohort_team"],
@@ -368,6 +388,12 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 encounter_id=ids["baseline_cohort_encounter"],
                 map_id=map_id,
             ),
+        ]
+    )
+    # Matches before their statistics: the rows share no relationship to order them by.
+    db.flush()
+    db.add_all(
+        [
             models.MatchStatistics(
                 id=ids["subject_cohort_playtime"],
                 match_id=ids["subject_cohort_match"],
@@ -1038,13 +1064,13 @@ def test_get_user_maps_summary(rpc: RpcHarness, user_id: int, entities: list[str
         # (599, 1, 25, "name", "desc", ["tournament", "teams", "teams.players"]),
         (599, 1, 25, "id", "desc", ["tournament", "teams"]),
         (79, 1, 10, "id", "desc", []),
-        (79, 1, 25, "home_team_id", "desc", ["tournament"]),
-        # (79, 1, 25, "away_team_id", "desc", ["tournament", "teams", "teams.players"]),
-        (79, 1, 25, "away_team_id", "desc", ["tournament", "teams"]),
+        (79, 1, 25, "closeness", "desc", ["tournament"]),
+        # (79, 1, 25, "round", "desc", ["tournament", "teams", "teams.players"]),
+        (79, 1, 25, "round", "desc", ["tournament", "teams"]),
         (461, 1, 10, "name", "desc", []),
         (461, 1, 25, "round", "desc", ["tournament"]),
-        # (461, 1, 25, "away_team_id", "desc", ["tournament", "teams", "teams.players"]),
-        (461, 1, 25, "home_team_id", "desc", ["tournament", "teams"]),
+        # (461, 1, 25, "round", "desc", ["tournament", "teams", "teams.players"]),
+        (461, 1, 25, "closeness", "desc", ["tournament", "teams"]),
         (583, 1, 10, "closeness", "desc", []),
         # (583, 1, 25, "tournament_id", "desc", ["tournament", "teams", "teams.players"]),
         (583, 1, 25, "round", "desc", ["tournament", "teams"]),
@@ -1070,31 +1096,23 @@ def test_get_user_encounters(
                     "sort": sort,
                     "order": order,
                     "entities": entities,
+                    "workspace_id": "all",
                 }
             ),
         },
     )
-    assert env["ok"] is True
+    assert env["ok"] is True, env
     content = env["data"]
     assert content["page"] == page
     assert content["per_page"] == per_page
 
-    if "teams" in entities:
-        assert content["results"][0]["home_team"]
-        assert content["results"][0]["away_team"]
-
-        if "teams.players" in entities:
-            assert content["results"][0]["home_team"]["players"]
-            assert content["results"][0]["away_team"]["players"]
-        else:
-            if content["results"]:
-                assert content["results"][0]["home_team"]["players"] == []
-                assert content["results"][0]["away_team"]["players"] == []
-
-    else:
-        if content["results"]:
-            assert content["results"][0]["home_team"] is None
-            assert content["results"][0]["away_team"] is None
+    # Every encounter carries its live seats in slot order; the entity list does not gate them.
+    for encounter in content["results"]:
+        assert "home_team" not in encounter and "away_team" not in encounter
+        assert [team["slot"] for team in encounter["teams"]] == list(range(1, encounter["slot_count"] + 1))
+        for team in encounter["teams"]:
+            assert team["name"]
+            assert isinstance(team["players"], list)
 
     if "tournament" in entities:
         assert content["results"][0]["tournament"]

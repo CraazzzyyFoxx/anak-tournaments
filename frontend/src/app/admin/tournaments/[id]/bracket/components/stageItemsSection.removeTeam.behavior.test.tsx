@@ -83,12 +83,11 @@ function groupStage(items: StageItem[]): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: { win: null, draw: null, loss: null, preset: null, columns: null, placement_points: null, formula: null },
     swiss_bye_points: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
     best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
     challonge_id: null,
     challonge_slug: null,
     items

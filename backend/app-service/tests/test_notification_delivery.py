@@ -82,8 +82,7 @@ SCHEDULED = {
     "encounter_id": 5,
     "tournament_id": 3,
     "tournament_name": "Cup",
-    "home_team_name": "A",
-    "away_team_name": "B",
+    "team_names": ["A", "B"],
 }
 
 
@@ -100,6 +99,27 @@ class RenderTests(IsolatedAsyncioTestCase):
 
         for locale in ("ru", "en"):
             self.assertEqual(set(TEMPLATES[locale]), deliverable, locale)
+
+    def test_encounter_cards_name_every_seat_in_slot_order(self) -> None:
+        """The payload's ``team_names`` is the list of every participation; a card
+        reads it whole, however many seats the encounter has."""
+        fixture = {**SCHEDULED, "team_names": ["A", "B", "C"], "scheduled_at": DEADLINE}
+
+        scheduled = render_discord("encounter.scheduled", fixture, locale="en", site_url=SITE)
+        self.assertIn("**A** vs **B** vs **C** in **Cup**.", scheduled.text)
+        ru = render_discord("encounter.scheduled", fixture, locale="ru", site_url=SITE)
+        self.assertIn("**A** — **B** — **C** на **Cup**.", ru.text)
+
+        dispute = render_discord("encounter.dispute_review", {**fixture, "position": 0}, locale="en", site_url=SITE)
+        self.assertIn("**A**, **B** and **C** reported different scores.", dispute.text)
+        pair = render_discord(
+            "encounter.dispute_review",
+            {**fixture, "team_names": ["A*", "B"], "position": 0},
+            locale="ru",
+            site_url=SITE,
+        )
+        # Names are user text: escaped, never able to open markdown of their own.
+        self.assertIn("Капитаны **A\\*** и **B** разошлись в счёте.", pair.text)
 
     def test_every_card_names_emoji_the_bot_knows(self) -> None:
         """A heading and every button name an emoji out of ``EMOJI``.
@@ -126,8 +146,7 @@ class RenderTests(IsolatedAsyncioTestCase):
             "reason": "no show",
             "closes_at": DEADLINE,
             "scheduled_at": DEADLINE,
-            "home_team_name": "A",
-            "away_team_name": "B",
+            "team_names": ["A", "B"],
         }
 
         for locale in ("ru", "en"):
@@ -213,8 +232,7 @@ class RenderTests(IsolatedAsyncioTestCase):
                 "encounter_id": 5,
                 "tournament_id": 3,
                 "tournament_name": "Cup",
-                "home_team_name": "A",
-                "away_team_name": "B",
+                "team_names": ["A", "B"],
                 "scheduled_at": DEADLINE,
             },
             locale="en",
@@ -575,8 +593,7 @@ class DeliveryTests(IsolatedAsyncioTestCase):
             "encounter_id": 5,
             "tournament_id": 3,
             "position": 0,
-            "home_team_name": "A",
-            "away_team_name": "B",
+            "team_names": ["A", "B"],
         }
         self.session.flush()
         return row
@@ -619,8 +636,7 @@ class DeliveryTests(IsolatedAsyncioTestCase):
             "encounter_id": 5,
             "tournament_id": 3,
             "tournament_name": "Cup",
-            "home_team_name": "A",
-            "away_team_name": "B",
+            "team_names": ["A", "B"],
             "scheduled_at": DEADLINE,
         }
         self.session.flush()

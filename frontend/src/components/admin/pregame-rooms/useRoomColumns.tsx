@@ -14,6 +14,7 @@ import { pregameRoomHref } from "@/lib/encounter/pregame-room";
 import { cn } from "@/lib/utils";
 import type { PregameKindSummary, PregameRoomRow } from "@/types/admin.types";
 
+import { seatsBySlot } from "@/lib/encounter/seats";
 import {
   ATTENTION_LABEL,
   ATTENTION_TONE,
@@ -25,17 +26,15 @@ import {
 
 type PregameTranslator = ReturnType<typeof useTranslations<"adminMatches.pregame">>;
 
-/** The side's own name where there is one, so a cell never reads "home". */
-function sideName(room: PregameRoomRow, side: "home" | "away"): string {
-  return (side === "home" ? room.home_team?.name : room.away_team?.name) ?? side;
-}
-
 function ReadinessCell({ room }: Readonly<{ room: PregameRoomRow }>) {
   return (
     <div className="flex flex-col gap-1">
-      {(["home", "away"] as const).map((side) => (
-        <StatusPill key={side} tone={room.readiness[side] ? "success" : "neutral"}>
-          <span className="max-w-[9rem] truncate">{sideName(room, side)}</span>
+      {seatsBySlot(room.teams).map((seat) => (
+        <StatusPill
+          key={seat.encounter_team_id}
+          tone={room.readiness[String(seat.encounter_team_id)] ? "success" : "neutral"}
+        >
+          <span className="max-w-[9rem] truncate">{seat.name}</span>
         </StatusPill>
       ))}
     </div>
@@ -78,8 +77,10 @@ function StepCell({ room, t }: Readonly<{ room: PregameRoomRow; t: PregameTransl
             action: t(stepActionLabel(summary.step_action) as Parameters<PregameTranslator>[0]),
             blind: summary.step_blind ? t("blind") : "",
             sides:
-              summary.acting_sides.length > 0
-                ? ` · ${summary.acting_sides.map((side) => sideName(room, side)).join(" & ")}`
+              summary.acting_team_ids.length > 0
+                ? ` · ${summary.acting_team_ids
+                    .map((id) => room.teams.find((seat) => seat.encounter_team_id === id)?.name ?? "?")
+                    .join(" & ")}`
                 : ""
           })}
         </p>
@@ -154,7 +155,7 @@ export function useRoomColumns({
         meta: columnMeta<PregameRoomRow>({
           mandatory: true,
           searchValue: (row) =>
-            [row.name, row.home_team?.name, row.away_team?.name].filter(Boolean).join(" ")
+            [row.name, ...row.teams.map((seat) => seat.name)].filter(Boolean).join(" ")
         }),
         cell: ({ row }) => (
           <div className="min-w-0 max-w-[20rem]">
@@ -170,11 +171,13 @@ export function useRoomColumns({
               })}
             </p>
             <p className="truncate text-xs text-muted-foreground">
-              {t("teamsVs", { home: row.original.home_team?.name ?? "TBD", away: row.original.away_team?.name ?? "TBD" })}
-              {row.original.home_score + row.original.away_score > 0 ? (
+              {seatsBySlot(row.original.teams)
+                .map((seat) => seat.name)
+                .join(` ${t("vs")} `) || t("tbd")}
+              {row.original.teams.some((seat) => seat.score > 0) ? (
                 <span className="font-mono tabular-nums">
                   {" "}
-                  · {row.original.home_score}&ndash;{row.original.away_score}
+                  · {seatsBySlot(row.original.teams).map((seat) => seat.score).join("\u2013")}
                 </span>
               ) : null}
             </p>

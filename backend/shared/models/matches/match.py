@@ -5,9 +5,9 @@ from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 from shared.core import db, enums
 from shared.models.catalog.hero import Hero
 from shared.models.catalog.map import Map
+from shared.models.encounter.encounter import Encounter
 from shared.models.identity.user import User
 from shared.models.ingestion.log_processing import LogProcessingRecord
-from shared.models.tournament.encounter import Encounter
 from shared.models.tournament.team import Team
 
 __all__ = (
@@ -23,8 +23,15 @@ class Match(db.TimeStampIntegerMixin):
     __tablename__ = "match"
     __table_args__ = ({"schema": "matches"},)
 
-    home_team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
-    away_team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
+    # NO ACTION, deferred (until V4): deleting a tournament team must not erase
+    # the statistics of the games it played. The two column names are the last
+    # ``home``/``away`` in the schema and stay until the stats layer is reshaped.
+    home_team_id: Mapped[int] = mapped_column(
+        ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), index=True
+    )
+    away_team_id: Mapped[int] = mapped_column(
+        ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), index=True
+    )
     home_score: Mapped[int] = mapped_column(Integer())
     away_score: Mapped[int] = mapped_column(Integer())
     # The duration the log measured. Nullable only for the legacy
@@ -152,7 +159,11 @@ class MatchStatistics(db.Base):
     # enough to be chosen. ``team_id`` keeps its own — it is only ever a join
     # key (``services.user.queries.compare``), never a prefix of anything here.
     round: Mapped[int] = mapped_column(Integer())
-    team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
+    # NO ACTION, deferred, like every ``team_id`` in this schema: a deleted
+    # tournament team must not take played statistics with it (until V4).
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), index=True
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"))
     hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
 
@@ -207,9 +218,13 @@ class MatchKillFeed(db.Base):
     ability: Mapped[enums.AbilityEvent | None] = mapped_column(Enum(enums.AbilityEvent), nullable=True)
     killer_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
     killer_hero_id: Mapped[int] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"))
-    killer_team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
+    killer_team_id: Mapped[int] = mapped_column(
+        ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED")
+    )
     victim_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
-    victim_team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
+    victim_team_id: Mapped[int] = mapped_column(
+        ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED")
+    )
     victim_hero_id: Mapped[int] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"))
     damage: Mapped[float] = mapped_column(Float())
     is_critical_hit: Mapped[bool] = mapped_column(Boolean())
@@ -237,10 +252,14 @@ class MatchEvent(db.Base):
     match_id: Mapped[int] = mapped_column(ForeignKey(Match.id, ondelete="CASCADE"), index=True)
     time: Mapped[float] = mapped_column(Float())
     round: Mapped[int] = mapped_column(Integer())
-    team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), index=True)
+    team_id: Mapped[int] = mapped_column(
+        ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), index=True
+    )
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
     hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
-    related_team_id: Mapped[int | None] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"), nullable=True)
+    related_team_id: Mapped[int | None] = mapped_column(
+        ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), nullable=True
+    )
     related_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), nullable=True)
     related_hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
     name: Mapped[enums.MatchEvent] = mapped_column(Enum(enums.MatchEvent))

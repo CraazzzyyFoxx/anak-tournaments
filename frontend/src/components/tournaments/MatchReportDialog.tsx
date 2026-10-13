@@ -11,6 +11,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { MatchReportForm, matchReportDraftKey } from "@/components/tournaments/MatchReportForm";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
 
 interface MatchReportDialogProps {
@@ -45,7 +46,7 @@ function MatchReportDialogBody({
           {t("matchReport.title")}
         </DialogTitle>
         <DialogDescription className="text-[color:var(--aqt-fg-muted)] text-sm font-semibold mt-1">
-          {encounter.home_team?.name} vs {encounter.away_team?.name}
+          {seatsBySlot(encounter.teams).map((seat) => seat.name).join(" vs ")}
         </DialogDescription>
       </DialogHeader>
 

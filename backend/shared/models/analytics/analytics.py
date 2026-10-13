@@ -5,7 +5,7 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
-from shared.models.tournament.encounter import Encounter
+from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.team import Player, Team
 from shared.models.tournament.tournament import Tournament
 

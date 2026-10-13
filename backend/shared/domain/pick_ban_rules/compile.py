@@ -10,15 +10,26 @@ Design: ``docs/plans/2026-09-28-pick-ban-constructor.md`` §1, §3, §11.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from shared.core.enums import FirstBanRotation
 
 from .registry import RoundCtx, evaluate
-from .schema import Constraint, DisputeRule, Phase, ResolvedStep, Ruleset, Step
+from .schema import LEGACY_ACTOR_SLOTS, Constraint, DisputeRule, Phase, ResolvedActor, ResolvedStep, Ruleset, Step
 
 #: How many lead bans a bracket sequence spends before its picks.
 LEAD_BANS = 2
+
+
+class UnassignedSide(ValueError):
+    """``side:<code>`` read before the ``side_pick`` that hands it out.
+
+    A ``ValueError`` so a caller that cannot defer (the constructor's demand
+    arithmetic, a stored ruleset read out of order) still sees the old
+    behaviour; :func:`resolve_round` catches it and leaves the step unbound.
+    """
+
 
 _V1_ACTIONS = {"ban": "ban", "pick": "pick", "protect": "protect"}
 
@@ -164,27 +175,59 @@ def select_phase(ruleset: Ruleset, ctx: RoundCtx) -> Phase | None:
     return None
 
 
-def resolve_sides(actors: str, *, opener: str, prev_outcome: str | None) -> list[str]:
-    """Actor resolution (§1). ``winner_prev``/``loser_prev`` fall back to
-    first/second when there is no previous round or it was drawn/unknown."""
-    other = "away" if opener == "home" else "home"
+def resolve_actors(
+    actors: str,
+    *,
+    participants: Sequence[int],
+    opener: int,
+    prev_winner: int | None = None,
+    sides: Mapping[str, int] | None = None,
+) -> list[ResolvedActor]:
+    """Actor resolution (§1, §13.4): a token becomes the PARTICIPATIONS that
+    take the step, or ``[None]`` when the engine takes it.
+
+    ``participants`` are the encounter's live seats in slot order, so
+    ``slot:<n>`` is simply the n-th of them; ``second`` is the seat after the
+    opener and ``both`` is everyone, opener first, which is what the two-seat
+    reading always meant. ``winner_prev``/``loser_prev`` fall back to
+    first/second when there is no previous round or it was drawn.
+    ``side:<code>`` needs the ``side_pick`` that assigned it to have been
+    resolved already -- validation refuses a ruleset where it was not.
+    """
+    seats = list(participants)
+    if not seats:
+        raise ValueError("a pick-ban step cannot be resolved without participations")
+    rotated = seats[seats.index(opener) :] + seats[: seats.index(opener)] if opener in seats else seats
+    other = rotated[1] if len(rotated) > 1 else rotated[0]
     match actors:
         case "first":
-            return [opener]
+            return [rotated[0]]
         case "second":
             return [other]
         case "both":
-            return [opener, other]
-        case "home" | "away":
-            return [actors]
+            return list(rotated)
         case "system":
-            return ["system"]
+            return [None]
         case "winner_prev":
-            return [prev_outcome] if prev_outcome in ("home", "away") else [opener]
+            return [prev_winner] if prev_winner in seats else [rotated[0]]
         case "loser_prev":
-            if prev_outcome in ("home", "away"):
-                return ["away" if prev_outcome == "home" else "home"]
+            if prev_winner in seats:
+                losers = [seat for seat in rotated if seat != prev_winner]
+                return [losers[0]]
             return [other]
+    slot = LEGACY_ACTOR_SLOTS.get(actors)
+    if slot is None and actors.startswith("slot:"):
+        slot = int(actors.removeprefix("slot:"))
+    if slot is not None:
+        if not 1 <= slot <= len(seats):
+            raise ValueError(f"actors {actors!r} names a slot this encounter does not seat")
+        return [seats[slot - 1]]
+    if actors.startswith("side:"):
+        code = actors.removeprefix("side:")
+        actor = (sides or {}).get(code)
+        if actor is None:
+            raise UnassignedSide(f"actors {actors!r} is read before any step assigned side {code!r}")
+        return [actor]
     raise ValueError(f"unknown actors {actors!r}")
 
 
@@ -194,8 +237,10 @@ def resolve_round(
     kind: str,
     round: int | None,
     start_index: int,
-    opener: str,
-    prev_outcome: str | None = None,
+    participants: Sequence[int],
+    opener: int,
+    prev_winner: int | None = None,
+    sides: Mapping[str, int] | None = None,
     best_of: int = 1,
     pool_size: int = 0,
     candidate_count: int = 0,
@@ -226,7 +271,19 @@ def resolve_round(
     for step in steps:
         if step.action == "decider" and kind != "map":
             continue
-        count = 1 if step.action == "decider" else step.count
+        count = 1 if step.action in ("decider", "side_pick") else step.count
+        # A ``side:<code>`` actor names whoever an EARLIER ``side_pick`` of this
+        # same round will hand that side to, and the round is resolved before
+        # any of its steps is played. Such a step is written unbound and gets
+        # its actors from ``runtime.bind_side_actors`` the moment the side
+        # exists; the cursor stops on it until then.
+        try:
+            actors = resolve_actors(
+                step.actors, participants=participants, opener=opener, prev_winner=prev_winner, sides=sides
+            )
+            token = None
+        except UnassignedSide:
+            actors, token = [], step.actors
         resolved.append(
             ResolvedStep(
                 index=start_index + len(resolved),
@@ -234,7 +291,8 @@ def resolve_round(
                 phase_id=phase.id,
                 step_id=step.id,
                 action=step.action,
-                sides=resolve_sides(step.actors, opener=opener, prev_outcome=prev_outcome),  # type: ignore[arg-type]
+                actors=actors,
+                actors_token=token,
                 count=count,
                 min=count if step.min is None else min(step.min, count),
                 blind=step.blind,

@@ -76,7 +76,7 @@ export default class encounterService {
         query: query,
         sort: sort ?? "id",
         order: order,
-        entities: entities ?? ["tournament", "stage", "stage_item", "home_team", "away_team"],
+        entities: entities ?? ["tournament", "stage", "stage_item", "teams"],
         fields: ["name"],
         tournament_id: tournamentId,
         ...restFilters

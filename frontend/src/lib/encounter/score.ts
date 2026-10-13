@@ -1,14 +1,20 @@
+import type { Duel } from "@/lib/encounter/seats";
 import type { StageItemType, StageType } from "@/types/tournament.types";
 
-export type EncounterScore = {
-  homeScore: number;
-  awayScore: number;
-};
+/** A duel's scoreline: slot 1 is `one`, slot 2 is `two`. */
+export type EncounterScore = Duel<number>;
+
+/** The `matchEdit.presetDescriptions.*` keys. */
+export type EncounterScoreDescription =
+  | "firstSweep"
+  | "firstClose"
+  | "draw"
+  | "secondClose"
+  | "secondSweep";
 
 export type EncounterScorePreset = EncounterScore & {
   label: string;
-  description: string;
-  descriptionKey: "Home sweep" | "Home close win" | "Draw" | "Away close win" | "Away sweep";
+  description: EncounterScoreDescription;
 };
 
 type ScoreStageLike = {
@@ -20,11 +26,11 @@ type ScoreStageItemLike = {
 } | null | undefined;
 
 export const GROUP_STAGE_SCORE_PRESETS: EncounterScorePreset[] = [
-  { label: "2-0", description: "Home sweep", descriptionKey: "Home sweep", homeScore: 2, awayScore: 0 },
-  { label: "2-1", description: "Home close win", descriptionKey: "Home close win", homeScore: 2, awayScore: 1 },
-  { label: "1-1", description: "Draw", descriptionKey: "Draw", homeScore: 1, awayScore: 1 },
-  { label: "1-2", description: "Away close win", descriptionKey: "Away close win", homeScore: 1, awayScore: 2 },
-  { label: "0-2", description: "Away sweep", descriptionKey: "Away sweep", homeScore: 0, awayScore: 2 },
+  { label: "2-0", description: "firstSweep", one: 2, two: 0 },
+  { label: "2-1", description: "firstClose", one: 2, two: 1 },
+  { label: "1-1", description: "draw", one: 1, two: 1 },
+  { label: "1-2", description: "secondClose", one: 1, two: 2 },
+  { label: "0-2", description: "secondSweep", one: 0, two: 2 },
 ];
 
 export function clampScoreValue(value: string | number): number {
@@ -50,15 +56,15 @@ export function stageNeedsWinner(stageType: StageType | string | null | undefine
   return stageType === "single_elimination" || stageType === "double_elimination";
 }
 
-/** Human-readable description key (reused i18n keys under matchEdit.presetDescriptions). */
-function describeScore(homeScore: number, awayScore: number): string {
-  if (homeScore === awayScore) return "Draw";
-  if (homeScore > awayScore) return awayScore === 0 ? "Home sweep" : "Home close win";
-  return homeScore === 0 ? "Away sweep" : "Away close win";
+/** The `matchEdit.presetDescriptions.*` key that words a scoreline. */
+function describeScore({ one, two }: EncounterScore): EncounterScoreDescription {
+  if (one === two) return "draw";
+  if (one > two) return two === 0 ? "firstSweep" : "firstClose";
+  return one === 0 ? "secondSweep" : "secondClose";
 }
 
 /**
- * All valid final scores for a best-of-N series. Winner needs
+ * All valid final scores for a best-of-N series, slot 1 first. Winner needs
  * `floor(N/2)+1` maps; the loser can take up to `N - w` (early clinch). Even
  * series (e.g. BO2) additionally allow a drawn `N/2 - N/2`.
  */
@@ -68,19 +74,18 @@ export function validSeriesScores(bestOf: number): EncounterScorePreset[] {
   const maxLoser = bestOf - win;
   const scores: EncounterScore[] = [];
   for (let loser = 0; loser <= maxLoser; loser++) {
-    scores.push({ homeScore: win, awayScore: loser });
+    scores.push({ one: win, two: loser });
   }
   if (bestOf % 2 === 0) {
-    scores.push({ homeScore: bestOf / 2, awayScore: bestOf / 2 });
+    scores.push({ one: bestOf / 2, two: bestOf / 2 });
   }
   for (let loser = maxLoser; loser >= 0; loser--) {
-    scores.push({ homeScore: loser, awayScore: win });
+    scores.push({ one: loser, two: win });
   }
   return scores.map((score) => ({
     ...score,
-    label: `${score.homeScore}-${score.awayScore}`,
-    description: describeScore(score.homeScore, score.awayScore),
-    descriptionKey: describeScore(score.homeScore, score.awayScore) as EncounterScorePreset["descriptionKey"]
+    label: `${score.one}-${score.two}`,
+    description: describeScore(score)
   }));
 }
 

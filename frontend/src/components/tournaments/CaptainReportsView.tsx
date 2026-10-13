@@ -3,6 +3,8 @@
 import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import type {
   CaptainReport,
   Encounter,
@@ -22,27 +24,29 @@ interface CaptainReportsViewProps {
   className?: string;
 }
 
-/** One side's report: by `side`, falling back to the team for a report filed before sides were stored. */
-export function pickReport(
-  reports: CaptainReport[],
-  side: "home" | "away",
-  teamId: number
-): CaptainReport | null {
-  return (
-    reports.find((report) => report.side === side) ??
-    reports.find((report) => report.team_id === teamId) ??
-    null
-  );
+/** The replay codes a participation entered, by position: they live on the game's lines. */
+function replayCodesOf(encounter: Encounter, encounterTeamId: number) {
+  return encounter.games
+    .flatMap((game) =>
+      game.teams
+        .filter((line) => line.encounter_team_id === encounterTeamId && line.replay_code)
+        .map((line) => ({ position: game.position, code: line.replay_code as string }))
+    )
+    .sort((a, b) => a.position - b.position);
 }
 
 function ReportCard({
   title,
   teamName,
+  standing,
+  replayCodes,
   report,
   customFields,
 }: Readonly<{
   title: string;
   teamName: string;
+  standing: string;
+  replayCodes: { position: number; code: string }[];
   report: CaptainReport | null;
   customFields: ReportCustomFieldDefinition[];
 }>) {
@@ -60,26 +64,21 @@ function ReportCard({
       </div>
       {report ? (
         <div className="mt-2 space-y-1.5 text-sm text-[color:var(--aqt-fg-muted)]">
-          <div className="text-base font-bold text-[color:var(--aqt-fg)]">
-            {report.home_score} - {report.away_score}
-          </div>
+          <div className="text-base font-bold text-[color:var(--aqt-fg)]">{standing}</div>
           <div className="text-xs text-[color:var(--aqt-fg-muted)]">
             {t("matchReport.matchQuality")}:{" "}
             {report.closeness != null ? `${report.closeness}/10` : "—"}
           </div>
-          {report.map_codes.length > 0 && (
+          {replayCodes.length > 0 && (
             <ul className="mt-1 space-y-0.5">
-              {report.map_codes
-                .slice()
-                .sort((a, b) => a.map_index - b.map_index)
-                .map((mapCode) => (
-                  <li key={mapCode.id} className="flex items-center gap-2 text-xs text-[color:var(--aqt-fg-muted)]">
-                    <span className="text-[color:var(--aqt-fg-dim)]">
-                      {t("matchReport.mapLabel", { index: String(mapCode.map_index) })}
-                    </span>
-                    <span className="text-[color:var(--aqt-fg-muted)]">{mapCode.code}</span>
-                  </li>
-                ))}
+              {replayCodes.map(({ position, code }) => (
+                <li key={position} className="flex items-center gap-2 text-xs text-[color:var(--aqt-fg-muted)]">
+                  <span className="text-[color:var(--aqt-fg-dim)]">
+                    {t("matchReport.mapLabel", { index: String(position) })}
+                  </span>
+                  <span className="text-[color:var(--aqt-fg-muted)]">{code}</span>
+                </li>
+              ))}
             </ul>
           )}
           {comment ? (
@@ -121,16 +120,16 @@ export function CaptainReportsView({
   className,
 }: Readonly<CaptainReportsViewProps>) {
   const t = useTranslations();
-  const homeReport = pickReport(reports, "home", encounter.home_team_id);
-  const awayReport = pickReport(reports, "away", encounter.away_team_id);
-  const homeLabel = encounter.home_team?.name?.trim() || t("common.homeTeam");
-  const awayLabel = encounter.away_team?.name?.trim() || t("common.awayTeam");
+  const seats = seatsBySlot(encounter.teams);
+  const seatIds = seats.map((seat) => seat.id);
+  const seatReports = seats.map((seat) => reportOf(reports, seat.id));
   const customFields = form?.custom_fields ?? [];
-  // Averaging needs both ratings; one unrated side makes the average a lie, not
-  // a smaller number.
+  // Averaging needs every seat's rating; one unrated seat makes the average a
+  // lie, not a smaller number.
+  const ratings = seatReports.map((report) => report?.closeness);
   const avgCloseness =
-    homeReport?.closeness != null && awayReport?.closeness != null
-      ? (homeReport.closeness + awayReport.closeness) / 2
+    seats.length > 0 && ratings.every((rating) => rating != null)
+      ? (ratings as number[]).reduce((sum, rating) => sum + rating, 0) / ratings.length
       : null;
 
   return (
@@ -139,18 +138,20 @@ export function CaptainReportsView({
         {t("matchReport.bothReportsTitle")}
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <ReportCard
-          title={t("matchReport.homeReport")}
-          teamName={homeLabel}
-          report={homeReport}
-          customFields={customFields}
-        />
-        <ReportCard
-          title={t("matchReport.awayReport")}
-          teamName={awayLabel}
-          report={awayReport}
-          customFields={customFields}
-        />
+        {seats.map((seat, index) => {
+          const report = seatReports[index];
+          return (
+            <ReportCard
+              key={seat.id}
+              title={t("matchReport.teamReport")}
+              teamName={seat.name}
+              standing={report ? scoreline(report.results, seatIds) : ""}
+              replayCodes={replayCodesOf(encounter, seat.id)}
+              report={report}
+              customFields={customFields}
+            />
+          );
+        })}
       </div>
       {avgCloseness != null && (
         <p className="text-xs text-[color:var(--aqt-fg-muted)]">

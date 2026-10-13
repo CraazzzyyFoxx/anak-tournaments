@@ -9,14 +9,14 @@ import { OverlayBar } from "@/components/ui/overlay-bar";
 import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournament.types";
 import { Spinner } from "@/components/ui/spinner";
 
-import { stepDeadlineMs, stepSummary, type PickBanSide } from "./pick-ban-model";
+import { stepDeadlineMs, stepSummary } from "./pick-ban-model";
 import { PickBanCountdown } from "./PickBanCountdown";
 import type { PickBanItemLike } from "./PickBanGrid";
 import { PickBanItemThumb } from "./PickBanItemThumb";
 
 interface PickBanCommandBarProps {
   state: PickBanState;
-  sideName: (side: PickBanSide) => string;
+  teamName: (teamId: number) => string;
   /**
    * The viewer's own pending action on an OPEN step, or null — on a blind step
    * nothing is confirmed here (`draft` takes this slot), and a spectator never
@@ -50,7 +50,7 @@ interface PickBanCommandBarProps {
  */
 export function PickBanCommandBar({
   state,
-  sideName,
+  teamName,
   captainAction,
   draft,
   draftOpen = false,
@@ -66,7 +66,7 @@ export function PickBanCommandBar({
   const deadline = stepDeadlineMs(state);
   const step = state.current_step;
   const summary = step != null ? stepSummary(step) : null;
-  const acting = state.acting_sides;
+  const acting = state.acting_team_ids;
   const paused = state.session?.paused_at != null;
   const yourTurn = !paused && (captainAction != null || draftOpen);
 
@@ -85,7 +85,7 @@ export function PickBanCommandBar({
             : acting.length > 1
               ? t("turnBoth", { action: t(`action.${summary.action}`) })
               : t("turn", {
-                  side: sideName(acting[0]),
+                  team: teamName(acting[0]),
                   action: t(`action.${summary.action}`)
                 });
 

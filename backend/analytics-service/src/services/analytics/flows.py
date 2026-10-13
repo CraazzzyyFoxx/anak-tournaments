@@ -193,7 +193,8 @@ class AnalyticsFlowsService:
         teams = await analytics_service.get_teams_with_players(session, tournament_id)
         grids = await load_source_grids(session, df["version_id"].dropna().unique())
         pl = get_plackett_luce()
-        _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches)
+        rosters = await analytics_service.get_rosters(session, matches)
+        _, players_rating, _ = prepare_openskill_data(df, pl, teams, matches, rosters)
 
         final_df = df[df["tournament_id"] == tournament_id].replace({np.nan: None})
         shift_map: dict[int, float] = {}

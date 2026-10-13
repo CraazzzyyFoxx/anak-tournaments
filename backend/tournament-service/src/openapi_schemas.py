@@ -429,11 +429,12 @@ OPERATIONS: dict[str, Op] = {
     # captain_reports is deliberately absent: it answers the ad-hoc envelope
     # {reports, form} rather than a bare CaptainReportRead array, and this module
     # maps whole request/response models only (see the module docstring).
+    # captain_submit_report answers that same ad-hoc envelope, so only its body
+    # is mapped.
+    "rpc.tournament.captain_submit_report": Op(request=captain_schemas.TeamReportIn),
     # ── encounter result (the single admin write + its audit trail) ────────
-    "rpc.tournament.encounter_set_result": Op(
-        request=schemas.EncounterSetResultInput, response=schemas.EncounterResultRead
-    ),
-    "rpc.tournament.encounter_reopen_result": Op(response=schemas.EncounterResultRead),
+    "rpc.tournament.encounter_set_result": Op(request=schemas.SetResultIn, response=schemas.EncounterResultRead),
+    "rpc.tournament.encounter_reopen_result": Op(request=schemas.ReopenResultIn, response=schemas.EncounterResultRead),
     "rpc.tournament.encounter_result_audit": Op(response=schemas.EncounterResultAuditRead, response_array=True),
     # ── ffa lobby results: every write answers the settled lobby table ────
     "rpc.tournament.ffa_game_results_set": Op(
@@ -455,7 +456,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.captain_pick_ban_submit": Op(request=captain_schemas.PickBanSubmitInput),
     "rpc.tournament.captain_pick_ban_elect_opener": Op(request=captain_schemas.ElectOpenerInput),
     "rpc.tournament.captain_pick_ban_undo": Op(request=captain_schemas.PickBanUndoInput),
-    "rpc.tournament.captain_report_game": Op(request=captain_schemas.GameReportInput),
+    "rpc.tournament.captain_report_game": Op(request=captain_schemas.GameClaimIn),
     "rpc.tournament.captain_select_game_map": Op(request=captain_schemas.GameMapSelectInput),
     "rpc.tournament.admin_game_result": Op(request=pick_ban_admin.AdminGameResultInput),
     # ── organizer pick-ban: config CRUD, the constructor, live overrides ───

@@ -24,6 +24,13 @@ from shared.repository import get_or_create_workspace_member
 from shared.services.division_grid.access import get_default_division_grid_version_id
 from src.services.workspace.service import workspaces as workspace_service
 
+_loop: asyncio.AbstractEventLoop
+
+
+def run(coro):
+    """Run ``coro`` on the loop that owns ``db_session``'s connection."""
+    return _loop.run_until_complete(coro)
+
 
 @pytest.fixture
 def db_session():
@@ -33,30 +40,44 @@ def db_session():
     fixture / identity-service's ``db_session`` fixture) and hard-guards
     against ever running against a production database. The session is never
     committed by these tests, so nothing written here persists.
+
+    The session holds one asyncpg connection, so every step of a test (probe,
+    body, rollback) runs on the same event loop via ``run``; a fresh
+    ``asyncio.run`` per step would hand the connection to a closed loop.
     """
+    global _loop
     from src.core import db as db_module
+
+    _loop = loop = asyncio.new_event_loop()
 
     async def _probe_and_open():
         session = db_module.async_session_maker()
         dbname = (await session.execute(sa.text("select current_database()"))).scalar()
         return session, dbname
 
-    try:
-        session, dbname = asyncio.run(_probe_and_open())
-    except Exception as exc:  # noqa: BLE001 -- any connect failure => skip, not fail
-        pytest.skip(f"database unreachable: {exc}")
-        return
-
-    if dbname in {"anak_v5", "anak_prod"}:
-        asyncio.run(session.close())
-        pytest.skip("refusing to run integration tests against production")
-        return
+    async def _finish(session):
+        await session.rollback()
+        await session.close()
+        await db_module.async_engine.dispose()
 
     try:
-        yield session
+        try:
+            session, dbname = loop.run_until_complete(_probe_and_open())
+        except Exception as exc:  # noqa: BLE001 -- any connect failure => skip, not fail
+            pytest.skip(f"database unreachable: {exc}")
+            return
+
+        if dbname in {"anak_v5", "anak_prod"}:
+            loop.run_until_complete(_finish(session))
+            pytest.skip("refusing to run integration tests against production")
+            return
+
+        try:
+            yield session
+        finally:
+            loop.run_until_complete(_finish(session))
     finally:
-        asyncio.run(session.rollback())
-        asyncio.run(session.close())
+        loop.close()
 
 
 async def _make_player(session, *, auth_user_id: int | None = None) -> User:
@@ -105,7 +126,7 @@ def test_get_or_create_workspace_member_is_idempotent(db_session) -> None:
         second = await get_or_create_workspace_member(db_session, workspace_id=workspace.id, player_id=player.id)
         return first, second
 
-    first, second = asyncio.run(_run())
+    first, second = run(_run())
 
     assert first.id == second.id
     assert first.workspace_id == second.workspace_id == first.workspace_id
@@ -122,7 +143,7 @@ def test_get_or_create_workspace_member_distinct_players_distinct_rows(db_sessio
         member_b = await get_or_create_workspace_member(db_session, workspace_id=workspace.id, player_id=player_b.id)
         return member_a, member_b
 
-    member_a, member_b = asyncio.run(_run())
+    member_a, member_b = run(_run())
 
     assert member_a.id != member_b.id
     assert member_a.player_id != member_b.player_id
@@ -153,7 +174,7 @@ def test_get_members_excludes_players_without_auth_link(db_session) -> None:
         members = await workspace_service.get_members(db_session, workspace.id)
         return {m.player_id for m in members}, linked.id, player_only.id
 
-    player_ids, linked_id, player_only_id = asyncio.run(_run())
+    player_ids, linked_id, player_only_id = run(_run())
 
     assert linked_id in player_ids
     assert player_only_id not in player_ids
@@ -173,7 +194,7 @@ def test_add_member_creates_row_anchored_on_player_id(db_session) -> None:
         has_role = await user_has_any_workspace_role(db_session, user_id=auth_user.id, workspace_id=workspace.id)
         return member, row.scalar_one(), has_role
 
-    member, row, has_role = asyncio.run(_run())
+    member, row, has_role = run(_run())
 
     assert row.player_id == member.player_id
     assert has_role is True
@@ -193,7 +214,7 @@ def test_add_member_provisions_player_for_authuser_without_one(db_session) -> No
         player = await db_session.get(User, member.player_id)
         return auth_user.id, player.auth_user_id, member.workspace_id
 
-    auth_id, player_auth_id, member_ws = asyncio.run(_run())
+    auth_id, player_auth_id, member_ws = run(_run())
 
     assert player_auth_id == auth_id  # the provisioned player links back to the auth user
 
@@ -215,7 +236,7 @@ def test_assign_default_member_role_if_roleless_is_idempotent(db_session) -> Non
         has = await user_has_any_workspace_role(db_session, user_id=auth_user.id, workspace_id=workspace.id)
         return first, again, has
 
-    first, again, has = asyncio.run(_run())
+    first, again, has = run(_run())
 
     assert first is True  # assigned player
     assert again is False  # already has a role -> no-op
@@ -244,7 +265,7 @@ def test_list_members_page_paginates_and_excludes_auth_less(db_session) -> None:
         )
         return first_total, len(first_rows), all_total, {au.id for (_m, au, _r) in all_rows}, au1.id, au2.id
 
-    first_total, first_len, all_total, auth_ids, au1_id, au2_id = asyncio.run(_run())
+    first_total, first_len, all_total, auth_ids, au1_id, au2_id = run(_run())
 
     assert first_total == 2  # orphan (auth_user_id NULL) excluded from the count
     assert first_len == 1  # per_page=1 returns one row
@@ -305,7 +326,7 @@ def test_list_members_page_role_filter_and_sort(db_session) -> None:
             au_member.id,
         )
 
-    filtered_ids, excluded_ids, ex_total, both_total, both_len, sorted_ids, admin_id, member_id = asyncio.run(_run())
+    filtered_ids, excluded_ids, ex_total, both_total, both_len, sorted_ids, admin_id, member_id = run(_run())
 
     assert filtered_ids == {admin_id}  # role filter keeps only the admin
     assert excluded_ids == {member_id}  # excluding admin keeps the member
@@ -332,7 +353,7 @@ def test_autofill_member_roles_grants_member_to_roleless(db_session) -> None:
         has = await user_has_any_workspace_role(db_session, user_id=auth_user.id, workspace_id=workspace.id)
         return assigned, assigned_again, has
 
-    assigned, assigned_again, has = asyncio.run(_run())
+    assigned, assigned_again, has = run(_run())
 
     assert assigned == 1
     assert assigned_again == 0

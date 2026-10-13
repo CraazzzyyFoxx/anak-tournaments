@@ -55,5 +55,6 @@ class SwissSearchBudgetTests(TestCase):
         self.assertIsNone(skeleton.bye_team_id)
         self.assertEqual(
             [(1, 3), (2, 4), (5, 7), (6, 8)],
-            [(pairing.home_team_id, pairing.away_team_id) for pairing in skeleton.pairings],
+            # ``team_ids[i]`` is slot ``i + 1``; there is no home or away (D55).
+            [tuple(pairing.team_ids) for pairing in skeleton.pairings],
         )

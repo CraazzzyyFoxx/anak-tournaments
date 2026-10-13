@@ -130,6 +130,20 @@ async def enqueue_encounter_completed(
     session: AsyncSession,
     encounter: models.Encounter,
 ) -> None:
+    """Announce a completed encounter — unless it is a scrim room.
+
+    This event has exactly one consumer: parser-service republishes it as an
+    ``AchievementEvaluateEvent``. For a scrim that evaluation is verifiably
+    empty — every achievement condition reaches its users through an inner join
+    on ``Player`` or through ``MatchStatistics``, and a scrim room has neither
+    (docs/plans/2026-08-12-scrim-rooms.md §4.1, §5). It is not free though: it
+    costs an outbox row, a queue round trip, an ``EvaluationRun`` audit row and
+    one full query per encounter-dependent rule, per scrim result. Not
+    publishing beats publishing and discarding — the same decision
+    ``enqueue_tournament_recalculation`` above makes.
+    """
+    if await is_scrim_container(session, encounter.tournament_id):
+        return
     await shared_encounter_events.enqueue_encounter_completed(session, encounter, source_service="tournament-service")
 
 

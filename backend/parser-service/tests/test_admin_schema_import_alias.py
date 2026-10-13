@@ -9,7 +9,7 @@ same import as any public schema. Importing ``src.schemas.admin`` (or one of
 those six submodules) directly anywhere outside the schemas package itself
 reintroduces a second, narrower ``schemas``-shaped name and is banned.
 
-``src/schemas/admin/{encounter,tournament,stage,standing,player_sub_role}.py``
+``src/schemas/admin/{tournament,stage,standing,player_sub_role}.py``
 are a separate matter: confirmed dead code (zero consumers anywhere in this
 service, most likely leftover from before tournament/encounter/stage CRUD
 moved to tournament-service). They were deliberately left unflattened and are
@@ -31,7 +31,6 @@ _BANNED_RE = re.compile(r"schemas\.admin\b")
 #: the "schemas.admin" substring; that is not a violation of the reachability
 #: rule, it is just where they still live.
 _EXEMPT = {
-    "src/schemas/admin/encounter.py",
     "src/schemas/admin/tournament.py",
     "src/schemas/admin/stage.py",
     "src/schemas/admin/standing.py",

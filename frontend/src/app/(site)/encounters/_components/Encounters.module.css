@@ -781,7 +781,7 @@
   border: 1px solid var(--enc-border);
 }
 
-.balanceHome {
+.balanceOne {
   background: var(--enc-teal);
   display: flex;
   align-items: center;
@@ -792,7 +792,7 @@
   color: hsl(180 20% 5%);
 }
 
-.balanceAway {
+.balanceTwo {
   background: color-mix(in srgb, var(--enc-border) 50%, var(--enc-border-2));
   display: flex;
   align-items: center;
@@ -811,7 +811,7 @@
   color: var(--enc-muted);
 }
 
-.balanceLegendHome {
+.balanceLegendOne {
   color: var(--enc-teal);
   font-weight: 700;
 }

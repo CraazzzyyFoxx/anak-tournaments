@@ -13,7 +13,6 @@ import type {
   PickBanSubmissionItem
 } from "@/types/tournament.types";
 
-import type { PickBanSide } from "./pick-ban-model";
 import type { PickBanItemLike } from "./PickBanGrid";
 import { PickBanItemThumb } from "./PickBanItemThumb";
 
@@ -68,7 +67,7 @@ export function PickBanDraftTray({
   locking,
   itemsById,
   targetName,
-  opponentSide,
+  opponentTeamId,
   opponentProgress,
   opponentName,
   onRemove,
@@ -94,7 +93,8 @@ export function PickBanDraftTray({
   itemsById: Record<number, PickBanItemLike | undefined>;
   /** Roster name behind a target id, for a per-player step. */
   targetName: (playerId: number) => string | null;
-  opponentSide: PickBanSide | null;
+  /** The other acting participation, or null when this step has none. */
+  opponentTeamId: number | null;
   opponentProgress: PickBanStepProgress | undefined;
   opponentName: string;
   onRemove: (index: number) => void;
@@ -109,7 +109,7 @@ export function PickBanDraftTray({
   return (
     <div data-pick-ban-draft className="flex min-w-0 flex-col gap-1.5 sm:items-end">
       <div className="flex min-w-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
-        {opponentSide != null ? (
+        {opponentTeamId != null ? (
           <span
             data-opponent-progress={opponentProgress?.filled ?? 0}
             className={cn(

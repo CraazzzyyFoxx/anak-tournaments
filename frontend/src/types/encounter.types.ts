@@ -2,55 +2,70 @@ import { MapRead } from "@/types/map.types";
 import { Team, TeamWithStats } from "@/types/team.types";
 import {
   EncounterGame,
+  EncounterResultSource,
   EncounterResultStatus,
   Stage,
   StageItem,
   Tournament,
 } from "@/types/tournament.types";
 
+/** A parsed log's own two-sided score (`matches.match`, V4 keeps it) — never an encounter's. */
 export interface Score {
   home: number;
   away: number;
 }
 
 /**
- * One incoming advancement edge: `role` of `encounter_id` fills `slot` of this
- * encounter. The bracket's real topology, so a reader can label an unresolved
- * slot without inferring the bracket's shape. Absent on a bracket generated
- * before advancement edges were recorded.
+ * One incoming advancement edge: place `source_position` of `encounter_id`
+ * fills seat `slot` of this encounter. The bracket's real topology, so a
+ * reader can label an unresolved slot ("1st of M3") without inferring the
+ * bracket's shape. Absent on a bracket generated before advancement edges
+ * were recorded.
  */
 export interface EncounterSlotSource {
   encounter_id: number;
-  role: "winner" | "loser";
-  slot: "home" | "away";
+  /** Place in the source encounter's final standing; 1 is first. */
+  source_position: number;
+  /** Seat of this encounter the edge fills, `1..slot_count`. */
+  slot: number;
 }
 
 /**
- * A game as the public encounter read serves it: the position also names its
- * map, so a map can be pictured before (or without) a parsed log. The pick-ban
- * room's `PickBanGame` carries no map object — only `map_id`.
+ * One live seat of an encounter (`encounter.team`), in slot order. `id` is the
+ * participation id every write addresses — a claim, a report and an admin
+ * result all name it, never a slot. `team_id` goes null when the source team
+ * is deleted; `name` is the snapshot that outlives it.
  */
+export interface EncounterTeam {
+  id: number;
+  slot: number;
+  team_id: number | null;
+  name: string;
+  seed: number | null;
+  /** The standing inside the encounter: wins under a series, points in a lobby. */
+  score: number;
+  placement: number | null;
+  active: boolean;
+  /** The source team, expanded only where the read asks for it. */
+  team?: Team | null;
+}
+
+/** A game as the public encounter read serves it: the position also names its
+ * map, so a map can be pictured before (or without) a parsed log. The pick-ban
+ * room's `PickBanGame` carries no map object — only `map_id`. */
 export interface EncounterGameWithMap extends EncounterGame {
   map: Match["map"];
 }
-
-/**
- * Which shape of result the encounter carries: a duel is the two-team series
- * every list below assumes, an `ffa` encounter is a multi-team lobby whose
- * rows live in `FfaLobby` (`@/types/ffa.types`) and whose `score`, `home_team`
- * and `away_team` are placeholders. List reads are duel-only by default.
- */
-export type EncounterFormat = "duel" | "ffa";
 
 export interface Encounter {
   id: number;
   created_at: Date;
   updated_at: Date | null;
   name: string;
-  format: EncounterFormat;
-  home_team_id: number;
-  away_team_id: number;
-  score: Score;
+  /** How many seats the card has: 2 is a duel, more is a lobby whose rows live in `FfaLobby`. */
+  slot_count: number;
+  /** How the card is scored: `points` is a lobby's card (a two-seat one included), `wins` a series. */
+  scoring_preset: "wins" | "points";
   round: number;
   best_of: number;
   tournament_id: number;
@@ -61,12 +76,16 @@ export interface Encounter {
   closeness: number | null;
   has_logs: boolean;
   result_status: EncounterResultStatus;
+  /** Which writer decided the standing; null while no official result exists. */
+  result_source: EncounterResultSource | null;
+  /** Bumped by every result write; claims and reports name the version they were made against. */
+  result_version: number;
   scheduled_at: Date | string | null;
   started_at: Date | string | null;
   ended_at: Date | string | null;
   current_map_index: number | null;
-  // Who decided the result — and every earlier decision — lives in the result
-  // audit, not in a single slot that only ever remembered the last writer.
+  // Every earlier decision lives in the result audit, not in a single slot
+  // that only ever remembered the last writer.
   confirmed_at: Date | string | null;
   /** Empty on a bracket whose advancement edges were never recorded. */
   sources?: EncounterSlotSource[];
@@ -78,33 +97,37 @@ export interface Encounter {
    * two are rendered as two facts, never merged (spec §11).
    */
   games: EncounterGameWithMap[];
-  home_team: Team;
-  away_team: Team;
+  /** The live seats, in slot order; retired participations are history. */
+  teams: EncounterTeam[];
   tournament: Tournament;
   stage?: Stage | null;
   stage_item?: StageItem | null;
 }
 
-interface CaptainMapCode {
-  id: number;
-  map_index: number;
-  map_id: number | null;
-  code: string;
+export interface CaptainReportResult {
+  encounter_team_id: number;
+  score: number;
+  placement: number | null;
+  wins: number | null;
 }
 
+/** One participation's independent report of the finished encounter (`TeamReportRead`). */
 export interface CaptainReport {
   id: number;
   encounter_id: number;
-  team_id: number;
-  side: "home" | "away" | null;
+  /** The reporting participation. */
+  encounter_team_id: number;
   reporter_user_id: number | null;
-  /** Display name of the captain who filed it (`CaptainReportRead.reporter_name`). */
+  /** Display name of the captain who filed it. */
   reporter_name?: string | null;
-  home_score: number;
-  away_score: number;
+  /** Draws included; null only on a report carried over by the migration. */
+  games_played: number | null;
+  /** The `encounter.result_version` it was filed against. */
+  basis_version: number;
+  /** One line per live participation. */
+  results: CaptainReportResult[];
   /** 1..10, or null when the tournament disables/does not require match quality. */
   closeness: number | null;
-  map_codes: CaptainMapCode[];
   comment: string | null;
   /** Organizer-defined text answers, keyed by `ReportCustomFieldDefinition.key`. */
   custom_fields: Record<string, string>;
@@ -137,8 +160,20 @@ export interface MatchReportForm {
   custom_fields: ReportCustomFieldDefinition[];
 }
 
+/**
+ * One participation's replay code for one position (`ReplayCodeRead`, from
+ * `game_team.replay_code`). The slot is the participation's own.
+ */
+export interface ReplayCode {
+  position: number;
+  encounter_team_id: number;
+  code: string;
+}
+
 export interface CaptainReportsResponse {
   reports: CaptainReport[];
+  /** Every participation's replay codes, in play order. */
+  replay_codes: ReplayCode[];
   form: MatchReportForm;
 }
 
@@ -226,9 +261,10 @@ interface EncounterHistogramBucket {
   count: number;
 }
 
+/** One scoreline of a two-seat encounter, slot 1 against slot 2. */
 export interface EncounterScoreHeatmapCell {
-  home: number;
-  away: number;
+  slot_one: number;
+  slot_two: number;
   count: number;
 }
 
@@ -253,11 +289,12 @@ interface EncounterPulse {
   most_decisive_map: string | null;
 }
 
-interface EncounterSideBalance {
-  home_wins: number;
-  away_wins: number;
-  home_win_pct: number;
-  away_win_pct: number;
+/** How often each seat of a duel wins — the seeding bias slot 1 carries. */
+interface EncounterSlotBalance {
+  slot_one_wins: number;
+  slot_two_wins: number;
+  slot_one_win_pct: number;
+  slot_two_win_pct: number;
 }
 
 interface EncounterFeatured {
@@ -275,5 +312,5 @@ export interface EncounterOverview {
   featured: EncounterFeatured;
   hot_maps: EncounterMapMetric[];
   pulse: EncounterPulse;
-  side_balance: EncounterSideBalance;
+  slot_balance: EncounterSlotBalance;
 }

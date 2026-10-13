@@ -8,6 +8,9 @@ import { useTranslations } from "next-intl";
 import type { EncounterReportsRow } from "@/types/admin.types";
 import type { ReportCustomFieldDefinition } from "@/types/encounter.types";
 
+import { reportOf, scoreline } from "@/lib/encounter/reports";
+import { seatsBySlot } from "@/lib/encounter/seats";
+
 import { ReportDetail } from "./ReportDetail";
 import { fmtDate } from "./report-model";
 
@@ -25,34 +28,38 @@ export function ReportInspectorPanel({
 }>) {
   const format = useFormatter();
   const t = useTranslations("adminMatches.reports");
+  const seats = seatsBySlot(row.participations);
+  const seatIds = seats.map((seat) => seat.encounter_team_id);
 
   return (
     <div className="space-y-4">
       <AdminReportPairCell
-        homeReport={row.home_report}
-        awayReport={row.away_report}
-        scoresMatch={row.scores_match}
+        participations={row.participations}
+        reports={row.reports}
+        standingsMatch={row.standings_match}
         seriesScoreValid={row.series_score_valid}
       />
 
-      <ReportDetail
-        label={t("home")}
-        teamName={row.home_team?.name ?? "?"}
-        report={row.home_report}
-        customFields={customFields}
-      />
-      <ReportDetail
-        label={t("away")}
-        teamName={row.away_team?.name ?? "?"}
-        report={row.away_report}
-        customFields={customFields}
-      />
+      {seats.map((seat) => {
+        const report = reportOf(row.reports, seat.encounter_team_id);
+        return (
+          <ReportDetail
+            key={seat.encounter_team_id}
+            label={t("slot", { slot: seat.slot })}
+            teamName={seat.name}
+            standing={report ? scoreline(report.results, seatIds) : ""}
+            report={report}
+            replayCodes={row.replay_codes.filter((code) => code.encounter_team_id === seat.encounter_team_id)}
+            customFields={customFields}
+          />
+        );
+      })}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="min-w-0">
           <p className={EYEBROW_CLASS}>{t("recordedTeams")}</p>
           <p className="truncate text-sm">
-            {t("teamsVs", { home: row.home_team?.name ?? "?", away: row.away_team?.name ?? "?" })}
+            {seats.map((seat) => seat.name).join(` ${t("vs")} `)}
           </p>
         </div>
         <div className="min-w-0">
@@ -65,7 +72,9 @@ export function ReportInspectorPanel({
         </div>
         <div className="min-w-0">
           <p className={EYEBROW_CLASS}>{t("filed")}</p>
-          <p className="truncate text-sm tabular-nums">{row.reported_count}/2</p>
+          <p className="truncate text-sm tabular-nums">
+            {row.reported_count}/{row.participations.length}
+          </p>
         </div>
         <div className="min-w-0">
           <p className={EYEBROW_CLASS}>{t("scheduled")}</p>

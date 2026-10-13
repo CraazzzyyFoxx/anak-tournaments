@@ -297,13 +297,11 @@ Stage lifecycle: `DRAFT` (no encounters) → `PREVIEW` (encounters exist, not pu
 Generation (`backend/shared/services/bracket/engine.py`):
 
 - Round-robin: circle method, BYE skipped, **no** advancement edges.
-- SE/DE: skeleton + `EncounterLink` (winner/loser → home/away). The bracket **is** those edges, not an implied tree.
+- SE/DE: skeleton + `EncounterLink` (the team in position *k* of the source encounter fills a numbered slot of the target). The bracket **is** those edges, not an implied tree.
 - DE: optional lower-bracket seeds (group runners-up). Grand Final Reset is **lazy**: only if the LB champion wins the GF.
 - Swiss: Monrad, sort `(points, buchholz)`. Rematch-free first; rematch only if the alternative is idle teams. Bye not to a team that already had one. Unpairable field → error.
 
-**Advancement** (`advance_winner`): only `COMPLETED` and not a draw. Idempotent if the target slot already holds the same team. A changed winner cascade-resets downstream results.
-
-A draw cannot complete an elimination encounter.
+**Advancement** (`advance_after_result`): reads the final positions the result writer materialised on the participations and fills only empty seats; a position two teams share (a draw) blocks and nobody advances out of it until an admin breaks the tie. A changed result is reopen → `reset_downstream` (retires the seats it filled and cancels the games they had not played, recursively) → write the new result → advance.
 
 **Standings** count only **closed** rounds (no playable encounter in that scope still open — otherwise FORM runs ahead of W·D·L):
 
@@ -317,12 +315,12 @@ Jobs: `tournament_bracket_jobs` / `tournament_standings_jobs`, prefetch 4, isola
 
 ## 8. Encounters, reports, pick-ban
 
-Encounter status: `OPEN | PENDING | COMPLETED`. The result authority is the **encounter game** (`tournament.encounter_game`, one per series position): `state` `planned | awaiting_result | disputed | confirmed | cancelled`, `result_source` `captain_agreement | admin | admin_log`. The series score is wins over confirmed, non-cancelled games. A `Match` is the parsed-log record of a played map and carries statistics, not the result.
+Encounter status: `OPEN | PENDING | COMPLETED`. An encounter (`encounter.encounter`) seats `slot_count` participations (`encounter.team`, append-only; a replaced occupant is `active = false`). The official result is `result_status` (`none | pending_confirmation | confirmed | disputed`) with `result_source` `games | series_claim | admin | import`, and every change of it bumps `result_version` and writes one `encounter.result_audit` row. The result of one position is the **encounter game** (`encounter.game`, with one `game_team` row per participation): `state` `planned | awaiting_result | disputed | confirmed | cancelled`, `result_source` `captain_agreement | admin | admin_log`. The series score is wins over confirmed, non-cancelled games (the `wins` scoring preset). A `Match` is the parsed-log record of a played map and carries statistics, not the result.
 
 Two report layers:
 
-1. **Per-game** (`EncounterMapReport`) — one side's claim about one game, at most one row per `(game, side)`. Two matching claims confirm the game with `result_source=captain_agreement` and drive the next ban opener; conflicting claims → `disputed` + organizer notification. A claim against a confirmed game is rejected (`result_locked`); changing it is the admin correction command, which requires a reason.
-2. **Series** (`EncounterCaptainReport`) — after the series. Captains may submit or update their reports after confirmation, but these late reports never change the official score, encounter status, closeness, confirmation timestamp, standings, or bracket advancement. Only an admin can change the confirmed result. Disabled form fields are dropped, not 422.
+1. **Per-game** (`encounter.game_claim` + `game_claim_result`) — one participation's claim about one game, at most one claim per `(game, participation)`. Two matching claims confirm the game with `result_source=captain_agreement` and drive the next ban opener; conflicting claims → `disputed` + organizer notification. A claim against a confirmed game is rejected (`result_locked`); changing it is the admin correction command, which requires a reason.
+2. **Series** (`encounter.team_report` + `team_report_result`) — after the series. A participation may re-file until the result is confirmed; once every live participation has reported and the reports agree the result becomes `series_claim` and advancement runs, reports that differ give `disputed`. After `confirmed` a report is rejected (`result_locked`) and only an admin can change the result. Disabled form fields are dropped, not 422.
 
 A preview bracket rejects gameplay writes (409), including readiness, map choices and results. Organizers with `match.update` may swap team slots before publication; swaps still require open, unsettled encounters in the same stage.
 
@@ -338,9 +336,9 @@ Steps: `ban|pick|protect` × `first|second` plus `decider`. Hero sequences are a
 
 A session opens only when both sides are ready, the encounter is live, and (for hero round N) map N is settled. Progressive rounds: round 2 cannot ban before map 1 is played.
 
-`no_repeat_scope`: `none` / `encounter` / `encounter_same_side`. Protects are never written to the ledger.
+Cross-round memory is a rules condition, not a ledger table: a phase's `pool_filter` and a step's `eligible` read `banned_by` / `picked_by` leaves over `series`, `round` or `previous_round`. The legacy `no_repeat_scope` (`none` / `encounter` / `encounter_same_side`) compiles to a `banned_by` filter.
 
-`unique_attribute_per_side_per_round`: currently `"role"` for heroes.
+Role uniqueness for heroes (the legacy `unique_attribute_per_side_per_round = "role"`) compiles to a `max_per_group` constraint.
 
 First pick: `higher_seed`. First-ban rotation includes `result_loser_choice` (previous map winner).
 
@@ -357,9 +355,9 @@ local to the open room, survives phase changes, and resets on reload or when ope
 
 A hidden per-workspace container tournament. A room = one stage + two rosterless teams + one encounter, published immediately.
 
-Creator takes home. Away is claimed by token (the URL, not an invite). Cap of open rooms per user. Closing frees the slot; the room stays readable to participants.
+Creator takes slot 1. Slot 2 is claimed by token (the URL, not an invite). Cap of open rooms per user. Closing frees the slot; the room stays readable to participants.
 
-Viewer side is server-authoritative (`Team.captain_id`).
+The API returns the room as `teams[]` with slot numbers and `team_names`; the viewer's slot (`viewer_slot`) is server-authoritative (`Team.captain_id`).
 
 ---
 
@@ -469,8 +467,8 @@ Duplicates only what the UI needs instantly; comments cite the server symbol:
 | Rank layers | `backend/shared/domain/member_rank.py` |
 | Team eligibility | `backend/shared/domain/team_eligibility.py` |
 | Bracket gen / advance | `backend/shared/services/bracket/` |
-| Finalize + no-draw | `backend/shared/services/encounter/finalize.py` |
-| Pick-ban engine | `backend/shared/services/pick_ban_engine.py`, `tournament-service/src/services/encounter/pick_ban_*` |
+| Result writer, scoring | `backend/shared/services/encounter/result.py`, `backend/shared/domain/encounter_scoring.py` |
+| Pick-ban engine | `backend/shared/domain/pick_ban_engine.py`, `tournament-service/src/services/encounter/pick_ban_*` |
 | Draft rules / clock | `balancer-service/src/domain/draft/`, `…/services/draft/clock.py` |
 | Balancer objectives | `balancer-service/native/balancer_native/src/moo/objectives.rs`, mix: `…/src/mix.rs` |
 | Mix rotation | `balancer-service/src/domain/mix_rotation.py` |

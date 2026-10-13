@@ -28,18 +28,19 @@ import { isEncounterCompleted } from "@/lib/encounter/status";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { cn } from "@/lib/utils";
+import type { DuelSlot } from "@/lib/encounter/seats";
 import type { StreamEntry } from "@/types/stream.types";
 import type { StageType } from "@/types/tournament.types";
 
 import { BracketCanvas } from "./BracketCanvas";
 import { FOOTER_BUTTON, type SlotDragData } from "./MatchCard";
-import { buildLayout, type Side } from "./layout";
+import { buildLayout } from "./layout";
 import { MAX_SCALE, MIN_SCALE, useBracketViewport } from "./useBracketViewport";
 
 /** One team slot of one match, as the rearrange callback names it. */
 export interface BracketSlotRef<M extends BracketMatch = BracketMatch> {
   encounter: M;
-  slot: Side;
+  slot: DuelSlot;
 }
 
 /**
@@ -66,7 +67,7 @@ export interface BracketViewProps<M extends BracketMatch> {
   onSwapSlots?: (source: BracketSlotRef<M>, target: BracketSlotRef<M>) => Promise<unknown> | void;
   /**
    * Team id → the stream of whoever from that team is on air, keyed by the same
-   * id `Encounter.home_team_id`/`away_team_id` carry.
+   * id `EncounterTeam.team_id` carries.
    *
    * Optional on purpose: this component is shared with the admin bracket, which
    * has no stream query behind it.
@@ -209,8 +210,8 @@ export function BracketView<M extends BracketMatch>({
       setIsSwapping(true);
       try {
         await onSwapSlots(
-          { encounter: sourceMatch, slot: source.side },
-          { encounter: targetMatch, slot: target.side }
+          { encounter: sourceMatch, slot: source.slot },
+          { encounter: targetMatch, slot: target.slot }
         );
       } finally {
         setIsSwapping(false);

@@ -1,4 +1,4 @@
-"""Encounter-satellite CRUD: captain reports, map reports, audits, saved views, links.
+"""Encounter-satellite CRUD: games, audits, room journal, saved views, links.
 
 The ``Encounter`` row itself lives in :mod:`shared.repository.tournament`
 (``EncounterRepository``); this module owns the tables that hang off it.
@@ -14,70 +14,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core import enums
-from shared.domain.ffa_scoring import FfaGameLine
 from shared.repository.base import BaseRepository
-
-
-class EncounterCaptainReportRepository(BaseRepository[models.EncounterCaptainReport]):
-    def __init__(self) -> None:
-        super().__init__(models.EncounterCaptainReport)
-
-    async def list_for_encounter(
-        self,
-        session: AsyncSession,
-        encounter_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.EncounterCaptainReport]:
-        query = self._apply_options(
-            self.select().where(models.EncounterCaptainReport.encounter_id == encounter_id),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
-    async def get_for_team(
-        self,
-        session: AsyncSession,
-        *,
-        encounter_id: int,
-        team_id: int,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> models.EncounterCaptainReport | None:
-        return await self.get_by(session, options=options, encounter_id=encounter_id, team_id=team_id)
-
-
-class EncounterMapCodeRepository(BaseRepository[models.EncounterMapCode]):
-    def __init__(self) -> None:
-        super().__init__(models.EncounterMapCode)
-
-    async def list_for_report(self, session: AsyncSession, report_id: int) -> Sequence[models.EncounterMapCode]:
-        result = await session.execute(
-            self.select()
-            .where(models.EncounterMapCode.report_id == report_id)
-            .order_by(models.EncounterMapCode.map_index)
-        )
-        return result.scalars().all()
-
-    async def delete_for_report(self, session: AsyncSession, report_id: int) -> None:
-        await session.execute(sa.delete(models.EncounterMapCode).where(models.EncounterMapCode.report_id == report_id))
-
-    async def list_for_reports(
-        self, session: AsyncSession, report_ids: Sequence[int]
-    ) -> Sequence[models.EncounterMapCode]:
-        """Map codes for many reports in ONE query, ordered by ``map_index``.
-
-        The captain-report read documents itself as a fixed two-query load; looping
-        ``list_for_report`` per report would turn that into 1 + N.
-        """
-        if not report_ids:
-            return []
-        result = await session.execute(
-            self.select()
-            .where(models.EncounterMapCode.report_id.in_(tuple(report_ids)))
-            .order_by(models.EncounterMapCode.map_index)
-        )
-        return result.scalars().all()
 
 
 class EncounterGameRepository(BaseRepository[models.EncounterGame]):
@@ -103,163 +40,239 @@ class EncounterGameRepository(BaseRepository[models.EncounterGame]):
         return result.scalars().first()
 
 
-class EncounterParticipantRepository(BaseRepository[models.EncounterParticipant]):
-    """``encounter_participant`` — the teams seated in an FFA lobby."""
+class EncounterGameTeamRepository(BaseRepository[models.EncounterGameTeam]):
+    """``encounter.game_team`` — one participation's side and numbers in one game."""
 
     def __init__(self) -> None:
-        super().__init__(models.EncounterParticipant)
+        super().__init__(models.EncounterGameTeam)
 
-    async def list_for_encounter(
-        self, session: AsyncSession, encounter_id: int
-    ) -> Sequence[models.EncounterParticipant]:
-        result = await session.execute(
-            self.select()
-            .where(models.EncounterParticipant.encounter_id == encounter_id)
-            .order_by(models.EncounterParticipant.slot)
-        )
-        return result.scalars().all()
+    async def confirmed_lines(self, session: AsyncSession, encounter_id: int) -> list[list[models.EncounterGameTeam]]:
+        """Every confirmed game's rows, oldest position first, grouped per game.
 
-    async def list_for_stage(self, session: AsyncSession, stage_id: int) -> list[sa.Row]:
-        """``(stage_item_id, encounter_id, team_id, slot)`` for every lobby of a stage."""
-        result = await session.execute(
-            sa.select(
-                models.Encounter.stage_item_id,
-                models.EncounterParticipant.encounter_id,
-                models.EncounterParticipant.team_id,
-                models.EncounterParticipant.slot,
-            )
-            .join(models.Encounter, models.Encounter.id == models.EncounterParticipant.encounter_id)
-            .where(models.Encounter.stage_id == stage_id)
-            .order_by(
-                models.Encounter.stage_item_id,
-                models.EncounterParticipant.encounter_id,
-                models.EncounterParticipant.slot,
-            )
-        )
-        return list(result.all())
-
-
-class EncounterGameResultRepository(BaseRepository[models.EncounterGameResult]):
-    """``encounter_game_result`` — one row per participant per FFA game."""
-
-    def __init__(self) -> None:
-        super().__init__(models.EncounterGameResult)
-
-    async def replace_for_game(
-        self,
-        session: AsyncSession,
-        game: models.EncounterGame,
-        lines: Sequence[FfaGameLine],
-    ) -> None:
-        """Swap a game's result set for already-normalized lines. No commit.
-
-        ``placement`` is NOT NULL in the table: a line that skipped
-        ``normalize_game_lines`` fails here instead of storing a hole.
+        The shape the scoring engine is handed: one inner list per game, in the
+        order they count. Cancelled and unfinished positions are not part of a
+        standing, so they never reach it.
         """
-        await session.execute(
-            sa.delete(models.EncounterGameResult).where(models.EncounterGameResult.game_id == game.id)
-        )
-        session.add_all(
-            models.EncounterGameResult(
-                game_id=game.id,
-                encounter_id=game.encounter_id,
-                team_id=line.team_id,
-                placement=line.placement,
-                stats={key: float(value) for key, value in line.stats.items()},
-            )
-            for line in lines
-        )
-        await session.flush()
-
-    async def list_for_games(
-        self, session: AsyncSession, game_ids: Sequence[int]
-    ) -> Sequence[models.EncounterGameResult]:
-        if not game_ids:
-            return []
-        result = await session.execute(self.select().where(models.EncounterGameResult.game_id.in_(list(game_ids))))
-        return result.scalars().all()
-
-    async def list_confirmed_for_stage(self, session: AsyncSession, stage_id: int) -> list[sa.Row]:
-        """Every confirmed FFA result of a stage, oldest game first within each group."""
         result = await session.execute(
-            sa.select(
-                models.Encounter.stage_item_id,
-                models.Encounter.round,
-                models.Encounter.id.label("encounter_id"),
-                models.EncounterGame.position,
-                models.EncounterGameResult.team_id,
-                models.EncounterGameResult.placement,
-                models.EncounterGameResult.stats,
-            )
-            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameResult.game_id)
-            .join(models.Encounter, models.Encounter.id == models.EncounterGameResult.encounter_id)
+            sa.select(models.EncounterGameTeam, models.EncounterGame.id)
+            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameTeam.game_id)
             .where(
-                models.Encounter.stage_id == stage_id,
-                models.Encounter.format == enums.EncounterFormat.FFA,
+                models.EncounterGame.encounter_id == encounter_id,
                 models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
             )
             .order_by(
-                models.Encounter.stage_item_id,
-                models.Encounter.round,
-                models.Encounter.id,
                 models.EncounterGame.position,
+                models.EncounterGame.id,
+                models.EncounterGameTeam.encounter_team_id,
             )
         )
-        return list(result.all())
-
-    async def stat_keys_for_stage(self, session: AsyncSession, stage_id: int) -> set[str]:
-        """Every stat key a live game of ``stage_id`` holds a value for.
-
-        What the stage editor asks before it drops a column: a key with values
-        behind it is a record of the tournament, not a setting (plan §6).
-        Cancelled games are excluded for the same reason their cells read as
-        unplayed -- they are history the table no longer counts.
-        """
-        keys = sa.func.jsonb_object_keys(models.EncounterGameResult.stats).label("key")
-        result = await session.execute(
-            sa.select(keys)
-            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameResult.game_id)
-            .join(models.Encounter, models.Encounter.id == models.EncounterGameResult.encounter_id)
-            .where(
-                models.Encounter.stage_id == stage_id,
-                models.EncounterGame.state != enums.EncounterGameState.CANCELLED,
-            )
-            .distinct()
-        )
-        return set(result.scalars())
-
-    async def stage_has_unplaced_results(self, session: AsyncSession, stage_id: int) -> bool:
-        """Does a live game of ``stage_id`` hold a line with no place entered?
-
-        Such a game was scored without places, and its places are derived from
-        the formula's points -- which a formula reading ``place`` cannot give.
-        Cancelled games are excluded like in ``stat_keys_for_stage``.
-        """
-        result = await session.execute(
-            sa.select(models.EncounterGameResult.id)
-            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameResult.game_id)
-            .join(models.Encounter, models.Encounter.id == models.EncounterGameResult.encounter_id)
-            .where(
-                models.Encounter.stage_id == stage_id,
-                models.EncounterGame.state != enums.EncounterGameState.CANCELLED,
-                models.EncounterGameResult.placement.is_(None),
-            )
-            .limit(1)
-        )
-        return result.first() is not None
-
-
-class EncounterMapReportRepository(BaseRepository[models.EncounterMapReport]):
-    def __init__(self) -> None:
-        super().__init__(models.EncounterMapReport)
+        games: dict[int, list[models.EncounterGameTeam]] = {}
+        for line, game_id in result.tuples():
+            games.setdefault(game_id, []).append(line)
+        return list(games.values())
 
     async def list_for_games(
         self, session: AsyncSession, game_ids: Sequence[int]
-    ) -> Sequence[models.EncounterMapReport]:
+    ) -> Sequence[models.EncounterGameTeam]:
+        """Every line of the given games, in game then participation order."""
         if not game_ids:
             return []
-        result = await session.execute(self.select().where(models.EncounterMapReport.game_id.in_(tuple(game_ids))))
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterGameTeam.game_id.in_(tuple(game_ids)))
+            .order_by(models.EncounterGameTeam.game_id, models.EncounterGameTeam.encounter_team_id)
+        )
         return result.scalars().all()
+
+    def _stage_lines(self, stage_id: int) -> sa.Select:
+        """Every confirmed game line of one stage, through the bracket position."""
+        return (
+            self.select()
+            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameTeam.game_id)
+            .join(
+                models.BracketEncounter,
+                models.BracketEncounter.encounter_id == models.EncounterGame.encounter_id,
+            )
+            .where(
+                models.BracketEncounter.stage_id == stage_id,
+                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
+            )
+        )
+
+    async def stage_has_unplaced_results(self, session: AsyncSession, stage_id: int) -> bool:
+        """Is any confirmed line of this stage missing an entered placement?
+
+        The guard behind a formula edit: a rule that READS a team's place needs
+        every place entered by hand, and a stage that already recorded games
+        without one cannot be re-scored by it.
+        """
+        row = await session.execute(
+            self._stage_lines(stage_id).where(models.EncounterGameTeam.placement.is_(None)).limit(1)
+        )
+        return row.scalars().first() is not None
+
+    async def stat_keys_for_stage(self, session: AsyncSession, stage_id: int) -> set[str]:
+        """Every organizer column key this stage's games actually recorded.
+
+        Read off the stored documents rather than the rule, so dropping a column
+        that games were entered under can be refused.
+        """
+        rows = await session.execute(
+            sa.select(sa.func.jsonb_object_keys(models.EncounterGameTeam.column_values))
+            .select_from(models.EncounterGameTeam)
+            .join(models.EncounterGame, models.EncounterGame.id == models.EncounterGameTeam.game_id)
+            .join(
+                models.BracketEncounter,
+                models.BracketEncounter.encounter_id == models.EncounterGame.encounter_id,
+            )
+            .where(
+                models.BracketEncounter.stage_id == stage_id,
+                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
+            )
+        )
+        return set(rows.scalars())
+
+
+class EncounterGameClaimRepository(BaseRepository[models.EncounterGameClaim]):
+    """``encounter.game_claim`` — what one participation says a game ended on.
+
+    A claim is one row per claimant plus one ``game_claim_result`` row per
+    participation it names, so a lobby's claim and a duel's are the same shape.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterGameClaim)
+
+    async def list_for_game(self, session: AsyncSession, game_id: int) -> Sequence[models.EncounterGameClaim]:
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterGameClaim.game_id == game_id)
+            .order_by(models.EncounterGameClaim.claimant_team_id)
+        )
+        return result.scalars().all()
+
+    async def results_for_claims(
+        self, session: AsyncSession, claim_ids: Sequence[int]
+    ) -> dict[int, list[models.EncounterGameClaimResult]]:
+        """``claim_id -> its lines``; every asked-for claim gets a key."""
+        grouped: dict[int, list[models.EncounterGameClaimResult]] = {claim_id: [] for claim_id in claim_ids}
+        if not claim_ids:
+            return grouped
+        rows = await session.execute(
+            sa.select(models.EncounterGameClaimResult)
+            .where(models.EncounterGameClaimResult.claim_id.in_(tuple(claim_ids)))
+            .order_by(
+                models.EncounterGameClaimResult.claim_id,
+                models.EncounterGameClaimResult.encounter_team_id,
+            )
+        )
+        for row in rows.scalars():
+            grouped[row.claim_id].append(row)
+        return grouped
+
+    async def replace_results(
+        self,
+        session: AsyncSession,
+        claim: models.EncounterGameClaim,
+        rows: Sequence[models.EncounterGameClaimResult],
+    ) -> None:
+        """A re-filed claim replaces its lines; the claim row keeps its id."""
+        await session.execute(
+            sa.delete(models.EncounterGameClaimResult).where(models.EncounterGameClaimResult.claim_id == claim.id)
+        )
+        session.add_all(rows)
+        await session.flush()
+
+
+class EncounterTeamReportRepository(BaseRepository[models.EncounterTeamReport]):
+    """``encounter.team_report`` — a participation's report of the WHOLE encounter."""
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeamReport)
+
+    async def list_for_encounter(
+        self, session: AsyncSession, encounter_id: int
+    ) -> Sequence[models.EncounterTeamReport]:
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterTeamReport.encounter_id == encounter_id)
+            .order_by(models.EncounterTeamReport.encounter_team_id)
+        )
+        return result.scalars().all()
+
+    async def results_for_reports(
+        self, session: AsyncSession, report_ids: Sequence[int]
+    ) -> dict[int, list[models.EncounterTeamReportResult]]:
+        """``report_id -> its lines``; every asked-for report gets a key."""
+        grouped: dict[int, list[models.EncounterTeamReportResult]] = {report_id: [] for report_id in report_ids}
+        if not report_ids:
+            return grouped
+        rows = await session.execute(
+            sa.select(models.EncounterTeamReportResult)
+            .where(models.EncounterTeamReportResult.report_id.in_(tuple(report_ids)))
+            .order_by(
+                models.EncounterTeamReportResult.report_id,
+                models.EncounterTeamReportResult.encounter_team_id,
+            )
+        )
+        for row in rows.scalars():
+            grouped[row.report_id].append(row)
+        return grouped
+
+    async def replace_results(
+        self,
+        session: AsyncSession,
+        report: models.EncounterTeamReport,
+        rows: Sequence[models.EncounterTeamReportResult],
+    ) -> None:
+        """A re-filed report replaces its lines; the report row keeps its id."""
+        await session.execute(
+            sa.delete(models.EncounterTeamReportResult).where(models.EncounterTeamReportResult.report_id == report.id)
+        )
+        session.add_all(rows)
+        await session.flush()
+
+
+class EncounterTeamRepository(BaseRepository[models.EncounterTeam]):
+    """``encounter.team`` — the participations (D55).
+
+    Append-only by design: there is no reactivate and no delete here. A seat
+    changes hands by retiring one row and writing the next, which is what keeps
+    the games, claims and journal that point at it answerable afterwards.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeam)
+
+    async def list_active(self, session: AsyncSession, encounter_id: int) -> Sequence[models.EncounterTeam]:
+        result = await session.execute(
+            self.select()
+            .where(models.EncounterTeam.encounter_id == encounter_id, models.EncounterTeam.active.is_(True))
+            .order_by(models.EncounterTeam.slot, models.EncounterTeam.id)
+        )
+        return result.scalars().all()
+
+    async def get_active_slot(self, session: AsyncSession, encounter_id: int, slot: int) -> models.EncounterTeam | None:
+        return await self.get_by(session, encounter_id=encounter_id, slot=slot, active=True)
+
+
+class EncounterTeamMemberRepository(BaseRepository[models.EncounterTeamMember]):
+    """``encounter.team_member`` — one participation's snapshotted roster.
+
+    No deactivate: ``team_member.active`` is carried by the participation's
+    through ``fk_team_member_team``'s ON UPDATE CASCADE (A2), and a second
+    writer of that column could only disagree with the first.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeamMember)
+
+
+class EncounterTeamMemberRoleRepository(BaseRepository[models.EncounterTeamMemberRole]):
+    """``encounter.team_member_role`` — a roster member's roles, per dimension."""
+
+    def __init__(self) -> None:
+        super().__init__(models.EncounterTeamMemberRole)
 
 
 class EncounterResultAuditRepository(BaseRepository[models.EncounterResultAudit]):
@@ -292,6 +305,32 @@ class EncounterResultAuditRepository(BaseRepository[models.EncounterResultAudit]
             query = query.limit(limit)
         result = await session.execute(query)
         return result.unique().scalars().all()
+
+    async def pending_holds_since_last_decision(self, session: AsyncSession, encounter_id: int) -> int:
+        """How many ``auto_pending`` rows sit above the last journalled change
+        that was not one.
+
+        A hold only says "a report has been filed, the rest are owed"; it moves
+        no standing, so a form filled in before it was written is still about
+        the same result. Counting from the top of the journal -- rather than
+        looking for the last non-hold row -- also holds for an encounter whose
+        older versions were never journalled: every version it has above the
+        holds is then simply the current one minus the count.
+        """
+        audit = models.EncounterResultAudit
+        last_decision = (
+            sa.select(sa.func.coalesce(sa.func.max(audit.result_version), 0))
+            .where(audit.encounter_id == encounter_id, audit.action != enums.EncounterResultAuditAction.AUTO_PENDING)
+            .scalar_subquery()
+        )
+        result = await session.execute(
+            sa.select(sa.func.count()).where(
+                audit.encounter_id == encounter_id,
+                audit.action == enums.EncounterResultAuditAction.AUTO_PENDING,
+                audit.result_version > last_decision,
+            )
+        )
+        return int(result.scalar_one())
 
     async def list_with_actor(
         self, session: AsyncSession, encounter_id: int, *, limit: int
@@ -402,15 +441,25 @@ class EncounterLinkRepository(BaseRepository[models.EncounterLink]):
         return result.scalars().all()
 
 
+class ScoringRuleRepository(BaseRepository[models.ScoringRule]):
+    """``encounter.scoring_rule`` — how an encounter turns games into a standing."""
+
+    def __init__(self) -> None:
+        super().__init__(models.ScoringRule)
+
+
 __all__ = (
-    "EncounterCaptainReportRepository",
+    "EncounterGameClaimRepository",
     "EncounterGameRepository",
-    "EncounterGameResultRepository",
+    "EncounterGameTeamRepository",
     "EncounterLinkRepository",
-    "EncounterMapCodeRepository",
-    "EncounterMapReportRepository",
-    "EncounterParticipantRepository",
     "EncounterReportFormRepository",
     "EncounterResultAuditRepository",
+    "EncounterRoomEventRepository",
     "EncounterSavedViewRepository",
+    "EncounterTeamMemberRepository",
+    "EncounterTeamMemberRoleRepository",
+    "EncounterTeamReportRepository",
+    "EncounterTeamRepository",
+    "ScoringRuleRepository",
 )

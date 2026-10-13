@@ -9,6 +9,7 @@ import { HeroStrip } from "@/components/hero/HeroImage";
 import { type ScoreKind } from "@/components/match/cells";
 import MvpOrdinal from "@/app/(site)/users/components/shared/MvpOrdinal";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
+import { encounterPerspective, mapKind } from "@/app/(site)/users/components/shared/encounter-perspective";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // ─── Encounter row (expanded matches table) ─────────────────────────────────────
@@ -29,21 +30,15 @@ const EncounterRow = ({
   teamId: number;
 }) => {
   const t = useTranslations();
-  const isUserHome =
-    enc.home_team_id === teamId || (enc.home_team?.players ?? []).some((p) => p.user_id === selfUserId);
-
-  const userScore = isUserHome ? enc.score.home : enc.score.away;
-  const oppScore = isUserHome ? enc.score.away : enc.score.home;
-  const scoreKind: ScoreKind = userScore > oppScore ? "win" : userScore < oppScore ? "loss" : "draw";
-
-  const opponent = isUserHome ? enc.away_team?.name : enc.home_team?.name;
+  const { own, opponent: opponentSeat, userScore, oppScore, kind: scoreKind } = encounterPerspective(
+    enc,
+    selfUserId,
+    teamId
+  );
+  const opponent = opponentSeat?.name;
 
   // Per-map result pips (from the user's team perspective).
-  const mapPips: ScoreKind[] = (enc.matches ?? []).map((m) => {
-    const userMapScore = isUserHome ? m.score.home : m.score.away;
-    const oppMapScore = isUserHome ? m.score.away : m.score.home;
-    return userMapScore > oppMapScore ? "win" : userMapScore < oppMapScore ? "loss" : "draw";
-  });
+  const mapPips: ScoreKind[] = (enc.matches ?? []).map((m) => mapKind(m, own));
   const mapsWon = mapPips.filter((k) => k === "win").length;
   const mapsLost = mapPips.filter((k) => k === "loss").length;
 

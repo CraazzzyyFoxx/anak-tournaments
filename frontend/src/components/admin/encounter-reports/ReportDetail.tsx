@@ -5,9 +5,9 @@ import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import type { AdminCaptainReport } from "@/types/admin.types";
-import type { ReportCustomFieldDefinition } from "@/types/encounter.types";
+import type { ReplayCode, ReportCustomFieldDefinition } from "@/types/encounter.types";
 
-import { DASH, fmtDate, mapCodes, submittedAt } from "./report-model";
+import { DASH, fmtDate, replayCodesText, submittedAt } from "./report-model";
 
 /**
  * Everything one captain filed, in full.
@@ -20,12 +20,18 @@ import { DASH, fmtDate, mapCodes, submittedAt } from "./report-model";
 export function ReportDetail({
   label,
   teamName,
+  standing,
   report,
+  replayCodes,
   customFields
 }: Readonly<{
   label: string;
   teamName: string;
+  /** What the report claims, in slot order: `2 – 1`. */
+  standing: string;
   report: AdminCaptainReport | null;
+  /** This participation's codes by position (`game_team.replay_code`). */
+  replayCodes: ReplayCode[];
   customFields: ReportCustomFieldDefinition[];
 }>) {
   const format = useFormatter();
@@ -45,7 +51,6 @@ export function ReportDetail({
   // listed under their key rather than dropped with the definition.
   const known = new Set(customFields.map((field) => field.key));
   const extras = Object.entries(report.custom_fields).filter(([key]) => !known.has(key));
-  const codes = mapCodes(report);
 
   return (
     <section className="space-y-2 rounded-xl border border-border/60 p-3">
@@ -53,9 +58,7 @@ export function ReportDetail({
         <p className={EYEBROW_CLASS}>
           {label} · {teamName}
         </p>
-        <p className="font-mono text-sm font-semibold tabular-nums">
-          {report.home_score} &ndash; {report.away_score}
-        </p>
+        <p className="font-mono text-sm font-semibold tabular-nums">{standing}</p>
       </div>
 
       <dl className="space-y-1 text-sm">
@@ -65,7 +68,9 @@ export function ReportDetail({
           label={t("closeness")}
           value={report.closeness == null ? t("notRated") : `${report.closeness}/10`}
         />
-        {codes ? <Field label={t("lobbyCodes")} value={codes} mono /> : null}
+        {replayCodes.length > 0 ? (
+          <Field label={t("lobbyCodes")} value={replayCodesText(replayCodes)} mono />
+        ) : null}
         {report.comment ? <Field label={t("comment")} value={report.comment} /> : null}
         {customFields.map((field) => (
           <Field

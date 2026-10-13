@@ -6,6 +6,7 @@ import { ListChecks, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import type { BracketMatch } from "@/lib/bracket/view";
+import { duelSeats, seatAt, type Duel, type DuelSlot } from "@/lib/encounter/seats";
 import { EncounterRostersModal } from "@/components/EncounterRostersModal";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import TeamName from "@/components/TeamName";
@@ -14,27 +15,27 @@ import { withReturnTo } from "@/lib/auth/return-to";
 import { cn } from "@/lib/utils";
 import type { StreamEntry } from "@/types/stream.types";
 
-import { CARD_HEIGHT, CARD_ROW_HEIGHT, GUTTER_WIDTH, type LayoutNode, type Side } from "./layout";
+import { CARD_HEIGHT, CARD_ROW_HEIGHT, GUTTER_WIDTH, type LayoutNode } from "./layout";
 
 /** One footer control: the three viewer links and the admin's edit share it. */
 export const FOOTER_BUTTON =
   "flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
 
 /** dnd-kit id of one team slot; the same string names its draggable and its droppable. */
-export function slotDragId(encounterId: number, side: Side) {
-  return `slot-${encounterId}-${side}`;
+export function slotDragId(encounterId: number, slot: DuelSlot) {
+  return `slot-${encounterId}-${slot}`;
 }
 
 export interface SlotDragData {
   encounterId: number;
-  side: Side;
+  slot: DuelSlot;
   teamId: number | null;
   teamName: string;
 }
 
 interface SlotRowProps {
   node: LayoutNode;
-  side: Side;
+  slot: DuelSlot;
   highlighted: boolean;
   onHoverTeam: (teamId: number | null) => void;
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
@@ -46,7 +47,7 @@ interface SlotRowProps {
 
 function SlotRow({
   node,
-  side,
+  slot,
   highlighted,
   onHoverTeam,
   liveTeamStreams,
@@ -55,30 +56,26 @@ function SlotRow({
 }: Readonly<SlotRowProps>) {
   const t = useTranslations();
   const { data, encounter } = node;
-  const teamId = side === "home" ? data.homeTeamId : data.awayTeamId;
-  const name = side === "home" ? data.homeName : data.awayName;
-  const score = side === "home" ? data.homeScore : data.awayScore;
-  const won = data.winner === side;
-  const hasVisibleScore = data.isCompleted || data.homeScore !== 0 || data.awayScore !== 0;
+  const seat = slot === 1 ? data.seats.one : data.seats.two;
+  const { teamId, name, score, isLatest } = seat;
+  const won = data.winner === slot;
+  const hasVisibleScore = data.isCompleted || data.seats.one.score !== 0 || data.seats.two.score !== 0;
   // An unfilled slot shows a hint ("W M3") rather than a team, so it gets no
-  // logo — `data.*Name` is also the source of a name parsed out of the
+  // logo — `seat.name` is also the source of a name parsed out of the
   // encounter title when the team relation itself is missing.
   const isTbd = name === "TBD";
-  const slotTeam = isTbd ? null : side === "home" ? encounter.home_team : encounter.away_team;
-  const displayName = isTbd
-    ? ((side === "home" ? data.homeSource : data.awaySource) ?? t("common.tbd"))
-    : name;
+  const slotTeam = isTbd ? null : (seatAt(encounter.teams, slot)?.team ?? null);
+  const displayName = isTbd ? (seat.source ?? t("common.tbd")) : name;
 
-  const dragData: SlotDragData = { encounterId: encounter.id, side, teamId, teamName: displayName };
-  const dragId = slotDragId(encounter.id, side);
+  const dragData: SlotDragData = { encounterId: encounter.id, slot, teamId, teamName: displayName };
+  const dragId = slotDragId(encounter.id, slot);
   // A TBD slot can be dropped ON (a team moves into the bye) but never picked up.
   const drag = useDraggable({ id: dragId, data: dragData, disabled: !draggable || teamId === null });
   const drop = useDroppable({ id: dragId, data: dragData, disabled: !draggable });
 
   // The participant stream on air for this slot's team, shown on the team's
-  // newest match only (see `homeIsLatest`) and never once that match is
+  // newest match only (see `isLatest`) and never once that match is
   // decided. A TBD slot has no team, so it can never carry the indicator.
-  const isLatest = side === "home" ? data.homeIsLatest : data.awayIsLatest;
   const liveStream =
     liveTeamStreams === undefined || isTbd || teamId === null || !isLatest || data.isCompleted
       ? undefined
@@ -95,7 +92,7 @@ function SlotRow({
         : t("bracket.liveTeamStreamWithViewers", { player: streamer, count: liveStream.viewer_count });
 
   const tone =
-    data.winner === side
+    data.winner === slot
       ? "bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-fg)] font-semibold"
       : data.winner
         ? "text-[color:var(--aqt-fg-dim)]"
@@ -109,7 +106,7 @@ function SlotRow({
       }}
       className={cn(
         "flex items-center justify-between gap-2 px-2.5 transition-colors",
-        side === "home" && "border-b border-[color:var(--aqt-border)]",
+        slot === 1 && "border-b border-[color:var(--aqt-border)]",
         tone,
         highlighted &&
           "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] text-[color:var(--aqt-fg)]",
@@ -140,7 +137,7 @@ function SlotRow({
           size="xs"
           nameClassName={isTbd ? "text-label italic text-[color:var(--aqt-fg-faint)]" : "text-caption"}
         />
-        {data.floatRecord?.side === side ? (
+        {data.floatRecord?.slot === slot ? (
           // Swiss: this team came in with a worse record than the pool the match sits in.
           <span
             className="shrink-0 text-label tabular-nums text-[color:var(--aqt-fg-faint)]"
@@ -182,8 +179,8 @@ function SlotRow({
 
 export interface MatchCardProps {
   node: LayoutNode;
-  homeHighlighted: boolean;
-  awayHighlighted: boolean;
+  /** Which seat's team is the one hovered elsewhere in the tree. */
+  highlighted: Duel<boolean>;
   onHoverTeam: (teamId: number | null) => void;
   /** This bracket's own location, so the pre-game room can send viewers back to it. */
   returnTo: string;
@@ -206,8 +203,7 @@ export interface MatchCardProps {
  */
 export const MatchCard = memo(function MatchCard({
   node,
-  homeHighlighted,
-  awayHighlighted,
+  highlighted,
   onHoverTeam,
   returnTo,
   liveTeamStreams,
@@ -266,8 +262,8 @@ export const MatchCard = memo(function MatchCard({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <SlotRow {...rowProps} side="home" highlighted={homeHighlighted} />
-        <SlotRow {...rowProps} side="away" highlighted={awayHighlighted} />
+        <SlotRow {...rowProps} slot={1} highlighted={highlighted.one} />
+        <SlotRow {...rowProps} slot={2} highlighted={highlighted.two} />
 
         <div
           className="flex items-center justify-between gap-1.5 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-1.5"
@@ -291,8 +287,10 @@ export const MatchCard = memo(function MatchCard({
                     pre-game link leaves, because the room is where a captain acts. */}
                 <EncounterRostersModal
                   encounterId={encounter.id}
-                  homeTeamName={encounter.home_team?.name ?? t("common.tbd")}
-                  awayTeamName={encounter.away_team?.name ?? t("common.tbd")}
+                  teamNames={[
+                    duelSeats(encounter.teams)[0]?.name ?? t("common.tbd"),
+                    duelSeats(encounter.teams)[1]?.name ?? t("common.tbd")
+                  ]}
                 />
                 <HoverPrefetchLink
                   href={withReturnTo(`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`, returnTo)}

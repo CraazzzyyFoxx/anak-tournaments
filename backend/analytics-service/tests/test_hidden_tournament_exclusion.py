@@ -29,6 +29,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from shared.testing import create_sqlite_tables
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
@@ -67,6 +69,7 @@ TABLES = (
     models.Player.__table__,
     models.WorkspaceMember.__table__,
     models.Encounter.__table__,
+    models.EncounterTeam.__table__,
     models.Match.__table__,
     models.MatchStatistics.__table__,
     models.Standing.__table__,
@@ -121,8 +124,19 @@ class _Fixture:
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in TABLES if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in TABLES:
-                table.create(conn)
+            create_sqlite_tables(conn, TABLES)
+            # Only the columns the map reads touch: the models' Postgres server defaults do not compile on SQLite.
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.scoring_rule (id INTEGER PRIMARY KEY, workspace_id INTEGER, preset TEXT)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.game (id INTEGER PRIMARY KEY, encounter_id INTEGER, state TEXT)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.game_team (game_id INTEGER, encounter_team_id INTEGER, placement INTEGER)"
+            )
+            # The encounters' result is a ``wins`` series score, so ``score`` counts maps.
+            conn.exec_driver_sql("INSERT INTO encounter.scoring_rule (id, workspace_id, preset) VALUES (1, 1, 'wins')")
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 1
@@ -198,13 +212,30 @@ class _Fixture:
             models.Encounter.__table__,
             id=encounter_id,
             tournament_id=tournament_id,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
+            scoring_rule_id=1,
             name="Encounter",
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=2,
-            away_score=1,
-            round=1,
+            slot_count=2,
+            status="OPEN",
+            result_status="none",
+            result_version=0,
+            best_of=3,
         )
+        # Slot 1 wins 2-1: the participations are the encounter's result.
+        for slot, (team_id, score, placement) in enumerate(((home_team_id, 2, 1), (away_team_id, 1, 2)), 1):
+            self.insert(
+                models.EncounterTeam.__table__,
+                id=self._id(),
+                encounter_id=encounter_id,
+                tournament_id=tournament_id,
+                slot=slot,
+                team_id=team_id,
+                name=f"Seat {slot}",
+                active=True,
+                score=score,
+                placement=placement,
+            )
         return encounter_id
 
     def match(self, encounter_id: int, home_team_id: int, away_team_id: int) -> int:
@@ -432,6 +463,7 @@ class OpenSkillReplayIsolationTests(_DatabaseTestCase):
             analytics_flows.get_plackett_luce(),
             teams,
             encounters,
+            await analytics_service.get_rosters(self.db.shim, encounters),
         )
 
         self.assertEqual(2, len(replayed), "both rostered encounters should be replayed")

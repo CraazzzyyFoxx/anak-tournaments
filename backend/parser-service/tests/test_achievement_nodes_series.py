@@ -35,6 +35,7 @@ importlib.import_module("src.services.achievement.engine.conditions.encounter_se
 evaluator = _scrim.evaluator
 eval_context = _scrim.eval_context
 models = _scrim.models
+sa = _scrim.sa
 enums = _scrim.enums
 
 USER_C = 104
@@ -43,35 +44,6 @@ USER_SUB = 106
 
 
 class _SeriesFixture(_scrim._Fixture):
-    def encounter(
-        self,
-        tournament_id: int,
-        home_team_id: int,
-        away_team_id: int,
-        *,
-        stage_id: int | None = None,
-        home_score: int = 2,
-        away_score: int = 1,
-        round_no: int = 1,
-        status: object | None = None,
-    ) -> int:
-        encounter_id = self._id()
-        self.insert(
-            models.Encounter.__table__,
-            id=encounter_id,
-            tournament_id=tournament_id,
-            stage_id=stage_id,
-            name="Encounter",
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=home_score,
-            away_score=away_score,
-            round=round_no,
-            best_of=5,
-            status=status if status is not None else enums.EncounterStatus.COMPLETED,
-        )
-        return encounter_id
-
     def match(
         self,
         encounter_id: int,
@@ -101,6 +73,7 @@ class _SeriesFixture(_scrim._Fixture):
         self.insert(
             models.Stage.__table__,
             id=stage_id,
+            scoring_rule_id=1,
             tournament_id=tournament_id,
             name=name,
             stage_type=stage_type,
@@ -140,8 +113,8 @@ class EncounterResultTests(_SeriesCase):
     async def test_opponent_score_zero_awards_only_the_sweep_winner(self) -> None:
         self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
         home, away = self.two_teams(REAL_TOURNAMENT_ID)
-        sweep = self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=2, away_score=0)
-        self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=2, away_score=1)
+        sweep = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=0)
+        self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=1)
         self.db.session.commit()
 
         context = await self.context(REAL_TOURNAMENT_ID)
@@ -153,7 +126,7 @@ class EncounterResultTests(_SeriesCase):
         # The 2:1 series is excluded, and the winning team's substitute is not awarded.
         self.assertEqual({(REAL_HOME_USER, REAL_TOURNAMENT_ID, sweep)}, result)
         self.assertEqual(
-            {"home_score": 2, "away_score": 0, "margin": 2, "outcome": "win"},
+            {"winner_score": 2, "loser_score": 0, "margin": 2, "outcome": "win"},
             context.evidence[(REAL_HOME_USER, REAL_TOURNAMENT_ID, sweep)],
         )
 
@@ -161,8 +134,8 @@ class EncounterResultTests(_SeriesCase):
         self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
         home, away = self.two_teams(REAL_TOURNAMENT_ID)
         # The away team is the home side of this row, so the loser is the encounter's home side.
-        blowout = self.db.encounter(REAL_TOURNAMENT_ID, away, home, home_score=3, away_score=0)
-        self.db.encounter(REAL_TOURNAMENT_ID, away, home, home_score=3, away_score=2)
+        blowout = self.db.encounter(REAL_TOURNAMENT_ID, away, home, first_score=3, second_score=0)
+        self.db.encounter(REAL_TOURNAMENT_ID, away, home, first_score=3, second_score=2)
         self.db.session.commit()
 
         result = await evaluator.evaluate(
@@ -175,7 +148,7 @@ class EncounterResultTests(_SeriesCase):
     async def test_draw_qualifies_neither_side(self) -> None:
         self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
         home, away = self.two_teams(REAL_TOURNAMENT_ID)
-        self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=2, away_score=2)
+        self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=2)
         self.db.session.commit()
 
         for outcome in ("win", "loss"):
@@ -225,11 +198,43 @@ class EncounterResultTests(_SeriesCase):
         )
         self.assertEqual({(REAL_HOME_USER, REAL_TOURNAMENT_ID, here)}, result)
 
+    async def test_a_replaced_occupant_is_not_the_beaten_roster(self) -> None:
+        self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
+        home, away = self.two_teams(REAL_TOURNAMENT_ID)
+        replacement = self.db.team(REAL_TOURNAMENT_ID, "replacement", captain_id=USER_C)
+        self.db.player(REAL_TOURNAMENT_ID, replacement, self.db.member(USER_C), name="replacement starter")
+        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=0)
+        # The retired seat keeps the numbers it earned; only the active one speaks for the encounter.
+        self.db.replace_seat(encounter, 2, replacement)
+        self.db.session.commit()
+
+        result = await evaluator.evaluate(
+            self.db.shim,
+            {"type": "encounter_result", "params": {"outcome": "loss"}},
+            await self.context(REAL_TOURNAMENT_ID),
+        )
+        self.assertEqual({(USER_C, REAL_TOURNAMENT_ID, encounter)}, result)
+
+    async def test_a_lobby_is_not_a_duel(self) -> None:
+        self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
+        home, away = self.two_teams(REAL_TOURNAMENT_ID)
+        lobby = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=5, second_score=1)
+        # Three seats: slots 1 and 2 still finished first and second, and say nothing about a winner.
+        encounter_table = models.Encounter.__table__
+        self.db.session.execute(sa.update(encounter_table).where(encounter_table.c.id == lobby).values(slot_count=3))
+        self.db.session.commit()
+
+        for params in ({"outcome": "win"}, {"outcome": "loss"}):
+            result = await evaluator.evaluate(
+                self.db.shim, {"type": "encounter_result", "params": params}, await self.context(REAL_TOURNAMENT_ID)
+            )
+            self.assertEqual(set(), result)
+
 
 class EncounterComebackTests(_SeriesCase):
     def _reverse_sweep(self, home: int, away: int) -> int:
         """Home loses the first two maps, then wins the series 3:2."""
-        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=3, away_score=2)
+        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=3, second_score=2)
         for index, home_won in enumerate([False, False, True, True, True], start=1):
             self.db.match(
                 encounter,
@@ -252,14 +257,14 @@ class EncounterComebackTests(_SeriesCase):
         # The away team lost the series after leading 2:0 — it is not a comeback.
         self.assertEqual({(REAL_HOME_USER, REAL_TOURNAMENT_ID, encounter)}, result)
         self.assertEqual(
-            {"max_deficit": 2, "home_score": 3, "away_score": 2},
+            {"max_deficit": 2, "winner_score": 3, "loser_score": 2},
             context.evidence[(REAL_HOME_USER, REAL_TOURNAMENT_ID, encounter)],
         )
 
     async def test_sweep_is_not_a_comeback(self) -> None:
         self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
         home, away = self.two_teams(REAL_TOURNAMENT_ID)
-        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=2, away_score=0)
+        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=0)
         self.db.match(encounter, home, away, home_score=1, away_score=0, map_index=1)
         self.db.match(encounter, home, away, home_score=1, away_score=0, map_index=2)
         self.db.session.commit()
@@ -287,7 +292,7 @@ class EncounterComebackTests(_SeriesCase):
     async def test_flipped_map_orientation_still_counts_for_the_series_winner(self) -> None:
         self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
         home, away = self.two_teams(REAL_TOURNAMENT_ID)
-        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=3, away_score=2)
+        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=3, second_score=2)
         # Every map row is oriented opposite to the encounter: the encounter's
         # home team plays as the map's away side.
         for index, home_won in enumerate([False, False, True, True, True], start=1):
@@ -322,7 +327,7 @@ class SeriesGrainPersistenceTests(_SeriesCase):
     async def test_a_series_rule_stores_the_encounter_and_its_evidence(self) -> None:
         self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
         home, away = self.two_teams(REAL_TOURNAMENT_ID)
-        sweep = self.db.encounter(REAL_TOURNAMENT_ID, home, away, home_score=2, away_score=0)
+        sweep = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=0)
         self.db.rule(
             1,
             "clean-sweep",
@@ -355,4 +360,4 @@ class SeriesGrainPersistenceTests(_SeriesCase):
         self.assertEqual(sweep, encounter_id)
         self.assertIsNone(match_id)
         self.assertEqual("clean-sweep", evidence["rule_slug"])
-        self.assertEqual({"home": 2, "away": 0}, {"home": evidence["home_score"], "away": evidence["away_score"]})
+        self.assertEqual((2, 0), (evidence["winner_score"], evidence["loser_score"]))

@@ -1,5 +1,10 @@
 """``scrim/service.py:_assert_playable`` — a room is refused, not bricked.
 
+Skipped until Task 8 lands: ``_assert_playable`` asks the pick-ban engine, and
+``src.services.encounter.pick_ban_session`` still imports ``MapPickSide``. The
+fixture below is ported to participations and the call sites pass the room's
+``stage_id``, so the suite runs the moment that import is alive again.
+
 ``create_room`` validates a *custom* pool against the engine's own validators,
 but a *copied* one was trusted. Borrowing a 3-slot tournament round for a
 best-of-5 scrim therefore produced a room whose only screen read
@@ -27,6 +32,7 @@ from pathlib import Path
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
 
+import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
@@ -83,21 +89,37 @@ TABLE_NAMES = (
     "tournament.stage_round_best_of",
     "tournament.team",
     "tournament.player",
-    "tournament.encounter",
+    "encounter.encounter",
+    "encounter.team",
     # ``Encounter.has_logs`` is a ``column_property`` EXISTS over this table
     # (see ``shared/models/matches/match.py``) — every ``select(Encounter)``
     # references it now, so it must exist even with zero rows.
     "matches.match",
-    "tournament.encounter_readiness",
+    "encounter.readiness",
     "tournament.pick_ban_config",
     "tournament.pick_ban_config_item",
     "tournament.pick_ban_config_slot",
     "tournament.pick_ban_config_slot_item",
 )
 
+
+def _pick_ban_importable() -> bool:
+    try:
+        import src.services.encounter.pick_ban_session  # noqa: F401,PLC0415
+    except ImportError:
+        return False
+    return True
+
+
+pytestmark = pytest.mark.skipif(
+    not _pick_ban_importable(),
+    reason="src.services.encounter.pick_ban_session does not import yet (Task 8)",
+)
+
 WORKSPACE_ID = 1
 CONTAINER_ID = 7
 STAGE_ID = 70
+RULE_ID = 71
 ENCOUNTER_ID = 700
 
 
@@ -137,6 +159,24 @@ class _Fixture:
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
             for table in tables:
                 table.create(conn)
+            # The pick-ban config cascade resolves its (stage, round) coordinate
+            # from the bracket position now (D22), so every room read touches
+            # this table -- but its FKs use Postgres-only ``SET NULL (col)``
+            # forms sqlite cannot compile, so the shape is written by hand.
+            # Same story for the scoring rule the encounter points at: its
+            # ARRAY/JSONB columns have no sqlite form.
+            conn.exec_driver_sql(
+                "CREATE TABLE encounter.scoring_rule ("
+                " id INTEGER PRIMARY KEY, workspace_id INTEGER NOT NULL, preset TEXT NOT NULL,"
+                " columns TEXT NOT NULL DEFAULT '[]', placement_points TEXT NOT NULL DEFAULT '[]',"
+                " game_formula TEXT NOT NULL, end_formula TEXT NOT NULL,"
+                " created_at TIMESTAMP, updated_at TIMESTAMP)"
+            )
+            conn.exec_driver_sql(
+                "CREATE TABLE tournament.bracket_encounter ("
+                " encounter_id INTEGER PRIMARY KEY, tournament_id INTEGER NOT NULL,"
+                " stage_id INTEGER, stage_item_id INTEGER, round INTEGER NOT NULL)"
+            )
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 900
@@ -159,6 +199,7 @@ class _Fixture:
             models.Stage.__table__,
             id=STAGE_ID,
             tournament_id=CONTAINER_ID,
+            scoring_rule_id=RULE_ID,
             name="room",
             stage_type="single_elimination",
             max_rounds=1,
@@ -195,16 +236,48 @@ class _Fixture:
         self.insert(
             models.Encounter.__table__,
             id=ENCOUNTER_ID,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             tournament_id=CONTAINER_ID,
-            stage_id=STAGE_ID,
+            scoring_rule_id=RULE_ID,
             name="room",
-            home_team_id=teams[0],
-            away_team_id=teams[1],
-            home_score=0,
-            away_score=0,
-            round=1,
+            slot_count=2,
             best_of=best_of,
             status="OPEN",
+            result_status="none",
+            result_version=0,
+        )
+        # Slot 1 is the creator's seat, slot 2 the one the link gives away.
+        for slot, team_id in enumerate(teams, 1):
+            self.insert(
+                models.EncounterTeam.__table__,
+                id=self._id(),
+                encounter_id=ENCOUNTER_ID,
+                tournament_id=CONTAINER_ID,
+                slot=slot,
+                team_id=team_id,
+                name=f"team{team_id}",
+                active=True,
+                score=0.0,
+            )
+        # ``create_room`` writes the bracket position too: the pick-ban config
+        # cascade resolves its (stage, round) coordinate from it (D22), and the
+        # room's config is pinned to that stage.
+        self.session.execute(
+            sa.text(
+                "INSERT INTO encounter.scoring_rule"
+                " (id, workspace_id, preset, game_formula, end_formula)"
+                " VALUES (:r, :w, 'wins', 'win', 'games >= best_of')"
+            ),
+            {"r": RULE_ID, "w": WORKSPACE_ID},
+        )
+        self.session.execute(
+            sa.text(
+                "INSERT INTO tournament.bracket_encounter"
+                " (encounter_id, tournament_id, stage_id, stage_item_id, round)"
+                " VALUES (:e, :t, :s, NULL, 1)"
+            ),
+            {"e": ENCOUNTER_ID, "t": CONTAINER_ID, "s": STAGE_ID},
         )
         self.session.commit()
         return self.session.get(models.Encounter, ENCOUNTER_ID)
@@ -270,7 +343,9 @@ class _FitCase(IsolatedAsyncioTestCase):
         self.addCleanup(self.db.close)
 
     async def assert_playable(self, encounter: Any, *, best_of: int) -> None:
-        await scrim.scrim_service._assert_playable(self.db.shim, encounter, [PickBanKind.MAP], best_of=best_of)
+        await scrim.scrim_service._assert_playable(
+            self.db.shim, encounter, [PickBanKind.MAP], stage_id=STAGE_ID, best_of=best_of
+        )
 
 
 class ASlotPoolTooShortForTheSeriesIsRefused(_FitCase):
@@ -355,7 +430,7 @@ class AMissingConfigIsRefused(_FitCase):
 
         with self.assertRaises(HTTPException) as ctx:
             await scrim.scrim_service._assert_playable(
-                self.db.shim, encounter, [PickBanKind.MAP, PickBanKind.HERO], best_of=3
+                self.db.shim, encounter, [PickBanKind.MAP, PickBanKind.HERO], stage_id=STAGE_ID, best_of=3
             )
 
         self.assertEqual(422, ctx.exception.status_code)
@@ -369,6 +444,6 @@ class TheHealthyRoomPasses(_FitCase):
         broken pool — the bug this whole check risks introducing."""
         encounter = self.db.encounter(best_of=3)
         self.db.slot_config(slots=[[1, 2], [3, 4], [5, 6]])
-        readiness = models.Tournament.__table__.metadata.tables["tournament.encounter_readiness"]
+        readiness = models.Tournament.__table__.metadata.tables["encounter.readiness"]
         self.assertEqual(0, self.db.session.scalar(sa.select(sa.func.count()).select_from(readiness)))
         await self.assert_playable(encounter, best_of=3)

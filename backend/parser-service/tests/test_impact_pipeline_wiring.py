@@ -49,15 +49,14 @@ def _fake_match() -> types.SimpleNamespace:
     return types.SimpleNamespace(id=1)
 
 
-def _fake_player_model(player_id: int, user_id: int, team_id: int) -> types.SimpleNamespace:
-    """Stand-in for ``models.Player`` exposing only what ``_create_stat_object``
-    reads (``.team_id`` and ``.workspace_member.player_id``)."""
+def _fake_player_model(user_id: int, team_id: int) -> types.SimpleNamespace:
+    """Stand-in for ``LogPlayer`` exposing only what ``_create_stat_object``
+    reads (``.team_id`` and ``.user_id``)."""
     return types.SimpleNamespace(
-        id=player_id,
+        user_id=user_id,
         team_id=team_id,
         role=enums.HeroClass.damage,
         rank=800,
-        workspace_member=types.SimpleNamespace(player_id=user_id),
     )
 
 
@@ -66,7 +65,7 @@ def _impact_pivot_df(p1: types.SimpleNamespace, p2: types.SimpleNamespace) -> pd
     ``_calculate_and_add_derived_stats``/``add_impact_scores`` read."""
     rows = [
         {
-            "player_id": 1,
+            "player_id": 101,
             "player_model": p1,
             "round": 1,
             "hero_id": None,
@@ -79,7 +78,7 @@ def _impact_pivot_df(p1: types.SimpleNamespace, p2: types.SimpleNamespace) -> pd
             enums.LogStatsName.SupportKills: 0.0,
         },
         {
-            "player_id": 2,
+            "player_id": 102,
             "player_model": p2,
             "round": 1,
             "hero_id": None,
@@ -112,8 +111,8 @@ def _baselines() -> impact.BaselineSet:
 
 def _players_map() -> dict[int, impact.PlayerRef]:
     return {
-        1: impact.PlayerRef(player_id=1, user_id=101, team_id=10, role=enums.HeroClass.damage, rank=800),
-        2: impact.PlayerRef(player_id=2, user_id=102, team_id=20, role=enums.HeroClass.damage, rank=800),
+        101: impact.PlayerRef(player_id=101, user_id=101, team_id=10, role=enums.HeroClass.damage, rank=800),
+        102: impact.PlayerRef(player_id=102, user_id=102, team_id=20, role=enums.HeroClass.damage, rank=800),
     }
 
 
@@ -123,8 +122,8 @@ def _stats_named(stats: list, name: enums.LogStatsName) -> list:
 
 def _run_derived_stats(*, baselines: impact.BaselineSet | None) -> list:
     proc = MatchLogProcessor.__new__(MatchLogProcessor)
-    p1 = _fake_player_model(player_id=1, user_id=101, team_id=10)
-    p2 = _fake_player_model(player_id=2, user_id=102, team_id=20)
+    p1 = _fake_player_model(user_id=101, team_id=10)
+    p2 = _fake_player_model(user_id=102, team_id=20)
     ctx = impact.ImpactContext(players=_players_map(), baselines=baselines, has_killfeed=True)
     return proc._calculate_and_add_derived_stats(
         _fake_match(), _impact_pivot_df(p1, p2), is_mvp_calc=True, impact_ctx=ctx

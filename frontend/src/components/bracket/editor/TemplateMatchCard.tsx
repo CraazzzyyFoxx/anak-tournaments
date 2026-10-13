@@ -11,7 +11,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
-import { CARD_ROW_HEIGHT, GUTTER_WIDTH, type Side } from "../layout";
+import { sourceLabel } from "@/lib/bracket/view";
+import type { DuelSlot } from "@/lib/encounter/seats";
+
+import { CARD_ROW_HEIGHT, GUTTER_WIDTH } from "../layout";
 import type { DraftMatch } from "./templateDraft";
 
 /** The output a click picked up, waiting for the slot it feeds. */
@@ -31,9 +34,9 @@ interface TemplateMatchCardProps {
   showLoserPort: boolean;
   connecting: ConnectSource | null;
   onPort: (role: "winner" | "loser") => void;
-  onConnect: (slot: Side) => void;
-  onSeed: (slot: Side, seed: string) => void;
-  onClear: (slot: Side) => void;
+  onConnect: (slot: DuelSlot) => void;
+  onSeed: (slot: DuelSlot, seed: string) => void;
+  onClear: (slot: DuelSlot) => void;
   onMove: (direction: -1 | 1) => void;
   onDelete: () => void;
 }
@@ -61,25 +64,23 @@ export function TemplateMatchCard({
   // A match cannot feed itself, so its own rows are never targets.
   const targeting = connecting !== null && connecting.source !== match.id;
 
-  const slotRow = (side: Side) => {
-    const slot = match[side];
+  const slotRow = (slotNumber: DuelSlot) => {
+    const slot = match.slots[slotNumber - 1] ?? null;
     // Named by TEMPLATE id, which is what the card's own gutter and the
     // validator's problems say — the view's "W M3" hints count matches in play
     // order instead, and the two numberings disagree on any custom layout.
     const label =
       slot?.seed ??
-      (slot?.winner_of != null
-        ? `W M${slot.winner_of}`
-        : slot?.loser_of != null
-          ? `L M${slot.loser_of}`
-          : t("empty"));
+      (slot?.source_match != null
+        ? `${sourceLabel(slot.source_position)} M${slot.source_match}`
+        : t("empty"));
     // On screen the card's gutter says which match this row belongs to; an
     // accessible name has to carry it itself, so a listener hears
-    // "M3 home: L1" rather than a bare "L1".
-    const name = t("slotLabel", { id: match.id, side, state: slot === null ? t("empty").toLowerCase() : label });
+    // "M3 slot 1: L1" rather than a bare "L1".
+    const name = t("slotLabel", { id: match.id, slot: slotNumber, state: slot === null ? t("empty").toLowerCase() : label });
     const rowClass = cn(
       "flex w-full items-center justify-between gap-2 px-2.5 text-left text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]",
-      side === "home" && "border-b border-[color:var(--aqt-border)]",
+      slotNumber === 1 && "border-b border-[color:var(--aqt-border)]",
       slot === null
         ? "italic text-[color:var(--aqt-fg-faint)]"
         : "text-[color:var(--aqt-fg)]"
@@ -90,14 +91,14 @@ export function TemplateMatchCard({
         <button
           type="button"
           aria-label={`${name} — ${t("connectHere")}`}
-          data-template-slot={`${match.id}-${side}`}
+          data-template-slot={`${match.id}-${slotNumber}`}
           data-connect-target=""
           className={cn(
             rowClass,
             "bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] ring-1 ring-inset ring-[color:var(--aqt-teal)]"
           )}
           style={{ height: CARD_ROW_HEIGHT }}
-          onClick={() => onConnect(side)}
+          onClick={() => onConnect(slotNumber)}
         >
           <span className="truncate">{label}</span>
           <span className="shrink-0 text-label uppercase text-[color:var(--aqt-teal)]">{t("drop")}</span>
@@ -111,7 +112,7 @@ export function TemplateMatchCard({
           <button
             type="button"
             aria-label={name}
-            data-template-slot={`${match.id}-${side}`}
+            data-template-slot={`${match.id}-${slotNumber}`}
             className={cn(rowClass, "hover:bg-[color:var(--aqt-overlay-3)]")}
             style={{ height: CARD_ROW_HEIGHT }}
           >
@@ -120,11 +121,11 @@ export function TemplateMatchCard({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
           {availableSeeds.map((seed) => (
-            <DropdownMenuItem key={seed} onSelect={() => onSeed(side, seed)}>
+            <DropdownMenuItem key={seed} onSelect={() => onSeed(slotNumber, seed)}>
               {seed}
             </DropdownMenuItem>
           ))}
-          <DropdownMenuItem onSelect={() => onClear(side)}>{t("clear")}</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onClear(slotNumber)}>{t("clear")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -141,8 +142,8 @@ export function TemplateMatchCard({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {slotRow("home")}
-        {slotRow("away")}
+        {slotRow(1)}
+        {slotRow(2)}
 
         <div className="flex flex-1 items-center justify-between gap-1.5 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-1.5">
           <DropdownMenu>

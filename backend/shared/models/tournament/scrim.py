@@ -25,7 +25,7 @@ from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
-from shared.models.tournament.encounter import Encounter
+from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.tournament import Tournament
 

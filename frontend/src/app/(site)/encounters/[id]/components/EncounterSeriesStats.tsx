@@ -15,7 +15,7 @@ import MatchTeamComparison from "@/app/(site)/matches/[id]/components/MatchTeamC
 import MatchLeaders from "@/app/(site)/matches/[id]/components/MatchLeaders";
 import { Skeleton } from "@/components/ui/skeleton";
 import encounterService from "@/services/encounter.service";
-import type { MatchWithStats } from "@/types/encounter.types";
+import type { Encounter, MatchWithStats } from "@/types/encounter.types";
 import type { PlayerWithStats } from "@/types/team.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import { LogStatsName } from "@/types/stats.types";
@@ -41,8 +41,7 @@ const MatchContributionChart = dynamic(
 
 interface EncounterSeriesStatsProps {
   matchIds: number[];
-  homeTeamId: number;
-  awayTeamId: number;
+  teams: Encounter["teams"];
   tournamentGrid?: DivisionGridVersion | null;
   /** `overview`: the teams compared and the leaders. `players`: every player's totals and contribution. */
   view: "overview" | "players";
@@ -63,8 +62,7 @@ interface EncounterSeriesStatsProps {
  */
 export default function EncounterSeriesStats({
   matchIds,
-  homeTeamId,
-  awayTeamId,
+  teams,
   tournamentGrid,
   view
 }: Readonly<EncounterSeriesStatsProps>) {
@@ -89,7 +87,7 @@ export default function EncounterSeriesStats({
   // defeating the React Compiler — and the fold is a few thousand additions.
   const aggregate =
     loaded.length > 0
-      ? aggregateSeriesStats(loaded, { home_team_id: homeTeamId, away_team_id: awayTeamId })
+      ? aggregateSeriesStats(loaded, { teams })
       : null;
 
   if (failedAll) {
@@ -120,10 +118,10 @@ export default function EncounterSeriesStats({
 
       {view === "overview" ? (
         <div className={styles.statsGrid}>
-          <MatchTeamComparison home={aggregate.home} away={aggregate.away} round={aggregate.round} />
+          <MatchTeamComparison home={aggregate.one} away={aggregate.two} round={aggregate.round} />
           <MatchLeaders
-            home={aggregate.home}
-            away={aggregate.away}
+            home={aggregate.one}
+            away={aggregate.two}
             round={aggregate.round}
             gridClassName="sm:grid-cols-3 xl:grid-cols-2"
           />
@@ -132,8 +130,8 @@ export default function EncounterSeriesStats({
         <>
           <SeriesPlayerTable aggregate={aggregate} tournamentGrid={tournamentGrid} />
           <MatchContributionChart
-            home={aggregate.home}
-            away={aggregate.away}
+            home={aggregate.one}
+            away={aggregate.two}
             round={aggregate.round}
           />
         </>
@@ -155,7 +153,7 @@ function SeriesPlayerTable({
 }>) {
   const t = useTranslations();
   const columns = COLUMN_PRESETS.overview;
-  const maxima = columnMaxima(aggregate.home, aggregate.away, aggregate.round, columns);
+  const maxima = columnMaxima(aggregate.one, aggregate.two, aggregate.round, columns);
 
   return (
     <div className={styles.card}>
@@ -195,10 +193,10 @@ function SeriesPlayerTable({
             </tr>
           </thead>
           {[
-            { side: "home" as const, team: aggregate.home },
-            { side: "away" as const, team: aggregate.away }
-          ].map(({ side, team }) => (
-            <tbody key={side} className={side === "home" ? styles.sideHome : styles.sideAway}>
+            { slot: 1 as const, team: aggregate.one },
+            { slot: 2 as const, team: aggregate.two }
+          ].map(({ slot: seat, team }) => (
+            <tbody key={seat} className={seat === 1 ? styles.slotOne : styles.slotTwo}>
               <tr className={styles.seriesSideHead}>
                 <td colSpan={5 + columns.length}>
                   <TeamName team={team} size="xs" />

@@ -53,24 +53,16 @@ class _ParticipationFixture(_scrim._Fixture):
             start_date=datetime(2026, 1, 1, tzinfo=UTC),
         )
 
-    def captain_report(
-        self,
-        encounter_id: int,
-        team_id: int,
-        reporter_user_id: int | None,
-        *,
-        home_score: int = 2,
-        away_score: int = 1,
-    ) -> int:
+    def team_report(self, encounter_id: int, team_id: int, reporter_user_id: int | None) -> int:
+        """A participation's report of the whole series."""
         report_id = self._id()
         self.insert(
-            models.EncounterCaptainReport.__table__,
+            models.EncounterTeamReport.__table__,
             id=report_id,
             encounter_id=encounter_id,
-            team_id=team_id,
+            encounter_team_id=self.seat(encounter_id, team_id),
             reporter_user_id=reporter_user_id,
-            home_score=home_score,
-            away_score=away_score,
+            basis_version=0,
             custom_fields_json={},
         )
         return report_id
@@ -89,43 +81,37 @@ class _ParticipationFixture(_scrim._Fixture):
         )
         return row_id
 
-    def map_report(
-        self,
-        game_id: int,
-        side: str,
-        reporter_user_id: int | None,
-    ) -> int:
+    def game_claim(self, game_id: int, encounter_id: int, team_id: int, reporter_user_id: int | None) -> int:
         row_id = self._id()
         self.insert(
-            models.EncounterMapReport.__table__,
+            models.EncounterGameClaim.__table__,
             id=row_id,
+            encounter_id=encounter_id,
             game_id=game_id,
-            side=side,
+            claimant_team_id=self.seat(encounter_id, team_id),
             reporter_user_id=reporter_user_id,
-            home_score=1,
-            away_score=0,
+            basis_version=0,
         )
         return row_id
 
-    def map_code(self, report_id: int, *, map_index: int, code: str) -> int:
-        row_id = self._id()
+    def game_team(self, game_id: int, encounter_id: int, team_id: int, *, replay_code: str | None = None) -> None:
+        """One participation's line in a game; the replay code is written on it."""
         self.insert(
-            models.EncounterMapCode.__table__,
-            id=row_id,
-            report_id=report_id,
-            map_index=map_index,
-            map_id=None,
-            code=code,
+            models.EncounterGameTeam.__table__,
+            game_id=game_id,
+            encounter_id=encounter_id,
+            encounter_team_id=self.seat(encounter_id, team_id),
+            column_values={},
+            replay_code=replay_code,
         )
-        return row_id
 
-    def readiness(self, encounter_id: int, side: str, ready_user_id: int | None) -> int:
+    def readiness(self, encounter_id: int, team_id: int, ready_user_id: int | None) -> int:
         row_id = self._id()
         self.insert(
             models.EncounterReadiness.__table__,
             id=row_id,
             encounter_id=encounter_id,
-            side=side,
+            encounter_team_id=self.seat(encounter_id, team_id),
             ready_user_id=ready_user_id,
         )
         return row_id
@@ -183,17 +169,17 @@ class CaptainReportActivityTests(_ParticipationCase):
 
     async def test_edited_report_still_counts_once_and_other_captain_is_separate(self) -> None:
         home, away, first, second = self._two_encounters()
-        report = self.db.captain_report(first, home, REAL_HOME_USER)
-        self.db.captain_report(second, home, REAL_HOME_USER)
-        # The away captain's own report for the same encounter is theirs, not ours.
-        self.db.captain_report(first, away, REAL_AWAY_USER)
+        report = self.db.team_report(first, home, REAL_HOME_USER)
+        self.db.team_report(second, home, REAL_HOME_USER)
+        # The other captain's own report for the same encounter is theirs, not ours.
+        self.db.team_report(first, away, REAL_AWAY_USER)
         self.db.session.commit()
-        # A captain re-submitting upserts the SAME row (unique on encounter+team):
+        # A captain re-submitting upserts the SAME row (unique on encounter+participation):
         # the edit must not inflate the count to three.
         self.db.session.execute(
-            sa.update(models.EncounterCaptainReport.__table__)
-            .where(models.EncounterCaptainReport.__table__.c.id == report)
-            .values(home_score=3, away_score=0)
+            sa.update(models.EncounterTeamReport.__table__)
+            .where(models.EncounterTeamReport.__table__.c.id == report)
+            .values(games_played=3)
         )
         self.db.session.commit()
 
@@ -218,13 +204,13 @@ class CaptainReportActivityTests(_ParticipationCase):
 
     async def test_null_reporter_and_foreign_workspace_never_count(self) -> None:
         home, away, first, _second = self._two_encounters()
-        self.db.captain_report(first, home, REAL_HOME_USER)
+        self.db.team_report(first, home, REAL_HOME_USER)
         # Sheet-imported / account-deleted report: no reporter to credit.
-        self.db.captain_report(first, away, None)
+        self.db.team_report(first, away, None)
         self.db.foreign_tournament(OTHER_WORKSPACE_TOURNAMENT_ID)
         foreign_team = self.db.team(OTHER_WORKSPACE_TOURNAMENT_ID, "foreign", captain_id=REAL_HOME_USER)
         foreign_encounter = self.db.encounter(OTHER_WORKSPACE_TOURNAMENT_ID, foreign_team, foreign_team)
-        self.db.captain_report(foreign_encounter, foreign_team, REAL_HOME_USER)
+        self.db.team_report(foreign_encounter, foreign_team, REAL_HOME_USER)
         self.db.session.commit()
 
         qualified, _ = await self.run_node(
@@ -234,13 +220,20 @@ class CaptainReportActivityTests(_ParticipationCase):
         )
         self.assertEqual({(REAL_HOME_USER, REAL_TOURNAMENT_ID)}, qualified)
 
-    async def test_map_codes_are_credited_through_the_filers_own_report(self) -> None:
+    async def test_map_codes_are_credited_through_the_filers_own_claim(self) -> None:
         home, away, first, _second = self._two_encounters()
-        mine = self.db.captain_report(first, home, REAL_HOME_USER)
-        theirs = self.db.captain_report(first, away, REAL_AWAY_USER)
-        self.db.map_code(mine, map_index=1, code="AAAAA")
-        self.db.map_code(mine, map_index=2, code="BBBBB")
-        self.db.map_code(theirs, map_index=1, code="CCCCC")
+        game_one = self.db.game(first, 1, map_id=1)
+        game_two = self.db.game(first, 2, map_id=2)
+        game_three = self.db.game(first, 3, map_id=3)
+        # The code sits on the claimant's own line of the game.
+        for game, code in ((game_one, "AAAAA"), (game_two, "BBBBB")):
+            self.db.game_claim(game, first, home, REAL_HOME_USER)
+            self.db.game_team(game, first, home, replay_code=code)
+        self.db.game_claim(game_one, first, away, REAL_AWAY_USER)
+        self.db.game_team(game_one, first, away, replay_code="CCCCC")
+        # A claim whose own line has no code credits nothing.
+        self.db.game_claim(game_three, first, home, REAL_HOME_USER)
+        self.db.game_team(game_three, first, home)
         self.db.session.commit()
 
         qualified, context = await self.run_node(
@@ -252,18 +245,18 @@ class CaptainReportActivityTests(_ParticipationCase):
         self.assertEqual(2, context.evidence[(REAL_HOME_USER, REAL_TOURNAMENT_ID)]["count"])
 
     async def test_map_reports_and_readiness_count_their_own_rows(self) -> None:
-        _home, _away, first, second = self._two_encounters()
+        home, away, first, second = self._two_encounters()
         # Two positions of the SAME encounter, and the opposing captain's claim
-        # for one of them: a claim belongs to a game, and the game carries the
-        # encounter the tournament is read from.
+        # for one of them: a claim belongs to a game, and names the encounter
+        # the tournament is read from.
         game_one = self.db.game(first, 1, map_id=1)
         game_two = self.db.game(first, 2, map_id=2)
-        self.db.map_report(game_one, "home", REAL_HOME_USER)
-        self.db.map_report(game_two, "home", REAL_HOME_USER)
-        self.db.map_report(game_one, "away", REAL_AWAY_USER)
-        self.db.readiness(first, "home", REAL_HOME_USER)
-        self.db.readiness(first, "away", REAL_AWAY_USER)
-        self.db.readiness(second, "home", REAL_HOME_USER)
+        self.db.game_claim(game_one, first, home, REAL_HOME_USER)
+        self.db.game_claim(game_two, first, home, REAL_HOME_USER)
+        self.db.game_claim(game_one, first, away, REAL_AWAY_USER)
+        self.db.readiness(first, home, REAL_HOME_USER)
+        self.db.readiness(first, away, REAL_AWAY_USER)
+        self.db.readiness(second, home, REAL_HOME_USER)
         self.db.session.commit()
 
         maps, _ = await self.run_node(

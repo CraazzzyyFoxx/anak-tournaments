@@ -78,7 +78,7 @@ export function buildHeatmapMatrix(cells: EncounterScoreHeatmapCell[]) {
   const matrix: Record<string, number> = {};
   let max = 0;
   for (const cell of cells) {
-    matrix[`${cell.home}-${cell.away}`] = cell.count;
+    matrix[`${cell.slot_one}-${cell.slot_two}`] = cell.count;
     if (cell.count > max) max = cell.count;
   }
   const rows = [3, 2, 1, 0];

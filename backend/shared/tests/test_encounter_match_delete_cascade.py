@@ -30,8 +30,8 @@ backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
 
 from shared.core import enums  # noqa: E402
+from shared.models.encounter.encounter import Encounter  # noqa: E402
 from shared.models.matches.match import Match, MatchEvent, MatchKillFeed, MatchStatistics  # noqa: E402
-from shared.models.tournament.encounter import Encounter  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 
 install_postgres_type_shims()
@@ -55,6 +55,9 @@ class EncounterMatchDeleteCascadeTests(TestCase):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
             for table in tables:
                 table.create(conn)
+            # ``Encounter.scoring_preset`` reads the rule in every encounter SELECT; its real
+            # table needs Postgres' jsonb defaults, so only the two columns that read uses.
+            conn.exec_driver_sql("CREATE TABLE encounter.scoring_rule (id INTEGER PRIMARY KEY, preset TEXT)")
 
         self.statements: list[str] = []
 
@@ -69,16 +72,17 @@ class EncounterMatchDeleteCascadeTests(TestCase):
             sa.insert(Encounter.__table__).values(
                 id=ENCOUNTER_ID,
                 name="Grand Final",
+                workspace_id=1,
+                discipline="overwatch",
                 tournament_id=TOURNAMENT_ID,
-                home_team_id=HOME_TEAM_ID,
-                away_team_id=AWAY_TEAM_ID,
-                home_score=2,
-                away_score=1,
-                round=1,
+                scoring_rule_id=1,
+                slot_count=2,
                 best_of=3,
                 closeness=0.0,
                 status=enums.EncounterStatus.COMPLETED,
-                result_status=enums.EncounterResultStatus.NONE,
+                # ``ck_encounter_confirmed_completed`` ties the two together.
+                result_status=enums.EncounterResultStatus.CONFIRMED,
+                result_source=enums.EncounterResultSource.GAMES,
             )
         )
         for match_id in (900, 901):
@@ -120,7 +124,7 @@ class EncounterMatchDeleteCascadeTests(TestCase):
         self._delete_the_encounter()
 
         self.assertTrue(
-            any(s.startswith("DELETE FROM tournament.encounter") for s in self.statements),
+            any(s.startswith("DELETE FROM encounter.encounter") for s in self.statements),
             msg=f"expected the parent delete, got {self.statements}",
         )
         # ``passive_deletes`` means SQLAlchemy does not read the series at all.

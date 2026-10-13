@@ -293,13 +293,12 @@ def generate_round(
 
     pairings = [
         Pairing(
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
+            team_ids=pair,
             round_number=round_number,
             name=f"Swiss R{round_number} Match {index}",
             local_id=index - 1,
         )
-        for index, (home_team_id, away_team_id) in enumerate(pair_order, start=1)
+        for index, pair in enumerate(pair_order, start=1)
     ]
 
     return BracketSkeleton(

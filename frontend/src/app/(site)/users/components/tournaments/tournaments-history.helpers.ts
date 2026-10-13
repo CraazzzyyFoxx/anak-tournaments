@@ -1,5 +1,5 @@
 import type { EncounterWithUserStats, UserTournament } from "@/types/user.types";
-import type { ScoreKind } from "@/components/match/cells";
+import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 import { playerRoleTint } from "@/lib/roster/player-role";
 
 /** League grouping key: the prefix before " | " in the tournament name. */
@@ -124,20 +124,6 @@ export const winrateColor = (pct: number | null): string => {
   return "var(--aqt-rose)";
 };
 
-/** Was the profile user on the home side of this encounter? */
-const isUserHomeInEncounter = (
-  enc: EncounterWithUserStats,
-  teamId: number,
-  selfUserId: number
-): boolean => enc.home_team_id === teamId || (enc.home_team?.players ?? []).some((p) => p.user_id === selfUserId);
-
-/** Series (encounter-level) result from the user's perspective. */
-const encounterResult = (enc: EncounterWithUserStats, userHome: boolean): ScoreKind => {
-  const us = userHome ? enc.score.home : enc.score.away;
-  const them = userHome ? enc.score.away : enc.score.home;
-  return us > them ? "win" : us < them ? "loss" : "draw";
-};
-
 export interface StageGroup {
   key: string;
   name: string;
@@ -162,7 +148,7 @@ export const groupEncountersByStage = (t: UserTournament, selfUserId: number): S
       order.push(key);
     }
     group.encounters.push(enc);
-    const result = encounterResult(enc, isUserHomeInEncounter(enc, t.team_id, selfUserId));
+    const result = encounterPerspective(enc, selfUserId, t.team_id).kind;
     if (result === "win") group.won += 1;
     else if (result === "loss") group.lost += 1;
     else group.drawn += 1;

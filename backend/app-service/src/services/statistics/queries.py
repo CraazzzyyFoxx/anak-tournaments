@@ -5,47 +5,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import models
 from src.core import enums, pagination
+from src.domain.encounter_seats import Seat
 
-__all__ = ("StatisticsQueries", "away_score_case", "encounter_query", "home_score_case", "queries")
+__all__ = ("StatisticsQueries", "encounter_query", "queries")
 
-home_score_case = sa.case(
-    (models.Encounter.home_team_id == models.Team.id, models.Encounter.home_score),
-    else_=models.Encounter.away_score,
-).label("home_score_case")
-away_score_case = sa.case(
-    (models.Encounter.home_team_id == models.Team.id, models.Encounter.away_score),
-    else_=models.Encounter.home_score,
-).label("away_score_case")
-
-
-# Equality-join sides. `home_team_id = team.id OR away_team_id = team.id` cannot
-# use either FK index (OWT-TOURNAMENTS-21T). Kept local: statistics must not
-# import the user-query `_scope` helpers.
-_ENCOUNTER_TEAM_SIDES = (
-    (models.Encounter.home_team_id, models.Encounter.home_score, models.Encounter.away_score),
-    (models.Encounter.away_team_id, models.Encounter.away_score, models.Encounter.home_score),
-)
-
-
-def _union_encounter_team_sides(build_side):
-    home, away = _ENCOUNTER_TEAM_SIDES
-    return build_side(*home).union_all(build_side(*away))
-
-
-def _encounter_side(team_fk, maps_won, maps_lost):
-    return (
-        sa.select(
-            models.Player.id,
-            maps_won.label("home_score"),
-            maps_lost.label("away_score"),
-        )
-        .select_from(models.Player)
-        .join(models.Team, models.Team.id == models.Player.team_id)
-        .join(models.Encounter, team_fk == models.Team.id)
+_seat = Seat(name="statistics_seat")
+# One row per player and two-seat encounter their team played; ``maps_won`` /
+# ``maps_lost`` are the series score of the team's seat and of the others.
+encounter_query = _seat.join(
+    sa.select(
+        models.Player.id,
+        _seat.maps_won.label("maps_won"),
+        _seat.maps_lost.label("maps_lost"),
     )
-
-
-encounter_query = _union_encounter_team_sides(_encounter_side).subquery("encounters")
+    .select_from(models.Player)
+    .join(models.Team, models.Team.id == models.Player.team_id),
+    models.Team.id,
+).subquery("encounters")
 
 
 class StatisticsQueries:
@@ -238,9 +214,9 @@ class StatisticsQueries:
         """Paginated players with their win rates, plus the total player count."""
         query = self._encounter_scored_players_query(
             (
-                sa.func.sum(encounter_query.c.home_score)
+                sa.func.sum(encounter_query.c.maps_won)
                 / sa.func.nullif(
-                    sa.func.sum(encounter_query.c.home_score) + sa.func.sum(encounter_query.c.away_score),
+                    sa.func.sum(encounter_query.c.maps_won) + sa.func.sum(encounter_query.c.maps_lost),
                     0,
                 )
             ),
@@ -257,7 +233,7 @@ class StatisticsQueries:
     ) -> tuple[typing.Sequence[tuple[models.Player, int]], int]:
         """Paginated players with their win counts, plus the total player count."""
         query = self._encounter_scored_players_query(
-            sa.func.sum(encounter_query.c.home_score),
+            sa.func.sum(encounter_query.c.maps_won),
             workspace_id=workspace_id,
         )
         return await self._page_with_window_total(session, query, params)  # type: ignore[return-value]
@@ -415,21 +391,22 @@ class StatisticsQueries:
         or ``None`` when the user has no encounters in the tournament.
         """
 
-        def _side(team_fk, won, lost):
-            return (
+        seat = Seat(name="winrate_seat")
+        sides = (
+            seat.join(
                 sa.select(
                     models.WorkspaceMember.player_id.label("user_id"),
-                    won.label("maps_won"),
-                    lost.label("maps_lost"),
+                    seat.maps_won.label("maps_won"),
+                    seat.maps_lost.label("maps_lost"),
                 )
-                .select_from(models.Encounter)
-                .join(models.Team, team_fk == models.Team.id)
+                .select_from(models.Team)
                 .join(models.Player, models.Player.team_id == models.Team.id)
-                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-                .where(models.Encounter.tournament_id == tournament.id)
+                .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id),
+                models.Team.id,
             )
-
-        sides = _union_encounter_team_sides(_side).subquery("tournament_winrate_sides")
+            .where(models.Encounter.tournament_id == tournament.id)
+            .subquery("tournament_winrate_sides")
+        )
         winrate = sa.func.coalesce(
             sa.func.sum(sides.c.maps_won)
             / sa.func.nullif(sa.func.sum(sides.c.maps_won) + sa.func.sum(sides.c.maps_lost), 0),

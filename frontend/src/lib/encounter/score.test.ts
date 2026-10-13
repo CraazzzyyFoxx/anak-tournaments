@@ -20,22 +20,24 @@ describe("validSeriesScores", () => {
   });
 
   it("BO5 -> 3-0..3-2 and mirror", () => {
-    expect(labels(validSeriesScores(5))).toEqual([
-      "3-0",
-      "3-1",
-      "3-2",
-      "2-3",
-      "1-3",
-      "0-3"
-    ]);
+    expect(labels(validSeriesScores(5))).toEqual(["3-0", "3-1", "3-2", "2-3", "1-3", "0-3"]);
   });
 
-  it("marks draws and sweeps via reused description keys", () => {
-    const bo2 = validSeriesScores(2);
-    expect(bo2.map((score) => score.description)).toEqual([
-      "Home sweep",
-      "Draw",
-      "Away sweep"
+  it("scores read slot 1 first", () => {
+    expect(validSeriesScores(3)[1]).toMatchObject({ one: 2, two: 1 });
+  });
+
+  it("marks draws and sweeps via the description keys", () => {
+    expect(validSeriesScores(2).map((score) => score.description)).toEqual([
+      "firstSweep",
+      "draw",
+      "secondSweep"
+    ]);
+    expect(validSeriesScores(3).map((score) => score.description)).toEqual([
+      "firstSweep",
+      "firstClose",
+      "secondClose",
+      "secondSweep"
     ]);
   });
 

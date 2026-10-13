@@ -141,7 +141,8 @@ class EncounterReportDisputedPayload(_Payload):
     #: the inbox renders.
     game_id: int
     position: int
-    map_id: int
+    #: ``None`` for a game nobody has picked a map for (no pick-ban ran); the row then omits it.
+    map_id: int | None = None
 
 
 class EncounterDisputeReviewPayload(_Payload):
@@ -165,8 +166,8 @@ class EncounterDisputeReviewPayload(_Payload):
     tournament_id: int
     game_id: int | None = None
     position: int = 0
-    home_team_name: str
-    away_team_name: str
+    #: Every participation's name in slot order.
+    team_names: list[str]
 
 
 class TeamRosterEventPayload(_Payload):
@@ -202,8 +203,8 @@ class EncounterScheduledPayload(_Payload):
     encounter_id: int
     tournament_id: int
     tournament_name: str
-    home_team_name: str
-    away_team_name: str
+    #: Every seat's name in slot order.
+    team_names: list[str]
     scheduled_at: datetime | None = None
     pick_ban: bool = False
 

@@ -28,6 +28,7 @@ import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { encounterReportFilterDefs } from "./encounter-reports/filters";
 import { ReportInspectorPanel } from "./encounter-reports/ReportInspectorPanel";
 import { useEncounterReportColumns } from "./encounter-reports/useEncounterReportColumns";
+import { seatsBySlot } from "@/lib/encounter/seats";
 import { useEncounterReportScope } from "./encounter-reports/useEncounterReportScope";
 
 const PAGE_SIZE = 25;
@@ -179,9 +180,11 @@ export function EncounterReportsBrowser({
                 <p className="truncate text-sm font-medium">{row.original.name}</p>
                 <p className="truncate text-xs text-muted-foreground">
                   {t("teamsReported", {
-                    home: row.original.home_team?.name ?? "?",
-                    away: row.original.away_team?.name ?? "?",
-                    count: row.original.reported_count
+                    teams: seatsBySlot(row.original.participations)
+                      .map((seat) => seat.name)
+                      .join(` ${t("vs")} `),
+                    count: row.original.reported_count,
+                    total: row.original.participations.length
                   })}
                 </p>
                 <p className="text-xs text-muted-foreground">{row.original.result_status}</p>
@@ -234,7 +237,7 @@ export function EncounterReportsBrowser({
               ? t(showTournament ? "detailSubtitleWithTournament" : "detailSubtitle", {
                   tournament: openRow.tournament_name ?? t("unknownTournament"),
                   stage: openRow.stage_name ?? t("unassigned"),
-                  round: openRow.round,
+                  round: openRow.round ?? "?",
                   bestOf: openRow.best_of
                 })
               : undefined

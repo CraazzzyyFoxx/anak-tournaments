@@ -30,6 +30,8 @@ import {
   isEncounterLive,
   type EncounterState
 } from "@/lib/encounter/status";
+import { encounterSeatScore } from "@/lib/encounter/detail";
+import { duelSeats, duelWinner, seatTeam } from "@/lib/encounter/seats";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import encounterService from "@/services/encounter.service";
 import { Encounter } from "@/types/encounter.types";
@@ -162,11 +164,12 @@ const HEADER: Record<EncounterColumnKey, { key: ColumnHeaderKey; align?: "r" | "
  * very close — worth surfacing over the plain "Final" label.
  */
 function isUpset(encounter: Encounter): boolean {
+  const [one, two] = duelSeats(encounter.teams);
   return (
     getEncounterWinner(encounter) != null &&
     encounter.closeness != null &&
     encounter.closeness >= 0.8 &&
-    Math.abs(encounter.score.home - encounter.score.away) === 1
+    Math.abs((one?.score ?? 0) - (two?.score ?? 0)) === 1
   );
 }
 
@@ -326,23 +329,24 @@ export function EncountersDataTable({
 
   const renderCell = (column: EncounterColumnKey, encounter: Encounter) => {
     const winner = getEncounterWinner(encounter);
+    const [one, two] = duelSeats(encounter.teams);
 
     switch (column) {
       case "matchup":
         return (
           <td key={column}>
             <div className="m-up">
-              <div className={cn("row", winner === "home" && "winner", winner === "away" && "loser")}>
+              <div className={cn("row", winner === 1 && "winner", winner === 2 && "loser")}>
                 <TeamName
-                  team={encounter.home_team}
+                  team={seatTeam(one)}
                   fallback={t("common.tbd")}
                   size="xs"
                   nameClassName="nm"
                 />
               </div>
-              <div className={cn("row", winner === "away" && "winner", winner === "home" && "loser")}>
+              <div className={cn("row", winner === 2 && "winner", winner === 1 && "loser")}>
                 <TeamName
-                  team={encounter.away_team}
+                  team={seatTeam(two)}
                   fallback={t("common.tbd")}
                   size="xs"
                   nameClassName="nm"
@@ -363,9 +367,9 @@ export function EncountersDataTable({
         return (
           <td key={column} className="r">
             <div className="m-score">
-              <span className={winner === "home" ? "w" : "l"}>{encounter.score.home}</span>
+              <span className={winner === 1 ? "w" : "l"}>{one?.score ?? 0}</span>
               <span className="sep">–</span>
-              <span className={winner === "away" ? "w" : "l"}>{encounter.score.away}</span>
+              <span className={winner === 2 ? "w" : "l"}>{two?.score ?? 0}</span>
             </div>
           </td>
         );
@@ -429,7 +433,9 @@ export function EncountersDataTable({
                     aria-hidden
                     className={cn(
                       styles.pip,
-                      match.score.home > match.score.away ? styles.pipHome : styles.pipAway
+                      duelWinner(encounterSeatScore(match, encounter)) === 1
+                        ? styles.pipOne
+                        : styles.pipTwo
                     )}
                   />
                 ))}

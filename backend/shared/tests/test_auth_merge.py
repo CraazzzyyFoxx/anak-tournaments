@@ -859,3 +859,24 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
         ).all()
         self.assertEqual([(1111, self.donor.id, target_member.id)], ranks)
         self.assertEqual(self.donor.id, self.target.auth_user_id)
+
+    async def _merged_target_removed_at(self, *, source_removed: bool):
+        removed = datetime.now(UTC)
+        source_member = models.WorkspaceMember(
+            workspace_id=self.workspace.id, player_id=self.source.id, removed_at=removed if source_removed else None
+        )
+        target_member = models.WorkspaceMember(
+            workspace_id=self.workspace.id, player_id=self.target.id, removed_at=removed
+        )
+        self.session.add_all([source_member, target_member])
+        await self.session.flush()
+        await self.apply(await self.preview())
+        return await self.session.scalar(
+            sa.select(models.WorkspaceMember.removed_at).where(models.WorkspaceMember.id == target_member.id)
+        )
+
+    async def test_merge_revives_a_removed_target_anchor_when_the_source_was_an_active_member(self):
+        self.assertIsNone(await self._merged_target_removed_at(source_removed=False))
+
+    async def test_merge_keeps_a_removed_target_anchor_removed_when_the_source_was_removed_too(self):
+        self.assertIsNotNone(await self._merged_target_removed_at(source_removed=True))

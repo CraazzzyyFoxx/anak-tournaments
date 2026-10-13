@@ -22,23 +22,23 @@
   --ed-blue: var(--aqt-blue);
   --ed-display: var(--aqt-display);
   --ed-mono: var(--aqt-data);
-  /* Side identity. The home/away pair is the page's organising contrast, so it
+  /* Side identity. The slot 1 / slot 2 pair is the page's organising contrast, so it
      is declared once here and every side-tinted element derives from it. */
-  --ed-home: var(--aqt-teal);
-  --ed-away: var(--aqt-rose);
+  --ed-one: var(--aqt-teal);
+  --ed-two: var(--aqt-rose);
   color: var(--ed-fg);
   display: flex;
   flex-direction: column;
   gap: 24px;
 }
 
-/* Per-side scope: components set `--ed-side` and stop branching on home/away. */
-.sideHome {
-  --ed-side: var(--ed-home);
+/* Per-side scope: components set `--ed-side` and stop branching on the slot. */
+.slotOne {
+  --ed-side: var(--ed-one);
 }
 
-.sideAway {
-  --ed-side: var(--ed-away);
+.slotTwo {
+  --ed-side: var(--ed-two);
 }
 
 /* ============ Section chrome ============ */
@@ -315,9 +315,9 @@
   min-width: 0;
 }
 
-/* The away side mirrors so both team logos sit beside the score, not beside the
+/* The slot 2 side mirrors so both team logos sit beside the score, not beside the
    page edges — the matchup reads inward toward the result. */
-.boardSideAway {
+.boardSlotTwo {
   flex-direction: row-reverse;
   text-align: right;
 }
@@ -380,12 +380,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-.scoreHome {
-  color: var(--ed-home);
+.scoreOne {
+  color: var(--ed-one);
 }
 
-.scoreAway {
-  color: var(--ed-away);
+.scoreTwo {
+  color: var(--ed-two);
 }
 
 .scoreSep {
@@ -417,12 +417,12 @@
   border: 1px solid transparent;
 }
 
-.pipHome {
-  background: var(--ed-home);
+.pipOne {
+  background: var(--ed-one);
 }
 
-.pipAway {
-  background: var(--ed-away);
+.pipTwo {
+  background: var(--ed-two);
 }
 
 .pipDraw {
@@ -1109,7 +1109,7 @@
   }
 
   .boardSide,
-  .boardSideAway {
+  .boardSlotTwo {
     flex-direction: row;
     text-align: left;
     width: 100%;

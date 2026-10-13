@@ -39,7 +39,7 @@ function state(paused = true): PickBanState {
     current_step_index: 0,
     current_round: 1,
     games: [],
-    series: { home_wins: 0, away_wins: 0, played: 0, complete: false, official: null }
+    series: { ended: false, games: 0, totals: {}, wins: {}, placements: {} }
   } as unknown as PickBanState;
 }
 
@@ -49,7 +49,7 @@ let root: Root;
 let client: QueryClient;
 function Harness({ encounterId }: { encounterId: number }) {
   const room = usePregameRoomData(encounterId);
-  return <div>{room.mapState?.session?.paused_at ? "paused" : "running"}:{room.heroState?.session?.id ?? "no-hero"}:{room.encounter?.score?.home ?? 0}<span>{room.encounter?.matches.map((match) => match.log_name).join(",")}</span></div>;
+  return <div>{room.mapState?.session?.paused_at ? "paused" : "running"}:{room.heroState?.session?.id ?? "no-hero"}:{room.encounter?.teams?.[0]?.score ?? 0}<span>{room.encounter?.matches.map((match) => match.log_name).join(",")}</span></div>;
 }
 async function advance(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
@@ -72,7 +72,7 @@ beforeEach(() => {
   useRealtimeStore.setState({ connectionState: "connected", topicErrors: {} });
   states = { map: state(), hero: state() };
   getState.mockImplementation(async (kind: PickBanKind) => states[kind]);
-  getEncounter.mockResolvedValue({ id: 42, tournament_id: 3, score: { home: 0, away: 0 }, matches: [] } as unknown as Encounter);
+  getEncounter.mockResolvedValue({ id: 42, tournament_id: 3, teams: [{ id: 71, slot: 1, team_id: 7, name: "A", seed: null, score: 0, placement: null, active: true }], matches: [] } as unknown as Encounter);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -102,8 +102,8 @@ describe("pregame room refresh", () => {
 
   it("refreshes the visible encounter result once for a burst of game confirmation signals", async () => {
     await render();
-    states.map = { ...states.map, series: { ...states.map.series!, home_wins: 1, played: 1 } };
-    getEncounter.mockResolvedValue({ id: 42, score: { home: 1, away: 0 }, matches: [] } as unknown as Encounter);
+    states.map = { ...states.map, series: { ...states.map.series!, wins: { "71": 1 }, games: 1 } };
+    getEncounter.mockResolvedValue({ id: 42, teams: [{ id: 71, slot: 1, team_id: 7, name: "A", seed: null, score: 1, placement: null, active: true }], matches: [] } as unknown as Encounter);
     signal("map");
     signal("hero");
     signal("map");
@@ -165,7 +165,7 @@ describe("pregame room refresh", () => {
     states.map = { ...states.map, is_complete: true };
     states.hero = { ...states.hero, is_complete: true };
     await render();
-    getEncounter.mockResolvedValue({ id: 42, score: { home: 2, away: 0 }, matches: [] } as unknown as Encounter);
+    getEncounter.mockResolvedValue({ id: 42, teams: [{ id: 71, slot: 1, team_id: 7, name: "A", seed: null, score: 2, placement: null, active: true }], matches: [] } as unknown as Encounter);
     act(() => subscriptions.get("encounter:42:map-veto")?.subscribed?.());
     act(() => subscriptions.get("encounter:42:pick-ban:hero")?.subscribed?.());
     await advance(1600);
@@ -176,7 +176,7 @@ describe("pregame room refresh", () => {
   it("refreshes a remotely parsed log without a changed game projection, only for this encounter", async () => {
     await render();
     getEncounter.mockResolvedValue({
-      id: 42, tournament_id: 3, score: { home: 0, away: 0 },
+      id: 42, tournament_id: 3, teams: [{ id: 71, slot: 1, team_id: 7, name: "A", seed: null, score: 0, placement: null, active: true }],
       matches: [{ id: 91, log_name: "parsed.log" }]
     } as unknown as Encounter);
     const event = subscriptions.get("tournament:3:invalidation")!.event;

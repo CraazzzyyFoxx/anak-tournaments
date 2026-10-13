@@ -479,10 +479,15 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             (team, encounter_b, None, None, None, None, None, None, None),
         ]
         repo_mock = AsyncMock(return_value=rows)
+        seat = SimpleNamespace(slot=1, team_id=9)
+        contexts = {
+            101: user_flows._mappers.EncounterContext(seats=[(seat, [])]),
+            102: user_flows._mappers.EncounterContext(seats=[]),
+        }
         # `sort_user_matches` reads `map_index` off every mapped match.
         match_mapper = Mock(side_effect=lambda match, **kwargs: SimpleNamespace(id=match.id, map_index=None))
         encounter_mapper = Mock(
-            side_effect=lambda encounter, matches, **kwargs: SimpleNamespace(id=encounter.id, matches=matches)
+            side_effect=lambda encounter, context, matches, **kwargs: SimpleNamespace(id=encounter.id, matches=matches)
         )
 
         with (
@@ -490,12 +495,18 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             patch.object(user_flows.users.encounters, "get_user_encounter_matches_unpaginated", repo_mock),
             # Pick-ban map order: a real query, and this session is a stub.
             patch.object(user_flows.users.encounters, "get_settled_map_ids", AsyncMock(return_value={})),
+            patch.object(user_flows.users.encounters, "get_encounter_contexts", AsyncMock(return_value=contexts)),
             patch.object(user_flows._mappers, "to_match_with_user_stats", match_mapper),
             patch.object(user_flows._mappers, "to_encounter_with_user_stats", encounter_mapper),
         ):
             result = await user_flows.users.get_tournament_encounters(session, 42, 7)
 
         repo_mock.assert_awaited_once_with(session, user.id, tournament_id=7)
+        # Both matches were oriented to the seats of THEIR encounter.
+        self.assertEqual(
+            [contexts[101].participations, contexts[101].participations],
+            [call.kwargs["seats"] for call in match_mapper.call_args_list],
+        )
         self.assertEqual([101, 102], [enc.id for enc in result])
         self.assertEqual([201, 202], [m.id for m in result[0].matches])
         self.assertEqual([], result[1].matches)

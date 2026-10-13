@@ -30,7 +30,10 @@ from shared.services.tournament.slug import generate_unique_tournament_slug
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.services.admin.stage import stage_service
-from src.services.challonge.sync import sync_service
+
+# ``src.services.challonge.sync`` is loaded inside ``create_from_challonge``:
+# importing a remote bracket is one path out of this whole service, and at
+# module scope it would make every tournament write depend on the exporter.
 from src.services.notifications.lifecycle import lifecycle_notifier
 from src.services.tournament.events import (
     STRUCTURE_RESOURCES,
@@ -413,6 +416,8 @@ class AdminTournamentService:
             session, tournament, challonge_id=challonge_tournament.id, slug=challonge_tournament.url
         )
         await session.commit()
+        from src.services.challonge.sync import sync_service  # noqa: PLC0415
+
         await sync_service.import_tournament(session, tournament.id)
         return await self.get_tournament(session, tournament.id)
 
@@ -432,9 +437,12 @@ class AdminTournamentService:
         await division_grid_cache.invalidate_workspace(workspace_id)
 
     async def _stage_has_encounters(self, session: AsyncSession, stage_id: int) -> bool:
-        # Analytical: grouped count, not a CRUD row read.
+        # Analytical: grouped count, not a CRUD row read. The encounter's stage
+        # is its bracket POSITION now (D22), so the count is over that table.
         count = await session.scalar(
-            sa.select(sa.func.count(models.Encounter.id)).where(models.Encounter.stage_id == stage_id)
+            sa.select(sa.func.count(models.BracketEncounter.encounter_id)).where(
+                models.BracketEncounter.stage_id == stage_id
+            )
         )
         return bool(count)
 

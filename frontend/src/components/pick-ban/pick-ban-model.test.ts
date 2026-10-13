@@ -15,7 +15,7 @@ import type {
 import {
   PICK_BAN_UNAVAILABLE_COPY,
   acceptedScore,
-  appliedItemsBySide,
+  appliedItemsByTeam,
   bannedEntries,
   carriedBanEntries,
   duplicateItemIds,
@@ -40,17 +40,36 @@ import {
   viewerDraftItems
 } from "./pick-ban-model";
 
+// Participations of the fixtures: slot 1 and slot 2.
+const HOME = 1;
+const AWAY = 2;
+const SEATS = [
+  { id: HOME, slot: 1 },
+  { id: AWAY, slot: 2 }
+];
+
+/** A game with its accepted score on the two seats. */
+function scored(position: number, one: number, two: number, state: PickBanGame["state"] = "confirmed") {
+  return game({
+    position,
+    state,
+    results: [
+      { encounter_team_id: HOME, score: one, placement: null, column_values: {} },
+      { encounter_team_id: AWAY, score: two, placement: null, column_values: {} }
+    ]
+  });
+}
+
 function game(overrides: Partial<PickBanGame> & { position: number }): PickBanGame {
   return {
     id: overrides.position,
     map_id: 21,
     state: "awaiting_result",
-    accepted_home_score: null,
-    accepted_away_score: null,
     result_source: null,
     result_version: 1,
     confirmed_at: null,
-    reports: [],
+    results: [],
+    claims: [],
     ...overrides
   };
 }
@@ -62,9 +81,10 @@ function entry(overrides: Partial<PickBanEntry>): PickBanEntry {
     round: null,
     order: 0,
     action_index: null,
-    picked_by: null,
-    protected_by: null,
-    team_id: null,
+    picked_by_kind: null,
+    picked_by_team_id: null,
+    protected_by_kind: null,
+    protected_by_team_id: null,
     status: "available",
     carried_from_round: null,
     ...overrides
@@ -77,7 +97,8 @@ function step(overrides: Partial<PickBanResolvedStep> & { index: number }): Pick
     phase_id: "main",
     step_id: `s${overrides.index}`,
     action: "ban",
-    sides: ["home"],
+    actors: [HOME],
+    actors_token: null,
     count: 1,
     min: 1,
     blind: false,
@@ -93,7 +114,7 @@ function step(overrides: Partial<PickBanResolvedStep> & { index: number }): Pick
 }
 
 function submission(
-  overrides: Partial<PickBanSubmission> & { step_index: number; side: PickBanSubmission["side"] }
+  overrides: Partial<PickBanSubmission> & { step_index: number; encounter_team_id: number }
 ): PickBanSubmission {
   return {
     attempt: 1,
@@ -108,12 +129,10 @@ function session(overrides: Partial<PickBanSession> = {}): PickBanSession {
     id: 1,
     kind: "map",
     status: "active",
-    first_side: "home",
+    first_team_id: HOME,
     awaiting_choice: false,
-    pending_loser_side: null,
+    pending_chooser_team_id: null,
     seed_source: "bracket_slot",
-    home_seed: 1,
-    away_seed: 2,
     slot_reserves: null,
     started_at: "2026-07-18T10:00:00Z",
     current_step_started_at: "2026-07-18T10:00:00Z",
@@ -125,17 +144,17 @@ function session(overrides: Partial<PickBanSession> = {}): PickBanSession {
 function state(overrides: Partial<PickBanState>): PickBanState {
   return {
     session: session(),
-    readiness: { home: true, away: true },
+    readiness: { [HOME]: true, [AWAY]: true },
     sequence: [],
     pool: [],
     submissions: [],
-    viewer_side: "home",
+    viewer_team_id: HOME,
     viewer_can_act: false,
     allowed_actions: [],
     current_step_index: null,
     current_step: null,
     expected_action: null,
-    acting_sides: [],
+    acting_team_ids: [],
     step_progress: null,
     step_deadline: "2026-07-18T10:01:00Z",
     current_round: null,
@@ -143,8 +162,9 @@ function state(overrides: Partial<PickBanState>): PickBanState {
     eligible: null,
     draft_issues: [],
     targets: null,
+    sides: [],
     dispute: { available: false, step_index: null, attempts_used: 0, max: 0 },
-    undo: { requested_by: null, step_index: null, item_ids: [], action: null, side: null },
+    undo: { requested_by_team_id: null, step_index: null, item_ids: [], action: null, encounter_team_id: null },
     ...overrides
   };
 }
@@ -156,7 +176,7 @@ describe("stepSummary", () => {
         step({
           index: 0,
           action: "ban",
-          sides: ["home", "away"],
+          actors: [HOME, AWAY],
           count: 5,
           blind: true,
           target: "opponent_player",
@@ -165,7 +185,7 @@ describe("stepSummary", () => {
       )
     ).toEqual({
       action: "ban",
-      sides: ["home", "away"],
+      actors: [HOME, AWAY],
       system: false,
       count: 5,
       blind: true,
@@ -190,9 +210,9 @@ describe("stepSummary", () => {
   });
 
   it("reads an engine-resolved step as system, with no acting side", () => {
-    const summary = stepSummary(step({ index: 4, action: "decider", sides: ["system"] }));
+    const summary = stepSummary(step({ index: 4, action: "decider", actors: [null] }));
     expect(summary.system).toBe(true);
-    expect(summary.sides).toEqual([]);
+    expect(summary.actors).toEqual([]);
   });
 });
 
@@ -200,7 +220,7 @@ describe("stepRoundGroups", () => {
   it("groups the resolved steps by the round each one belongs to", () => {
     const sequence = [
       step({ index: 0, round: 1 }),
-      step({ index: 1, round: 1, sides: ["home", "away"], count: 2, blind: true }),
+      step({ index: 1, round: 1, actors: [HOME, AWAY], count: 2, blind: true }),
       step({ index: 2, round: 2 }),
       step({ index: 3, round: 2 })
     ];
@@ -236,9 +256,9 @@ describe("stepDeadlineMs", () => {
 describe("stepSubmissions", () => {
   it("keeps only the current attempt, so a disputed step shows its redo", () => {
     const submissions = [
-      submission({ step_index: 0, side: "home", attempt: 1, items: [{ item_id: 1, target_player_id: null }] }),
-      submission({ step_index: 0, side: "home", attempt: 2, state: "draft", items: [] }),
-      submission({ step_index: 1, side: "away", items: [] })
+      submission({ step_index: 0, encounter_team_id: HOME, attempt: 1, items: [{ item_id: 1, target_player_id: null }] }),
+      submission({ step_index: 0, encounter_team_id: HOME, attempt: 2, state: "draft", items: [] }),
+      submission({ step_index: 1, encounter_team_id: AWAY, items: [] })
     ];
     const rows = stepSubmissions(submissions, 0);
     expect(rows).toHaveLength(1);
@@ -251,10 +271,10 @@ describe("viewerDraftItems", () => {
     const items = viewerDraftItems(
       state({
         current_step_index: 3,
-        viewer_side: "away",
+        viewer_team_id: AWAY,
         submissions: [
-          submission({ step_index: 3, side: "home", state: "draft", items: [{ item_id: 9, target_player_id: null }] }),
-          submission({ step_index: 3, side: "away", state: "draft", items: [{ item_id: 7, target_player_id: 11 }] })
+          submission({ step_index: 3, encounter_team_id: HOME, state: "draft", items: [{ item_id: 9, target_player_id: null }] }),
+          submission({ step_index: 3, encounter_team_id: AWAY, state: "draft", items: [{ item_id: 7, target_player_id: 11 }] })
         ]
       })
     );
@@ -262,7 +282,7 @@ describe("viewerDraftItems", () => {
   });
 
   it("is empty for a spectator and before anything is drafted", () => {
-    expect(viewerDraftItems(state({ current_step_index: 3, viewer_side: null }))).toEqual([]);
+    expect(viewerDraftItems(state({ current_step_index: 3, viewer_team_id: null }))).toEqual([]);
     expect(viewerDraftItems(state({ current_step_index: null }))).toEqual([]);
   });
 });
@@ -272,7 +292,7 @@ describe("duplicateItemIds", () => {
     const duplicates = duplicateItemIds([
       submission({
         step_index: 0,
-        side: "home",
+        encounter_team_id: HOME,
         items: [
           { item_id: 1, target_player_id: null },
           { item_id: 2, target_player_id: null }
@@ -280,7 +300,7 @@ describe("duplicateItemIds", () => {
       }),
       submission({
         step_index: 0,
-        side: "away",
+        encounter_team_id: AWAY,
         items: [
           { item_id: 2, target_player_id: null },
           { item_id: 3, target_player_id: null }
@@ -294,7 +314,7 @@ describe("duplicateItemIds", () => {
     const duplicates = duplicateItemIds([
       submission({
         step_index: 0,
-        side: "home",
+        encounter_team_id: HOME,
         items: [
           { item_id: 4, target_player_id: 1 },
           { item_id: 4, target_player_id: 2 }
@@ -305,21 +325,21 @@ describe("duplicateItemIds", () => {
   });
 });
 
-describe("appliedItemsBySide", () => {
+describe("appliedItemsByTeam", () => {
   const sequence = [
-    step({ index: 0, round: 1, sides: ["home", "away"], count: 2, blind: true }),
-    step({ index: 1, round: 2, sides: ["home"], action: "protect" })
+    step({ index: 0, round: 1, actors: [HOME, AWAY], count: 2, blind: true }),
+    step({ index: 1, round: 2, actors: [HOME], action: "protect" })
   ];
 
   it("credits a merged duplicate ban to BOTH sides that spent it", () => {
     // The board writes ONE banned entry with one `picked_by`; reading it would
     // leave the other side a ban short of what it actually paid.
-    const applied = appliedItemsBySide(
+    const applied = appliedItemsByTeam(
       sequence,
       [
         submission({
           step_index: 0,
-          side: "home",
+          encounter_team_id: HOME,
           items: [
             { item_id: 1, target_player_id: null },
             { item_id: 2, target_player_id: null }
@@ -327,7 +347,7 @@ describe("appliedItemsBySide", () => {
         }),
         submission({
           step_index: 0,
-          side: "away",
+          encounter_team_id: AWAY,
           items: [
             { item_id: 2, target_player_id: null },
             { item_id: 3, target_player_id: null }
@@ -336,70 +356,70 @@ describe("appliedItemsBySide", () => {
       ],
       { round: 1 }
     );
-    expect(applied.home.map((item) => item.item_id)).toEqual([1, 2]);
-    expect(applied.away.map((item) => item.item_id)).toEqual([2, 3]);
+    expect(applied[HOME].map((item) => item.item_id)).toEqual([1, 2]);
+    expect(applied[AWAY].map((item) => item.item_id)).toEqual([2, 3]);
   });
 
   it("hides an unrevealed blind draft, and shows an open step's immediately", () => {
-    const blindDraft = appliedItemsBySide(sequence, [
+    const blindDraft = appliedItemsByTeam(sequence, [
       submission({
         step_index: 0,
-        side: "home",
+        encounter_team_id: HOME,
         state: "locked",
         items: [{ item_id: 1, target_player_id: null }]
       })
     ]);
-    expect(blindDraft.home).toEqual([]);
+    expect(blindDraft[HOME] ?? []).toEqual([]);
 
-    const openDraft = appliedItemsBySide(sequence, [
+    const openDraft = appliedItemsByTeam(sequence, [
       submission({
         step_index: 1,
-        side: "home",
+        encounter_team_id: HOME,
         state: "draft",
         items: [{ item_id: 5, target_player_id: null }]
       })
     ]);
-    expect(openDraft.home.map((item) => item.item_id)).toEqual([5]);
+    expect(openDraft[HOME].map((item) => item.item_id)).toEqual([5]);
   });
 
   it("narrows to one round and one action", () => {
     const submissions = [
-      submission({ step_index: 0, side: "home", items: [{ item_id: 1, target_player_id: null }] }),
-      submission({ step_index: 1, side: "home", items: [{ item_id: 5, target_player_id: null }] })
+      submission({ step_index: 0, encounter_team_id: HOME, items: [{ item_id: 1, target_player_id: null }] }),
+      submission({ step_index: 1, encounter_team_id: HOME, items: [{ item_id: 5, target_player_id: null }] })
     ];
     expect(
-      appliedItemsBySide(sequence, submissions, { round: 2, action: "protect" }).home.map(
+      appliedItemsByTeam(sequence, submissions, { round: 2, action: "protect" })[HOME].map(
         (item) => item.item_id
       )
     ).toEqual([5]);
     expect(
-      appliedItemsBySide(sequence, submissions, { round: 2, action: "ban" }).home
+      appliedItemsByTeam(sequence, submissions, { round: 2, action: "ban" })[HOME] ?? []
     ).toEqual([]);
   });
 });
 
 describe("lastRevealedBlindStep", () => {
   const sequence = [
-    step({ index: 0, blind: true, sides: ["home", "away"] }),
-    step({ index: 1, blind: true, sides: ["home", "away"] }),
+    step({ index: 0, blind: true, actors: [HOME, AWAY] }),
+    step({ index: 1, blind: true, actors: [HOME, AWAY] }),
     step({ index: 2, blind: false })
   ];
 
   it("finds the newest blind step whose drafts are all out", () => {
     const submissions = [
-      submission({ step_index: 0, side: "home" }),
-      submission({ step_index: 0, side: "away" }),
-      submission({ step_index: 1, side: "home" }),
-      submission({ step_index: 1, side: "away" })
+      submission({ step_index: 0, encounter_team_id: HOME }),
+      submission({ step_index: 0, encounter_team_id: AWAY }),
+      submission({ step_index: 1, encounter_team_id: HOME }),
+      submission({ step_index: 1, encounter_team_id: AWAY })
     ];
     expect(lastRevealedBlindStep(sequence, submissions)?.index).toBe(1);
   });
 
   it("skips a step still holding a locked draft, and reports none before any reveal", () => {
     const partial = [
-      submission({ step_index: 0, side: "home" }),
-      submission({ step_index: 0, side: "away" }),
-      submission({ step_index: 1, side: "home", state: "locked" })
+      submission({ step_index: 0, encounter_team_id: HOME }),
+      submission({ step_index: 0, encounter_team_id: AWAY }),
+      submission({ step_index: 1, encounter_team_id: HOME, state: "locked" })
     ];
     expect(lastRevealedBlindStep(sequence, partial)?.index).toBe(0);
     expect(lastRevealedBlindStep(sequence, [])).toBeNull();
@@ -467,11 +487,11 @@ describe("tileStatus", () => {
 
 describe("carried and banned entries", () => {
   const pool = [
-    entry({ id: 1, item_id: 101, round: 2, status: "banned", carried_from_round: 1, picked_by: "home" }),
-    entry({ id: 2, item_id: 102, round: 2, status: "banned", picked_by: "away" }),
+    entry({ id: 1, item_id: 101, round: 2, status: "banned", carried_from_round: 1, picked_by_kind: "team", picked_by_team_id: HOME }),
+    entry({ id: 2, item_id: 102, round: 2, status: "banned", picked_by_kind: "team", picked_by_team_id: AWAY }),
     entry({ id: 3, item_id: 103, round: 2, status: "available" }),
-    entry({ id: 4, item_id: 104, round: 2, status: "protected", protected_by: "home" }),
-    entry({ id: 5, item_id: 105, round: 1, status: "banned", picked_by: "home" })
+    entry({ id: 4, item_id: 104, round: 2, status: "protected", protected_by_kind: "team", protected_by_team_id: HOME }),
+    entry({ id: 5, item_id: 105, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })
   ];
 
   it("separates the bans carried in from the ones spent on this map", () => {
@@ -616,10 +636,10 @@ describe("gameAtPosition", () => {
     // Both positions ran map 21; keyed on the map alone the third play would
     // inherit the first play's confirmed result.
     const games = [
-      game({ position: 1, map_id: 21, state: "confirmed", accepted_home_score: 2, accepted_away_score: 1 }),
+      { ...scored(1, 2, 1), map_id: 21 },
       game({ position: 2, map_id: 21 })
     ];
-    expect(acceptedScore(gameAtPosition(games, 2))).toBeNull();
+    expect(acceptedScore(gameAtPosition(games, 2), SEATS)).toBeNull();
   });
 
   it("has no game for a position the server has not opened", () => {
@@ -630,10 +650,21 @@ describe("gameAtPosition", () => {
 describe("acceptedScore", () => {
   it("returns the accepted score of a confirmed game", () => {
     expect(
-      acceptedScore(
-        game({ position: 1, state: "confirmed", accepted_home_score: 2, accepted_away_score: 1 })
-      )
-    ).toEqual({ home: 2, away: 1 });
+      acceptedScore(scored(1, 2, 1), SEATS)
+    ).toEqual({ one: 2, two: 1 });
+  });
+
+  it("reads the score in slot order whatever order the lines arrive in", () => {
+    const reversed = scored(1, 2, 1);
+    reversed.results.reverse();
+    expect(acceptedScore(reversed, SEATS)).toEqual({ one: 2, two: 1 });
+    // The same lines against swapped seats read the other way round.
+    expect(
+      acceptedScore(reversed, [
+        { id: HOME, slot: 2 },
+        { id: AWAY, slot: 1 }
+      ])
+    ).toEqual({ one: 1, two: 2 });
   });
 
   it("shows nothing while a single claim stands", () => {
@@ -642,8 +673,18 @@ describe("acceptedScore", () => {
         game({
           position: 1,
           state: "awaiting_result",
-          reports: [{ side: "home", home_score: 2, away_score: 1 }]
-        })
+          claims: [
+            {
+              claimant_team_id: HOME,
+              basis_version: 1,
+              results: [
+                { encounter_team_id: HOME, score: 2, placement: null, column_values: {} },
+                { encounter_team_id: AWAY, score: 1, placement: null, column_values: {} }
+              ]
+            }
+          ]
+        }),
+        SEATS
       )
     ).toBeNull();
   });
@@ -656,25 +697,38 @@ describe("acceptedScore", () => {
         game({
           position: 1,
           state: "disputed",
-          reports: [
-            { side: "home", home_score: 2, away_score: 1 },
-            { side: "away", home_score: 0, away_score: 2 }
+          claims: [
+            {
+              claimant_team_id: HOME,
+              basis_version: 1,
+              results: [
+                { encounter_team_id: HOME, score: 2, placement: null, column_values: {} },
+                { encounter_team_id: AWAY, score: 1, placement: null, column_values: {} }
+              ]
+            },
+            {
+              claimant_team_id: AWAY,
+              basis_version: 1,
+              results: [
+                { encounter_team_id: HOME, score: 0, placement: null, column_values: {} },
+                { encounter_team_id: AWAY, score: 2, placement: null, column_values: {} }
+              ]
+            }
           ]
-        })
+        }),
+        SEATS
       )
     ).toBeNull();
   });
 
   it("shows nothing for a cancelled game that still carries its old numbers", () => {
     expect(
-      acceptedScore(
-        game({ position: 1, state: "cancelled", accepted_home_score: 2, accepted_away_score: 1 })
-      )
+      acceptedScore(scored(1, 2, 1, "cancelled"), SEATS)
     ).toBeNull();
   });
 
   it("has nothing to show without a game", () => {
-    expect(acceptedScore(null)).toBeNull();
+    expect(acceptedScore(null, SEATS)).toBeNull();
   });
 });
 
@@ -765,7 +819,7 @@ function roundPool(): PickBanEntry[] {
       round: 1,
       order: 1,
       status: "picked",
-      picked_by: "decider",
+      picked_by_kind: "decider",
       action_index: 2
     }),
     entry({ id: 74, item_id: 42, round: 3, order: 7, status: "available" }),
@@ -812,12 +866,12 @@ describe("roundState", () => {
 
 describe("statusLabelKey", () => {
   it("calls a round survivor remaining, not picked", () => {
-    const survivor = entry({ round: 1, status: "picked", picked_by: "decider" });
+    const survivor = entry({ round: 1, status: "picked", picked_by_kind: "decider" });
     expect(statusLabelKey(survivor)).toBe("status.remaining");
   });
 
   it("keeps a flat-mode trailing decider as picked", () => {
-    const decider = entry({ round: null, status: "picked", picked_by: "decider" });
+    const decider = entry({ round: null, status: "picked", picked_by_kind: "decider" });
     expect(statusLabelKey(decider)).toBe("status.picked");
   });
 

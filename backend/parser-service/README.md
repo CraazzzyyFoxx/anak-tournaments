@@ -233,9 +233,11 @@ Writes:
   requirements).
 - `public.settings` — global key-namespaced settings.
 - As a side effect of ingestion: `players.user` and `players.social_account` (virtual players and
-  battlenet renames), and tournament roster rows for substitutes discovered in a log.
+  battlenet renames), and `encounter.team_member` snapshots (as substitutes) for players found in a log
+  who are not on the participation's roster.
 
-Reads only: `tournament.*` (tournaments, encounters, teams, players), `public.workspace` and
+Reads only: `encounter.*` (encounters, participations, games, claims, reports), `tournament.*`
+(tournaments, bracket positions, teams, players), `public.workspace` and
 `public.workspace_member`, the division grid, `auth.user` for actor stamping.
 
 No service ships its own migrations — there is one Alembic project at

@@ -3,7 +3,7 @@
 Generates pairings for a full single-elim bracket with:
 - power-of-2 bracket sizes via first-round byes
 - standard 1v16, 8v9, etc. seeding
-- explicit advancement edges (winner of match X → slot Y of match Z)
+- explicit advancement edges (position 1 of match X → slot Y of match Z)
 
 The generator populates ``local_id`` on every :class:`Pairing` and a list of
 :class:`AdvancementEdge` on the :class:`BracketSkeleton`. The admin service is
@@ -47,7 +47,7 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
     # advancement edges land correctly.
     r1_match_local_ids: list[int | None] = []
     # For each R1 position (bracket_size/2 positions), the team that enters R2
-    # without a match. ``None`` means "waiting for winner of r1_match_local_ids[pos]".
+    # without a match. ``None`` means "waiting for the first place of r1_match_local_ids[pos]".
     r1_autoadvance_team: list[int | None] = []
 
     next_local_id = 0
@@ -65,19 +65,16 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
 
     # --- R1 ---
     for i in range(0, bracket_size, 2):
-        home_seed = seeds[i]
-        away_seed = seeds[i + 1]
-        home = seed_to_team[home_seed]
-        away = seed_to_team[away_seed]
+        first = seed_to_team[seeds[i]]
+        second = seed_to_team[seeds[i + 1]]
 
-        if home is not None and away is not None:
+        if first is not None and second is not None:
             match_counter_per_round[1] = match_counter_per_round.get(1, 0) + 1
             local_id = next_local_id
             next_local_id += 1
             pairings.append(
                 Pairing(
-                    home_team_id=home,
-                    away_team_id=away,
+                    team_ids=(first, second),
                     round_number=1,
                     name=_round_match_label(1, match_counter_per_round[1]),
                     local_id=local_id,
@@ -85,12 +82,12 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
             )
             r1_match_local_ids.append(local_id)
             r1_autoadvance_team.append(None)
-        elif home is not None:
+        elif first is not None:
             r1_match_local_ids.append(None)
-            r1_autoadvance_team.append(home)
-        elif away is not None:
+            r1_autoadvance_team.append(first)
+        elif second is not None:
             r1_match_local_ids.append(None)
-            r1_autoadvance_team.append(away)
+            r1_autoadvance_team.append(second)
         else:
             r1_match_local_ids.append(None)
             r1_autoadvance_team.append(None)
@@ -121,8 +118,7 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
                 next_local_id += 1
                 pairings.append(
                     Pairing(
-                        home_team_id=a_team,
-                        away_team_id=b_team,
+                        team_ids=(a_team, b_team),
                         round_number=round_num,
                         name=_round_match_label(round_num, match_counter_per_round[round_num]),
                         local_id=local_id,
@@ -131,22 +127,15 @@ def generate(team_ids: list[int]) -> BracketSkeleton:
                 new_match_local_ids.append(local_id)
                 new_autoadvance.append(None)
 
-                if a_local is not None:
+                for source_local_id, target_slot in ((a_local, 1), (b_local, 2)):
+                    if source_local_id is None:
+                        continue
                     edges.append(
                         AdvancementEdge(
-                            source_local_id=a_local,
+                            source_local_id=source_local_id,
+                            source_position=1,
                             target_local_id=local_id,
-                            role="winner",
-                            target_slot="home",
-                        )
-                    )
-                if b_local is not None:
-                    edges.append(
-                        AdvancementEdge(
-                            source_local_id=b_local,
-                            target_local_id=local_id,
-                            role="winner",
-                            target_slot="away",
+                            target_slot=target_slot,
                         )
                     )
             elif a_present:

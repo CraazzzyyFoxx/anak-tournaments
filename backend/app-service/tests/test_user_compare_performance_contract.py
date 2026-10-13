@@ -1,6 +1,7 @@
 """Query-shape contracts for the optimized user comparison reads."""
 
 import asyncio
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -46,7 +47,7 @@ def test_overall_compare_v2_is_a_grouped_candidate_query() -> None:
     assert "LEFT OUTER JOIN" in sql
     assert "UNION ALL" in sql
     assert "matches.statistics.user_id = players.user.id" not in sql
-    assert "home_team_id = tournament.team.id OR" not in sql
+    assert "home_team_id" not in sql
 
 
 def test_compare_population_executes_the_grouped_v2_query() -> None:
@@ -259,8 +260,10 @@ class _CaptureSession:
 
 
 def _assert_indexable_encounter_join(sql: str) -> None:
-    assert "UNION ALL" in sql
-    assert "home_team_id = tournament.team.id OR" not in sql
+    """A team meets its encounters through the equality ``seat.team_id = team.id`` on a live
+    participation (``ix_team_team_id``) -- never through ``home_team_id``/``away_team_id``."""
+    assert re.search(r"JOIN encounter\.team AS \w+ ON \w+\.team_id = [\w.]+ AND \w+\.active IS true", sql)
+    assert "home_team_id" not in sql
 
 
 def test_global_compare_runs_population_once_when_subject_is_in_sample() -> None:
@@ -393,33 +396,33 @@ def test_hero_compare_empty_sample_with_population_is_hero_map_404() -> None:
     assert "hero/map" in str(exc.value.detail).lower()
 
 
-def test_profile_overall_statistics_uses_union_all_sides() -> None:
+def test_profile_overall_statistics_joins_the_team_seat() -> None:
     session = _CaptureSession()
     asyncio.run(profile_queries.get_overall_statistics(session, user_id=7))
     _assert_indexable_encounter_join(_postgres_sql(session.statements[0]))
 
 
-def test_profile_roles_uses_union_all_sides() -> None:
+def test_profile_roles_joins_the_team_seat() -> None:
     session = _CaptureSession()
     asyncio.run(profile_queries.get_roles(session, user_id=7))
     _assert_indexable_encounter_join(_postgres_sql(session.statements[0]))
 
 
-def test_profile_tournaments_with_stats_uses_union_all_sides() -> None:
+def test_profile_tournaments_with_stats_joins_the_team_seat() -> None:
     session = _CaptureSession()
     asyncio.run(profile_queries.get_tournaments_with_stats(session, user_id=7))
     _assert_indexable_encounter_join(_postgres_sql(session.statements[0]))
 
 
-def test_profile_tournament_stats_overall_uses_union_all_sides() -> None:
+def test_profile_tournament_stats_overall_joins_the_team_seat() -> None:
     session = _CaptureSession()
     asyncio.run(profile_queries.get_tournament_stats_overall(session, SimpleNamespace(id=1), user_id=7))
     sql = _postgres_sql(session.statements[0])
     _assert_indexable_encounter_join(sql)
-    assert sql.count("UNION ALL") >= 2
+    assert sql.count("JOIN encounter.team AS") >= 2  # playtime and map record each read the seat
 
 
-def test_profile_best_teammates_uses_union_all_sides() -> None:
+def test_profile_best_teammates_joins_the_team_seat() -> None:
     session = _CaptureSession()
     asyncio.run(
         profile_queries.get_best_teammates(
@@ -443,10 +446,10 @@ def test_get_teams_unlimited_skips_count_and_uses_indexable_exists() -> None:
     assert len(session.statements) == 1
     sql = _postgres_sql(session.statements[0])
     assert "exists" in sql.lower()
-    assert "home_team_id = tournament.team.id OR" not in sql
+    assert "home_team_id" not in sql
 
 
-def test_overview_closeness_uses_union_all_sides() -> None:
+def test_overview_closeness_joins_the_team_seat() -> None:
     session = _CaptureSession()
     asyncio.run(overview_queries.get_overview_averages(session, user_ids=[7]))
     _assert_indexable_encounter_join(_postgres_sql(session.statements[-1]))
@@ -493,7 +496,7 @@ def test_overview_stats_with_logs_probes_from_the_candidate_side() -> None:
     assert "user_id IN" not in sql
 
 
-def test_statistics_encounter_query_uses_union_all_sides() -> None:
+def test_statistics_encounter_query_joins_the_team_seat() -> None:
     _assert_indexable_encounter_join(_postgres_sql(encounter_query))
 
 
@@ -524,7 +527,7 @@ def test_tournament_stats_drive_statistics_from_the_tournament_matches() -> None
         assert "matches.match.id = matches.statistics.match_id" not in sql
 
 
-def test_tournament_winrate_uses_union_all_sides() -> None:
+def test_tournament_winrate_joins_the_team_seat() -> None:
     session = _CaptureSession()
     asyncio.run(statistics_queries.get_tournament_winrate(session, SimpleNamespace(id=1), user_id=7))
     sql = _postgres_sql(session.statements[0])
@@ -540,7 +543,7 @@ def test_active_tournament_stats_is_one_statement() -> None:
     assert "active_tournament AS" in sql
 
 
-def test_overview_encounter_exprs_use_union_all_sides() -> None:
+def test_overview_encounter_exprs_join_the_team_seat() -> None:
     for expr in (
         overview_queries._overview_avg_closeness_expr(models.User.id, grid=DEFAULT_GRID),
         overview_queries._overview_maps_won_expr(models.User.id, grid=DEFAULT_GRID),

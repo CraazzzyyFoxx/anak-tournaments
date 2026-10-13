@@ -302,6 +302,7 @@ class UserMergeService:
             if auth_result is not None:
                 affected_counts.update(auth_result.transferred_counts)
 
+            await self._move_source_members(session, source_user_id=context.source.id, target_user_id=context.target.id)
             await self._delete_source_user_row(session, context.source.id)
             await session.flush()
             context.target.name = desired_name
@@ -607,6 +608,77 @@ class UserMergeService:
             moved += int(result.rowcount or 0)
 
         return moved
+
+    async def _move_source_members(self, session: AsyncSession, *, source_user_id: int, target_user_id: int) -> None:
+        """Hand the source player's ``workspace_member`` rows to the survivor.
+
+        Roster snapshots (``encounter.team_member``) hang on a member row with no
+        cascade, so the source row cannot simply vanish with the player. Per
+        workspace: when the survivor has no member row there, the source row is
+        re-pointed at the survivor (``player_id``) and keeps its history. When
+        the survivor already has one, the source's roster seats move onto it;
+        a seat that would duplicate a seat the survivor already holds (same
+        participation, or both active in the same encounter) is dropped, since
+        it is the same person twice. The now seat-free source row is the one
+        duplicate-identity row the user delete cascades away.
+        """
+        source_rows = (
+            await session.execute(
+                select(models.WorkspaceMember.id, models.WorkspaceMember.workspace_id).where(
+                    models.WorkspaceMember.player_id == source_user_id
+                )
+            )
+        ).all()
+        if not source_rows:
+            return
+        target_members = dict(
+            (
+                await session.execute(
+                    select(models.WorkspaceMember.workspace_id, models.WorkspaceMember.id).where(
+                        models.WorkspaceMember.player_id == target_user_id,
+                        models.WorkspaceMember.workspace_id.in_([workspace_id for _id, workspace_id in source_rows]),
+                    )
+                )
+            ).all()
+        )
+        seat = models.EncounterTeamMember
+        survivor_seat = sa.orm.aliased(models.EncounterTeamMember)
+        for source_member_id, workspace_id in source_rows:
+            target_member_id = target_members.get(workspace_id)
+            if target_member_id is None:
+                await session.execute(
+                    update(models.WorkspaceMember)
+                    .where(models.WorkspaceMember.id == source_member_id)
+                    .values(player_id=target_user_id)
+                    .execution_options(synchronize_session=False)
+                )
+                continue
+            duplicate = (
+                sa.exists()
+                .where(
+                    survivor_seat.workspace_member_id == target_member_id,
+                    sa.or_(
+                        survivor_seat.encounter_team_id == seat.encounter_team_id,
+                        sa.and_(
+                            survivor_seat.active.is_(True),
+                            seat.active.is_(True),
+                            survivor_seat.encounter_id == seat.encounter_id,
+                        ),
+                    ),
+                )
+                .correlate(seat)
+            )
+            await session.execute(
+                delete(seat)
+                .where(seat.workspace_member_id == source_member_id, duplicate)
+                .execution_options(synchronize_session=False)
+            )
+            await session.execute(
+                update(seat)
+                .where(seat.workspace_member_id == source_member_id)
+                .values(workspace_member_id=target_member_id)
+                .execution_options(synchronize_session=False)
+            )
 
     async def _delete_source_user_row(self, session: AsyncSession, source_user_id: int) -> None:
         # A set-based DELETE rather than an ORM instance delete: the row's dependents

@@ -951,13 +951,15 @@ class RunningSessionsAreUntouched(_UpsertCase):
         # this pins both halves -- the only reads are the config itself and the
         # gamemode vocabulary the ruleset validator needs, and the only row
         # added besides the config (untouched here, this is an update) is the
-        # admin audit entry.
+        # admin audit entry. The tournament row is read for one thing only: its
+        # ``discipline``, which is what decides whether the ruleset may name
+        # sides at all (D25).
         existing = _config(SLOTS, slots=CANDIDATES)
 
         envelope, session = await self.invoke(slot_body(), existing=existing)
 
         self.assertTrue(envelope["ok"], envelope)
-        self.assertEqual(["Gamemode", "PickBanConfig"], sorted(session.statements))
+        self.assertEqual(["Gamemode", "PickBanConfig", "Tournament"], sorted(session.statements))
         self.assertEqual(["AuditLog"], [type(obj).__name__ for obj in session.added])
 
 

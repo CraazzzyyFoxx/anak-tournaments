@@ -7,6 +7,8 @@ only the fields the frontend actually renders on user-scoped pages.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -15,6 +17,7 @@ from shared.core.impact import BADGE_THRESHOLD
 from shared.division_grid import DivisionGrid
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src import models, schemas
+from src.core import enums
 from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead
 
@@ -118,14 +121,21 @@ def to_user_tournament_player(
     )
 
 
-def encounter_oriented_score(match: models.Match, encounter: models.Encounter) -> Score:
-    """Map score in the encounter's home/away, not the log's.
+def _duel_team_ids(seats: Sequence[models.EncounterTeam]) -> tuple[int | None, int | None]:
+    """Source teams of slots 1 and 2 (``None`` for a seat that is empty or has no team)."""
+    by_slot = {seat.slot: seat.team_id for seat in seats}
+    return by_slot.get(1), by_slot.get(2)
+
+
+def encounter_oriented_score(match: models.Match, seats: Sequence[models.EncounterTeam]) -> Score:
+    """Map score in the encounter's slot order, not the log's.
 
     Parsed logs often write ``Match.home_team_id`` as the uploader's side, which
-    is the opposite of ``Encounter.home_team_id``. The Run then paints the
+    is the opposite of slot 1 of the encounter. The Run then paints the
     winner's maps as losses.
     """
-    if match.home_team_id == encounter.away_team_id and match.away_team_id == encounter.home_team_id:
+    first, second = _duel_team_ids(seats)
+    if match.home_team_id == second and match.away_team_id == first and first != second:
         return Score(home=match.away_score, away=match.home_score)
     return Score(home=match.home_score, away=match.away_score)
 
@@ -133,7 +143,7 @@ def encounter_oriented_score(match: models.Match, encounter: models.Encounter) -
 def to_match_with_user_stats(
     match: models.Match,
     *,
-    encounter: models.Encounter,
+    seats: Sequence[models.EncounterTeam],
     performance: int | None,
     heroes: list[dict] | None,
     impact_rank: int | float | None = None,
@@ -146,15 +156,17 @@ def to_match_with_user_stats(
     ``overperf_pos`` is the viewer's rank (1 = best) among all match
     participants by OverperformanceScore (match-wide window, not scoped to the
     viewer) — used only to compute ``overperformance_badge`` and not exposed
-    on the schema itself. ``score`` is always the encounter's home/away.
+    on the schema itself. ``score`` and the two team ids follow the encounter's
+    slots 1 and 2, not the log's.
     """
     map_read = schemas.MapRead.model_validate(match.map, from_attributes=True) if match.map is not None else None
     hero_objs = [schemas.HeroRead.model_validate(h) for h in (heroes or [])]
+    first, second = _duel_team_ids(seats)
     return schemas.MatchReadWithUserStats(
         id=match.id,
-        home_team_id=encounter.home_team_id,
-        away_team_id=encounter.away_team_id,
-        score=encounter_oriented_score(match, encounter),
+        home_team_id=first,
+        away_team_id=second,
+        score=encounter_oriented_score(match, seats),
         time=match.time,
         log_name=match.log_name,
         encounter_id=match.encounter_id,
@@ -203,50 +215,73 @@ def to_encounter_stage_item_summary(
     return schemas.UserEncounterStageItemSummary(id=stage_item.id, name=stage_item.name)
 
 
-def _to_encounter_team_player_ref(
-    player: models.Player,
-) -> schemas.UserEncounterTeamPlayerRef:
-    # workspace_member_id is NOT NULL (contract step, iwrefac07): the identity
-    # anchor is always workspace_member.player_id.
+@dataclass(frozen=True, slots=True)
+class RosterEntry:
+    """One roster snapshot row of a participation, with the account it belongs to."""
+
+    member: models.EncounterTeamMember
+    user_id: int
+    #: Every role code of the member (a role and a sub-role are two rows).
+    roles: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class EncounterContext:
+    """What the user pages need around an encounter row: its live seats with their
+    rosters, and where it sits in the bracket (nothing, outside a bracket)."""
+
+    seats: list[tuple[models.EncounterTeam, list[RosterEntry]]]
+    position: models.BracketEncounter | None = None
+    stage: models.Stage | None = None
+    stage_item: models.StageItem | None = None
+
+    @property
+    def participations(self) -> list[models.EncounterTeam]:
+        return [seat for seat, _ in self.seats]
+
+
+def _hero_class(roles: tuple[str, ...]) -> enums.HeroClass | None:
+    """The first role code that is a roster role (a sub-role code is not one).
+
+    Codes are the lowercase member NAMES -- what ``tournament.player.role`` stores.
+    """
+    return next((enums.HeroClass[role] for role in roles if role in enums.HeroClass.__members__), None)
+
+
+def _to_encounter_team_player_ref(entry: RosterEntry) -> schemas.UserEncounterTeamPlayerRef:
     return schemas.UserEncounterTeamPlayerRef(
-        id=player.id,
-        user_id=player.workspace_member.player_id,
-        role=player.role,
-        name=player.name,
+        id=entry.member.id,
+        user_id=entry.user_id,
+        role=_hero_class(entry.roles),
+        name=entry.member.display_name_snapshot,
     )
 
 
 def to_encounter_team_summary(
-    team: models.Team | None,
-) -> schemas.UserEncounterTeamSummary | None:
-    if team is None:
-        return None
+    seat: models.EncounterTeam, roster: list[RosterEntry]
+) -> schemas.UserEncounterTeamSummary:
     return schemas.UserEncounterTeamSummary(
-        id=team.id,
-        name=team.name,
-        players=[_to_encounter_team_player_ref(p) for p in getattr(team, "players", []) or []],
+        id=seat.id,
+        slot=seat.slot,
+        team_id=seat.team_id,
+        name=seat.name,
+        score=seat.score,
+        placement=seat.placement,
+        players=[_to_encounter_team_player_ref(entry) for entry in roster],
     )
 
 
-def _resolve_user_team_id(encounter: models.Encounter, user_id: int) -> int | None:
-    """Pick which side (home/away) the viewer played on, based on rosters."""
-    home = getattr(encounter, "home_team", None)
-    if home is not None:
-        for player in getattr(home, "players", []) or []:
-            member = player.workspace_member
-            if member is not None and member.player_id == user_id:
-                return home.id
-    away = getattr(encounter, "away_team", None)
-    if away is not None:
-        for player in getattr(away, "players", []) or []:
-            member = player.workspace_member
-            if member is not None and member.player_id == user_id:
-                return away.id
+def _resolve_user_team_id(context: EncounterContext, user_id: int) -> int | None:
+    """The source team of the seat whose roster snapshot holds the viewer."""
+    for seat, roster in context.seats:
+        if any(entry.user_id == user_id for entry in roster):
+            return seat.team_id
     return None
 
 
 def to_encounter_with_user_stats(
     encounter: models.Encounter,
+    context: EncounterContext,
     matches: list[schemas.MatchReadWithUserStats],
     *,
     viewer_user_id: int | None = None,
@@ -254,32 +289,26 @@ def to_encounter_with_user_stats(
     """User-scoped encounter view.
 
     Populates tournament/team/stage summaries always — the repository loads
-    them via joinedload/selectinload. `viewer_user_id` is used to fill the
-    convenience `user_team_id` shortcut so the frontend doesn't have to scan
-    rosters itself.
+    the tournament, and ``context`` carries the seats and the bracket position.
+    `viewer_user_id` is used to fill the convenience `user_team_id` shortcut so
+    the frontend doesn't have to scan rosters itself.
     """
-    home_team_summary = to_encounter_team_summary(encounter.home_team)
-    away_team_summary = to_encounter_team_summary(encounter.away_team)
-    user_team_id = _resolve_user_team_id(encounter, viewer_user_id) if viewer_user_id is not None else None
     return schemas.EncounterReadWithUserStats(
         id=encounter.id,
         name=encounter.name,
-        home_team_id=encounter.home_team_id,
-        away_team_id=encounter.away_team_id,
-        score=Score(home=encounter.home_score, away=encounter.away_score),
-        round=encounter.round,
+        slot_count=encounter.slot_count,
+        round=context.position.round if context.position is not None else 0,
         best_of=encounter.best_of,
         tournament_id=encounter.tournament_id,
         status=encounter.status,
         closeness=encounter.closeness,
         has_logs=encounter.has_logs,
         result_status=getattr(encounter, "result_status", "none"),
-        user_team_id=user_team_id,
+        user_team_id=_resolve_user_team_id(context, viewer_user_id) if viewer_user_id is not None else None,
         tournament=to_encounter_tournament_summary(getattr(encounter, "tournament", None)),
-        stage=to_encounter_stage_summary(getattr(encounter, "stage", None)),
-        stage_item=to_encounter_stage_item_summary(getattr(encounter, "stage_item", None)),
-        home_team=home_team_summary,
-        away_team=away_team_summary,
+        stage=to_encounter_stage_summary(context.stage),
+        stage_item=to_encounter_stage_item_summary(context.stage_item),
+        teams=[to_encounter_team_summary(seat, roster) for seat, roster in context.seats],
         matches=matches,
     )
 

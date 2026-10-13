@@ -1,7 +1,8 @@
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
 import { isEncounterCompleted } from "@/lib/encounter/status";
 import type { StageBracketPreviewMatch } from "@/types/admin.types";
-import type { EncounterSlotSource, Score } from "@/types/encounter.types";
+import type { Duel } from "@/lib/encounter/seats";
+import type { EncounterSlotSource } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
 import type { EncounterResultStatus, StageType } from "@/types/tournament.types";
 
@@ -14,17 +15,26 @@ import type { EncounterResultStatus, StageType } from "@/types/tournament.types"
  * stage with no matches draw the generator's own skeleton (`bracket-preview`)
  * through the same view, so what is shown is the shape that will be generated.
  */
+export interface BracketSeat {
+  slot: number;
+  team_id: number | null;
+  name: string;
+  /** The standing inside the match: wins under a series. */
+  score: number;
+  placement?: number | null;
+  /** The source team, when the read expanded it (logos and links). */
+  team?: Team | null;
+}
+
 export interface BracketMatch {
   id: number;
   name?: string | null;
   round: number;
   status: string;
-  score: Score;
   best_of?: number | null;
-  home_team_id: number;
-  away_team_id: number;
-  home_team?: Team | null;
-  away_team?: Team | null;
+  slot_count?: number;
+  /** The live seats, in slot order; an empty seat is absent. */
+  teams: BracketSeat[];
   /** Only read by the interactive footer, which a preview does not render. */
   tournament_id?: number;
   result_status?: EncounterResultStatus | null;
@@ -53,15 +63,15 @@ export function previewToBracketMatches(
     name: row.name,
     round: row.round,
     status: "open",
-    score: { home: 0, away: 0 },
     best_of: row.best_of,
-    home_team_id: row.home_team_id ?? 0,
-    away_team_id: row.away_team_id ?? 0,
-    home_team: row.home_team_id == null ? null : (teamById.get(row.home_team_id) ?? null),
-    away_team: row.away_team_id == null ? null : (teamById.get(row.away_team_id) ?? null),
+    slot_count: row.slot_count,
+    teams: row.team_ids.flatMap((teamId, index) => {
+      const team = teamId == null ? null : (teamById.get(teamId) ?? null);
+      return team == null ? [] : [{ slot: index + 1, team_id: team.id, name: team.name, score: 0, team }];
+    }),
     sources: row.sources.map((source) => ({
       encounter_id: source.local_id,
-      role: source.role,
+      source_position: source.source_position,
       slot: source.slot
     }))
   }));
@@ -72,9 +82,14 @@ export interface RoundGroup {
   matches: BracketMatch[];
 }
 
-export interface SlotHint {
-  home: string | null;
-  away: string | null;
+/** Where each seat of a duel's team will come from, as "W M3" / "L M7". */
+export type SlotHint = Duel<string | null>;
+
+/** First place reads as the winner, second as the loser; a bracket match is a duel. */
+export function sourceLabel(position: number): string {
+  if (position === 1) return "W";
+  if (position === 2) return "L";
+  return `#${position}`;
 }
 
 function sortMatches(matches: BracketMatch[]) {
@@ -171,7 +186,7 @@ export function getDoubleEliminationFinalRounds(encounters: BracketMatch[]): Set
       (match) =>
         match.round > 0 &&
         (match.sources ?? []).some(
-          (source) => source.role === "winner" && (byId.get(source.encounter_id)?.round ?? 0) < 0
+          (source) => source.source_position === 1 && (byId.get(source.encounter_id)?.round ?? 0) < 0
         )
     );
     if (grandFinal) {
@@ -352,10 +367,10 @@ export function computeSlotHints(
         for (const source of match.sources ?? []) {
           const matchNumber = matchNumbers.get(source.encounter_id);
           if (matchNumber == null) continue;
-          const existing = hints.get(match.id) ?? { home: null, away: null };
+          const existing = hints.get(match.id) ?? { one: null, two: null };
           hints.set(match.id, {
             ...existing,
-            [source.slot]: `${source.role === "winner" ? "W" : "L"} M${matchNumber}`
+            [source.slot === 1 ? "one" : "two"]: `${sourceLabel(source.source_position)} M${matchNumber}`
           });
         }
       }
@@ -402,7 +417,7 @@ function inferBracketSlotHints(
       return;
     }
 
-    const existing = hints.get(target.id) ?? { home: null, away: null };
+    const existing = hints.get(target.id) ?? { one: null, two: null };
     hints.set(target.id, {
       ...existing,
       [slot]: value
@@ -435,7 +450,7 @@ function inferBracketSlotHints(
         const count = feedCount.get(targetIndex) ?? 0;
         feedCount.set(targetIndex, count + 1);
 
-        setHint(target, count === 0 ? "home" : "away", hintLabel);
+        setHint(target, count === 0 ? "one" : "two", hintLabel);
       }
     }
   }
@@ -457,8 +472,8 @@ function inferBracketSlotHints(
     const firstLowerRound = lowerRounds[0];
     if (Math.abs(firstLowerRound.round) === 1) {
       firstLowerRound.matches.forEach((target, matchIndex) => {
-        setHint(target, "home", label(upperRounds[0].matches[matchIndex * 2], "L"));
-        setHint(target, "away", label(upperRounds[0].matches[matchIndex * 2 + 1], "L"));
+        setHint(target, "one", label(upperRounds[0].matches[matchIndex * 2], "L"));
+        setHint(target, "two", label(upperRounds[0].matches[matchIndex * 2 + 1], "L"));
       });
     }
 
@@ -469,7 +484,7 @@ function inferBracketSlotHints(
       }
 
       targetLowerRound.matches.forEach((target, matchIndex) => {
-        setHint(target, "away", label(upperRounds[upperRoundIndex].matches[matchIndex], "L"));
+        setHint(target, "two", label(upperRounds[upperRoundIndex].matches[matchIndex], "L"));
       });
     }
   }
@@ -479,8 +494,8 @@ function inferBracketSlotHints(
     if (grandFinal) {
       const upperFinal = upperRounds[upperRounds.length - 1]?.matches[0];
       const lowerFinal = lowerRounds[lowerRounds.length - 1]?.matches[0];
-      setHint(grandFinal, "home", upperFinal ? label(upperFinal, "W") : null);
-      setHint(grandFinal, "away", lowerFinal ? label(lowerFinal, "W") : null);
+      setHint(grandFinal, "one", upperFinal ? label(upperFinal, "W") : null);
+      setHint(grandFinal, "two", lowerFinal ? label(lowerFinal, "W") : null);
     }
   }
 

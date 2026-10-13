@@ -10,7 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
-import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
+import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 
 import { PregameAdminControls } from "./PregameAdminControls";
@@ -38,7 +38,7 @@ export function PregameAdminPanel({
   encounterId,
   statesByKind,
   activeKind,
-  sideNameOf,
+  seats,
   itemsByKind,
   bestOf,
   seriesWins,
@@ -49,13 +49,15 @@ export function PregameAdminPanel({
   statesByKind: Record<PickBanKind, PickBanState>;
   /** The kind the room itself is on, i.e. the tab to open by default. */
   activeKind: PickBanKind;
-  sideNameOf: (side: PickBanSide) => string;
+  /** The room's participations in slot order. */
+  seats: PickBanSeat[];
   /** Map and hero catalogs, so the history can name what was banned. */
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
   /** Series length and the wins already confirmed — the technical loss's
    * default score is read off them, and neither is in a pick-ban state. */
   bestOf: number;
-  seriesWins: { home: number; away: number } | null;
+  /** `EncounterTeam.id` (as a string) -> confirmed wins. */
+  seriesWins: Record<string, number> | null;
   onMutated: () => void;
   /** The board on screen, when one is: its selection and its own reset. */
   grid?: PickBanAdminSlot | null;
@@ -75,7 +77,7 @@ export function PregameAdminPanel({
   // the honest undo is a reset, which the tabs below already offer.
   const readiness = statesByKind.map.readiness;
   const readinessMutation = useMutation({
-    mutationFn: (input: { side: PickBanSide; ready: boolean }) =>
+    mutationFn: (input: { encounter_team_id: number; ready: boolean }) =>
       adminService.setEncounterReadiness(encounterId, input),
     onSuccess: onMutated,
     onError: (error) => notify.apiError(error, { title: t("admin.readinessFailed") })
@@ -84,7 +86,7 @@ export function PregameAdminPanel({
   const history = (
     <PregameRoomHistory
       encounterId={encounterId}
-      sideNameOf={sideNameOf}
+      seats={seats}
       itemsByKind={itemsByKind}
     />
   );
@@ -105,25 +107,31 @@ export function PregameAdminPanel({
             <h2 className="text-sm font-semibold">{t("admin.readinessTitle")}</h2>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            {(["home", "away"] as const).map((side) => (
-              <div key={side} className="flex items-center gap-2">
-                <span className="text-sm font-medium">{sideNameOf(side)}</span>
-                <span className="text-xs text-[color:var(--aqt-fg-muted)]">
-                  {t(readiness[side] ? "ready.stateReady" : "ready.statePending")}
-                </span>
-                <Button
-                  size="sm"
-                  variant={readiness[side] ? "outline" : "default"}
-                  disabled={readinessMutation.isPending}
-                  onClick={() => readinessMutation.mutate({ side, ready: !readiness[side] })}
-                >
-                  {readinessMutation.isPending && readinessMutation.variables?.side === side ? (
-                    <Spinner className="mr-2" />
-                  ) : null}
-                  {t(readiness[side] ? "admin.readinessClear" : "admin.readinessSet")}
-                </Button>
-              </div>
-            ))}
+            {seats.map((seat) => {
+              const ready = readiness[String(seat.id)] === true;
+              return (
+                <div key={seat.id} className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{seat.name}</span>
+                  <span className="text-xs text-[color:var(--aqt-fg-muted)]">
+                    {t(ready ? "ready.stateReady" : "ready.statePending")}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant={ready ? "outline" : "default"}
+                    disabled={readinessMutation.isPending}
+                    onClick={() =>
+                      readinessMutation.mutate({ encounter_team_id: seat.id, ready: !ready })
+                    }
+                  >
+                    {readinessMutation.isPending &&
+                    readinessMutation.variables?.encounter_team_id === seat.id ? (
+                      <Spinner className="mr-2" />
+                    ) : null}
+                    {t(ready ? "admin.readinessClear" : "admin.readinessSet")}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         </section>
         {history}
@@ -142,7 +150,7 @@ export function PregameAdminPanel({
         selectedItemName={onThisKind ? grid.selectedItemName : null}
         itemsById={itemsByKind[kind]}
         blind={onThisKind ? grid.blind : null}
-        sideNameOf={sideNameOf}
+        seats={seats}
         bestOf={bestOf}
         seriesWins={seriesWins}
         onMutated={() => {

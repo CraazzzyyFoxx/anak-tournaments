@@ -26,7 +26,7 @@ wrong is refusing a paying registrant during a live check-in over a parser that
 simply had not run yet.
 
 No database: the batched ``SELECT`` is faked at the session boundary, matching
-the convention in shared/tests/test_finalize_encounter_score.py. Runs under
+the convention in shared/tests/test_resolve_subscriptions.py. Runs under
 stdlib unittest -- there is no pytest-asyncio here.
 """
 

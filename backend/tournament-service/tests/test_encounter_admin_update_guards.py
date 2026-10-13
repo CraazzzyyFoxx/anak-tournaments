@@ -9,7 +9,7 @@ effect of unrelated edits.
 
 Leaving ``COMPLETED`` is the same boundary from the other side: a bare ``status``
 write left ``result_status='confirmed'`` next to a non-COMPLETED status, and the
-row died on ``ck_encounter_result_status_matches_status`` -- an IntegrityError in
+row died on ``ck_encounter_confirmed_completed`` -- an IntegrityError in
 place of a message naming the reopen endpoint, which is the only writer that also
 clears the score and unwinds the bracket.
 """
@@ -50,14 +50,10 @@ def assert_http_status(test_case: IsolatedAsyncioTestCase, expected_status: int)
 def _encounter() -> SimpleNamespace:
     return SimpleNamespace(
         id=10,
-        format=enums.EncounterFormat.DUEL,
+        slot_count=2,
+        scoring_preset="wins",
         tournament_id=1,
-        stage_id=5,
-        stage_item_id=6,
-        home_team_id=1,
-        away_team_id=2,
-        home_score=2,
-        away_score=0,
+        scheduled_at=None,
         status=enums.EncounterStatus.COMPLETED,
         result_status=enums.EncounterResultStatus.CONFIRMED,
         name="a vs b",
@@ -78,6 +74,8 @@ def _session(encounter: SimpleNamespace) -> SimpleNamespace:
 
     return SimpleNamespace(
         execute=AsyncMock(side_effect=fake_execute),
+        # The bracket coordinate the encounter sits at (``tournament.bracket_encounter``).
+        get=AsyncMock(return_value=SimpleNamespace(stage_id=5, stage_item_id=6, round=1)),
         commit=AsyncMock(),
         refresh=AsyncMock(),
         flush=AsyncMock(),
@@ -105,8 +103,6 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
                 schemas.EncounterCreate(
                     name="a vs b",
                     tournament_id=1,
-                    home_team_id=1,
-                    away_team_id=2,
                     round=1,
                     status="completed",
                 ),
@@ -145,44 +141,13 @@ class UpdateEncounterGuards(IsolatedAsyncioTestCase):
                 schemas.EncounterUpdate(status="open"),
             )
 
-    async def test_rejects_rewiring_a_completed_encounters_teams(self) -> None:
-        """A confirmed score belongs to the matchup that played it; re-assigning a
-        slot under it must go through reopen, which voids the result first."""
-        with assert_http_status(self, 409):
-            await enc_service.encounter_service.update_encounter(
-                _session(_encounter()),
-                10,
-                schemas.EncounterUpdate(away_team_id=99),
-            )
-
-    async def test_rejects_rewriting_a_completed_encounters_score(self) -> None:
-        """Advancement only runs on finalize, so a bare score write flipped the
-        winner while the next match kept the old one -- with no audit row."""
-        encounter = _encounter()
-        with assert_http_status(self, 409):
-            await enc_service.encounter_service.update_encounter(
-                _session(encounter),
-                10,
-                schemas.EncounterUpdate(home_score=0, away_score=2),
-            )
-        self.assertEqual((2, 0), (encounter.home_score, encounter.away_score))
-
-    async def test_repeating_the_current_score_is_not_a_correction(self) -> None:
-        """The admin form posts every field, the unchanged score included."""
-        encounter = _encounter()
-
-        with (
-            patch.object(enc_service, "enqueue_tournament_recalculation", AsyncMock()),
-            patch.object(enc_service.encounter_service, "_resolve_stage_refs", AsyncMock(return_value=(5, 6))),
-            patch.object(enc_service.AdminEncounterService, "_assert_source_correction_allowed", AsyncMock()),
-        ):
-            await enc_service.encounter_service.update_encounter(
-                _session(encounter),
-                10,
-                schemas.EncounterUpdate(name="renamed", home_score=2, away_score=0),
-            )
-
-        self.assertEqual("renamed", encounter.name)
+    async def test_the_field_editor_carries_no_seat_and_no_standing(self) -> None:
+        """A confirmed standing belongs to the line-up that played it. Re-seating
+        goes through the slot swap (refused on a settled encounter, see
+        ``test_admin_encounter_swap_slot``) and a standing through the result
+        writer -- the editor has no field that could write either."""
+        fields = set(schemas.EncounterUpdate.model_fields)
+        self.assertTrue({"teams", "score", "placement", "result_status", "slot_count"}.isdisjoint(fields))
 
     async def test_repeating_the_current_status_is_not_a_transition(self) -> None:
         """The admin form posts every field, so renaming a completed encounter

@@ -414,20 +414,29 @@ class StageType(StrEnum):
     DOUBLE_ELIMINATION = "double_elimination"
     SWISS = "swiss"
     #: Scored by lobby placement and raw score, not head-to-head: its rules are
-    #: the stage's ``ffa_*`` columns (shared.domain.ffa_scoring).
+    #: the stage's ``ffa_*`` columns (``shared.domain.encounter_scoring``).
     FFA_LEAGUE = "ffa_league"
 
 
-class EncounterFormat(StrEnum):
-    """How many sides an encounter has. Fixed at creation.
+class EncounterResultSource(StrEnum):
+    """Where an encounter's official result came from (D57).
 
-    ``duel`` is two sides and a series -- every feature built on home/away
-    accepts only it. ``ffa`` is a lobby of N participants
-    (``tournament.encounter_participant``) scored per game per participant.
+    ``games`` is the aggregate of the confirmed games and is the only one a
+    rule recalculation may overwrite; the other three are decisions and are
+    changed only by a reopen.
     """
 
-    DUEL = "duel"
-    FFA = "ffa"
+    GAMES = "games"
+    SERIES_CLAIM = "series_claim"
+    ADMIN = "admin"
+    IMPORT = "import"
+
+
+class AuditSnapshotScope(StrEnum):
+    """What a ``encounter.result_audit`` row's before/after snapshot describes."""
+
+    ENCOUNTER = "encounter"
+    GAME = "game"
 
 
 class StageItemType(StrEnum):
@@ -454,15 +463,17 @@ class EncounterResultAuditAction(StrEnum):
     """What moved an encounter's result. One row per transition.
 
     ``confirm``/``reopen`` are admin actions; ``auto_confirm``/``auto_dispute``
-    are derived from the two captain reports; ``import`` is Challonge pulling a
-    remote result in; ``cascade_reset`` is the bracket un-playing an encounter
-    whose team slots changed upstream.
+    are derived from the captains' series reports, and ``auto_pending`` is the
+    first of them arriving while the others are still owed; ``import`` is
+    Challonge pulling a remote result in; ``cascade_reset`` is the bracket
+    un-playing an encounter whose team slots changed upstream.
     """
 
     CONFIRM = "confirm"
     REOPEN = "reopen"
     AUTO_CONFIRM = "auto_confirm"
     AUTO_DISPUTE = "auto_dispute"
+    AUTO_PENDING = "auto_pending"
     IMPORT = "import"
     CASCADE_RESET = "cascade_reset"
     # Per-map decisions (Vertical 1). Score columns on the audit row carry the
@@ -479,11 +490,17 @@ class MapPoolEntryStatus(StrEnum):
     PROTECTED = "protected"
 
 
-class MapPickSide(StrEnum):
-    HOME = "home"
-    AWAY = "away"
+class PickBanActorKind(StrEnum):
+    """Who performed a pick-ban board action.
+
+    ``team`` is the only kind that names a participation; the others are the
+    engine resolving a step, an organizer overriding one, or a tiebreak.
+    """
+
+    TEAM = "team"
     DECIDER = "decider"
     ADMIN = "admin"
+    SYSTEM = "system"
 
 
 class MapVetoSessionStatus(StrEnum):
@@ -493,7 +510,7 @@ class MapVetoSessionStatus(StrEnum):
 
 
 class EncounterGameState(StrEnum):
-    """Lifecycle of one position of a series (``tournament.encounter_game``)."""
+    """Lifecycle of one position of a series (``encounter.game``)."""
 
     PLANNED = "planned"  # position exists, map not chosen yet (freeplay)
     AWAITING_RESULT = "awaiting_result"  # map known; waiting for both captains' claims
@@ -511,7 +528,8 @@ class EncounterGameResultSource(StrEnum):
 class VetoSeedSource(StrEnum):
     BRACKET_SLOT = "bracket_slot"
     STANDINGS = "standings"
-    FALLBACK_HOME = "fallback_home"
+    #: Neither participation could be seeded; the first slot opens by default.
+    FALLBACK_FIRST_SLOT = "fallback_first_slot"
     ADMIN = "admin"
 
 
@@ -557,20 +575,6 @@ class EncounterStatus(StrEnum):
     COMPLETED = "completed"
     PENDING = "pending"
     OPEN = "open"
-
-
-class EncounterLinkRole(StrEnum):
-    """Role of the source encounter relative to the target encounter."""
-
-    WINNER = "winner"
-    LOSER = "loser"
-
-
-class EncounterLinkSlot(StrEnum):
-    """Which slot in the target encounter this link fills."""
-
-    HOME = "home"
-    AWAY = "away"
 
 
 class MatchEvent(StrEnum):
@@ -650,7 +654,8 @@ __all__ = [
     "DraftPlayerStatus",
     "DraftPickStatus",
     "StageType",
-    "EncounterFormat",
+    "EncounterResultSource",
+    "AuditSnapshotScope",
     "StageItemType",
     "StageItemInputType",
     "EncounterResultStatus",
@@ -658,7 +663,7 @@ __all__ = [
     "EncounterGameState",
     "EncounterGameResultSource",
     "MapPoolEntryStatus",
-    "MapPickSide",
+    "PickBanActorKind",
     "MapVetoSessionStatus",
     "VetoSeedSource",
     "FirstPickRule",
@@ -666,8 +671,6 @@ __all__ = [
     "FirstBanRotation",
     "PickBanKind",
     "EncounterStatus",
-    "EncounterLinkRole",
-    "EncounterLinkSlot",
     "MatchEvent",
     "AbilityEvent",
     "MatchSource",

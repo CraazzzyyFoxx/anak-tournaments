@@ -71,12 +71,11 @@ function stage(): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: { win: null, draw: null, loss: null, preset: null, columns: null, placement_points: null, formula: null },
     swiss_bye_points: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
     best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
     challonge_id: null,
     challonge_slug: null,
     items: []
@@ -93,9 +92,30 @@ function generatedTemplate(): BracketTemplateRead {
       upper_seeds: 4,
       lower_seeds: 0,
       matches: [
-        { id: 1, round: 1, home: { seed: "U1" }, away: { seed: "U4" } },
-        { id: 2, round: 1, home: { seed: "U2" }, away: { seed: "U3" } },
-        { id: 3, round: 2, home: { winner_of: 1 }, away: { winner_of: 2 } }
+        {
+          id: 1,
+          round: 1,
+          slots: [
+            { slot: 1, seed: "U1" },
+            { slot: 2, seed: "U4" }
+          ]
+        },
+        {
+          id: 2,
+          round: 1,
+          slots: [
+            { slot: 1, seed: "U2" },
+            { slot: 2, seed: "U3" }
+          ]
+        },
+        {
+          id: 3,
+          round: 2,
+          slots: [
+            { slot: 1, source_match: 1, source_position: 1 },
+            { slot: 2, source_match: 2, source_position: 1 }
+          ]
+        }
       ]
     }
   };
@@ -116,10 +136,38 @@ function deTemplate(): BracketTemplateRead {
       upper_seeds: 2,
       lower_seeds: 2,
       matches: [
-        { id: 1, round: 1, home: { seed: "U1" }, away: { seed: "U2" } },
-        { id: 2, round: -1, home: { seed: "L1" }, away: { seed: "L2" } },
-        { id: 3, round: -2, home: { winner_of: 2 }, away: { loser_of: 1 } },
-        { id: 4, round: 2, home: { winner_of: 1 }, away: { winner_of: 3 } }
+        {
+          id: 1,
+          round: 1,
+          slots: [
+            { slot: 1, seed: "U1" },
+            { slot: 2, seed: "U2" }
+          ]
+        },
+        {
+          id: 2,
+          round: -1,
+          slots: [
+            { slot: 1, seed: "L1" },
+            { slot: 2, seed: "L2" }
+          ]
+        },
+        {
+          id: 3,
+          round: -2,
+          slots: [
+            { slot: 1, source_match: 2, source_position: 1 },
+            { slot: 2, source_match: 1, source_position: 2 }
+          ]
+        },
+        {
+          id: 4,
+          round: 2,
+          slots: [
+            { slot: 1, source_match: 1, source_position: 1 },
+            { slot: 2, source_match: 3, source_position: 1 }
+          ]
+        }
       ]
     }
   };
@@ -131,9 +179,6 @@ function generatedEncounter(): Encounter {
     created_at: new Date(0),
     updated_at: null,
     name: "Team 1 vs Team 4",
-    home_team_id: 1,
-    away_team_id: 4,
-    score: { home: 0, away: 0 },
     round: 1,
     best_of: 3,
     tournament_id: 84,
@@ -149,9 +194,14 @@ function generatedEncounter(): Encounter {
     ended_at: null,
     current_map_index: null,
     confirmed_at: null,
-    matches: [],
-    home_team: null as never,
-    away_team: null as never,
+    slot_count: 2,
+    result_source: null,
+    result_version: 1,
+    games: [],
+    teams: [
+      { id: 91, slot: 1, team_id: 1, name: "Team 1", seed: 1, score: 0, placement: null, active: true },
+      { id: 92, slot: 2, team_id: 4, name: "Team 4", seed: 4, score: 0, placement: null, active: true }
+    ],
     tournament: null as never,
     stage: null,
     stage_item: null
@@ -225,12 +275,12 @@ describe("Bracket layout editor", () => {
   it("saves the wiring drawn on the canvas", async () => {
     await mount();
 
-    // Swap the final's feeders: W(M1) into `away`, which empties the `home`
-    // slot it used to hold, then W(M2) into the slot it vacated.
+    // Swap the final's feeders: W(M1) into slot 2, which empties the slot 1 it
+    // used to hold, then W(M2) into the slot it vacated.
     await click(port("1-winner"));
-    await click(slot("3-away"));
+    await click(slot("3-2"));
     await click(port("2-winner"));
-    await click(slot("3-home"));
+    await click(slot("3-1"));
     await click(button("Save"));
 
     expect(setStageBracketTemplate).toHaveBeenCalledWith(5, {
@@ -238,9 +288,30 @@ describe("Bracket layout editor", () => {
       upper_seeds: 4,
       lower_seeds: 0,
       matches: [
-        { id: 1, round: 1, home: { seed: "U1" }, away: { seed: "U4" } },
-        { id: 2, round: 1, home: { seed: "U2" }, away: { seed: "U3" } },
-        { id: 3, round: 2, home: { winner_of: 2 }, away: { winner_of: 1 } }
+        {
+          id: 1,
+          round: 1,
+          slots: [
+            { slot: 1, seed: "U1" },
+            { slot: 2, seed: "U4" }
+          ]
+        },
+        {
+          id: 2,
+          round: 1,
+          slots: [
+            { slot: 1, seed: "U2" },
+            { slot: 2, seed: "U3" }
+          ]
+        },
+        {
+          id: 3,
+          round: 2,
+          slots: [
+            { slot: 1, source_match: 2, source_position: 1 },
+            { slot: 2, source_match: 1, source_position: 1 }
+          ]
+        }
       ]
     });
   });
@@ -252,14 +323,14 @@ describe("Bracket layout editor", () => {
     const client = await mount();
 
     await click(port("1-winner"));
-    await click(slot("3-away"));
+    await click(slot("3-2"));
     await act(async () => {
       await client.refetchQueries();
     });
     await settle();
 
     expect(getStageBracketTemplate).toHaveBeenCalledTimes(2);
-    expect(slot("3-away")?.textContent).toContain("W M1");
+    expect(slot("3-2")?.textContent).toContain("W M1");
   });
 
   it("lists the validator's problems and points at the match each one names", async () => {

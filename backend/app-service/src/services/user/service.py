@@ -1447,7 +1447,7 @@ class UserService:
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:v2:{id}:{tournament_id}",
+        key="backend:user_tournament_encounters:v3:{id}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self, session: AsyncSession, id: int, tournament_id: int
@@ -1466,12 +1466,39 @@ class UserService:
             session, user.id, tournament_id=tournament_id
         )
 
-        encounters_cache: dict[int, models.Encounter] = {}
-        matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}
+        encounters_by_id: dict[int, models.Encounter] = {}
+        match_rows: list[tuple[typing.Any, ...]] = []
+        for _team, encounter, match, *stats in rows:
+            encounters_by_id.setdefault(encounter.id, encounter)
+            if match:
+                match_rows.append((encounter.id, match, *stats))
+        return await self._map_user_encounters(
+            session,
+            sorted(encounters_by_id.values(), key=_mappers.encounter_play_key),
+            match_rows,
+            viewer_user_id=user.id,
+        )
 
+    async def _map_user_encounters(
+        self,
+        session: AsyncSession,
+        encounters: list[models.Encounter],
+        match_rows: list[tuple[typing.Any, ...]],
+        *,
+        viewer_user_id: int,
+    ) -> list[schemas.EncounterReadWithUserStats]:
+        """Encounters in the given order, each with its live seats, bracket position and
+        its matches (``match_rows``: ``(encounter_id, match, performance, heroes, impact_rank,
+        impact_points, overperformance_score, overperf_pos)``) in play order.
+
+        The matches are oriented to the encounter's slots 1 and 2, so the seats are
+        read before any of them is mapped.
+        """
+        encounter_ids = [encounter.id for encounter in encounters]
+        contexts = await self.encounters.get_encounter_contexts(session, encounter_ids)
+        matches: dict[int, list[schemas.MatchReadWithUserStats]] = {encounter_id: [] for encounter_id in encounter_ids}
         for (
-            _team,
-            encounter,
+            encounter_id,
             match,
             performance,
             heroes,
@@ -1479,35 +1506,29 @@ class UserService:
             impact_points,
             overperformance_score,
             overperf_pos,
-        ) in rows:
-            encounters_cache.setdefault(encounter.id, encounter)
-            matches_cache.setdefault(encounter.id, [])
-
-            if match:
-                matches_cache[encounter.id].append(
-                    _mappers.to_match_with_user_stats(
-                        match,
-                        encounter=encounter,
-                        performance=performance,
-                        heroes=heroes,
-                        impact_rank=impact_rank,
-                        impact_points=impact_points,
-                        overperformance_score=overperformance_score,
-                        overperf_pos=overperf_pos,
-                    )
+        ) in match_rows:
+            matches[encounter_id].append(
+                _mappers.to_match_with_user_stats(
+                    match,
+                    seats=contexts[encounter_id].participations,
+                    performance=performance,
+                    heroes=heroes,
+                    impact_rank=impact_rank,
+                    impact_points=impact_points,
+                    overperformance_score=overperformance_score,
+                    overperf_pos=overperf_pos,
                 )
+            )
 
-        pool_ids = await self.encounters.get_settled_map_ids(session, encounters_cache)
+        pool_ids = await self.encounters.get_settled_map_ids(session, encounter_ids)
         return [
             _mappers.to_encounter_with_user_stats(
                 encounter,
-                matches=_mappers.sort_user_matches(
-                    matches_cache.get(encounter.id, []),
-                    pool_ids.get(encounter.id),
-                ),
-                viewer_user_id=user.id,
+                contexts[encounter.id],
+                matches=_mappers.sort_user_matches(matches[encounter.id], pool_ids.get(encounter.id)),
+                viewer_user_id=viewer_user_id,
             )
-            for encounter in sorted(encounters_cache.values(), key=_mappers.encounter_play_key)
+            for encounter in encounters
         ]
 
     # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own
@@ -1798,7 +1819,7 @@ class UserService:
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:v2:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
+            "backend:user_encounters:v3:{user_id}:{workspace_id}:{params.page}:{params.per_page}:"
             "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,
@@ -1835,49 +1856,15 @@ class UserService:
             has_logs=has_logs,
             opponent=opponent,
         )
-        encounters_read: list[schemas.EncounterReadWithUserStats] = []
-        encounters_cache: dict[int, models.Encounter] = {}
-        matches_cache: dict[int, list[schemas.MatchReadWithUserStats]] = {}
-
-        for (
-            encounter,
-            match,
-            performance,
-            heroes,
-            impact_rank,
-            impact_points,
-            overperformance_score,
-            overperf_pos,
-        ) in encounters:
-            encounters_cache.setdefault(encounter.id, encounter)
-            matches_cache.setdefault(encounter.id, [])
-
+        encounters_by_id: dict[int, models.Encounter] = {}
+        match_rows: list[tuple[typing.Any, ...]] = []
+        for encounter, match, *stats in encounters:
+            encounters_by_id.setdefault(encounter.id, encounter)
             if match:
-                matches_cache[encounter.id].append(
-                    _mappers.to_match_with_user_stats(
-                        match,
-                        encounter=encounter,
-                        performance=performance,
-                        heroes=heroes,
-                        impact_rank=impact_rank,
-                        impact_points=impact_points,
-                        overperformance_score=overperformance_score,
-                        overperf_pos=overperf_pos,
-                    )
-                )
-
-        pool_ids = await self.encounters.get_settled_map_ids(session, encounters_cache)
-        for encounter_id, encounter in encounters_cache.items():
-            encounters_read.append(
-                _mappers.to_encounter_with_user_stats(
-                    encounter,
-                    matches=_mappers.sort_user_matches(
-                        matches_cache.get(encounter_id, []),
-                        pool_ids.get(encounter_id),
-                    ),
-                    viewer_user_id=user.id,
-                )
-            )
+                match_rows.append((encounter.id, match, *stats))
+        encounters_read = await self._map_user_encounters(
+            session, list(encounters_by_id.values()), match_rows, viewer_user_id=user.id
+        )
 
         return pagination.Paginated(
             total=total,

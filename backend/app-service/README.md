@@ -130,7 +130,7 @@ There are no per-service migrations. All models live in one SQLAlchemy metadata 
   ([tenancy](../../docs/database_erd.md#tenancy--public),
   [platform](../../docs/database_erd.md#platform--public-realtime)).
 - `overwatch` — `hero`, `map`, `gamemode`, `catalog_alias_miss`
-  ([catalog](../../docs/database_erd.md#catalog--overwatch)).
+  ([catalog](../../docs/database_erd.md#catalog--overwatch-catalog)).
 - `achievements` — `override` and `evaluation_result`, only to repoint `workspace_member_id` during a
   merge ([achievements](../../docs/database_erd.md#achievements--achievements)).
 

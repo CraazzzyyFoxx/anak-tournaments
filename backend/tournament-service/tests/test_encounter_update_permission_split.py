@@ -1,10 +1,14 @@
-"""Who may PATCH an encounter: the score side versus the bracket's structure.
+"""Who may PATCH an encounter: the result side versus the bracket's structure.
 
-``match.result`` (the referee's grant) moves a score, a status, a closeness; the
-teams, stage, round, best-of and schedule ARE the bracket and stay behind
-``match.update``. A payload mixing the two needs both -- otherwise a score edit
+``match.result`` (the referee's grant) moves a status, a closeness, a clock; the
+stage, round, best-of and schedule ARE the bracket and stay behind
+``match.update``. A payload mixing the two needs both -- otherwise a result edit
 would carry a bracket edit past the referee, and a structural edit would carry a
-score past staff who hold only ``update``.
+status past staff who hold only ``update``.
+
+The scoreline itself is on neither side any more: it lives on the
+participations and only ``rpc.tournament.encounter_set_result`` writes it, so a
+``home_score`` key is just an unknown key -- structure, like any other.
 """
 
 from __future__ import annotations
@@ -73,15 +77,15 @@ class EncounterUpdatePermissionSplitTests(IsolatedAsyncioTestCase):
         )
         return envelope, written
 
-    async def test_result_grant_moves_the_score_side(self) -> None:
-        payload = {"home_score": 2, "away_score": 1, "status": "live", "closeness": 0.6}
+    async def test_result_grant_moves_the_result_side(self) -> None:
+        payload = {"status": "live", "closeness": 0.6, "current_map_index": 2}
         envelope, written = await self._patch(_identity("result"), payload)
 
         self.assertTrue(envelope["ok"], envelope)
         self.assertEqual([payload], written)
 
     async def test_result_grant_cannot_touch_the_bracket(self) -> None:
-        for payload in ({"best_of": 5}, {"home_team_id": 9}, {"home_score": 2, "round": 3}):
+        for payload in ({"best_of": 5}, {"round": 3}, {"status": "live", "round": 3}):
             with self.subTest(payload=payload):
                 envelope, written = await self._patch(_identity("result"), payload)
 
@@ -90,15 +94,15 @@ class EncounterUpdatePermissionSplitTests(IsolatedAsyncioTestCase):
                 self.assertIn("match.update", envelope["error"]["message"])
                 self.assertEqual([], written)
 
-    async def test_update_grant_alone_cannot_carry_a_score(self) -> None:
-        envelope, written = await self._patch(_identity("update"), {"best_of": 5, "home_score": 2})
+    async def test_update_grant_alone_cannot_carry_a_status(self) -> None:
+        envelope, written = await self._patch(_identity("update"), {"best_of": 5, "status": "live"})
 
         self.assertFalse(envelope["ok"], envelope)
         self.assertIn("match.result", envelope["error"]["message"])
         self.assertEqual([], written)
 
     async def test_both_grants_edit_the_whole_encounter(self) -> None:
-        payload = {"best_of": 5, "home_score": 2, "scheduled_at": None}
+        payload = {"best_of": 5, "status": "live", "scheduled_at": None}
         envelope, written = await self._patch(_identity("update", "result"), payload)
 
         self.assertTrue(envelope["ok"], envelope)

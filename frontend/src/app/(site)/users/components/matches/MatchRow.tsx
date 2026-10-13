@@ -8,6 +8,7 @@ import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import MvpOrdinal from "@/app/(site)/users/components/shared/MvpOrdinal";
+import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { Hero } from "@/types/hero.types";
 import { tournamentHref } from "@/lib/tournament/url";
@@ -20,12 +21,9 @@ interface MatchRowProps {
 const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
   const router = useRouter();
   const t = useTranslations();
-  const isUserHome = (enc.home_team?.players ?? []).some((p) => p.user_id === selfUserId);
-  const userScore = isUserHome ? enc.score.home : enc.score.away;
-  const oppScore = isUserHome ? enc.score.away : enc.score.home;
-  const scoreKind = userScore > oppScore ? "win" : userScore < oppScore ? "loss" : "draw";
-  const resKind = userScore > oppScore ? "w" : userScore < oppScore ? "l" : "d";
-  const opponentName = isUserHome ? enc.away_team?.name : enc.home_team?.name;
+  const { opponent, userScore, oppScore, kind: scoreKind } = encounterPerspective(enc, selfUserId);
+  const resKind = scoreKind === "win" ? "w" : scoreKind === "loss" ? "l" : "d";
+  const opponentName = opponent?.name;
   const tournamentName = enc.tournament?.name ?? `#${enc.tournament_id}`;
   const heroSet = new Set<string>();
   const heroList: Pick<Hero, "name" | "image_path" | "role">[] = [];

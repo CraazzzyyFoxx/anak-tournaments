@@ -156,11 +156,12 @@ class UserEncounterStageItemSummary(BaseModel):
 
 
 class UserEncounterTeamPlayerRef(BaseModel):
-    """Player reference inside encounter teams — minimal id+user_id+role.
+    """Roster member inside an encounter seat — minimal id+user_id+role.
 
-    Used only by the frontend to identify which side the viewer played on
+    Used only by the frontend to identify which seat the viewer played in
     (`players.find(p => p.user_id === selfUserId)`). Renders nothing on its
-    own — for the full player card see `UserTournamentPlayer`.
+    own — for the full player card see `UserTournamentPlayer`. ``id`` is the
+    roster snapshot row, not a tournament player.
     """
 
     id: int
@@ -170,10 +171,19 @@ class UserEncounterTeamPlayerRef(BaseModel):
 
 
 class UserEncounterTeamSummary(BaseModel):
-    """Team summary inside `EncounterReadWithUserStats.{home,away}_team`."""
+    """One live seat inside `EncounterReadWithUserStats.teams`.
+
+    ``id`` is the participation (``encounter.team``), ``team_id`` the source
+    tournament team -- ``None`` once that team is deleted; ``name`` is the
+    snapshot the encounter was played under, and ``players`` its roster snapshot.
+    """
 
     id: int
+    slot: int
+    team_id: int | None = None
     name: str
+    score: float = 0.0
+    placement: int | None = None
     players: list[UserEncounterTeamPlayerRef] = Field(default_factory=list)
 
 
@@ -206,9 +216,7 @@ class EncounterReadWithUserStats(BaseModel):
 
     id: int
     name: str
-    home_team_id: int | None = None
-    away_team_id: int | None = None
-    score: Score
+    slot_count: int = 2
     round: int
     best_of: int = 3
     tournament_id: int
@@ -216,12 +224,12 @@ class EncounterReadWithUserStats(BaseModel):
     closeness: float | None = None
     has_logs: bool = False
     result_status: str = "none"
-    user_team_id: int | None = None  # which side the viewer played on
+    user_team_id: int | None = None  # the source team the viewer played for
     tournament: UserEncounterTournament | None = None
     stage: UserEncounterStageSummary | None = None
     stage_item: UserEncounterStageItemSummary | None = None
-    home_team: UserEncounterTeamSummary | None = None
-    away_team: UserEncounterTeamSummary | None = None
+    #: The live seats in slot order; a retired participation is history.
+    teams: list[UserEncounterTeamSummary] = Field(default_factory=list)
     matches: list[MatchReadWithUserStats] = Field(default_factory=list)
 
 

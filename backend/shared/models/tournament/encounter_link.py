@@ -1,61 +1,69 @@
+"""Directed edge describing advancement between encounters (D13, D65).
+
+Replaces the implicit ``round``-sign based advancement ("round > 0 = upper,
+round < 0 = lower"): bracket structure is explicit, slots fill automatically on
+a result change, and the wiring survives a bracket-engine regeneration.
+
+Both ends are POSITIONS, not sides: ``source_position`` is the place in the
+source encounter's standing (1 = the old ``winner``, 2 = the old ``loser``) and
+``target_slot`` is the seat it feeds in the target. The bracket generator checks
+``target_slot <= encounter.slot_count``.
+"""
+
+from __future__ import annotations
+
 import typing
 
-from sqlalchemy import Enum, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKeyConstraint, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from shared.core import db, enums
+from shared.core import db
 
 if typing.TYPE_CHECKING:
-    from shared.models.tournament.encounter import Encounter
+    from shared.models.encounter.encounter import Encounter
 
 __all__ = ("EncounterLink",)
 
 
-ENCOUNTER_LINK_ROLE_ENUM = Enum(
-    enums.EncounterLinkRole,
-    values_callable=lambda e: [x.value for x in e],
-    name="encounterlinkrole",
-    schema="tournament",
-    create_type=False,
-)
-
-ENCOUNTER_LINK_SLOT_ENUM = Enum(
-    enums.EncounterLinkSlot,
-    values_callable=lambda e: [x.value for x in e],
-    name="encounterlinkslot",
-    schema="tournament",
-    create_type=False,
-)
-
-
 class EncounterLink(db.TimeStampIntegerMixin):
-    """Directed edge describing winner/loser advancement between encounters.
-
-    Introduced in Phase C to replace the implicit ``round``-sign based
-    advancement ("round > 0 = upper, round < 0 = lower"). Makes bracket
-    structure explicit, enables automatic slot filling on score change,
-    and is preserved across bracket-engine regenerations via (stage_id,
-    source_local_id, role) uniqueness.
-    """
-
     __tablename__ = "encounter_link"
     __table_args__ = (
-        UniqueConstraint("source_encounter_id", "role", name="uq_encounter_link_source_role"),
+        UniqueConstraint("source_encounter_id", "source_position", name="uq_link_source_position"),
+        UniqueConstraint("target_encounter_id", "target_slot", name="uq_link_target_slot"),
+        ForeignKeyConstraint(
+            ["source_encounter_id", "tournament_id"],
+            ["encounter.encounter.id", "encounter.encounter.tournament_id"],
+            ondelete="CASCADE",
+            name="fk_link_source",
+        ),
+        ForeignKeyConstraint(
+            ["target_encounter_id", "tournament_id"],
+            ["encounter.encounter.id", "encounter.encounter.tournament_id"],
+            ondelete="CASCADE",
+            name="fk_link_target",
+        ),
+        CheckConstraint("source_encounter_id <> target_encounter_id", name="ck_link_not_self"),
+        CheckConstraint("source_position >= 1 AND target_slot >= 1", name="ck_link_positions"),
         {"schema": "tournament"},
     )
 
-    source_encounter_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("tournament.encounter.id", ondelete="CASCADE"),
-        index=True,
-    )
-    target_encounter_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("tournament.encounter.id", ondelete="CASCADE"),
-        index=True,
-    )
-    role: Mapped[enums.EncounterLinkRole] = mapped_column(ENCOUNTER_LINK_ROLE_ENUM)
-    target_slot: Mapped[enums.EncounterLinkSlot] = mapped_column(ENCOUNTER_LINK_SLOT_ENUM)
+    #: Copy of both ends' owner, so the composite FKs can check it (D62).
+    tournament_id: Mapped[int] = mapped_column(BigInteger())
+    source_encounter_id: Mapped[int] = mapped_column(BigInteger())
+    #: Place in the source encounter's final standing.
+    source_position: Mapped[int] = mapped_column(Integer())
+    target_encounter_id: Mapped[int] = mapped_column(BigInteger())
+    #: Seat of the target encounter this edge fills.
+    target_slot: Mapped[int] = mapped_column(Integer())
 
-    source_encounter: Mapped[Encounter] = relationship(foreign_keys=[source_encounter_id])
-    target_encounter: Mapped[Encounter] = relationship(foreign_keys=[target_encounter_id])
+    # Joined on the encounter id alone, although the constraints behind them are
+    # the two-column owner keys: a many-to-one on a non-primary key cannot use
+    # the identity map and would emit a SELECT on every touch.
+    source_encounter: Mapped[Encounter] = relationship(
+        primaryjoin="EncounterLink.source_encounter_id == Encounter.id",
+        foreign_keys=[source_encounter_id],
+    )
+    target_encounter: Mapped[Encounter] = relationship(
+        primaryjoin="EncounterLink.target_encounter_id == Encounter.id",
+        foreign_keys=[target_encounter_id],
+    )

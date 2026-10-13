@@ -111,13 +111,6 @@ export function findLowerFinal(
   );
 }
 
-export function winnerSide(encounter: Encounter): "home" | "away" | null {
-  const home = encounter.score?.home ?? 0;
-  const away = encounter.score?.away ?? 0;
-  if (home === away) return null;
-  return home > away ? "home" : "away";
-}
-
 /* `countRegistrationRoles` is gone: the split is the server's answer now
    (`RegistrationListResponse.role_counts`), because a tournament that hides its
    participants list sends no rows to count. See `RegistrationSummary`. */

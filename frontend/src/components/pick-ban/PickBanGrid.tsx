@@ -17,9 +17,11 @@ import {
   expiredBanIds,
   poolRoundGroups,
   roundState,
+  seatName,
   statusLabelKey,
   tileStatus,
-  type PickBanRoundState
+  type PickBanRoundState,
+  type PickBanSeat
 } from "./pick-ban-model";
 
 /** Generic catalog entry the grid needs to render one item's tile — either a
@@ -59,6 +61,8 @@ interface PickBanGridProps {
   /** The viewer's own blind draft: those tiles are marked, and a click removes them. */
   draftItemIds: ReadonlySet<number>;
   onSelect: (itemId: number) => void;
+  /** The room's participations, to name who picked or protected a tile. */
+  seats: PickBanSeat[];
   /** Room-level header (back link, status, team matchup) merged into this card's top. */
   header: React.ReactNode;
 }
@@ -88,6 +92,7 @@ export function PickBanGrid({
   eligibleIds,
   draftItemIds,
   onSelect,
+  seats,
   header
 }: Readonly<PickBanGridProps>) {
   const t = useTranslations("pickBan.room");
@@ -231,12 +236,16 @@ export function PickBanGrid({
                 <History className="h-3 w-3" aria-hidden />
                 {t("carried.badge", { n: entry.carried_from_round })}
               </span>
-            ) : entry.picked_by ? (
-              <span className="text-[color:var(--aqt-fg-muted)]">{t(`by.${entry.picked_by}`)}</span>
-            ) : null}
-            {entry.protected_by ? (
+            ) : entry.picked_by_kind === "team" ? (
               <span className="text-[color:var(--aqt-fg-muted)]">
-                {t(`protectedBy.${entry.protected_by}`)}
+                {t("by.team", { team: seatName(seats, entry.picked_by_team_id) })}
+              </span>
+            ) : entry.picked_by_kind === "decider" || entry.picked_by_kind === "admin" ? (
+              <span className="text-[color:var(--aqt-fg-muted)]">{t(`by.${entry.picked_by_kind}`)}</span>
+            ) : null}
+            {entry.protected_by_kind === "team" ? (
+              <span className="text-[color:var(--aqt-fg-muted)]">
+                {t("protectedBy.team", { team: seatName(seats, entry.protected_by_team_id) })}
               </span>
             ) : null}
           </span>

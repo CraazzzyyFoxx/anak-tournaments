@@ -21,11 +21,9 @@ from shared.repository.identity import UserRepository
 from shared.repository.match_logs import MatchEventRepository, MatchKillFeedRepository, MatchStatisticsRepository
 from shared.repository.pick_ban import CONFIG_POOL_LOAD, PickBanConfigRepository
 from shared.repository.tournament import MatchRepository
-from shared.schemas.events import (
-    EncounterCompletedEvent,
-    TournamentStandingsInvalidatedEvent,
-)
-from shared.services.newcomer_status import load_prior_participation
+from shared.schemas.events import TournamentStandingsInvalidatedEvent
+from shared.services.encounter.events import enqueue_encounter_completed
+from shared.services.encounter.participants import MemberSnapshot, active_teams, add_substitute
 from shared.services.realtime import Resource, Scope, emit, enqueue_invalidation_outbox
 from shared.services.social_identity import social_identity_service
 from src import models
@@ -43,6 +41,7 @@ from src.services.match_logs.event_models import KillEvent, MatchEventRow, Playe
 from src.services.match_logs.limits import match_log_oversize_message
 from src.services.match_logs.objectiveless import resolve_encounter_maps
 from src.services.match_logs.realtime import emit_logs_updated
+from src.services.match_logs.roster import LogPlayer
 from src.services.team import service as team_service
 from src.services.tournament import flows as tournament_flows
 
@@ -125,14 +124,6 @@ def _processor_from_bytes(
     )
 
 
-def _winner_team_id(encounter: models.Encounter) -> int | None:
-    if encounter.home_score > encounter.away_score:
-        return encounter.home_team_id
-    if encounter.away_score > encounter.home_score:
-        return encounter.away_team_id
-    return None
-
-
 def _encounter_is_completed(encounter: models.Encounter) -> bool:
     # Single form (encres0001 pins it to result_status == CONFIRMED).
     return encounter.status == enums.EncounterStatus.COMPLETED
@@ -170,19 +161,7 @@ async def _enqueue_match_log_tournament_events(
     if not _encounter_is_completed(encounter):
         return
 
-    await enqueue_outbox_event(
-        session,
-        EncounterCompletedEvent(
-            tournament_id=encounter.tournament_id,
-            encounter_id=encounter.id,
-            home_team_id=encounter.home_team_id,
-            away_team_id=encounter.away_team_id,
-            winner_team_id=_winner_team_id(encounter),
-            source_service="parser-service",
-        ),
-        exchange=TOURNAMENT_EVENTS_EXCHANGE,
-        routing_key="tournament.encounter.completed",
-    )
+    await enqueue_encounter_completed(session, encounter, source_service="parser-service")
 
 
 _match_repo = MatchRepository()
@@ -365,11 +344,18 @@ class MatchLogProcessor:
             session, map_name_raw, gamemode_raw, log_record_id=self.log_record_id
         )
 
-    def _validate_map_pool(
-        self, encounter: models.Encounter, match_map: models.Map, map_pools: Sequence[PickBanConfig]
+    async def _validate_map_pool(
+        self,
+        session: AsyncSession,
+        encounter: models.Encounter,
+        match_map: models.Map,
+        map_pools: Sequence[PickBanConfig],
     ) -> None:
         # No pool (including a rules-only template) means captains choose freely.
-        if not pool_allows(map_pools, stage_id=encounter.stage_id, round=encounter.round, item_id=match_map.id):
+        stage_id, round_ = (await encounter_service.bracket_positions(session, [encounter.id])).get(
+            encounter.id, (None, None)
+        )
+        if not pool_allows(map_pools, stage_id=stage_id, round=round_, item_id=match_map.id):
             msg = (
                 f"Map '{match_map.name}' (id={match_map.id}) in log {self.filename} "
                 f"is outside the configured map pool for encounter {encounter.id}"
@@ -512,20 +498,25 @@ class MatchLogProcessor:
         session: AsyncSession,
         team: models.Team,
         players_from_log: list[tuple[str, models.User | None]],
-    ) -> list[tuple[str, models.Player | None]]:
+    ) -> list[tuple[str, LogPlayer | None]]:
         # Resolve all roster players for the team in a single query instead of
         # one (or two) SELECTs per log name (review L14).
         battle_names = [battle_name_log for battle_name_log, _ in players_from_log]
-        players_by_name = await service.get_players_by_team_and_battle_names(session, team, battle_names)
+        players_by_name = {
+            name: LogPlayer.from_roster(player)
+            for name, player in (
+                await service.get_players_by_team_and_battle_names(session, team, battle_names)
+            ).items()
+        }
 
-        players_out: list[tuple[str, models.Player | None]] = []
+        players_out: list[tuple[str, LogPlayer | None]] = []
         for battle_name_log, _ in players_from_log:
             resolved_player_in_team = players_by_name.get(battle_name_log)
             players_out.append((battle_name_log, resolved_player_in_team))
 
             if resolved_player_in_team:
                 logger.debug(
-                    f"Player [id={resolved_player_in_team.id} name={resolved_player_in_team.name}] "
+                    f"Player [user_id={resolved_player_in_team.user_id} name={resolved_player_in_team.name}] "
                     f"found for battle name '{battle_name_log}' in team '{team.name}'"
                 )
             else:
@@ -535,7 +526,7 @@ class MatchLogProcessor:
     async def process_kills(
         self,
         match: models.Match,
-        players_map: dict[str, models.Player],
+        players_map: dict[str, LogPlayer],
     ) -> list[models.MatchKillFeed]:
         kill_feed_objects: list[models.MatchKillFeed] = []
 
@@ -575,10 +566,10 @@ class MatchLogProcessor:
                     time=row.time,
                     round=row.round_number,
                     fight=0,
-                    killer_id=killer_player.workspace_member.player_id,
+                    killer_id=killer_player.user_id,
                     killer_hero_id=killer_hero.id,
                     killer_team_id=killer_player.team_id,
-                    victim_id=victim_player.workspace_member.player_id,
+                    victim_id=victim_player.user_id,
                     victim_hero_id=victim_hero.id,
                     victim_team_id=victim_player.team_id,
                     ability=kill.ability,
@@ -599,7 +590,7 @@ class MatchLogProcessor:
     def _format_match_event_generic(
         self,
         match: models.Match,
-        players_map: dict[str, models.Player],
+        players_map: dict[str, LogPlayer],
         time: float,
         round_number: int,
         data: list[str],
@@ -639,7 +630,7 @@ class MatchLogProcessor:
                 logger.warning(f"MercyRez target '{evt.related_player}' not in players_map.")
             else:
                 related_player_obj = players_map[evt.related_player]
-                related_player_id = related_player_obj.workspace_member.player_id
+                related_player_id = related_player_obj.user_id
                 related_team_id = related_player_obj.team_id
 
         return models.MatchEvent(
@@ -647,7 +638,7 @@ class MatchLogProcessor:
             time=time,
             round=round_number,
             team_id=player.team_id,
-            user_id=player.workspace_member.player_id,
+            user_id=player.user_id,
             hero_id=hero_id,
             related_hero_id=related_hero_id,
             related_team_id=related_team_id,
@@ -659,7 +650,7 @@ class MatchLogProcessor:
         self,
         session: AsyncSession,
         match: models.Match,
-        players_map: dict[str, models.Player],
+        players_map: dict[str, LogPlayer],
     ) -> list[models.MatchEvent]:
         event_type_map = [
             (enums.LogEventType.OffensiveAssist, enums.MatchEvent.OffensiveAssist),
@@ -691,7 +682,7 @@ class MatchLogProcessor:
     def _create_stat_object(
         match: models.Match,
         name: enums.LogStatsName,
-        player: models.Player,
+        player: LogPlayer,
         match_round: int,
         hero_id: int | None,
         value: float,
@@ -700,13 +691,13 @@ class MatchLogProcessor:
             match_id=match.id,
             round=match_round,
             team_id=player.team_id,
-            user_id=player.workspace_member.player_id,
+            user_id=player.user_id,
             hero_id=hero_id,
             name=name,
             value=value,
         )
 
-    async def _get_player_stat_base_df(self, players_map: dict[str, models.Player]) -> pd.DataFrame:
+    async def _get_player_stat_base_df(self, players_map: dict[str, LogPlayer]) -> pd.DataFrame:
         player_stat_events = self._get_rows(enums.LogEventType.PlayerStat)
         if player_stat_events.empty:
             return pd.DataFrame()
@@ -740,7 +731,7 @@ class MatchLogProcessor:
                 stat_records.append(
                     {
                         "player_log_name": stat_row.player,
-                        "player_id": player_model.id,
+                        "player_id": player_model.user_id,
                         "player_model": player_model,
                         "hero_id": hero_model.id,
                         "hero_class": hero_model.type,
@@ -884,7 +875,7 @@ class MatchLogProcessor:
         self,
         session: AsyncSession,
         match: models.Match,
-        players_map: dict[str, models.Player],
+        players_map: dict[str, LogPlayer],
         kill_feed: list[models.MatchKillFeed] | None = None,
     ) -> list[models.MatchStatistics]:
         cumulative_stats_df = await self._get_player_stat_base_df(players_map)
@@ -974,20 +965,17 @@ class MatchLogProcessor:
         # --- MVP impact scoring inputs (spec 2026-07-10) --------------------
         # Event stats derived from the kill feed (FirstPicks/FirstDeaths/…) are
         # emitted as their own MatchStatistics rows AND merged into the two MVP
-        # pivots so add_impact_scores can read them. Kill feed is keyed by
-        # workspace_member.player_id (== user_id on the stat rows); the pivots
-        # are keyed by roster player.id, so we bridge via user_to_player.
+        # pivots so add_impact_scores can read them. The kill feed, the stat
+        # rows and the pivots are all keyed by the account's user_id.
         hero_types = {h.id: h.type for h in self.heroes_map.values()}
-        user_to_player = {p.workspace_member.player_id: p for p in players_map.values()}
+        user_to_player = {p.user_id: p for p in players_map.values()}
         has_killfeed = bool(kill_feed)
 
         events_df = impact.build_event_counts(kill_feed or [], hero_types)
         if not events_df.empty:
-            events_df["player_id"] = events_df["user_id"].map(
-                lambda uid: user_to_player[uid].id if uid in user_to_player else None
+            events_df = events_df[events_df["user_id"].isin(user_to_player)].assign(
+                player_id=lambda df_: df_["user_id"]
             )
-            events_df = events_df.dropna(subset=["player_id"])
-            events_df["player_id"] = events_df["player_id"].astype(int)
             # Round 0 is the synthetic match-total sentinel in the pivots; the
             # per-round pivot only holds round > 0, and the match total is the
             # sum across those real rounds (mirrors the stat pipeline).
@@ -1052,11 +1040,11 @@ class MatchLogProcessor:
         roles = impact.dominant_roles(playtime_df, hero_types)
 
         player_refs = {
-            p.id: impact.PlayerRef(
-                player_id=p.id,
-                user_id=p.workspace_member.player_id,
+            p.user_id: impact.PlayerRef(
+                player_id=p.user_id,
+                user_id=p.user_id,
                 team_id=p.team_id,
-                role=roles.get(p.id) or p.role,
+                role=roles.get(p.user_id) or p.role,
                 rank=p.rank,
             )
             for p in players_map.values()
@@ -1098,17 +1086,16 @@ class MatchLogProcessor:
         )
         encounter = await encounter_flows.resolve_for_log(
             session,
-            home_team_db.id,
-            away_team_db.id,
+            (home_team_db.id, away_team_db.id),
             log_name=self.filename,
             map_id=match_map_model.id,
             map_pools=map_pools,
             attached_encounter_id=self.attached_encounter_id,
         )
         # Roster repair can commit substitutions/name changes; validate first.
-        self._validate_map_pool(encounter, match_map_model, map_pools)
+        await self._validate_map_pool(session, encounter, match_map_model, map_pools)
         await self._preload_data(session)
-        (home_team_tuple, away_team_tuple) = await self.process_teams(session, resolved_teams)
+        (home_team_tuple, away_team_tuple) = await self.process_teams(session, resolved_teams, encounter)
         home_team_db, home_players_map = home_team_tuple
         away_team_db, away_players_map = away_team_tuple
         players_map = {**home_players_map, **away_players_map}
@@ -1207,59 +1194,58 @@ class MatchLogProcessor:
     async def add_substitution(
         self,
         session: AsyncSession,
-        team: models.Team,
-        player_to_be_replaced: models.Player,
+        participation: models.EncounterTeam,
+        player_to_be_replaced: LogPlayer,
         sub_user: models.User,
-    ) -> models.Player:
+    ) -> LogPlayer:
+        """Seat a player the log shows but the roster lacks, as a substitute of the encounter (D19).
+
+        The substitute lives in the participation's roster snapshot; the
+        tournament's own roster is the organiser's and is left alone.
+        """
         logger.info(
-            f"Adding substitution: user {sub_user.name} for player {player_to_be_replaced.name} in team {team.name}"
+            f"Adding substitution: user {sub_user.name} for player {player_to_be_replaced.name} "
+            f"in team {participation.name}"
         )
 
-        existing_player_profile_for_user = await team_service.get_player_by_user_and_role(
+        known_profiles = await team_service.get_player_by_user_and_role(
             session, sub_user.id, player_to_be_replaced.role, []
         )
+        profile = max(known_profiles, key=lambda p: p.tournament_id or 0, default=None)
+        rank = profile.rank if profile else player_to_be_replaced.rank
+        role = player_to_be_replaced.role
 
-        player_data_source = None
-        if existing_player_profile_for_user:
-            player_data_source = sorted(
-                existing_player_profile_for_user, key=lambda p: p.tournament_id or 0, reverse=True
-            )[0]
-
-        history = await load_prior_participation(session, tournament=self.tournament, user_ids=[sub_user.id])
-        new_player = await team_service.create_player(
+        (member_id,) = (
+            await team_service.resolve_workspace_member_ids(
+                session, workspace_id=self.tournament.workspace_id, player_ids={sub_user.id}
+            )
+        ).values()
+        await add_substitute(
             session,
-            name=sub_user.name,
-            sub_role=player_data_source.sub_role if player_data_source else None,
-            rank=player_data_source.rank if player_data_source else player_to_be_replaced.rank,
-            role=player_to_be_replaced.role,
-            user=sub_user,
-            tournament=self.tournament,
-            team=team,
-            is_substitution=True,
-            related_player_id=player_to_be_replaced.id,
-            is_newcomer=history.is_newcomer(sub_user.id),
-            is_newcomer_role=history.is_newcomer_role(sub_user.id, player_to_be_replaced.role),
+            participation,
+            MemberSnapshot(
+                workspace_member_id=member_id,
+                display_name=sub_user.name,
+                rank=rank,
+                is_substitute=True,
+                roles=(("player_role", role.name),) if role else (),
+            ),
         )
-        # create_player() sets workspace_member_id (a plain FK column) but does not
-        # eagerly load the `workspace_member` relationship; readers downstream (this
-        # module) access `.workspace_member.player_id` in place of the retained
-        # `.user_id`, so it must be loaded before new_player leaves this method.
-        await session.refresh(new_player, attribute_names=["workspace_member"])
-        logger.info(f"Created substitution player: {new_player.name} (ID: {new_player.id})")
-        return new_player
+        return LogPlayer(user_id=sub_user.id, team_id=participation.team_id, name=sub_user.name, role=role, rank=rank)
 
     async def fix_team_players_collision(
         self,
         session: AsyncSession,
         team_db: models.Team,
-        players_found_in_roster_map: dict[str, models.Player],
+        participation: models.EncounterTeam,
+        players_found_in_roster_map: dict[str, LogPlayer],
         all_players_from_log_for_team: list[tuple[str, models.User | None]],
-    ) -> tuple[models.Team, dict[str, models.Player]]:
+    ) -> tuple[models.Team, dict[str, LogPlayer]]:
         final_players_map = players_found_in_roster_map.copy()
         users_who_played_map: dict[str, models.User] = {
             log_name: user for log_name, user in all_players_from_log_for_team if user
         }
-        roster_players_not_substituted = [p for p in team_db.players if not p.is_substitution]
+        roster_players_not_substituted = [LogPlayer.from_roster(p) for p in team_db.players if not p.is_substitution]
         expected_roster_size = len(roster_players_not_substituted)
 
         if (
@@ -1271,12 +1257,10 @@ class MatchLogProcessor:
                 f"Log has {len(users_who_played_map)} users, roster matched {len(players_found_in_roster_map)}."
             )
 
-            roster_player_user_ids_found_in_log = {
-                p.workspace_member.player_id for p in players_found_in_roster_map.values()
-            }
-            missing_roster_player: models.Player | None = None
+            roster_player_user_ids_found_in_log = {p.user_id for p in players_found_in_roster_map.values()}
+            missing_roster_player: LogPlayer | None = None
             for rp in roster_players_not_substituted:
-                if rp.workspace_member.player_id not in roster_player_user_ids_found_in_log:
+                if rp.user_id not in roster_player_user_ids_found_in_log:
                     missing_roster_player = rp
                     break
 
@@ -1293,22 +1277,20 @@ class MatchLogProcessor:
                     f"Identified substitution: {substitute_user.name} "
                     f"(log: {substitute_log_name}) for {missing_roster_player.name} in team {team_db.name}."
                 )
-                existing_sub_player = await team_service.get_player_by_team_and_user(
-                    session, team_db.id, substitute_user.id, ["workspace_member"]
-                )
-                if (
-                    existing_sub_player
-                    and existing_sub_player.is_substitution
-                    and existing_sub_player.related_player_id == missing_roster_player.id
-                ):
-                    logger.info(f"Existing substitution player record found for {substitute_user.name}.")
-                    final_players_map[substitute_log_name] = existing_sub_player
-                else:
-                    new_sub_player = await self.add_substitution(
-                        session, team_db, missing_roster_player, substitute_user
+                existing_sub = await service.get_substitute(session, participation.id, substitute_user.id)
+                if existing_sub is not None:
+                    logger.info(f"Existing substitution record found for {substitute_user.name}.")
+                    final_players_map[substitute_log_name] = LogPlayer(
+                        user_id=substitute_user.id,
+                        team_id=team_db.id,
+                        name=substitute_user.name,
+                        role=missing_roster_player.role,
+                        rank=missing_roster_player.rank if existing_sub.rank is None else existing_sub.rank,
                     )
-                    final_players_map[substitute_log_name] = new_sub_player
-                    await session.refresh(team_db)
+                else:
+                    final_players_map[substitute_log_name] = await self.add_substitution(
+                        session, participation, missing_roster_player, substitute_user
+                    )
             else:
                 logger.warning(f"Could not fully resolve substitution for team {team_db.name}.")
 
@@ -1325,11 +1307,9 @@ class MatchLogProcessor:
                 f"unmatched log names: {unmatched_log_names}."
             )
 
-            roster_players_in_log_user_ids = {p.workspace_member.player_id for p in final_players_map.values()}
+            roster_players_in_log_user_ids = {p.user_id for p in final_players_map.values()}
             missing_roster_players_from_log = [
-                rp
-                for rp in roster_players_not_substituted
-                if rp.workspace_member.player_id not in roster_players_in_log_user_ids
+                rp for rp in roster_players_not_substituted if rp.user_id not in roster_players_in_log_user_ids
             ]
 
             if len(missing_roster_players_from_log) == 1 and len(unmatched_log_names) == 1:
@@ -1337,13 +1317,11 @@ class MatchLogProcessor:
                 new_battle_name_from_log = unmatched_log_names[0]
                 logger.info(
                     f"Player {player_who_changed_name.name} "
-                    f"(User ID: {player_who_changed_name.workspace_member.player_id}) "
+                    f"(User ID: {player_who_changed_name.user_id}) "
                     f"likely changed battle_name to '{new_battle_name_from_log}'."
                 )
 
-                user_to_update = player_who_changed_name.workspace_member.player or await _user_repo.get(
-                    session, player_who_changed_name.workspace_member.player_id
-                )
+                user_to_update = await _user_repo.get(session, player_who_changed_name.user_id)
 
                 if user_to_update:
                     await social_identity_service.upsert(
@@ -1367,12 +1345,7 @@ class MatchLogProcessor:
                     f"Could not resolve automatically."
                 )
 
-        current_team_player_ids = {p.id for p in team_db.players}
-        final_players_map_verified = {
-            name: p
-            for name, p in final_players_map.items()
-            if p.team_id == team_db.id and p.id in current_team_player_ids
-        }
+        final_players_map_verified = {name: p for name, p in final_players_map.items() if p.team_id == team_db.id}
         if len(final_players_map_verified) != len(final_players_map):
             logger.warning(
                 f"Team {team_db.name} player map verification failed after collision fix. "
@@ -1388,39 +1361,27 @@ class MatchLogProcessor:
             tuple[models.Team, list[tuple[str, models.User | None]]],
             tuple[models.Team, list[tuple[str, models.User | None]]],
         ],
+        encounter: models.Encounter,
     ) -> tuple[
-        tuple[models.Team, dict[str, models.Player]],
-        tuple[models.Team, dict[str, models.Player]],
+        tuple[models.Team, dict[str, LogPlayer]],
+        tuple[models.Team, dict[str, LogPlayer]],
     ]:
-        home_team_tuple, away_team_tuple = resolved_teams
-        home_team_db, home_players_from_log_tuples = home_team_tuple
-        away_team_db, away_players_from_log_tuples = away_team_tuple
-
-        home_roster_players_map_initial: dict[str, models.Player] = {
-            log_name: player_obj
-            for log_name, player_obj in await self.get_players_by_team_and_battle_name(
-                session, home_team_db, home_players_from_log_tuples
+        seats = {seat.team_id: seat for seat in await active_teams(session, encounter.id)}
+        resolved = []
+        for team_db, players_from_log_tuples in resolved_teams:
+            roster_map_initial = {
+                log_name: player_obj
+                for log_name, player_obj in await self.get_players_by_team_and_battle_name(
+                    session, team_db, players_from_log_tuples
+                )
+                if player_obj
+            }
+            resolved.append(
+                await self.fix_team_players_collision(
+                    session, team_db, seats[team_db.id], roster_map_initial, players_from_log_tuples
+                )
             )
-            if player_obj
-        }
-
-        away_roster_players_map_initial: dict[str, models.Player] = {
-            log_name: player_obj
-            for log_name, player_obj in await self.get_players_by_team_and_battle_name(
-                session, away_team_db, away_players_from_log_tuples
-            )
-            if player_obj
-        }
-
-        home_team_db_final, home_final_player_map = await self.fix_team_players_collision(
-            session, home_team_db, home_roster_players_map_initial, home_players_from_log_tuples
-        )
-
-        away_team_db_final, away_final_player_map = await self.fix_team_players_collision(
-            session, away_team_db, away_roster_players_map_initial, away_players_from_log_tuples
-        )
-
-        return (home_team_db_final, home_final_player_map), (away_team_db_final, away_final_player_map)
+        return resolved[0], resolved[1]
 
 
 async def process_match_log(

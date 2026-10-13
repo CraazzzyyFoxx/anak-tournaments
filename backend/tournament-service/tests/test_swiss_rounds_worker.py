@@ -16,42 +16,40 @@ os.environ["DEBUG"] = "true"
 
 enums = importlib.import_module("shared.core.enums")
 swiss_rounds = importlib.import_module("src.services.standings.swiss_auto_round")
+standings = importlib.import_module("src.services.standings.service")
+
+
+def _round(round_number: int, *, completed: bool, stage_item_id: int = 501):
+    """One duel of the scope, flattened the way ``load_stage_encounters`` hands it over."""
+    return standings.StageEncounter(
+        id=round_number,
+        round=round_number,
+        stage_id=77,
+        stage_item_id=stage_item_id,
+        completed=completed,
+        seats=(
+            standings.Seat(team_id=1, slot=1, score=2.0 if completed else 0.0, placement=1 if completed else None),
+            standings.Seat(team_id=2, slot=2, score=0.0, placement=2 if completed else None),
+        ),
+    )
 
 
 class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
     async def test_generated_round_does_not_commit_or_recalculate_directly(self) -> None:
         stage_item = SimpleNamespace(id=501)
         stage = SimpleNamespace(id=77, is_active=True, items=[stage_item], max_rounds=5)
-        encounters = [
-            SimpleNamespace(
-                home_team_id=1,
-                away_team_id=2,
-                round=1,
-                status=enums.EncounterStatus.COMPLETED,
-                result_status=enums.EncounterResultStatus.NONE,
-            )
-        ]
+        encounters = [_round(1, completed=True)]
         skeleton = SimpleNamespace(pairings=[SimpleNamespace(round_number=2)])
         generated = [SimpleNamespace(id=101)]
 
-        class _EncounterResult:
-            def unique(self) -> _EncounterResult:
-                return self
-
-            def scalars(self) -> SimpleNamespace:
-                return SimpleNamespace(all=lambda: encounters)
-
-        session = SimpleNamespace(
-            execute=AsyncMock(return_value=_EncounterResult()),
-            flush=AsyncMock(),
-            commit=AsyncMock(),
-        )
+        session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock())
 
         with (
             patch.object(swiss_rounds.stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(swiss_rounds, "_collect_item_team_ids", Mock(return_value=[1, 2])),
             patch.object(swiss_rounds.stage_service, "_generate_stage_skeleton", AsyncMock(return_value=skeleton)),
-            patch.object(swiss_rounds.stage_service, "_load_team_names", AsyncMock(return_value={1: "A", 2: "B"})),
+            patch.object(standings.standings_service, "load_stage_encounters", AsyncMock(return_value=encounters)),
+            patch.object(swiss_rounds.stage_service, "_seat_teams", AsyncMock(return_value={})),
             patch.object(
                 swiss_rounds.stage_service,
                 "_create_encounters_from_skeleton",
@@ -73,28 +71,14 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
     async def test_stale_round_is_idempotently_skipped(self) -> None:
         stage_item = SimpleNamespace(id=501)
         stage = SimpleNamespace(id=77, is_active=True, items=[stage_item], max_rounds=5)
-        encounters = [
-            SimpleNamespace(
-                home_team_id=1,
-                away_team_id=2,
-                round=2,
-                status=enums.EncounterStatus.OPEN,
-                result_status=enums.EncounterResultStatus.NONE,
-            )
-        ]
-
-        class _EncounterResult:
-            def unique(self) -> _EncounterResult:
-                return self
-
-            def scalars(self) -> SimpleNamespace:
-                return SimpleNamespace(all=lambda: encounters)
-
-        session = SimpleNamespace(execute=AsyncMock(return_value=_EncounterResult()))
+        # Round 2 already exists (and is still being played): the event is stale.
+        encounters = [_round(2, completed=False)]
+        session = SimpleNamespace()
 
         with (
             patch.object(swiss_rounds.stage_service, "get_stage", AsyncMock(return_value=stage)),
             patch.object(swiss_rounds, "_collect_item_team_ids", Mock(return_value=[1, 2])),
+            patch.object(standings.standings_service, "load_stage_encounters", AsyncMock(return_value=encounters)),
             patch.object(swiss_rounds.stage_service, "_generate_stage_skeleton", AsyncMock()) as generate,
         ):
             result = await swiss_rounds.swiss_rounds_service.generate_next_swiss_round(
@@ -114,15 +98,11 @@ class SwissRoundWorkerTests(IsolatedAsyncioTestCase):
         generated = [SimpleNamespace(id=101)]
 
         session = SimpleNamespace(
-            execute=AsyncMock(
-                side_effect=[
-                    SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [stage])),
-                    SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [])),
-                ]
-            )
+            execute=AsyncMock(return_value=SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [stage])))
         )
 
         with (
+            patch.object(standings.standings_service, "load_stage_encounters", AsyncMock(return_value=[])),
             patch.object(swiss_rounds, "stage_item_ready_for_next_round", return_value=True),
             patch.object(swiss_rounds, "next_round_number", return_value=2),
             patch.object(

@@ -24,7 +24,7 @@ import type {
   PickBanSubmissionItem
 } from "@/types/tournament.types";
 
-import type { PickBanSide } from "@/components/pick-ban/pick-ban-model";
+import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -43,11 +43,13 @@ interface PregameAdminControlsProps {
    * null when no pool is on screen for this kind, or no blind step is open.
    */
   blind: PickBanAdminSlot["blind"];
-  sideNameOf: (side: PickBanSide) => string;
+  /** The room's participations in slot order. */
+  seats: PickBanSeat[];
   /** Series length and the wins already confirmed, for the technical loss's
    * default score — neither is carried by a pick-ban state. */
   bestOf: number;
-  seriesWins: { home: number; away: number } | null;
+  /** `EncounterTeam.id` (as a string) -> confirmed wins. */
+  seriesWins: Record<string, number> | null;
   onMutated: () => void;
   /**
    * Which pick-ban kind these controls act on, when the room has more than
@@ -66,33 +68,35 @@ const EXTEND_CHOICES = [30, 60, 120] as const;
  * types when they disagree.
  *
  * The winner takes the series (at least the wins it needs), the forfeiting
- * side keeps the maps it actually won, capped one short of winning.
+ * team keeps the maps it actually won, capped one short of winning. Keyed by
+ * `EncounterTeam.id`.
  */
 function technicalLossScore(
   bestOf: number,
-  wins: { home: number; away: number } | null,
-  loserSide: PickBanSide
-): { home: number; away: number } {
+  wins: Record<string, number> | null,
+  seats: PickBanSeat[],
+  loserTeamId: number
+): Record<number, number> {
   const need = Math.floor(bestOf / 2) + 1;
-  const winnerSide = loserSide === "home" ? "away" : "home";
-  const score = {
-    [winnerSide]: Math.max(wins?.[winnerSide] ?? 0, need),
-    [loserSide]: Math.min(wins?.[loserSide] ?? 0, Math.max(need - 1, 0))
-  } as { home: number; away: number };
+  const score: Record<number, number> = {};
+  for (const seat of seats) {
+    const won = wins?.[String(seat.id)] ?? 0;
+    score[seat.id] = seat.id === loserTeamId ? Math.min(won, Math.max(need - 1, 0)) : Math.max(won, need);
+  }
   return score;
 }
 
 /**
  * Workspace-admin overrides: reset the whole pick-ban session (drop +
  * re-create with seeds re-resolved), act or submit a draft on behalf of either
- * side, reopen a revealed step, and correct the accepted result of a game that
+ * team, reopen a revealed step, and correct the accepted result of a game that
  * is already confirmed or stuck in a dispute — the one command allowed to
  * overwrite a confirmed score, and the only way a disputed position ever
  * clears.
  *
  * Plus the commands that act on the session as a whole rather than on a step:
- * hold the clock (pause), hand the side on the clock more time, cancel the
- * session for good, and end the whole encounter against one side.
+ * hold the clock (pause), hand the team on the clock more time, cancel the
+ * session for good, and end the whole encounter against one team.
  *
  * Which action an override performs is NOT the organizer's choice any more: a
  * v2 step names its own action, so offering "ban / pick / protect" next to a
@@ -107,7 +111,7 @@ export function PregameAdminControls({
   selectedItemName,
   itemsById,
   blind,
-  sideNameOf,
+  seats,
   bestOf,
   seriesWins,
   onMutated,
@@ -120,15 +124,16 @@ export function PregameAdminControls({
   // falls back to whoever is actually on the clock.
   const action: PickBanAction =
     step?.action === "pick" ? "pick" : step?.action === "protect" ? "protect" : "ban";
-  const defaultSide: PickBanSide = state.acting_sides[0] ?? "home";
+  const defaultTeamId = state.acting_team_ids[0] ?? seats[0]?.id ?? 0;
   const [resetOpen, setResetOpen] = useState(false);
-  const [override, setOverride] = useState<{ step: number | null; side: PickBanSide } | null>(null);
-  const side = override?.step === (step?.index ?? null) ? override.side : defaultSide;
+  const [override, setOverride] = useState<{ step: number | null; teamId: number } | null>(null);
+  const teamId = override?.step === (step?.index ?? null) ? override.teamId : defaultTeamId;
   const [lockSubmission, setLockSubmission] = useState(true);
   const itemName = (itemId: number) =>
     itemsById[itemId]?.name ?? t(`${kind}.itemNumber`, { id: itemId });
-  // A per-player step names an OPPONENT of the side being acted for.
-  const targetRoster = state.targets?.[side === "home" ? "away" : "home"] ?? [];
+  // A per-player step names an OPPONENT of the team being acted for.
+  const opponentId = seats.find((seat) => seat.id !== teamId)?.id;
+  const targetRoster = (opponentId != null ? state.targets?.[opponentId] : undefined) ?? [];
 
   const resetMutation = useMutation({
     mutationFn: () => adminService.resetPickBanSession(encounterId, kind),
@@ -141,14 +146,14 @@ export function PregameAdminControls({
   });
 
   const actMutation = useMutation({
-    mutationFn: (input: { side: PickBanSide; item_id: number; action: PickBanAction }) =>
+    mutationFn: (input: { encounter_team_id: number; item_id: number; action: PickBanAction }) =>
       adminService.adminPickBanAct(encounterId, { kind, ...input }),
     onSuccess: onMutated,
     onError: (error) => notify.apiError(error, { title: t("admin.actFailed") })
   });
 
   const submitMutation = useMutation({
-    mutationFn: (input: { side: PickBanSide; items: PickBanSubmissionItem[]; lock: boolean }) =>
+    mutationFn: (input: { encounter_team_id: number; items: PickBanSubmissionItem[]; lock: boolean }) =>
       adminService.adminPickBanSubmit(encounterId, { kind, ...input }),
     onSuccess: onMutated,
     onError: (error) => notify.apiError(error, { title: t("admin.submitFailed") })
@@ -164,8 +169,8 @@ export function PregameAdminControls({
   });
 
   const electMutation = useMutation({
-    mutationFn: (first_side: PickBanSide) =>
-      adminService.adminPickBanElectOpener(encounterId, { kind, first_side }),
+    mutationFn: (first_team_id: number) =>
+      adminService.adminPickBanElectOpener(encounterId, { kind, first_team_id }),
     onSuccess: onMutated,
     onError: (error) => notify.apiError(error, { title: t("admin.electFailed") })
   });
@@ -175,12 +180,12 @@ export function PregameAdminControls({
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [lossOpen, setLossOpen] = useState(false);
-  const [loserSide, setLoserSide] = useState<PickBanSide>("away");
+  const [loserTeamId, setLoserTeamId] = useState<number>(seats[1]?.id ?? 0);
   const [lossReason, setLossReason] = useState("");
-  // Null = "whatever the default rule says for the side currently selected";
+  // Null = "whatever the default rule says for the team currently selected";
   // a value is the organizer having overridden it by hand.
-  const [lossScore, setLossScore] = useState<{ home: number; away: number } | null>(null);
-  const lossDefault = technicalLossScore(bestOf, seriesWins, loserSide);
+  const [lossScore, setLossScore] = useState<Record<number, number> | null>(null);
+  const lossDefault = technicalLossScore(bestOf, seriesWins, seats, loserTeamId);
   const lossScoreShown = lossScore ?? lossDefault;
 
   const pauseMutation = useMutation({
@@ -212,9 +217,11 @@ export function PregameAdminControls({
   const technicalLossMutation = useMutation({
     mutationFn: () =>
       adminService.adminTechnicalLoss(encounterId, {
-        loser_side: loserSide,
-        home_score: lossScoreShown.home,
-        away_score: lossScoreShown.away,
+        loser_team_id: loserTeamId,
+        results: seats.map((seat) => ({
+          encounter_team_id: seat.id,
+          score: lossScoreShown[seat.id] ?? 0
+        })),
         reason: lossReason.trim()
       }),
     onSuccess: () => {
@@ -266,14 +273,11 @@ export function PregameAdminControls({
             <>
               <ChoiceGroup
                 label={t("admin.sideLabel")}
-                options={[
-                  { value: "home", label: t("side.home") },
-                  { value: "away", label: t("side.away") }
-                ]}
-                value={side}
+                options={seats.map((seat) => ({ value: String(seat.id), label: seat.name }))}
+                value={String(teamId)}
                 onChange={(next) => {
-                  setOverride({ step: step?.index ?? null, side: next });
-                  // The draft so far was built for the other side: on a targeted
+                  setOverride({ step: step?.index ?? null, teamId: Number(next) });
+                  // The draft so far was built for the other team: on a targeted
                   // step its players belong to the wrong roster entirely.
                   blind?.clear();
                 }}
@@ -343,7 +347,7 @@ export function PregameAdminControls({
                     disabled={blind == null || blind.items.length === 0 || pending}
                     onClick={() => {
                       if (blind == null) return;
-                      submitMutation.mutate({ side, items: blind.items, lock: lockSubmission });
+                      submitMutation.mutate({ encounter_team_id: teamId, items: blind.items, lock: lockSubmission });
                     }}
                   >
                     {submitMutation.isPending ? <Spinner className="mr-2" /> : null}
@@ -357,7 +361,7 @@ export function PregameAdminControls({
                     disabled={!canAct || pending}
                     onClick={() => {
                       if (selectedItemId == null) return;
-                      actMutation.mutate({ side, item_id: selectedItemId, action });
+                      actMutation.mutate({ encounter_team_id: teamId, item_id: selectedItemId, action });
                     }}
                   >
                     {actMutation.isPending ? <Spinner className="mr-2" /> : null}
@@ -395,17 +399,17 @@ export function PregameAdminControls({
                 {t("admin.electLabel")}
               </span>
               <div className="flex gap-1">
-                {(["home", "away"] as const).map((value) => (
+                {seats.map((seat) => (
                   <Button
-                    key={value}
+                    key={seat.id}
                     type="button"
                     size="sm"
                     variant="outline"
                     disabled={pending}
-                    onClick={() => electMutation.mutate(value)}
+                    onClick={() => electMutation.mutate(seat.id)}
                   >
                     {electMutation.isPending ? <Spinner className="mr-2" /> : null}
-                    {t(value === "home" ? "side.home" : "side.away")}
+                    {seat.name}
                   </Button>
                 ))}
               </div>
@@ -550,35 +554,29 @@ export function PregameAdminControls({
                 <span>{t("admin.technicalLossHint")}</span>
                 <ChoiceGroup
                   label={t("admin.technicalLossSide")}
-                  options={[
-                    { value: "home" as PickBanSide, label: sideNameOf("home") },
-                    { value: "away" as PickBanSide, label: sideNameOf("away") }
-                  ]}
-                  value={loserSide}
+                  options={seats.map((seat) => ({ value: String(seat.id), label: seat.name }))}
+                  value={String(loserTeamId)}
                   onChange={(next) => {
-                    setLoserSide(next);
+                    setLoserTeamId(Number(next));
                     // The default score is read off who forfeits, so a hand
-                    // edit made for the other side must not survive the switch.
+                    // edit made for the other team must not survive the switch.
                     setLossScore(null);
                   }}
                 />
                 <span className="flex items-end gap-2">
-                  <NumberInput
-                    min={0}
-                    integer
-                    className="w-16"
-                    aria-label={t("admin.correctScore", { team: sideNameOf("home") })}
-                    value={lossScoreShown.home}
-                    onValueChange={(value) => setLossScore({ ...lossScoreShown, home: value ?? 0 })}
-                  />
-                  <NumberInput
-                    min={0}
-                    integer
-                    className="w-16"
-                    aria-label={t("admin.correctScore", { team: sideNameOf("away") })}
-                    value={lossScoreShown.away}
-                    onValueChange={(value) => setLossScore({ ...lossScoreShown, away: value ?? 0 })}
-                  />
+                  {seats.map((seat) => (
+                    <NumberInput
+                      key={seat.id}
+                      min={0}
+                      integer
+                      className="w-16"
+                      aria-label={t("admin.correctScore", { team: seat.name })}
+                      value={lossScoreShown[seat.id] ?? 0}
+                      onValueChange={(value) =>
+                        setLossScore({ ...lossScoreShown, [seat.id]: value ?? 0 })
+                      }
+                    />
+                  ))}
                 </span>
                 <Input
                   aria-label={t("admin.technicalLossReason")}
@@ -594,7 +592,11 @@ export function PregameAdminControls({
           pending={technicalLossMutation.isPending}
           confirmDisabled={
             lossReason.trim() === "" ||
-            lossScoreShown[loserSide] >= lossScoreShown[loserSide === "home" ? "away" : "home"]
+            seats.some(
+              (seat) =>
+                seat.id !== loserTeamId &&
+                (lossScoreShown[loserTeamId] ?? 0) >= (lossScoreShown[seat.id] ?? 0)
+            )
           }
           onConfirm={() => technicalLossMutation.mutate()}
         />
@@ -610,6 +612,7 @@ export function PregameAdminControls({
               key={game.id}
               encounterId={encounterId}
               game={game}
+              seats={seats}
               positionLabel={t("round.label", { n: game.position })}
               onMutated={onMutated}
             />
@@ -621,32 +624,42 @@ export function PregameAdminControls({
 }
 
 /**
- * One game's correction: both scores as the SERIES sees them (home first, not
- * viewer-relative — the organizer is neither side) plus the reason the result
+ * One game's correction: both scores as the SERIES sees them (slot 1 first, not
+ * viewer-relative — the organizer captains neither team) plus the reason the result
  * audit records. The reason is required because this row is the only writer
  * that can overwrite a confirmed score.
  */
 function GameCorrection({
   encounterId,
   game,
+  seats,
   positionLabel,
   onMutated
 }: Readonly<{
   encounterId: number;
   game: PickBanGame;
+  seats: PickBanSeat[];
   positionLabel: string;
   onMutated: () => void;
 }>) {
   const t = useTranslations("pickBan.room");
-  const [homeScore, setHomeScore] = useState(game.accepted_home_score ?? 0);
-  const [awayScore, setAwayScore] = useState(game.accepted_away_score ?? 0);
+  const [scores, setScores] = useState<Record<number, number>>(() =>
+    Object.fromEntries(
+      seats.map((seat) => [
+        seat.id,
+        game.results.find((line) => line.encounter_team_id === seat.id)?.score ?? 0
+      ])
+    )
+  );
   const [reason, setReason] = useState("");
 
   const mutation = useMutation({
     mutationFn: () =>
       pickBanService.correctGameResult(encounterId, game.id, {
-        home_score: homeScore,
-        away_score: awayScore,
+        results: seats.map((seat) => ({
+          encounter_team_id: seat.id,
+          score: scores[seat.id] ?? 0
+        })),
         reason
       }),
     onSuccess: () => {
@@ -672,22 +685,17 @@ function GameCorrection({
   return (
     <div data-game-correction={game.id} className="flex flex-wrap items-end gap-2">
       <span className="min-w-[5rem] text-xs font-semibold">{positionLabel}</span>
-      <NumberInput
-        min={0}
-        integer
-        className="w-16"
-        aria-label={t("admin.correctScore", { team: t("side.home") })}
-        value={homeScore}
-        onValueChange={(value) => setHomeScore(value ?? 0)}
-      />
-      <NumberInput
-        min={0}
-        integer
-        className="w-16"
-        aria-label={t("admin.correctScore", { team: t("side.away") })}
-        value={awayScore}
-        onValueChange={(value) => setAwayScore(value ?? 0)}
-      />
+      {seats.map((seat) => (
+        <NumberInput
+          key={seat.id}
+          min={0}
+          integer
+          className="w-16"
+          aria-label={t("admin.correctScore", { team: seat.name })}
+          value={scores[seat.id] ?? 0}
+          onValueChange={(value) => setScores({ ...scores, [seat.id]: value ?? 0 })}
+        />
+      ))}
       <Input
         className="w-56"
         aria-label={t("admin.correctReason")}

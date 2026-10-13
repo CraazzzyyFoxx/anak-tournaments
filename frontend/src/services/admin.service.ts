@@ -576,13 +576,13 @@ class AdminService {
   }
 
   /**
-   * The single admin result write: score, status, result_status and the audit
-   * row move together. An empty body confirms whatever is already there, which
-   * covers the common case of two agreeing captain reports.
+   * The single admin result write: the standing, status, result_status and the
+   * audit row move together. Names either the participations' numbers or
+   * `adopt_report_team_id`, and always a `reason` for the journal.
    */
   async setEncounterResult(
     id: number,
-    data: EncounterSetResultInput = {}
+    data: EncounterSetResultInput
   ): Promise<EncounterResultRead> {
     const response = await apiFetch(`/api/v1/admin/encounters/${id}/result`, {
       method: "POST",
@@ -591,10 +591,11 @@ class AdminService {
     return response.json();
   }
 
-  /** Un-confirm a result so it can be replayed or re-reported. */
-  async reopenEncounterResult(id: number): Promise<EncounterResultRead> {
+  /** Un-confirm a result so it can be replayed or re-reported; the reason is journaled. */
+  async reopenEncounterResult(id: number, reason: string): Promise<EncounterResultRead> {
     const response = await apiFetch(`/api/v1/admin/encounters/${id}/result/reopen`, {
-      method: "POST"
+      method: "POST",
+      body: { reason }
     });
     return response.json();
   }
@@ -1771,17 +1772,18 @@ class AdminService {
   }
 
   /**
-   * Perform one ban/pick/protect on behalf of a side on an OPEN step (admin
-   * override). `target_player_id` is required when the step names an opponent
-   * player. Returns the new room state, like every other pick-ban mutation.
+   * Perform one ban/pick/protect/side pick on behalf of a participation on an
+   * OPEN step (admin override). `target_player_id` is required when the step
+   * names an opponent player. Returns the new room state, like every other
+   * pick-ban mutation.
    */
   async adminPickBanAct(
     encounterId: number,
     data: {
       kind: PickBanKind;
-      side: "home" | "away";
+      encounter_team_id: number;
       item_id: number;
-      action: "pick" | "ban" | "protect";
+      action: "pick" | "ban" | "protect" | "side_pick";
       target_player_id?: number | null;
     }
   ): Promise<PickBanState> {
@@ -1792,13 +1794,13 @@ class AdminService {
     return response.json();
   }
 
-  /** Replace (and optionally lock) a side's whole draft on a BLIND step, for a
-   * captain who cannot submit it themselves. */
+  /** Replace (and optionally lock) a participation's whole draft on a BLIND step,
+   * for a captain who cannot submit it themselves. */
   async adminPickBanSubmit(
     encounterId: number,
     data: {
       kind: PickBanKind;
-      side: "home" | "away";
+      encounter_team_id: number;
       items: PickBanSubmissionItem[];
       lock: boolean;
     }
@@ -1824,7 +1826,7 @@ class AdminService {
    * behalf of a losing captain who is not there to name it (admin override). */
   async adminPickBanElectOpener(
     encounterId: number,
-    data: { kind: PickBanKind; first_side: "home" | "away" }
+    data: { kind: PickBanKind; first_team_id: number }
   ): Promise<PickBanState> {
     const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-elect-opener`, {
       method: "POST",
@@ -1881,14 +1883,14 @@ class AdminService {
     return response.json();
   }
 
-  /** End the encounter against one side: every session cancelled, every
-   * unconfirmed game cancelled, the result set and confirmed in one go. */
+  /** End the encounter against one participation: every session cancelled, every
+   * unconfirmed game cancelled, the result set and confirmed in one go. `results`
+   * states the exact forfeit scores; omitted, the default forfeit score applies. */
   async adminTechnicalLoss(
     encounterId: number,
     data: {
-      loser_side: "home" | "away";
-      home_score?: number;
-      away_score?: number;
+      loser_team_id: number;
+      results?: { encounter_team_id: number; score: number }[];
       reason: string;
     }
   ): Promise<EncounterResultRead> {
@@ -1900,7 +1902,8 @@ class AdminService {
   }
 
   /**
-   * Flip one side's readiness for a captain who cannot press the button —
+   * Force one participation's readiness for a captain who cannot press the
+   * button —
    * the gate that holds BOTH kinds' sessions shut, so an absent captain
    * otherwise freezes the whole room (backend:
    * `pick_ban_session.ensure_pick_ban_session`). Clearing readiness is
@@ -1909,8 +1912,8 @@ class AdminService {
    */
   async setEncounterReadiness(
     encounterId: number,
-    data: { side: "home" | "away"; ready: boolean }
-  ): Promise<{ readiness: { home: boolean; away: boolean } }> {
+    data: { encounter_team_id: number; ready: boolean }
+  ): Promise<{ readiness: Record<string, boolean> }> {
     const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/readiness`, {
       method: "POST",
       body: data

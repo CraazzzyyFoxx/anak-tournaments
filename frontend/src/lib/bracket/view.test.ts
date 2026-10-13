@@ -20,9 +20,7 @@ function createEncounter(id: number, round: number, sources?: EncounterSlotSourc
     created_at: new Date(0),
     updated_at: null,
     name: "TBD vs TBD",
-    home_team_id: 0,
-    away_team_id: 0,
-    score: { home: 0, away: 0 },
+    slot_count: 2,
     round,
     best_of: 3,
     tournament_id: 1,
@@ -38,9 +36,11 @@ function createEncounter(id: number, round: number, sources?: EncounterSlotSourc
     ended_at: null,
     current_map_index: null,
     confirmed_at: null,
+    result_source: null,
+    result_version: 0,
     matches: [],
-    home_team: null as never,
-    away_team: null as never,
+    games: [],
+    teams: [],
     tournament: null as never,
     stage: null,
     stage_item: null,
@@ -106,20 +106,20 @@ describe("bracket view helpers", () => {
     const hints = computeSlotHints(upperRounds, lowerRounds, finalRounds, matchNumbers, true, true);
 
     expect(hints.get(9)).toEqual({
-      home: `L M${matchNumbers.get(1)}`,
-      away: `L M${matchNumbers.get(2)}`
+      one: `L M${matchNumbers.get(1)}`,
+      two: `L M${matchNumbers.get(2)}`
     });
     expect(hints.get(10)).toEqual({
-      home: `L M${matchNumbers.get(3)}`,
-      away: `L M${matchNumbers.get(4)}`
+      one: `L M${matchNumbers.get(3)}`,
+      two: `L M${matchNumbers.get(4)}`
     });
     expect(hints.get(11)).toEqual({
-      home: `W M${matchNumbers.get(9)}`,
-      away: `L M${matchNumbers.get(5)}`
+      one: `W M${matchNumbers.get(9)}`,
+      two: `L M${matchNumbers.get(5)}`
     });
     expect(hints.get(12)).toEqual({
-      home: `W M${matchNumbers.get(10)}`,
-      away: `L M${matchNumbers.get(6)}`
+      one: `W M${matchNumbers.get(10)}`,
+      two: `L M${matchNumbers.get(6)}`
     });
   });
 
@@ -144,8 +144,8 @@ describe("bracket view helpers", () => {
     const hints = computeSlotHints(upperRounds, lowerRounds, finalRounds, matchNumbers, true, true);
 
     expect(hints.get(4)).toEqual({
-      home: `L M${matchNumbers.get(1)}`,
-      away: null
+      one: `L M${matchNumbers.get(1)}`,
+      two: null
     });
   });
 });
@@ -255,30 +255,30 @@ describe("slot hints follow the bracket's recorded advancement edges", () => {
     createEncounter(1, 1),
     createEncounter(2, 1),
     createEncounter(3, 2, [
-      { encounter_id: 1, role: "winner", slot: "home" },
-      { encounter_id: 2, role: "winner", slot: "away" }
+      { encounter_id: 1, source_position: 1, slot: 1 },
+      { encounter_id: 2, source_position: 1, slot: 2 }
     ]),
     createEncounter(4, -1),
     createEncounter(5, -1),
     createEncounter(6, -2, [
-      { encounter_id: 4, role: "winner", slot: "home" },
-      { encounter_id: 1, role: "loser", slot: "away" }
+      { encounter_id: 4, source_position: 1, slot: 1 },
+      { encounter_id: 1, source_position: 2, slot: 2 }
     ]),
     createEncounter(7, -2, [
-      { encounter_id: 5, role: "winner", slot: "home" },
-      { encounter_id: 2, role: "loser", slot: "away" }
+      { encounter_id: 5, source_position: 1, slot: 1 },
+      { encounter_id: 2, source_position: 2, slot: 2 }
     ]),
     createEncounter(8, -3, [
-      { encounter_id: 6, role: "winner", slot: "home" },
-      { encounter_id: 7, role: "winner", slot: "away" }
+      { encounter_id: 6, source_position: 1, slot: 1 },
+      { encounter_id: 7, source_position: 1, slot: 2 }
     ]),
     createEncounter(9, -4, [
-      { encounter_id: 8, role: "winner", slot: "home" },
-      { encounter_id: 3, role: "loser", slot: "away" }
+      { encounter_id: 8, source_position: 1, slot: 1 },
+      { encounter_id: 3, source_position: 2, slot: 2 }
     ]),
     createEncounter(10, 3, [
-      { encounter_id: 3, role: "winner", slot: "home" },
-      { encounter_id: 9, role: "winner", slot: "away" }
+      { encounter_id: 3, source_position: 1, slot: 1 },
+      { encounter_id: 9, source_position: 1, slot: 2 }
     ])
   ];
 
@@ -309,12 +309,12 @@ describe("slot hints follow the bracket's recorded advancement edges", () => {
     const { matchNumbers, hints } = hintsFor(encounters);
 
     expect(hints.get(6)).toEqual({
-      home: `W M${matchNumbers.get(4)}`,
-      away: `L M${matchNumbers.get(1)}`
+      one: `W M${matchNumbers.get(4)}`,
+      two: `L M${matchNumbers.get(1)}`
     });
     expect(hints.get(7)).toEqual({
-      home: `W M${matchNumbers.get(5)}`,
-      away: `L M${matchNumbers.get(2)}`
+      one: `W M${matchNumbers.get(5)}`,
+      two: `L M${matchNumbers.get(2)}`
     });
   });
 
@@ -322,8 +322,8 @@ describe("slot hints follow the bracket's recorded advancement edges", () => {
     const { matchNumbers, hints } = hintsFor(encounters);
 
     expect(hints.get(10)).toEqual({
-      home: `W M${matchNumbers.get(3)}`,
-      away: `W M${matchNumbers.get(9)}`
+      one: `W M${matchNumbers.get(3)}`,
+      two: `W M${matchNumbers.get(9)}`
     });
   });
 
@@ -334,8 +334,8 @@ describe("slot hints follow the bracket's recorded advancement edges", () => {
     // No edges to read, so the standard shape is assumed: LB round 1 takes the
     // upper bracket's first losers.
     expect(hints.get(4)).toEqual({
-      home: `L M${matchNumbers.get(1)}`,
-      away: `L M${matchNumbers.get(2)}`
+      one: `L M${matchNumbers.get(1)}`,
+      two: `L M${matchNumbers.get(2)}`
     });
   });
 });
@@ -349,15 +349,15 @@ describe("the grand final follows the bracket's advancement edges", () => {
   //  UB: M1 -> M2 (UB Final)   LB: M3 -> M4   GF: M5 (-> reset M6)
   const encounters = [
     createEncounter(1, 1),
-    createEncounter(2, 2, [{ encounter_id: 1, role: "winner", slot: "home" }]),
-    createEncounter(3, -1, [{ encounter_id: 1, role: "loser", slot: "home" }]),
+    createEncounter(2, 2, [{ encounter_id: 1, source_position: 1, slot: 1 }]),
+    createEncounter(3, -1, [{ encounter_id: 1, source_position: 2, slot: 1 }]),
     createEncounter(4, -2, [
-      { encounter_id: 3, role: "winner", slot: "home" },
-      { encounter_id: 2, role: "loser", slot: "away" }
+      { encounter_id: 3, source_position: 1, slot: 1 },
+      { encounter_id: 2, source_position: 2, slot: 2 }
     ]),
     createEncounter(5, 3, [
-      { encounter_id: 2, role: "winner", slot: "home" },
-      { encounter_id: 4, role: "winner", slot: "away" }
+      { encounter_id: 2, source_position: 1, slot: 1 },
+      { encounter_id: 4, source_position: 1, slot: 2 }
     ])
   ];
 
@@ -369,8 +369,8 @@ describe("the grand final follows the bracket's advancement edges", () => {
     const withReset = [
       ...encounters,
       createEncounter(6, 4, [
-        { encounter_id: 5, role: "winner", slot: "home" },
-        { encounter_id: 5, role: "loser", slot: "away" }
+        { encounter_id: 5, source_position: 1, slot: 1 },
+        { encounter_id: 5, source_position: 2, slot: 2 }
       ])
     ];
 

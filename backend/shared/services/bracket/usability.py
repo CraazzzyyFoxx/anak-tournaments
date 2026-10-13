@@ -15,7 +15,8 @@ out in-flight reporting on a stage the organizer has since moved past.
 ``is_published`` is sticky -- set once by ``activate_stage`` and never
 cleared -- so a stage that already went live stays usable forever.
 
-Scrim encounters (``stage_id is None``) have no stage and are always live.
+An encounter with no ``tournament.bracket_encounter`` row -- a scrim, a mix --
+has no stage and is always live.
 """
 
 from __future__ import annotations
@@ -24,7 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.models.tournament.encounter import Encounter
+from shared.models.encounter.encounter import Encounter
+from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.stage import Stage
 
 __all__ = ("assert_encounter_live", "is_encounter_live")
@@ -33,13 +35,14 @@ __all__ = ("assert_encounter_live", "is_encounter_live")
 async def is_encounter_live(session: AsyncSession, encounter: Encounter) -> bool:
     """True when the encounter's bracket has been published (or it has none).
 
-    Looks the stage up via ``session.get`` rather than the ORM relationship so
-    it works whether or not the caller eager-loaded ``Encounter.stage`` --
-    ``session.get`` is satisfied from the identity map when it was.
+    Looks the position and the stage up with ``session.get`` rather than a
+    join, so both are satisfied from the identity map when the caller already
+    loaded them.
     """
-    if encounter.stage_id is None:
+    position = await session.get(BracketEncounter, encounter.id)
+    if position is None or position.stage_id is None:
         return True
-    stage = await session.get(Stage, encounter.stage_id)
+    stage = await session.get(Stage, position.stage_id)
     return stage is None or stage.is_published
 
 

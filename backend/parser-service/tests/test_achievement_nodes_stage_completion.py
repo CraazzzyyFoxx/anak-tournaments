@@ -44,6 +44,7 @@ class _StageCase(_EngineTestCase):
         self.db.insert(
             models.Stage.__table__,
             id=stage_id,
+            scoring_rule_id=1,
             tournament_id=REAL_TOURNAMENT_ID,
             name=f"stage {order}",
             stage_type=stage_type,

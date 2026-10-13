@@ -57,11 +57,10 @@
   flex-shrink: 0;
 }
 
-.pipHome {
+.pipOne {
   background: var(--aqt-teal);
 }
 
-.pipAway {
+.pipTwo {
   background: color-mix(in srgb, var(--aqt-rose) 80%, transparent);
 }
-

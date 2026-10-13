@@ -3,8 +3,8 @@
 A single PostgreSQL database shared by every Python service in the monorepo. The ORM models
 (SQLAlchemy) live in `backend/shared/models/<package>/`; the tables themselves are split across
 **Postgres schemas**, which double as domain boundaries. A package name does not always match a
-schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, and
-`tournament/` spans `tournament` and `casual`.
+schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, `tournament/`
+spans `tournament` and `casual`, and `catalog/` spans `overwatch` and `catalog`.
 
 > **Every entity diagram in this document is generated** from `Base.metadata` by
 > `backend/scripts/export_erd.py`, one diagram per model package. The prose around them is
@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_proces
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`apikeysu01`** (110 revisions in `backend/migrations/versions/`).
+Alembic head: **`enclayer01b`** (112 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -52,9 +52,11 @@ Alembic head: **`apikeysu01`** (110 revisions in `backend/migrations/versions/`)
 | `auth` | Login accounts, sessions, OAuth, API keys, RBAC | identity-service |
 | `players` | Player identity and social accounts | app-service |
 | `public` | Workspaces, membership, division grids, settings, outbox | app-service |
-| `tournament` | Tournament structure, bracket, encounters, pick/ban, reports | tournament-service |
+| `tournament` | Tournament structure, bracket position, advancement edges, pick/ban templates, scrim rooms | tournament-service |
+| `encounter` | Match layer: encounters, participations, games, claims, series reports, scoring rules, result journal, pick/ban sessions | tournament-service |
 | `casual` | Casual and scrim matches outside the tournament tree | tournament-service |
 | `overwatch` | Game catalog — heroes, maps, game modes | app-service / parser-service |
+| `catalog` | Disciplines the platform knows (`overwatch` in V1) | seeded by migration; no service writes it |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
 | `matches` | Parsed match logs and derived statistics | parser-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
@@ -74,8 +76,11 @@ The hubs almost every domain converges on:
 - **`players.user`** — the domain player. Can exist with no login account (a "virtual" or
   "shadow" player imported from match logs or a CSV).
 - **`auth.user`** — the login account. Links to `players.user` `1:0..1`.
-- **`tournament.tournament`** — the root for stages, teams, encounters, registrations and
-  analytics.
+- **`tournament.tournament`** — the root for stages, teams, registrations and analytics, and the
+  owner of its encounters.
+- **`encounter.encounter`** — the root of the match layer: participations, games, claims,
+  reports and the result journal hang off it, and parsed matches, achievement results and
+  analytics point at it.
 - **`overwatch.hero`** — referenced by statistics, registration preferences and achievements.
 
 Full identity semantics — who owns which table, what a virtual player is, how linking works —
@@ -101,9 +106,11 @@ flowchart TB
     end
 
     subgraph COMPETITION["Competition"]
-        TOUR["tournament<br/>(stages, teams, bracket, pick/ban)"]
+        TOUR["tournament<br/>(stages, teams, bracket, pick/ban templates)"]
+        ENC["encounter<br/>(match layer: participations, games, results)"]
         MATCHES["matches<br/>(match logs, statistics)"]
         OW["overwatch<br/>(hero / map / gamemode)"]
+        CAT["catalog<br/>(disciplines)"]
         RANK["overwatch_rank<br/>(rank snapshots)"]
     end
 
@@ -138,7 +145,13 @@ flowchart TB
     TOUR --> GRID
     TOUR --> PLAYERS
     TOUR --> OW
+    TOUR --> CAT
+    TOUR --> ENC
+    ENC --> TOUR
+    ENC --> WS
+    ENC --> OW
     MATCHES --> TOUR
+    MATCHES --> ENC
     MATCHES --> OW
     MATCHES --> PLAYERS
     MATCHES --> LOG
@@ -160,19 +173,25 @@ flowchart TB
 
     ACH --> WS
     ACH --> TOUR
+    ACH --> ENC
     ACH --> MATCHES
     ACH --> OW
     AN --> TOUR
+    AN --> ENC
     AN --> WS
 
     LOG --> TOUR
+    LOG --> ENC
     LOG --> PLAYERS
 ```
 
 Two edges the map does not draw, because the schema no longer has them: `balancer` does not
 reference `players` (registration identity goes through `workspace_member`), and `analytics`
-reads match data only through `tournament.player` and `tournament.encounter`, never through
-`matches` directly.
+reads match data only through `tournament.player` and `encounter.encounter`, never through
+`matches` directly. `encounter` and `tournament` reference each other: an encounter points at
+its owning tournament, and the bracket position and advancement edges point back at the
+encounter. The actor columns of `encounter` (`reporter_user_id`, `actor_user_id`) point at
+`auth` and are left out like the rest.
 
 ## identity — `auth`, `players`
 
@@ -459,6 +478,7 @@ erDiagram
         bigint workspace_id FK
         bigint player_id FK
         varchar(255) display_name "nullable"
+        timestamptz removed_at "nullable"
     }
 
     AUTH_USER |o--o{ PUBLIC_SETTINGS : "updated_by"
@@ -526,7 +546,7 @@ Composite unique keys:
 - `BALANCER_MEMBER_HIDDEN_RATING` unique on (`workspace_member_id`, `role`)
 <!-- /ERD:auto -->
 
-## catalog — `overwatch`
+## catalog — `overwatch`, `catalog`
 
 The game catalog — heroes, maps, game modes — plus the misses log that records catalog names
 arriving from logs that no alias resolves.
@@ -543,9 +563,21 @@ the "add an alias" queue in the admin UI. It is keyed on `(entity_type, raw_name
 back. Its link to the log record it last arrived on is nullable, so pruning ingestion records
 does not empty the queue.
 
+`catalog.discipline` is the registry of games the platform knows: a `code` and a `name`, with
+one row, `overwatch`, in V1. It exists so that the `discipline` column on `tournament.tournament`
+and `encounter.encounter` references something and a typo cannot reach the match layer; what the
+code knows about a discipline beyond that (whether its games have sides) is in
+`backend/shared/disciplines/`. The heroes, maps and game modes above are still the Overwatch
+catalog, not yet scoped by discipline.
+
 <!-- ERD:auto catalog -->
 ```mermaid
 erDiagram
+    CATALOG_DISCIPLINE {
+        varchar(32) code PK
+        varchar(64) name
+        timestamptz created_at
+    }
     OVERWATCH_CATALOG_ALIAS_MISS {
         bigint id PK
         timestamptz created_at
@@ -794,9 +826,9 @@ erDiagram
 ## tournament — `tournament`, `casual`
 
 The largest domain: the tournament itself and its lifecycle, stages and stage items, teams and
-their rosters, encounters and the advancement edges that form the bracket, the pick/ban engine,
-standings and their computation jobs, match reports, Challonge synchronisation, scrim rooms, and
-preview access.
+their rosters, the bracket positions and advancement edges that tie encounters into a bracket,
+the pick/ban templates, standings and their computation jobs, Challonge synchronisation, scrim
+rooms, and preview access. The encounters themselves are in [`encounter`](#encounter--encounter).
 
 The structure is `tournament → stage → stage_item → stage_item_input`. A stage item is a group,
 a bracket or a round-robin; the legacy `tournament.group` table is gone, and a group is a stage
@@ -810,21 +842,21 @@ self-reference linking a substitute to the player they stand in for, and sub-rol
 per-workspace `player_sub_role` catalog. `tournament.team` deliberately stores no SR: team
 strength is derived from the roster, never cached on the row.
 
-`encounter` is one best-of meeting; `encounter_link` holds the advancement edges explicitly
-(`winner`/`loser` → `home`/`away` slot). Results are a small state machine rather than a score
-write: `result_status` plus `confirmed_at` on the row, and one `encounter_result_audit` row per
-transition — confirm, reopen, auto-confirm, dispute, import, cascade reset — recording the
-scores after the change and whose report was adopted. Captains report through
-`encounter_captain_report` (one per team per encounter) with per-map lobby codes, and
-`encounter_map_report` records per-map scores; `encounter_report_form` is the per-tournament
-field definition, `encounter_readiness` the per-side ready signal.
+The meetings themselves live in the [`encounter`](#encounter--encounter) schema, which this
+schema references; what stays here is the tournament's structure around them.
+`tournament.bracket_encounter` is an encounter's place in a bracket — stage, stage item and
+round, one row per bracketed encounter — and `encounter_link` holds the advancement edges
+explicitly: the team that finishes in position *k* of the source encounter fills a numbered slot
+of the target. Both carry `tournament_id` so a composite key can check that the encounters on
+both ends belong to the same tournament. `tournament.tournament` has a `discipline`
+(`catalog.discipline.code`) that every encounter under it copies, and `stage.scoring_rule_id`
+names the `encounter.scoring_rule` its encounters are scored by. `encounter_report_form` is the
+per-tournament definition of the fields a captain's series report asks for.
 
 Pick/ban is generic: `pick_ban_config` is the template (mode, first-pick rule, ban rotation,
-resolved sequence) with its pool in `pick_ban_config_item` and `pick_ban_config_slot*`;
-`pick_ban_session` is one live run per `(encounter, kind)` and `pick_ban_entry` a single step.
-`encounter_pick_ban_ledger` keeps what was banned in which round, which is what a no-repeat
-scope spanning several encounters reads. This engine replaced the earlier map-veto tables; there
-is no `map_veto_config` any more.
+resolved sequence) with its pool in `pick_ban_config_item` and `pick_ban_config_slot*`. The live
+run — session, entries, submissions — belongs to the encounter and lives in the `encounter`
+schema. This engine replaced the earlier map-veto tables; there is no `map_veto_config` any more.
 
 The Challonge bridge has exactly one source of truth: `challonge_source` (per tournament, stage
 or stage item) plus `challonge_participant_mapping`, `challonge_match_mapping` and
@@ -840,6 +872,13 @@ tournament that is still hidden.
 <!-- ERD:auto tournament -->
 ```mermaid
 erDiagram
+    TOURNAMENT_BRACKET_ENCOUNTER {
+        bigint encounter_id PK,FK
+        bigint tournament_id FK
+        bigint stage_id FK "nullable"
+        bigint stage_item_id FK "nullable"
+        int round
+    }
     TOURNAMENT_CHALLONGE_MATCH_MAPPING {
         bigint id PK
         timestamptz created_at
@@ -904,111 +943,15 @@ erDiagram
         timestamptz started_at "nullable"
         timestamptz finished_at "nullable"
     }
-    TOURNAMENT_ENCOUNTER {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        varchar name
-        varchar(8) format
-        bigint home_team_id FK "nullable"
-        bigint away_team_id FK "nullable"
-        int home_score
-        int away_score
-        int round
-        float closeness "nullable"
-        int best_of
-        timestamptz scheduled_at "nullable"
-        timestamptz started_at "nullable"
-        timestamptz ended_at "nullable"
-        int current_map_index "nullable"
-        bigint tournament_id FK
-        bigint stage_id FK "nullable"
-        bigint stage_item_id FK "nullable"
-        encounterstatus status
-        encounterresultstatus result_status
-        timestamptz confirmed_at "nullable"
-    }
-    TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint encounter_id FK
-        bigint team_id FK
-        bigint reporter_user_id FK "nullable"
-        int home_score
-        int away_score
-        int closeness "nullable"
-        text comment "nullable"
-        json custom_fields_json
-    }
-    TOURNAMENT_ENCOUNTER_GAME {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint encounter_id FK
-        int position
-        varchar(8) format
-        bigint map_id FK "nullable"
-        encountergamestate state
-        int accepted_home_score "nullable"
-        int accepted_away_score "nullable"
-        encountergameresultsource result_source "nullable"
-        int result_version
-        timestamptz confirmed_at "nullable"
-    }
-    TOURNAMENT_ENCOUNTER_GAME_RESULT {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint game_id FK
-        bigint encounter_id FK
-        bigint team_id FK
-        int placement "nullable"
-        jsonb stats
-    }
     TOURNAMENT_ENCOUNTER_LINK {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
-        int source_encounter_id FK
-        int target_encounter_id FK
-        encounterlinkrole role
-        encounterlinkslot target_slot
-    }
-    TOURNAMENT_ENCOUNTER_MAP_CODE {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint report_id FK
-        int map_index
-        bigint map_id FK "nullable"
-        varchar(32) code
-    }
-    TOURNAMENT_ENCOUNTER_MAP_REPORT {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint game_id FK
-        varchar(16) side
-        bigint reporter_user_id FK "nullable"
-        int home_score
-        int away_score
-    }
-    TOURNAMENT_ENCOUNTER_PARTICIPANT {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint encounter_id FK
-        bigint team_id FK
-        int slot
-    }
-    TOURNAMENT_ENCOUNTER_READINESS {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint encounter_id FK
-        varchar(16) side
-        bigint ready_user_id FK "nullable"
+        bigint tournament_id FK
+        bigint source_encounter_id FK
+        int source_position
+        bigint target_encounter_id FK
+        int target_slot
     }
     TOURNAMENT_ENCOUNTER_REPORT_FORM {
         bigint id PK
@@ -1017,39 +960,6 @@ erDiagram
         bigint tournament_id FK,UK
         json built_in_fields_json
         json custom_fields_json
-    }
-    TOURNAMENT_ENCOUNTER_RESULT_AUDIT {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint encounter_id FK
-        bigint actor_user_id FK "nullable"
-        encounterresultauditaction action
-        encounterresultstatus from_result_status "nullable"
-        encounterresultstatus to_result_status
-        int home_score_before "nullable"
-        int away_score_before "nullable"
-        int home_score_after "nullable"
-        int away_score_after "nullable"
-        jsonb ffa_results_json "nullable"
-        bigint adopted_team_id FK "nullable"
-        bigint game_id FK "nullable"
-        int game_result_version "nullable"
-        text reason "nullable"
-        varchar(32) source
-    }
-    TOURNAMENT_ENCOUNTER_ROOM_EVENT {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint encounter_id FK
-        varchar(8) kind "nullable"
-        varchar(64) action
-        varchar(16) source
-        varchar(8) side "nullable"
-        bigint actor_auth_user_id FK "nullable"
-        text reason "nullable"
-        json data
     }
     TOURNAMENT_PICK_BAN_CONFIG {
         bigint id PK
@@ -1087,57 +997,6 @@ erDiagram
         bigint pick_ban_config_slot_id FK
         int item_id
         int sort_order
-    }
-    TOURNAMENT_PICK_BAN_ENTRY {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint session_id FK
-        int item_id
-        int order
-        int action_index "nullable"
-        int round "nullable"
-        pickbanside picked_by "nullable"
-        pickbanentrystatus status
-        bigint team_id FK "nullable"
-        pickbanside protected_by "nullable"
-        int carried_from_round "nullable"
-    }
-    TOURNAMENT_PICK_BAN_SESSION {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint encounter_id FK
-        pickbankind kind
-        bigint config_id FK "nullable"
-        pickbanside first_side "nullable"
-        pickbanseedsource seed_source
-        int home_seed "nullable"
-        int away_seed "nullable"
-        json resolved_sequence_json
-        json slot_reserves_json "nullable"
-        json ruleset_json
-        pickbansessionstatus status
-        boolean awaiting_choice
-        pickbanside pending_loser_side "nullable"
-        pickbanside undo_requested_by "nullable"
-        int undo_target_index "nullable"
-        timestamptz started_at "nullable"
-        timestamptz current_step_started_at "nullable"
-        timestamptz paused_at "nullable"
-    }
-    TOURNAMENT_PICK_BAN_SUBMISSION {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint session_id FK
-        int step_index
-        varchar(8) side
-        int attempt
-        varchar(16) state
-        json items_json
-        timestamptz locked_at "nullable"
-        timestamptz revealed_at "nullable"
     }
     TOURNAMENT_PLAYER {
         bigint id PK
@@ -1199,6 +1058,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint tournament_id FK
+        bigint scoring_rule_id FK
         varchar name
         varchar description "nullable"
         stagetype stage_type
@@ -1315,6 +1175,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint workspace_id FK
+        varchar(32) discipline FK
         varchar name
         varchar slug UK
         varchar description "nullable"
@@ -1368,15 +1229,17 @@ erDiagram
     }
 
     AUTH_USER |o--o{ TOURNAMENT_COMPUTATION_JOB : "requested_by_user_id"
-    AUTH_USER |o--o{ TOURNAMENT_ENCOUNTER_ROOM_EVENT : "actor_auth_user_id"
     AUTH_USER ||--o{ TOURNAMENT_SCRIM_ROOM : "created_by_auth_user_id"
     AUTH_USER ||--o{ TOURNAMENT_TOURNAMENT_PREVIEW_ACCESS : "auth_user_id"
-    OVERWATCH_MAP |o--o{ TOURNAMENT_ENCOUNTER_GAME : "map_id"
-    OVERWATCH_MAP |o--o{ TOURNAMENT_ENCOUNTER_MAP_CODE : "map_id"
-    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT : "reporter_user_id"
-    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_MAP_REPORT : "reporter_user_id"
-    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_READINESS : "ready_user_id"
-    PLAYERS_USER |o--o{ TOURNAMENT_ENCOUNTER_RESULT_AUDIT : "actor_user_id"
+    CATALOG_DISCIPLINE ||--o{ TOURNAMENT_TOURNAMENT : "discipline"
+    ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_BRACKET_ENCOUNTER : "tournament_id"
+    ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_CHALLONGE_MATCH_MAPPING : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "source_encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "target_encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "tournament_id"
+    ENCOUNTER_ENCOUNTER ||--o| TOURNAMENT_BRACKET_ENCOUNTER : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o| TOURNAMENT_SCRIM_ROOM : "encounter_id"
+    ENCOUNTER_SCORING_RULE ||--o{ TOURNAMENT_STAGE : "scoring_rule_id"
     PLAYERS_USER |o--o{ TOURNAMENT_TEAM : "captain_id"
     PUBLIC_DIVISION_GRID_VERSION |o--o{ TOURNAMENT_TOURNAMENT : "division_grid_version_id"
     PUBLIC_WORKSPACE ||--o{ TOURNAMENT_PLAYER_SUB_ROLE : "workspace_id"
@@ -1386,58 +1249,34 @@ erDiagram
     TOURNAMENT_CHALLONGE_SOURCE |o--o{ TOURNAMENT_CHALLONGE_SYNC_LOG : "source_id"
     TOURNAMENT_CHALLONGE_SOURCE ||--o{ TOURNAMENT_CHALLONGE_MATCH_MAPPING : "source_id"
     TOURNAMENT_CHALLONGE_SOURCE ||--o{ TOURNAMENT_CHALLONGE_PARTICIPANT_MAPPING : "source_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_CHALLONGE_MATCH_MAPPING : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_GAME : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "source_encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "target_encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_PARTICIPANT : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_READINESS : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_RESULT_AUDIT : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_ROOM_EVENT : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ TOURNAMENT_PICK_BAN_SESSION : "encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o| TOURNAMENT_SCRIM_ROOM : "encounter_id"
-    TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT ||--o{ TOURNAMENT_ENCOUNTER_MAP_CODE : "report_id"
-    TOURNAMENT_ENCOUNTER_GAME |o--o{ TOURNAMENT_ENCOUNTER_RESULT_AUDIT : "game_id"
-    TOURNAMENT_ENCOUNTER_GAME ||--o{ TOURNAMENT_ENCOUNTER_GAME_RESULT : "game_id"
-    TOURNAMENT_ENCOUNTER_GAME ||--o{ TOURNAMENT_ENCOUNTER_MAP_REPORT : "game_id"
-    TOURNAMENT_ENCOUNTER_PARTICIPANT ||--o{ TOURNAMENT_ENCOUNTER_GAME_RESULT : "encounter_id"
-    TOURNAMENT_ENCOUNTER_PARTICIPANT ||--o{ TOURNAMENT_ENCOUNTER_GAME_RESULT : "team_id"
-    TOURNAMENT_PICK_BAN_CONFIG |o--o{ TOURNAMENT_PICK_BAN_SESSION : "config_id"
     TOURNAMENT_PICK_BAN_CONFIG ||--o{ TOURNAMENT_PICK_BAN_CONFIG_ITEM : "pick_ban_config_id"
     TOURNAMENT_PICK_BAN_CONFIG ||--o{ TOURNAMENT_PICK_BAN_CONFIG_SLOT : "pick_ban_config_id"
     TOURNAMENT_PICK_BAN_CONFIG_SLOT ||--o{ TOURNAMENT_PICK_BAN_CONFIG_SLOT_ITEM : "pick_ban_config_slot_id"
-    TOURNAMENT_PICK_BAN_SESSION ||--o{ TOURNAMENT_PICK_BAN_ENTRY : "session_id"
-    TOURNAMENT_PICK_BAN_SESSION ||--o{ TOURNAMENT_PICK_BAN_SUBMISSION : "session_id"
     TOURNAMENT_PLAYER |o--o{ TOURNAMENT_PLAYER : "related_player_id"
+    TOURNAMENT_STAGE |o--o{ TOURNAMENT_BRACKET_ENCOUNTER : "stage_id"
     TOURNAMENT_STAGE |o--o{ TOURNAMENT_CHALLONGE_SOURCE : "stage_id"
     TOURNAMENT_STAGE |o--o{ TOURNAMENT_COMPUTATION_JOB : "stage_id"
-    TOURNAMENT_STAGE |o--o{ TOURNAMENT_ENCOUNTER : "stage_id"
     TOURNAMENT_STAGE |o--o{ TOURNAMENT_PICK_BAN_CONFIG : "stage_id"
     TOURNAMENT_STAGE |o--o{ TOURNAMENT_STANDING : "stage_id"
+    TOURNAMENT_STAGE ||--o{ TOURNAMENT_BRACKET_ENCOUNTER : "tournament_id"
     TOURNAMENT_STAGE ||--o{ TOURNAMENT_SCRIM_ROOM : "stage_id"
     TOURNAMENT_STAGE ||--o{ TOURNAMENT_STAGE_ITEM : "stage_id"
     TOURNAMENT_STAGE ||--o{ TOURNAMENT_STANDING_PIN : "stage_id"
     TOURNAMENT_STAGE ||--o{ TOURNAMENT_SWISS_BYE : "stage_id"
     TOURNAMENT_STAGE ||--o{ TOURNAMENT_SWISS_STOPPED_SCOPE : "stage_id"
     TOURNAMENT_STAGE ||--o| TOURNAMENT_STAGE_ROUND_BEST_OF : "stage_id"
+    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_BRACKET_ENCOUNTER : "stage_id"
+    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_BRACKET_ENCOUNTER : "stage_item_id"
     TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_CHALLONGE_SOURCE : "stage_item_id"
     TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_COMPUTATION_JOB : "stage_item_id"
-    TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_ENCOUNTER : "stage_item_id"
     TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_STAGE_ITEM_INPUT : "source_stage_item_id"
     TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_STANDING : "stage_item_id"
     TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_STANDING_PIN : "stage_item_id"
     TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_SWISS_BYE : "stage_item_id"
     TOURNAMENT_STAGE_ITEM |o--o{ TOURNAMENT_SWISS_STOPPED_SCOPE : "stage_item_id"
     TOURNAMENT_STAGE_ITEM ||--o{ TOURNAMENT_STAGE_ITEM_INPUT : "stage_item_id"
-    TOURNAMENT_TEAM |o--o{ TOURNAMENT_ENCOUNTER : "away_team_id"
-    TOURNAMENT_TEAM |o--o{ TOURNAMENT_ENCOUNTER : "home_team_id"
-    TOURNAMENT_TEAM |o--o{ TOURNAMENT_ENCOUNTER_RESULT_AUDIT : "adopted_team_id"
-    TOURNAMENT_TEAM |o--o{ TOURNAMENT_PICK_BAN_ENTRY : "team_id"
     TOURNAMENT_TEAM |o--o{ TOURNAMENT_STAGE_ITEM_INPUT : "team_id"
     TOURNAMENT_TEAM ||--o{ TOURNAMENT_CHALLONGE_PARTICIPANT_MAPPING : "team_id"
-    TOURNAMENT_TEAM ||--o{ TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT : "team_id"
-    TOURNAMENT_TEAM ||--o{ TOURNAMENT_ENCOUNTER_PARTICIPANT : "team_id"
     TOURNAMENT_TEAM ||--o{ TOURNAMENT_PLAYER : "team_id"
     TOURNAMENT_TEAM ||--o{ TOURNAMENT_STANDING : "team_id"
     TOURNAMENT_TEAM ||--o{ TOURNAMENT_STANDING_PIN : "team_id"
@@ -1445,7 +1284,6 @@ erDiagram
     TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_CHALLONGE_SOURCE : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_CHALLONGE_SYNC_LOG : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_COMPUTATION_JOB : "tournament_id"
-    TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_ENCOUNTER : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_PICK_BAN_CONFIG : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_PLAYER : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o{ TOURNAMENT_SCRIM_ROOM : "tournament_id"
@@ -1467,24 +1305,369 @@ Composite unique keys:
 - `TOURNAMENT_CHALLONGE_MATCH_MAPPING` unique on (`source_id`, `challonge_match_id`)
 - `TOURNAMENT_CHALLONGE_PARTICIPANT_MAPPING` unique on (`source_id`, `challonge_participant_id`)
 - `TOURNAMENT_CHALLONGE_SOURCE` unique on (`tournament_id`, `challonge_tournament_id`)
-- `TOURNAMENT_ENCOUNTER_CAPTAIN_REPORT` unique on (`encounter_id`, `team_id`)
-- `TOURNAMENT_ENCOUNTER_GAME_RESULT` unique on (`game_id`, `team_id`)
-- `TOURNAMENT_ENCOUNTER_LINK` unique on (`source_encounter_id`, `role`)
-- `TOURNAMENT_ENCOUNTER_MAP_CODE` unique on (`report_id`, `map_index`)
-- `TOURNAMENT_ENCOUNTER_MAP_REPORT` unique on (`game_id`, `side`)
-- `TOURNAMENT_ENCOUNTER_PARTICIPANT` unique on (`encounter_id`, `slot`)
-- `TOURNAMENT_ENCOUNTER_PARTICIPANT` unique on (`encounter_id`, `team_id`)
-- `TOURNAMENT_ENCOUNTER_READINESS` unique on (`encounter_id`, `side`)
+- `TOURNAMENT_ENCOUNTER_LINK` unique on (`source_encounter_id`, `source_position`)
+- `TOURNAMENT_ENCOUNTER_LINK` unique on (`target_encounter_id`, `target_slot`)
 - `TOURNAMENT_PICK_BAN_CONFIG_ITEM` unique on (`pick_ban_config_id`, `item_id`)
 - `TOURNAMENT_PICK_BAN_CONFIG_SLOT` unique on (`pick_ban_config_id`, `position`)
 - `TOURNAMENT_PICK_BAN_CONFIG_SLOT_ITEM` unique on (`pick_ban_config_slot_id`, `item_id`)
-- `TOURNAMENT_PICK_BAN_SESSION` unique on (`encounter_id`, `kind`)
-- `TOURNAMENT_PICK_BAN_SUBMISSION` unique on (`session_id`, `step_index`, `side`, `attempt`)
 - `TOURNAMENT_PLAYER_SUB_ROLE` unique on (`workspace_id`, `role`, `slug`)
+- `TOURNAMENT_STAGE` unique on (`id`, `tournament_id`)
+- `TOURNAMENT_STAGE_ITEM` unique on (`id`, `stage_id`)
 - `TOURNAMENT_STAGE_ITEM_INPUT` unique on (`stage_item_id`, `slot`)
+- `TOURNAMENT_TEAM` unique on (`id`, `tournament_id`)
+- `TOURNAMENT_TOURNAMENT` unique on (`id`, `workspace_id`, `discipline`)
 - `TOURNAMENT_TOURNAMENT_LINK` unique on (`tournament_id`, `kind`, `url`)
 - `TOURNAMENT_TOURNAMENT_PHASE_SCHEDULE` unique on (`tournament_id`, `status`)
 - `TOURNAMENT_TOURNAMENT_PREVIEW_ACCESS` unique on (`tournament_id`, `auth_user_id`)
+<!-- /ERD:auto -->
+
+## encounter — `encounter`
+
+The game-neutral match layer: an encounter seats `slot_count` immutable participations
+(`encounter.team`) with their roster snapshots, games and per-participation game results, the
+claims and series reports those results are decided from, one scoring rule per stage or
+encounter, the result journal, and the pick/ban room that runs before the first game.
+
+`encounter.encounter` is the old `tournament.encounter` moved with its ids. It knows its owner
+(`tournament_id`, `workspace_id`, `discipline`, tied together by the composite
+`fk_encounter_owner`), how many slots it seats and how many games it plays (`best_of`), and the
+state of its result: `result_status`, `result_source` (`games`, `series_claim`, `admin`,
+`import`; NULL while nothing official exists) and `result_version`. There is no `format`, no
+home/away and no bracket position — a duel is `slot_count = 2`, and the bracket position is a
+`tournament.bracket_encounter` row that mixes and scrims simply do not have.
+
+A participation is append-only: replacing the occupant of a slot writes a new `team` row and
+sets the old one `active = false`, and nothing reactivates it. `team_id` is the source
+`tournament.team` and is set to NULL if that team is deleted; `name` is the snapshot that
+survives. Two partial unique indexes allow one active occupant per slot and one active seat per
+source team, and `uq_team_member_active_member` one active seat per workspace member per encounter. The
+`team_member` rows carry an `active` copy of their participation's, kept in step by an
+`ON UPDATE CASCADE` composite key.
+
+`game` is one position, with the map and the accepted result; a cancelled game keeps its
+position as history and a repeated position is a new row. `game_team` is one row per
+participation per game: raw score, placement, the organizer's column values, the side it
+started on and the replay code. Claims mirror that shape: `game_claim` is one participation's
+claim about one game (with a `basis_version`), `game_claim_result` its numbers per participation,
+and the composite keys stop a claim from naming a participation that is not in the game.
+`team_report` / `team_report_result` do the same for a whole-series report.
+
+`scoring_rule` holds the preset, columns, placement points and the two formulas (`game_formula`,
+`end_formula`) an encounter is scored by; the encounter may only point at a rule of its own
+workspace. `result_audit` is the version sequence of the encounter — one row per result change,
+unique on `(encounter_id, result_version)`, with `before` / `after` snapshots — and `room_event`
+the ordered story of the pre-game room. The pick/ban session, entry and submission tables moved
+here from `tournament`; the templates they are started from (`pick_ban_config*`) stay in
+`tournament`.
+
+<!-- ERD:auto encounter -->
+```mermaid
+erDiagram
+    ENCOUNTER_ENCOUNTER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(32) discipline FK
+        bigint tournament_id FK
+        bigint scoring_rule_id FK
+        varchar name
+        int slot_count
+        int best_of
+        encounterstatus status
+        encounterresultstatus result_status
+        varchar(16) result_source "nullable"
+        bigint result_version
+        int current_game_position "nullable"
+        float closeness "nullable"
+        timestamptz scheduled_at "nullable"
+        timestamptz started_at "nullable"
+        timestamptz ended_at "nullable"
+        timestamptz confirmed_at "nullable"
+    }
+    ENCOUNTER_GAME {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        int position
+        bigint map_id FK "nullable"
+        encountergamestate state
+        encountergameresultsource result_source "nullable"
+        int result_version
+        timestamptz confirmed_at "nullable"
+    }
+    ENCOUNTER_GAME_CLAIM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint game_id FK
+        bigint claimant_team_id FK
+        bigint reporter_user_id FK "nullable"
+        int basis_version
+    }
+    ENCOUNTER_GAME_CLAIM_RESULT {
+        bigint claim_id PK,FK
+        bigint game_id FK
+        bigint encounter_team_id PK,FK
+        int score "nullable"
+        int placement "nullable"
+        jsonb column_values
+    }
+    ENCOUNTER_GAME_TEAM {
+        bigint game_id PK,FK
+        bigint encounter_id FK
+        bigint encounter_team_id PK,FK
+        int score "nullable"
+        int placement "nullable"
+        jsonb column_values
+        varchar(16) starting_side "nullable"
+        varchar(32) replay_code "nullable"
+    }
+    ENCOUNTER_PICK_BAN_ENTRY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint encounter_id FK
+        int item_id
+        int order
+        int action_index "nullable"
+        int round "nullable"
+        pickbanactor picked_by_kind "nullable"
+        bigint picked_by_team_id FK "nullable"
+        pickbanentrystatus status
+        pickbanactor protected_by_kind "nullable"
+        bigint protected_by_team_id FK "nullable"
+        int carried_from_round "nullable"
+    }
+    ENCOUNTER_PICK_BAN_SESSION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        pickbankind kind
+        json pool_json
+        bigint first_team_id FK "nullable"
+        pickbanseedsource seed_source
+        json resolved_sequence_json
+        json slot_reserves_json "nullable"
+        json ruleset_json
+        pickbansessionstatus status
+        boolean awaiting_choice
+        bigint pending_chooser_team_id FK "nullable"
+        bigint undo_requested_by_team_id FK "nullable"
+        int undo_target_index "nullable"
+        timestamptz started_at "nullable"
+        timestamptz current_step_started_at "nullable"
+        timestamptz paused_at "nullable"
+    }
+    ENCOUNTER_PICK_BAN_SUBMISSION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint encounter_id FK
+        int step_index
+        bigint encounter_team_id FK "nullable"
+        int attempt
+        varchar(16) state
+        json items_json
+        timestamptz locked_at "nullable"
+        timestamptz revealed_at "nullable"
+    }
+    ENCOUNTER_READINESS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint encounter_team_id FK
+        bigint ready_user_id FK "nullable"
+    }
+    ENCOUNTER_RESULT_AUDIT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint result_version
+        varchar(16) snapshot_scope
+        bigint game_id FK "nullable"
+        int game_result_version "nullable"
+        bigint actor_user_id FK "nullable"
+        encounterresultauditaction action
+        encounterresultstatus from_result_status "nullable"
+        encounterresultstatus to_result_status
+        jsonb before "nullable"
+        jsonb after
+        bigint adopted_team_id FK "nullable"
+        text reason "nullable"
+        varchar(32) source
+    }
+    ENCOUNTER_ROOM_EVENT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        varchar(8) kind "nullable"
+        varchar(64) action
+        varchar(16) source
+        bigint encounter_team_id FK "nullable"
+        bigint actor_auth_user_id FK "nullable"
+        text reason "nullable"
+        json data
+    }
+    ENCOUNTER_SCORING_RULE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(16) preset
+        jsonb columns
+        float[] placement_points
+        varchar(500) game_formula
+        varchar(500) end_formula
+    }
+    ENCOUNTER_TEAM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint tournament_id FK
+        int slot
+        bigint team_id FK "nullable"
+        varchar(255) name
+        int seed "nullable"
+        boolean active
+        float score
+        int placement "nullable"
+    }
+    ENCOUNTER_TEAM_MEMBER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint encounter_team_id FK
+        boolean active FK
+        bigint workspace_member_id FK
+        varchar(255) display_name_snapshot
+        int rank "nullable"
+        boolean is_substitute
+    }
+    ENCOUNTER_TEAM_MEMBER_ROLE {
+        bigint team_member_id PK,FK
+        varchar(32) dimension PK
+        varchar(64) role PK
+    }
+    ENCOUNTER_TEAM_REPORT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint encounter_id FK
+        bigint encounter_team_id FK
+        bigint reporter_user_id FK "nullable"
+        int games_played "nullable"
+        bigint basis_version
+        int closeness "nullable"
+        text comment "nullable"
+        json custom_fields_json
+    }
+    ENCOUNTER_TEAM_REPORT_RESULT {
+        bigint report_id PK,FK
+        bigint encounter_id FK
+        bigint encounter_team_id PK,FK
+        float score
+        int placement "nullable"
+        int wins "nullable"
+    }
+
+    AUTH_USER |o--o{ ENCOUNTER_ROOM_EVENT : "actor_auth_user_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME_CLAIM : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME_TEAM : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_PICK_BAN_SESSION : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_READINESS : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_RESULT_AUDIT : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_ROOM_EVENT : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM : "tournament_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM_MEMBER : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_TEAM_REPORT : "encounter_id"
+    ENCOUNTER_GAME |o--o{ ENCOUNTER_RESULT_AUDIT : "game_id"
+    ENCOUNTER_GAME ||--o{ ENCOUNTER_GAME_CLAIM : "encounter_id"
+    ENCOUNTER_GAME ||--o{ ENCOUNTER_GAME_CLAIM : "game_id"
+    ENCOUNTER_GAME ||--o{ ENCOUNTER_GAME_TEAM : "encounter_id"
+    ENCOUNTER_GAME ||--o{ ENCOUNTER_RESULT_AUDIT : "encounter_id"
+    ENCOUNTER_GAME ||--o| ENCOUNTER_GAME_TEAM : "game_id"
+    ENCOUNTER_GAME_CLAIM ||--o{ ENCOUNTER_GAME_CLAIM_RESULT : "game_id"
+    ENCOUNTER_GAME_CLAIM ||--o| ENCOUNTER_GAME_CLAIM_RESULT : "claim_id"
+    ENCOUNTER_GAME_TEAM ||--o{ ENCOUNTER_GAME_CLAIM : "claimant_team_id"
+    ENCOUNTER_GAME_TEAM ||--o{ ENCOUNTER_GAME_CLAIM : "game_id"
+    ENCOUNTER_GAME_TEAM ||--o{ ENCOUNTER_GAME_CLAIM_RESULT : "game_id"
+    ENCOUNTER_GAME_TEAM ||--o| ENCOUNTER_GAME_CLAIM_RESULT : "encounter_team_id"
+    ENCOUNTER_PICK_BAN_SESSION ||--o{ ENCOUNTER_PICK_BAN_ENTRY : "encounter_id"
+    ENCOUNTER_PICK_BAN_SESSION ||--o{ ENCOUNTER_PICK_BAN_ENTRY : "session_id"
+    ENCOUNTER_PICK_BAN_SESSION ||--o{ ENCOUNTER_PICK_BAN_SUBMISSION : "encounter_id"
+    ENCOUNTER_PICK_BAN_SESSION ||--o{ ENCOUNTER_PICK_BAN_SUBMISSION : "session_id"
+    ENCOUNTER_SCORING_RULE ||--o{ ENCOUNTER_ENCOUNTER : "scoring_rule_id"
+    ENCOUNTER_SCORING_RULE ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_PICK_BAN_ENTRY : "picked_by_team_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_PICK_BAN_ENTRY : "protected_by_team_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_PICK_BAN_SESSION : "first_team_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_PICK_BAN_SESSION : "pending_chooser_team_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_PICK_BAN_SESSION : "undo_requested_by_team_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_PICK_BAN_SUBMISSION : "encounter_team_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_RESULT_AUDIT : "adopted_team_id"
+    ENCOUNTER_TEAM |o--o{ ENCOUNTER_ROOM_EVENT : "encounter_team_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_GAME_TEAM : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_PICK_BAN_ENTRY : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_PICK_BAN_SESSION : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_PICK_BAN_SUBMISSION : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_READINESS : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_READINESS : "encounter_team_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_RESULT_AUDIT : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_ROOM_EVENT : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_TEAM_MEMBER : "active"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_TEAM_MEMBER : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_TEAM_MEMBER : "encounter_team_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_TEAM_REPORT : "encounter_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_TEAM_REPORT : "encounter_team_id"
+    ENCOUNTER_TEAM ||--o{ ENCOUNTER_TEAM_REPORT_RESULT : "encounter_id"
+    ENCOUNTER_TEAM ||--o| ENCOUNTER_GAME_TEAM : "encounter_team_id"
+    ENCOUNTER_TEAM ||--o| ENCOUNTER_TEAM_REPORT_RESULT : "encounter_team_id"
+    ENCOUNTER_TEAM_MEMBER ||--o| ENCOUNTER_TEAM_MEMBER_ROLE : "team_member_id"
+    ENCOUNTER_TEAM_REPORT ||--o{ ENCOUNTER_TEAM_REPORT_RESULT : "encounter_id"
+    ENCOUNTER_TEAM_REPORT ||--o| ENCOUNTER_TEAM_REPORT_RESULT : "report_id"
+    OVERWATCH_MAP |o--o{ ENCOUNTER_GAME : "map_id"
+    PLAYERS_USER |o--o{ ENCOUNTER_GAME_CLAIM : "reporter_user_id"
+    PLAYERS_USER |o--o{ ENCOUNTER_READINESS : "ready_user_id"
+    PLAYERS_USER |o--o{ ENCOUNTER_RESULT_AUDIT : "actor_user_id"
+    PLAYERS_USER |o--o{ ENCOUNTER_TEAM_REPORT : "reporter_user_id"
+    PUBLIC_WORKSPACE ||--o{ ENCOUNTER_SCORING_RULE : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o{ ENCOUNTER_TEAM_MEMBER : "workspace_member_id"
+    TOURNAMENT_TEAM |o--o{ ENCOUNTER_TEAM : "team_id"
+    TOURNAMENT_TEAM ||--o{ ENCOUNTER_TEAM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ENCOUNTER_ENCOUNTER : "discipline"
+    TOURNAMENT_TOURNAMENT ||--o{ ENCOUNTER_ENCOUNTER : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
+```
+
+Composite unique keys:
+
+- `ENCOUNTER_ENCOUNTER` unique on (`id`, `tournament_id`)
+- `ENCOUNTER_GAME` unique on (`id`, `encounter_id`)
+- `ENCOUNTER_GAME_CLAIM` unique on (`game_id`, `claimant_team_id`)
+- `ENCOUNTER_GAME_CLAIM` unique on (`id`, `game_id`)
+- `ENCOUNTER_PICK_BAN_SESSION` unique on (`encounter_id`, `kind`)
+- `ENCOUNTER_PICK_BAN_SESSION` unique on (`id`, `encounter_id`)
+- `ENCOUNTER_READINESS` unique on (`encounter_id`, `encounter_team_id`)
+- `ENCOUNTER_RESULT_AUDIT` unique on (`encounter_id`, `result_version`)
+- `ENCOUNTER_SCORING_RULE` unique on (`id`, `workspace_id`)
+- `ENCOUNTER_TEAM` unique on (`id`, `encounter_id`)
+- `ENCOUNTER_TEAM` unique on (`id`, `encounter_id`, `active`)
+- `ENCOUNTER_TEAM_MEMBER` unique on (`encounter_team_id`, `workspace_member_id`)
+- `ENCOUNTER_TEAM_REPORT` unique on (`encounter_id`, `encounter_team_id`)
+- `ENCOUNTER_TEAM_REPORT` unique on (`id`, `encounter_id`)
 <!-- /ERD:auto -->
 
 ## registration — `balancer`
@@ -2161,6 +2344,12 @@ its 1-based position in the series and is nullable for logs parsed before that c
 `log_record_id` is the provenance link back to the uploaded file and is nullable, so pruning
 ingestion records never deletes parsed matches.
 
+`matches.match` still carries `home_team_id` / `away_team_id`, and `matches.statistics`,
+`kill_feed` and `event` a `team_id`, all pointing at `tournament.team`. They are the one place
+home/away survives, until the statistics rework (V4); the parsed log is the only thing that
+writes them. The result of the map is not here: it is the `encounter.game` and its
+`game_team` rows.
+
 `statistics` is long-format — one row per `(match, round, team, player, hero, stat name)` with a
 single float — which is why it is by far the largest table in the database. `kill_feed` and
 `event` both record two sides of an interaction (killer/victim, actor/related) with team and
@@ -2246,6 +2435,7 @@ erDiagram
         float value
     }
 
+    ENCOUNTER_ENCOUNTER ||--o{ MATCHES_MATCH : "encounter_id"
     LOG_PROCESSING_RECORD |o--o{ MATCHES_MATCH : "log_record_id"
     MATCHES_MATCH ||--o{ MATCHES_EVENT : "match_id"
     MATCHES_MATCH ||--o{ MATCHES_KILL_FEED : "match_id"
@@ -2261,7 +2451,6 @@ erDiagram
     PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "killer_id"
     PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "victim_id"
     PLAYERS_USER ||--o{ MATCHES_STATISTICS : "user_id"
-    TOURNAMENT_ENCOUNTER ||--o{ MATCHES_MATCH : "encounter_id"
     TOURNAMENT_TEAM |o--o{ MATCHES_EVENT : "related_team_id"
     TOURNAMENT_TEAM ||--o{ MATCHES_EVENT : "team_id"
     TOURNAMENT_TEAM ||--o{ MATCHES_KILL_FEED : "killer_team_id"
@@ -2317,8 +2506,8 @@ erDiagram
         int attempts
     }
 
+    ENCOUNTER_ENCOUNTER |o--o{ LOG_PROCESSING_RECORD : "attached_encounter_id"
     PLAYERS_USER |o--o{ LOG_PROCESSING_RECORD : "uploader_id"
-    TOURNAMENT_ENCOUNTER |o--o{ LOG_PROCESSING_RECORD : "attached_encounter_id"
     TOURNAMENT_TOURNAMENT ||--o{ LOG_PROCESSING_RECORD : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o| LOG_PROCESSING_DISCORD_CHANNEL : "tournament_id"
 ```
@@ -2412,6 +2601,7 @@ erDiagram
     ACHIEVEMENTS_RULE ||--o{ ACHIEVEMENTS_EVALUATION_RESULT : "achievement_rule_id"
     ACHIEVEMENTS_RULE ||--o{ ACHIEVEMENTS_OVERRIDE : "achievement_rule_id"
     AUTH_USER ||--o{ ACHIEVEMENTS_OVERRIDE : "granted_by"
+    ENCOUNTER_ENCOUNTER |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "encounter_id"
     MATCHES_MATCH |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "match_id"
     MATCHES_MATCH |o--o{ ACHIEVEMENTS_OVERRIDE : "match_id"
     OVERWATCH_HERO |o--o{ ACHIEVEMENTS_RULE : "hero_id"
@@ -2419,7 +2609,6 @@ erDiagram
     PUBLIC_WORKSPACE ||--o{ ACHIEVEMENTS_RULE : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ ACHIEVEMENTS_EVALUATION_RESULT : "workspace_member_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ ACHIEVEMENTS_OVERRIDE : "workspace_member_id"
-    TOURNAMENT_ENCOUNTER |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "encounter_id"
     TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "tournament_id"
     TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_EVALUATION_RUN : "tournament_id"
     TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_OVERRIDE : "tournament_id"
@@ -2604,9 +2793,9 @@ erDiagram
     ANALYTICS_ALGORITHMS ||--o{ ANALYTICS_STANDINGS_DISTRIBUTION : "algorithm_id"
     AUTH_USER |o--o{ ANALYTICS_ANOMALY_FEEDBACK : "reviewer_user_id"
     AUTH_USER |o--o{ ANALYTICS_JOB : "requested_by_user_id"
+    ENCOUNTER_ENCOUNTER |o--o{ ANALYTICS_PLAYER_ANOMALY : "source_encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ ANALYTICS_MATCH_QUALITY : "encounter_id"
     PUBLIC_WORKSPACE |o--o{ ANALYTICS_JOB : "workspace_id"
-    TOURNAMENT_ENCOUNTER |o--o{ ANALYTICS_PLAYER_ANOMALY : "source_encounter_id"
-    TOURNAMENT_ENCOUNTER ||--o{ ANALYTICS_MATCH_QUALITY : "encounter_id"
     TOURNAMENT_PLAYER ||--o{ ANALYTICS_ANOMALY_FEEDBACK : "player_id"
     TOURNAMENT_PLAYER ||--o{ ANALYTICS_PERFORMANCE : "player_id"
     TOURNAMENT_PLAYER ||--o{ ANALYTICS_PLAYER_ANOMALY : "player_id"
@@ -3074,3 +3263,20 @@ the top of this document is the only revision claim here.
   matches played inside them, tournament slugs with redirects, phase schedules, hidden and
   preview tournaments, captain and per-map reports with the result-status state machine, scrim
   rooms, division-grid import jobs, and the removal of stored team SR.
+- **Encounter layer.** The encounter tables moved from `tournament` into their own `encounter`
+  schema with `ALTER TABLE … SET SCHEMA`, which kept every id: `/encounters/{id}`, the realtime
+  topics and the external foreign keys survived. The two sides became participations
+  (`encounter.team`, one row per seat, append-only) with a roster snapshot (`team_member`,
+  `team_member_role`); `home_team_id` / `away_team_id`, `format`, the bracket position
+  (now `tournament.bracket_encounter`) and the per-side score columns left the encounter. Games
+  gained `encounter.game_team`, which replaces `encounter_game_result`, the accepted home/away
+  scores and `encounter_map_code`. `encounter_map_report` and `encounter_captain_report` became
+  `game_claim` / `game_claim_result` and `team_report` / `team_report_result`, one result row
+  per participation. `encounter.scoring_rule` took over the stage's FFA columns and formulas, and
+  `catalog.discipline` was added with a `discipline` column on `tournament` and `encounter`. The
+  result journal now stores `before` / `after` arrays of `{encounter_team_id, score, placement}`
+  and a `result_version`; every result change writes exactly one row. `enclayer01` only adds and
+  reshapes: each legacy column and table stays, made nullable and unmapped from the ORM, until the
+  gated `enclayer02` drops them in the deploy after V1. `matches.match.home_team_id` /
+  `away_team_id` and the `team_id` columns of `matches.statistics`, `kill_feed` and `event` are
+  the only home/away leftovers, until the statistics rework.

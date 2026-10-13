@@ -41,7 +41,7 @@ def _local_ids(skeleton) -> set[int]:
 def _appearance_counts(skeleton) -> dict[int, int]:
     counts: dict[int, int] = {}
     for pairing in skeleton.pairings:
-        for team_id in (pairing.home_team_id, pairing.away_team_id):
+        for team_id in pairing.team_ids:
             if team_id is None:
                 continue
             counts[team_id] = counts.get(team_id, 0) + 1
@@ -68,7 +68,7 @@ class SingleEliminationInvariants(TestCase):
         final_local = max(p.local_id for p in s.pairings)
         for edge in s.advancement_edges:
             self.assertEqual(final_local, edge.target_local_id)
-            self.assertEqual("winner", edge.role)
+            self.assertEqual(1, edge.source_position)
 
     def test_power_of_two_8_teams(self) -> None:
         s = single_elimination.generate(list(range(1, 9)))
@@ -114,15 +114,13 @@ class SingleEliminationInvariants(TestCase):
         s = single_elimination.generate([10, 20, 30, 40])
         r1 = [p for p in s.pairings if p.round_number == 1]
         for p in r1:
-            self.assertIsNotNone(p.home_team_id)
-            self.assertIsNotNone(p.away_team_id)
+            self.assertNotIn(None, p.team_ids)
 
     def test_r2_plus_is_tbd(self) -> None:
         s = single_elimination.generate([10, 20, 30, 40])
         r2_plus = [p for p in s.pairings if p.round_number >= 2]
         for p in r2_plus:
-            self.assertIsNone(p.home_team_id)
-            self.assertIsNone(p.away_team_id)
+            self.assertEqual((None, None), p.team_ids)
 
 
 class DoubleEliminationInvariants(TestCase):
@@ -155,7 +153,7 @@ class DoubleEliminationInvariants(TestCase):
         # and silently vanished from the bracket.
         s = double_elimination.generate([1, 2], lower_bracket_team_ids=[3, 4, 5])
 
-        seeded = {tid for p in s.pairings for tid in (p.home_team_id, p.away_team_id) if tid is not None}
+        seeded = {tid for p in s.pairings for tid in p.team_ids if tid is not None}
         self.assertEqual({1, 2, 3, 4, 5}, seeded)
 
         # Acyclic: every edge points from an earlier-created match to a later
@@ -170,11 +168,11 @@ class DoubleEliminationInvariants(TestCase):
     def test_upper_4_lower_6_gives_every_match_an_onward_path(self) -> None:
         s = double_elimination.generate([1, 2, 3, 4], lower_bracket_team_ids=[5, 6, 7, 8, 9, 10])
 
-        seeded = {tid for p in s.pairings for tid in (p.home_team_id, p.away_team_id) if tid is not None}
+        seeded = {tid for p in s.pairings for tid in p.team_ids if tid is not None}
         self.assertEqual(set(range(1, 11)), seeded)
 
         gf = [p for p in s.pairings if p.name == "Grand Final"][0]
-        winner_sources = {e.source_local_id for e in s.advancement_edges if e.role == "winner"}
+        winner_sources = {e.source_local_id for e in s.advancement_edges if e.source_position == 1}
         for pairing in s.pairings:
             if pairing.local_id == gf.local_id:
                 continue
@@ -186,7 +184,7 @@ class DoubleEliminationInvariants(TestCase):
                 upper_ids = list(range(1, upper + 1))
                 lower_ids = list(range(upper + 1, upper + lower + 1))
                 s = double_elimination.generate(upper_ids, lower_bracket_team_ids=lower_ids)
-                seeded = {tid for p in s.pairings for tid in (p.home_team_id, p.away_team_id) if tid is not None}
+                seeded = {tid for p in s.pairings for tid in p.team_ids if tid is not None}
                 self.assertEqual(
                     set(upper_ids) | set(lower_ids),
                     seeded,
@@ -202,9 +200,9 @@ class DoubleEliminationInvariants(TestCase):
         s = double_elimination.generate(list(range(1, 9)))
         gf = [p for p in s.pairings if p.name == "Grand Final"][0]
         gf_incoming = [e for e in s.advancement_edges if e.target_local_id == gf.local_id]
-        # Two winner-edges into GF (UB champion → home, LB champion → away)
+        # Two winner-edges into GF (UB champion → slot 1, LB champion → slot 2)
         self.assertEqual(2, len(gf_incoming))
-        self.assertEqual({"home", "away"}, {e.target_slot for e in gf_incoming})
+        self.assertEqual({1, 2}, {e.target_slot for e in gf_incoming})
 
     def test_dropout_does_not_rematch_the_same_upper_match(self) -> None:
         for n in (5, 6, 8):
@@ -213,17 +211,19 @@ class DoubleEliminationInvariants(TestCase):
                 if pairing.round_number <= 0:
                     continue
                 w_edges = [
-                    e for e in s.advancement_edges if e.source_local_id == pairing.local_id and e.role == "winner"
+                    e for e in s.advancement_edges if e.source_local_id == pairing.local_id and e.source_position == 1
                 ]
                 l_edges = [
-                    e for e in s.advancement_edges if e.source_local_id == pairing.local_id and e.role == "loser"
+                    e for e in s.advancement_edges if e.source_local_id == pairing.local_id and e.source_position == 2
                 ]
                 if len(w_edges) != 1 or len(l_edges) != 1:
                     continue
                 next_ub = w_edges[0].target_local_id
                 drop_lb = l_edges[0].target_local_id
                 next_loser_targets = [
-                    e.target_local_id for e in s.advancement_edges if e.source_local_id == next_ub and e.role == "loser"
+                    e.target_local_id
+                    for e in s.advancement_edges
+                    if e.source_local_id == next_ub and e.source_position == 2
                 ]
                 self.assertNotIn(
                     drop_lb,
@@ -233,12 +233,12 @@ class DoubleEliminationInvariants(TestCase):
 
     def test_6_teams_r1_loser_crosses_to_the_other_half(self) -> None:
         s = double_elimination.generate([1, 2, 3, 4, 5, 6])
-        incoming: dict[int, set[tuple[str, int]]] = {}
+        incoming: dict[int, set[tuple[int, int]]] = {}
         for edge in s.advancement_edges:
-            incoming.setdefault(edge.target_local_id, set()).add((edge.role, edge.source_local_id))
+            incoming.setdefault(edge.target_local_id, set()).add((edge.source_position, edge.source_local_id))
         # local 5/6 are the two LB R2 slots: L M1 vs L M4, L M2 vs L M3.
-        self.assertEqual({("loser", 0), ("loser", 3)}, incoming[5])
-        self.assertEqual({("loser", 1), ("loser", 2)}, incoming[6])
+        self.assertEqual({(2, 0), (2, 3)}, incoming[5])
+        self.assertEqual({(2, 1), (2, 2)}, incoming[6])
 
     def test_lower_bracket_seeds_start_in_lower_bracket_2_2(self) -> None:
         # 2 teams in the upper bracket, 2 seeded directly into the lower bracket.
@@ -246,21 +246,21 @@ class DoubleEliminationInvariants(TestCase):
 
         ub_r1 = [p for p in s.pairings if p.round_number == 1]
         self.assertEqual(1, len(ub_r1))
-        self.assertEqual({1, 2}, {ub_r1[0].home_team_id, ub_r1[0].away_team_id})
+        self.assertEqual({1, 2}, set(ub_r1[0].team_ids))
 
         lb_r1 = [p for p in s.pairings if p.round_number == -1]
         self.assertEqual(1, len(lb_r1))
-        self.assertEqual({3, 4}, {lb_r1[0].home_team_id, lb_r1[0].away_team_id})
+        self.assertEqual({3, 4}, set(lb_r1[0].team_ids))
 
         # The lower-bracket seeds never appear in an upper-bracket match.
-        upper_team_ids = {
-            tid for p in s.pairings if p.round_number > 0 for tid in (p.home_team_id, p.away_team_id) if tid is not None
-        }
+        upper_team_ids = {tid for p in s.pairings if p.round_number > 0 for tid in p.team_ids if tid is not None}
         self.assertNotIn(3, upper_team_ids)
         self.assertNotIn(4, upper_team_ids)
 
         # The UB R1 loser drops into the lower bracket.
-        loser_edges = [e for e in s.advancement_edges if e.source_local_id == ub_r1[0].local_id and e.role == "loser"]
+        loser_edges = [
+            e for e in s.advancement_edges if e.source_local_id == ub_r1[0].local_id and e.source_position == 2
+        ]
         self.assertEqual(1, len(loser_edges))
 
     def test_lower_bracket_seeds_4_4_structure(self) -> None:
@@ -271,7 +271,7 @@ class DoubleEliminationInvariants(TestCase):
         # Seeded 1-vs-N, like the upper bracket: top lower seed meets the last.
         self.assertEqual(
             {frozenset({5, 8}), frozenset({6, 7})},
-            {frozenset({p.home_team_id, p.away_team_id}) for p in lb_r1},
+            {frozenset(p.team_ids) for p in lb_r1},
         )
 
         # local ids unique and every edge references a real pairing.
@@ -292,8 +292,7 @@ class DoubleEliminationInvariants(TestCase):
         s = double_elimination.generate([1, 2, 3, 4])
         lb_r1 = [p for p in s.pairings if p.round_number == -1]
         for p in lb_r1:
-            self.assertIsNone(p.home_team_id)
-            self.assertIsNone(p.away_team_id)
+            self.assertEqual((None, None), p.team_ids)
 
     def test_lower_entrants_wait_at_most_one_round_and_only_the_top_seeds_wait(self) -> None:
         for upper in range(2, 9):
@@ -303,7 +302,7 @@ class DoubleEliminationInvariants(TestCase):
                 first_round = {}
                 for p in s.pairings:
                     if p.round_number < 0:
-                        for t in (p.home_team_id, p.away_team_id):
+                        for t in p.team_ids:
                             if t is not None and t > 100:
                                 first_round.setdefault(t, -p.round_number)
                 self.assertEqual(set(lb_ids), set(first_round), (upper, lower))
@@ -329,7 +328,7 @@ class RoundRobinInvariants(TestCase):
         self.assertEqual(6, len(s.pairings))
         self.assertEqual(3, s.total_rounds)
 
-        pairs = {frozenset({p.home_team_id, p.away_team_id}) for p in s.pairings}
+        pairs = {frozenset(p.team_ids) for p in s.pairings}
         self.assertEqual(6, len(pairs))
 
     def test_odd_team_count_5_teams(self) -> None:
@@ -338,14 +337,13 @@ class RoundRobinInvariants(TestCase):
         self.assertEqual(10, len(s.pairings))
         self.assertEqual(5, s.total_rounds)
 
-        pairs = {frozenset({p.home_team_id, p.away_team_id}) for p in s.pairings}
+        pairs = {frozenset(p.team_ids) for p in s.pairings}
         self.assertEqual(10, len(pairs))
 
     def test_no_bye_team_in_pairings(self) -> None:
         s = round_robin.generate([1, 2, 3])
         for p in s.pairings:
-            self.assertNotEqual(-1, p.home_team_id)
-            self.assertNotEqual(-1, p.away_team_id)
+            self.assertNotIn(-1, p.team_ids)
 
 
 class SwissInvariants(TestCase):
@@ -357,15 +355,12 @@ class SwissInvariants(TestCase):
 
         # No team paired with itself
         for p in s.pairings:
-            self.assertNotEqual(p.home_team_id, p.away_team_id)
+            self.assertEqual(len(p.team_ids), len(set(p.team_ids)))
 
         # Every team appears at most once
         appearances: list[int] = []
         for p in s.pairings:
-            if p.home_team_id is not None:
-                appearances.append(p.home_team_id)
-            if p.away_team_id is not None:
-                appearances.append(p.away_team_id)
+            appearances.extend(t for t in p.team_ids if t is not None)
         self.assertEqual(len(appearances), len(set(appearances)))
 
     def test_monrad_pairing_top_vs_bottom_half(self) -> None:
@@ -377,7 +372,7 @@ class SwissInvariants(TestCase):
             swiss.SwissStanding(team_id=4, points=0.0),
         ]
         s = swiss.generate_round(standings, played_pairs=set(), round_number=1)
-        pairs = {frozenset({p.home_team_id, p.away_team_id}) for p in s.pairings}
+        pairs = {frozenset(p.team_ids) for p in s.pairings}
         self.assertEqual({frozenset({1, 3}), frozenset({2, 4})}, pairs)
 
     def test_avoids_rematch_when_possible(self) -> None:
@@ -386,7 +381,7 @@ class SwissInvariants(TestCase):
         s = swiss.generate_round(standings, played_pairs=played, round_number=2)
         # Each team still gets paired
         self.assertEqual(2, len(s.pairings))
-        pair_set = {frozenset({p.home_team_id, p.away_team_id}) for p in s.pairings}
+        pair_set = {frozenset(p.team_ids) for p in s.pairings}
         appearance_counts = _appearance_counts(s)
         self.assertEqual({1: 1, 2: 1, 3: 1, 4: 1}, appearance_counts)
         # The "1 vs 3" rematch must be avoided
@@ -409,7 +404,7 @@ class SwissInvariants(TestCase):
             played_pairs={frozenset({2, 4})},
             round_number=2,
         )
-        pair_set = {frozenset({p.home_team_id, p.away_team_id}) for p in s.pairings}
+        pair_set = {frozenset(p.team_ids) for p in s.pairings}
 
         self.assertEqual({1: 1, 2: 1, 3: 1, 4: 1}, _appearance_counts(s))
         self.assertNotIn(frozenset({2, 4}), pair_set)
@@ -439,7 +434,7 @@ class SwissInvariants(TestCase):
         ]
 
         skeleton = swiss.generate_round(standings, played_pairs=set(), round_number=2)
-        pairs = {frozenset({pairing.home_team_id, pairing.away_team_id}) for pairing in skeleton.pairings}
+        pairs = {frozenset(pairing.team_ids) for pairing in skeleton.pairings}
 
         self.assertEqual({frozenset({1, 3}), frozenset({2, 4})}, pairs)
 
@@ -457,15 +452,7 @@ class SwissInvariants(TestCase):
         )
 
         self.assertEqual(2, skeleton.bye_team_id)
-        self.assertEqual(
-            frozenset({1, 3}),
-            frozenset(
-                {
-                    skeleton.pairings[0].home_team_id,
-                    skeleton.pairings[0].away_team_id,
-                }
-            ),
-        )
+        self.assertEqual(frozenset({1, 3}), frozenset(skeleton.pairings[0].team_ids))
 
     def test_prefers_team_without_previous_bye(self) -> None:
         standings = [
@@ -526,8 +513,8 @@ class SwissInvariants(TestCase):
             skeleton = swiss.generate_round(standings, played_pairs, round_number)
             self.assertEqual(3, len(skeleton.pairings))
             for pairing in skeleton.pairings:
-                played_pairs.add(frozenset({pairing.home_team_id, pairing.away_team_id}))
-                points[min(pairing.home_team_id, pairing.away_team_id)] += 1.0
+                played_pairs.add(frozenset(pairing.team_ids))
+                points[min(pairing.team_ids)] += 1.0
 
         self.assertEqual(15, len(played_pairs))
 
@@ -596,7 +583,7 @@ class PlaceholderBracketInvariants(TestCase):
         seeded = {
             team_id
             for p in placeholder_bracket(StageType.DOUBLE_ELIMINATION, 4, lower_count=4).pairings
-            for team_id in (p.home_team_id, p.away_team_id)
+            for team_id in p.team_ids
             if team_id is not None
         }
         self.assertEqual(set(range(-8, 0)), seeded)

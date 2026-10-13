@@ -9,24 +9,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
 from src import models
-from src.domain.achievement_stage_filters import encounter_is_bracket, stage_is_completed
+from src.domain.achievement_duel import Duel
+from src.domain.achievement_stage_filters import encounter_is_bracket, join_bracket_context, stage_is_completed
 
 from ..context import EvalContext
 from . import ResultSet, register
 
 
 def _encounter_query_with_stage_context() -> sa.Select:
-    return (
+    return join_bracket_context(
         sa.select(models.Encounter.tournament_id)
         .select_from(models.Encounter)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .outerjoin(models.Stage, models.Stage.id == models.Encounter.stage_id)
-        .outerjoin(models.StageItem, models.StageItem.id == models.Encounter.stage_item_id)
     )
 
 
 def join_final_encounters(query: sa.Select, workspace_id: int) -> sa.Select:
-    """Narrow a query already joined to ``Encounter``/``Stage``/``StageItem`` to each tournament's final.
+    """Narrow a query already joined to ``Encounter``/``BracketEncounter``/``Stage``/``StageItem`` to each tournament's final.
 
     Stage identity matters: the highest round number alone would let an earlier
     stage's round of the same number pass as the final, so the last bracket
@@ -35,7 +34,7 @@ def join_final_encounters(query: sa.Select, workspace_id: int) -> sa.Select:
     far is not the final, and a double elimination may still add a reset.
     """
     bracket_clause = encounter_is_bracket(
-        encounter=models.Encounter,
+        bracket=models.BracketEncounter,
         stage=models.Stage,
         stage_item=models.StageItem,
     )
@@ -61,7 +60,7 @@ def join_final_encounters(query: sa.Select, workspace_id: int) -> sa.Select:
         .with_only_columns(
             models.Encounter.tournament_id.label("tournament_id"),
             stage_order.label("final_stage_order"),
-            sa.func.max(models.Encounter.round).label("final_round"),
+            sa.func.max(models.BracketEncounter.round).label("final_round"),
         )
         .join(
             final_stage_sq,
@@ -85,7 +84,7 @@ def join_final_encounters(query: sa.Select, workspace_id: int) -> sa.Select:
         sa.and_(
             models.Encounter.tournament_id == final_round_sq.c.tournament_id,
             stage_order == final_round_sq.c.final_stage_order,
-            models.Encounter.round == final_round_sq.c.final_round,
+            models.BracketEncounter.round == final_round_sq.c.final_round,
         ),
     )
 
@@ -106,7 +105,7 @@ async def execute_encounter_score(
     """Encounter with specific score pattern. Grain: user_tournament.
 
     params:
-        scores: list of [home_score, away_score] pairs to match.
+        scores: list of [slot 1 score, slot 2 score] pairs to match.
         round_type: "any" (default) | "final".
         side: which players to award — "winner" (default), "loser", or "both".
         winner: legacy bool alias — True → side="winner", False → side="both".
@@ -118,12 +117,9 @@ async def execute_encounter_score(
     if side is None:
         side = "winner" if params.get("winner", True) else "both"
 
+    duel = Duel()
     score_conditions = [
-        sa.and_(
-            models.Encounter.home_score == home_s,
-            models.Encounter.away_score == away_s,
-        )
-        for home_s, away_s in scores
+        sa.and_(duel.first.score == first_s, duel.second.score == second_s) for first_s, second_s in scores
     ]
 
     base_where = [
@@ -135,56 +131,38 @@ async def execute_encounter_score(
     if context.tournament:
         base_where.append(models.Encounter.tournament_id == context.tournament.id)
 
-    query = _encounter_query_with_stage_context().with_only_columns(
-        models.WorkspaceMember.player_id,
-        models.Encounter.tournament_id,
+    query = duel.join(
+        _encounter_query_with_stage_context().with_only_columns(
+            models.WorkspaceMember.player_id,
+            models.Encounter.tournament_id,
+        )
     )
 
     if round_type == "final":
         query = join_final_encounters(query, context.workspace_id)
 
-    if side in ("winner", "loser"):
-        if side == "winner":
-            target_team_id = sa.case(
-                (
-                    models.Encounter.home_score > models.Encounter.away_score,
-                    models.Encounter.home_team_id,
-                ),
-                else_=models.Encounter.away_team_id,
-            )
-        else:  # loser
-            target_team_id = sa.case(
-                (
-                    models.Encounter.home_score < models.Encounter.away_score,
-                    models.Encounter.home_team_id,
-                ),
-                else_=models.Encounter.away_team_id,
-            )
-        query = query.join(
-            models.Player,
-            sa.and_(
-                models.Player.team_id == target_team_id,
-                models.Player.tournament_id == models.Encounter.tournament_id,
-            ),
-        )
+    if side == "winner":
+        target_team = models.Player.team_id == duel.winner_team_id
+        base_where.append(duel.decided)
+    elif side == "loser":
+        target_team = models.Player.team_id == duel.loser_team_id
+        base_where.append(duel.decided)
     else:  # both
-        query = query.join(
-            models.Player,
-            sa.and_(
-                sa.or_(
-                    models.Player.team_id == models.Encounter.home_team_id,
-                    models.Player.team_id == models.Encounter.away_team_id,
-                ),
-                models.Player.tournament_id == models.Encounter.tournament_id,
-            ),
-        )
+        target_team = models.Player.team_id.in_((duel.first.team_id, duel.second.team_id))
 
-    query = query.join(
-        models.WorkspaceMember,
-        models.WorkspaceMember.id == models.Player.workspace_member_id,
-    ).where(
-        *base_where,
-        models.Player.is_substitution.is_(False),
+    query = (
+        query.join(
+            models.Player,
+            sa.and_(target_team, models.Player.tournament_id == models.Encounter.tournament_id),
+        )
+        .join(
+            models.WorkspaceMember,
+            models.WorkspaceMember.id == models.Player.workspace_member_id,
+        )
+        .where(
+            *base_where,
+            models.Player.is_substitution.is_(False),
+        )
     )
 
     result = await session.execute(query)
@@ -205,49 +183,40 @@ async def execute_encounter_revenge(
     """Team that lost to opponent earlier, then won. Grain: user_tournament."""
     e1 = sa.orm.aliased(models.Encounter, name="e1")
     e2 = sa.orm.aliased(models.Encounter, name="e2")
+    d1 = Duel(e1, name="d1")
+    d2 = Duel(e2, name="d2")
 
     same_teams = sa.or_(
         sa.and_(
-            e1.home_team_id == e2.home_team_id,
-            e1.away_team_id == e2.away_team_id,
+            d1.first.team_id == d2.first.team_id,
+            d1.second.team_id == d2.second.team_id,
         ),
         sa.and_(
-            e1.home_team_id == e2.away_team_id,
-            e1.away_team_id == e2.home_team_id,
+            d1.first.team_id == d2.second.team_id,
+            d1.second.team_id == d2.first.team_id,
         ),
     )
 
-    e1_winner = sa.case(
-        (e1.home_score > e1.away_score, e1.home_team_id),
-        else_=e1.away_team_id,
+    query = sa.select(
+        models.WorkspaceMember.player_id,
+        e2.tournament_id,
+    ).select_from(e1)
+    query = d1.join(query).join(
+        e2,
+        sa.and_(
+            e1.tournament_id == e2.tournament_id,
+            e1.id < e2.id,
+            e1.status == "COMPLETED",
+            e2.status == "COMPLETED",
+        ),
     )
-    e2_winner = sa.case(
-        (e2.home_score > e2.away_score, e2.home_team_id),
-        else_=e2.away_team_id,
-    )
-
     query = (
-        sa.select(
-            models.WorkspaceMember.player_id,
-            e2.tournament_id,
-        )
-        .select_from(e1)
-        .join(
-            e2,
-            sa.and_(
-                e1.tournament_id == e2.tournament_id,
-                e1.id < e2.id,
-                same_teams,
-                e1_winner != e2_winner,
-                e1.status == "COMPLETED",
-                e2.status == "COMPLETED",
-            ),
-        )
+        d2.join(query)
         .join(models.Tournament, models.Tournament.id == e2.tournament_id)
         .join(
             models.Player,
             sa.and_(
-                models.Player.team_id == e2_winner,
+                models.Player.team_id == d2.winner_team_id,
                 models.Player.tournament_id == e2.tournament_id,
             ),
         )
@@ -256,6 +225,10 @@ async def execute_encounter_revenge(
             models.WorkspaceMember.id == models.Player.workspace_member_id,
         )
         .where(
+            same_teams,
+            d1.decided,
+            d2.decided,
+            d1.winner_team_id != d2.winner_team_id,
             models.Tournament.workspace_id == context.workspace_id,
             models.Player.is_substitution.is_(False),
         )

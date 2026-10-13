@@ -7,13 +7,13 @@ from shared.models.catalog.gamemode import *
 from shared.models.catalog.hero import *
 from shared.models.catalog.map import *
 from shared.models.division_grid.division_grid import *
+from shared.models.encounter import *
 from shared.models.identity.auth_user import *
 from shared.models.identity.social import *
 from shared.models.identity.user import *
 from shared.models.matches.match import *
 from shared.models.registration.registration import *
 from shared.models.tenancy.workspace import *
-from shared.models.tournament.encounter import *
 from shared.models.tournament.standings import *
 from shared.models.tournament.team import *
 from shared.models.tournament.tournament import *

@@ -12,6 +12,10 @@ import ProfileToolbar from "@/app/(site)/users/components/header/ProfileToolbar"
 import userService from "@/services/user.service";
 import { HeroFrame } from "@/components/site/PageHero";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import {
+  encounterPerspective,
+  USER_ENCOUNTER_ENTITIES
+} from "@/app/(site)/users/components/shared/encounter-perspective";
 
 interface UserHeaderProps {
   profile: UserProfile;
@@ -34,18 +38,13 @@ const deriveFormStreak = async (userId: number, scope: StatsScope): Promise<Form
       10,
       "played_at",
       "desc",
-      undefined,
+      USER_ENCOUNTER_ENTITIES,
       undefined,
       scope
     );
     return encounters.results.slice(0, 10).reverse().map((enc): FormResult => {
-      const homePlayers = enc.home_team?.players ?? [];
-      const isUserHome = homePlayers.some((p) => p.user_id === userId);
-      const userScore = isUserHome ? enc.score.home : enc.score.away;
-      const oppScore = isUserHome ? enc.score.away : enc.score.home;
-      if (userScore > oppScore) return "W";
-      if (userScore < oppScore) return "L";
-      return "D";
+      const { kind } = encounterPerspective(enc, userId);
+      return kind === "win" ? "W" : kind === "loss" ? "L" : "D";
     });
   } catch {
     return [];

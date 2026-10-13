@@ -34,22 +34,24 @@ import asyncio
 from typing import Any
 
 from loguru import logger
-from sqlalchemy import event, or_, select
+from sqlalchemy import event, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from shared.core.enums import (
-    EncounterFormat,
     EncounterStatus,
     MapVetoSessionStatus,
     TournamentStatus,
 )
 from shared.domain import pick_ban_rules as pbr
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.pick_ban import PickBanSession, PickBanSubmission
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.pick_ban import PickBanSession, PickBanSubmission
+from shared.models.encounter.team import EncounterTeam
+from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.tournament import Tournament
 from src.core import db
+from src.services.encounter.veto_session import ROOM_SLOT_COUNT
 
 __all__ = (
     "reconcile_due_rooms",
@@ -170,20 +172,38 @@ async def _reconcile_in_new_session(scope: tuple[str, int]) -> None:
         logger.exception("Pick-ban room reconcile failed", scope=kind, scope_id=scope_id)
 
 
+def _fully_seated() -> Any:
+    """ "Every slot of the card has a live participation" as one predicate.
+
+    The sweeps used to ask ``home_team_id IS NOT NULL AND away_team_id IS NOT
+    NULL``; counting the live seats is the same question for a card of any
+    width, and it is the same one ``creation_plan`` asks.
+    """
+    return (
+        select(func.count())
+        .select_from(EncounterTeam)
+        .where(EncounterTeam.encounter_id == Encounter.id, EncounterTeam.active.is_(True))
+        .correlate(Encounter)
+        .scalar_subquery()
+    ) == Encounter.slot_count
+
+
 async def _encounters_of(session: AsyncSession, kind: str, scope_id: int) -> list[int]:
     """The rooms one staged scope covers."""
     if kind == "encounter":
         return [scope_id]
-    column = Encounter.tournament_id if kind == "tournament" else Encounter.stage_id
-    result = await session.execute(
-        select(Encounter.id).where(
-            column == scope_id,
-            Encounter.format != EncounterFormat.FFA.value,
-            Encounter.home_team_id.isnot(None),
-            Encounter.away_team_id.isnot(None),
-            Encounter.status != EncounterStatus.COMPLETED,
-        )
+    query = select(Encounter.id).where(
+        Encounter.slot_count == ROOM_SLOT_COUNT,
+        Encounter.status != EncounterStatus.COMPLETED,
+        _fully_seated(),
     )
+    if kind == "tournament":
+        query = query.where(Encounter.tournament_id == scope_id)
+    else:
+        query = query.join(BracketEncounter, BracketEncounter.encounter_id == Encounter.id).where(
+            BracketEncounter.stage_id == scope_id
+        )
+    result = await session.execute(query)
     return sorted(result.scalars().all())
 
 
@@ -244,6 +264,17 @@ async def reconcile_due_rooms() -> None:
         )
         for row in rows.scalars().all():
             submissions.setdefault(row.session_id, []).append(row)
+        # One seat read for the whole batch: a sequence written before §13.4
+        # still names slots, and translating it needs the encounter's seats.
+        slots: dict[int, dict[int, int]] = {}
+        seats = await session.execute(
+            select(EncounterTeam).where(
+                EncounterTeam.encounter_id.in_({row.encounter_id for row in sessions}),
+                EncounterTeam.active.is_(True),
+            )
+        )
+        for seat in seats.scalars().all():
+            slots.setdefault(seat.encounter_id, {})[seat.slot] = seat.id
 
         actions = _service()
         due = sorted(
@@ -252,7 +283,10 @@ async def reconcile_due_rooms() -> None:
                 for row in sessions
                 if actions.session_pending(
                     row,
-                    pbr.resolved_steps_from_json(list(row.resolved_sequence_json or [])),
+                    pbr.resolved_steps_from_json(
+                        list(row.resolved_sequence_json or []),
+                        actors_by_slot=slots.get(row.encounter_id, {}),
+                    ),
                     submissions.get(row.id, []),
                 )
             }
@@ -265,7 +299,7 @@ async def reconcile_stalled_rooms() -> None:
 
     parser-service finalizing a map and app-service's encounter CRUD commit in
     their own processes, so no commit hook here ever sees them. The sweep is
-    bounded to encounters that can still be played -- both teams known, a live
+    bounded to encounters that can still be played -- every slot seated, a live
     tournament, a non-terminal status, a published stage (or none) -- and every
     one of them is prechecked unlocked before anything is locked.
     """
@@ -273,14 +307,14 @@ async def reconcile_stalled_rooms() -> None:
         result = await session.execute(
             select(Encounter.id)
             .join(Tournament, Tournament.id == Encounter.tournament_id)
-            .outerjoin(Stage, Stage.id == Encounter.stage_id)
+            .outerjoin(BracketEncounter, BracketEncounter.encounter_id == Encounter.id)
+            .outerjoin(Stage, Stage.id == BracketEncounter.stage_id)
             .where(
-                Encounter.format != EncounterFormat.FFA.value,
-                Encounter.home_team_id.isnot(None),
-                Encounter.away_team_id.isnot(None),
+                Encounter.slot_count == ROOM_SLOT_COUNT,
                 Encounter.status != EncounterStatus.COMPLETED,
+                _fully_seated(),
                 Tournament.status.notin_((TournamentStatus.COMPLETED, TournamentStatus.ARCHIVED)),
-                or_(Encounter.stage_id.is_(None), Stage.is_published.is_(True)),
+                or_(BracketEncounter.stage_id.is_(None), Stage.is_published.is_(True)),
             )
         )
         await _sweep(session, sorted(result.scalars().all()))

@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { Ban, Check, ClipboardCopy, History, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import TeamName, { type TeamNameInput } from "@/components/TeamName";
+import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import type { AqtRoleKey } from "@/lib/roster/player-role";
 import {
@@ -14,7 +14,9 @@ import {
 } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
+import { seatTeam, seatsBySlot } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
+import type { EncounterTeam } from "@/types/encounter.types";
 
 /** One committed action of a round's hero ban phase, resolved against the catalog. */
 export interface PregameHeroAction {
@@ -23,11 +25,11 @@ export interface PregameHeroAction {
   name: string;
   /** Undefined until the hero catalog resolves — the thumb falls back to initials. */
   item: PickBanItemLike | undefined;
-  /** Only used to order a side's rows; null when the catalog knows no role. */
+  /** Only used to order a team's rows; null when the catalog knows no role. */
   role: AqtRoleKey | null;
   action: "ban" | "protect";
-  /** The side that committed it. */
-  side: "home" | "away";
+  /** The participation (`EncounterTeam.id`) that committed it. */
+  teamId: number;
   /**
    * The earlier map this ban was spent on, when its `lifetime` still covers
    * this one. Nobody acted on it here, so it is badged with its origin rather
@@ -62,11 +64,9 @@ export interface PregameHeroRound extends PregameHeroBoard {
 /** Tank-damage-support, the order the game's own hero list uses. */
 const ROLE_RANK: Record<AqtRoleKey, number> = { tank: 0, damage: 1, support: 2 };
 
-/** The side's accent, as a class because it colours the team name itself. */
-const SIDE_ACCENT = {
-  home: "text-[color:var(--aqt-teal)]",
-  away: "text-[color:var(--aqt-rose)]"
-} as const;
+/** The seat's accent, as a class because it colours the team name itself (slot 1 teal, others rose). */
+const seatAccent = (slot: number) =>
+  slot === 1 ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-rose)]";
 
 /**
  * The round's hero bans, on the screen where the map is played and reported.
@@ -75,29 +75,23 @@ const SIDE_ACCENT = {
  * is gone — and that is exactly when the bans are needed, because they have to
  * be set up in the game lobby before the map starts.
  *
- * Split by side, because a blind step is two independent lists and a captain
+ * Split by team, because a blind step is two independent lists and a captain
  * needs to see that theirs landed: duplicates MERGE into one banned hero on
- * the board, so reading the board alone would show one side a ban short. A ban
- * carried from an earlier map wears its origin instead of a side's colour —
+ * the board, so reading the board alone would show one team a ban short. A ban
+ * carried from an earlier map wears its origin instead of a team's colour —
  * nobody spent it here. Under the two columns sits what the lobby actually
  * needs: the final bans, merged and in the game's role order, and a button
  * that puts them on the clipboard.
  */
 export function PregameHeroBans({
   board,
-  homeName,
-  awayName,
-  homeTeam,
-  awayTeam,
+  teams,
   eyebrow,
   hint
 }: Readonly<{
   board: PregameHeroBoard;
-  homeName: string;
-  awayName: string;
-  /** The side's team, for its logo — undefined when the encounter has none. */
-  homeTeam: TeamNameInput | null | undefined;
-  awayTeam: TeamNameInput | null | undefined;
+  /** The encounter's live seats: a column each, with the source team's logo when the read carried it. */
+  teams: EncounterTeam[];
   /**
    * Replaces the default "bans for this map" caption. Pass `null` to drop it:
    * the closing screen captions each row itself, with the map's own still, so
@@ -144,18 +138,13 @@ export function PregameHeroBans({
       {/* Stacked below `sm` for the same reason the claim row is: two columns of
           hero names on a phone truncate to initials. */}
       <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 sm:gap-3">
-        <SideBans
-          side="home"
-          name={homeName}
-          team={homeTeam}
-          actions={board.actions.filter((action) => action.side === "home")}
-        />
-        <SideBans
-          side="away"
-          name={awayName}
-          team={awayTeam}
-          actions={board.actions.filter((action) => action.side === "away")}
-        />
+        {seatsBySlot(teams).map((seat) => (
+          <TeamBans
+            key={seat.id}
+            seat={seat}
+            actions={board.actions.filter((action) => action.teamId === seat.id)}
+          />
+        ))}
       </div>
 
       {bannedHeroes.length > 0 ? (
@@ -203,23 +192,19 @@ export function PregameHeroBans({
 }
 
 /**
- * One side's committed actions. Rendered even when empty — a step can give a
- * side no ban this round, and a missing column would read as data still
+ * One team's committed actions. Rendered even when empty — a step can give a
+ * team no ban this round, and a missing column would read as data still
  * loading rather than as nothing to transfer.
  */
-function SideBans({
-  side,
-  name,
-  team,
+function TeamBans({
+  seat,
   actions
 }: Readonly<{
-  side: "home" | "away";
-  name: string;
-  team: TeamNameInput | null | undefined;
+  seat: EncounterTeam;
   actions: PregameHeroAction[];
 }>) {
   const t = useTranslations("pickBan.room");
-  const accent = SIDE_ACCENT[side];
+  const accent = seatAccent(seat.slot);
   const ordered = [...actions].sort(
     (left, right) =>
       (left.action === "ban" ? 0 : 1) - (right.action === "ban" ? 0 : 1) ||
@@ -229,12 +214,12 @@ function SideBans({
 
   return (
     <div
-      data-hero-bans={side}
+      data-hero-bans={seat.slot}
       className="flex flex-col gap-1.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card-2)]/40 p-2.5"
     >
       <TeamName
-        team={team}
-        fallback={name}
+        team={seatTeam(seat)}
+        fallback={seat.name}
         size="sm"
         className="gap-1.5"
         nameClassName={cn("text-xs font-semibold", accent)}

@@ -60,8 +60,8 @@ function ProjectedBracket({ stage, workspaceId }: Readonly<{ stage: Stage; works
     queryFn: () => tournamentService.getStageBracketPreview(stage.tournament_id, stage.id)
   });
   // Placeholder seeds are negative; only a seeded slot has a team to name.
-  const hasTeams = (previewQuery.data ?? []).some(
-    (row) => (row.home_team_id ?? 0) > 0 || (row.away_team_id ?? 0) > 0
+  const hasTeams = (previewQuery.data ?? []).some((row) =>
+    row.team_ids.some((teamId) => (teamId ?? 0) > 0)
   );
   const teamsQuery = useQuery({
     ...tournamentTeamsQueryOptions({ id: stage.tournament_id, workspace_id: workspaceId }),

@@ -36,7 +36,7 @@ import type { FfaColumn } from "@/types/ffa.types";
 import type { StageForm } from "../stageForm";
 
 /**
- * How an FFA league is scored: the stage's `ffa_scoring`.
+ * How an FFA league is scored: the rule half of the stage's `scoring`.
  *
  * Three things, and the third is the rule: the columns a game records, the
  * points a place pays, and the formula that turns both into the points of that

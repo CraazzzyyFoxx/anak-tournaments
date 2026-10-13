@@ -17,14 +17,11 @@ metadata check, not a substitute for applying the schema: run
 
 from __future__ import annotations
 
-import typing
-
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
 
 from shared import models
 from shared.core import enums
-from shared.services.encounter.finalize import FinalizeSource
 
 
 def _ddl(model) -> str:
@@ -48,10 +45,15 @@ class TestAuditTableDDL:
         assert "id BIGSERIAL NOT NULL" in _ddl(models.EncounterResultAudit)
 
     def test_actor_and_adopted_team_survive_deletion(self):
-        """A deleted account or team must not erase the trail."""
+        """A deleted account or participation must not erase the trail."""
         ddl = _ddl(models.EncounterResultAudit)
         assert 'FOREIGN KEY(actor_user_id) REFERENCES players."user" (id) ON DELETE SET NULL' in ddl
-        assert "FOREIGN KEY(adopted_team_id) REFERENCES tournament.team (id) ON DELETE SET NULL" in ddl
+        # The adopted side is a participation now, scoped to the encounter, and
+        # only that one column is emptied when it goes.
+        assert (
+            "FOREIGN KEY(adopted_team_id, encounter_id) REFERENCES encounter.team (id, encounter_id) "
+            "ON DELETE SET NULL (adopted_team_id)" in ddl
+        )
 
     def test_actor_is_nullable_for_machine_decisions(self):
         """Challonge import and the bracket cascade have no human actor, and
@@ -59,14 +61,14 @@ class TestAuditTableDDL:
         assert models.EncounterResultAudit.__table__.c.actor_user_id.nullable is True
 
     def test_source_fits_every_value_it_records(self):
-        """``source`` holds a ``FinalizeSource`` on a series-level row and an
-        ``EncounterGameResultSource`` on a per-game one. It was sized for the
-        first set alone, so ``captain_agreement`` -- written by every
-        captain-agreed map result -- overflowed ``varchar(16)`` and the insert
-        died at the driver."""
+        """``source`` holds who decided: an ``EncounterResultSource`` on a
+        series-level row, an ``EncounterGameResultSource`` on a per-game one.
+        It was sized for the first set alone, so ``captain_agreement`` --
+        written by every captain-agreed map result -- overflowed
+        ``varchar(16)`` and the insert died at the driver."""
         width = models.EncounterResultAudit.__table__.c.source.type.length
         longest = max(
             *(len(member.value) for member in enums.EncounterGameResultSource),
-            *(len(literal) for literal in typing.get_args(FinalizeSource)),
+            *(len(member.value) for member in enums.EncounterResultSource),
         )
         assert width >= longest, f"source varchar({width}) cannot hold a {longest}-character value"

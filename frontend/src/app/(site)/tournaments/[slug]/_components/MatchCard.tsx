@@ -5,7 +5,9 @@ import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
-import { isEncounterCompleted, isEncounterLive } from "@/lib/encounter/status";
+import { encounterSeatScore } from "@/lib/encounter/detail";
+import { getEncounterWinner, isEncounterCompleted, isEncounterLive } from "@/lib/encounter/status";
+import { seatAt, seatTeam, type DuelSlot } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
 import type { Encounter } from "@/types/encounter.types";
 
@@ -44,23 +46,24 @@ export function MatchCard({
   const t = useTranslations();
   const live = isEncounterLive(encounter);
   const completed = isEncounterCompleted(encounter);
-  const home = encounter.score?.home ?? 0;
-  const away = encounter.score?.away ?? 0;
-  const hasScore = completed || home !== 0 || away !== 0;
-  const winner: "home" | "away" | null = completed ? (home > away ? "home" : away > home ? "away" : null) : null;
+  const winner = getEncounterWinner(encounter);
+  const scoreOne = seatAt(encounter.teams, 1)?.score ?? 0;
+  const scoreTwo = seatAt(encounter.teams, 2)?.score ?? 0;
+  const hasScore = completed || scoreOne !== 0 || scoreTwo !== 0;
   const rows = size === "sm" ? "h-8 text-caption" : "h-10 text-body";
 
-  const row = (side: "home" | "away") => {
-    const team = side === "home" ? encounter.home_team : encounter.away_team;
-    const score = side === "home" ? home : away;
-    const won = winner === side;
+  const row = (slot: DuelSlot) => {
+    const seat = seatAt(encounter.teams, slot);
+    const team = seatTeam(seat);
+    const score = slot === 1 ? scoreOne : scoreTwo;
+    const won = winner === slot;
     const lost = winner !== null && !won;
     return (
       <div
         className={cn(
           "flex items-center justify-between gap-2 px-2.5",
           rows,
-          side === "home" && "border-b border-[color:var(--aqt-border)]",
+          slot === 1 && "border-b border-[color:var(--aqt-border)]",
           won && "bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] font-semibold text-[color:var(--aqt-fg)]",
           lost && "text-[color:var(--aqt-fg-dim)]",
           winner === null && "text-[color:var(--aqt-fg-muted)]"
@@ -104,12 +107,13 @@ export function MatchCard({
           ) : null}
         </div>
       ) : null}
-      {row("home")}
-      {row("away")}
+      {row(1)}
+      {row(2)}
       {size === "md" && encounter.matches?.length > 0 ? (
         <ul className="flex flex-wrap gap-1 border-t border-[color:var(--aqt-border)] px-2.5 py-1.5">
           {encounter.matches.map((map) => {
-            const played = map.score && (map.score.home !== 0 || map.score.away !== 0);
+            const mapScore = map.score ? encounterSeatScore(map, encounter) : null;
+            const played = mapScore && (mapScore.one !== 0 || mapScore.two !== 0);
             return (
               <li
                 key={map.id}
@@ -121,7 +125,7 @@ export function MatchCard({
                 )}
               >
                 {map.map?.name ?? "—"}
-                {played ? ` ${map.score.home}:${map.score.away}` : null}
+                {played ? ` ${mapScore.one}:${mapScore.two}` : null}
               </li>
             );
           })}

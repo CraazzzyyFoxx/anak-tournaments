@@ -54,6 +54,9 @@ from shared.core import enums  # noqa: E402
 from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.models.encounter.encounter import Encounter  # noqa: E402
+from shared.models.encounter.game import EncounterGame  # noqa: E402
+from shared.models.encounter.team import EncounterTeam  # noqa: E402
 from shared.models.identity.rbac import (  # noqa: E402
     Permission,
     Role,
@@ -62,8 +65,10 @@ from shared.models.identity.rbac import (  # noqa: E402
     user_roles,
 )
 from shared.models.platform.notification import Notification  # noqa: E402
-from shared.models.tournament.encounter_game import EncounterGame  # noqa: E402
-from shared.testing import install_postgres_type_shims  # noqa: E402
+from shared.testing import (
+    create_sqlite_tables,  # noqa: E402
+    install_postgres_type_shims,  # noqa: E402
+)
 from src import models  # noqa: E402
 from src.services.encounter import captain as captain_module  # noqa: E402
 from src.services.encounter import map_report as map_report_module  # noqa: E402
@@ -80,13 +85,9 @@ TABLE_NAMES = (
     "tournament.tournament_phase_schedule",
     "tournament.team",
     "tournament.player",
-    "tournament.encounter",
-    "tournament.encounter_game",
-    "tournament.encounter_captain_report",
-    "tournament.encounter_map_code",
-    "tournament.encounter_map_report",
-    # The map-report path journals the claim before it notifies anyone.
-    "tournament.encounter_room_event",
+    "encounter.encounter",
+    "encounter.team",
+    "encounter.game",
     "matches.match",
     "workspace",
     "players.user",
@@ -213,8 +214,7 @@ class _Fixture:
             for schema in sorted({table.schema for table in tables if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
             with _sqlite_creatable(tables):
-                for table in tables:
-                    table.create(conn)
+                create_sqlite_tables(conn, tables)
         self.session = Session(self.engine, expire_on_commit=False)
         self.shim = _AsyncSessionShim(self.session)
         self.tournament = models.Tournament(
@@ -573,8 +573,15 @@ class RegistrationDecisionTests(_ProducerTestCase):
         )
 
 
-class DisputedMapReportTests(_ProducerTestCase):
-    """``map_report.py`` -- a contradiction needs an answer from BOTH captains."""
+class DisputedReportTests(_ProducerTestCase):
+    """The two producers a contradiction reaches: the per-game claim
+    (``map_report``) and the series report (``captain``).
+
+    They are driven at the notifier, not through the whole claim: whether two
+    claims disagree is the reconciliation's own subject (the pregame suites),
+    and it needs the claim, game-team and room-journal tables this fixture does
+    not build. What is asserted here is who is told, and what the row says.
+    """
 
     def setUp(self) -> None:
         super().setUp()
@@ -594,64 +601,47 @@ class DisputedMapReportTests(_ProducerTestCase):
         )
         self.fx.session.add_all([home, away])
         self.fx.session.flush()
-        self.encounter = models.Encounter(
+        self.encounter = Encounter(
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
             tournament_id=TOURNAMENT_ID,
+            scoring_rule_id=1,
             name="Vanguard vs Rearguard",
-            home_team_id=home.id,
-            away_team_id=away.id,
-            home_score=0,
-            away_score=0,
-            round=1,
-            closeness=0.0,
+            slot_count=2,
             best_of=3,
         )
         self.fx.session.add(self.encounter)
         self.fx.session.flush()
-        self.home_team_id = home.id
-        self.away_team_id = away.id
+        self.seats = [
+            EncounterTeam(
+                encounter_id=self.encounter.id, tournament_id=TOURNAMENT_ID, slot=slot, team_id=team.id, name=team.name
+            )
+            for slot, team in enumerate((home, away), 1)
+        ]
+        self.fx.session.add_all(self.seats)
         self.game = EncounterGame(
             encounter_id=self.encounter.id,
             position=1,
             map_id=77,
-            state=enums.EncounterGameState.AWAITING_RESULT,
+            state=enums.EncounterGameState.DISPUTED,
         )
         self.fx.session.add(self.game)
         self.fx.session.flush()
-        # The opponent already claimed a contradicting score for this position.
-        self.fx.session.add(
-            models.EncounterMapReport(
-                game_id=self.game.id,
-                side="away",
-                home_score=1,
-                away_score=3,
-            )
-        )
-        self.fx.session.flush()
 
-        live = patch.object(map_report_module, "is_encounter_live", AsyncMock(return_value=True))
-        live.start()
-        self.addCleanup(live.stop)
-        session_lookup = patch.object(
-            map_report_module.pick_ban_session_service, "get_pick_ban_session", AsyncMock(return_value=None)
-        )
-        session_lookup.start()
-        self.addCleanup(session_lookup.stop)
-
-    async def test_disputed_map_report_notifies_both_captains(self) -> None:
-        result = await map_report_module.map_report_service.submit_map_report(
+    async def _dispute(self) -> None:
+        await map_report_module.map_report_service._notify_dispute(
             self.fx.shim,
             self.encounter,
-            game_id=self.game.id,
-            side="home",
-            reporter_user_id=CAPTAIN_AUTH,
-            home_score=3,
-            away_score=1,
+            game=self.game,
+            seats=self.seats,
+            reporter_auth_user_id=CAPTAIN_AUTH,
         )
 
-        self.assertTrue(result["disputed"])
-        rows = self.fx.notifications()
+    async def test_disputed_game_claim_notifies_both_captains(self) -> None:
+        await self._dispute()
+
+        rows = self.fx.notifications("encounter.report_disputed")
         self.assertEqual({CAPTAIN_AUTH, OPPONENT_AUTH}, {row.recipient_auth_user_id for row in rows})
-        self.assertEqual({"encounter.report_disputed"}, {row.kind for row in rows})
         self.assertEqual(
             {
                 "encounter_id": self.encounter.id,
@@ -661,17 +651,6 @@ class DisputedMapReportTests(_ProducerTestCase):
                 "map_id": 77,
             },
             rows[0].payload_json,
-        )
-
-    async def _dispute(self) -> None:
-        await map_report_module.map_report_service.submit_map_report(
-            self.fx.shim,
-            self.encounter,
-            game_id=self.game.id,
-            side="home",
-            reporter_user_id=CAPTAIN_AUTH,
-            home_score=3,
-            away_score=1,
         )
 
     async def test_the_dispute_also_pages_the_organizers_who_can_end_it(self) -> None:
@@ -696,8 +675,7 @@ class DisputedMapReportTests(_ProducerTestCase):
                 "tournament_id": TOURNAMENT_ID,
                 "game_id": self.game.id,
                 "position": 1,
-                "home_team_name": "Vanguard",
-                "away_team_name": "Rearguard",
+                "team_names": ["Vanguard", "Rearguard"],
             },
             rows[0].payload_json,
         )
@@ -733,36 +711,14 @@ class DisputedMapReportTests(_ProducerTestCase):
 
         ``position`` is the ``0`` sentinel there -- what the inbox's ICU
         ``plural`` selects the series wording on -- and the dedupe key names the
-        series rather than a game. Driven through ``_recompute_encounter_result``,
-        the branch that DECIDES the dispute, rather than through the whole
-        submit, whose report-form and captain-identity fixtures decide nothing
-        here. The two side effects beside it are stubbed: an audit row and a
-        recalculation job are other tests' subjects, and other tables.
+        series rather than a game.
         """
         self.fx.staff(ORGANIZER_AUTH, role_name="referee")
-        self.fx.session.add_all(
-            [
-                models.EncounterCaptainReport(
-                    encounter_id=self.encounter.id, team_id=self.home_team_id, home_score=2, away_score=0
-                ),
-                models.EncounterCaptainReport(
-                    encounter_id=self.encounter.id, team_id=self.away_team_id, home_score=0, away_score=2
-                ),
-            ]
+
+        await captain_module.captain_service._notify_dispute(
+            self.fx.shim, self.encounter, self.seats, actor_auth_user_id=CAPTAIN_AUTH
         )
-        self.fx.session.flush()
-        self.fx.session.refresh(self.encounter)
 
-        with (
-            patch.object(captain_module, "record_result_transition"),
-            patch.object(captain_module.captain_service, "_enqueue_tournament_recalculation", AsyncMock()),
-        ):
-            confirmed = await captain_module.captain_service._recompute_encounter_result(
-                self.fx.shim, self.encounter, actor_user_id=1, actor_auth_user_id=CAPTAIN_AUTH
-            )
-
-        self.assertFalse(confirmed)
-        self.assertEqual(enums.EncounterResultStatus.DISPUTED, self.encounter.result_status)
         rows = self.fx.notifications("encounter.dispute_review")
         self.assertEqual([ORGANIZER_AUTH], [row.recipient_auth_user_id for row in rows])
         self.assertEqual(f"series:{self.encounter.id}", rows[0].dedupe_key)
@@ -771,8 +727,7 @@ class DisputedMapReportTests(_ProducerTestCase):
                 "encounter_id": self.encounter.id,
                 "tournament_id": TOURNAMENT_ID,
                 "position": 0,
-                "home_team_name": "Vanguard",
-                "away_team_name": "Rearguard",
+                "team_names": ["Vanguard", "Rearguard"],
             },
             rows[0].payload_json,
         )

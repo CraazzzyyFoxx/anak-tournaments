@@ -1,5 +1,7 @@
 // Admin CRUD Types
 
+import type { CaptainReport, ReplayCode } from "@/types/encounter.types";
+
 // ─── Global Settings (parser.*) ───────────────────────────────────────────────
 
 export interface SettingRead {
@@ -445,17 +447,24 @@ export interface StageItemInputUpdateInput {
   slot?: number;
 }
 
-/** `POST /admin/encounters/{id}/swap-slot`: exchange the teams in two bracket slots. */
+/** `POST /admin/encounters/{id}/swap-slot`: exchange the teams in two bracket seats. */
 export interface EncounterSwapSlotInput {
-  slot: "home" | "away";
+  slot: number;
   target_encounter_id: number;
-  target_slot: "home" | "away";
+  target_slot: number;
+}
+
+/** One live seat as the bracket re-renders it after a swap. */
+export interface EncounterSeatState {
+  id: number;
+  slot: number;
+  team_id: number | null;
+  name: string;
 }
 
 export interface EncounterSlotState {
   id: number;
-  home_team_id: number | null;
-  away_team_id: number | null;
+  teams: EncounterSeatState[];
   name: string;
 }
 
@@ -483,34 +492,40 @@ export interface StageBracketPreviewMatch {
   /** "A vs. B", with the wired teams' names when they are known. */
   name: string;
   best_of: number;
-  home_team_id: number | null;
-  away_team_id: number | null;
+  slot_count: number;
+  /** The wired team of each seat in slot order, `null` while TBD. */
+  team_ids: (number | null)[];
   sources: {
     local_id: number;
-    role: "winner" | "loser";
-    slot: "home" | "away";
+    /** Place in the source match's standing; 1 is first. */
+    source_position: number;
+    /** Seat of this match the edge fills, `1..slot_count`. */
+    slot: number;
   }[];
 }
 
 /**
- * Where one slot of a template match gets its team: exactly one field is set.
+ * Where one slot of a template match gets its team: exactly one of `seed` or
+ * `source_match` is set.
  *
  * `seed` is a placeholder label — `"U3"` is the third upper-bracket seed, `"L1"`
- * the first lower one — and `winner_of`/`loser_of` name another
- * `TemplateMatch.id` in the same template.
+ * the first lower one — and `source_match` names another `TemplateMatch.id` in
+ * the same template whose place `source_position` (1 = first) this slot takes.
  */
 export type TemplateSlot =
-  | { seed: string; winner_of?: null; loser_of?: null }
-  | { winner_of: number; seed?: null; loser_of?: null }
-  | { loser_of: number; seed?: null; winner_of?: null };
+  | { seed: string; source_match?: null; source_position?: null }
+  | { source_match: number; source_position: number; seed?: null };
+
+/** One seat of a template match: `slot` is numbered `1..n` the way the encounter seats it. */
+export type TemplateMatchSlot = TemplateSlot & { slot: number };
 
 export interface TemplateMatch {
   /** Template-local and stable across edits; not an encounter id. */
   id: number;
   /** Positive upstairs and in the finals, negative downstairs; never 0. */
   round: number;
-  home: TemplateSlot;
-  away: TemplateSlot;
+  /** The whole card, numbered `1..n` with no gap. */
+  slots: TemplateMatchSlot[];
 }
 
 /**
@@ -527,7 +542,7 @@ export interface BracketTemplate {
 /** One reason a template was refused, from the PUT's 422 `problems` array. */
 export interface TemplateProblem {
   match_id: number | null;
-  slot: "home" | "away" | null;
+  slot: number | null;
   code: string;
   message: string;
 }
@@ -667,21 +682,40 @@ export interface PlayerSubRoleUpdateInput {
  */
 export type EncounterEditableStatus = "OPEN" | "PENDING";
 
+/** One participation's line of an admin result. */
+export interface EncounterResultLineInput {
+  encounter_team_id: number;
+  score: number;
+  placement?: number | null;
+}
+
+/** `POST /admin/encounters/{id}/result`: a reason is mandatory — an admin result overrides what the participants said. */
 export interface EncounterSetResultInput {
-  home_score?: number;
-  away_score?: number;
-  /** 1..10; defaults to the mean of the captain reports when omitted. */
+  reason: string;
+  /** One line per live participation; may be empty only with `adopt_report_team_id`. */
+  results: EncounterResultLineInput[];
+  /** 1..10; defaults to the mean of the participation reports when omitted. */
   closeness?: number;
-  /** Resolve a dispute by taking this team's report as the truth. */
+  /** Resolve a dispute by taking this participation's report as the truth. */
   adopt_report_team_id?: number;
+}
+
+/** One participation's numbers inside a result snapshot. */
+export interface EncounterResultSnapshotLine {
+  encounter_team_id: number;
+  score: number;
+  placement: number | null;
 }
 
 export interface EncounterResultRead {
   id: number;
   status: string;
   result_status: string;
-  home_score: number;
-  away_score: number;
+  /** Which writer decided it; null while no official result exists. */
+  result_source: string | null;
+  result_version: number;
+  /** The standing, one line per live participation, in slot order. */
+  teams: EncounterResultSnapshotLine[];
   closeness: number | null;
   confirmed_at: string | null;
 }
@@ -691,23 +725,32 @@ type EncounterResultAuditAction =
   | "reopen"
   | "auto_confirm"
   | "auto_dispute"
+  | "auto_pending"
   | "import"
-  | "cascade_reset";
+  | "cascade_reset"
+  | "game_confirm"
+  | "game_correct"
+  | "game_cancel";
 
 export interface EncounterResultAuditRead {
   id: number;
   encounter_id: number;
+  /** The `encounter.result_version` this operation left behind. */
+  result_version: number;
   /** null = a machine actor (Challonge import, bracket cascade). */
   actor_user_id: number | null;
   actor_name: string | null;
   action: EncounterResultAuditAction;
   from_result_status: string | null;
   to_result_status: string;
-  home_score_before: number | null;
-  away_score_before: number | null;
-  home_score_after: number;
-  away_score_after: number;
+  /** `encounter` for the standing, `game` for one position's numbers. */
+  snapshot_scope: "encounter" | "game";
+  game_id: number | null;
+  /** null when nothing preceded this row. */
+  before: EncounterResultSnapshotLine[] | null;
+  after: EncounterResultSnapshotLine[];
   adopted_team_id: number | null;
+  reason: string | null;
   source: string;
   created_at: string;
 }
@@ -725,8 +768,8 @@ export interface PregameRoomHistoryEntry {
   action: string;
   kind: "map" | "hero" | null;
   source: "captain" | "admin" | "system";
-  /** The side acted BY or FOR; null for room-level events. */
-  side: "home" | "away" | null;
+  /** The participation acted BY or FOR; null for room-level events. */
+  encounter_team_id: number | null;
   actor_auth_user_id: number | null;
   /** null = the clock or a machine actor, rendered as "System". */
   actor_name: string | null;
@@ -740,28 +783,17 @@ export interface PregameRoomHistoryRead {
 }
 
 /**
- * One captain's report inside an admin reports row. Mirrors the backend
- * `CaptainReportRead` — the same shape the public encounter read returns, plus
- * `reporter_name`.
+ * One participation's report inside an admin reports row. Mirrors the backend
+ * `TeamReportRead` — the same shape the public encounter read returns.
  */
-export interface AdminCaptainReport {
-  id: number;
-  encounter_id: number;
-  team_id: number;
-  side: "home" | "away" | null;
-  reporter_user_id: number | null;
-  reporter_name: string | null;
-  home_score: number;
-  away_score: number;
-  /** `null` when the tournament disables or does not require match quality. */
-  closeness: number | null;
-  map_codes: Array<{ id: number; map_index: number; map_id: number | null; code: string }>;
-  /** Free-form note from the captain; never part of dispute derivation. */
-  comment: string | null;
-  /** Organizer-defined text answers, keyed by the report form's field keys. */
-  custom_fields: Record<string, string>;
-  created_at: string | null;
-  updated_at: string | null;
+export type AdminCaptainReport = CaptainReport & { reporter_name: string | null };
+
+/** One live seat of an encounter, as an admin list row names it. */
+export interface EncounterParticipationRef {
+  encounter_team_id: number;
+  slot: number;
+  team_id: number | null;
+  name: string;
 }
 
 export interface EncounterReportsRow {
@@ -772,23 +804,26 @@ export interface EncounterReportsRow {
   stage_name: string | null;
   /** Lets the resolve dialog refuse a draw the finalizer would reject with a 400. */
   stage_type: string | null;
-  round: number;
+  /** The bracket round, or null for an encounter with no bracket position. */
+  round: number | null;
   best_of: number;
   status: string;
   result_status: string;
   scheduled_at: string | null;
-  home_team: { id: number; name: string | null } | null;
-  away_team: { id: number; name: string | null } | null;
-  home_report: AdminCaptainReport | null;
-  away_report: AdminCaptainReport | null;
+  /** The live seats, in slot order. */
+  participations: EncounterParticipationRef[];
+  /** Every report filed against it, one per reporting participation. */
+  reports: AdminCaptainReport[];
+  /** Every participation's replay codes, in play order — what the reports are compared against. */
+  replay_codes: ReplayCode[];
   reported_count: number;
   /**
-   * Three-valued on purpose: `null` until both sides have reported. "They
-   * disagree" and "only one answered" call for different actions, so the UI
-   * must not collapse them into a boolean.
+   * Three-valued on purpose: `null` until every participation has reported.
+   * "They disagree" and "only some answered" call for different actions, so
+   * the UI must not collapse them into a boolean.
    */
-  scores_match: boolean | null;
-  /** Advisory — reports predate per-round best-of, so a mismatch is a hint. */
+  standings_match: boolean | null;
+  /** False when the reported standing is impossible for this encounter's rule. */
   series_score_valid: boolean;
   last_resolution: {
     action: EncounterResultAuditAction;
@@ -860,13 +895,24 @@ export interface PregameKindSummary {
   step_count: number;
   step_action: string | null;
   step_blind: boolean;
-  acting_sides: ("home" | "away")[];
+  /** Participations (`EncounterTeam.id`) that still owe the open step an answer. */
+  acting_team_ids: number[];
   step_started_at: string | null;
   /** `step_started_at` + the open step's timer, when that step has one. */
   deadline_at: string | null;
   awaiting_choice: boolean;
   /** Set while an organizer holds the session: no deadline, nobody may act. */
   paused_at: string | null;
+}
+
+/** One seat of the room (`encounter.team`), in slot order. */
+export interface PregameRoomTeam {
+  encounter_team_id: number;
+  slot: number;
+  /** The source tournament team; null for a seat with none behind it. */
+  team_id: number | null;
+  name: string;
+  score: number;
 }
 
 export interface PregameRoomRow {
@@ -879,11 +925,10 @@ export interface PregameRoomRow {
   scheduled_at: string | null;
   status: string;
   result_status: string | null;
-  home_team: { id: number; name: string } | null;
-  away_team: { id: number; name: string } | null;
-  home_score: number;
-  away_score: number;
-  readiness: { home: boolean; away: boolean };
+  /** The encounter's live seats, in slot order. */
+  teams: PregameRoomTeam[];
+  /** `EncounterTeam.id` (as a string) -> whether that captain confirmed readiness. */
+  readiness: Record<string, boolean>;
   phase: PregameRoomPhase;
   /** `null` = the kind is not configured here and has no session either. */
   map: PregameKindSummary | null;
@@ -962,28 +1007,34 @@ export interface AdminMatchesQuery {
   unlinked_only?: boolean;
 }
 
+/** One seat of a new encounter: which slot, and the team that takes it (`null` leaves it empty). */
+export interface EncounterSeatInput {
+  slot: number;
+  team_id: number | null;
+}
+
 export interface EncounterCreateInput {
   tournament_id: number;
   stage_id: number | null;
   stage_item_id: number | null;
-  home_team_id: number | null;
-  away_team_id: number | null;
+  /** How many seats the card has; a duel is 2 (the default). */
+  slot_count?: number;
+  /** The seats to fill right away. */
+  teams?: EncounterSeatInput[];
   round: number;
-  home_score?: number;
-  away_score?: number;
   /** COMPLETED is rejected: completion goes through setEncounterResult. */
   status?: EncounterEditableStatus;
   best_of?: number;
   name?: string;
 }
 
+/**
+ * A field edit. Seats are not edited here: a seat changes hands through the
+ * slot swap, and a standing is written only by the result writer.
+ */
 export interface EncounterUpdateInput {
   stage_id?: number | null;
   stage_item_id?: number | null;
-  home_team_id?: number | null;
-  away_team_id?: number | null;
-  home_score?: number;
-  away_score?: number;
   /** COMPLETED is rejected: completion goes through setEncounterResult. */
   status?: EncounterEditableStatus;
   round?: number;

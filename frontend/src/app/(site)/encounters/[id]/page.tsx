@@ -16,6 +16,7 @@ import pickBanService from "@/services/pickBan.service";
 import captainService from "@/services/captain.service";
 import FfaLobbyTable from "@/components/ffa/FfaLobbyTable";
 import type { Encounter } from "@/types/encounter.types";
+import { duelSeats, isLobby } from "@/lib/encounter/seats";
 import type { PickBanState } from "@/types/tournament.types";
 import { getEncounterState } from "@/lib/encounter/status";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -46,19 +47,20 @@ export async function generateMetadata(props: {
   const encounter = await encounterService.getEncounter(params.id);
   const t = await getTranslations();
 
-  // Both sides are nullable until the bracket resolves them, so never reach
+  // Both seats are empty until the bracket resolves them, so never reach
   // straight into `.name` here — this route is crawled. A lobby has no two
-  // sides to name at all: its own name is the title.
-  const home = encounter.home_team?.name ?? t("common.tbd");
-  const away = encounter.away_team?.name ?? t("common.tbd");
-  const isLobby = encounter.format === "ffa";
-  const metaTitle = isLobby
+  // seats to name at all: its own name is the title.
+  const [seatOne, seatTwo] = duelSeats(encounter.teams);
+  const first = seatOne?.name ?? t("common.tbd");
+  const second = seatTwo?.name ?? t("common.tbd");
+  const lobby = isLobby(encounter);
+  const metaTitle = lobby
     ? encounter.name
-    : t("encounters.detail.metaTitle", { home, away });
+    : t("encounters.detail.metaTitle", { first, second });
   const title = `${metaTitle} | ${SITE_NAME}`;
-  const description = isLobby
+  const description = lobby
     ? t("ffa.metaDescription", { lobby: encounter.name, siteName: SITE_NAME })
-    : t("encounters.detail.metaDescription", { home, away, siteName: SITE_NAME });
+    : t("encounters.detail.metaDescription", { first, second, siteName: SITE_NAME });
 
   return {
     title,
@@ -124,15 +126,18 @@ const EncounterPage = async (props: {
   // rosters to compare side by side and no captain reports. Its whole result
   // is the lobby table, so the FFA format gets its own page rather than a
   // duel page with most of its sections rendering nothing.
-  if (encounter.format === "ffa") {
+  if (isLobby(encounter)) {
     return <FfaLobbyPage encounter={encounter} />;
   }
 
   const queryClient = new QueryClient();
   const hasPregame = await prefetchPregame(queryClient, encounter.id);
 
-  const homeName = encounter.home_team?.name ?? t("common.tbd");
-  const awayName = encounter.away_team?.name ?? t("common.tbd");
+  const [seatOne, seatTwo] = duelSeats(encounter.teams);
+  const names = {
+    one: seatOne?.name ?? t("common.tbd"),
+    two: seatTwo?.name ?? t("common.tbd")
+  };
   const tournamentGrid = encounter.tournament?.division_grid_version ?? null;
   const stageLabel =
     encounter.stage_item?.name ?? encounter.stage?.name ?? t("common.unassignedStage");
@@ -142,7 +147,7 @@ const EncounterPage = async (props: {
   // writes no `Match` rows at all, and a log can land before the captains
   // confirm.
   const playedSlots = slots.filter(
-    (slot) => slot.match != null || acceptedScore(slot.game) != null
+    (slot) => slot.match != null || acceptedScore(slot.game, encounter.teams) != null
   );
   // The map on air gets its row even before anything is recorded on it; every
   // other empty position is one line under the list, not a ghost row each.
@@ -172,7 +177,7 @@ const EncounterPage = async (props: {
 
   const visible: Record<EncounterTab, boolean> = {
     overview: listedSlots.length > 0,
-    players: encounter.home_team != null || encounter.away_team != null,
+    players: seatOne?.team != null || seatTwo?.team != null,
     pregame: hasPregame
   };
   const tabs = TABS.filter((tab) => visible[tab]);
@@ -208,8 +213,8 @@ const EncounterPage = async (props: {
             value: String(playedSlots.length),
             sub: t("encounters.detail.statMapsSub", {
               format: t("encounters.bestOfShort", { count: encounter.best_of }),
-              home: mapWins.home,
-              away: mapWins.away
+              one: mapWins.one,
+              two: mapWins.two
             })
           }
         ]
@@ -331,8 +336,8 @@ const EncounterPage = async (props: {
                   <EncounterMapRow
                     key={slot.index}
                     slot={slot}
-                    homeName={homeName}
-                    awayName={awayName}
+                    names={names}
+                    teams={encounter.teams}
                     tournamentGrid={tournamentGrid}
                     clockUnits={clockUnits}
                   />
@@ -354,8 +359,7 @@ const EncounterPage = async (props: {
                   <EncounterSeriesStats
                     view="overview"
                     matchIds={playedSlots.flatMap((slot) => (slot.match ? [slot.match.id] : []))}
-                    homeTeamId={encounter.home_team_id}
-                    awayTeamId={encounter.away_team_id}
+                    teams={encounter.teams}
                     tournamentGrid={tournamentGrid}
                   />
                 ) : (
@@ -376,24 +380,15 @@ const EncounterPage = async (props: {
               <EncounterSeriesStats
                 view="players"
                 matchIds={playedSlots.flatMap((slot) => (slot.match ? [slot.match.id] : []))}
-                homeTeamId={encounter.home_team_id}
-                awayTeamId={encounter.away_team_id}
+                teams={encounter.teams}
                 tournamentGrid={tournamentGrid}
               />
             </section>
           ) : (
             <section aria-label={t("encounters.detail.rosters")}>
               <div className={styles.rosterGrid}>
-                <EncounterRosterPanel
-                  team={encounter.home_team}
-                  side="home"
-                  tournamentGrid={tournamentGrid}
-                />
-                <EncounterRosterPanel
-                  team={encounter.away_team}
-                  side="away"
-                  tournamentGrid={tournamentGrid}
-                />
+                <EncounterRosterPanel team={seatOne?.team ?? null} slot={1} tournamentGrid={tournamentGrid} />
+                <EncounterRosterPanel team={seatTwo?.team ?? null} slot={2} tournamentGrid={tournamentGrid} />
               </div>
             </section>
           )
@@ -401,18 +396,8 @@ const EncounterPage = async (props: {
 
         {active === "pregame" ? (
           <>
-            <EncounterPregamePanel
-              encounterId={encounter.id}
-              homeName={homeName}
-              awayName={awayName}
-            />
-            <EncounterCaptainReports
-              encounterId={encounter.id}
-              homeTeamId={encounter.home_team_id}
-              awayTeamId={encounter.away_team_id}
-              homeName={homeName}
-              awayName={awayName}
-            />
+            <EncounterPregamePanel encounterId={encounter.id} teams={encounter.teams} />
+            <EncounterCaptainReports encounterId={encounter.id} teams={encounter.teams} />
           </>
         ) : null}
       </HydrationBoundary>

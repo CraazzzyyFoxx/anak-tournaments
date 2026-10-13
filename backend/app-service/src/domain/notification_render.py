@@ -121,6 +121,13 @@ _SLOT_LABELS: dict[str, dict[str, str]] = {
 }
 _SUBSTITUTE = {"ru": " (замена)", "en": " (substitute)"}
 
+#: How the seats of an encounter read as a list, per kind: a dispute names the
+#: captains of every seat, a notice reads as the fixture.
+_TEAM_SEPARATORS: dict[str, dict[str, str]] = {
+    "encounter.dispute_review": {"ru": " и ", "en": " and "},
+    "encounter.scheduled": {"ru": " — ", "en": " vs "},
+}
+
 #: ``encounter.dispute_review`` carries ``position=0`` for a series-level
 #: dispute and the 1-based map position otherwise -- the same sentinel the
 #: inbox's ICU ``plural`` selects on.
@@ -149,7 +156,7 @@ TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
         "encounter.report_disputed": ("Отчёт оспорен", "Отчёт по карте {position} вашего матча оспорен.", ()),
         "encounter.dispute_review": (
             "Нужно решение организатора",
-            "Капитаны **{home_team_name}** и **{away_team_name}** разошлись в счёте.",
+            "Капитаны {teams} разошлись в счёте.",
             ("**Что оспорено:** {disputed_scope}",),
         ),
         "team.kicked": (
@@ -175,7 +182,7 @@ TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
         ),
         "encounter.scheduled": (
             "Матч назначен",
-            "**{home_team_name}** — **{away_team_name}** на **{tournament_name}**.",
+            "{teams} на **{tournament_name}**.",
             ("**Начало:** {scheduled_at}",),
         ),
     },
@@ -207,7 +214,7 @@ TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
         ),
         "encounter.dispute_review": (
             "Organizer decision needed",
-            "**{home_team_name}** and **{away_team_name}** reported different scores.",
+            "{teams} reported different scores.",
             ("**Disputed:** {disputed_scope}",),
         ),
         "team.kicked": ("Removed from team", "You were removed from **{team_name}** in **{tournament_name}**.", ()),
@@ -229,7 +236,7 @@ TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
         ),
         "encounter.scheduled": (
             "Match scheduled",
-            "**{home_team_name}** vs **{away_team_name}** in **{tournament_name}**.",
+            "{teams} in **{tournament_name}**.",
             ("**Starts:** {scheduled_at}",),
         ),
     },
@@ -358,6 +365,17 @@ def _destination(kind: str) -> str:
     return "pregame" if kind in _PREGAME_KINDS else "tournament"
 
 
+def _team_list(kind: str, names: object, locale: str) -> str:
+    """The payload's ``team_names`` (every participation, in slot order) as markdown."""
+    bold = (
+        [f"**{_escape(_clip(str(name).strip(), _NAME_LIMIT))}**" for name in names] if isinstance(names, list) else []
+    )
+    separator = _TEAM_SEPARATORS[kind][locale]
+    if kind == "encounter.dispute_review" and len(bold) > 2:
+        return ", ".join(bold[:-1]) + separator + bold[-1]
+    return separator.join(bold)
+
+
 def _fields(kind: str, payload: Mapping[str, Any], locale: str) -> dict[str, str]:
     """The payload as interpolation-ready markdown: rendered times, and user
     text clipped and escaped."""
@@ -370,6 +388,8 @@ def _fields(kind: str, payload: Mapping[str, Any], locale: str) -> dict[str, str
                 fields[key] = _escape(_clip(value.strip(), _REASON_LIMIT if key == "reason" else _NAME_LIMIT))
         else:
             fields[key] = str(value)
+    if kind in _TEAM_SEPARATORS:
+        fields["teams"] = _team_list(kind, payload.get("team_names"), locale)
     if kind == "team_invite.answered":
         answer = str(payload.get("answer", ""))
         fields["answer_word"] = _ANSWER_WORDS[locale].get(answer, _ANSWER_FALLBACK[locale])

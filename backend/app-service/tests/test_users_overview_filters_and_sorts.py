@@ -183,14 +183,15 @@ class OverviewFilterTests(TestCase):
 class OverviewPageAggregateTests(TestCase):
     """The per-page values the row shows, batched for the whole page."""
 
-    def test_map_records_use_union_all_sides_and_dedupe_encounters(self) -> None:
+    def test_map_records_read_the_team_seat_and_dedupe_encounters(self) -> None:
         session = _CaptureSession()
         asyncio.run(overview_queries.get_overview_map_records(session, [7], workspace_id=WORKSPACE))
         sql = session.sql(0)
 
-        # `home_team_id = id OR away_team_id = id` uses neither FK index.
-        self.assertIn("UNION ALL", sql)
-        self.assertNotIn("home_team_id = tournament.team.id OR", sql)
+        # The team's live participation, matched by equality on ``team_id``.
+        self.assertIn("JOIN encounter.team AS record_seat ON record_seat.team_id = tournament.team.id", sql)
+        self.assertIn("record_seat.active IS true", sql)
+        self.assertNotIn("home_team_id", sql)
         # A user rostered twice on one team must not double its maps.
         self.assertIn("DISTINCT", sql)
         # encounters_played counts encounters that have a result.

@@ -419,14 +419,19 @@ async def extract_encounter_features(
         .subquery("away_stats")
     )
 
+    # Only a duel -- exactly two active seats, slot 1 and slot 2 -- has two-team features.
+    first_seat = sa.orm.aliased(models.EncounterTeam, name="first_seat")
+    second_seat = sa.orm.aliased(models.EncounterTeam, name="second_seat")
     query = (
         sa.select(
             models.Encounter.id.label("encounter_id"),
             models.Encounter.tournament_id.label("tournament_id"),
-            models.Encounter.home_team_id.label("home_team_id"),
-            models.Encounter.away_team_id.label("away_team_id"),
-            models.Encounter.home_score.label("home_score"),
-            models.Encounter.away_score.label("away_score"),
+            first_seat.team_id.label("home_team_id"),
+            second_seat.team_id.label("away_team_id"),
+            first_seat.score.label("home_score"),
+            second_seat.score.label("away_score"),
+            first_seat.placement.label("home_placement"),
+            second_seat.placement.label("away_placement"),
             home_stats.c.avg_rank.label("home_avg_rank"),
             home_stats.c.std_rank.label("home_std_rank"),
             away_stats.c.avg_rank.label("away_avg_rank"),
@@ -437,9 +442,26 @@ async def extract_encounter_features(
             models.Tournament,
             models.Tournament.id == models.Encounter.tournament_id,
         )
-        .join(home_stats, home_stats.c.team_id == models.Encounter.home_team_id, isouter=True)
-        .join(away_stats, away_stats.c.team_id == models.Encounter.away_team_id, isouter=True)
+        .join(
+            first_seat,
+            sa.and_(
+                first_seat.encounter_id == models.Encounter.id,
+                first_seat.slot == 1,
+                first_seat.active.is_(True),
+            ),
+        )
+        .join(
+            second_seat,
+            sa.and_(
+                second_seat.encounter_id == models.Encounter.id,
+                second_seat.slot == 2,
+                second_seat.active.is_(True),
+            ),
+        )
+        .join(home_stats, home_stats.c.team_id == first_seat.team_id, isouter=True)
+        .join(away_stats, away_stats.c.team_id == second_seat.team_id, isouter=True)
         .where(
+            models.Encounter.slot_count == 2,
             models.Encounter.tournament_id.in_(tournament_ids),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
@@ -458,18 +480,20 @@ async def extract_encounter_features(
 
     df["rank_gap"] = df["home_avg_rank"] - df["away_avg_rank"]
 
-    # home_won: 1 home wins, 0 away wins, 0.5 draw, NaN if not yet played.
+    # home_won (slot 1 won): 1 if slot 1 placed ahead, 0 if behind, 0.5 for a shared place,
+    # NaN while there is no result.
     def _outcome(row: pd.Series) -> float:
-        hs, as_ = row["home_score"], row["away_score"]
-        if hs is None or as_ is None:
+        first, second = row["home_placement"], row["away_placement"]
+        if pd.isna(first) or pd.isna(second):
             return float("nan")
-        if hs > as_:
+        if first < second:
             return 1.0
-        if hs < as_:
+        if first > second:
             return 0.0
         return 0.5
 
     df["home_won"] = df.apply(_outcome, axis=1)
+    df = df.drop(columns=["home_placement", "away_placement"])
 
     return df
 

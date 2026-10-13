@@ -35,17 +35,33 @@ from shared.core import enums, tournament_state
 from shared.domain.pick_ban_config import has_pool
 from shared.repository.notification_recipients import NotificationRecipientRepository
 from shared.repository.tournament import (
+    BracketEncounterRepository,
     TeamRepository,
     TournamentPhaseScheduleRepository,
     TournamentRepository,
 )
+from shared.services.bracket.advancement import AdvanceOutcome, advance_after_result
 from shared.services.bracket.usability import is_encounter_live
+from shared.services.encounter.participants import active_teams
 from shared.services.notifications import broadcast, notify
 from shared.services.registration_window import is_registration_window_open
 from src import models
-from src.services.encounter.pick_ban_session import pick_ban_session_service
 
-__all__ = ("LifecycleNotifier", "after_encounter_teams_changed", "lifecycle_notifier")
+
+def _pick_ban_sessions():
+    """The pick-ban service, loaded on first use.
+
+    Module scope would make every admin encounter write depend on the whole
+    pick-ban stack loading, and the notifier only reaches it on the two paths
+    below. Resolved through the singleton on each call, so a test patching
+    ``pick_ban_session_service`` still intercepts both.
+    """
+    from src.services.encounter.pick_ban_session import pick_ban_session_service  # noqa: PLC0415
+
+    return pick_ban_session_service
+
+
+__all__ = ("LifecycleNotifier", "advance_and_announce", "after_encounter_teams_changed", "lifecycle_notifier")
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -69,11 +85,13 @@ class LifecycleNotifier:
         recipient_repo: NotificationRecipientRepository = NotificationRecipientRepository(),
         team_repo: TeamRepository = TeamRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
+        bracket_encounter_repo: BracketEncounterRepository = BracketEncounterRepository(),
     ) -> None:
         self.schedule_repo = schedule_repo
         self.recipient_repo = recipient_repo
         self.team_repo = team_repo
         self.tournament_repo = tournament_repo
+        self.bracket_encounter_repo = bracket_encounter_repo
 
     async def on_status_entered(self, session: AsyncSession, tournament: models.Tournament) -> None:
         """Announce the phase ``tournament`` has just been moved into.
@@ -182,20 +200,29 @@ class LifecycleNotifier:
         *,
         channel: bool = True,
     ) -> None:
-        """Tell both rosters they have a match ready to play, and against whom.
+        """Tell every seated roster they have a match ready to play, and against whom.
 
-        A time is not what makes it news -- knowing the opponent is -- so an
-        encounter with both slots filled notifies whether or not it is
-        scheduled. What silences it is the match being unplayable or already
-        under way: an empty slot, a preview bracket nobody can enter, a
-        started or completed encounter (backfilled results, Challonge
-        imports), a finished tournament.
+        A time is not what makes it news -- knowing the opponent is -- so a fully
+        seated encounter notifies whether or not it is scheduled. What silences
+        it is the match being unplayable or already under way: an empty seat, a
+        preview bracket nobody can enter, a started or completed encounter
+        (backfilled results, Challonge imports), a finished tournament.
+
+        "Fully seated" is as many live participations as the card has slots
+        (D55), which is the same question for a duel and for a lobby.
 
         ``channel=False`` keeps the event personal. Bulk producers (stage
         activation, Swiss rounds, requalification, Challonge sync) fill a
         dozen encounters in one go, and a dozen channel posts is spam.
         """
-        if encounter.home_team_id is None or encounter.away_team_id is None:
+        if encounter.id is None:
+            # ``create_encounter`` calls this before its own flush when the
+            # recalculation enqueue was skipped (scrim containers); the id is
+            # part of the dedupe key, and the seats are read by it.
+            await session.flush()
+
+        seats = await active_teams(session, encounter.id)
+        if len(seats) < encounter.slot_count or any(seat.team_id is None for seat in seats):
             return
         if encounter.started_at is not None or encounter.status == enums.EncounterStatus.COMPLETED:
             return
@@ -206,31 +233,28 @@ class LifecycleNotifier:
         if tournament is None or tournament_state.is_finished_for_status(tournament.status):
             return
 
-        if encounter.id is None:
-            # ``create_encounter`` calls this before its own flush when the
-            # recalculation enqueue was skipped (scrim containers); the id is
-            # part of the dedupe key.
-            await session.flush()
-
         # Normalized to UTC first: the same instant arriving as a naive column
         # value and as an offset-aware payload must produce the same key, or a
         # re-save of an unchanged time would read as a reschedule.
         scheduled_at = _as_utc(encounter.scheduled_at) if encounter.scheduled_at is not None else None
-        team_ids: Sequence[int] = (encounter.home_team_id, encounter.away_team_id)
+        team_ids: Sequence[int] = [seat.team_id for seat in seats]
+        # The participation's own snapshot is the name this encounter was played
+        # under; the source team's current name is the fallback for a seat
+        # written before snapshots existed.
         names = {team.id: team.name for team in await self.team_repo.bulk_get(session, list(team_ids))}
+        team_names = [names.get(seat.team_id) or seat.name for seat in seats]
         payload = {
             "encounter_id": encounter.id,
             "tournament_id": tournament.id,
             "tournament_name": tournament.name,
-            "home_team_name": names.get(encounter.home_team_id, ""),
-            "away_team_name": names.get(encounter.away_team_id, ""),
+            "team_names": team_names,
             "scheduled_at": scheduled_at,
             "pick_ban": await self._has_pick_ban(session, encounter),
         }
         # The opponent is half the event: a slot refilled with another team is
         # a new match to prepare for, not a repeat of the old one.
         dedupe_key = (
-            f"encounter:{encounter.id}:{encounter.home_team_id}:{encounter.away_team_id}:"
+            f"encounter:{encounter.id}:{':'.join(str(team_id) for team_id in team_ids)}:"
             f"{scheduled_at.isoformat() if scheduled_at is not None else 'tbd'}"
         )
         for auth_user_id in await self.recipient_repo.team_roster_auth_user_ids(session, team_ids):
@@ -251,21 +275,24 @@ class LifecycleNotifier:
                 dedupe_key=dedupe_key,
             )
 
-    @staticmethod
-    async def _has_pick_ban(session: AsyncSession, encounter: models.Encounter) -> bool:
+    async def _has_pick_ban(self, session: AsyncSession, encounter: models.Encounter) -> bool:
         """Whether this encounter's coordinate resolves to a pick-ban with a
         pool -- the same question ``PregameRoomLink`` asks on the frontend.
+
+        The coordinate is the bracket POSITION now (D22): an encounter with no
+        row there -- a scrim, a mix -- resolves at the tournament level only.
 
         Sessions are not consulted: they only exist once both captains are
         ready, which is after the message this flag is for.
         """
+        position = await self.bracket_encounter_repo.get_position(session, encounter.id)
         for kind in (enums.PickBanKind.MAP, enums.PickBanKind.HERO):
-            config = await pick_ban_session_service.resolve_config_at_level(
+            config = await _pick_ban_sessions().resolve_config_at_level(
                 session,
                 tournament_id=encounter.tournament_id,
                 kind=kind,
-                stage_id=encounter.stage_id,
-                round=encounter.round,
+                stage_id=None if position is None else position.stage_id,
+                round=0 if position is None else position.round,
             )
             if config is not None and has_pool(config):
                 return True
@@ -289,5 +316,27 @@ async def after_encounter_teams_changed(
     its singleton, so a test patching ``pick_ban_session_service`` at any call
     site still intercepts the sync.
     """
-    await pick_ban_session_service.sync_all_pick_ban_sessions_after_team_change(session, encounter)
+    await _pick_ban_sessions().sync_all_pick_ban_sessions_after_team_change(session, encounter)
     await lifecycle_notifier.on_encounter_changed(session, encounter, channel=channel)
+
+
+async def advance_and_announce(
+    session: AsyncSession,
+    encounter: models.Encounter,
+    *,
+    channel: bool = True,
+) -> AdvanceOutcome:
+    """Advance ``encounter``'s standing, then settle what each filled seat owes.
+
+    Advancement is the path where an already-scheduled slot finally learns who
+    plays in it, so every encounter the bracket just put a team into gets the
+    same upkeep as any other seat change: its pick-ban rooms follow the new
+    pairing and both rosters hear who they play. The shared primitive cannot do
+    this itself -- the notifier and the pick-ban service are this service's.
+    """
+    outcome = await advance_after_result(session, encounter)
+    for target_id in dict.fromkeys(target for target, _slot in outcome.placed):
+        await after_encounter_teams_changed(
+            session, await session.get_one(models.Encounter, target_id), channel=channel
+        )
+    return outcome

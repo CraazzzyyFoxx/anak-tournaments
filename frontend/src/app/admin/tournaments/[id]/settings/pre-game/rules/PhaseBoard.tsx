@@ -28,6 +28,7 @@ import {
   stepSummary,
   updatePhase,
   type PickBanStepTemplate,
+  actorsMessageKey,
 } from "@/lib/tournament/pick-ban-config";
 import type {
   PickBanGenerator,
@@ -372,7 +373,7 @@ function StepCard({
         >
           <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
           <span className="truncate text-sm font-medium">
-            {t(`action.${step.action}`)} · {t(`actors.${step.actors}`)}
+            {t(`action.${step.action}`)} · {t(`actors.${actorsMessageKey(step.actors)}`)}
           </span>
           <Badge variant="secondary" className="shrink-0">
             {t(`summary.${summary.key}`, summary.values)}

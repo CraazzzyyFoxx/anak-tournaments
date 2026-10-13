@@ -63,12 +63,20 @@ function stage(isPublished: boolean): Stage {
     is_completed: false,
     ranking_preset: null,
     tiebreak_order: null,
-    scoring: { win: null, draw: null, loss: null },
+    scoring: {
+      win: null,
+      draw: null,
+      loss: null,
+      preset: null,
+      columns: null,
+      placement_points: null,
+      formula: null
+    },
     swiss_bye_points: null,
     de_grand_final_type: "no_reset",
     seed_ranking: "slot",
     best_of: { default: 3, by_round: {}, final: null },
-    ffa_scoring: { placement_points: [], score_points: 1, score_label: null },
+    has_custom_bracket: false,
     challonge_id: null,
     challonge_slug: null,
     items: []
@@ -80,9 +88,7 @@ const encounter = {
   created_at: new Date(0),
   updated_at: null,
   name: "Nova vs Void",
-  home_team_id: 7,
-  away_team_id: 8,
-  score: { home: 0, away: 0 },
+  slot_count: 2,
   round: 1,
   best_of: 3,
   tournament_id: 1,
@@ -99,8 +105,10 @@ const encounter = {
   current_map_index: null,
   confirmed_at: null,
   matches: [],
-  home_team: null,
-  away_team: null,
+  games: [],
+  teams: [],
+  result_source: null,
+  result_version: 0,
   tournament: null,
   stage: null,
   stage_item: null
@@ -235,18 +243,18 @@ describe("EliminationStagePanel preview", () => {
   it("draws the bracket the generator would build while it has no matches yet", async () => {
     // A four-team single elimination, every slot still TBD (placeholder seeds).
     getStageBracketPreview.mockResolvedValue([
-      { local_id: 1, round: 1, name: "TBD vs TBD", best_of: 3, home_team_id: -1, away_team_id: -4, sources: [] },
-      { local_id: 2, round: 1, name: "TBD vs TBD", best_of: 3, home_team_id: -2, away_team_id: -3, sources: [] },
+      { local_id: 1, round: 1, name: "TBD vs TBD", best_of: 3, slot_count: 2, team_ids: [null, null], sources: [] },
+      { local_id: 2, round: 1, name: "TBD vs TBD", best_of: 3, slot_count: 2, team_ids: [null, null], sources: [] },
       {
         local_id: 3,
         round: 2,
         name: "TBD vs TBD",
         best_of: 3,
-        home_team_id: null,
-        away_team_id: null,
+        slot_count: 2,
+        team_ids: [null, null],
         sources: [
-          { local_id: 1, role: "winner", slot: "home" },
-          { local_id: 2, role: "winner", slot: "away" }
+          { local_id: 1, source_position: 1, slot: 1 },
+          { local_id: 2, source_position: 1, slot: 2 }
         ]
       }
     ]);

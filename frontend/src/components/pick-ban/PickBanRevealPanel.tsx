@@ -15,14 +15,13 @@ import type {
   PickBanSubmission
 } from "@/types/tournament.types";
 
-import { duplicateItemIds, type PickBanSide } from "./pick-ban-model";
+import { duplicateItemIds, type PickBanSeat } from "./pick-ban-model";
 import type { PickBanItemLike } from "./PickBanGrid";
 import { PickBanItemThumb } from "./PickBanItemThumb";
 
-const SIDE_ACCENT: Record<PickBanSide, string> = {
-  home: "text-[color:var(--aqt-teal)]",
-  away: "text-[color:var(--aqt-rose)]"
-};
+/** Slot 1 is teal, every other seat rose. */
+const seatAccent = (slot: number) =>
+  slot === 1 ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-rose)]";
 
 /**
  * What a blind step turned out to be, once both sides locked.
@@ -43,7 +42,7 @@ export function PickBanRevealPanel({
   step,
   submissions,
   itemsById,
-  sideName,
+  seats,
   targetName,
   dispute,
   disputing,
@@ -54,7 +53,8 @@ export function PickBanRevealPanel({
   /** The step's current-attempt submissions (`stepSubmissions`). */
   submissions: PickBanSubmission[];
   itemsById: Record<number, PickBanItemLike | undefined>;
-  sideName: (side: PickBanSide) => string;
+  /** The step's participations as the room names them. */
+  seats: PickBanSeat[];
   targetName: (playerId: number) => string | null;
   dispute: PickBanDisputeState;
   disputing: boolean;
@@ -63,9 +63,9 @@ export function PickBanRevealPanel({
   const t = useTranslations("pickBan.room");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const duplicates = duplicateItemIds(submissions);
-  const sides: PickBanSide[] = step.sides.filter(
-    (side): side is PickBanSide => side !== "system"
-  );
+  const acting = step.actors
+    .filter((actor): actor is number => actor !== null)
+    .flatMap((teamId) => seats.find((seat) => seat.id === teamId) ?? []);
   const canDispute = dispute.available && dispute.step_index === step.index;
 
   return (
@@ -100,17 +100,17 @@ export function PickBanRevealPanel({
       </div>
 
       <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-2 sm:gap-3">
-        {sides.map((side) => {
+        {acting.map((seat) => {
           const items =
-            submissions.find((submission) => submission.side === side)?.items ?? [];
+            submissions.find((submission) => submission.encounter_team_id === seat.id)?.items ?? [];
           return (
             <div
-              key={side}
-              data-reveal-side={side}
+              key={seat.id}
+              data-reveal-team={seat.id}
               className="flex flex-col gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]/60 p-2.5"
             >
-              <span className={cn("text-xs font-semibold", SIDE_ACCENT[side])}>
-                {sideName(side)}
+              <span className={cn("text-xs font-semibold", seatAccent(seat.slot))}>
+                {seat.name}
               </span>
               {items.length === 0 ? (
                 <span className="text-xs text-[color:var(--aqt-fg-faint)]">

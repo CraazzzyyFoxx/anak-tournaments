@@ -132,9 +132,10 @@ class ReadinessService:
         encounters_total = sa.select(sa.func.count(models.Encounter.id)).where(
             models.Encounter.tournament_id == tournament_id
         )
-        encounters_bracket = sa.select(sa.func.count(models.Encounter.id)).where(
-            models.Encounter.tournament_id == tournament_id,
-            models.Encounter.stage_id.is_not(None),
+        encounters_bracket = (
+            sa.select(sa.func.count(models.Encounter.id))
+            .join(models.BracketEncounter, models.BracketEncounter.encounter_id == models.Encounter.id)
+            .where(models.Encounter.tournament_id == tournament_id, models.BracketEncounter.stage_id.is_not(None))
         )
         encounters_with_logs = sa.select(sa.func.count(models.Encounter.id)).where(
             models.Encounter.tournament_id == tournament_id,

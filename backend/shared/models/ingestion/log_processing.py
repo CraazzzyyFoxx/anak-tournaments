@@ -8,8 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 
 if TYPE_CHECKING:
+    from shared.models.encounter.encounter import Encounter
     from shared.models.identity.user import User
-    from shared.models.tournament.encounter import Encounter
     from shared.models.tournament.tournament import Tournament
 
 __all__ = ("LogProcessingRecord", "LogProcessingStatus", "LogProcessingSource")
@@ -62,7 +62,7 @@ class LogProcessingRecord(db.TimeStampIntegerMixin):
         nullable=True,
     )
     attached_encounter_id: Mapped[int | None] = mapped_column(
-        ForeignKey("tournament.encounter.id", ondelete="SET NULL"),
+        ForeignKey("encounter.encounter.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )

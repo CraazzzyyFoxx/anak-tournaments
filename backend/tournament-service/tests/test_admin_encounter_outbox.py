@@ -46,12 +46,10 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             execute_count += 1
             if execute_count == 1:
                 calls.append("loaded_tournament")
-                return _result(SimpleNamespace(id=1))
-            if execute_count == 2:
-                calls.append("loaded_stage")
-                return _result(SimpleNamespace(id=10))
-            calls.append("loaded_groups")
-            return _scalars_result([])
+                return _result(SimpleNamespace(id=1, workspace_id=7, discipline="overwatch"))
+            # The stage reference is validated by a query ...
+            calls.append("loaded_stage")
+            return _result(SimpleNamespace(id=10, scoring_rule_id=3))
 
         async def fake_commit():
             calls.append("commit")
@@ -61,6 +59,8 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=fake_execute),
+            # ... and its rule comes from an identity-map lookup.
+            get=AsyncMock(return_value=SimpleNamespace(id=10, scoring_rule_id=3)),
             add=Mock(),
             commit=AsyncMock(side_effect=fake_commit),
             refresh=AsyncMock(),
@@ -72,14 +72,27 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
             round=1,
         )
 
-        with patch.object(
-            admin_encounter_service,
-            "enqueue_tournament_recalculation",
-            AsyncMock(side_effect=fake_enqueue),
-        ) as enqueue_recalc:
+        with (
+            patch.object(
+                admin_encounter_service,
+                "enqueue_tournament_recalculation",
+                AsyncMock(side_effect=fake_enqueue),
+            ) as enqueue_recalc,
+            patch.object(admin_encounter_service.lifecycle_notifier, "on_encounter_changed", AsyncMock()),
+        ):
             encounter = await admin_encounter_service.encounter_service.create_encounter(session, payload)
 
-        self.assertEqual(encounter.tournament_id, 1)
+        # The encounter carries the owner's copies (D62) and the stage's rule.
+        self.assertEqual(
+            (1, 7, "overwatch", 3, 2),
+            (
+                encounter.tournament_id,
+                encounter.workspace_id,
+                encounter.discipline,
+                encounter.scoring_rule_id,
+                encounter.slot_count,
+            ),
+        )
         enqueue_recalc.assert_awaited_once_with(session, 1)
         self.assertLess(calls.index("enqueue:1"), calls.index("commit"))
 
@@ -87,23 +100,15 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
         calls: list[str] = []
         encounter = SimpleNamespace(
             id=10,
-            format=admin_encounter_service.enums.EncounterFormat.DUEL,
+            slot_count=2,
+            scoring_preset="wins",
             tournament_id=1,
-            stage_id=20,
-            stage_item_id=None,
-            home_team_id=100,
-            away_team_id=200,
-            home_score=0,
-            away_score=0,
+            scheduled_at=None,
+            name="old",
             status=admin_encounter_service.enums.EncounterStatus.OPEN,
+            result_status=admin_encounter_service.enums.EncounterResultStatus.NONE,
         )
-        execute_results = iter(
-            [
-                _result(encounter),
-                _result(SimpleNamespace(id=20)),
-                _scalars_result([]),
-            ]
-        )
+        execute_results = iter([_result(encounter), _result(SimpleNamespace(id=20))])
 
         async def fake_commit():
             calls.append("commit")
@@ -113,27 +118,18 @@ class AdminEncounterOutboxTests(IsolatedAsyncioTestCase):
 
         session = SimpleNamespace(
             execute=AsyncMock(side_effect=lambda _query: next(execute_results)),
+            get=AsyncMock(return_value=SimpleNamespace(stage_id=20, stage_item_id=None, round=1)),
             commit=AsyncMock(side_effect=fake_commit),
             refresh=AsyncMock(),
         )
-        payload = schemas.EncounterUpdate(home_score=2, away_score=1)
+        payload = schemas.EncounterUpdate(name="new", best_of=5)
 
-        with (
-            patch.object(
-                admin_encounter_service,
-                "enqueue_tournament_recalculation",
-                AsyncMock(side_effect=fake_enqueue),
-            ),
-            # A score write is a result correction; its downstream-qualification
-            # guard runs its own queries, which this ordering test does not stub.
-            patch.object(
-                admin_encounter_service.AdminEncounterService,
-                "_assert_source_correction_allowed",
-                AsyncMock(),
-            ),
+        with patch.object(
+            admin_encounter_service,
+            "enqueue_tournament_recalculation",
+            AsyncMock(side_effect=fake_enqueue),
         ):
             updated = await admin_encounter_service.encounter_service.update_encounter(session, encounter.id, payload)
 
-        self.assertEqual(updated.home_score, 2)
-        self.assertEqual(updated.away_score, 1)
+        self.assertEqual(("new", 5), (updated.name, updated.best_of))
         self.assertEqual(calls, ["enqueue:1", "commit"])

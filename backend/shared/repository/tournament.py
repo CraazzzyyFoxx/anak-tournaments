@@ -93,6 +93,20 @@ class StageRepository(BaseRepository[models.Stage]):
     def __init__(self) -> None:
         super().__init__(models.Stage)
 
+    async def get(
+        self,
+        session: AsyncSession,
+        id: int | str,
+        *,
+        options: Sequence[_AbstractLoad] | None = None,
+        populate_existing: bool = False,
+    ) -> models.Stage | None:
+        # A plain lookup is an identity-map hit: an encounter list resolves the
+        # same few stages once per row, and a SELECT each is N statements.
+        if options is None and not populate_existing:
+            return await session.get(models.Stage, id)
+        return await super().get(session, id, options=options, populate_existing=populate_existing)
+
     async def list_by_tournament(
         self,
         session: AsyncSession,
@@ -132,6 +146,19 @@ class StageItemRepository(BaseRepository[models.StageItem]):
     def __init__(self) -> None:
         super().__init__(models.StageItem)
 
+    async def get(
+        self,
+        session: AsyncSession,
+        id: int | str,
+        *,
+        options: Sequence[_AbstractLoad] | None = None,
+        populate_existing: bool = False,
+    ) -> models.StageItem | None:
+        # Identity-map lookup for a plain read; see ``StageRepository.get``.
+        if options is None and not populate_existing:
+            return await session.get(models.StageItem, id)
+        return await super().get(session, id, options=options, populate_existing=populate_existing)
+
     async def list_by_stage(self, session: AsyncSession, stage_id: int) -> Sequence[models.StageItem]:
         result = await session.execute(
             sa.select(models.StageItem)
@@ -139,6 +166,20 @@ class StageItemRepository(BaseRepository[models.StageItem]):
             .order_by(models.StageItem.order.asc(), models.StageItem.id.asc())
         )
         return result.scalars().all()
+
+
+class BracketEncounterRepository(BaseRepository[models.BracketEncounter]):
+    """``tournament.bracket_encounter`` — where an encounter sits in a bracket.
+
+    The row's key is ``encounter_id``, so the base ``get`` (keyed on ``id``) does
+    not apply; ``get_position`` is the identity-map primary-key lookup.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(models.BracketEncounter)
+
+    async def get_position(self, session: AsyncSession, encounter_id: int) -> models.BracketEncounter | None:
+        return await session.get(models.BracketEncounter, encounter_id)
 
 
 class TeamRepository(BaseRepository[models.Team]):
@@ -362,13 +403,21 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         *,
         options: Sequence[_AbstractLoad] | None = None,
     ) -> models.Encounter | None:
-        """Locking read for admin score/result edits.
+        """Locking read for every result write (D68).
 
-        ``SELECT ... FOR UPDATE`` so two concurrent admin updates to one encounter
-        serialize instead of interleaving a read-modify-write on the score fields.
-        Eager-load ``options`` ride along in the same locked statement.
+        ``SELECT ... FOR UPDATE`` so two concurrent writers to one encounter
+        serialize instead of interleaving a read-modify-write on ``score`` and
+        ``result_version``. ``populate_existing`` is part of the lock, not an
+        optimization: an encounter already in the identity map would otherwise
+        be handed back exactly as it was first read, and the version this
+        writer bumps would be a stale one. Eager-load ``options`` ride along in
+        the same locked statement.
         """
-        query = self._apply_options(self.select().where(models.Encounter.id == encounter_id), options).with_for_update()
+        query = (
+            self._apply_options(self.select().where(models.Encounter.id == encounter_id), options)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         result = await session.execute(query)
         return result.unique().scalars().first()
 
@@ -377,17 +426,60 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         session: AsyncSession,
         challonge_id: int,
     ) -> models.Encounter | None:
-        return await self.get_by(session, challonge_id=challonge_id)
+        """The encounter a remote Challonge match maps to.
+
+        The id used to sit on the encounter row; it belongs to the import, so
+        it lives on ``tournament.challonge_match_mapping`` and is read through
+        it. One remote match maps to at most one encounter per source.
+        """
+        result = await session.execute(
+            self.select()
+            .join(
+                models.ChallongeMatchMapping,
+                models.ChallongeMatchMapping.encounter_id == models.Encounter.id,
+            )
+            .where(models.ChallongeMatchMapping.challonge_match_id == challonge_id)
+        )
+        return result.unique().scalars().first()
+
+    async def list_by_teams(self, session: AsyncSession, team_ids: Sequence[int]) -> Sequence[models.Encounter]:
+        """Every encounter that seats ALL of ``team_ids`` at once.
+
+        Replaces the home/away pair lookup: one EXISTS over the ACTIVE
+        participations per team, so there is no orientation to ask about and a
+        lobby of N is queried exactly like a duel. A team whose seat was taken
+        over no longer matches -- the encounter it was replaced in is not one
+        it is playing.
+        """
+        if not team_ids:
+            return []
+        query = self.select()
+        for team_id in dict.fromkeys(team_ids):
+            query = query.where(
+                sa.exists().where(
+                    models.EncounterTeam.encounter_id == models.Encounter.id,
+                    models.EncounterTeam.team_id == team_id,
+                    models.EncounterTeam.active.is_(True),
+                )
+            )
+        result = await session.execute(query.order_by(models.Encounter.id.asc()))
+        return result.unique().scalars().all()
 
     async def list_by_tournament(
         self,
         session: AsyncSession,
         tournament_id: int,
     ) -> Sequence[models.Encounter]:
+        """Bracket order, then id. An encounter with no bracket position -- a
+        mix, a scrim -- sorts last rather than dropping out of the list."""
         result = await session.execute(
             sa.select(models.Encounter)
+            .outerjoin(
+                models.BracketEncounter,
+                models.BracketEncounter.encounter_id == models.Encounter.id,
+            )
             .where(models.Encounter.tournament_id == tournament_id)
-            .order_by(models.Encounter.round.asc(), models.Encounter.id.asc())
+            .order_by(models.BracketEncounter.round.asc().nulls_last(), models.Encounter.id.asc())
         )
         return result.scalars().all()
 
@@ -407,11 +499,19 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         inventing one would be a behaviour change.
         """
         item_clause = (
-            models.Encounter.stage_item_id.is_(None)
+            models.BracketEncounter.stage_item_id.is_(None)
             if stage_item_id is None
-            else models.Encounter.stage_item_id == stage_item_id
+            else models.BracketEncounter.stage_item_id == stage_item_id
         )
-        query = self._apply_options(self.select().where(models.Encounter.stage_id == stage_id, item_clause), options)
+        query = self._apply_options(
+            self.select()
+            .join(
+                models.BracketEncounter,
+                models.BracketEncounter.encounter_id == models.Encounter.id,
+            )
+            .where(models.BracketEncounter.stage_id == stage_id, item_clause),
+            options,
+        )
         result = await session.execute(query)
         return result.unique().scalars().all()
 
@@ -425,11 +525,15 @@ class EncounterRepository(BaseRepository[models.Encounter]):
     ) -> Sequence[models.Encounter]:
         query = self._apply_options(
             self.select()
+            .join(
+                models.BracketEncounter,
+                models.BracketEncounter.encounter_id == models.Encounter.id,
+            )
             .where(
                 models.Encounter.tournament_id == tournament_id,
-                models.Encounter.stage_id == stage_id,
+                models.BracketEncounter.stage_id == stage_id,
             )
-            .order_by(models.Encounter.round.asc(), models.Encounter.id.asc()),
+            .order_by(models.BracketEncounter.round.asc(), models.Encounter.id.asc()),
             options,
         )
         result = await session.execute(query)
@@ -438,18 +542,32 @@ class EncounterRepository(BaseRepository[models.Encounter]):
     async def delete_for_stage(self, session: AsyncSession, stage_id: int) -> None:
         """Statement delete of a stage's encounters.
 
-        NOT cascade cleanup: ``Encounter.stage_id`` is ``ON DELETE SET NULL``, so this
-        is the only thing standing between deleting a stage and orphaning its matches.
-        One statement rather than an ORM load-then-delete of the whole bracket.
+        NOT cascade cleanup: ``tournament.bracket_encounter.stage_id`` is
+        ``ON DELETE SET NULL``, so this is the only thing standing between
+        deleting a stage and orphaning its encounters. One statement rather
+        than an ORM load-then-delete of the whole bracket.
         """
-        await session.execute(sa.delete(models.Encounter).where(models.Encounter.stage_id == stage_id))
+        await session.execute(
+            sa.delete(models.Encounter).where(
+                models.Encounter.id.in_(
+                    sa.select(models.BracketEncounter.encounter_id).where(models.BracketEncounter.stage_id == stage_id)
+                )
+            )
+        )
 
     async def delete_for_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
         """Statement delete — see ``delete_for_stage``, scoped to one stage item
-        (group/bracket lane) instead of the whole stage. ``Encounter.stage_item_id``
-        is also ``ON DELETE SET NULL``.
+        (group/bracket lane) instead of the whole stage.
         """
-        await session.execute(sa.delete(models.Encounter).where(models.Encounter.stage_item_id == stage_item_id))
+        await session.execute(
+            sa.delete(models.Encounter).where(
+                models.Encounter.id.in_(
+                    sa.select(models.BracketEncounter.encounter_id).where(
+                        models.BracketEncounter.stage_item_id == stage_item_id
+                    )
+                )
+            )
+        )
 
 
 class MatchRepository(BaseRepository[models.Match]):

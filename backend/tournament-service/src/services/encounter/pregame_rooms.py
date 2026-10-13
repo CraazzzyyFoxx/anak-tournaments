@@ -30,7 +30,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import (
-    EncounterFormat,
     EncounterGameState,
     EncounterResultStatus,
     EncounterStatus,
@@ -40,21 +39,19 @@ from shared.core.enums import (
 )
 from shared.domain import pick_ban_rules as pbr
 from shared.domain.pick_ban_config import has_pool, pick_config
-from shared.models.tournament.encounter import Encounter
-from shared.models.tournament.encounter_game import EncounterGame
-from shared.models.tournament.pick_ban import (
-    EncounterReadiness,
-    PickBanConfig,
-    PickBanEntry,
-    PickBanSession,
-    PickBanSubmission,
-)
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.game import EncounterGame
+from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession, PickBanSubmission
+from shared.models.encounter.readiness import EncounterReadiness
+from shared.models.encounter.team import EncounterTeam
+from shared.models.tournament.bracket_encounter import BracketEncounter
+from shared.models.tournament.pick_ban import PickBanConfig
 from shared.models.tournament.stage import Stage
-from shared.models.tournament.team import Team
 from shared.repository.pick_ban import CONFIG_POOL_LOAD
 from src.schemas import pregame_rooms as schemas
 from src.services.encounter.pick_ban_action import PickBanActionService
 from src.services.encounter.pick_ban_session import (
+    ROOM_SLOT_COUNT,
     resolved_steps,
     unavailable_reason_for,
 )
@@ -74,36 +71,42 @@ class PregameRoomsService:
     async def list_rooms(self, session: AsyncSession, tournament_id: int) -> schemas.PregameRoomsRead:
         """Every pre-game room of one tournament, in bracket reading order.
 
-        At most nine queries whatever the tournament's size: encounters, stages,
-        teams, pick-ban configs, readiness rows, sessions and -- only when a
-        session exists -- their submissions (the cursor's only input) and the
-        settled map count a hero room waits on, plus the series' games.
+        At most ten queries whatever the tournament's size: encounters, bracket
+        positions, stages, participations, pick-ban configs, readiness rows,
+        sessions and -- only when a session exists -- their submissions (the
+        cursor's only input) and the settled map count a hero room waits on,
+        plus the series' games.
         """
         now = datetime.now(UTC)
         encounters = await _rows(
             session,
             select(Encounter).where(
                 Encounter.tournament_id == tournament_id,
-                # A lobby has no two sides to pick or ban between.
-                Encounter.format != EncounterFormat.FFA.value,
+                # A lobby has no two seats to pick or ban between.
+                Encounter.slot_count == ROOM_SLOT_COUNT,
             ),
         )
         if not encounters:
             return schemas.PregameRoomsRead(tournament_id=tournament_id, generated_at=now, rooms=[])
 
         encounter_ids = [encounter.id for encounter in encounters]
+        positions = {
+            row.encounter_id: row
+            for row in await _rows(
+                session, select(BracketEncounter).where(BracketEncounter.encounter_id.in_(encounter_ids))
+            )
+        }
         stages = {
             stage.id: stage for stage in await _rows(session, select(Stage).where(Stage.tournament_id == tournament_id))
         }
-        team_ids = sorted(
-            {
-                team_id
-                for encounter in encounters
-                for team_id in (encounter.home_team_id, encounter.away_team_id)
-                if team_id is not None
-            }
-        )
-        teams = {team.id: team for team in await _rows(session, select(Team).where(Team.id.in_(team_ids)))}
+        teams_by_encounter: dict[int, list[EncounterTeam]] = {}
+        for team in await _rows(
+            session,
+            select(EncounterTeam)
+            .where(EncounterTeam.encounter_id.in_(encounter_ids), EncounterTeam.active.is_(True))
+            .order_by(EncounterTeam.slot),
+        ):
+            teams_by_encounter.setdefault(team.encounter_id, []).append(team)
         # The whole cascade of both kinds in hand: `pick_config` ranks it per
         # encounter in memory, which is what keeps this at one config query.
         configs = await _rows(
@@ -112,11 +115,11 @@ class PregameRoomsService:
         )
         configs_by_kind = {kind: [config for config in configs if config.kind == kind] for kind in _KINDS}
 
-        ready_sides: dict[int, set[str]] = {}
+        ready_teams: dict[int, set[int]] = {}
         for row in await _rows(
             session, select(EncounterReadiness).where(EncounterReadiness.encounter_id.in_(encounter_ids))
         ):
-            ready_sides.setdefault(row.encounter_id, set()).add(row.side)
+            ready_teams.setdefault(row.encounter_id, set()).add(row.encounter_team_id)
 
         sessions_by_key: dict[tuple[int, str], PickBanSession] = {}
         for pick_ban in await _rows(
@@ -150,20 +153,22 @@ class PregameRoomsService:
 
         rows: list[schemas.PregameRoomRow] = []
         for encounter in encounters:
-            stage = stages.get(encounter.stage_id) if encounter.stage_id is not None else None
+            position = positions.get(encounter.id)
+            stage = stages.get(position.stage_id) if position is not None and position.stage_id is not None else None
             # ``is_encounter_live`` semantics without its per-encounter query: a
             # scrim/stage-less encounter is always live, and a stage row that is
             # missing (or not yet published) answers exactly as it does there.
             live = stage is None or bool(stage.is_published)
             row = self._row(
                 encounter,
+                position=position,
                 stage=stage,
-                teams=teams,
+                teams=teams_by_encounter.get(encounter.id, []),
                 configs_by_kind=configs_by_kind,
                 sessions_by_key=sessions_by_key,
                 submissions=submissions,
                 picked_per_session=picked_per_session,
-                ready=ready_sides.get(encounter.id, set()),
+                ready=ready_teams.get(encounter.id, set()),
                 games=games_by_encounter.get(encounter.id, []),
                 live=live,
                 now=now,
@@ -184,13 +189,14 @@ class PregameRoomsService:
         self,
         encounter: Encounter,
         *,
+        position: BracketEncounter | None,
         stage: Stage | None,
-        teams: dict[int, Team],
+        teams: list[EncounterTeam],
         configs_by_kind: dict[PickBanKind, list[PickBanConfig]],
         sessions_by_key: dict[tuple[int, str], PickBanSession],
         submissions: dict[int, list[PickBanSubmission]],
         picked_per_session: dict[int, int],
-        ready: set[str],
+        ready: set[int],
         games: list[EncounterGame],
         live: bool,
         now: datetime,
@@ -202,11 +208,16 @@ class PregameRoomsService:
         in yet (a session there would have had to be created before the stage
         was unpublished, so one existing keeps the row).
         """
-        readiness = {"home": "home" in ready, "away": "away" in ready}
-        both_ready = readiness["home"] and readiness["away"]
+        readiness = {str(team.id): team.id in ready for team in teams}
+        seats_complete = len(teams) == encounter.slot_count
+        all_ready = bool(readiness) and all(readiness.values()) and seats_complete
         # The cascade, resolved once per kind for this encounter's coordinate.
         resolved = {
-            kind: pick_config(configs_by_kind.get(kind, ()), stage_id=encounter.stage_id, round=encounter.round)
+            kind: pick_config(
+                configs_by_kind.get(kind, ()),
+                stage_id=position.stage_id if position is not None else None,
+                round=position.round if position is not None else None,
+            )
             for kind in _KINDS
         }
         map_config = resolved[PickBanKind.MAP]
@@ -225,9 +236,11 @@ class PregameRoomsService:
                 kind,
                 config=resolved[kind],
                 pick_ban=sessions_by_key.get((encounter.id, kind.value)),
+                teams=teams,
                 submissions=submissions,
+                seats_complete=seats_complete,
                 live=live,
-                both_ready=both_ready,
+                all_ready=all_ready,
                 map_round_one_settled=map_settled,
             )
         map_summary, hero_summary = summaries[PickBanKind.MAP], summaries[PickBanKind.HERO]
@@ -245,13 +258,13 @@ class PregameRoomsService:
             awaiting_result=sum(1 for game in live_games if str(game.state) == EncounterGameState.AWAITING_RESULT),
         )
         phase = derive_phase(
-            teams_known=encounter.home_team_id is not None and encounter.away_team_id is not None,
+            teams_known=seats_complete,
             done=(
                 str(encounter.status) == EncounterStatus.COMPLETED
                 or str(encounter.result_status) == EncounterResultStatus.CONFIRMED
             ),
             any_session=any_session,
-            readiness_complete=both_ready,
+            readiness_complete=all_ready,
             map_open=_kind_open(map_summary),
             hero_open=_kind_open(hero_summary),
             report_pending=bool(games_summary.awaiting_result or games_summary.disputed),
@@ -261,22 +274,22 @@ class PregameRoomsService:
             for summary in (map_summary, hero_summary)
             if summary is not None and summary.step_index is not None and summary.deadline_at is not None
         ]
-        home_team = teams.get(encounter.home_team_id) if encounter.home_team_id is not None else None
-        away_team = teams.get(encounter.away_team_id) if encounter.away_team_id is not None else None
         return schemas.PregameRoomRow(
             encounter_id=encounter.id,
             name=encounter.name,
-            stage_id=encounter.stage_id,
+            stage_id=position.stage_id if position is not None else None,
             stage_name=stage.name if stage is not None else None,
-            round=encounter.round,
+            round=position.round if position is not None else 0,
             best_of=encounter.best_of,
             scheduled_at=encounter.scheduled_at,
             status=str(encounter.status),
             result_status=str(encounter.result_status) if encounter.result_status is not None else None,
-            home_team=schemas.PregameRoomTeam(id=home_team.id, name=home_team.name) if home_team else None,
-            away_team=schemas.PregameRoomTeam(id=away_team.id, name=away_team.name) if away_team else None,
-            home_score=encounter.home_score,
-            away_score=encounter.away_score,
+            teams=[
+                schemas.PregameRoomTeam(
+                    encounter_team_id=team.id, slot=team.slot, team_id=team.team_id, name=team.name, score=team.score
+                )
+                for team in teams
+            ],
             readiness=readiness,
             phase=phase,
             map=map_summary,
@@ -302,9 +315,11 @@ class PregameRoomsService:
         *,
         config: PickBanConfig | None,
         pick_ban: PickBanSession | None,
+        teams: list[EncounterTeam],
         submissions: dict[int, list[PickBanSubmission]],
+        seats_complete: bool,
         live: bool,
-        both_ready: bool,
+        all_ready: bool,
         map_round_one_settled: bool,
     ) -> schemas.PregameKindSummary | None:
         """One kind's room. ``None`` when the encounter plays no room of this
@@ -318,21 +333,22 @@ class PregameRoomsService:
                     encounter,
                     kind,
                     config,
+                    seats_complete=seats_complete,
                     live=live,
-                    both_ready=both_ready,
+                    all_ready=all_ready,
                     map_round_one_settled=map_round_one_settled,
                 )
             )
         rows = submissions.get(pick_ban.id, [])
-        steps = resolved_steps(pick_ban)
+        steps = resolved_steps(pick_ban, teams)
         # A cancelled session's cursor is meaningless -- the step it stopped on
         # is never going to be taken -- so the board shows it as open nothing.
         cancelled = str(pick_ban.status) == MapVetoSessionStatus.CANCELLED
         step = pbr.current_step(steps, rows) if not cancelled else None
-        acting: list[str] = []
+        acting: list[int] = []
         if step is not None:
             progress = pbr.step_progress(step, rows)
-            acting = [side for side in step.acting_sides if not progress[side]["locked"]]
+            acting = [actor for actor in step.acting_actors if not progress[actor]["locked"]]
         return schemas.PregameKindSummary(
             status=str(pick_ban.status),
             # The round a step is open in. Without an open step the session is
@@ -344,7 +360,7 @@ class PregameRoomsService:
             step_count=len(steps),
             step_action=str(step.action) if step is not None else None,
             step_blind=bool(step.blind) if step is not None else False,
-            acting_sides=acting,
+            acting_team_ids=acting,
             step_started_at=pick_ban.current_step_started_at,
             deadline_at=PickBanActionService.step_deadline(pick_ban, step) if step is not None else None,
             awaiting_choice=bool(pick_ban.awaiting_choice),
@@ -374,7 +390,7 @@ def derive_phase(
 
     Ranked, not a state machine: a room can be several things at once (a map
     session open AND a disputed game of an earlier map), and the organizer wants
-    the thing that is blocking progress. Teams first -- an unseeded slot blocks
+    the thing that is blocking progress. Seats first -- an unseated slot blocks
     everything -- then a finished match (nothing left to run), then the gate the
     pre-game phase opens with, then the two pick-ban kinds in the order they are
     played, then the reports. ``idle`` is a room with nothing owed: configured,

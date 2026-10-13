@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "@/i18n/messages/en.json";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/workspace/timezone";
 import { EncounterEditDialog } from "@/components/tournaments/EncounterEditDialog";
-import type { CaptainReport, Encounter } from "@/types/encounter.types";
+import type { CaptainReport, Encounter, EncounterTeam } from "@/types/encounter.types";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -38,15 +38,20 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
+/** The two live seats, slot 1 Alpha and slot 2 Bravo, standing `one` – `two`. */
+function seats(one: number, two: number): EncounterTeam[] {
+  return [
+    { id: 1, slot: 1, team_id: 11, name: "Alpha", seed: null, score: one, placement: null, active: true },
+    { id: 2, slot: 2, team_id: 22, name: "Bravo", seed: null, score: two, placement: null, active: true }
+  ];
+}
+
 function encounter(overrides: Partial<Encounter> = {}): Encounter {
   return {
     id: 42,
     created_at: new Date(0),
     updated_at: null,
     name: "A vs B",
-    home_team_id: 1,
-    away_team_id: 2,
-    score: { home: 1, away: 1 },
     round: 1,
     best_of: 2,
     tournament_id: 7,
@@ -63,8 +68,11 @@ function encounter(overrides: Partial<Encounter> = {}): Encounter {
     current_map_index: null,
     confirmed_at: null,
     matches: [],
-    home_team: { id: 1, name: "Alpha" } as never,
-    away_team: { id: 2, name: "Bravo" } as never,
+    slot_count: 2,
+    result_source: null,
+    result_version: 1,
+    games: [],
+    teams: seats(1, 1),
     tournament: null as never,
     stage: null,
     stage_item: null,
@@ -123,17 +131,20 @@ beforeEach(() => {
   getReports.mockResolvedValue({ reports: [], form: undefined });
 });
 
+/** A report by participation 1 (Alpha) claiming `one` – `two`. */
 function report(overrides: Partial<CaptainReport> = {}): CaptainReport {
   return {
     id: 1,
     encounter_id: 42,
-    team_id: 1,
-    side: "home",
+    encounter_team_id: 1,
     reporter_user_id: 5,
-    home_score: 2,
-    away_score: 0,
+    games_played: 2,
+    basis_version: 1,
+    results: [
+      { encounter_team_id: 1, score: 2, placement: null, wins: 2 },
+      { encounter_team_id: 2, score: 0, placement: null, wins: 0 }
+    ],
     closeness: null,
-    map_codes: [],
     comment: null,
     custom_fields: {},
     created_at: null,
@@ -148,8 +159,19 @@ function findButton(label: string): HTMLButtonElement | undefined {
   );
 }
 
-function confirmLabel(home: number, away: number): string {
-  return messages.matchEdit.confirmScore.replace("{home}", String(home)).replace("{away}", String(away));
+function confirmLabel(first: number, second: number): string {
+  return messages.matchEdit.confirmScore.replace("{first}", String(first)).replace("{second}", String(second));
+}
+
+/** The journal reason the server requires with every admin result. */
+async function typeReason(value: string) {
+  const input = document.body.querySelector<HTMLInputElement>('input[id$="-reason"]');
+  if (!input) throw new Error("reason field not rendered");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await flush();
 }
 
 async function click(button: HTMLButtonElement | undefined) {
@@ -161,7 +183,7 @@ async function click(button: HTMLButtonElement | undefined) {
 }
 
 describe("EncounterEditDialog result", () => {
-  it("saves the settings without touching the score", async () => {
+  it("saves the settings without writing a standing", async () => {
     // Save used to carry the score: on a pending match it wrote a number that
     // never completed anything, on a completed one it flipped the winner
     // behind the bracket's back.
@@ -169,8 +191,8 @@ describe("EncounterEditDialog result", () => {
     await clickSave();
 
     const payload = updateEncounter.mock.calls[0]?.[1];
-    expect(payload).not.toHaveProperty("home_score");
-    expect(payload).not.toHaveProperty("away_score");
+    expect(payload).not.toHaveProperty("results");
+    expect(payload).not.toHaveProperty("teams");
     expect(payload).not.toHaveProperty("closeness");
   });
 
@@ -182,29 +204,50 @@ describe("EncounterEditDialog result", () => {
       <EncounterEditDialog
         open
         onOpenChange={() => {}}
-        encounter={encounter({ score: { home: 0, away: 0 }, result_status: "pending_confirmation" })}
+        encounter={encounter({ teams: seats(0, 0), result_status: "pending_confirmation" })}
       />
     );
 
     expect(document.body.textContent).toContain(
       messages.matchEdit.sourceSingleReport.replace("{team}", "Alpha")
     );
+    await typeReason("captain report");
     await click(findButton(confirmLabel(2, 0)));
-    expect(setEncounterResult).toHaveBeenCalledWith(42, { adopt_report_team_id: 1 });
+    expect(setEncounterResult).toHaveBeenCalledWith(42, {
+      reason: "captain report",
+      results: [],
+      adopt_report_team_id: 1
+    });
   });
 
-  it("sends a manually entered score instead of the report", async () => {
+  it("sends a manually entered standing, one line per participation in slot order", async () => {
     getReports.mockResolvedValue({ reports: [report()], form: undefined });
     await mount(<EncounterEditDialog open onOpenChange={() => {}} encounter={encounter()} />);
 
     await click(document.body.querySelector<HTMLButtonElement>('button[aria-label^="Raise the score for Bravo"]') ?? undefined);
+    await typeReason("log review");
     await click(findButton(confirmLabel(2, 1)));
-    expect(setEncounterResult).toHaveBeenCalledWith(42, { home_score: 2, away_score: 1 });
+    expect(setEncounterResult).toHaveBeenCalledWith(42, {
+      reason: "log review",
+      results: [
+        { encounter_team_id: 1, score: 2 },
+        { encounter_team_id: 2, score: 1 }
+      ]
+    });
+  });
+
+  it("will not confirm without a reason: the server refuses one", async () => {
+    getReports.mockResolvedValue({ reports: [report()], form: undefined });
+    await mount(<EncounterEditDialog open onOpenChange={() => {}} encounter={encounter()} />);
+
+    expect(findButton(confirmLabel(2, 0))?.disabled).toBe(true);
+    await typeReason("why");
+    expect(findButton(confirmLabel(2, 0))?.disabled).toBe(false);
   });
 
   it("has no score to confirm when nobody reported and the match is still 0:0", async () => {
     await mount(
-      <EncounterEditDialog open onOpenChange={() => {}} encounter={encounter({ score: { home: 0, away: 0 } })} />
+      <EncounterEditDialog open onOpenChange={() => {}} encounter={encounter({ teams: seats(0, 0) })} />
     );
 
     expect(document.body.textContent).toContain(messages.matchEdit.noScoreSelected);
@@ -216,12 +259,13 @@ describe("EncounterEditDialog result", () => {
       <EncounterEditDialog
         open
         onOpenChange={() => {}}
-        encounter={encounter({ score: { home: 1, away: 1 } })}
+        encounter={encounter({ teams: seats(1, 1) })}
         stageType="single_elimination"
       />
     );
 
     expect(document.body.textContent).toContain(messages.matchEdit.drawBlocked);
+    await typeReason("why");
     expect(findButton(confirmLabel(1, 1))?.disabled).toBe(true);
   });
 
@@ -230,7 +274,7 @@ describe("EncounterEditDialog result", () => {
       <EncounterEditDialog
         open
         onOpenChange={() => {}}
-        encounter={encounter({ status: "completed", result_status: "confirmed", score: { home: 2, away: 0 } })}
+        encounter={encounter({ status: "completed", result_status: "confirmed", teams: seats(2, 0) })}
       />
     );
 

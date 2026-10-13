@@ -31,7 +31,12 @@ __all__ = ("Team", "Player", "PlayerSubRole")
 
 class Team(db.TimeStampIntegerMixin):
     __tablename__ = "team"
-    __table_args__ = ({"schema": "tournament"},)
+    __table_args__ = (
+        # Target of ``fk_team_source``: a participation names a team of its own
+        # tournament, and the database checks it (D62).
+        UniqueConstraint("id", "tournament_id", name="uq_team_id_tournament"),
+        {"schema": "tournament"},
+    )
 
     balancer_name: Mapped[str] = mapped_column(String())
     name: Mapped[str] = mapped_column(String())

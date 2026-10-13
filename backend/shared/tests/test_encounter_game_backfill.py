@@ -1,14 +1,49 @@
-from datetime import UTC, datetime
+"""The one-time plan behind ``encgame01``: legacy per-map rows -> encounter games.
 
-from shared.domain.encounter_game_backfill import (
-    EncounterSides,
-    LegacyCaptainMatch,
-    LegacyReport,
-    plan_games,
-)
+The planner lives in the revision that applies it (its inputs are tables that
+only exist before that revision runs), so these load the revision file the way
+alembic does -- ``spec_from_file_location``, NOT registered in ``sys.modules``.
+That is deliberate: under exactly those conditions ``dataclasses`` cannot
+resolve string annotations, so this import is also what fails the day somebody
+puts ``from __future__ import annotations`` back at the top of the revision and
+takes ``alembic upgrade`` down with it.
+
+Its entire job is to detect ambiguity and abort (spec §13B), so every rule it
+pins is a production cutover that must not guess.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+from datetime import UTC, datetime
+from pathlib import Path
+from types import ModuleType
+
+_REVISION = Path(__file__).resolve().parents[2] / "migrations" / "versions" / "encgame01_encounter_game_authority.py"
+
+
+def _load_revision() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("encgame01_under_test", _REVISION)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+encgame01 = _load_revision()
+EncounterSides = encgame01.EncounterSides
+LegacyCaptainMatch = encgame01.LegacyCaptainMatch
+LegacyReport = encgame01.LegacyReport
+plan_games = encgame01.plan_games
 
 T0 = datetime(2026, 1, 1, tzinfo=UTC)
 SIDES = {1: EncounterSides(home_team_id=10, away_team_id=20)}
+
+
+def test_the_revision_still_loads_the_way_alembic_loads_it() -> None:
+    """``revision``/``down_revision`` prove it is the real file, not a stub."""
+    assert encgame01.revision == "encgame01"
+    assert encgame01.down_revision == "draftot01"
 
 
 def test_positioned_agreeing_reports_become_one_confirmed_game() -> None:

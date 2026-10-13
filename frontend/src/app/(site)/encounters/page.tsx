@@ -59,11 +59,11 @@ const EMPTY_OVERVIEW: EncounterOverview = {
     reverse_sweep_rate: 0,
     most_decisive_map: null,
   },
-  side_balance: {
-    home_wins: 0,
-    away_wins: 0,
-    home_win_pct: 0,
-    away_win_pct: 0,
+  slot_balance: {
+    slot_one_wins: 0,
+    slot_two_wins: 0,
+    slot_one_win_pct: 0,
+    slot_two_win_pct: 0,
   },
 };
 
@@ -126,8 +126,7 @@ async function EncountersContent({ page, filters, scope }: Readonly<EncountersCo
             "tournament",
             "stage",
             "stage_item",
-            "home_team",
-            "away_team",
+            "teams",
             "matches",
             "matches.map",
           ],

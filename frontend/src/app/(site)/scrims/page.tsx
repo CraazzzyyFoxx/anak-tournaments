@@ -17,6 +17,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getCurrentPathForAuthRedirect } from "@/lib/auth/redirect";
+import { duelSeats, seatAt } from "@/lib/encounter/seats";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import { withReturnTo } from "@/lib/auth/return-to";
@@ -42,6 +43,8 @@ function RoomCard({
   const t = useTranslations("scrims.list");
   const format = useFormatter();
   const href = withReturnTo(`/scrims/${room.token}`, "/scrims");
+  const [first, second] = duelSeats(room.teams);
+  const viewerTeam = room.viewer_slot == null ? null : seatAt(room.teams, room.viewer_slot);
 
   return (
     <Card>
@@ -53,12 +56,12 @@ function RoomCard({
             {communityName ? <Badge variant="outline">{communityName}</Badge> : null}
             {room.closed_at != null ? (
               <Badge variant="outline">{t("closed")}</Badge>
-            ) : room.away_team.captain_claimed ? null : (
+            ) : second?.captain_claimed ? null : (
               <Badge variant="outline">{t("awaitingOpponent")}</Badge>
             )}
           </div>
           <p className="text-muted-foreground mt-1 truncate text-sm">
-            {t("sides", { home: room.home_team.name, away: room.away_team.name })}
+            {t("matchup", { first: first?.name ?? "", second: second?.name ?? "" })}
           </p>
           <p className="text-muted-foreground mt-1 text-xs">
             {t("createdAt", {
@@ -67,9 +70,7 @@ function RoomCard({
                 timeStyle: "short"
               })
             })}
-            {room.viewer_side != null
-              ? ` · ${t(room.viewer_side === "home" ? "youAreHome" : "youAreAway")}`
-              : null}
+            {viewerTeam != null ? ` · ${t("youCaptain", { team: viewerTeam.name })}` : null}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">

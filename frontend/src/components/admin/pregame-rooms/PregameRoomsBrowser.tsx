@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import adminService from "@/services/admin.service";
 import type { PregameRoomRow } from "@/types/admin.types";
+import { seatsBySlot } from "@/lib/encounter/seats";
 
 import { pregameRoomFilterDefs } from "./filters";
 import { PHASE_LABEL, PREGAME_ROOMS_REFETCH_MS, sortRooms } from "./model";
@@ -145,7 +146,7 @@ export function PregameRoomsBrowser({ tournamentId }: Readonly<{ tournamentId: n
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{row.original.name}</p>
             <p className="truncate text-xs text-muted-foreground">
-              {t("teamsVs", { home: row.original.home_team?.name ?? "TBD", away: row.original.away_team?.name ?? "TBD" })}
+              {seatsBySlot(row.original.teams).map((seat) => seat.name).join(` ${t("vs")} `) || t("tbd")}
             </p>
             <p className="text-xs text-muted-foreground">
               {t(PHASE_LABEL[row.original.phase] as Parameters<typeof t>[0])}

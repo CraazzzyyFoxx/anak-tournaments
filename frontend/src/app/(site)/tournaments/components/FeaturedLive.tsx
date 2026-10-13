@@ -6,6 +6,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { ArrowRight, Users } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
+import { duelSeats, seatTeam } from "@/lib/encounter/seats";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { tournamentHref } from "@/lib/tournament/url";
 import type { TeamFormation } from "@/types/tournament.types";
@@ -21,6 +22,7 @@ const FeaturedTournamentCard = ({
   const t = useTranslations();
   const format = useFormatter();
   const { tournament, current, encounters } = group;
+  const [seatOne, seatTwo] = duelSeats(current.teams);
 
   const stageName = current.stage?.name ?? null;
   const mapName = currentMapName(current);
@@ -100,20 +102,20 @@ const FeaturedTournamentCard = ({
         <div className="vs">
           <div className="team">
             <TeamName
-              team={current.home_team}
+              team={seatTeam(seatOne)}
               fallback={t("common.tbd")}
               size="sm"
               nameClassName="nm"
             />
           </div>
           <span className="score">
-            <span className="em">{current.score?.home ?? 0}</span>
+            <span className="em">{seatOne?.score ?? 0}</span>
             <span className="sep">·</span>
-            {current.score?.away ?? 0}
+            {seatTwo?.score ?? 0}
           </span>
           <div className="team right">
             <TeamName
-              team={current.away_team}
+              team={seatTeam(seatTwo)}
               fallback={t("common.tbd")}
               size="sm"
               nameClassName="nm"
