@@ -440,6 +440,61 @@ def test_the_reconcile_key_is_counted_when_two_rounds_share_it(legacy_template) 
         tx.rollback()
 
 
+def test_the_reconcile_lists_content_swapped_between_two_rounds_of_one_key(legacy_template) -> None:
+    """Both encounters are kept, so the count holds; each round is checked against its own encounter only."""
+    ids = dict(legacy_template["ids"])
+    _recreate(COLLIDING_DB, TEMPLATE_DB)
+    with _connect(COLLIDING_DB) as conn:
+        for key, member in (("c1", "m0"), ("c2", "m1")):
+            _round(
+                conn,
+                ids,
+                key,
+                mix="cg_empty",
+                lobby=0,
+                first=[(member, "tank", 2400, None)],
+                second=[("m5", None, 2300, None)],
+                scores=(1, 0),
+                at="2026-09-02T10:00:00Z",
+            )
+    done = _alembic(COLLIDING_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(COLLIDING_DB, autocommit=False) as tx:
+        create, _summary, skipped = _statements(RECONCILE_SQL)
+        tx.execute(create)
+        before = {tuple(row) for row in _rows(tx, skipped)}
+        # Exchange the first team's name and its member between the two encounters; nothing is deleted.
+        tx.execute(
+            "UPDATE encounter.team SET name = CASE name WHEN 'c1-A' THEN 'c2-A' ELSE 'c1-A' END"
+            " WHERE name IN ('c1-A', 'c2-A')"
+        )
+        tx.execute(
+            "UPDATE encounter.team_member SET display_name_snapshot = CASE display_name_snapshot"
+            " WHEN 'm0@c1' THEN 'm1@c2' ELSE 'm0@c1' END,"
+            " workspace_member_id = CASE workspace_member_id WHEN %(m0)s THEN %(m1)s ELSE %(m0)s END"
+            " WHERE display_name_snapshot IN ('m0@c1', 'm1@c2')",
+            {"m0": ids["m0"], "m1": ids["m1"]},
+        )
+        tx.execute(
+            "UPDATE balancer.mix_round_member SET workspace_member_id = CASE workspace_member_id"
+            " WHEN %(m0)s THEN %(m1)s ELSE %(m0)s END"
+            " WHERE workspace_member_id IN (%(m0)s, %(m1)s) AND encounter_id IN"
+            " (SELECT encounter_id FROM encounter.team WHERE name IN ('c1-A', 'c2-A'))",
+            {"m0": ids["m0"], "m1": ids["m1"]},
+        )
+        tx.execute("DROP VIEW mixround01_reconcile")
+        tx.execute(create)
+        new = {tuple(row) for row in _rows(tx, skipped)} - before
+        tx.rollback()
+    assert {(cls, detail) for cls, _id, detail in new if cls == "sides"} == {
+        ("sides", f"round {ids[key]} home") for key in ("c1", "c2")
+    }
+    assert {(cls, legacy_id) for cls, legacy_id, _detail in new if cls == "seats"} == {
+        ("seats", ids["c1-home-0"]),
+        ("seats", ids["c2-home-0"]),
+    }
+
+
 def test_the_reconcile_report_lists_a_journal_actor_that_is_not_the_recorder(migrated) -> None:
     ids = migrated["ids"]
     with _connect(MIGRATED_DB, autocommit=False) as tx:

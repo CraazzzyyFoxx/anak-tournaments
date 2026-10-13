@@ -5,7 +5,9 @@
 -- Run after mixround01 and again before mixround02. mixround02 refuses while result set 1 has a status other
 -- than ok or result set 2 has a row. The key of a legacy round is its mix, lobby and created_at; it is not unique
 -- (rounds recorded in one transaction share now()), so a key counts as carried only when as many encounters of
--- that mix carry it as legacy rounds do.
+-- that mix carry it as legacy rounds do, and its rounds are paired with those encounters one to one by ordinal
+-- (mixround01 numbered encounters in legacy casual.match.id order): every class below is checked against
+-- the encounter of its own round, so a swap of content between two rounds of one key is listed.
 
 CREATE TEMP VIEW mixround01_reconcile AS
 WITH legacy_key AS (
@@ -16,15 +18,23 @@ WITH legacy_key AS (
     SELECT e.custom_game_id, r.lobby_index, e.created_at, count(*) AS rounds
       FROM encounter.encounter e JOIN balancer.mix_round r ON r.encounter_id = e.id
      GROUP BY e.custom_game_id, r.lobby_index, e.created_at
-), image AS (
-    SELECT m.id AS match_id, e.id AS encounter_id
+), legacy_ord AS (
+    SELECT m.id AS match_id, m.custom_game_id, m.lobby_index, m.created_at,
+           row_number() OVER (PARTITION BY m.custom_game_id, m.lobby_index, m.created_at ORDER BY m.id) AS ord
       FROM casual.match m
-      JOIN legacy_key lk ON lk.custom_game_id = m.custom_game_id AND lk.lobby_index = m.lobby_index
-                        AND lk.created_at = m.created_at
+), carried_ord AS (
+    SELECT e.id AS encounter_id, e.custom_game_id, r.lobby_index, e.created_at,
+           row_number() OVER (PARTITION BY e.custom_game_id, r.lobby_index, e.created_at ORDER BY e.id) AS ord
+      FROM encounter.encounter e JOIN balancer.mix_round r ON r.encounter_id = e.id
+), image AS (
+    SELECT lo.match_id, co.encounter_id
+      FROM legacy_ord lo
+      JOIN legacy_key lk ON lk.custom_game_id = lo.custom_game_id AND lk.lobby_index = lo.lobby_index
+                        AND lk.created_at = lo.created_at
       JOIN carried_key ck ON ck.custom_game_id = lk.custom_game_id AND ck.lobby_index = lk.lobby_index
                          AND ck.created_at = lk.created_at AND ck.rounds = lk.rounds
-      JOIN encounter.encounter e ON e.custom_game_id = m.custom_game_id AND e.created_at = m.created_at
-      JOIN balancer.mix_round r ON r.encounter_id = e.id AND r.lobby_index = m.lobby_index
+      JOIN carried_ord co ON co.custom_game_id = lo.custom_game_id AND co.lobby_index = lo.lobby_index
+                         AND co.created_at = lo.created_at AND co.ord = lo.ord
 )
 SELECT 'rounds' AS class, m.id AS legacy_id, ''::text AS detail,
        EXISTS (SELECT 1 FROM image i
