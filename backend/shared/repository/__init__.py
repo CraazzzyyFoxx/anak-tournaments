@@ -155,6 +155,7 @@ from .workspace import (
     resolve_workspace_member_id,
 )
 from .casual import CasualMatchRepository, CasualPlayerRepository, CasualTeamRepository
+from .mix_round import MixRoundRepository
 from .custom_game import (
     CustomGameCoHostRepository,
     CustomGameLobbyRepository,
@@ -309,6 +310,7 @@ __all__ = (
     "CasualMatchRepository",
     "CasualPlayerRepository",
     "CasualTeamRepository",
+    "MixRoundRepository",
     "CustomGameCoHostRepository",
     "CustomGameLobbyRepository",
     "CustomGamePlayerRepository",
