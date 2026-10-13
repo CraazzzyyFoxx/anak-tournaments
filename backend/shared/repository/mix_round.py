@@ -96,26 +96,25 @@ class MixRoundRepository(BaseRepository[models.MixRound]):
         )
         return {row.lobby_index: (row.rounds, row.last_at) for row in rows}
 
-    async def seats(
-        self,
-        session: AsyncSession,
-        *,
-        workspace_id: int,
-        encounter_id: int | None = None,
-        since: datetime | None = None,
-    ) -> Sequence[sa.Row]:
-        """One row per seat of this workspace's rounds, oldest round first: the leaderboard, the ranker replay
-        and undo all read this. The other side's score rides on the row because a round stores two scores and
-        no winner flag. A mix seat has at most one ``player_role`` row, so the outer join never fans out."""
+    @staticmethod
+    def seat_rows_select(workspace_id: int) -> sa.Select:
+        """The one seat join (unexecuted): a row per seat of this workspace's rounds, with its role, its frozen
+        rank delta and both sides' scores -- a round stores two scores and no winner flag. A mix seat has at most
+        one ``player_role`` row, so the outer join never fans out. ``seats()`` executes it; the rank overview
+        composes it as a subquery."""
         seat = models.EncounterTeamMember
         side = models.EncounterTeam
         other = aliased(models.EncounterTeam)
         role = models.EncounterTeamMemberRole
         member = models.MixRoundMember
-        stmt = (
+        return (
             sa.select(
+                seat.id.label("seat_id"),
                 models.Encounter.id.label("encounter_id"),
                 models.Encounter.created_at,
+                models.Encounter.custom_game_id,
+                models.MixRound.lobby_index,
+                models.MixRound.points_per_win_applied,
                 side.slot,
                 seat.workspace_member_id,
                 role.role,
@@ -137,8 +136,19 @@ class MixRoundRepository(BaseRepository[models.MixRound]):
                 ),
             )
             .where(models.Encounter.workspace_id == workspace_id)
-            .order_by(models.Encounter.id, seat.id)
         )
+
+    async def seats(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        encounter_id: int | None = None,
+        since: datetime | None = None,
+    ) -> Sequence[sa.Row]:
+        """``seat_rows_select`` of this workspace, oldest round first: the leaderboard, the ranker replay and
+        undo all read this."""
+        stmt = self.seat_rows_select(workspace_id).order_by(models.Encounter.id, models.EncounterTeamMember.id)
         if encounter_id is not None:
             stmt = stmt.where(models.Encounter.id == encounter_id)
         if since is not None:

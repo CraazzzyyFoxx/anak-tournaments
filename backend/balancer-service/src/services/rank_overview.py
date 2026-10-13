@@ -24,7 +24,6 @@ from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
-from sqlalchemy import orm
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
@@ -32,7 +31,7 @@ from shared.core.social import SocialProvider
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.models.ranks.overwatch_rank import BattleTagRankState, UserRankSnapshot
-from shared.repository.mix_round import MIX_ROLE_DIMENSION
+from shared.repository import MixRoundRepository
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.rank_snapshots import OW_RANK_MAX_AGE
 
@@ -470,54 +469,35 @@ def _branches(
         )
 
     if "casual" in wanted:
-        seat = models.EncounterTeamMember
-        side = models.EncounterTeam
-        encounter = models.Encounter
-        round_ = models.MixRound
-        round_member = models.MixRoundMember
-        role = models.EncounterTeamMemberRole
+        seat_rows = MixRoundRepository.seat_rows_select(workspace_id).subquery("rank_casual_seat")
         game = models.CustomGame
-        opponent = orm.aliased(models.EncounterTeam, name="rank_casual_opponent")
-        points = round_.points_per_win_applied
+        points = seat_rows.c.points_per_win_applied
         out.append(
             sa.select(
                 *_row(
                     "casual",
                     members,
-                    role=role.role,
-                    rank_value=seat.rank,
+                    role=seat_rows.c.role,
+                    rank_value=seat_rows.c.rank,
                     author_user_id=game.host_user_id,
                     delta=sa.func.coalesce(
-                        round_member.rank_delta_applied,
+                        seat_rows.c.rank_delta_applied,
                         sa.case(
-                            (sa.or_(points.is_(None), side.score == opponent.score), sa.null()),
-                            (side.score > opponent.score, points),
+                            (sa.or_(points.is_(None), seat_rows.c.own_score == seat_rows.c.other_score), sa.null()),
+                            (seat_rows.c.own_score > seat_rows.c.other_score, points),
                             else_=-points,
                         ),
                     ),
                     context_kind=sa.literal("mix"),
                     context_id=game.id,
                     context_label=game.name,
-                    context_lobby_index=round_.lobby_index,
-                    at=encounter.created_at,
-                    row_id=seat.id,
+                    context_lobby_index=seat_rows.c.lobby_index,
+                    at=seat_rows.c.created_at,
+                    row_id=seat_rows.c.seat_id,
                 )
             )
-            .join_from(members, seat, seat.workspace_member_id == members.c.member_id)
-            .join(side, side.id == seat.encounter_team_id)
-            .join(encounter, encounter.id == seat.encounter_id)
-            .join(round_, round_.encounter_id == encounter.id)
-            .join(game, game.id == encounter.custom_game_id)
-            .outerjoin(role, sa.and_(role.team_member_id == seat.id, role.dimension == MIX_ROLE_DIMENSION))
-            .outerjoin(
-                round_member,
-                sa.and_(
-                    round_member.encounter_id == encounter.id,
-                    round_member.workspace_member_id == seat.workspace_member_id,
-                ),
-            )
-            .outerjoin(opponent, sa.and_(opponent.encounter_id == encounter.id, opponent.id != side.id))
-            .where(game.workspace_id == workspace_id)
+            .join_from(members, seat_rows, seat_rows.c.workspace_member_id == members.c.member_id)
+            .join(game, game.id == seat_rows.c.custom_game_id)
         )
 
     return out
