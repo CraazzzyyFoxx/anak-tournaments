@@ -1088,6 +1088,7 @@ class AdminService {
   async getCatalogAliasMisses(params: CatalogAliasMissQuery = {}): Promise<PaginatedResponse<CatalogAliasMissRead>> {
     const response = await apiFetch("/api/v1/admin/catalog-aliases/misses", {
       query: {
+        discipline: "overwatch",
         ...(params.page != null && { page: params.page }),
         ...(params.per_page != null && { per_page: params.per_page }),
         ...(params.entity_type && { kind: KIND_OF_ENTITY[params.entity_type] }),

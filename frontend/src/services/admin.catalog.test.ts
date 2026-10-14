@@ -57,7 +57,7 @@ describe("adminService on the generic catalog", () => {
       total: 1, page: 1, per_page: 50
     };
     const page = await adminService.getCatalogAliasMisses({ entity_type: "gamemode" });
-    expect(calls[0].options?.query).toEqual({ kind: "mode" });
+    expect(calls[0].options?.query).toEqual({ discipline: "overwatch", kind: "mode" });
     expect(page.results[0]).toMatchObject({ entity_type: "gamemode", last_log_record_id: 11, last_log_tournament_id: 5 });
   });
 

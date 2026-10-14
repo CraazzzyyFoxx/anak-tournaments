@@ -29,13 +29,9 @@ import {
 import adminService from "@/services/admin.service";
 import type { MapRead } from "@/types/map.types";
 import type { MapCreateInput, MapUpdateInput } from "@/types/admin.types";
-import { apiFetch } from "@/lib/api/fetch";
-import type { Gamemode } from "@/types/gamemode.types";
-import type { PaginatedResponse } from "@/types/pagination.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCatalogEntityCrud } from "@/hooks/useCatalogEntityCrud";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
-import { mapQueryKeys } from "@/lib/maps/query-keys";
 
 // Key order matters: `hasUnsavedChanges` compares JSON, so `getMapForm` below
 // must list the same fields in the same order or every dialog opens dirty.
@@ -67,14 +63,10 @@ export default function MapsAdminPage() {
   const gamemodeFieldId = `${formId}-gamemode`;
   const aliasesFieldId = `${formId}-aliases`;
 
-  // Gamemodes back both the create/edit dialog select and the Gamemode chip.
+  // Catalog ids back both the dialog and filter; public mode ids stay legacy until Task 5.
   const { data: gamemodesData } = useQuery({
-    queryKey: mapQueryKeys.gamemodes(),
-    queryFn: async () => {
-      const response = await apiFetch("/api/v1/gamemodes");
-      const data = (await response.json()) as PaginatedResponse<Gamemode>;
-      return data.results;
-    },
+    queryKey: [...adminQueryKeys.contentEntity("gamemodes"), "options"],
+    queryFn: async () => (await adminService.getGamemodes({ per_page: -1 })).results,
   });
 
   const {
