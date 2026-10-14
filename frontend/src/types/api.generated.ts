@@ -1900,6 +1900,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/catalog/legacy/{legacy_kind}/{legacy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve an old catalog id
+         * @description Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.
+         *
+         *     RPC subject: `rpc.app.catalog.legacy`
+         */
+        get: operations["get__api_v1_catalog_legacy__legacy_kind___legacy_id_"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/encounters": {
         parameters: {
             query?: never;
@@ -12121,6 +12143,20 @@ export interface components {
             is_league: boolean;
             /** Name */
             name: string;
+        };
+        /**
+         * CatalogLegacyRead
+         * @description What an old ``overwatch.hero|map|gamemode`` id became (D84).
+         */
+        "app.CatalogLegacyRead": {
+            /** Discipline */
+            discipline: string;
+            /** Entity Id */
+            entity_id: number;
+            /** Kind */
+            kind: string;
+            /** Slug */
+            slug: string;
         };
         /** DashboardActiveTournamentStats */
         "app.DashboardActiveTournamentStats": {
@@ -34643,6 +34679,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["parser.RankHistoryResponse"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_catalog_legacy__legacy_kind___legacy_id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                legacy_kind: string;
+                legacy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.CatalogLegacyRead"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */

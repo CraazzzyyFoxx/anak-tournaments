@@ -77,6 +77,18 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
         result = await session.execute(sa.select(entity.id, entity.name).where(*self._scope()).order_by(entity.name))
         return result.all()
 
+    async def get_by_legacy_id(
+        self, session: AsyncSession, legacy_kind: str, legacy_id: int
+    ) -> models.CatalogEntity | None:
+        """The entity an ``overwatch.*`` id became (``catalog.entity_legacy``; both go in ``discipline02``)."""
+        legacy = models.CatalogEntityLegacy
+        query = (
+            self.select()
+            .join(legacy, legacy.entity_id == models.CatalogEntity.id)
+            .where(legacy.legacy_kind == legacy_kind, legacy.legacy_id == legacy_id)
+        )
+        return (await session.execute(query)).scalars().first()
+
     @staticmethod
     def build_map_name_or_alias_query(
         *, discipline: str, name: str, mode_name: str

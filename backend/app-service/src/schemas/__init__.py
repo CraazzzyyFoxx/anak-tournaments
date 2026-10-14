@@ -1,5 +1,6 @@
 from . import auth
 from .base import *
+from .catalog import *
 from .division_grid import *
 from .gamemode import *
 from .hero import *

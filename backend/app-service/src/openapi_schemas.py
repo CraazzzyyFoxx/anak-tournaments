@@ -66,6 +66,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.heroes.lookup": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.maps.lookup": Op(response=schemas.LookupItem, response_array=True),
     "rpc.app.gamemodes.lookup": Op(response=schemas.LookupItem, response_array=True),
+    "rpc.app.catalog.legacy": Op(response=schemas.CatalogLegacyRead),
     # ── heroes (bespoke) ───────────────────────────────────────────────────
     "rpc.app.heroes.playtime": Op(
         response=Paginated[schemas.HeroPlaytime], query=schemas.HeroPlaytimeQueryPaginationParams

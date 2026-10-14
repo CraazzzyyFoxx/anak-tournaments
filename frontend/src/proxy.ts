@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveHost } from "@/lib/site/host";
 import { internalApiOrigin } from "@/lib/api/routes";
+import { legacyCatalogSearch, type LegacyKind } from "@/lib/catalog/legacy-redirect";
 
 // Small bounded TTL cache: the host->workspace map is tiny and rarely changes.
 const CACHE_TTL_MS = 60_000;
 const CACHE_MAX = 1000;
 const cache = new Map<string, { id: number | null; at: number }>();
+const legacyCache = new Map<string, { id: number | null; at: number }>();
 
-function setCache(host: string, id: number | null, at: number): void {
+function setCache<V>(store: Map<string, { id: V; at: number }>, key: string, id: V, at: number): void {
   // Rough FIFO eviction: Map preserves insertion order, so the first key is oldest.
-  if (cache.size >= CACHE_MAX) {
-    const oldest = cache.keys().next().value;
-    if (oldest !== undefined) cache.delete(oldest);
+  if (store.size >= CACHE_MAX) {
+    const oldest = store.keys().next().value;
+    if (oldest !== undefined) store.delete(oldest);
   }
-  cache.set(host, { id, at });
+  store.set(key, { id, at });
 }
 
 type Lookup = { status: "found"; id: number } | { status: "not_found" } | { status: "error" };
@@ -39,10 +41,29 @@ async function resolveWorkspace(origin: string, host: string): Promise<Lookup> {
     }
     const data = await res.json();
     const id = typeof data?.workspace_id === "number" ? data.workspace_id : null;
-    setCache(host, id, now);
+    setCache(cache, host, id, now);
     return id === null ? { status: "not_found" } : { status: "found", id };
   } catch {
     return cached ? fromEntry(cached) : { status: "error" };
+  }
+}
+
+/** An old catalog id's new id, or `null` (a new id, an unknown one, or the API unreachable). Removed with discipline02. */
+async function resolveLegacy(origin: string, kind: LegacyKind, id: string): Promise<number | null> {
+  const key = `${kind}:${id}`;
+  const now = Date.now();
+  const cached = legacyCache.get(key);
+  if (cached && now - cached.at < CACHE_TTL_MS) return cached.id;
+  try {
+    const base = internalApiOrigin() ?? origin;
+    const res = await fetch(`${base}/api/v1/catalog/legacy/${kind}/${id}`, { headers: { accept: "application/json" } });
+    if (!res.ok && res.status !== 404) return null;
+    const data = res.ok ? await res.json() : null;
+    const entityId = typeof data?.entity_id === "number" ? data.entity_id : null;
+    setCache(legacyCache, key, entityId, now);
+    return entityId;
+  } catch {
+    return null;
   }
 }
 
@@ -67,6 +88,15 @@ function scopedHeaders(request: NextRequest): Headers {
 }
 
 export async function proxy(request: NextRequest) {
+  const legacySearch = await legacyCatalogSearch(request.nextUrl.pathname, request.nextUrl.searchParams, (kind, id) =>
+    resolveLegacy(request.nextUrl.origin, kind, id)
+  );
+  if (legacySearch) {
+    const target = request.nextUrl.clone();
+    target.search = legacySearch;
+    return NextResponse.redirect(target, 308);
+  }
+
   const rawHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
   const host = rawHost?.split(",")[0]?.trim() ?? null;
   const resolution = resolveHost(host);

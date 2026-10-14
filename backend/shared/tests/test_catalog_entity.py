@@ -141,3 +141,19 @@ class CatalogEntityTests(IsolatedAsyncioTestCase):
             assert repo.load_options(()) == []
             loaded = await repo.get(s, map_id, options=repo.load_options(("gamemode",)))
             assert loaded.parent.id == mode_id
+
+    async def test_an_old_id_resolves_to_the_entity_it_became(self) -> None:
+        legacy_id = 2_000_000_000 + os.getpid() % 1_000_000
+        async with self.Session() as s:
+            hero = self._entity("legacy")
+            s.add(hero)
+            await s.flush()
+            s.add(CatalogEntityLegacy(legacy_kind="hero", legacy_id=legacy_id, entity_id=hero.id))
+            await s.commit()
+            try:
+                repo = CatalogEntityRepository()
+                assert (await repo.get_by_legacy_id(s, "hero", legacy_id)).id == hero.id
+                assert await repo.get_by_legacy_id(s, "map", legacy_id) is None
+            finally:
+                await s.execute(sa.delete(CatalogEntityLegacy).where(CatalogEntityLegacy.legacy_id == legacy_id))
+                await s.commit()

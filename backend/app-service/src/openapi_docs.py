@@ -52,6 +52,10 @@ DOCS: dict[str, dict] = {
         "summary": "Gamemode lookup",
         "description": "Permission: public; no authentication required. Returns all gamemodes as id/name lookup items ordered by name (no pagination).",
     },
+    "rpc.app.catalog.legacy": {
+        "summary": "Resolve an old catalog id",
+        "description": "Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.",
+    },
     # ── heroes (bespoke) ─────────────────────────────────────────────────────────
     "rpc.app.heroes.playtime": {
         "summary": "Hero playtime stats",

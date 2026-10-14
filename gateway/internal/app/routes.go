@@ -31,6 +31,8 @@ var ReadRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/gamemodes/lookup", Queue: "rpc.app.gamemodes.lookup", Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/gamemodes/{id}", Queue: "rpc.app.read.get", Entity: "gamemode", Action: "get", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/gamemodes", Queue: "rpc.app.read.list", Entity: "gamemode", Action: "list", AllQuery: true, Auth: edge.AuthNone},
+	// --- catalog: an old hero/map/gamemode id -> its catalog entity (D84; removed with discipline02) ---
+	{Method: "GET", Pattern: "/api/v1/catalog/legacy/{legacy_kind}/{legacy_id}", Queue: "rpc.app.catalog.legacy", Path: []string{"legacy_kind", "legacy_id"}, Auth: edge.AuthNone},
 	// --- achievements (list only; get surface is the subtree) ---------------
 	{Method: "GET", Pattern: "/api/v1/achievements", Queue: "rpc.app.read.list", Entity: "achievement", Action: "list", AllQuery: true, Auth: edge.AuthNone},
 	// --- statistics ---------------------------------------------------------

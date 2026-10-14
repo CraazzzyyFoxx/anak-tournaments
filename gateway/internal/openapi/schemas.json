@@ -965,6 +965,14 @@
       },
       "summary": "Update catalog entity"
     },
+    "rpc.app.catalog.legacy": {
+      "description": "Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.",
+      "response": {
+        "array": false,
+        "ref": "app.CatalogLegacyRead"
+      },
+      "summary": "Resolve an old catalog id"
+    },
     "rpc.app.catalog_aliases.attach": {
       "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing.",
       "request": {
@@ -14037,6 +14045,35 @@
         }
       },
       "title": "CatalogEntityUpdate",
+      "type": "object"
+    },
+    "app.CatalogLegacyRead": {
+      "description": "What an old ``overwatch.hero|map|gamemode`` id became (D84).",
+      "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "entity_id": {
+          "title": "Entity Id",
+          "type": "integer"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_id",
+        "discipline",
+        "kind",
+        "slug"
+      ],
+      "title": "CatalogLegacyRead",
       "type": "object"
     },
     "app.DashboardActiveTournamentStats": {
