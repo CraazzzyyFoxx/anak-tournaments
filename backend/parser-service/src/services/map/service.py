@@ -8,11 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.repository import CatalogEntityRepository
-from src import models, schemas
+from src import models
 from src.core import errors, utils
 from src.services import catalog_aliases
 
-__all__ = ("MapService", "map_service", "map_entities", "to_pydantic")
+__all__ = ("MapService", "map_service", "map_entities")
 
 
 def map_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
@@ -21,10 +21,6 @@ def map_entities(in_entities: list[str], child: typing.Any | None = None) -> lis
         entities.append(utils.join_entity(child, models.CatalogEntity.parent))
 
     return entities
-
-
-def to_pydantic(map: models.CatalogEntity, entities: list[str]) -> schemas.MapRead:
-    return schemas.MapRead.from_entity(map, with_gamemode="gamemode" in entities)
 
 
 class MapService:

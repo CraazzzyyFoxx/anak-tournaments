@@ -37,7 +37,7 @@ from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from tests._rpc_fakes import CapturingBroker, make_identity
 
@@ -1090,6 +1090,19 @@ class RulesValidateOp(_SubjectCase):
 
         self.assertFalse(data["valid"])
         self.assertIn("unknown_group", [issue["code"] for issue in data["issues"]])
+
+
+class GroupVocabularyScope(IsolatedAsyncioTestCase):
+    async def test_map_groups_are_queried_only_from_the_overwatch_discipline(self) -> None:
+        from src.services.encounter.pick_ban_config import group_vocabulary
+
+        session = AsyncMock()
+        session.scalars.return_value = ["control"]
+        assert await group_vocabulary(session, enums.PickBanKind.MAP) == ["control"]
+        query = session.scalars.await_args.args[0]
+        sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+        assert "entity.kind = 'mode'" in sql
+        assert "entity.discipline = 'overwatch'" in sql
 
 
 #: A hero pool big enough that every role survives a Bo5 of the anti-one-trick

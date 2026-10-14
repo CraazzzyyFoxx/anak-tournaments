@@ -87,7 +87,9 @@ async def group_vocabulary(session: AsyncSession, kind: PickBanKind) -> list[str
     if kind == PickBanKind.HERO:
         return list(pbr.HERO_GROUPS)
     slugs = await session.scalars(
-        select(CatalogEntity.slug).where(CatalogEntity.kind == "mode").order_by(CatalogEntity.slug)
+        select(CatalogEntity.slug)
+        .where(CatalogEntity.kind == "mode", CatalogEntity.discipline == "overwatch")
+        .order_by(CatalogEntity.slug)
     )
     return [group for group in (pbr.normalize_group(slug) for slug in slugs) if group]
 

@@ -7,6 +7,7 @@ single import-linter graph cannot address, so their ``src`` trees are scanned he
 from __future__ import annotations
 
 import ast
+import configparser
 import pathlib
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
@@ -47,3 +48,16 @@ def test_no_service_imports_a_discipline_module() -> None:
         if _module_of(name)
     )
     assert offenders == []
+
+
+def test_import_linter_covers_every_shared_runtime_module_and_package() -> None:
+    config = configparser.ConfigParser()
+    config.read(BACKEND / ".importlinter", encoding="utf-8")
+    covered = set(config["importlinter:contract:core-reaches-modules-through-the-registry"]["source_modules"].split())
+    shared = BACKEND / "shared"
+    modules = {f"shared.{path.stem}" for path in shared.glob("*.py") if path.stem != "__init__"}
+    packages = {
+        f"shared.{path.name}" for path in shared.iterdir() if path.is_dir() and (path / "__init__.py").is_file()
+    }
+    # Tests intentionally exercise concrete modules. shared.testing is runtime support and stays covered.
+    assert covered == (modules | packages) - {"shared.disciplines", "shared.tests"}
