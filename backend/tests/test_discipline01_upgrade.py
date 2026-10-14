@@ -227,6 +227,49 @@ def test_maps_colliding_after_slugify_stop_the_revision(legacy_template) -> None
     assert str(ids["ilios"]) in done.stderr and str(twin) in done.stderr
 
 
+@pytest.mark.parametrize(
+    ("legacy_kind", "column", "field", "character", "limit", "id_key"),
+    [
+        ("hero", "slug", "slug", "h", 64, "ana"),
+        ("gamemode", "slug", "slug", "g", 64, "control"),
+        ("map", "name", "slug", "m", 64, "ilios"),
+        ("hero", "name", "name", "英", 128, "ana"),
+        ("gamemode", "name", "name", "模", 128, "control"),
+        ("map", "name", "name", "К", 128, "colosseo"),
+    ],
+)
+def test_overlong_catalog_values_stop_before_copy_and_are_listed(
+    legacy_template, legacy_kind, column, field, character, limit, id_key
+) -> None:
+    legacy_id = legacy_template["ids"][id_key]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        conn.execute(
+            f"UPDATE overwatch.{legacy_kind} SET {column} = %s WHERE id = %s",
+            (character * limit, legacy_id),
+        )
+        assert {q: _rows(conn, sql) for q, sql in revision.PREFLIGHT if _rows(conn, sql)} == {}
+        conn.execute(
+            f"UPDATE overwatch.{legacy_kind} SET {column} = %s WHERE id = %s",
+            (character * (limit + 1), legacy_id),
+        )
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode != 0
+    assert "catalog values too long" in done.stderr
+    assert f"'legacy_kind': '{legacy_kind}'" in done.stderr
+    assert f"'legacy_id': {legacy_id}" in done.stderr
+    assert f"'field': '{field}'" in done.stderr
+    assert f"'value_length': {limit + 1}" in done.stderr
+    with _connect(REJECTED_DB) as conn:
+        query = dict(revision.PREFLIGHT)["catalog values too long"]
+        assert _rows(conn, query) == [(legacy_kind, legacy_id, field, limit + 1)]
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == PRE_REVISION
+        assert _scalar(conn, "SELECT to_regclass('catalog.entity')") is None
+        assert _scalar(
+            conn, f"SELECT {column} FROM overwatch.{legacy_kind} WHERE id = %s", (legacy_id,)
+        ) == character * (limit + 1)
+
+
 def test_gamemodes_become_modes(migrated) -> None:
     conn, ids = migrated["conn"], migrated["ids"]
     assert _rows(conn, _ENTITY, (_entity_of(conn, "gamemode", ids["control"]),)) == [

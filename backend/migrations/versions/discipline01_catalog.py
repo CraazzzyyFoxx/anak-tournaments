@@ -41,6 +41,28 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
          ORDER BY s.slug
         """,
     ),
+    (
+        "catalog values too long",
+        f"""
+        SELECT v.legacy_kind, v.legacy_id, v.field, v.value_length
+          FROM (
+            SELECT 'hero' AS legacy_kind, h.id AS legacy_id, 'slug' AS field,
+                   char_length(h.slug) AS value_length, 64 AS max_length FROM overwatch.hero h
+            UNION ALL
+            SELECT 'gamemode', g.id, 'slug', char_length(g.slug), 64 FROM overwatch.gamemode g
+            UNION ALL
+            SELECT 'map', m.id, 'slug', char_length({MAP_SLUG}), 64 FROM overwatch.map m
+            UNION ALL
+            SELECT 'hero', h.id, 'name', char_length(h.name), 128 FROM overwatch.hero h
+            UNION ALL
+            SELECT 'gamemode', g.id, 'name', char_length(g.name), 128 FROM overwatch.gamemode g
+            UNION ALL
+            SELECT 'map', m.id, 'name', char_length(m.name), 128 FROM overwatch.map m
+          ) v
+         WHERE v.value_length > v.max_length
+         ORDER BY v.legacy_kind, v.legacy_id, v.field
+        """,
+    ),
 )
 PREFLIGHT_SAMPLE = 20
 
