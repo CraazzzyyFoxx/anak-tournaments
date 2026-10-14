@@ -1,6 +1,6 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 155
+-- Tables: 157
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -1380,6 +1380,41 @@ CREATE TABLE catalog.discipline (
 	name VARCHAR(64) NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	PRIMARY KEY (code)
+);
+
+CREATE TABLE catalog.entity (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	discipline VARCHAR(32) NOT NULL,
+	kind VARCHAR(16) NOT NULL,
+	slug VARCHAR(64) NOT NULL,
+	name VARCHAR(128) NOT NULL,
+	image_path VARCHAR,
+	parent_id BIGINT,
+	attrs JSONB DEFAULT '{}'::jsonb NOT NULL,
+	aliases JSONB DEFAULT '[]'::jsonb NOT NULL,
+	active BOOLEAN DEFAULT true NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_entity_kind CHECK (kind IN ('character', 'map', 'mode')),
+	CONSTRAINT ck_entity_attrs CHECK (jsonb_typeof(attrs) = 'object'),
+	CONSTRAINT ck_entity_aliases CHECK (jsonb_typeof(aliases) = 'array'),
+	CONSTRAINT uq_entity_slug UNIQUE (discipline, kind, slug),
+	CONSTRAINT uq_entity_name UNIQUE (discipline, kind, name),
+	CONSTRAINT uq_entity_id_kind UNIQUE (id, kind),
+	CONSTRAINT uq_entity_id_discipline UNIQUE (id, discipline),
+	CONSTRAINT uq_entity_key UNIQUE (id, discipline, kind),
+	CONSTRAINT fk_entity_parent FOREIGN KEY(parent_id, discipline) REFERENCES catalog.entity (id, discipline),
+	CONSTRAINT fk_entity_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
+);
+
+CREATE TABLE catalog.entity_legacy (
+	legacy_kind VARCHAR(16) NOT NULL,
+	legacy_id BIGINT NOT NULL,
+	entity_id BIGINT NOT NULL,
+	PRIMARY KEY (legacy_kind, legacy_id),
+	CONSTRAINT ck_entity_legacy_kind CHECK (legacy_kind IN ('hero', 'map', 'gamemode')),
+	CONSTRAINT fk_entity_legacy_entity FOREIGN KEY(entity_id) REFERENCES catalog.entity (id)
 );
 
 CREATE TABLE encounter.encounter (

@@ -29,6 +29,56 @@ def _jsonb_array(value: str) -> sa.Cast[typing.Any]:
     return sa.cast(sa.literal(json.dumps([value])), JSONB)
 
 
+class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
+    """``catalog.entity``, optionally narrowed to one kind and/or one discipline.
+
+    Reads through ``select()``/``count_select()`` are scoped, so a repository built as
+    ``CatalogEntityRepository("map", discipline="overwatch")`` never returns a hero or a champion.
+    """
+
+    def __init__(self, kind: str | None = None, *, discipline: str | None = None) -> None:
+        super().__init__(models.CatalogEntity)
+        self.kind = kind
+        self.discipline = discipline
+
+    def _scope(self) -> list[sa.ColumnElement[bool]]:
+        clauses: list[sa.ColumnElement[bool]] = []
+        if self.kind is not None:
+            clauses.append(models.CatalogEntity.kind == self.kind)
+        if self.discipline is not None:
+            clauses.append(models.CatalogEntity.discipline == self.discipline)
+        return clauses
+
+    def select(self) -> sa.Select[tuple[models.CatalogEntity]]:
+        return super().select().where(*self._scope())
+
+    def count_select(self) -> sa.Select[tuple[int]]:
+        return super().count_select().where(*self._scope())
+
+    async def count(self, session: AsyncSession, *, filters: Sequence[sa.ColumnElement[bool]] | None = None) -> int:
+        return await super().count(session, filters=[*self._scope(), *(filters or ())])
+
+    async def exists(
+        self,
+        session: AsyncSession,
+        *,
+        filters: Sequence[sa.ColumnElement[bool]] | None = None,
+        **filter_by: typing.Any,
+    ) -> bool:
+        return await super().exists(session, filters=[*self._scope(), *(filters or ())], **filter_by)
+
+    @staticmethod
+    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
+        """A map's mode is its only expandable relation; ``gamemode`` stays the wire token for it."""
+        return [selectinload(models.CatalogEntity.parent)] if "gamemode" in entities else []
+
+    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
+        """``(id, name)`` name-ordered, for admin/filter pickers."""
+        entity = models.CatalogEntity
+        result = await session.execute(sa.select(entity.id, entity.name).where(*self._scope()).order_by(entity.name))
+        return result.all()
+
+
 class HeroRepository(BaseRepository[models.Hero]):
     def __init__(self) -> None:
         super().__init__(models.Hero)

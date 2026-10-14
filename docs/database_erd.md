@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_proces
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`mixround01`** (114 revisions in `backend/migrations/versions/`).
+Alembic head: **`discipline01`** (115 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -576,6 +576,25 @@ erDiagram
         varchar(64) name
         timestamptz created_at
     }
+    CATALOG_ENTITY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(32) discipline FK
+        varchar(16) kind
+        varchar(64) slug
+        varchar(128) name
+        varchar image_path "nullable"
+        bigint parent_id FK "nullable"
+        jsonb attrs
+        jsonb aliases
+        boolean active
+    }
+    CATALOG_ENTITY_LEGACY {
+        varchar(16) legacy_kind PK
+        bigint legacy_id PK
+        bigint entity_id FK
+    }
     OVERWATCH_CATALOG_ALIAS_MISS {
         bigint id PK
         timestamptz created_at
@@ -620,12 +639,21 @@ erDiagram
         jsonb aliases
     }
 
+    CATALOG_DISCIPLINE ||--o{ CATALOG_ENTITY : "discipline"
+    CATALOG_ENTITY |o--o{ CATALOG_ENTITY : "parent_id"
+    CATALOG_ENTITY ||--o{ CATALOG_ENTITY : "discipline"
+    CATALOG_ENTITY ||--o{ CATALOG_ENTITY_LEGACY : "entity_id"
     LOG_PROCESSING_RECORD |o--o{ OVERWATCH_CATALOG_ALIAS_MISS : "last_log_record_id"
     OVERWATCH_GAMEMODE ||--o{ OVERWATCH_MAP : "gamemode_id"
 ```
 
 Composite unique keys:
 
+- `CATALOG_ENTITY` unique on (`id`, `discipline`)
+- `CATALOG_ENTITY` unique on (`id`, `kind`)
+- `CATALOG_ENTITY` unique on (`id`, `discipline`, `kind`)
+- `CATALOG_ENTITY` unique on (`discipline`, `kind`, `name`)
+- `CATALOG_ENTITY` unique on (`discipline`, `kind`, `slug`)
 - `OVERWATCH_CATALOG_ALIAS_MISS` unique on (`entity_type`, `raw_name`)
 <!-- /ERD:auto -->
 

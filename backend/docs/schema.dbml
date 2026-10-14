@@ -1,6 +1,6 @@
 // Anak Tournaments — PostgreSQL schema dumped from SQLAlchemy metadata.
 // Open in VS Code (DBML extension) or paste into https://dbdiagram.io
-// Tables: 155
+// Tables: 157
 
 Project anak_tournaments {
   database_type: "PostgreSQL"
@@ -1111,8 +1111,8 @@ Table balancer.registration_google_sheet_binding {
   row_hash VARCHAR(128)
   last_seen_at timestamptz
   indexes {
-    (feed_id, source_record_key) [unique, name: "uq_balancer_registration_google_sheet_binding_key"]
     (registration_id) [unique, name: "uq_balancer_registration_google_sheet_binding_registration"]
+    (feed_id, source_record_key) [unique, name: "uq_balancer_registration_google_sheet_binding_key"]
     (feed_id) [name: "ix_balancer_registration_google_sheet_binding_feed_id"]
   }
 }
@@ -1149,8 +1149,8 @@ Table balancer.registration_identity {
   handle VARCHAR(255) [not null]
   handle_normalized VARCHAR(255) [not null]
   indexes {
-    (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
     (registration_id, provider, position) [unique, name: "uq_balancer_registration_identity_position"]
+    (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
     (provider, handle_normalized) [name: "ix_balancer_registration_identity_handle"]
     (registration_id) [name: "ix_balancer_registration_identity_registration_id"]
   }
@@ -1396,8 +1396,38 @@ Table catalog.discipline {
   created_at timestamptz [not null, default: `now()`]
 }
 
+Table catalog.entity {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  discipline VARCHAR(32) [not null]
+  kind VARCHAR(16) [not null]
+  slug VARCHAR(64) [not null]
+  name VARCHAR(128) [not null]
+  image_path VARCHAR
+  parent_id bigint
+  attrs jsonb [not null, default: `'{}'::jsonb`]
+  aliases jsonb [not null, default: `'[]'::jsonb`]
+  active boolean [not null, default: true]
+  indexes {
+    (id, kind) [unique, name: "uq_entity_id_kind"]
+    (discipline, kind, name) [unique, name: "uq_entity_name"]
+    (discipline, kind, slug) [unique, name: "uq_entity_slug"]
+    (id, discipline, kind) [unique, name: "uq_entity_key"]
+    (id, discipline) [unique, name: "uq_entity_id_discipline"]
+  }
+}
+
+Table catalog.entity_legacy {
+  legacy_kind VARCHAR(16) [pk]
+  legacy_id bigint [pk]
+  entity_id bigint [not null]
+}
+
 TableGroup catalog {
   catalog.discipline
+  catalog.entity
+  catalog.entity_legacy
 }
 
 // ----- encounter -----
@@ -1642,8 +1672,8 @@ Table encounter.team {
   score float [not null, default: 0]
   placement int
   indexes {
-    (id, encounter_id) [unique, name: "uq_team_id_encounter"]
     (id, encounter_id, active) [unique, name: "uq_team_id_encounter_active"]
+    (id, encounter_id) [unique, name: "uq_team_id_encounter"]
     (team_id) [name: "ix_team_team_id"]
     (encounter_id, slot) [unique, name: "uq_team_active_slot"]
     (encounter_id, team_id) [unique, name: "uq_team_active_source"]
@@ -1687,8 +1717,8 @@ Table encounter.team_report {
   comment text
   custom_fields_json json [not null, default: `{}`]
   indexes {
-    (id, encounter_id) [unique, name: "uq_team_report_id_encounter"]
     (encounter_id, encounter_team_id) [unique, name: "uq_team_report_claimant"]
+    (id, encounter_id) [unique, name: "uq_team_report_id_encounter"]
   }
 }
 
@@ -2286,8 +2316,8 @@ Table division_grid_tier {
   ow_rank_min bigint
   ow_rank_max bigint
   indexes {
-    (version_id, sort_order) [unique]
     (version_id, slug) [unique]
+    (version_id, sort_order) [unique]
     (version_id) [name: "ix_division_grid_tier_version_id"]
   }
 }
@@ -2772,8 +2802,8 @@ Table tournament.encounter_link {
   target_encounter_id bigint [not null]
   target_slot int [not null]
   indexes {
-    (target_encounter_id, target_slot) [unique, name: "uq_link_target_slot"]
     (source_encounter_id, source_position) [unique, name: "uq_link_source_position"]
+    (target_encounter_id, target_slot) [unique, name: "uq_link_target_slot"]
   }
 }
 
@@ -3373,8 +3403,12 @@ Ref: balancer.tournament_config.updated_by > auth.user.id [delete: set null]
 Ref: balancer.user_config.user_id > auth.user.id [delete: cascade]
 Ref: balancer.workspace_config.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.workspace_config.updated_by > auth.user.id [delete: set null]
-Ref: encounter.encounter.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
+Ref: catalog.entity.discipline > catalog.entity.discipline
+Ref: catalog.entity.discipline > catalog.discipline.code
+Ref: catalog.entity.parent_id > catalog.entity.id
+Ref: catalog.entity_legacy.entity_id > catalog.entity.id
 Ref: encounter.encounter.workspace_id > tournament.tournament.workspace_id [delete: cascade]
+Ref: encounter.encounter.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
 Ref: encounter.encounter.workspace_id > encounter.scoring_rule.workspace_id
 Ref: encounter.encounter.discipline > balancer.custom_game.discipline [delete: cascade]
 Ref: encounter.encounter.discipline > tournament.tournament.discipline [delete: cascade]
@@ -3404,24 +3438,24 @@ Ref: encounter.pick_ban_entry.encounter_id > encounter.team.encounter_id [delete
 Ref: encounter.pick_ban_entry.encounter_id > encounter.pick_ban_session.encounter_id [delete: cascade]
 Ref: encounter.pick_ban_entry.picked_by_team_id > encounter.team.id [delete: set null (picked_by_team_id)]
 Ref: encounter.pick_ban_entry.protected_by_team_id > encounter.team.id [delete: set null (protected_by_team_id)]
-Ref: encounter.pick_ban_session.encounter_id > encounter.encounter.id [delete: cascade]
-Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (undo_requested_by_team_id)]
 Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (pending_chooser_team_id)]
 Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (first_team_id)]
+Ref: encounter.pick_ban_session.encounter_id > encounter.encounter.id [delete: cascade]
+Ref: encounter.pick_ban_session.encounter_id > encounter.team.encounter_id [delete: set null (undo_requested_by_team_id)]
 Ref: encounter.pick_ban_session.first_team_id > encounter.team.id [delete: set null (first_team_id)]
 Ref: encounter.pick_ban_session.pending_chooser_team_id > encounter.team.id [delete: set null (pending_chooser_team_id)]
 Ref: encounter.pick_ban_session.undo_requested_by_team_id > encounter.team.id [delete: set null (undo_requested_by_team_id)]
 Ref: encounter.pick_ban_submission.session_id > encounter.pick_ban_session.id [delete: cascade]
-Ref: encounter.pick_ban_submission.encounter_id > encounter.team.encounter_id
 Ref: encounter.pick_ban_submission.encounter_id > encounter.pick_ban_session.encounter_id [delete: cascade]
+Ref: encounter.pick_ban_submission.encounter_id > encounter.team.encounter_id
 Ref: encounter.pick_ban_submission.encounter_team_id > encounter.team.id
-Ref: encounter.readiness.encounter_id > encounter.team.encounter_id
 Ref: encounter.readiness.encounter_id > encounter.encounter.id [delete: cascade]
+Ref: encounter.readiness.encounter_id > encounter.team.encounter_id
 Ref: encounter.readiness.encounter_team_id > encounter.team.id
 Ref: encounter.readiness.ready_user_id > players.user.id [delete: set null]
-Ref: encounter.result_audit.encounter_id > encounter.game.encounter_id
 Ref: encounter.result_audit.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: encounter.result_audit.encounter_id > encounter.team.encounter_id [delete: set null (adopted_team_id)]
+Ref: encounter.result_audit.encounter_id > encounter.game.encounter_id
 Ref: encounter.result_audit.game_id > encounter.game.id
 Ref: encounter.result_audit.actor_user_id > players.user.id [delete: set null]
 Ref: encounter.result_audit.adopted_team_id > encounter.team.id [delete: set null (adopted_team_id)]
@@ -3432,8 +3466,8 @@ Ref: encounter.room_event.actor_auth_user_id > auth.user.id [delete: set null]
 Ref: encounter.scoring_rule.workspace_id > workspace.id [delete: cascade]
 Ref: encounter.team.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: encounter.team.encounter_id > encounter.encounter.id [delete: cascade]
-Ref: encounter.team.tournament_id > tournament.team.tournament_id [delete: set null (team_id)]
 Ref: encounter.team.tournament_id > encounter.encounter.tournament_id [delete: cascade]
+Ref: encounter.team.tournament_id > tournament.team.tournament_id [delete: set null (team_id)]
 Ref: encounter.team.team_id > tournament.team.id [delete: set null (team_id)]
 Ref: encounter.team_member.encounter_id > encounter.team.encounter_id
 Ref: encounter.team_member.encounter_id > encounter.encounter.id [delete: cascade]
@@ -3441,8 +3475,8 @@ Ref: encounter.team_member.encounter_team_id > encounter.team.id
 Ref: encounter.team_member.active > encounter.team.active
 Ref: encounter.team_member.workspace_member_id > workspace_member.id
 Ref: encounter.team_member_role.team_member_id > encounter.team_member.id [delete: cascade]
-Ref: encounter.team_report.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: encounter.team_report.encounter_id > encounter.team.encounter_id
+Ref: encounter.team_report.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: encounter.team_report.encounter_team_id > encounter.team.id
 Ref: encounter.team_report.reporter_user_id > players.user.id [delete: set null]
 Ref: encounter.team_report_result.report_id > encounter.team_report.id [delete: cascade]
@@ -3528,8 +3562,8 @@ Ref: subscriptions.requirement.workspace_id > workspace.id [delete: cascade]
 Ref: tournament.bracket_encounter.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: tournament.bracket_encounter.tournament_id > tournament.stage.tournament_id [delete: set null (stage_id)]
 Ref: tournament.bracket_encounter.tournament_id > encounter.encounter.tournament_id [delete: cascade]
-Ref: tournament.bracket_encounter.stage_id > tournament.stage.id [delete: set null (stage_id)]
 Ref: tournament.bracket_encounter.stage_id > tournament.stage_item.stage_id [delete: set null (stage_item_id)]
+Ref: tournament.bracket_encounter.stage_id > tournament.stage.id [delete: set null (stage_id)]
 Ref: tournament.bracket_encounter.stage_item_id > tournament.stage_item.id [delete: set null (stage_item_id)]
 Ref: tournament.challonge_match_mapping.source_id > tournament.challonge_source.id [delete: cascade]
 Ref: tournament.challonge_match_mapping.encounter_id > encounter.encounter.id [delete: cascade]

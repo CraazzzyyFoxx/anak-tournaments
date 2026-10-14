@@ -10,7 +10,13 @@ from .balance import (
 from .base import BaseRepository
 from .audit import AuditLogRepository
 from .baselines import StatBaselineRepository
-from .catalog import CatalogAliasMissRepository, GamemodeRepository, HeroRepository, MapRepository
+from .catalog import (
+    CatalogAliasMissRepository,
+    CatalogEntityRepository,
+    GamemodeRepository,
+    HeroRepository,
+    MapRepository,
+)
 from .challonge import (
     TOURNAMENT_SOURCE_TYPE,
     ChallongeMatchMappingRepository,
@@ -202,6 +208,7 @@ __all__ = (
     "BattleTagRankStateRepository",
     "BracketEncounterRepository",
     "CatalogAliasMissRepository",
+    "CatalogEntityRepository",
     "ChallongeMappingRepository",
     "ChallongeMatchMappingRepository",
     "ChallongeParticipantMappingRepository",
