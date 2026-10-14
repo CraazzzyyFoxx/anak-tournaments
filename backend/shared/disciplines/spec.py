@@ -6,9 +6,19 @@ IO to answer "does this game have sides".
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-__all__ = ("CATALOG_KINDS", "DisciplineSpec")
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from shared.catalog_sync import CatalogImageMirror
+
+#: Pull the module's catalog source into ``catalog.entity`` (commits itself).
+CatalogSync = Callable[["AsyncSession", "CatalogImageMirror"], Awaitable[None]]
+
+__all__ = ("CATALOG_KINDS", "CatalogSync", "DisciplineSpec")
 
 #: The core's catalog vocabulary (D101): ``catalog.entity.kind`` and every kind-constant column spell these and
 #: nothing else. What a kind is called in a game's UI is the module's label, not a new kind.
@@ -26,3 +36,4 @@ class DisciplineSpec:
     kinds: dict[str, str] = field(default_factory=dict, hash=False)
     #: Allowed ``attrs.class`` values of a ``character``; ``()`` leaves the class unchecked.
     character_classes: tuple[str, ...] = ()
+    catalog_sync: CatalogSync | None = field(default=None, compare=False)

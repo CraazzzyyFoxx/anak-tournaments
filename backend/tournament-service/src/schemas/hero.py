@@ -1,5 +1,3 @@
-from pydantic import BaseModel
-
 from shared.schemas.catalog import (
     HeroLeaderboardEntry,
     HeroLeaderboardParams,
@@ -11,7 +9,6 @@ from shared.schemas.catalog import (
 )
 
 __all__ = (
-    "OverfastHero",
     "HeroRead",
     "HeroPlaytime",
     "HeroPlaytimeQueryPaginationParams",
@@ -20,10 +17,3 @@ __all__ = (
     "HeroLeaderboardQueryParams",
     "HeroLeaderboardParams",
 )
-
-
-class OverfastHero(BaseModel):
-    key: str
-    name: str
-    portrait: str
-    role: str

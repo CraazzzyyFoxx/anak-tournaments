@@ -80,8 +80,7 @@ def test_shutdown_keeps_rank_fetch_available_until_consumers_finish(monkeypatch:
     client_module = importlib.import_module("src.services.overwatch_rank.client")
     client = client_module.OverFastRankClient("http://overfast.local")
     monkeypatch.setattr(serve.rank_tasks, "rank_client", client)
-    for resource in (serve.s3_client, serve.overfast_catalog_client):
-        monkeypatch.setattr(resource, "close", AsyncMock())
+    monkeypatch.setattr(serve.s3_client, "close", AsyncMock())
     monkeypatch.setattr(serve.rank_tasks, "close_redis", AsyncMock())
     monkeypatch.setattr(serve.realtime_redis, "aclose", AsyncMock())
     monkeypatch.setattr(serve, "close_quota", AsyncMock())

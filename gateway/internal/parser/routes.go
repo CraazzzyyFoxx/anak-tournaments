@@ -4,7 +4,7 @@
 //
 // Parser-unique domains are folded into the unified /api/v1/* namespace (match-log
 // admin, OverFast rank, subscription collection, achievement engine + rules admin,
-// OverFast metadata sync, settings, discord-channel, bootstrap importers). The
+// catalog sync, settings, discord-channel, bootstrap importers). The
 // worker's RPC queues are path-independent, so the external paths are clean
 // /api/v1/* with no /api/parser prefix. Un-migrated parser endpoints still proxy
 // to parser-service on their original /api/parser/* addresses.
@@ -51,10 +51,8 @@ var Routes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/achievement/calculate", Queue: "rpc.parser.ach.calculate", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/achievement/calculate/{tournament_id}", Queue: "rpc.parser.ach.calculate_tournament", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
 
-	// OverFast metadata sync (src/routes/{hero,map,gamemode}.py); <entity>.sync perm.
-	{Method: "POST", Pattern: "/api/v1/heroes/update", Queue: "rpc.parser.metadata.sync_heroes", Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/maps/update", Queue: "rpc.parser.metadata.sync_maps", Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/gamemodes/update", Queue: "rpc.parser.metadata.sync_gamemodes", Auth: edge.AuthRequired},
+	// Catalog sync of one discipline from its module's source (OverFast, Data Dragon); superuser in the handler.
+	{Method: "POST", Pattern: "/api/v1/admin/catalog-sync/{discipline}", Queue: "rpc.parser.catalog.sync", Path: []string{"discipline"}, Auth: edge.AuthRequired},
 
 	// Global settings (src/routes/admin/settings.py); superuser in the handler.
 	{Method: "GET", Pattern: "/api/v1/admin/settings", Queue: "rpc.parser.settings.list", Auth: edge.AuthRequired},

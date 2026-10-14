@@ -179,18 +179,10 @@ DOCS: dict[str, dict] = {
         "summary": "Delete achievement override",
         "description": "Permission: workspace `achievement.update`. Deletes a manual achievement override scoped to the workspace.",
     },
-    # ── OverFast metadata sync ─────────────────────────────────────────────────
-    "rpc.parser.metadata.sync_heroes": {
-        "summary": "Sync heroes",
-        "description": "Permission: superuser. Syncs hero metadata from OverFast into the database and acks success.",
-    },
-    "rpc.parser.metadata.sync_maps": {
-        "summary": "Sync maps",
-        "description": "Permission: superuser. Syncs map metadata from OverFast into the database and acks success.",
-    },
-    "rpc.parser.metadata.sync_gamemodes": {
-        "summary": "Sync gamemodes",
-        "description": "Permission: superuser. Syncs gamemode metadata from OverFast into the database and acks success.",
+    # ── catalog sync ──────────────────────────────────────────────────────────
+    "rpc.parser.catalog.sync": {
+        "summary": "Sync a discipline's catalog",
+        "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync.",
     },
     # ── global settings ─────────────────────────────────────────────────────
     "rpc.parser.settings.list": {

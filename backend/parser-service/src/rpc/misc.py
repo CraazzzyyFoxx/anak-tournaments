@@ -1,7 +1,6 @@
 """Typed-RPC handlers for the remaining parser-unique admin surface:
 
-- OverFast metadata sync: ``POST /heroes|maps|gamemodes/update`` (superuser; the
-  public reads of these entities are owned by app-service).
+- Catalog sync of one discipline from its module's source (superuser): ``POST /admin/catalog-sync/{discipline}``.
 - Global settings CRUD (superuser) — ``src/routes/admin/settings.py``.
 - Per-tournament Discord channel config — ``src/routes/admin/discord_channel.py``.
 """
@@ -12,42 +11,44 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.catalog_sync import CatalogImageMirror
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.messaging.config import DISCORD_COMMANDS_QUEUE
 from shared.observability import publish_message
 from shared.rpc.identity import ensure_workspace_permission
 from shared.schemas.events import DiscordCommandEvent
 from shared.services.audit import record_admin_audit
 from src import schemas
-from src.core import auth, db
+from src.core import auth, db, errors
+from src.core.clients import s3_client
 from src.services.admin.discord_channel import discord_channel_service
 from src.services.admin.settings import settings_service
-from src.services.gamemode.service import gamemode_service
-from src.services.hero.service import hero_service
-from src.services.map.service import map_service
 
 from . import _common as c
 
 _SF = db.async_session_maker
+_catalog_images = CatalogImageMirror(s3_client)
 
 
 def register(broker: Any, logger: Any) -> None:
-    # ── OverFast metadata sync (superuser: global game content) ─────────────────
-    def _sync_handler(queue: str, initial_create: Any, label: str) -> None:
-        @broker.subscriber(queue)
-        async def _sync(data: dict, msg: RabbitMessage) -> dict:
-            async def op(session: Any) -> Any:
-                c.require_superuser(c.actor(data))
-                # The service's own `initial_create` already commits — see
-                # `HeroService`/`MapService`/`GamemodeService.initial_create`.
-                await initial_create(session)
-                return {"success": True}
+    # ── catalog sync (superuser: global game content; the module owns its source, D85) ──────────
+    @broker.subscriber("rpc.parser.catalog.sync")
+    async def _catalog_sync(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            c.require_superuser(c.actor(data))
+            code = str(data.get("discipline") or "")
+            spec = DISCIPLINES.get(code)
+            if spec is None or spec.catalog_sync is None:
+                raise errors.ApiHTTPException(
+                    status_code=404,
+                    detail=[errors.ApiExc(code="not_found", msg=f"Discipline {code!r} has no catalog sync")],
+                )
+            # The sync commits itself: it releases the session before every image round-trip.
+            await spec.catalog_sync(session, _catalog_images)
+            return {"success": True}
 
-            return await c.envelope(logger, label, op, session_factory=_SF)
-
-    _sync_handler("rpc.parser.metadata.sync_heroes", hero_service.initial_create, "metadata.sync_heroes")
-    _sync_handler("rpc.parser.metadata.sync_maps", map_service.initial_create, "metadata.sync_maps")
-    _sync_handler("rpc.parser.metadata.sync_gamemodes", gamemode_service.initial_create, "metadata.sync_gamemodes")
+        return await c.envelope(logger, "catalog.sync", op, session_factory=_SF)
 
     # ── Global settings (superuser) ─────────────────────────────────────────────
     @broker.subscriber("rpc.parser.settings.list")

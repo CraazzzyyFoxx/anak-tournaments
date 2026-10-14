@@ -33,6 +33,13 @@ describe("adminService on the generic catalog", () => {
     calls.length = 0;
   });
 
+  it("syncs a whole discipline at once", async () => {
+    reply = { success: true };
+    const result = await adminService.syncCatalog("overwatch");
+    expect(calls[0]).toEqual({ path: "/api/v1/admin/catalog-sync/overwatch", options: { method: "POST" } });
+    expect(result).toEqual({ success: true });
+  });
+
   it("lists heroes as overwatch characters and filters the role through attrs", async () => {
     reply = { results: [{ ...ENTITY, kind: "character", attrs: { class: "support", color: "#718ab3" } }], total: 1, page: 1, per_page: 50 };
     const page = await adminService.getHeroes({ role: "Support", sort: "role" });

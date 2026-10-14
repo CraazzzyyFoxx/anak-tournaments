@@ -6261,6 +6261,10 @@
       },
       "summary": "Validate condition tree"
     },
+    "rpc.parser.catalog.sync": {
+      "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync.",
+      "summary": "Sync a discipline's catalog"
+    },
     "rpc.parser.discord_channel.backfill": {
       "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Queues a rescan of the tournament's Discord channel history \u2014 the same `process_all` command the bot runs at startup \u2014 resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous, and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment \u2014 repeat it only when logs are genuinely missing.",
       "summary": "Backfill Discord channel history"
@@ -6414,18 +6418,6 @@
         "ref": "parser.LogUploadResponse"
       },
       "summary": "Upload match logs"
-    },
-    "rpc.parser.metadata.sync_gamemodes": {
-      "description": "Permission: superuser. Syncs gamemode metadata from OverFast into the database and acks success.",
-      "summary": "Sync gamemodes"
-    },
-    "rpc.parser.metadata.sync_heroes": {
-      "description": "Permission: superuser. Syncs hero metadata from OverFast into the database and acks success.",
-      "summary": "Sync heroes"
-    },
-    "rpc.parser.metadata.sync_maps": {
-      "description": "Permission: superuser. Syncs map metadata from OverFast into the database and acks success.",
-      "summary": "Sync maps"
     },
     "rpc.parser.rank.battle_tag_history": {
       "description": "Permission: public; no authentication required. Returns a single battle tag's OverFast rank time series with granularity, date range, platform and role filters.",

@@ -93,7 +93,7 @@ export default function MapsAdminPage() {
       create: (data) => adminService.createMap(data),
       update: (id, data) => adminService.updateMap(id, data),
       delete: (id) => adminService.deleteMap(id),
-      sync: () => adminService.syncMaps(),
+      sync: () => adminService.syncCatalog("overwatch"),
     },
   });
 

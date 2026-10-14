@@ -980,10 +980,9 @@ class AdminService {
     await apiFetch(`${OVERWATCH_CATALOG}/character/${id}`, { method: "DELETE" });
   }
 
-  async syncHeroes(): Promise<BulkOperationResult> {
-    const response = await apiFetch("/api/v1/heroes/update", {
-      method: "POST"
-    });
+  /** Pull a discipline's catalog from its module's source (OverFast, Data Dragon). */
+  async syncCatalog(discipline: string): Promise<BulkOperationResult> {
+    const response = await apiFetch(`/api/v1/admin/catalog-sync/${discipline}`, { method: "POST" });
     return response.json();
   }
 
@@ -1007,13 +1006,6 @@ class AdminService {
 
   async deleteGamemode(id: number): Promise<void> {
     await apiFetch(`${OVERWATCH_CATALOG}/mode/${id}`, { method: "DELETE" });
-  }
-
-  async syncGamemodes(): Promise<BulkOperationResult> {
-    const response = await apiFetch("/api/v1/gamemodes/update", {
-      method: "POST"
-    });
-    return response.json();
   }
 
   // ─── Map CRUD ──────────────────────────────────────────────────────────────
@@ -1070,13 +1062,6 @@ class AdminService {
 
   async deleteMap(id: number): Promise<void> {
     await apiFetch(`${OVERWATCH_CATALOG}/map/${id}`, { method: "DELETE" });
-  }
-
-  async syncMaps(): Promise<BulkOperationResult> {
-    const response = await apiFetch("/api/v1/maps/update", {
-      method: "POST"
-    });
-    return response.json();
   }
 
   // ─── Catalog aliases (superuser) ───────────────────────────────────────────

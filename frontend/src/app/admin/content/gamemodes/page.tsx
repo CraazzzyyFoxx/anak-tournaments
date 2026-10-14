@@ -61,7 +61,7 @@ export default function GamemodesAdminPage() {
       create: (data) => adminService.createGamemode(data),
       update: (id, data) => adminService.updateGamemode(id, data),
       delete: (id) => adminService.deleteGamemode(id),
-      sync: () => adminService.syncGamemodes(),
+      sync: () => adminService.syncCatalog("overwatch"),
     },
   });
 

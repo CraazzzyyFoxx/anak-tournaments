@@ -1,20 +1,7 @@
-from pydantic import BaseModel
-
 from shared.schemas import catalog
 from src.schemas import GamemodeRead
 
-__all__ = (
-    "OverfastMap",
-    "MapRead",
-)
-
-
-class OverfastMap(BaseModel):
-    name: str
-    screenshot: str
-    gamemodes: list[str]
-    location: str
-    country_code: str | None
+__all__ = ("MapRead",)
 
 
 class MapRead(catalog.MapRead):

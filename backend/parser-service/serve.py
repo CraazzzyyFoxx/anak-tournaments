@@ -52,7 +52,6 @@ from shared.schemas.events import (
 )
 from shared.services.realtime import configure_realtime
 from src import models
-from src.clients.overfast import overfast_catalog_client
 from src.core import config, db
 from src.core.broker import set_worker_broker
 from src.core.caching import configure_cache
@@ -197,7 +196,6 @@ async def start_worker() -> None:
     )
     start_worker_metrics_server(config.settings.worker_metrics_port)
     await s3_client.start()
-    await overfast_catalog_client.start()
     await rank_tasks.rank_client.start()
     # Periodic OverFast rank collection trigger (Redis leader-locked across worker
     # replicas, admin-settings-gated — no-ops while collection is disabled). Lives
@@ -224,7 +222,6 @@ async def stop_worker() -> None:
 async def close_worker_resources() -> None:
     # Consumers must finish before their HTTP, S3 and Redis clients are closed.
     await s3_client.close()
-    await overfast_catalog_client.close()
     await rank_tasks.rank_client.close()
     await rank_tasks.close_redis()
     await realtime_redis.aclose()

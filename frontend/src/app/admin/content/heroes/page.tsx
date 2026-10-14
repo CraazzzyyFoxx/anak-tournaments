@@ -118,7 +118,7 @@ export default function HeroesAdminPage() {
       create: (data) => adminService.createHero(data),
       update: (id, data) => adminService.updateHero(id, data),
       delete: (id) => adminService.deleteHero(id),
-      sync: () => adminService.syncHeroes(),
+      sync: () => adminService.syncCatalog("overwatch"),
     },
   });
 

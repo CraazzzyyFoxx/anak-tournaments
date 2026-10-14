@@ -14,6 +14,7 @@ source_modules =
     shared.balancer_registration_statuses
     shared.balancer_subrole_catalog
     shared.catalog_aliases
+    shared.catalog_sync
     shared.clients
     shared.core
     shared.division_grid

@@ -1,9 +1,4 @@
-"""Map domain: name/alias resolution + OverFast sync + CRUD reads.
-
-Merges the former ``service.py`` (reads) and ``flows.py`` (OverFast sync +
-alias-miss resolution) into one class, per ``backend/ARCHITECTURE.md``'s
-"small domains keep everything in one service.py" rule.
-"""
+"""Map domain: name/alias resolution and reads; catalog sync belongs to the discipline module."""
 
 from __future__ import annotations
 
@@ -14,11 +9,8 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.repository import MapRepository
 from src import models, schemas
-from src.clients.overfast import OverFastCatalogClient, overfast_catalog_client
-from src.core import errors, pagination, utils
+from src.core import errors, utils
 from src.services import catalog_aliases
-from src.services.catalog_images import CatalogImageMirror, catalog_image_mirror, map_slug
-from src.services.gamemode.service import gamemode_service
 
 __all__ = ("MapService", "map_service", "map_entities", "to_pydantic")
 
@@ -44,20 +36,11 @@ def to_pydantic(map: models.Map, entities: list[str]) -> schemas.MapRead:
 
 
 class MapService:
-    def __init__(
-        self,
-        *,
-        repo: MapRepository = MapRepository(),
-        overfast: OverFastCatalogClient = overfast_catalog_client,
-        images: CatalogImageMirror = catalog_image_mirror,
-    ) -> None:
+    def __init__(self, *, repo: MapRepository = MapRepository()) -> None:
         self.repo = repo
-        self.overfast = overfast
-        self.images = images
 
     async def get_by_names(self, session: AsyncSession, names: list[str]) -> dict[str, models.Map]:
-        """All maps whose name is in ``names``, indexed by name, in one query
-        (batch counterpart of the per-item probe in ``initial_create``)."""
+        """All maps whose name is in ``names``, indexed by name, in one query."""
         return await self.repo.get_many_by(session, models.Map.name, names)
 
     async def get_by_name_or_alias_and_gamemode(
@@ -88,58 +71,6 @@ class MapService:
                 ],
             )
         return map
-
-    async def fetch_maps(self, gamemode: models.Gamemode) -> list[schemas.OverfastMap]:
-        return await self.overfast.fetch_maps(gamemode.slug)
-
-    async def initial_create(self, session: AsyncSession) -> None:
-        gamemodes, total = await gamemode_service.get_all(
-            session,
-            params=pagination.PaginationSortParams(per_page=-1, page=1),
-        )
-        # Release the transaction opened by the reads above before the OverFast
-        # round-trips; expire_on_commit=False keeps the gamemodes usable.
-        await session.commit()
-
-        # ponytail: sequential — 2-3 gamemodes, lower priority than the 13-way
-        # hero locale fan-out; parallelize with the same semaphore+gather shape
-        # if the gamemode count grows enough to matter.
-        fetched: list[tuple[models.Gamemode, list[schemas.OverfastMap]]] = []
-        for gamemode in gamemodes:
-            fetched.append((gamemode, await self.fetch_maps(gamemode)))
-
-        # One existence query + one bulk write instead of a get-then-create/update
-        # pair per map. A map created for an earlier gamemode is found in the
-        # index and updated (name/image only), exactly like the old per-item
-        # re-SELECT.
-        maps_by_name = await self.get_by_names(session, [map.name for _, maps in fetched for map in maps])
-        # Release the read transaction before the image round-trips;
-        # expire_on_commit=False keeps the rows loaded and tracked.
-        await session.commit()
-        image_paths = await self.images.resolve_many(
-            "maps",
-            {
-                map_slug(map.name): (getattr(maps_by_name.get(map.name), "image_path", None), map.screenshot)
-                for _, maps in fetched
-                for map in maps
-            },
-        )
-
-        new_maps: list[models.Map] = []
-        for gamemode, maps in fetched:
-            for map in maps:
-                map_db = maps_by_name.get(map.name)
-                if not map_db:
-                    map_db = models.Map(gamemode_id=gamemode.id, name=map.name)
-                    maps_by_name[map.name] = map_db
-                    new_maps.append(map_db)
-                else:
-                    map_db.name = map.name
-                map_db.image_path = image_paths[map_slug(map.name)]
-
-        if new_maps:
-            await self.repo.create_many(session, new_maps)
-        await session.commit()
 
 
 map_service = MapService()

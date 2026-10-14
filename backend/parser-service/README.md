@@ -59,7 +59,7 @@ RPC namespace: `rpc.parser.*` (single namespace, registered in `src/rpc/`).
 | `rpc.parser.ach.*` | Achievement rules CRUD, condition-type catalog and tree validation, seed/reset, export/import and cross-workspace library import, evaluation trigger and runs, rule test/dry-run, qualifying-user list, manual overrides |
 | `rpc.parser.subscription.*` | Subscription collection admin: health stats, check log, per-user entitlement, trigger a re-check or a sweep |
 | `rpc.parser.impact.*` | Superuser recompute of the impact-scoring baselines |
-| `rpc.parser.metadata.*` | Superuser OverFast catalog sync for heroes, maps and gamemodes |
+| `rpc.parser.catalog.sync` | Superuser sync of one discipline through its module's source (OverFast, Data Dragon) |
 | `rpc.parser.settings.*` | Superuser global settings CRUD (`public.settings`) |
 | `rpc.parser.discord_channel.*` | Per-tournament Discord channel binding, plus an on-demand channel-history backfill |
 
@@ -227,8 +227,8 @@ Writes:
   `discord_channel`.
 - `overwatch_rank` — `battle_tag_state`, `rank_snapshot`, `fetch_log`.
 - `achievements` — `rule`, `evaluation_result`, `evaluation_run`, `override`.
-- `overwatch` — `catalog_alias_miss`, plus the `aliases` column and catalog rows written by the
-  OverFast metadata sync; app-service owns the public reads of that catalog.
+- `catalog` — `alias_miss`, plus `entity` aliases and rows written by the catalog sync of a
+  discipline through its module (OverFast, Data Dragon); app-service owns the public reads.
 - `subscriptions` — `entitlement`, `check_log` (shared with tournament-service, which owns
   requirements).
 - `public.settings` — global key-namespaced settings.
@@ -254,18 +254,17 @@ No service ships its own migrations — there is one Alembic project at
 - **Redis** — scheduler leader locks, rank-collection dedup/rate-limit/cooldown keys, the cashews
   cache for impact baselines, and the realtime publish channel.
 - **S3** — match-log file storage (`logs/{tournament_id}/{filename}`) and the catalog images
-  (`assets/overwatch/{heroes,maps,gamemodes}/{slug}.{ext}`).
+  (`assets/{discipline}/{kind}/{slug}.{ext}`); an image already on the bucket survives a sync.
 - **OverFast API** (self-hosted on the production host, called directly) — player career
-  summaries for rank collection and the hero/map/gamemode catalog; the hero sync pulls all 13
-  Blizzard locales, one request per locale, and only ever adds aliases. OverFast exposes no
-  `locale` parameter for `/maps` or `/gamemodes`, so map and gamemode aliases are admin-supplied.
-  Every sync copies portraits, screenshots and icons into S3 and stores the S3 URL
-  (`src/services/catalog_images.py`): the site cannot load images from OverFast's host. A row
-  already on the bucket is not re-uploaded, so a hand-replaced image survives the sync.
+  summaries for rank collection and the Overwatch module's hero/map/gamemode catalog; the
+  hero sync pulls all 13 Blizzard locales and only ever adds aliases. OverFast exposes no
+  `locale` parameter for `/maps` or `/gamemodes`, so their aliases are admin-supplied.
+- **Data Dragon** — the League of Legends module's champion and map catalog, using the
+  latest published version. Both sources mirror images through `shared.catalog_sync`.
 - **Discord and Twitch APIs** — subscription entitlement verification.
 - Discord and Twitch calls egress through the outbound **`proxy`** container.
 
-Adding a map, hero or locale needs no deploy: run the OverFast hero sync, or add the alias in
+Adding a map, character or locale needs no deploy: sync the discipline's whole catalog, or add the alias in
 `/admin/{heroes,maps,gamemodes}` — or straight from the miss queue in `/admin/aliases`, which
 attaches the alias and closes the miss in one request.
 
