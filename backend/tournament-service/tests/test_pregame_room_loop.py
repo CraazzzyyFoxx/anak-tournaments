@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
 import os
 import sys
 from datetime import UTC, datetime, timedelta
@@ -46,7 +47,7 @@ from src.services.encounter.pick_ban_action import pick_ban_action_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service, resolved_steps
 from src.services.encounter.pick_ban_undo import pick_ban_undo_service
 from src.services.encounter.veto_session import side_pick_pending
-from tests.test_pregame_participations import HEROES, SIDED
+from tests.test_pregame_participations import FIRST_HERO, HEROES, SIDED
 
 _TAG = itertools.count()
 
@@ -116,10 +117,15 @@ class LoopCase(IsolatedAsyncioTestCase):
             for hero_id, role in HEROES.items():
                 await s.execute(
                     sa.text(
-                        "INSERT INTO overwatch.hero (id, slug, name, image_path, type)"
-                        " VALUES (:id, :slug, :name, '', :type) ON CONFLICT (id) DO NOTHING"
+                        "INSERT INTO catalog.entity (id, discipline, kind, slug, name, attrs)"
+                        " VALUES (:id, 'overwatch', 'character', :slug, :name, CAST(:attrs AS JSONB)) ON CONFLICT (id) DO NOTHING"
                     ),
-                    {"id": hero_id, "slug": f"h{hero_id}", "name": f"H{hero_id}", "type": role.name},
+                    {
+                        "id": hero_id,
+                        "slug": f"h{hero_id}",
+                        "name": f"H{hero_id}",
+                        "attrs": json.dumps({"class": role.name}),
+                    },
                 )
             workspace = Workspace(slug=self.tag, name=self.tag)
             s.add(workspace)
@@ -219,7 +225,7 @@ class LoopCase(IsolatedAsyncioTestCase):
                 s, self.encounter_id, enums.PickBanKind.HERO, actor, item_id=item_id, action=action
             )
 
-    async def play_round(self, items: tuple[int, int] = (1, 2)) -> None:
+    async def play_round(self, items: tuple[int, int] = (FIRST_HERO, FIRST_HERO + 1)) -> None:
         """Both seats answer the round's two ban steps, in turn order."""
         for item_id in items:
             state = await self.state()
@@ -419,7 +425,7 @@ class RoomControlTests(LoopCase):
         async with self.Session() as s:
             with self.assertRaises(BaseAPIException) as refused:
                 await pick_ban_action_service.perform_pick_ban_action(
-                    s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=1, action="ban"
+                    s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=FIRST_HERO, action="ban"
                 )
             self.assertEqual(409, refused.exception.status_code)
 
@@ -435,7 +441,7 @@ class RoomControlTests(LoopCase):
         self.assertIsNone(pick_ban.paused_at)
         # The step keeps the time it had left: its start moved forward by the pause.
         self.assertGreaterEqual(pick_ban.current_step_started_at, before)
-        await self.act(self.slot1, 1)
+        await self.act(self.slot1, FIRST_HERO)
 
     async def test_extend_moves_the_deadline_and_journals_the_step(self) -> None:
         await self.start(ban_ruleset(timer_seconds=60))

@@ -110,7 +110,12 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             .filter(models.Player.tournament_id == _COMPARE_FIXTURE_IDS["subject_cohort_tournament"])
             .one()
         )
-        hero_id = db.query(models.Hero.id).order_by(models.Hero.id).first()[0]
+        hero_id = (
+            db.query(models.CatalogEntity.id)
+            .filter_by(discipline="overwatch", kind="character")
+            .order_by(models.CatalogEntity.id)
+            .first()[0]
+        )
         return {
             "subject_user_id": subject_user_id,
             "role": cohort_player.role.value,
@@ -120,7 +125,12 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
 
     role, division = _pick_unused_role_division_pair(db)
     other_division = 1 if division != 1 else 2
-    hero_row = db.query(models.Hero.id).order_by(models.Hero.id).first()
+    hero_row = (
+        db.query(models.CatalogEntity.id)
+        .filter_by(discipline="overwatch", kind="character")
+        .order_by(models.CatalogEntity.id)
+        .first()
+    )
     map_row = (
         db.query(models.CatalogEntity.id)
         .filter_by(discipline="overwatch", kind="map")

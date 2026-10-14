@@ -112,7 +112,7 @@ def build_registration_roles(
     ``rank_value`` survives a player editing their roles).
 
     When ``hero_catalog`` is provided (the top-heroes ask is enabled), the ordered
-    ``top_heroes`` slugs on each role are attached as ``registration_role_hero`` rows.
+    ``top_heroes`` slugs on each role are attached as ``registration_role_entity`` rows.
     """
     resolved_max = max_heroes if max_heroes and max_heroes > 0 else DEFAULT_MAX_TOP_HEROES
     entries: list[models.BalancerRegistrationRole] = []

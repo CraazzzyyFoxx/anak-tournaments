@@ -398,7 +398,7 @@ class DynamicHeroRuleTests(TestCase):
 
         # Catalog hero keeps its legacy flavour name and gains hero linkage.
         self.assertEqual("Déjà vu", rules["tracer"].name)
-        self.assertEqual(1, rules["tracer"].hero_id)
+        self.assertEqual(1, rules["tracer"].entity_id)
         self.assertEqual("/img.png", rules["tracer"].image_url)
         self.assertEqual(
             {"type": "hero_kd_best", "params": {"hero_slug": "tracer", "min_time": 600, "min_matches": 3}},
@@ -409,7 +409,7 @@ class DynamicHeroRuleTests(TestCase):
         self.assertIn("newhero", rules)
         self.assertEqual("New Hero", rules["newhero"].name)
         self.assertIn("New Hero", rules["newhero"].description_en)
-        self.assertEqual(2, rules["newhero"].hero_id)
+        self.assertEqual(2, rules["newhero"].entity_id)
         self.assertEqual("/img.png", rules["newhero"].image_url)
 
         # Non-K/D hero slugs never become hero K/D rules.
@@ -419,12 +419,12 @@ class DynamicHeroRuleTests(TestCase):
         # Only one hero in the DB, but every catalog K/D hero must still be covered.
         rules = {rule.slug: rule for rule in _hero_kd_rules(1, [self._hero(1, "tracer", "Tracer")])}
         self.assertIn("dva", rules)  # catalog hero absent from the DB
-        self.assertIsNone(rules["dva"].hero_id)
+        self.assertIsNone(rules["dva"].entity_id)
 
     def test_sync_path_uses_catalog_only(self) -> None:
         rules = {rule.slug: rule for rule in _hero_kd_rules(1, None)}
         self.assertIn("tracer", rules)
-        self.assertIsNone(rules["tracer"].hero_id)
+        self.assertIsNone(rules["tracer"].entity_id)
 
 
 class OverrideScopeTests(TestCase):

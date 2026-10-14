@@ -50,11 +50,13 @@ async def execute_hero_stat(
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .join(models.Hero, models.Hero.id == models.MatchStatistics.hero_id)
+        .join(models.CatalogEntity, models.CatalogEntity.id == models.MatchStatistics.hero_id)
         .where(
+            models.CatalogEntity.kind == "character",
+            models.CatalogEntity.discipline == "overwatch",
             models.MatchStatistics.name == stat,
             models.MatchStatistics.round == 0,
-            models.Hero.slug == hero_slug,
+            models.CatalogEntity.slug == hero_slug,
             models.Tournament.workspace_id == context.workspace_id,
         )
         .group_by(
@@ -239,9 +241,13 @@ async def _hero_kd_best_by_slug(
     ).subquery("best")
 
     final = (
-        sa.select(best.c.user_id, best.c.tournament_id, models.Hero.slug)
-        .join(models.Hero, models.Hero.id == best.c.hero_id)
-        .where(best.c.rn == 1)
+        sa.select(best.c.user_id, best.c.tournament_id, models.CatalogEntity.slug)
+        .join(models.CatalogEntity, models.CatalogEntity.id == best.c.hero_id)
+        .where(
+            best.c.rn == 1,
+            models.CatalogEntity.kind == "character",
+            models.CatalogEntity.discipline == "overwatch",
+        )
     )
 
     by_hero: dict[str, set[tuple[int, int]]] = {}

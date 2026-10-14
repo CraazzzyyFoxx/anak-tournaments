@@ -68,10 +68,10 @@ from cashews import cache  # noqa: E402
 from sqlalchemy import event  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E402
 
-from shared.core.enums import DraftPickStatus, HeroClass  # noqa: E402
+from shared.core.enums import DraftPickStatus  # noqa: E402
 from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftSession, DraftTeam  # noqa: E402
-from shared.models.catalog.hero import Hero  # noqa: E402
+from shared.models.catalog.entity import CatalogEntity  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
@@ -80,7 +80,7 @@ from shared.models.registration.registration import (  # noqa: E402
     BalancerRegistrationFormVersion,
     BalancerRegistrationIdentity,
     BalancerRegistrationRole,
-    BalancerRegistrationRoleHero,
+    BalancerRegistrationRoleEntity,
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
@@ -249,15 +249,29 @@ CUSTOM_FIELD_SCHEMA = {
 
 
 async def _heroes(s: AsyncSession) -> list[int]:
-    existing = dict((await s.execute(sa.select(Hero.slug, Hero.id).where(Hero.slug.in_(HERO_SLUGS)))).tuples().all())
+    existing = dict(
+        (
+            await s.execute(
+                sa.select(CatalogEntity.slug, CatalogEntity.id).where(
+                    CatalogEntity.slug.in_(HERO_SLUGS),
+                    CatalogEntity.kind == "character",
+                    CatalogEntity.discipline == "overwatch",
+                )
+            )
+        )
+        .tuples()
+        .all()
+    )
     for slug in HERO_SLUGS:
         if slug in existing:
             continue
-        hero = Hero(
+        hero = CatalogEntity(
+            discipline="overwatch",
+            kind="character",
             slug=slug,
             name=slug.title(),
             image_path=f"/heroes/{slug}.png",
-            type=HeroClass.damage,
+            attrs={"class": "damage"},
         )
         s.add(hero)
         await s.flush()
@@ -325,9 +339,9 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
                 await s.flush()
                 for hero_priority in range(3):
                     s.add(
-                        BalancerRegistrationRoleHero(
+                        BalancerRegistrationRoleEntity(
                             role_id=row.id,
-                            hero_id=hero_ids[(i + hero_priority) % len(hero_ids)],
+                            entity_id=hero_ids[(i + hero_priority) % len(hero_ids)],
                             priority=hero_priority,
                         )
                     )

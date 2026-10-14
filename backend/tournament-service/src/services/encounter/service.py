@@ -25,21 +25,21 @@ from src.services.tournament import service as tournament_service
 
 hero_jsonb_object = sa.func.jsonb_build_object(
     "id",
-    models.Hero.id,
+    models.CatalogEntity.id,
     "created_at",
-    models.Hero.created_at,
+    models.CatalogEntity.created_at,
     "updated_at",
-    models.Hero.updated_at,
+    models.CatalogEntity.updated_at,
     "name",
-    models.Hero.name,
+    models.CatalogEntity.name,
     "slug",
-    models.Hero.slug,
+    models.CatalogEntity.slug,
     "image_path",
-    models.Hero.image_path,
+    models.CatalogEntity.image_path,
     "color",
-    models.Hero.color,
+    sa.func.coalesce(models.CatalogEntity.attrs["color"].astext, "#ffffff"),
     "type",
-    models.Hero.type,
+    models.CatalogEntity.attrs["class"].astext,
 )
 
 
@@ -825,9 +825,11 @@ class EncounterService:
         heroes_round = (
             sa.select(models.MatchStatistics.round, sa.func.jsonb_agg(hero_jsonb_object))
             .select_from(models.MatchStatistics)
-            .join(models.Hero, models.MatchStatistics.hero_id == models.Hero.id)
+            .join(models.CatalogEntity, models.MatchStatistics.hero_id == models.CatalogEntity.id)
             .where(
                 sa.and_(
+                    models.CatalogEntity.kind == "character",
+                    models.CatalogEntity.discipline == "overwatch",
                     models.MatchStatistics.match_id == match_id,
                     models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                     models.MatchStatistics.user_id == user_id,
@@ -892,9 +894,11 @@ class EncounterService:
                 sa.func.jsonb_agg(hero_jsonb_object),
             )
             .select_from(models.MatchStatistics)
-            .join(models.Hero, models.MatchStatistics.hero_id == models.Hero.id)
+            .join(models.CatalogEntity, models.MatchStatistics.hero_id == models.CatalogEntity.id)
             .where(
                 sa.and_(
+                    models.CatalogEntity.kind == "character",
+                    models.CatalogEntity.discipline == "overwatch",
                     models.MatchStatistics.match_id == match_id,
                     models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                     models.MatchStatistics.user_id.in_(user_ids),
@@ -931,16 +935,22 @@ class EncounterService:
         events (ultimate casts, resurrects) are returned — per-hit assists are
         already surfaced as aggregate stats.
         """
-        # Analytical: multi-entity row tuples over aliased Hero joins, not a CRUD read.
-        killer_hero = aliased(models.Hero)
-        victim_hero = aliased(models.Hero)
+        # Analytical: multi-entity row tuples over aliased catalog character joins, not a CRUD read.
+        killer_hero = aliased(models.CatalogEntity)
+        victim_hero = aliased(models.CatalogEntity)
         kf = models.MatchKillFeed
 
         kills_query = (
             sa.select(kf, killer_hero, victim_hero)
             .join(killer_hero, killer_hero.id == kf.killer_hero_id)
             .join(victim_hero, victim_hero.id == kf.victim_hero_id)
-            .where(kf.match_id == match_id)
+            .where(
+                kf.match_id == match_id,
+                killer_hero.kind == "character",
+                killer_hero.discipline == "overwatch",
+                victim_hero.kind == "character",
+                victim_hero.discipline == "overwatch",
+            )
             .order_by(kf.round.asc(), kf.time.asc(), kf.id.asc())
         )
 
@@ -951,8 +961,15 @@ class EncounterService:
             enums.MatchEvent.MercyRez,
         )
         events_query = (
-            sa.select(ev, models.Hero)
-            .outerjoin(models.Hero, models.Hero.id == ev.hero_id)
+            sa.select(ev, models.CatalogEntity)
+            .outerjoin(
+                models.CatalogEntity,
+                sa.and_(
+                    models.CatalogEntity.id == ev.hero_id,
+                    models.CatalogEntity.kind == "character",
+                    models.CatalogEntity.discipline == "overwatch",
+                ),
+            )
             .where(sa.and_(ev.match_id == match_id, ev.name.in_(timeline_events)))
             .order_by(ev.round.asc(), ev.time.asc(), ev.id.asc())
         )

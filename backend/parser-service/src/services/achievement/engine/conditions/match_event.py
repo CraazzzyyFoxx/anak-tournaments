@@ -75,8 +75,10 @@ async def execute_match_event_count(
     )
 
     if hero_slug:
-        query = query.join(models.Hero, models.Hero.id == models.MatchEvent.hero_id).where(
-            models.Hero.slug == hero_slug
+        query = query.join(models.CatalogEntity, models.CatalogEntity.id == models.MatchEvent.hero_id).where(
+            models.CatalogEntity.slug == hero_slug,
+            models.CatalogEntity.kind == "character",
+            models.CatalogEntity.discipline == "overwatch",
         )
 
     if context.tournament:

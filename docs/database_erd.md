@@ -608,17 +608,6 @@ erDiagram
         bigint legacy_id PK
         bigint entity_id FK
     }
-    OVERWATCH_HERO {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        varchar slug UK
-        varchar name UK
-        varchar image_path
-        heroclass type
-        varchar color
-        jsonb aliases
-    }
 
     CATALOG_DISCIPLINE ||--o{ CATALOG_ALIAS_MISS : "discipline"
     CATALOG_DISCIPLINE ||--o{ CATALOG_ENTITY : "discipline"
@@ -1842,12 +1831,13 @@ erDiagram
         int rank_value "nullable"
         boolean is_active
     }
-    BALANCER_REGISTRATION_ROLE_HERO {
+    BALANCER_REGISTRATION_ROLE_ENTITY {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint role_id FK
-        bigint hero_id FK
+        bigint entity_id FK
+        varchar(16) entity_kind FK
         int priority
     }
     BALANCER_REGISTRATION_STATUS {
@@ -1936,10 +1926,11 @@ erDiagram
     BALANCER_REGISTRATION_FORM_VERSION |o--o{ BALANCER_REGISTRATION : "form_version_id"
     BALANCER_REGISTRATION_FORM_VERSION |o--o{ BALANCER_REGISTRATION_FORM : "current_version_id"
     BALANCER_REGISTRATION_GOOGLE_SHEET_FEED ||--o{ BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING : "feed_id"
-    BALANCER_REGISTRATION_ROLE ||--o{ BALANCER_REGISTRATION_ROLE_HERO : "role_id"
+    BALANCER_REGISTRATION_ROLE ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "role_id"
     BALANCER_REGISTRATION_TEAM |o--o{ BALANCER_REGISTRATION : "registration_team_id"
     BALANCER_REGISTRATION_TEAM ||--o{ BALANCER_REGISTRATION_TEAM_INVITE : "team_id"
-    OVERWATCH_HERO ||--o{ BALANCER_REGISTRATION_ROLE_HERO : "hero_id"
+    CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_id"
+    CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_kind"
     PUBLIC_WORKSPACE |o--o{ BALANCER_REGISTRATION_STATUS : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_FORM : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_FORM_TEMPLATE : "workspace_id"
@@ -1959,8 +1950,8 @@ Composite unique keys:
 - `BALANCER_REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `handle_normalized`)
 - `BALANCER_REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `position`)
 - `BALANCER_REGISTRATION_ROLE` unique on (`registration_id`, `role`)
-- `BALANCER_REGISTRATION_ROLE_HERO` unique on (`role_id`, `hero_id`)
-- `BALANCER_REGISTRATION_ROLE_HERO` unique on (`role_id`, `priority`)
+- `BALANCER_REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `entity_id`)
+- `BALANCER_REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `priority`)
 - `BALANCER_REGISTRATION_STATUS` unique on (`workspace_id`, `scope`, `slug`, `kind`)
 <!-- /ERD:auto -->
 
@@ -2415,17 +2406,17 @@ erDiagram
         float value
     }
 
+    CATALOG_ENTITY |o--o{ MATCHES_EVENT : "hero_id"
+    CATALOG_ENTITY |o--o{ MATCHES_EVENT : "related_hero_id"
+    CATALOG_ENTITY |o--o{ MATCHES_STATISTICS : "hero_id"
+    CATALOG_ENTITY ||--o{ MATCHES_KILL_FEED : "killer_hero_id"
+    CATALOG_ENTITY ||--o{ MATCHES_KILL_FEED : "victim_hero_id"
     CATALOG_ENTITY ||--o{ MATCHES_MATCH : "map_id"
     ENCOUNTER_ENCOUNTER ||--o{ MATCHES_MATCH : "encounter_id"
     LOG_PROCESSING_RECORD |o--o{ MATCHES_MATCH : "log_record_id"
     MATCHES_MATCH ||--o{ MATCHES_EVENT : "match_id"
     MATCHES_MATCH ||--o{ MATCHES_KILL_FEED : "match_id"
     MATCHES_MATCH ||--o{ MATCHES_STATISTICS : "match_id"
-    OVERWATCH_HERO |o--o{ MATCHES_EVENT : "hero_id"
-    OVERWATCH_HERO |o--o{ MATCHES_EVENT : "related_hero_id"
-    OVERWATCH_HERO |o--o{ MATCHES_STATISTICS : "hero_id"
-    OVERWATCH_HERO ||--o{ MATCHES_KILL_FEED : "killer_hero_id"
-    OVERWATCH_HERO ||--o{ MATCHES_KILL_FEED : "victim_hero_id"
     PLAYERS_USER |o--o{ MATCHES_EVENT : "related_user_id"
     PLAYERS_USER ||--o{ MATCHES_EVENT : "user_id"
     PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "killer_id"
@@ -2566,7 +2557,9 @@ erDiagram
         varchar description_ru
         varchar description_en
         varchar image_url "nullable"
-        bigint hero_id FK "nullable"
+        varchar(32) discipline FK
+        bigint entity_id FK "nullable"
+        varchar(16) entity_kind FK
         varchar category
         varchar scope
         varchar grain
@@ -2581,10 +2574,13 @@ erDiagram
     ACHIEVEMENTS_RULE ||--o{ ACHIEVEMENTS_EVALUATION_RESULT : "achievement_rule_id"
     ACHIEVEMENTS_RULE ||--o{ ACHIEVEMENTS_OVERRIDE : "achievement_rule_id"
     AUTH_USER ||--o{ ACHIEVEMENTS_OVERRIDE : "granted_by"
+    CATALOG_DISCIPLINE ||--o{ ACHIEVEMENTS_RULE : "discipline"
+    CATALOG_ENTITY |o--o{ ACHIEVEMENTS_RULE : "entity_id"
+    CATALOG_ENTITY ||--o{ ACHIEVEMENTS_RULE : "discipline"
+    CATALOG_ENTITY ||--o{ ACHIEVEMENTS_RULE : "entity_kind"
     ENCOUNTER_ENCOUNTER |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "encounter_id"
     MATCHES_MATCH |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "match_id"
     MATCHES_MATCH |o--o{ ACHIEVEMENTS_OVERRIDE : "match_id"
-    OVERWATCH_HERO |o--o{ ACHIEVEMENTS_RULE : "hero_id"
     PUBLIC_WORKSPACE ||--o{ ACHIEVEMENTS_EVALUATION_RUN : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ ACHIEVEMENTS_RULE : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ ACHIEVEMENTS_EVALUATION_RESULT : "workspace_member_id"

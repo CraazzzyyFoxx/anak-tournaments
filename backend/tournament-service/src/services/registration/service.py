@@ -237,7 +237,7 @@ class RegistrationService:
             .options(
                 selectinload(models.BalancerRegistration.roles)
                 .selectinload(models.BalancerRegistrationRole.hero_entries)
-                .selectinload(models.BalancerRegistrationRoleHero.hero)
+                .selectinload(models.BalancerRegistrationRoleEntity.entity)
             )
             .options(selectinload(models.BalancerRegistration.tournament))
             # _reg_to_read serializes user_id from workspace_member.player_id and the
@@ -1163,7 +1163,7 @@ class RegistrationService:
             .options(
                 selectinload(models.BalancerRegistration.roles)
                 .selectinload(models.BalancerRegistrationRole.hero_entries)
-                .selectinload(models.BalancerRegistrationRoleHero.hero),
+                .selectinload(models.BalancerRegistrationRoleEntity.entity),
                 # Needed by _build_tournament_history and _reg_to_read below —
                 # the member is the registration's only identity anchor, and the team
                 # brief feeds the participants table's team column.

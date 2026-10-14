@@ -44,7 +44,7 @@ from shared.models.registration.registration import (
     BalancerRegistrationForm,
     BalancerRegistrationIdentity,
     BalancerRegistrationRole,
-    BalancerRegistrationRoleHero,
+    BalancerRegistrationRoleEntity,
 )
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
@@ -65,7 +65,7 @@ def registration_load_options() -> list[Any]:
     return [
         selectinload(BalancerRegistration.roles)
         .selectinload(BalancerRegistrationRole.hero_entries)
-        .selectinload(BalancerRegistrationRoleHero.hero),
+        .selectinload(BalancerRegistrationRoleEntity.entity),
         selectinload(BalancerRegistration.workspace_member).selectinload(WorkspaceMember.player),
         selectinload(BalancerRegistration.identities),
         selectinload(BalancerRegistration.form_version),
@@ -108,9 +108,9 @@ def _pool_clauses(tournament_id: int) -> tuple[Any, ...]:
 
 def _hero_refs(role: BalancerRegistrationRole) -> tuple[HeroRef, ...]:
     return tuple(
-        HeroRef(id=entry.hero.id, slug=entry.hero.slug, image_path=entry.hero.image_path)
+        HeroRef(id=entry.entity.id, slug=entry.entity.slug, image_path=entry.entity.image_path)
         for entry in sorted(role.hero_entries or [], key=lambda entry: entry.priority)
-        if entry.hero is not None
+        if entry.entity is not None
     )
 
 

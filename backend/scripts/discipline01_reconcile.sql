@@ -83,7 +83,7 @@ SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        AND NOT coalesce(jsonb_path_exists(s.resolved_sequence_json::jsonb, '$[*] ? (@.index == $i && @.action == "side_pick")',
                                           jsonb_build_object('i', (r.data::jsonb ->> 'step_index')::int)), false)
   ) soft
- WHERE soft.kind IN ('map');
+ WHERE soft.kind IN ('map', 'hero');
 
 \echo '--- legacy rows against rows carried across; every status must be ok'
 SELECT class, count(*) AS legacy, count(*) FILTER (WHERE ok) AS migrated,

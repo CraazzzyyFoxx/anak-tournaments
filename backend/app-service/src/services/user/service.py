@@ -308,7 +308,7 @@ class UserService:
         dict[int, int],
         dict[int, int],
         dict[int, tuple[float | None, float | None, float | None, float | None, int | None]],
-        dict[int, list[tuple[models.Hero, float]]],
+        dict[int, list[tuple[models.CatalogEntity, float]]],
         dict[int, tuple[int, int, int]],
         dict[int, datetime.datetime | None],
     ]:
@@ -1320,7 +1320,7 @@ class UserService:
             heroes=[
                 schemas.UserDraftCardHero(
                     hero=hero_service.to_read(hero),
-                    role=hero.type.slot_code,
+                    role=enums.HeroClass[hero.attrs["class"]].slot_code,
                     maps=hero_maps,
                     maps_won=hero_maps_won,
                 )

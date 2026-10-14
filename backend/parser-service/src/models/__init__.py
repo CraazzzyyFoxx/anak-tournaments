@@ -5,7 +5,6 @@ from shared.models.balancer.balance import *
 from shared.models.balancer.draft import *
 from shared.models.catalog.alias_miss import *
 from shared.models.catalog.entity import *
-from shared.models.catalog.hero import *
 from shared.models.division_grid.division_grid import *
 from shared.models.encounter import *
 from shared.models.identity.auth_user import *

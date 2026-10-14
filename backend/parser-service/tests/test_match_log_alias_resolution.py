@@ -45,7 +45,7 @@ class HeroAliasResolutionTests(IsolatedAsyncioTestCase):
         ana = SimpleNamespace(name="Ana", aliases=["Ана", "アナ"])
         processor = _processor()
 
-        with patch.object(flows.hero_service, "get_all", AsyncMock(return_value=([ana], 1))):
+        with patch.object(flows._heroes, "get_all", AsyncMock(return_value=([ana], 1))):
             await processor._preload_data(Mock())
 
         self.assertIs(ana, processor.heroes_map["Ana"])
@@ -58,7 +58,7 @@ class HeroAliasResolutionTests(IsolatedAsyncioTestCase):
         ashe = SimpleNamespace(name="Ashe", aliases=["Ana", "Эш"])
         processor = _processor()
 
-        with patch.object(flows.hero_service, "get_all", AsyncMock(return_value=([ana, ashe], 2))):
+        with patch.object(flows._heroes, "get_all", AsyncMock(return_value=([ana, ashe], 2))):
             await processor._preload_data(Mock())
 
         self.assertIs(ana, processor.heroes_map["Ana"])

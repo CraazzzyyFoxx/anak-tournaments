@@ -49,18 +49,32 @@ class UserCompareQueries:
         left_hero_id: int | None,
         right_hero_id: int | None,
         map_id: int | None,
-    ) -> tuple[models.Hero | None, models.Hero | None, models.CatalogEntity | None]:
+    ) -> tuple[models.CatalogEntity | None, models.CatalogEntity | None, models.CatalogEntity | None]:
         """Load the optional left hero, right hero, and map in one round trip."""
-        left_hero = aliased(models.Hero, name="compare_left_hero")
-        right_hero = aliased(models.Hero, name="compare_right_hero")
+        left_hero = aliased(models.CatalogEntity, name="compare_left_hero")
+        right_hero = aliased(models.CatalogEntity, name="compare_right_hero")
         compare_map = aliased(models.CatalogEntity, name="compare_map")
         anchor = sa.select(sa.literal(1).label("anchor")).subquery("compare_catalog_anchor")
 
         statement = (
             sa.select(left_hero, right_hero, compare_map)
             .select_from(anchor)
-            .outerjoin(left_hero, left_hero.id == left_hero_id if left_hero_id is not None else sa.false())
-            .outerjoin(right_hero, right_hero.id == right_hero_id if right_hero_id is not None else sa.false())
+            .outerjoin(
+                left_hero,
+                sa.and_(
+                    left_hero.id == left_hero_id if left_hero_id is not None else sa.false(),
+                    left_hero.kind == "character",
+                    left_hero.discipline == "overwatch",
+                ),
+            )
+            .outerjoin(
+                right_hero,
+                sa.and_(
+                    right_hero.id == right_hero_id if right_hero_id is not None else sa.false(),
+                    right_hero.kind == "character",
+                    right_hero.discipline == "overwatch",
+                ),
+            )
             .outerjoin(
                 compare_map,
                 sa.and_(

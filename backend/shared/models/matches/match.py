@@ -4,7 +4,6 @@ from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from shared.core import db, enums
 from shared.models.catalog.entity import CatalogEntity
-from shared.models.catalog.hero import Hero
 from shared.models.encounter.encounter import Encounter
 from shared.models.identity.user import User
 from shared.models.ingestion.log_processing import LogProcessingRecord
@@ -165,7 +164,7 @@ class MatchStatistics(db.Base):
         ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), index=True
     )
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"))
-    hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
+    hero_id: Mapped[int | None] = mapped_column(ForeignKey("catalog.entity.id", ondelete="CASCADE"), nullable=True)
 
     name: Mapped[enums.LogStatsName] = mapped_column(Enum(enums.LogStatsName))
     value: Mapped[float] = mapped_column(Float())
@@ -217,7 +216,7 @@ class MatchKillFeed(db.Base):
     fight: Mapped[int] = mapped_column(Integer())
     ability: Mapped[enums.AbilityEvent | None] = mapped_column(Enum(enums.AbilityEvent), nullable=True)
     killer_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
-    killer_hero_id: Mapped[int] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"))
+    killer_hero_id: Mapped[int] = mapped_column(ForeignKey("catalog.entity.id", ondelete="CASCADE"))
     killer_team_id: Mapped[int] = mapped_column(
         ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED")
     )
@@ -225,7 +224,7 @@ class MatchKillFeed(db.Base):
     victim_team_id: Mapped[int] = mapped_column(
         ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED")
     )
-    victim_hero_id: Mapped[int] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"))
+    victim_hero_id: Mapped[int] = mapped_column(ForeignKey("catalog.entity.id", ondelete="CASCADE"))
     damage: Mapped[float] = mapped_column(Float())
     is_critical_hit: Mapped[bool] = mapped_column(Boolean())
     is_environmental: Mapped[bool] = mapped_column(Boolean())
@@ -256,10 +255,12 @@ class MatchEvent(db.Base):
         ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), index=True
     )
     user_id: Mapped[int] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), index=True)
-    hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
+    hero_id: Mapped[int | None] = mapped_column(ForeignKey("catalog.entity.id", ondelete="CASCADE"), nullable=True)
     related_team_id: Mapped[int | None] = mapped_column(
         ForeignKey(Team.id, ondelete="NO ACTION", deferrable=True, initially="DEFERRED"), nullable=True
     )
     related_user_id: Mapped[int | None] = mapped_column(ForeignKey(User.id, ondelete="CASCADE"), nullable=True)
-    related_hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="CASCADE"), nullable=True)
+    related_hero_id: Mapped[int | None] = mapped_column(
+        ForeignKey("catalog.entity.id", ondelete="CASCADE"), nullable=True
+    )
     name: Mapped[enums.MatchEvent] = mapped_column(Enum(enums.MatchEvent))

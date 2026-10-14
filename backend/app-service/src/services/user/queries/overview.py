@@ -942,7 +942,7 @@ class UserOverviewQueries:
         *,
         limit: int = 5,
         workspace_id: int | None = None,
-    ) -> dict[int, list[tuple[models.Hero, float]]]:
+    ) -> dict[int, list[tuple[models.CatalogEntity, float]]]:
         if not user_ids:
             return {}
 
@@ -985,16 +985,20 @@ class UserOverviewQueries:
             sa.select(
                 playtime_subquery.c.user_id,
                 playtime_subquery.c.playtime_seconds,
-                models.Hero,
+                models.CatalogEntity,
             )
-            .join(models.Hero, models.Hero.id == playtime_subquery.c.hero_id)
-            .where(playtime_subquery.c.row_num <= limit)
+            .join(models.CatalogEntity, models.CatalogEntity.id == playtime_subquery.c.hero_id)
+            .where(
+                playtime_subquery.c.row_num <= limit,
+                models.CatalogEntity.kind == "character",
+                models.CatalogEntity.discipline == "overwatch",
+            )
             .order_by(playtime_subquery.c.user_id.asc(), playtime_subquery.c.row_num.asc())
         )
 
         result = await session.execute(query)
 
-        payload: dict[int, list[tuple[models.Hero, float]]] = defaultdict(list)
+        payload: dict[int, list[tuple[models.CatalogEntity, float]]] = defaultdict(list)
         for user_id, playtime_seconds, hero in result.all():
             payload[user_id].append((hero, playtime_seconds))
 

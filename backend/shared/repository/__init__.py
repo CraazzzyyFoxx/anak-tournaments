@@ -13,7 +13,6 @@ from .baselines import StatBaselineRepository
 from .catalog import (
     CatalogAliasMissRepository,
     CatalogEntityRepository,
-    HeroRepository,
 )
 from .challonge import (
     TOURNAMENT_SOURCE_TYPE,
@@ -244,7 +243,6 @@ __all__ = (
     "FavoritePlayerRepository",
     "GoogleSheetBindingRepository",
     "GoogleSheetFeedRepository",
-    "HeroRepository",
     "LogProcessingRepository",
     "MatchEventRepository",
     "MatchKillFeedRepository",

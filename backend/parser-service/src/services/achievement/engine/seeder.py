@@ -17,7 +17,7 @@ from shared.models.achievements.achievement import (
     EvaluationRun,
     EvaluationRunTrigger,
 )
-from shared.models.catalog.hero import Hero
+from shared.models.catalog.entity import CatalogEntity
 from shared.repository.support import AchievementEvaluationResultRepository, AchievementRuleRepository
 from src.domain.achievement_catalog import _all_default_rules
 from src.domain.achievement_validation import derive_depends_on, infer_grain
@@ -53,11 +53,19 @@ class AchievementSeederService:
         When `replace_catalog=True`, unsupported rules are removed from the
         workspace after alias normalization.
 
-        Hero K/D rules are generated from the live `overwatch.hero` table, so heroes
+        Hero K/D rules are generated from the live Overwatch characters in `catalog.entity`, so heroes
         synced from OW automatically get an achievement on the next seed.
         """
 
-        heroes = list((await session.execute(sa.select(Hero))).scalars())
+        heroes = list(
+            (
+                await session.execute(
+                    sa.select(CatalogEntity).where(
+                        CatalogEntity.discipline == "overwatch", CatalogEntity.kind == "character"
+                    )
+                )
+            ).scalars()
+        )
         all_rules = _all_default_rules(workspace_id, heroes)
         count = 0
         removed = 0
@@ -104,8 +112,8 @@ class AchievementSeederService:
                 existing.min_tournament_id = rule.min_tournament_id
                 # Only refresh hero linkage when the seed provides it (hero rules),
                 # so admin-customised images on other rules are preserved.
-                if rule.hero_id is not None:
-                    existing.hero_id = rule.hero_id
+                if rule.entity_id is not None:
+                    existing.entity_id = rule.entity_id
                 if rule.image_url is not None:
                     existing.image_url = rule.image_url
             else:

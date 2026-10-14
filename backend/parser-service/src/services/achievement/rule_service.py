@@ -88,6 +88,9 @@ class AchievementRuleService:
         # Derived, never taken from the caller: a hand-written ``depends_on`` that
         # misses a table is a rule that silently stops re-evaluating.
         rule_data["depends_on"] = derive_depends_on(rule_data.get("condition_tree") or {})
+        # The wire says hero_id until P6; the column is entity_id (spec §14.2).
+        if "hero_id" in rule_data:
+            rule_data["entity_id"] = rule_data.pop("hero_id")
         rule = AchievementRule(workspace_id=workspace_id, **rule_data)
         await self.rule_repo.create(session, rule)
         await session.commit()
@@ -109,6 +112,9 @@ class AchievementRuleService:
             update_data["depends_on"] = derive_depends_on(update_data.get("condition_tree") or rule.condition_tree)
         else:
             update_data.pop("depends_on", None)
+        # The wire says hero_id until P6; the column is entity_id (spec §14.2).
+        if "hero_id" in update_data:
+            update_data["entity_id"] = update_data.pop("hero_id")
         await self.rule_repo.update_fields(session, rule, update_data)
         await session.refresh(rule)
         if (condition_tree_changed or "enabled" in update_data) and rule.enabled and rule.condition_tree:

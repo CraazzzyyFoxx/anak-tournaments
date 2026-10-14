@@ -11,13 +11,13 @@ import sqlalchemy as sa
 from shared.clients import S3Client
 from shared.clients.s3.upload import upload_asset
 from shared.models.achievements.achievement import AchievementRule
-from shared.repository import AchievementRuleRepository, HeroRepository
+from shared.repository import AchievementRuleRepository, CatalogEntityRepository
 from src import models
 from src.domain.achievement_validation import derive_depends_on, validate_rule_definition
 
 EXPORT_SCHEMA_VERSION = 1
 
-_hero_repo = HeroRepository()
+_hero_repo = CatalogEntityRepository("character", discipline="overwatch")
 _rule_repo = AchievementRuleRepository()
 
 
@@ -46,7 +46,7 @@ class PortableAchievementRule:
             description_ru=rule.description_ru,
             description_en=rule.description_en,
             image_url=rule.image_url,
-            hero_id=rule.hero_id,
+            hero_id=rule.entity_id,
             category=str(rule.category),
             scope=str(rule.scope),
             grain=str(rule.grain),
@@ -254,7 +254,7 @@ def _apply_rule_data(
     rule.description_ru = payload.description_ru
     rule.description_en = payload.description_en
     rule.image_url = image_url
-    rule.hero_id = hero_id
+    rule.entity_id = hero_id
     rule.category = payload.category
     rule.scope = payload.scope
     rule.grain = payload.grain

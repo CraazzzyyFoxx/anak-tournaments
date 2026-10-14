@@ -28,8 +28,7 @@ def _hero(hero_id: int, slug: str, hero_type: enums.HeroClass) -> SimpleNamespac
         slug=slug,
         name=slug.capitalize(),
         image_path=f"/heroes/{slug}.png",
-        type=hero_type,
-        color="#ffffff",
+        attrs={"class": hero_type.name, "color": "#ffffff"},
         aliases=[],
     )
 

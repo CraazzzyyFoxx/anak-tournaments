@@ -17,6 +17,7 @@ from shared.domain.pick_ban_config import pool_allows
 from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.tournament.pick_ban import PickBanConfig
+from shared.repository import CatalogEntityRepository
 from shared.repository.identity import UserRepository
 from shared.repository.match_logs import MatchEventRepository, MatchKillFeedRepository, MatchStatisticsRepository
 from shared.repository.pick_ban import CONFIG_POOL_LOAD, PickBanConfigRepository
@@ -34,7 +35,6 @@ from src.services import catalog_aliases
 from src.services.baselines import service as baselines_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
-from src.services.hero import service as hero_service
 from src.services.map import flows as map_flows
 from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.event_models import KillEvent, MatchEventRow, PlayerStatRow
@@ -46,6 +46,8 @@ from src.services.team import service as team_service
 from src.services.tournament import flows as tournament_flows
 
 from . import service
+
+_heroes = CatalogEntityRepository("character", discipline=catalog_aliases.DISCIPLINE)
 
 _LOG_DF_COLUMNS = ["event_type", "time", "data", "round_number"]
 _LOG_EVENT_TYPE_BY_VALUE = {member.value: member for member in enums.LogEventType}
@@ -194,7 +196,7 @@ class MatchLogProcessor:
         self.attached_encounter_id: int | None = attached_encounter_id
         self.df: pd.DataFrame = self._load_and_format_data(data_in)
         self._rows_by_type = _index_rows_by_event_type(self.df)
-        self.heroes_map: dict[str, models.Hero] = {}  # Hero cache: canonical names + aliases
+        self.heroes_map: dict[str, models.CatalogEntity] = {}  # Hero cache: canonical names + aliases
         # Hero names that matched neither a canonical name nor an alias. Batched
         # here rather than written on the spot: `get_hero` is synchronous (no
         # `await` possible) and runs once per kill event. Flushed in `start()`.
@@ -364,7 +366,7 @@ class MatchLogProcessor:
             raise errors.ApiHTTPException(status_code=400, detail=[errors.ApiExc(code="map_not_in_pool", msg=msg)])
 
     async def _preload_data(self, session: AsyncSession):
-        heroes_db, _ = await hero_service.get_all(session, pagination.PaginationSortParams(per_page=-1))
+        heroes_db, _ = await _heroes.get_all(session, pagination.PaginationSortParams(per_page=-1))
         self.heroes_map = {}
         for hero in heroes_db:
             self.heroes_map[hero.name] = hero
@@ -373,7 +375,7 @@ class MatchLogProcessor:
             for alias in hero.aliases:
                 self.heroes_map.setdefault(alias, hero)
 
-    def get_hero(self, hero_name: str) -> models.Hero:
+    def get_hero(self, hero_name: str) -> models.CatalogEntity:
         hero = self.heroes_map.get(hero_name)
         if not hero:
             # A hero miss is soft — all three callers swallow it (kill skipped,
@@ -967,7 +969,7 @@ class MatchLogProcessor:
         # emitted as their own MatchStatistics rows AND merged into the two MVP
         # pivots so add_impact_scores can read them. The kill feed, the stat
         # rows and the pivots are all keyed by the account's user_id.
-        hero_types = {h.id: h.type for h in self.heroes_map.values()}
+        hero_types = {h.id: enums.HeroClass[h.attrs["class"]] for h in self.heroes_map.values()}
         user_to_player = {p.user_id: p for p in players_map.values()}
         has_killfeed = bool(kill_feed)
 

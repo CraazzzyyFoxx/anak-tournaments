@@ -13,7 +13,6 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core import enums
-from shared.core.pagination import PaginationSortSearchParams
 from shared.repository.base import BaseRepository
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 
@@ -108,43 +107,6 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
         query = self.build_map_name_or_alias_query(discipline=discipline, name=name, mode_name=mode_name)
         return (await session.execute(query)).scalar_one_or_none()
 
-
-class HeroRepository(BaseRepository[models.Hero]):
-    def __init__(self) -> None:
-        super().__init__(models.Hero)
-
-    async def get_by_name(self, session: AsyncSession, name: str) -> models.Hero | None:
-        return await self.get_by(session, name=name)
-
-    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
-        """``(id, name)`` name-ordered, for admin/filter pickers.
-
-        A two-column projection rather than `get_all`: the pickers render a
-        label, and hydrating ~40 full hero rows (aliases JSONB included) to read
-        two columns is waste.
-        """
-        result = await session.execute(sa.select(models.Hero.id, models.Hero.name).order_by(models.Hero.name))
-        return result.all()
-
-    async def list_by_role(
-        self,
-        session: AsyncSession,
-        role: str | None = None,
-    ) -> Sequence[models.Hero]:
-        query = sa.select(models.Hero)
-        if role is not None:
-            query = query.where(models.Hero.type == role)
-        result = await session.execute(query.order_by(models.Hero.name.asc()))
-        return result.scalars().all()
-
-    async def all(
-        self,
-        session: AsyncSession,
-        params: PaginationSortSearchParams,
-    ) -> tuple[Sequence[models.Hero], int]:
-        """Paginated heroes — applies sort + search via `params`."""
-        return await self.get_all(session, params)
-
     async def playtime(
         self,
         session: AsyncSession,
@@ -152,10 +114,10 @@ class HeroRepository(BaseRepository[models.Hero]):
         user_id: int | typing.Literal["all"] | None = "all",
         tournament_id: int | None = None,
         workspace_id: int | None = None,
-    ) -> Sequence[tuple[models.Hero, float]]:
+    ) -> Sequence[tuple[models.CatalogEntity, float]]:
         """Aggregated per-hero playtime share.
 
-        Returns rows of `(Hero, playtime_share)` where the share is normalized
+        Returns rows of `(CatalogEntity, playtime_share)` where the share is normalized
         across all returned heroes. Filters:
 
         - ``user_id``: a specific user id, or ``"all"`` / ``None`` for everyone.
@@ -219,12 +181,13 @@ class HeroRepository(BaseRepository[models.Hero]):
 
         query = (
             sa.select(
-                models.Hero,
+                models.CatalogEntity,
                 (sa.func.sum(playtime_cte.c.playtime) / overall_playtime).label("playtime"),
             )
-            .select_from(models.Hero)
-            .join(playtime_cte, models.Hero.id == playtime_cte.c.hero_id)
-            .group_by(models.Hero.id)
+            .select_from(models.CatalogEntity)
+            .join(playtime_cte, models.CatalogEntity.id == playtime_cte.c.hero_id)
+            .where(*self._scope())
+            .group_by(models.CatalogEntity.id)
         )
 
         result = await session.execute(query)

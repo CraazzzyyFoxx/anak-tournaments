@@ -124,7 +124,7 @@ def rule_entity(in_entities: list[str], child: typing.Any | None = None) -> list
     """Loading options for AchievementRule relationships."""
     entities = []
     if "hero" in in_entities:
-        entities.append(utils.join_entity(child, AchievementRule.hero))
+        entities.append(utils.join_entity(child, AchievementRule.entity))
     return entities
 
 

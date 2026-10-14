@@ -375,7 +375,7 @@ def test_a_role_edit_does_not_leave_a_parentless_role_row_in_the_session() -> No
 
     pending_roles = [row for row in session.new if isinstance(row, models.BalancerRegistrationRole)]
     assert [row for row in pending_roles if row not in registration.roles] == []
-    assert [entry.hero_id for entry in registration.roles[0].hero_entries] == [11]
+    assert [entry.entity_id for entry in registration.roles[0].hero_entries] == [11]
 
 
 def test_an_identity_answer_rewrites_its_rows_in_place_and_a_blank_one_deletes() -> None:
@@ -673,7 +673,7 @@ def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> No
     """A self-edit replaces the role's whole pick list, so a registrant resaving
     picks they never touched asks the database to hold a row and its replacement
     at once. The unit of work leaves the INSERTs and the DELETEs of one table
-    unordered, so both uniques on ``registration_role_hero`` have to hold at
+    unordered, so both uniques on ``registration_role_entity`` have to hold at
     COMMIT rather than per statement -- and did not, which is a 500 on the edit.
 
     The raw insert/delete pair at the end is that same sequence in the form the
@@ -685,12 +685,17 @@ def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> No
         schema = _heroes_schema()
         seeded = await _seed(db_session, schema=schema)
         db_session.add_all(
-            models.Hero(slug=slug, name=slug, image_path="x", type=enums.HeroClass.tank) for slug in slugs
+            models.CatalogEntity(
+                discipline="overwatch", kind="character", slug=slug, name=slug, image_path="x", attrs={"class": "tank"}
+            )
+            for slug in slugs
         )
         await db_session.commit()
         catalog = {
             row.slug: HeroCatalogEntry(id=row.id, slug=row.slug, hero_class=enums.HeroClass.tank)
-            for row in (await db_session.scalars(sa.select(models.Hero).where(models.Hero.slug.in_(slugs)))).all()
+            for row in (
+                await db_session.scalars(sa.select(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
+            ).all()
         }
         picks: list[dict[str, Any]] = [{"role": "tank", "is_primary": True, "top_heroes": slugs}]
         try:
@@ -725,28 +730,28 @@ def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> No
             rows = (
                 await db_session.execute(
                     sa.select(
-                        models.BalancerRegistrationRoleHero.id,
-                        models.BalancerRegistrationRoleHero.role_id,
-                        models.BalancerRegistrationRoleHero.hero_id,
-                        models.BalancerRegistrationRoleHero.priority,
+                        models.BalancerRegistrationRoleEntity.id,
+                        models.BalancerRegistrationRoleEntity.role_id,
+                        models.BalancerRegistrationRoleEntity.entity_id,
+                        models.BalancerRegistrationRoleEntity.priority,
                     )
                     .join(
                         models.BalancerRegistrationRole,
-                        models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleHero.role_id,
+                        models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
                     )
                     .where(models.BalancerRegistrationRole.registration_id == registration.id)
-                    .order_by(models.BalancerRegistrationRoleHero.priority)
+                    .order_by(models.BalancerRegistrationRoleEntity.priority)
                 )
             ).all()
             replaced = rows[0]
             await db_session.execute(
-                sa.insert(models.BalancerRegistrationRoleHero).values(
-                    role_id=replaced.role_id, hero_id=replaced.hero_id, priority=replaced.priority
+                sa.insert(models.BalancerRegistrationRoleEntity).values(
+                    role_id=replaced.role_id, entity_id=replaced.entity_id, priority=replaced.priority
                 )
             )
             await db_session.execute(
-                sa.delete(models.BalancerRegistrationRoleHero).where(
-                    models.BalancerRegistrationRoleHero.id == replaced.id
+                sa.delete(models.BalancerRegistrationRoleEntity).where(
+                    models.BalancerRegistrationRoleEntity.id == replaced.id
                 )
             )
             await db_session.commit()
@@ -754,24 +759,24 @@ def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> No
                 (slug, priority)
                 for slug, priority in (
                     await db_session.execute(
-                        sa.select(models.Hero.slug, models.BalancerRegistrationRoleHero.priority)
+                        sa.select(models.CatalogEntity.slug, models.BalancerRegistrationRoleEntity.priority)
                         .join(
-                            models.BalancerRegistrationRoleHero,
-                            models.BalancerRegistrationRoleHero.hero_id == models.Hero.id,
+                            models.BalancerRegistrationRoleEntity,
+                            models.BalancerRegistrationRoleEntity.entity_id == models.CatalogEntity.id,
                         )
                         .join(
                             models.BalancerRegistrationRole,
-                            models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleHero.role_id,
+                            models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
                         )
                         .where(models.BalancerRegistrationRole.registration_id == registration.id)
-                        .order_by(models.BalancerRegistrationRoleHero.priority)
+                        .order_by(models.BalancerRegistrationRoleEntity.priority)
                     )
                 ).all()
             ]
         finally:
             await db_session.rollback()
             await _drop(db_session, seeded["workspace_id"])
-            await db_session.execute(sa.delete(models.Hero).where(models.Hero.slug.in_(slugs)))
+            await db_session.execute(sa.delete(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
             await db_session.commit()
 
     assert asyncio.run(_run()) == [(slugs[0], 1), (slugs[1], 2)]
@@ -787,7 +792,7 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
     the whole edit. A role that is dropped goes through delete-orphan, a role
     that is new is inserted, and the surviving role's picks are replaced by a
     list that shares and reorders heroes -- which only commits because both
-    ``registration_role_hero`` uniques are deferred."""
+    ``registration_role_entity`` uniques are deferred."""
     suffix = uuid.uuid4().hex[:8]
     # A top-hero pick must belong to the role's class, so each role gets its own.
     classes = {
@@ -803,12 +808,22 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
         schema = _heroes_schema()
         seeded = await _seed(db_session, schema=schema)
         db_session.add_all(
-            models.Hero(slug=slug, name=slug, image_path="x", type=hero_class) for slug, hero_class in classes.items()
+            models.CatalogEntity(
+                discipline="overwatch",
+                kind="character",
+                slug=slug,
+                name=slug,
+                image_path="x",
+                attrs={"class": hero_class.name},
+            )
+            for slug, hero_class in classes.items()
         )
         await db_session.commit()
         catalog = {
             row.slug: HeroCatalogEntry(id=row.id, slug=row.slug, hero_class=classes[row.slug])
-            for row in (await db_session.scalars(sa.select(models.Hero).where(models.Hero.slug.in_(slugs)))).all()
+            for row in (
+                await db_session.scalars(sa.select(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
+            ).all()
         }
         try:
             await registration_service.submit_public_registration(
@@ -858,18 +873,21 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
                     await db_session.execute(
                         sa.select(
                             models.BalancerRegistrationRole.role,
-                            models.BalancerRegistrationRoleHero.priority,
-                            models.Hero.slug,
+                            models.BalancerRegistrationRoleEntity.priority,
+                            models.CatalogEntity.slug,
                         )
                         .join(
-                            models.BalancerRegistrationRoleHero,
-                            models.BalancerRegistrationRoleHero.role_id == models.BalancerRegistrationRole.id,
+                            models.BalancerRegistrationRoleEntity,
+                            models.BalancerRegistrationRoleEntity.role_id == models.BalancerRegistrationRole.id,
                         )
-                        .join(models.Hero, models.Hero.id == models.BalancerRegistrationRoleHero.hero_id)
+                        .join(
+                            models.CatalogEntity,
+                            models.CatalogEntity.id == models.BalancerRegistrationRoleEntity.entity_id,
+                        )
                         .where(models.BalancerRegistrationRole.registration_id == registration.id)
                         .order_by(
                             models.BalancerRegistrationRole.priority,
-                            models.BalancerRegistrationRoleHero.priority,
+                            models.BalancerRegistrationRoleEntity.priority,
                         )
                     )
                 ).all()
@@ -878,7 +896,7 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
         finally:
             await db_session.rollback()
             await _drop(db_session, seeded["workspace_id"])
-            await db_session.execute(sa.delete(models.Hero).where(models.Hero.slug.in_(slugs)))
+            await db_session.execute(sa.delete(models.CatalogEntity).where(models.CatalogEntity.slug.in_(slugs)))
             await db_session.commit()
 
     rows, roster_roles, roster_damage_heroes = asyncio.run(_run())

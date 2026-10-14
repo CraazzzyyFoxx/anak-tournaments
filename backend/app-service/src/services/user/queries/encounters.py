@@ -38,21 +38,21 @@ _PLAYED_AT = sa.func.coalesce(
 
 _HERO_JSON = sa.func.jsonb_build_object(
     "id",
-    models.Hero.id,
+    models.CatalogEntity.id,
     "created_at",
-    models.Hero.created_at,
+    models.CatalogEntity.created_at,
     "updated_at",
-    models.Hero.updated_at,
+    models.CatalogEntity.updated_at,
     "name",
-    models.Hero.name,
+    models.CatalogEntity.name,
     "slug",
-    models.Hero.slug,
+    models.CatalogEntity.slug,
     "image_path",
-    models.Hero.image_path,
+    models.CatalogEntity.image_path,
     "color",
-    models.Hero.color,
+    sa.func.coalesce(models.CatalogEntity.attrs["color"].astext, "#ffffff"),
     "type",
-    models.Hero.type,
+    models.CatalogEntity.attrs["class"].astext,
 )
 
 
@@ -190,9 +190,11 @@ class UserEncounterQueries:
                 sa.func.jsonb_agg(_HERO_JSON).label("value"),
             )
             .select_from(models.MatchStatistics)
-            .join(models.Hero, models.MatchStatistics.hero_id == models.Hero.id)
+            .join(models.CatalogEntity, models.MatchStatistics.hero_id == models.CatalogEntity.id)
             .where(
                 sa.and_(
+                    models.CatalogEntity.kind == "character",
+                    models.CatalogEntity.discipline == "overwatch",
                     models.MatchStatistics.match_id == models.Match.id,
                     models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                     models.MatchStatistics.user_id == user_id,
@@ -463,9 +465,11 @@ class UserEncounterQueries:
                 models.MatchStatistics.match_id,
                 sa.func.jsonb_agg(_HERO_JSON).label("heroes"),
             )
-            .join(models.Hero, models.MatchStatistics.hero_id == models.Hero.id)
+            .join(models.CatalogEntity, models.MatchStatistics.hero_id == models.CatalogEntity.id)
             .where(
                 sa.and_(
+                    models.CatalogEntity.kind == "character",
+                    models.CatalogEntity.discipline == "overwatch",
                     models.MatchStatistics.user_id == user_id,
                     models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                     models.MatchStatistics.hero_id.isnot(None),
@@ -942,8 +946,12 @@ class UserEncounterQueries:
                 _HERO_JSON.label("hero"),
             )
             .select_from(ranked)
-            .join(models.Hero, models.Hero.id == ranked.c.hero_id)
-            .where(ranked.c.rn <= top_n)
+            .join(models.CatalogEntity, models.CatalogEntity.id == ranked.c.hero_id)
+            .where(
+                ranked.c.rn <= top_n,
+                models.CatalogEntity.kind == "character",
+                models.CatalogEntity.discipline == "overwatch",
+            )
             .order_by(ranked.c.tournament_id, ranked.c.user_id, ranked.c.playtime.desc(), ranked.c.hero_id.asc())
         )
 
@@ -960,7 +968,7 @@ class UserEncounterQueries:
         workspace_id: int | None = None,
         *,
         min_seconds: float = 60,
-    ) -> typing.Sequence[tuple[models.Hero, int, int]]:
+    ) -> typing.Sequence[tuple[models.CatalogEntity, int, int]]:
         """Every hero the user played as ``(hero, maps played, maps won)``, most played first.
 
         "Played" follows the same convention as every other hero read here
@@ -1014,13 +1022,14 @@ class UserEncounterQueries:
         maps_won = sa.func.sum(sa.case((team_score > opponent_score, 1), else_=0))
 
         query = (
-            sa.select(models.Hero, maps.label("maps"), maps_won.label("maps_won"))
+            sa.select(models.CatalogEntity, maps.label("maps"), maps_won.label("maps_won"))
             .select_from(hero_match)
             .join(models.Match, models.Match.id == hero_match.c.match_id)
-            .join(models.Hero, models.Hero.id == hero_match.c.hero_id)
-            .group_by(models.Hero.id)
+            .join(models.CatalogEntity, models.CatalogEntity.id == hero_match.c.hero_id)
+            .where(models.CatalogEntity.kind == "character", models.CatalogEntity.discipline == "overwatch")
+            .group_by(models.CatalogEntity.id)
             # hero id tiebreak keeps the order deterministic on equal map counts.
-            .order_by(maps.desc(), models.Hero.id.asc())
+            .order_by(maps.desc(), models.CatalogEntity.id.asc())
         )
         result = await session.execute(query)
         return [(row[0], int(row.maps), int(row.maps_won or 0)) for row in result]

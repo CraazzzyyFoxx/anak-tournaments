@@ -46,8 +46,8 @@ class AchievementService:
 
         for rule, rarity in rules:
             hero = None
-            if "hero" in entities and rule.hero:
-                hero = hero_service.to_read(rule.hero)
+            if "hero" in entities and rule.entity:
+                hero = hero_service.to_read(rule.entity)
 
             output.append(
                 schemas.AchievementRead(

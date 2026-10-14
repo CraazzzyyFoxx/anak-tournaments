@@ -97,7 +97,9 @@ class DashboardService:
             )
             .where(registration_open_clause(), *ws_filters)
         )
-        heroes_total = sa.select(sa.func.count(models.Hero.id))
+        heroes_total = sa.select(sa.func.count(models.CatalogEntity.id)).where(
+            models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "character"
+        )
         gamemodes_total = sa.select(sa.func.count(models.CatalogEntity.id)).where(
             models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "mode"
         )

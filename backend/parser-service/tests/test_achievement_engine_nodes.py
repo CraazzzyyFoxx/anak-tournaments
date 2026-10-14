@@ -491,13 +491,14 @@ class HeroKdBestTests(_NodeCase):
     def _hero(self, slug: str) -> int:
         hero_id = self.db._id()
         self.db.insert(
-            models.Hero.__table__,
+            models.CatalogEntity.__table__,
             id=hero_id,
+            discipline="overwatch",
+            kind="character",
             slug=slug,
             name=slug.title(),
             image_path=f"{slug}.png",
-            type=HeroClass.damage,
-            color="#ffffff",
+            attrs={"class": "support"},
             aliases=[],
         )
         return hero_id

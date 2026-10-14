@@ -552,7 +552,7 @@ class UserProfileQueries:
         return (
             sa.select(
                 agg_cte.c.name,
-                models.Hero,
+                models.CatalogEntity,
                 agg_cte.c.total_value.label("total_value"),
                 best_result_cte.c.best_value.label("best_value"),
                 (agg_cte.c.total_value / sa.func.nullif(agg_cte.c.total_time, 0) * 600).label("avg_per_10min"),
@@ -568,7 +568,7 @@ class UserProfileQueries:
                 ).label("best_metadata"),
             )
             .select_from(agg_cte)
-            .join(models.Hero, models.Hero.id == agg_cte.c.hero_id)
+            .join(models.CatalogEntity, models.CatalogEntity.id == agg_cte.c.hero_id)
             .join(
                 best_result_cte,
                 sa.and_(
@@ -576,6 +576,7 @@ class UserProfileQueries:
                     best_result_cte.c.name == agg_cte.c.name,
                 ),
             )
+            .where(models.CatalogEntity.kind == "character", models.CatalogEntity.discipline == "overwatch")
         )
 
     async def get_statistics_by_heroes(
@@ -585,7 +586,7 @@ class UserProfileQueries:
         stats: list[enums.LogStatsName] | None = None,
         tournament_id: int | None = None,
         workspace_id: int | None = None,
-    ) -> typing.Sequence[tuple[enums.LogStatsName, models.Hero, float, float, float, dict]]:
+    ) -> typing.Sequence[tuple[enums.LogStatsName, models.CatalogEntity, float, float, float, dict]]:
         """A user's hero statistics as ``(stat name, hero, total, best value, per-10-minute
         average, best-performance metadata)`` rows.
 

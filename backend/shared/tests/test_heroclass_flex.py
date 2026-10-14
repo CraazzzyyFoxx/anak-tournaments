@@ -1,13 +1,11 @@
 """Guard the ``flex`` member of ``HeroClass`` and the split it forces.
 
-``heroclass`` is one Postgres type behind three columns with opposite needs:
 ``tournament.player.role`` may be ``flex`` (a player who holds no fixed role,
-which is what a role-less roster shape drafts for), while ``overwatch.hero.type``
-and ``matches.stat_baselines.role`` may not -- no hero has a class of "flex" and
-no baseline can be computed for one. Postgres cannot narrow a shared enum per
-column, so the schema layer carries the split as
-``HERO_TYPE_CLASSES``/``HeroTypeClass``, mirrored in the database by CHECK
-constraints.
+which is what a role-less roster shape drafts for), while an Overwatch catalog
+character's class and ``matches.stat_baselines.role`` may not. No hero has a
+class of "flex" and no baseline can be computed for one. The module's
+``character_classes`` validates catalog values; ``HERO_TYPE_CLASSES`` /
+``HeroTypeClass`` carries the Python split and a CHECK narrows baseline roles.
 
 These tests pin the Python half: the membership of the narrowed tuple, the static
 type derived from it, and the column that actually accepts ``flex``. The

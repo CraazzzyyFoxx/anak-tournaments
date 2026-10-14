@@ -5,7 +5,7 @@ a hand-written metadata table (auto-generated from the pre-engine achievement
 consts) plus a separate builder that looked the slug back up. Every rule is now
 one ``RuleDef``, so adding or reading one is a single place.
 
-Hero K/D awards stay generated: one per hero in ``overwatch.hero``, so a hero
+Hero K/D awards stay generated: one per Overwatch character in ``catalog.entity``, so a hero
 synced from OW gets its achievement without an edit here. ``HERO_KD_FLAVOUR``
 only carries the joke names for the heroes that had one.
 
@@ -25,7 +25,7 @@ from shared.models.achievements.achievement import (
     AchievementRule,
     AchievementScope,
 )
-from shared.models.catalog.hero import Hero
+from shared.models.catalog.entity import CatalogEntity
 
 __all__ = (
     "RULES",
@@ -1177,7 +1177,7 @@ def _rule_from_def(workspace_id: int, definition: RuleDef) -> AchievementRule:
     )
 
 
-def _hero_kd_rule(workspace_id: int, slug: str, hero: Hero | None = None) -> AchievementRule:
+def _hero_kd_rule(workspace_id: int, slug: str, hero: CatalogEntity | None = None) -> AchievementRule:
     flavour = _HERO_KD_BY_SLUG.get(slug)
     display_name = hero.name if hero is not None else slug
     return AchievementRule(
@@ -1192,19 +1192,19 @@ def _hero_kd_rule(workspace_id: int, slug: str, hero: Hero | None = None) -> Ach
         condition_tree=_hero_kd_condition_tree(slug),
         depends_on=[],
         enabled=True,
-        hero_id=hero.id if hero is not None else None,
+        entity_id=hero.id if hero is not None else None,
         image_url=hero.image_path if hero is not None else None,
     )
 
 
 def _hero_kd_rules(
     workspace_id: int,
-    heroes: list[Hero] | None = None,
+    heroes: list[CatalogEntity] | None = None,
 ) -> list[AchievementRule]:
     """Hero K/D rules.
 
-    With ``heroes`` (DB-backed seeding) one rule is generated per hero in
-    ``overwatch.hero``, so newly synced heroes automatically get an achievement.
+    With ``heroes`` (DB-backed seeding) one rule is generated per Overwatch character in
+    ``catalog.entity``, so newly synced heroes automatically get an achievement.
     Known slugs keep their flavour text; the rest get a generated one. Flavoured
     heroes missing from the DB still get a rule, so the catalog stays complete.
 
@@ -1230,7 +1230,7 @@ def _hero_kd_rules(
 
 def _all_default_rules(
     workspace_id: int,
-    heroes: list[Hero] | None = None,
+    heroes: list[CatalogEntity] | None = None,
 ) -> list[AchievementRule]:
     rules = [_rule_from_def(workspace_id, definition) for definition in RULES]
     rules.extend(_hero_kd_rules(workspace_id, heroes))

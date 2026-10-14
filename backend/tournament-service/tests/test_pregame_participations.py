@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
 import os
 import sys
 from types import SimpleNamespace
@@ -27,7 +28,6 @@ from shared.core import enums
 from shared.core.errors import BaseAPIException
 from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.domain import pick_ban_rules as pbr
-from shared.models.catalog.hero import Hero
 from shared.models.encounter import Encounter, EncounterTeam, ScoringRule
 from shared.models.encounter.game import EncounterGame, EncounterGameTeam
 from shared.models.encounter.pick_ban import PickBanSession
@@ -53,7 +53,14 @@ _TAG = itertools.count()
 SIDED = DisciplineSpec("sided", "Sided Game", ("attack", "defence"))
 
 #: A hero pool wide enough for one blind round of two bans a side.
-HEROES = {1: enums.HeroClass.tank, 2: enums.HeroClass.damage, 3: enums.HeroClass.support, 4: enums.HeroClass.damage}
+HERO_ID_BASE = 1_900_000_000  # far above any sequence value: explicit ids never meet allocated ones
+HEROES = {
+    HERO_ID_BASE + n: role
+    for n, role in enumerate(
+        (enums.HeroClass.tank, enums.HeroClass.damage, enums.HeroClass.support, enums.HeroClass.damage), start=1
+    )
+}
+FIRST_HERO = HERO_ID_BASE + 1
 
 
 def hero_ruleset(*, blind: bool = False, count: int = 1) -> dict:
@@ -142,10 +149,15 @@ class RoomCase(IsolatedAsyncioTestCase):
             for hero_id, role in HEROES.items():
                 await s.execute(
                     sa.text(
-                        "INSERT INTO overwatch.hero (id, slug, name, image_path, type)"
-                        " VALUES (:id, :slug, :name, '', :type) ON CONFLICT (id) DO NOTHING"
+                        "INSERT INTO catalog.entity (id, discipline, kind, slug, name, attrs)"
+                        " VALUES (:id, 'overwatch', 'character', :slug, :name, CAST(:attrs AS JSONB)) ON CONFLICT (id) DO NOTHING"
                     ),
-                    {"id": hero_id, "slug": f"h{hero_id}", "name": f"H{hero_id}", "type": role.name},
+                    {
+                        "id": hero_id,
+                        "slug": f"h{hero_id}",
+                        "name": f"H{hero_id}",
+                        "attrs": json.dumps({"class": role.name}),
+                    },
                 )
             workspace = Workspace(slug=self.tag, name=self.tag)
             s.add(workspace)
@@ -332,13 +344,13 @@ class ResolvedActorTests(RoomCase):
         async with self.Session() as s:
             with self.assertRaises(BaseAPIException) as refused:
                 await pick_ban_action_service.perform_pick_ban_action(
-                    s, self.encounter_id, enums.PickBanKind.HERO, self.slot2, item_id=1, action="ban"
+                    s, self.encounter_id, enums.PickBanKind.HERO, self.slot2, item_id=FIRST_HERO, action="ban"
                 )
             self.assertEqual(400, refused.exception.status_code)
 
         async with self.Session() as s:
             state = await pick_ban_action_service.perform_pick_ban_action(
-                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=1, action="ban"
+                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=FIRST_HERO, action="ban"
             )
         self.assertEqual([self.slot2], state["acting_team_ids"])
         banned = [entry for entry in state["pool"] if entry["status"] == "banned"]
@@ -355,7 +367,7 @@ class ResolvedActorTests(RoomCase):
                 self.encounter_id,
                 enums.PickBanKind.HERO,
                 self.slot1,
-                items=[{"item_id": 1, "target_player_id": None}],
+                items=[{"item_id": FIRST_HERO, "target_player_id": None}],
                 lock=True,
             )
         async with self.Session() as s:
@@ -379,13 +391,13 @@ class UndoConsentTests(RoomCase):
         await self.open_room()
         async with self.Session() as s:
             await pick_ban_action_service.perform_pick_ban_action(
-                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=1, action="ban"
+                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=FIRST_HERO, action="ban"
             )
 
         async with self.Session() as s:
             first = await pick_ban_undo_service.perform_undo(s, self.encounter_id, enums.PickBanKind.HERO, self.slot1)
         self.assertEqual(self.slot1, first["requested_by_team_id"])
-        self.assertEqual([1], first["item_ids"])
+        self.assertEqual([FIRST_HERO], first["item_ids"])
 
         # The SAME participation asking again is still one request, not consent.
         async with self.Session() as s:
@@ -409,7 +421,7 @@ class UndoConsentTests(RoomCase):
         await self.open_room()
         async with self.Session() as s:
             await pick_ban_action_service.perform_pick_ban_action(
-                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=1, action="ban"
+                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=FIRST_HERO, action="ban"
             )
         async with self.Session() as s:
             await pick_ban_undo_service.perform_undo(s, self.encounter_id, enums.PickBanKind.HERO, self.slot1)
@@ -418,7 +430,7 @@ class UndoConsentTests(RoomCase):
                 s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, consent=False
             )
         self.assertIsNone(withdrawn["requested_by_team_id"])
-        self.assertEqual([1], withdrawn["item_ids"])  # still undoable, just nobody asked
+        self.assertEqual([FIRST_HERO], withdrawn["item_ids"])  # still undoable, just nobody asked
 
 
 # ── sides ───────────────────────────────────────────────────────────────────
@@ -507,7 +519,7 @@ class JournalTests(RoomCase):
         await self.open_room()
         async with self.Session() as s:
             await pick_ban_action_service.perform_pick_ban_action(
-                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=1, action="ban"
+                s, self.encounter_id, enums.PickBanKind.HERO, self.slot1, item_id=FIRST_HERO, action="ban"
             )
         async with self.Session() as s:
             rows = (
@@ -575,4 +587,4 @@ class OverviewTests(RoomCase):
 
 def _unused() -> None:
     """Keep the imports the suite documents but does not call directly."""
-    _ = (Hero, EncounterGame, pbr)
+    _ = (EncounterGame, pbr)

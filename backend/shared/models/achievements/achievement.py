@@ -3,8 +3,11 @@ from enum import StrEnum
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -16,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
-from shared.models.catalog.hero import Hero
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
@@ -107,6 +110,13 @@ class AchievementRule(db.TimeStampIntegerMixin):
     __tablename__ = "rule"
     __table_args__ = (
         UniqueConstraint("workspace_id", "slug", name="uq_achievement_rule_workspace_slug"),
+        CheckConstraint("entity_kind = 'character'", name="ck_rule_entity_kind"),
+        ForeignKeyConstraint(
+            ["entity_id", "entity_kind", "discipline"],
+            ["catalog.entity.id", "catalog.entity.kind", "catalog.entity.discipline"],
+            ondelete="SET NULL (entity_id)",
+            name="fk_rule_entity",
+        ),
         {"schema": "achievements"},
     )
 
@@ -116,7 +126,15 @@ class AchievementRule(db.TimeStampIntegerMixin):
     description_ru: Mapped[str] = mapped_column(String())
     description_en: Mapped[str] = mapped_column(String())
     image_url: Mapped[str | None] = mapped_column(String(), nullable=True)
-    hero_id: Mapped[int | None] = mapped_column(ForeignKey(Hero.id, ondelete="SET NULL"), nullable=True)
+    #: Which game the rule is about (D96); the entity it shows belongs to that game.
+    discipline: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("catalog.discipline.code", name="fk_rule_discipline"),
+        default="overwatch",
+        server_default="overwatch",
+    )
+    entity_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    entity_kind: Mapped[str] = mapped_column(String(16), default="character", server_default="character")
 
     category: Mapped[AchievementCategory] = mapped_column(String())
     scope: Mapped[AchievementScope] = mapped_column(String())
@@ -129,7 +147,9 @@ class AchievementRule(db.TimeStampIntegerMixin):
     rule_version: Mapped[int] = mapped_column(Integer(), server_default="1")
     min_tournament_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
 
-    hero: Mapped[Hero | None] = relationship()
+    entity: Mapped[CatalogEntity | None] = relationship(
+        primaryjoin="foreign(AchievementRule.entity_id) == CatalogEntity.id", viewonly=True
+    )
     workspace: Mapped[Workspace] = relationship()
     evaluation_results: Mapped[list[AchievementEvaluationResult]] = relationship(
         back_populates="rule", passive_deletes=True

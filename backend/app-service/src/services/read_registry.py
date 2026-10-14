@@ -135,7 +135,7 @@ async def _achievement_list(session: AsyncSession, data: dict[str, Any]) -> Any:
 REGISTRY: dict[str, EntityConfig] = {
     "hero": EntityConfig(
         entity="hero",
-        model=models.Hero,
+        model=models.CatalogEntity,
         permission_resource="hero",
         serializer=_ser,
         public_read=True,

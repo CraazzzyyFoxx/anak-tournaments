@@ -1,6 +1,6 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 155
+-- Tables: 154
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -11,7 +11,6 @@ CREATE SCHEMA IF NOT EXISTS catalog;
 CREATE SCHEMA IF NOT EXISTS encounter;
 CREATE SCHEMA IF NOT EXISTS log_processing;
 CREATE SCHEMA IF NOT EXISTS matches;
-CREATE SCHEMA IF NOT EXISTS overwatch;
 CREATE SCHEMA IF NOT EXISTS overwatch_rank;
 CREATE SCHEMA IF NOT EXISTS players;
 CREATE SCHEMA IF NOT EXISTS quota;
@@ -139,7 +138,9 @@ CREATE TABLE achievements.rule (
 	description_ru VARCHAR NOT NULL,
 	description_en VARCHAR NOT NULL,
 	image_url VARCHAR,
-	hero_id BIGINT,
+	discipline VARCHAR(32) DEFAULT 'overwatch' NOT NULL,
+	entity_id BIGINT,
+	entity_kind VARCHAR(16) DEFAULT 'character' NOT NULL,
 	category VARCHAR NOT NULL,
 	scope VARCHAR NOT NULL,
 	grain VARCHAR NOT NULL,
@@ -150,8 +151,10 @@ CREATE TABLE achievements.rule (
 	min_tournament_id INTEGER,
 	PRIMARY KEY (id),
 	CONSTRAINT uq_achievement_rule_workspace_slug UNIQUE (workspace_id, slug),
+	CONSTRAINT ck_rule_entity_kind CHECK (entity_kind = 'character'),
+	CONSTRAINT fk_rule_entity FOREIGN KEY(entity_id, entity_kind, discipline) REFERENCES catalog.entity (id, kind, discipline) ON DELETE SET NULL (entity_id),
 	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
-	FOREIGN KEY(hero_id) REFERENCES overwatch.hero (id) ON DELETE SET NULL
+	CONSTRAINT fk_rule_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
 );
 
 CREATE INDEX ix_achievements_rule_slug ON achievements.rule (slug);
@@ -1156,21 +1159,23 @@ CREATE TABLE balancer.registration_role (
 
 CREATE INDEX ix_balancer_registration_role_registration_id ON balancer.registration_role (registration_id);
 
-CREATE TABLE balancer.registration_role_hero (
+CREATE TABLE balancer.registration_role_entity (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	updated_at TIMESTAMP WITH TIME ZONE,
 	role_id BIGINT NOT NULL,
-	hero_id BIGINT NOT NULL,
+	entity_id BIGINT NOT NULL,
+	entity_kind VARCHAR(16) DEFAULT 'character' NOT NULL,
 	priority INTEGER NOT NULL,
 	PRIMARY KEY (id),
-	CONSTRAINT uq_reg_role_hero_role_priority UNIQUE (role_id, priority) DEFERRABLE INITIALLY DEFERRED,
-	CONSTRAINT uq_reg_role_hero_role_hero UNIQUE (role_id, hero_id) DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(role_id) REFERENCES balancer.registration_role (id) ON DELETE CASCADE,
-	FOREIGN KEY(hero_id) REFERENCES overwatch.hero (id) ON DELETE CASCADE
+	CONSTRAINT uq_reg_role_entity_role_priority UNIQUE (role_id, priority) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT uq_reg_role_entity_role_entity UNIQUE (role_id, entity_id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT ck_registration_role_entity_kind CHECK (entity_kind = 'character'),
+	CONSTRAINT fk_registration_role_entity_entity FOREIGN KEY(entity_id, entity_kind) REFERENCES catalog.entity (id, kind) ON DELETE CASCADE,
+	FOREIGN KEY(role_id) REFERENCES balancer.registration_role (id) ON DELETE CASCADE
 );
 
-CREATE INDEX ix_balancer_registration_role_hero_role_id ON balancer.registration_role_hero (role_id);
+CREATE INDEX ix_balancer_registration_role_entity_role_id ON balancer.registration_role_entity (role_id);
 
 CREATE TABLE balancer.registration_status (
 	id BIGSERIAL NOT NULL,
@@ -1886,10 +1891,10 @@ CREATE TABLE matches.event (
 	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
 	FOREIGN KEY(team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(hero_id) REFERENCES overwatch.hero (id) ON DELETE CASCADE,
+	FOREIGN KEY(hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE,
 	FOREIGN KEY(related_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(related_user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(related_hero_id) REFERENCES overwatch.hero (id) ON DELETE CASCADE
+	FOREIGN KEY(related_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
 );
 
 CREATE INDEX ix_matches_assists_hero_id ON matches.event (hero_id);
@@ -1925,11 +1930,11 @@ CREATE TABLE matches.kill_feed (
 	PRIMARY KEY (id),
 	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
 	FOREIGN KEY(killer_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(killer_hero_id) REFERENCES overwatch.hero (id) ON DELETE CASCADE,
+	FOREIGN KEY(killer_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE,
 	FOREIGN KEY(killer_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(victim_id) REFERENCES players."user" (id) ON DELETE CASCADE,
 	FOREIGN KEY(victim_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(victim_hero_id) REFERENCES overwatch.hero (id) ON DELETE CASCADE
+	FOREIGN KEY(victim_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
 );
 
 CREATE INDEX ix_matches_kill_feed_killer_hero_id ON matches.kill_feed (killer_hero_id);
@@ -2011,7 +2016,7 @@ CREATE TABLE matches.statistics (
 	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
 	FOREIGN KEY(team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(hero_id) REFERENCES overwatch.hero (id) ON DELETE CASCADE
+	FOREIGN KEY(hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
 );
 
 CREATE INDEX ix_match_statistics_match_name_round ON matches.statistics (match_id, name, round);
@@ -2027,21 +2032,6 @@ CREATE INDEX ix_match_statistics_user_name_r0 ON matches.statistics (user_id, na
 CREATE INDEX ix_match_statistics_user_round_name ON matches.statistics (user_id, round, name);
 
 CREATE INDEX ix_matches_statistics_team_id ON matches.statistics (team_id);
-
-CREATE TABLE overwatch.hero (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	slug VARCHAR NOT NULL,
-	name VARCHAR NOT NULL,
-	image_path VARCHAR NOT NULL,
-	type heroclass NOT NULL,
-	color VARCHAR DEFAULT '#ffffff' NOT NULL,
-	aliases JSONB DEFAULT '[]'::jsonb NOT NULL,
-	PRIMARY KEY (id),
-	UNIQUE (slug),
-	UNIQUE (name)
-);
 
 CREATE TABLE overwatch_rank.battle_tag_state (
 	id BIGSERIAL NOT NULL,

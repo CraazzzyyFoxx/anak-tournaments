@@ -288,9 +288,8 @@ class _FakeSession:
         if entity is pick_ban_models.PickBanConfig:
             return _Result(self._configs)
         if entity is catalog_models.CatalogEntity:
-            return _Result(list(GAMEMODE_SLUGS))
-        if entity is catalog_models.Hero:
-            return _Result(list(self._hero_types))
+            sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+            return _Result(list(GAMEMODE_SLUGS) if "'mode'" in sql else list(self._hero_types))
         raise AssertionError(f"the handler queried an unexpected entity: {entity!r}")
 
     async def scalars(self, query):

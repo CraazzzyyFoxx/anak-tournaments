@@ -126,7 +126,7 @@ class BaselineService:
 
         * ``matches.statistics`` round-0 / hero-NULL rows are the per-match
           totals for the ``IMPACT_WEIGHTS`` stats + ``HeroTimePlayed``.
-        * "Dominant role" per (match, user) = the ``overwatch.hero.type`` with
+        * "Dominant role" per (match, user) = the ``catalog.entity.attrs["class"]`` with
           the most summed round-0 per-hero ``HeroTimePlayed`` seconds (mirrors
           ``impact.dominant_roles`` — NOT ``tournament.player.role``, so it
           matches what Task 5 scores against). Ties are broken arbitrarily by
@@ -165,17 +165,23 @@ class BaselineService:
             sa.select(
                 models.MatchStatistics.match_id.label("match_id"),
                 models.MatchStatistics.user_id.label("user_id"),
-                models.Hero.type.label("hero_type"),
+                models.CatalogEntity.attrs["class"].astext.label("hero_type"),
                 sa.func.sum(models.MatchStatistics.value).label("seconds"),
             )
             .select_from(models.MatchStatistics)
-            .join(models.Hero, models.Hero.id == models.MatchStatistics.hero_id)
+            .join(models.CatalogEntity, models.CatalogEntity.id == models.MatchStatistics.hero_id)
             .where(
+                models.CatalogEntity.kind == "character",
+                models.CatalogEntity.discipline == "overwatch",
                 models.MatchStatistics.round == 0,
                 models.MatchStatistics.hero_id.is_not(None),
                 models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
             )
-            .group_by(models.MatchStatistics.match_id, models.MatchStatistics.user_id, models.Hero.type)
+            .group_by(
+                models.MatchStatistics.match_id,
+                models.MatchStatistics.user_id,
+                models.CatalogEntity.attrs["class"].astext,
+            )
             .cte("impact_baseline_hero_playtime")
         )
         hero_playtime_ranked = sa.select(

@@ -5,7 +5,7 @@ the core's vocabulary (``shared.disciplines.CATALOG_KINDS``); what a kind is cal
 label. A map's mode is its ``parent``; a hero's or champion's class is ``attrs["class"]``. A reference from another
 table is a composite FK onto ``(id, kind[, discipline])`` with a kind-constant column on the referencing side.
 
-``CatalogEntityLegacy`` maps the old ``overwatch.hero/map/gamemode`` ids onto these rows for the reconcile and the
+``CatalogEntityLegacy`` maps the old ``overwatch.*`` ids onto these rows for the reconcile and the
 redirect of old URLs; ``discipline02`` drops it with ``overwatch.*``.
 """
 

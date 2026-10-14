@@ -69,6 +69,18 @@ class HeroRead(BaseRead):
     type: str
     color: str
 
+    @classmethod
+    def from_entity(cls, entity: Any) -> typing.Self:
+        """``type`` keeps today's spelling, the ``HeroClass`` value ("Tank"); a JSON-built hero object keeps the label."""
+        attrs = entity.attrs or {}
+        return cls.model_validate(
+            {
+                **_entity_fields(entity),
+                "type": enums.HeroClass[attrs["class"]].value,
+                "color": attrs.get("color", "#ffffff"),
+            }
+        )
+
 
 class MapRead(BaseRead):
     gamemode_id: int

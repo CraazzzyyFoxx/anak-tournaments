@@ -329,7 +329,7 @@ class BuildRegistrationRoleHeroesTests(TestCase):
             hero_catalog=HERO_CATALOG,
         )
         heroes = entries[0].hero_entries
-        assert [(h.hero_id, h.priority) for h in heroes] == [(3, 1), (4, 2)]
+        assert [(h.entity_id, h.priority) for h in heroes] == [(3, 1), (4, 2)]
 
     def test_caps_dedups_and_drops_unknown(self) -> None:
         entries = reg_common.build_registration_roles(
@@ -337,7 +337,7 @@ class BuildRegistrationRoleHeroesTests(TestCase):
             hero_catalog=HERO_CATALOG,
             max_heroes=2,
         )
-        assert [h.hero_id for h in entries[0].hero_entries] == [3, 4]
+        assert [h.entity_id for h in entries[0].hero_entries] == [3, 4]
 
     def test_no_catalog_means_no_hero_entries(self) -> None:
         entries = reg_common.build_registration_roles(

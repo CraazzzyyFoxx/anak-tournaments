@@ -172,6 +172,7 @@ def _seed(conn) -> dict:
         resolved_at="2026-10-01T00:00:00Z",
     )
     _seed_map_references(conn, ids)
+    _seed_hero_references(conn, ids)
     return ids
 
 
@@ -585,11 +586,11 @@ def test_the_hero_stats_view_joins_the_catalog_and_waits_for_its_refresh(migrate
     assert _scalar(conn, "SELECT count(*) FROM pg_indexes WHERE indexname = 'ix_mv_hero_global_stats_name_hero'") == 1
 
 
-def test_no_reference_outside_the_legacy_schema_points_at_old_maps_or_modes(migrated) -> None:
+def test_no_reference_outside_the_legacy_schema_points_at_the_old_catalog(migrated) -> None:
     rows = _rows(
         migrated["conn"],
         "SELECT conrelid::regclass::text, conname FROM pg_constraint WHERE contype = 'f'"
-        " AND confrelid IN ('overwatch.map'::regclass, 'overwatch.gamemode'::regclass)"
+        " AND confrelid IN ('overwatch.map'::regclass, 'overwatch.gamemode'::regclass, 'overwatch.hero'::regclass)"
         " AND conrelid::regclass::text NOT LIKE 'overwatch.%'",
     )
     assert rows == []
@@ -608,3 +609,162 @@ def test_the_reconcile_lists_a_soft_id_left_in_legacy_space(migrated) -> None:
         tx.rollback()
     assert statuses["pick-ban ids"] == "MISMATCH"
     assert [(cls, legacy_id) for cls, legacy_id, _detail in listed] == [("pick-ban ids", ids["config_item"])]
+
+
+def _seed_hero_references(conn, ids: dict) -> None:
+    """Every kind of hero reference: legacy stats, a registration's top hero, an achievement, a hero pick-ban."""
+    ana, rein = ids["ana"], ids["rein"]
+    ids["user"] = _insert(conn, "players.user", name="disc01-player")
+    common = {"match_id": ids["match"], "round": 0, "team_id": ids["team_a"], "user_id": ids["user"]}
+    ids["stat_hero"] = _insert(conn, "matches.statistics", **common, hero_id=ana, name="HeroTimePlayed", value=120.0)
+    ids["stat_all"] = _insert(conn, "matches.statistics", **common, name="HeroTimePlayed", value=120.0)
+    ids["event"] = _insert(
+        conn,
+        "matches.event",
+        match_id=ids["match"],
+        time=1.0,
+        round=1,
+        team_id=ids["team_a"],
+        user_id=ids["user"],
+        hero_id=ana,
+        related_team_id=ids["team_b"],
+        related_user_id=ids["user"],
+        related_hero_id=rein,
+        name="OffensiveAssist",
+    )
+    ids["kill"] = _insert(
+        conn,
+        "matches.kill_feed",
+        match_id=ids["match"],
+        time=2.0,
+        round=1,
+        fight=1,
+        killer_id=ids["user"],
+        killer_hero_id=ana,
+        killer_team_id=ids["team_a"],
+        victim_id=ids["user"],
+        victim_team_id=ids["team_b"],
+        victim_hero_id=rein,
+        damage=10.0,
+        is_critical_hit=False,
+        is_environmental=False,
+    )
+    registration = _insert(conn, "balancer.registration", tournament_id=ids["t"])
+    role = _insert(conn, "balancer.registration_role", registration_id=registration, role="support")
+    ids["top_hero"] = _insert(conn, "balancer.registration_role_hero", role_id=role, hero_id=ana, priority=1)
+    rule = {
+        "workspace_id": ids["ws"],
+        "description_ru": "-",
+        "description_en": "-",
+        "category": "hero",
+        "scope": "global",
+        "grain": "user",
+    }
+    ids["rule_hero"] = _insert(conn, "achievements.rule", **rule, slug="d1-ana", name="Ana", hero_id=ana)
+    ids["rule_plain"] = _insert(conn, "achievements.rule", **rule, slug="d1-plain", name="Plain")
+    ruleset = {
+        "version": 2,
+        "phases": [{"id": "p", "pool_filter": {"type": "item_in", "params": {"item_ids": [rein]}}, "steps": []}],
+    }
+    ids["hero_config"] = _insert(
+        conn, "tournament.pick_ban_config", tournament_id=ids["t"], kind="hero", ruleset_json=Json(ruleset)
+    )
+    ids["hero_config_item"] = _insert(
+        conn, "tournament.pick_ban_config_item", pick_ban_config_id=ids["hero_config"], item_id=ana
+    )
+    ids["hero_session"] = _insert(
+        conn,
+        "encounter.pick_ban_session",
+        encounter_id=ids["enc"],
+        kind="hero",
+        seed_source="bracket_slot",
+        pool_json=Json({"mode": "pool", "rotation": "fixed", "items": [ana, rein], "slots": []}),
+        ruleset_json=Json(ruleset),
+        resolved_sequence_json=Json([{"index": 0, "action": "ban", "eligible": {}}]),
+    )
+    ids["hero_entry"] = _insert(
+        conn, "encounter.pick_ban_entry", session_id=ids["hero_session"], encounter_id=ids["enc"], item_id=ana, order=0
+    )
+    ids["hero_sub"] = _insert(
+        conn,
+        "encounter.pick_ban_submission",
+        session_id=ids["hero_session"],
+        encounter_id=ids["enc"],
+        step_index=0,
+        state="locked",
+        items_json=Json([{"item_id": rein, "target_player_id": None}]),
+    )
+    ids["hero_event"] = _insert(
+        conn,
+        "encounter.room_event",
+        encounter_id=ids["enc"],
+        kind="hero",
+        action="acted",
+        source="captain",
+        data=Json({"step_index": 0, "round": 1, "action": "ban", "item_id": rein, "target_player_id": None}),
+    )
+
+
+def test_stats_rows_name_the_character_entities(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    ana, rein = _entity_of(conn, "hero", ids["ana"]), _entity_of(conn, "hero", ids["rein"])
+    assert _scalar(conn, "SELECT hero_id FROM matches.statistics WHERE id = %s", (ids["stat_hero"],)) == ana
+    assert _scalar(conn, "SELECT hero_id FROM matches.statistics WHERE id = %s", (ids["stat_all"],)) is None
+    assert _rows(conn, "SELECT hero_id, related_hero_id FROM matches.event WHERE id = %s", (ids["event"],)) == [
+        (ana, rein)
+    ]
+    assert _rows(
+        conn, "SELECT killer_hero_id, victim_hero_id FROM matches.kill_feed WHERE id = %s", (ids["kill"],)
+    ) == [(ana, rein)]
+
+
+def test_top_heroes_live_in_registration_role_entity(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    assert _rows(
+        conn,
+        "SELECT entity_id, entity_kind, priority FROM balancer.registration_role_entity WHERE id = %s",
+        (ids["top_hero"],),
+    ) == [(_entity_of(conn, "hero", ids["ana"]), "character", 1)]
+    names = {
+        row[0]
+        for row in _rows(
+            conn, "SELECT conname FROM pg_constraint WHERE conrelid = 'balancer.registration_role_entity'::regclass"
+        )
+    }
+    assert {
+        "uq_reg_role_entity_role_priority",
+        "uq_reg_role_entity_role_entity",
+        "fk_registration_role_entity_entity",
+    } <= names
+    assert _scalar(conn, "SELECT to_regclass('balancer.registration_role_hero')") is None
+
+
+def test_achievement_rules_get_a_discipline_and_an_entity(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    assert _rows(
+        conn,
+        "SELECT id, discipline, entity_id, entity_kind FROM achievements.rule WHERE id IN (%s, %s) ORDER BY id",
+        (ids["rule_hero"], ids["rule_plain"]),
+    ) == [
+        (ids["rule_hero"], "overwatch", _entity_of(conn, "hero", ids["ana"]), "character"),
+        (ids["rule_plain"], "overwatch", None, "character"),
+    ]
+
+
+def test_hero_pick_ban_ids_are_rewritten(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    ana, rein = _entity_of(conn, "hero", ids["ana"]), _entity_of(conn, "hero", ids["rein"])
+    assert (
+        _scalar(conn, "SELECT item_id FROM tournament.pick_ban_config_item WHERE id = %s", (ids["hero_config_item"],))
+        == ana
+    )
+    ruleset = _scalar(conn, "SELECT ruleset_json FROM tournament.pick_ban_config WHERE id = %s", (ids["hero_config"],))
+    assert ruleset["phases"][0]["pool_filter"]["params"]["item_ids"] == [rein]
+    assert _scalar(conn, "SELECT pool_json FROM encounter.pick_ban_session WHERE id = %s", (ids["hero_session"],))[
+        "items"
+    ] == [ana, rein]
+    assert _scalar(conn, "SELECT item_id FROM encounter.pick_ban_entry WHERE id = %s", (ids["hero_entry"],)) == ana
+    assert _scalar(conn, "SELECT items_json FROM encounter.pick_ban_submission WHERE id = %s", (ids["hero_sub"],)) == [
+        {"item_id": rein, "target_player_id": None}
+    ]
+    assert _scalar(conn, "SELECT data FROM encounter.room_event WHERE id = %s", (ids["hero_event"],))["item_id"] == rein

@@ -79,7 +79,7 @@ def _registration_read_options() -> list[Any]:
     return [
         selectinload(models.BalancerRegistration.roles)
         .selectinload(models.BalancerRegistrationRole.hero_entries)
-        .selectinload(models.BalancerRegistrationRoleHero.hero),
+        .selectinload(models.BalancerRegistrationRoleEntity.entity),
         selectinload(models.BalancerRegistration.reviewer),
         selectinload(models.BalancerRegistration.checked_in_by_user),
         selectinload(models.BalancerRegistration.google_sheet_binding),
@@ -140,7 +140,7 @@ class RegistrationLifecycleService:
             .options(
                 selectinload(models.BalancerRegistration.roles)
                 .selectinload(models.BalancerRegistrationRole.hero_entries)
-                .selectinload(models.BalancerRegistrationRoleHero.hero),
+                .selectinload(models.BalancerRegistrationRoleEntity.entity),
                 selectinload(models.BalancerRegistration.reviewer),
                 selectinload(models.BalancerRegistration.deleted_by_user),
                 selectinload(models.BalancerRegistration.checked_in_by_user),

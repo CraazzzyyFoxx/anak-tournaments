@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 
 from .base import BaseRead, Score
 
@@ -20,7 +20,7 @@ class AchievementRead(BaseRead):
     description_ru: str
     description_en: str
     image_url: str | None
-    hero_id: int | None
+    hero_id: int | None = Field(validation_alias=AliasChoices("entity_id", "hero_id"))
     rarity: float
 
     category: str | None = None

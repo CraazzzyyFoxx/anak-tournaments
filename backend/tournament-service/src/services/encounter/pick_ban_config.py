@@ -40,7 +40,6 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_rules as pbr
 from shared.models.catalog.entity import CatalogEntity
-from shared.models.catalog.hero import Hero
 from shared.models.tournament.pick_ban import (
     PickBanConfig,
     PickBanConfigItem,
@@ -102,13 +101,23 @@ async def pool_group_counts(session: AsyncSession, kind: PickBanKind, item_ids: 
     if not item_ids:
         return {}
     if kind == PickBanKind.HERO:
-        query = select(Hero.type).where(Hero.id.in_(item_ids))
+        query = select(CatalogEntity.attrs["class"].astext).where(
+            CatalogEntity.id.in_(item_ids),
+            CatalogEntity.kind == "character",
+            CatalogEntity.discipline == "overwatch",
+        )
     else:
         mode = aliased(CatalogEntity, name="mode")
         query = (
             select(mode.slug)
             .join(CatalogEntity, CatalogEntity.parent_id == mode.id)
-            .where(CatalogEntity.id.in_(item_ids))
+            .where(
+                CatalogEntity.id.in_(item_ids),
+                CatalogEntity.kind == "map",
+                CatalogEntity.discipline == "overwatch",
+                mode.kind == "mode",
+                mode.discipline == "overwatch",
+            )
         )
     counts: dict[str, int] = {}
     for raw in await session.scalars(query):

@@ -37,7 +37,6 @@ COLUMNS = (
     ("tournament", "team", "image_url"),
     ("balancer", "registration_team", "image_url"),
     ("achievements", "rule", "image_url"),
-    ("overwatch", "hero", "image_path"),
     ("catalog", "entity", "image_path"),
 )
 

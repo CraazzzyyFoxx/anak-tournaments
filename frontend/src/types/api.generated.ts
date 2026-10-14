@@ -12291,16 +12291,15 @@ export interface components {
         };
         /**
          * HeroClass
-         * @description A roster role OR a hero's class -- two concepts on one Postgres type.
+         * @description A roster role OR an Overwatch character's class.
          *
-         *     ``tank``/``damage``/``support`` mean both things at once, which is why the
-         *     same ``heroclass`` type backs ``overwatch.hero.type``,
-         *     ``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``
-         *     only ever means the third: a player who holds no fixed role, which is what
-         *     a role-less (all-``flex``) roster shape drafts and balances for. No hero has
-         *     a class of "flex", so the two hero-side columns are narrowed back to
-         *     :data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by
-         *     CHECK constraints in the database (migration ``heroflex0001``).
+         *     ``tank``/``damage``/``support`` mean both things at once. The Postgres
+         *     ``heroclass`` type still backs ``matches.stat_baselines.role`` and
+         *     ``tournament.player.role``; character classes now live in ``catalog.entity.attrs``.
+         *     ``flex`` only means a player who holds no fixed role, which is what a
+         *     role-less roster shape drafts and balances for. No hero has a class of
+         *     "flex": the module's ``character_classes`` and :data:`HeroTypeClass` narrow
+         *     the catalog values; a database CHECK still narrows baseline roles.
          *
          *     Member NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),
          *     so the DB sees ``flex`` while the Python value is ``"Flex"``.

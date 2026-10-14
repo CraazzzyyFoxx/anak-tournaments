@@ -154,10 +154,16 @@ class BackfillService:
         return df
 
     async def _load_hero_types(self, session: AsyncSession) -> dict[int, enums.HeroClass]:
-        """{hero.id: hero.type}, cached for the life of the process."""
+        """{entity.id: HeroClass}, cached for the life of the process."""
         if not self._hero_types_cache:
-            rows = (await session.execute(sa.select(models.Hero.id, models.Hero.type))).all()
-            self._hero_types_cache.update({row.id: row.type for row in rows})
+            rows = (
+                await session.execute(
+                    sa.select(
+                        models.CatalogEntity.id, models.CatalogEntity.attrs["class"].astext.label("hero_class")
+                    ).where(models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "character")
+                )
+            ).all()
+            self._hero_types_cache.update({row.id: enums.HeroClass[row.hero_class] for row in rows})
         return self._hero_types_cache
 
     async def _load_player_refs(self, session: AsyncSession, match_id: int) -> dict[int, impact.PlayerRef]:
@@ -171,7 +177,7 @@ class BackfillService:
           a re-run must never disagree with the ``team_id`` already stored on
           the untouched OLD stat rows for the same match (idempotency /
           consistency with historical data, even across a later substitution).
-        * "Dominant role" = the ``overwatch.hero.type`` with the most summed
+        * "Dominant role" = the ``catalog.entity.attrs["class"]`` with the most summed
           round-0 per-hero ``HeroTimePlayed`` seconds for that (match, user) —
           mirrors ``impact.dominant_roles``, matching what Task 5 scores
           against. Falls back to the declared ``tournament.player.role`` when

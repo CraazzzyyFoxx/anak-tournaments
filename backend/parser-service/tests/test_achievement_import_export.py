@@ -35,7 +35,7 @@ class ExportPayloadTests(TestCase):
             description_ru="RU",
             description_en="EN",
             image_url="http://cdn/assets/achievements/source-ws/alpha.webp",
-            hero_id=3,
+            entity_id=3,
             category="overall",
             scope="global",
             grain="user",
@@ -147,7 +147,7 @@ class ImportRulesTests(IsolatedAsyncioTestCase):
             description_ru="Old RU",
             description_en="Old EN",
             image_url=None,
-            hero_id=None,
+            entity_id=None,
             category="overall",
             scope="global",
             grain="user",
@@ -210,8 +210,8 @@ class ImportRulesTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=[existing]),
             ),
             patch(
-                "src.services.achievement.import_export.hero_exists",
-                AsyncMock(return_value=True),
+                "src.services.achievement.import_export._hero_repo.get",
+                AsyncMock(return_value=SimpleNamespace(id=7)),
             ),
             patch(
                 "src.services.achievement.import_export.copy_workspace_achievement_image",

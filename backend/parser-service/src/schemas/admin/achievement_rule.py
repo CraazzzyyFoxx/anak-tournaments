@@ -6,7 +6,7 @@ import typing
 from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 from src.core import pagination
 
@@ -44,7 +44,7 @@ class AchievementRuleRead(BaseModel):
     description_ru: str
     description_en: str
     image_url: str | None
-    hero_id: int | None
+    hero_id: int | None = Field(validation_alias=AliasChoices("entity_id", "hero_id"))
     category: str
     scope: str
     grain: str

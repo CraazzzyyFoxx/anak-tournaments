@@ -46,7 +46,9 @@ class RuleListFilterTests(IsolatedAsyncioTestCase):
         )
         await achievement_rule_service.list_rules(session, workspace_id=3, params=params)
         self.assertEqual(len(session.statements), 2)
-        return " ".join(str(statement) for statement in session.statements).lower()
+        return " ".join(
+            str(statement.compile(compile_kwargs={"literal_binds": True})) for statement in session.statements
+        ).lower()
 
     async def test_search_matches_name_or_slug(self) -> None:
         base = await self._sql()
@@ -58,8 +60,8 @@ class RuleListFilterTests(IsolatedAsyncioTestCase):
 
     async def test_category_and_enabled_reach_the_count_query(self) -> None:
         sql = await self._sql(category="hero", enabled=True)
-        self.assertIn("hero", sql)
-        self.assertIn("enabled", sql)
+        self.assertEqual(sql.count("achievements.rule.category = 'hero'"), 2)
+        self.assertEqual(sql.count("achievements.rule.enabled is true"), 2)
 
     async def test_page_applies_limit(self) -> None:
         sql = await self._sql()

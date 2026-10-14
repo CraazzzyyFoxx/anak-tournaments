@@ -129,10 +129,7 @@ class PickBanConfigItem(db.TimeStampIntegerMixin):
     )
 
     pick_ban_config_id: Mapped[int] = mapped_column(ForeignKey(PickBanConfig.id, ondelete="CASCADE"), index=True)
-    # Soft reference: resolves against ``catalog.entity`` maps or ``overwatch.hero``
-    # depending on the owning config's ``kind`` — no FK, mirroring how
-    # ``EncounterMapPool``/entry rows already carry catalog ids without one per
-    # kind (a single FK column cannot target two different tables).
+    # Soft reference: resolves against ``catalog.entity`` maps or characters depending on the owning config's kind.
     item_id: Mapped[int] = mapped_column(Integer(), index=True)
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 

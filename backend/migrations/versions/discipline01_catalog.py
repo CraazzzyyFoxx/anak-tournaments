@@ -263,6 +263,68 @@ _MAPS = (
     """,
 )
 
+#: Every hard hero reference, rewritten through entity_legacy and repointed (the FK is the proof, as for maps).
+_HEROES = (
+    # Pending deferred RI events block ALTER TABLE on matches.event; drain valid-row checks before the rewrite.
+    "SET CONSTRAINTS ALL IMMEDIATE",
+    "ALTER TABLE matches.statistics DROP CONSTRAINT statistics_hero_id_fkey",
+    "UPDATE matches.statistics s SET hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = s.hero_id",
+    "ALTER TABLE matches.statistics ADD CONSTRAINT statistics_hero_id_fkey FOREIGN KEY (hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE",
+    "ALTER TABLE matches.event DROP CONSTRAINT assists_hero_id_fkey, DROP CONSTRAINT assists_related_hero_id_fkey",
+    "UPDATE matches.event e SET hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = e.hero_id",
+    "UPDATE matches.event e SET related_hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = e.related_hero_id",
+    """
+    ALTER TABLE matches.event
+      ADD CONSTRAINT assists_hero_id_fkey FOREIGN KEY (hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE,
+      ADD CONSTRAINT assists_related_hero_id_fkey FOREIGN KEY (related_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
+    """,
+    "ALTER TABLE matches.kill_feed DROP CONSTRAINT kill_feed_killer_hero_id_fkey, DROP CONSTRAINT kill_feed_victim_hero_id_fkey",
+    "UPDATE matches.kill_feed k SET killer_hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = k.killer_hero_id",
+    "UPDATE matches.kill_feed k SET victim_hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = k.victim_hero_id",
+    """
+    ALTER TABLE matches.kill_feed
+      ADD CONSTRAINT kill_feed_killer_hero_id_fkey FOREIGN KEY (killer_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE,
+      ADD CONSTRAINT kill_feed_victim_hero_id_fkey FOREIGN KEY (victim_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
+    """,
+    # A registration's top heroes become preferred catalog entities (spec §14.2, §8.3 "registration_role_entity").
+    "ALTER TABLE balancer.registration_role_hero RENAME TO registration_role_entity",
+    "ALTER SEQUENCE balancer.registration_role_hero_id_seq RENAME TO registration_role_entity_id_seq",
+    "ALTER TABLE balancer.registration_role_entity RENAME COLUMN hero_id TO entity_id",
+    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT registration_role_hero_pkey TO registration_role_entity_pkey",
+    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT registration_role_hero_role_id_fkey TO registration_role_entity_role_id_fkey",
+    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT uq_reg_role_hero_role_priority TO uq_reg_role_entity_role_priority",
+    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT uq_reg_role_hero_role_hero TO uq_reg_role_entity_role_entity",
+    "ALTER INDEX balancer.ix_balancer_registration_role_hero_role_id RENAME TO ix_balancer_registration_role_entity_role_id",
+    """
+    ALTER TABLE balancer.registration_role_entity
+      DROP CONSTRAINT registration_role_hero_hero_id_fkey,
+      ADD COLUMN entity_kind VARCHAR(16) NOT NULL DEFAULT 'character'
+        CONSTRAINT ck_registration_role_entity_kind CHECK (entity_kind = 'character')
+    """,
+    """
+    UPDATE balancer.registration_role_entity r SET entity_id = l.entity_id
+      FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = r.entity_id
+    """,
+    """
+    ALTER TABLE balancer.registration_role_entity ADD CONSTRAINT fk_registration_role_entity_entity
+      FOREIGN KEY (entity_id, entity_kind) REFERENCES catalog.entity (id, kind) ON DELETE CASCADE
+    """,
+    # Achievements: the rule gets its discipline and an entity of that discipline (D96).
+    """
+    ALTER TABLE achievements.rule
+      DROP CONSTRAINT rule_hero_id_fkey,
+      ADD COLUMN discipline VARCHAR(32) NOT NULL DEFAULT 'overwatch'
+        CONSTRAINT fk_rule_discipline REFERENCES catalog.discipline (code),
+      ADD COLUMN entity_kind VARCHAR(16) NOT NULL DEFAULT 'character' CONSTRAINT ck_rule_entity_kind CHECK (entity_kind = 'character')
+    """,
+    "ALTER TABLE achievements.rule RENAME COLUMN hero_id TO entity_id",
+    "UPDATE achievements.rule r SET entity_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = r.entity_id",
+    """
+    ALTER TABLE achievements.rule ADD CONSTRAINT fk_rule_entity FOREIGN KEY (entity_id, entity_kind, discipline)
+      REFERENCES catalog.entity (id, kind, discipline) ON DELETE SET NULL (entity_id)
+    """,
+)
+
 #: The interim hero-stats view (P4 replaces it with stats.mv_entity_global_stats) joined ``overwatch.map``. Created
 #: WITH NO DATA as before: the app-worker's first refresh is a plain REFRESH (hero_stats_refresh.py).
 _STATS_VIEW = (
@@ -501,9 +563,10 @@ def _rewrite_pick_ban(kind: str) -> None:
 
 def upgrade() -> None:
     _preflight()
-    for statement in (*_SCHEMA, *_COPY, *_MAPS):
+    for statement in (*_SCHEMA, *_COPY, *_MAPS, *_HEROES):
         op.execute(statement)
     _rewrite_pick_ban("map")
+    _rewrite_pick_ban("hero")
     for statement in _STATS_VIEW:
         op.execute(statement)
 

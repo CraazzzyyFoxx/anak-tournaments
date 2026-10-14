@@ -4,9 +4,12 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -21,7 +24,7 @@ from shared.core import db, enums
 from shared.core.social import GAME_PROVIDERS
 
 if TYPE_CHECKING:
-    from shared.models.catalog.hero import Hero
+    from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
     from shared.models.tenancy.workspace import Workspace, WorkspaceMember
     from shared.models.tournament.tournament import Tournament
@@ -35,7 +38,7 @@ __all__ = (
     "BalancerRegistrationGoogleSheetFeed",
     "BalancerRegistrationIdentity",
     "BalancerRegistrationRole",
-    "BalancerRegistrationRoleHero",
+    "BalancerRegistrationRoleEntity",
     "BalancerRegistrationStatus",
     "BalancerRegistrationTeam",
     "BalancerRegistrationTeamInvite",
@@ -442,38 +445,46 @@ class BalancerRegistrationRole(db.TimeStampIntegerMixin):
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="true", default=True)
 
     registration: Mapped[BalancerRegistration] = relationship(back_populates="roles")
-    hero_entries: Mapped[list[BalancerRegistrationRoleHero]] = relationship(
+    hero_entries: Mapped[list[BalancerRegistrationRoleEntity]] = relationship(
         back_populates="role",
         cascade="all, delete-orphan",
-        order_by="BalancerRegistrationRoleHero.priority",
+        order_by="BalancerRegistrationRoleEntity.priority",
     )
 
 
-class BalancerRegistrationRoleHero(db.TimeStampIntegerMixin):
-    """Ordered hero preference ("top hero") for a registration role entry."""
+class BalancerRegistrationRoleEntity(db.TimeStampIntegerMixin):
+    """Ordered preferred catalog entity ("top hero") of a registration role entry (spec §8.3, §14.2)."""
 
-    __tablename__ = "registration_role_hero"
-    # DEFERRED (migration ``reghero01``): a pick list is replaced wholesale, and
-    # SQLAlchemy emits every INSERT for a table before the DELETEs on it -- so a
-    # resave that keeps a hero, or a reorder, passes through a duplicate state
-    # mid-flush and ends in a valid one. Checking at COMMIT is what makes both
-    # legal without weakening the invariant on any observable state.
+    __tablename__ = "registration_role_entity"
+    # DEFERRED (migration ``reghero01``): a pick list is replaced wholesale, and SQLAlchemy emits every INSERT for a
+    # table before the DELETEs on it -- so a resave that keeps an entity, or a reorder, passes through a duplicate
+    # state mid-flush and ends in a valid one. Checking at COMMIT makes both legal without weakening the invariant.
     __table_args__ = (
         UniqueConstraint(
-            "role_id", "priority", name="uq_reg_role_hero_role_priority", deferrable=True, initially="DEFERRED"
+            "role_id", "priority", name="uq_reg_role_entity_role_priority", deferrable=True, initially="DEFERRED"
         ),
         UniqueConstraint(
-            "role_id", "hero_id", name="uq_reg_role_hero_role_hero", deferrable=True, initially="DEFERRED"
+            "role_id", "entity_id", name="uq_reg_role_entity_role_entity", deferrable=True, initially="DEFERRED"
+        ),
+        CheckConstraint("entity_kind = 'character'", name="ck_registration_role_entity_kind"),
+        ForeignKeyConstraint(
+            ["entity_id", "entity_kind"],
+            ["catalog.entity.id", "catalog.entity.kind"],
+            ondelete="CASCADE",
+            name="fk_registration_role_entity_entity",
         ),
         {"schema": "balancer"},
     )
 
     role_id: Mapped[int] = mapped_column(ForeignKey("balancer.registration_role.id", ondelete="CASCADE"), index=True)
-    hero_id: Mapped[int] = mapped_column(ForeignKey("overwatch.hero.id", ondelete="CASCADE"))
+    entity_id: Mapped[int] = mapped_column(BigInteger())
+    entity_kind: Mapped[str] = mapped_column(String(16), default="character", server_default="character")
     priority: Mapped[int] = mapped_column(Integer(), nullable=False)
 
     role: Mapped[BalancerRegistrationRole] = relationship(back_populates="hero_entries")
-    hero: Mapped[Hero] = relationship()
+    entity: Mapped[CatalogEntity] = relationship(
+        primaryjoin="foreign(BalancerRegistrationRoleEntity.entity_id) == CatalogEntity.id", viewonly=True
+    )
 
 
 class BalancerRegistrationGoogleSheetFeed(db.TimeStampIntegerMixin):

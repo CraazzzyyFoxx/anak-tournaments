@@ -36,7 +36,7 @@ def _role_top_heroes(role: models.BalancerRegistrationRole) -> list[str]:
     hero_entries = loaded_relationship_or_none(role, "hero_entries")
     if not hero_entries:
         return []
-    return [entry.hero.slug for entry in sorted(hero_entries, key=lambda entry: entry.priority)]
+    return [entry.entity.slug for entry in sorted(hero_entries, key=lambda entry: entry.priority)]
 
 
 def serialize_registration_role(

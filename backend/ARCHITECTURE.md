@@ -60,7 +60,7 @@ shared.models.*                    ORM. SQLAlchemy models, one shared `MetaData`
 
 `src/schemas/*.py` sits beside this stack, not inside it: Pydantic wire contracts for the RPC
 boundary (and OpenAPI docs generation). Schemas convert *at* the boundary
-(`schemas.HeroRead.model_validate(hero, from_attributes=True)` in a service's `to_read`, or
+(`schemas.HeroRead.from_entity(hero)` in a service's `to_read`, or
 `DraftFeasibilityResponse.model_validate(report)` in an rpc handler) — they are never passed
 down into `domain/` or `shared.repository`, and `domain/`'s own dataclasses are never redefined
 as schemas just to "have one type." Two vocabularies exist on purpose: `schemas` is what the
@@ -163,7 +163,10 @@ def register(broker: Any, logger: Any) -> None:
 
 ```python
 class HeroService:
-    def __init__(self, *, queries: HeroQueries = hero_queries, repo: HeroRepository = HeroRepository()) -> None:
+    def __init__(
+        self, *, queries: HeroQueries = hero_queries,
+        repo: CatalogEntityRepository = CatalogEntityRepository("character", discipline="overwatch"),
+    ) -> None:
         self.queries = queries
         self.repo = repo
 
@@ -337,7 +340,7 @@ Unchanged, repo-wide, since `backend/docs/repository-boundaries.md`:
   ratcheted — an exemption whose file stopped writing directly fails the suite — so neither
   list can rot the way the single allowlist did.
 
-### Map and mode catalog reads
+### Catalog reads
 
 Maps and modes are `CatalogEntity` rows (`kind="map"` / `"mode"`). Overwatch-shaped
 public reads use `CatalogEntityRepository(kind, discipline="overwatch")`; generic map
@@ -348,15 +351,31 @@ aliases; callers load `parent` before requesting the `gamemode` expansion. Publi
 listing sorts by `parent_id`, not the removed ORM attribute `gamemode_id`.
 The separate user-map statistics sort keeps its `gamemode_id` wire key and translates
 it to `parent_id` when building SQL.
-Hero comparison resolves only Overwatch maps in its catalog outer join; another kind
-or discipline returns map-not-found while preserving the anchor row and hero lookups.
+Hero comparison resolves only Overwatch characters and maps in its catalog outer joins;
+another kind or discipline returns not-found while preserving the anchor row.
 
-`discipline01` rewrites hard map references and map pick-ban ids (including snapshots
-and room events) through `catalog.entity_legacy`. Side-pick answers are side indexes
+Heroes are `CatalogEntity` rows of `kind="character"`, read through
+`CatalogEntityRepository("character", discipline="overwatch")`. Class and color live
+in `attrs`; `HeroRead.from_entity` keeps the `HeroClass` value spelling and defaults
+missing color to `#ffffff`. Direct Overwatch hero lookups and joins constrain both
+kind and discipline, including the aliased kill-feed heroes.
+
+Registration picks live in `balancer.registration_role_entity` with `entity_id`,
+`entity_kind="character"` and an `entity` relationship; the collection remains
+`hero_entries`. Its character-kind FK cascades on deletion and its two deferred
+uniques still allow replacing or reordering a pick list in one commit.
+Achievement rules carry `discipline`, `entity_id` and `entity_kind="character"` with
+a composite FK that nulls only `entity_id` on deletion. Read schemas and the
+create/update adapter retain the wire names `hero_id` / `hero`; registration retains
+`top_heroes` and its `hero_id` references.
+
+`discipline01` rewrites hard map and hero references and both kinds' pick-ban ids
+(including snapshots and room events) through `catalog.entity_legacy`. Side-pick answers are side indexes
 and stay unchanged; preflight counts dangling soft ids, which stay unchanged too.
 Games and mix-lobby maps have kind-constant composite FKs. The retired matches,
 casual matches and surviving legacy map-code table retain their original delete
-behavior through plain catalog FKs. The interim hero-statistics view joins the
+behavior through plain catalog FKs, as do the hero columns of statistics, events
+and kill feeds. The interim hero-statistics view joins the
 catalog and starts unpopulated for the existing worker to refresh.
 
 ## Import layering between domains, when it's worth enforcing

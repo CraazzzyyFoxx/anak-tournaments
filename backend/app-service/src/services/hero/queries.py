@@ -1,7 +1,7 @@
 """Hero stats queries that are specific to app-service.
 
-Generic CRUD-style operations (`get`, `get_by_name`, `all`, `playtime`) live
-on `shared.repository.HeroRepository`. Everything that remains here is
+Generic CRUD-style operations (`get`, `get_all`, `playtime`) live
+on `shared.repository.CatalogEntityRepository`. Everything that remains here is
 analytics/leaderboard logic owned by app-service.
 """
 
@@ -78,15 +78,17 @@ class HeroQueries:
         user_id: int,
         tournament_id: int | None = None,
         workspace_id: int | None = None,
-    ) -> typing.Sequence[tuple[models.Hero, int, float]]:
+    ) -> typing.Sequence[tuple[models.CatalogEntity, int, float]]:
         overall_play_time_subquery = (
             sa.select(sa.func.sum(models.MatchStatistics.value))
-            .select_from(models.Hero)
-            .join(models.MatchStatistics, models.MatchStatistics.hero_id == models.Hero.id)
+            .select_from(models.CatalogEntity)
+            .join(models.MatchStatistics, models.MatchStatistics.hero_id == models.CatalogEntity.id)
             .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
             .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
             .where(
                 sa.and_(
+                    models.CatalogEntity.kind == "character",
+                    models.CatalogEntity.discipline == "overwatch",
                     models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                     models.MatchStatistics.value > 60,
                     models.MatchStatistics.round == 0,
@@ -108,15 +110,15 @@ class HeroQueries:
 
         query = (
             sa.select(
-                models.Hero,
+                models.CatalogEntity,
                 models.Match.map_id,
                 (sa.func.sum(models.MatchStatistics.value) / overall_play_time_subquery.as_scalar()).label("playtime"),
             )
-            .select_from(models.Hero)
+            .select_from(models.CatalogEntity)
             .join(
                 models.MatchStatistics,
                 sa.and_(
-                    models.MatchStatistics.hero_id == models.Hero.id,
+                    models.MatchStatistics.hero_id == models.CatalogEntity.id,
                     models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
                     models.MatchStatistics.value > 60,
                     models.MatchStatistics.round == 0,
@@ -125,7 +127,11 @@ class HeroQueries:
             )
             .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
             .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(models.Match.map_id.in_(maps_ids))
+            .where(
+                models.Match.map_id.in_(maps_ids),
+                models.CatalogEntity.kind == "character",
+                models.CatalogEntity.discipline == "overwatch",
+            )
         )
 
         if tournament_id is not None:
@@ -136,7 +142,7 @@ class HeroQueries:
                 models.Tournament.workspace_id == workspace_id
             )
 
-        query = query.group_by(models.Hero.id, models.Match.map_id).order_by(sa.text("playtime DESC"))
+        query = query.group_by(models.CatalogEntity.id, models.Match.map_id).order_by(sa.text("playtime DESC"))
 
         result = await session.execute(query)
         return result.all()  # type: ignore
@@ -150,7 +156,7 @@ class HeroQueries:
         min_seconds: float = 60,
         tournament_id: int | None = None,
         workspace_id: int | None = None,
-    ) -> typing.Sequence[tuple[models.Hero, int, int, int, int, int, float, float, float]]:
+    ) -> typing.Sequence[tuple[models.CatalogEntity, int, int, int, int, int, float, float, float]]:
         """Return top hero summaries per map for a given user.
 
         This is designed for UX popovers: one query returns top N heroes per map with
@@ -266,7 +272,7 @@ class HeroQueries:
 
         query = (
             sa.select(
-                models.Hero,
+                models.CatalogEntity,
                 ranked.c.map_id,
                 ranked.c.games,
                 ranked.c.win,
@@ -277,8 +283,12 @@ class HeroQueries:
                 ranked.c.playtime_share_on_map,
             )
             .select_from(ranked)
-            .join(models.Hero, models.Hero.id == ranked.c.hero_id)
-            .where(ranked.c.rn <= limit_per_map)
+            .join(models.CatalogEntity, models.CatalogEntity.id == ranked.c.hero_id)
+            .where(
+                ranked.c.rn <= limit_per_map,
+                models.CatalogEntity.kind == "character",
+                models.CatalogEntity.discipline == "overwatch",
+            )
             .order_by(ranked.c.map_id, ranked.c.rn)
         )
 

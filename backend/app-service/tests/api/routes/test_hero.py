@@ -10,7 +10,9 @@ assertions mirror the old tests on the envelope ``data``.
 """
 
 import pytest
+from sqlalchemy.orm import Session
 
+from src import models
 from tests.conftest import RpcHarness, build_query
 
 
@@ -60,17 +62,17 @@ def test_search_hero(
         assert query in content["results"][0]["name"].lower()
 
 
-@pytest.mark.parametrize(
-    ("hero_id",),
-    [
-        (1,),
-        (2,),
-        (3,),
-        (4,),
-        (5,),
-    ],
-)
-def test_get_hero_by_id(rpc: RpcHarness, hero_id: int) -> None:
+@pytest.mark.parametrize("hero_offset", range(5))
+def test_get_hero_by_id(rpc: RpcHarness, db: Session, hero_offset: int) -> None:
+    hero_id = (
+        db.query(models.CatalogEntity.id)
+        .filter_by(discipline="overwatch", kind="character")
+        .order_by(models.CatalogEntity.id)
+        .offset(hero_offset)
+        .limit(1)
+        .scalar()
+    )
+    assert hero_id is not None, f"fixture DB has no catalog character at offset {hero_offset}"
     env = rpc.call_sync("rpc.app.read.get", {"entity": "hero", "id": hero_id})
     assert env["ok"] is True
     content = env["data"]

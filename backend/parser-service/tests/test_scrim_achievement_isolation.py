@@ -91,7 +91,6 @@ TABLE_NAMES = (
     "matches.kill_feed",
     "matches.event",
     "catalog.entity",
-    "overwatch.hero",
     "overwatch_rank.rank_snapshot",
     "balancer.registration",
     "balancer.registration_role",

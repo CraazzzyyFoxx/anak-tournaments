@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from sqlalchemy.dialects import postgresql
 
 from shared.repository import CatalogEntityRepository
-from shared.schemas.catalog import GamemodeRead, MapRead
+from shared.schemas.catalog import GamemodeRead, HeroRead, MapRead
 
 
 def _entity(**fields) -> SimpleNamespace:
@@ -55,3 +55,8 @@ def test_the_map_lookup_matches_name_or_alias_of_the_map_and_of_its_mode_in_one_
     assert "catalog.entity AS mode" in sql
     assert sql.count("@>") == 2
     assert "catalog.entity.discipline" in sql and "mode.kind" in sql
+
+
+def test_a_hero_reads_its_class_as_the_hero_class_value_and_defaults_its_color() -> None:
+    hero = HeroRead.from_entity(_entity(slug="ana", name="Ana", attrs={"class": "support"}))
+    assert (hero.type, hero.color, hero.slug) == ("Support", "#ffffff", "ana")

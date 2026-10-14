@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid
-from shared.repository import HeroRepository
+from shared.repository import CatalogEntityRepository
 from src import models, schemas
 from src.core import errors, pagination
 
@@ -16,19 +16,19 @@ class HeroService:
         self,
         *,
         queries: HeroQueries = hero_queries,
-        repo: HeroRepository = HeroRepository(),
+        repo: CatalogEntityRepository = CatalogEntityRepository("character", discipline="overwatch"),
     ) -> None:
         self.queries = queries
         self.repo = repo
 
     @staticmethod
-    def to_read(hero: models.Hero) -> schemas.HeroRead:
-        """Serialize a Hero into ``HeroRead``.
+    def to_read(hero: models.CatalogEntity) -> schemas.HeroRead:
+        """Serialize a catalog character into ``HeroRead``.
 
         A hero has no expandable relation in this payload, so there is nothing to
         load and nothing to await — callers map whole result sets through this.
         """
-        return schemas.HeroRead.model_validate(hero, from_attributes=True)
+        return schemas.HeroRead.from_entity(hero)
 
     async def get_hero_leaderboard(
         self,
@@ -103,8 +103,8 @@ class HeroService:
     async def get_all(
         self, session: AsyncSession, params: pagination.PaginationSortSearchParams
     ) -> pagination.Paginated[schemas.HeroRead]:
-        """Paginated heroes — delegates to `HeroRepository.all`."""
-        heroes, total = await self.repo.all(session, params)
+        """Paginated heroes — delegates to `CatalogEntityRepository.get_all`."""
+        heroes, total = await self.repo.get_all(session, params)
         return pagination.Paginated(
             page=params.page,
             per_page=params.per_page,
@@ -118,7 +118,7 @@ class HeroService:
         params: schemas.HeroPlaytimePaginationParams,
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.HeroPlaytime]:
-        """Hero playtime share — delegates to `HeroRepository.playtime`."""
+        """Hero playtime share — delegates to `CatalogEntityRepository.playtime`."""
         user_id: int | None = None if params.user_id == "all" else params.user_id
         heroes = await self.repo.playtime(
             session,

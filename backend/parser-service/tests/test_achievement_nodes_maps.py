@@ -28,7 +28,7 @@ from test_scrim_achievement_isolation import (  # noqa: E402
     _EngineTestCase,
 )
 
-from shared.core.enums import HeroClass, LogStatsName, MatchEvent  # noqa: E402
+from shared.core.enums import LogStatsName, MatchEvent  # noqa: E402
 
 # Importing the modules is what registers the nodes.
 importlib.import_module("src.services.achievement.engine.conditions.match_event")  # noqa: E402
@@ -92,13 +92,14 @@ class _MapFixture(_scrim._Fixture):
     def hero(self, slug: str) -> int:
         hero_id = self._id()
         self.insert(
-            models.Hero.__table__,
+            models.CatalogEntity.__table__,
             id=hero_id,
+            discipline="overwatch",
+            kind="character",
             slug=slug,
             name=slug.title(),
             image_path=f"{slug}.png",
-            type=HeroClass.support,
-            color="#ffffff",
+            attrs={"class": "support"},
             aliases=[],
         )
         return hero_id

@@ -4,7 +4,6 @@ import asyncio
 from typing import Any
 
 from shared import models
-from shared.core import enums
 from shared.core.pagination import PaginationSortSearchParams
 from shared.repository import BaseRepository
 
@@ -65,14 +64,16 @@ class _Session:
         self.flushed += 1
 
 
-def _hero(name: str = "Ana") -> models.Hero:
-    return models.Hero(slug=name.lower(), name=name, image_path="", type=enums.HeroClass.support)
+def _hero(name: str = "Ana") -> models.CatalogEntity:
+    return models.CatalogEntity(
+        discipline="overwatch", kind="character", slug=name.lower(), name=name, attrs={"class": "support"}
+    )
 
 
 def test_get_returns_first_unique_scalar() -> None:
     hero = _hero()
     session = _Session([_Result([hero])])
-    repo = BaseRepository(models.Hero)
+    repo = BaseRepository(models.CatalogEntity)
 
     assert asyncio.run(repo.get(session, 1)) is hero
     assert len(session.statements) == 1
@@ -81,10 +82,10 @@ def test_get_returns_first_unique_scalar() -> None:
 def test_list_applies_query_and_total_queries() -> None:
     hero = _hero()
     session = _Session([_Result([hero]), _Result(scalar=1)])
-    repo = BaseRepository(models.Hero)
+    repo = BaseRepository(models.CatalogEntity)
     params = PaginationSortSearchParams(query="ana", fields=["name"], sort="name")
 
-    rows, total = asyncio.run(repo.list(session, params, filters=[models.Hero.type == enums.HeroClass.support]))
+    rows, total = asyncio.run(repo.list(session, params, filters=[models.CatalogEntity.kind == "character"]))
 
     assert rows == [hero]
     assert total == 1
@@ -94,7 +95,7 @@ def test_list_applies_query_and_total_queries() -> None:
 def test_write_methods_flush_without_committing() -> None:
     hero = _hero()
     session = _Session()
-    repo = BaseRepository(models.Hero)
+    repo = BaseRepository(models.CatalogEntity)
 
     assert asyncio.run(repo.create(session, hero)) is hero
     assert session.added == [hero]

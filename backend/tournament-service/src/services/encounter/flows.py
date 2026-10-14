@@ -827,10 +827,10 @@ class EncounterFlowsService:
                 is_environmental=kf.is_environmental,
                 killer_user_id=kf.killer_id,
                 killer_team_id=kf.killer_team_id,
-                killer_hero=schemas.HeroRead.model_validate(killer_hero, from_attributes=True),
+                killer_hero=schemas.HeroRead.from_entity(killer_hero),
                 victim_user_id=kf.victim_id,
                 victim_team_id=kf.victim_team_id,
-                victim_hero=schemas.HeroRead.model_validate(victim_hero, from_attributes=True),
+                victim_hero=schemas.HeroRead.from_entity(victim_hero),
             )
             for kf, killer_hero, victim_hero in kill_rows
         ]
@@ -842,7 +842,7 @@ class EncounterFlowsService:
                 name=ev.name.value,
                 user_id=ev.user_id,
                 team_id=ev.team_id,
-                hero=schemas.HeroRead.model_validate(hero, from_attributes=True) if hero is not None else None,
+                hero=schemas.HeroRead.from_entity(hero) if hero is not None else None,
                 related_user_id=ev.related_user_id,
                 related_team_id=ev.related_team_id,
             )

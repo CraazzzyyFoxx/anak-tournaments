@@ -304,7 +304,7 @@ def _reg_to_read(
                 is_primary=r.is_primary,
                 priority=r.priority,
                 rank_value=None,
-                top_heroes=[he.hero.slug for he in sorted(r.hero_entries, key=lambda he: he.priority)],
+                top_heroes=[he.entity.slug for he in sorted(r.hero_entries, key=lambda he: he.priority)],
             )
             for r in sorted(reg.roles or [], key=lambda r: (not r.is_primary, r.priority))
         ]
