@@ -1836,7 +1836,7 @@
             "default": "id",
             "enum": [
               "id",
-              "gamemode_id",
+              "parent_id",
               "name",
               "similarity:name"
             ],
@@ -16675,64 +16675,6 @@
       "title": "PaginationSortQueryParams[Literal['id', 'name', 'winrate', 'tournaments']]",
       "type": "object"
     },
-    "app.PaginationSortSearchQueryParams_Literal__id____gamemode_id____name____similarity__": {
-      "properties": {
-        "entities": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Entities",
-          "type": "array"
-        },
-        "fields": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Fields",
-          "type": "array"
-        },
-        "only_count": {
-          "default": false,
-          "title": "Only Count",
-          "type": "boolean"
-        },
-        "order": {
-          "$ref": "#/components/schemas/app.SortOrder",
-          "default": "asc"
-        },
-        "page": {
-          "default": 1,
-          "minimum": 1,
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "default": 10,
-          "maximum": 100,
-          "minimum": -1,
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "query": {
-          "default": "",
-          "title": "Query",
-          "type": "string"
-        },
-        "sort": {
-          "default": "id",
-          "enum": [
-            "id",
-            "gamemode_id",
-            "name",
-            "similarity:name"
-          ],
-          "title": "Sort",
-          "type": "string"
-        }
-      },
-      "title": "PaginationSortSearchQueryParams[Literal['id', 'gamemode_id', 'name', 'similarity:name']]",
-      "type": "object"
-    },
     "app.PaginationSortSearchQueryParams_Literal__id____name____slug____similarity___similarity__": {
       "properties": {
         "entities": {
@@ -16790,6 +16732,64 @@
         }
       },
       "title": "PaginationSortSearchQueryParams[Literal['id', 'name', 'slug', 'similarity:name', 'similarity:slug']]",
+      "type": "object"
+    },
+    "app.PaginationSortSearchQueryParams_Literal__id____parent_id____name____similarity__": {
+      "properties": {
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "fields": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Fields",
+          "type": "array"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/app.SortOrder",
+          "default": "asc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 10,
+          "maximum": 100,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "sort": {
+          "default": "id",
+          "enum": [
+            "id",
+            "parent_id",
+            "name",
+            "similarity:name"
+          ],
+          "title": "Sort",
+          "type": "string"
+        }
+      },
+      "title": "PaginationSortSearchQueryParams[Literal['id', 'parent_id', 'name', 'similarity:name']]",
       "type": "object"
     },
     "app.PlayerStatistics": {

@@ -33,7 +33,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db, enums
-from shared.models.catalog.map import Map
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.encounter.encounter import Encounter
 
 __all__ = (
@@ -76,6 +76,13 @@ class EncounterGame(db.TimeStampIntegerMixin):
         Index("ix_game_map_id", "map_id"),
         UniqueConstraint("id", "encounter_id", name="uq_game_id_encounter"),
         CheckConstraint("position >= 1", name="ck_game_position"),
+        CheckConstraint("map_kind = 'map'", name="ck_game_map_kind"),
+        ForeignKeyConstraint(
+            ["map_id", "map_kind"],
+            ["catalog.entity.id", "catalog.entity.kind"],
+            ondelete="RESTRICT",
+            name="fk_game_map",
+        ),
         # confirmed => the whole accepted shape is present. Cancelled rows keep
         # whatever they had, which is why this is one-directional.
         CheckConstraint(
@@ -87,9 +94,10 @@ class EncounterGame(db.TimeStampIntegerMixin):
 
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"))
     position: Mapped[int] = mapped_column(Integer())
-    # RESTRICT, not CASCADE: deleting a catalog map must not silently erase a
-    # played position's identity. V3 widens this to ``catalog.entity``.
-    map_id: Mapped[int | None] = mapped_column(ForeignKey(Map.id, ondelete="RESTRICT"), nullable=True)
+    # RESTRICT, not CASCADE: deleting a catalog map must not silently erase a played position's identity.
+    map_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    #: Kind constant of the composite FK (spec §14.1): the database guarantees a game is played on a map.
+    map_kind: Mapped[str] = mapped_column(String(16), default="map", server_default="map")
     state: Mapped[enums.EncounterGameState] = mapped_column(
         ENCOUNTER_GAME_STATE_ENUM,
         default=enums.EncounterGameState.PLANNED,
@@ -104,7 +112,9 @@ class EncounterGame(db.TimeStampIntegerMixin):
     confirmed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
 
     encounter: Mapped[Encounter] = relationship(back_populates="games")
-    map: Mapped[Map | None] = relationship()
+    map: Mapped[CatalogEntity | None] = relationship(
+        primaryjoin="foreign(EncounterGame.map_id) == CatalogEntity.id", viewonly=True
+    )
 
 
 class EncounterGameTeam(db.Base):

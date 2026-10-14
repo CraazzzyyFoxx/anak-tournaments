@@ -328,7 +328,7 @@ class MatchLogProcessor:
             return False
         return True
 
-    async def get_map(self, session: AsyncSession) -> models.Map:
+    async def get_map(self, session: AsyncSession) -> models.CatalogEntity:
         match_start_events = self._get_rows(enums.LogEventType.MatchStart)
         if match_start_events.empty:
             raise errors.ApiHTTPException(
@@ -348,7 +348,7 @@ class MatchLogProcessor:
         self,
         session: AsyncSession,
         encounter: models.Encounter,
-        match_map: models.Map,
+        match_map: models.CatalogEntity,
         map_pools: Sequence[PickBanConfig],
     ) -> None:
         # No pool (including a rules-only template) means captains choose freely.

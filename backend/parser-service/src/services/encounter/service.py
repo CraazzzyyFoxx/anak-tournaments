@@ -143,7 +143,7 @@ class EncounterService:
         *,
         time: float,
         log_name: str,
-        map: models.Map,
+        map: models.CatalogEntity,
         home_team_id: int,
         away_team_id: int,
         home_score: int,

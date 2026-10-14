@@ -14,7 +14,9 @@ Revises: mixround01
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import json
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -65,6 +67,28 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
     ),
 )
 PREFLIGHT_SAMPLE = 20
+
+#: Not a stop: a soft id naming no legacy row (its map or hero was deleted) is left as it is. It lies below every
+#: new id, so it can never come to name an entity, and the reconcile does not count it as uncarried.
+DANGLING_PICK_BAN_IDS = """
+SELECT count(*) AS dangling_pick_ban_ids
+  FROM (SELECT c.kind::text AS kind, i.item_id::bigint AS item_id
+          FROM tournament.pick_ban_config_item i JOIN tournament.pick_ban_config c ON c.id = i.pick_ban_config_id
+        UNION ALL
+        SELECT c.kind::text, si.item_id
+          FROM tournament.pick_ban_config_slot_item si
+          JOIN tournament.pick_ban_config_slot sl ON sl.id = si.pick_ban_config_slot_id
+          JOIN tournament.pick_ban_config c ON c.id = sl.pick_ban_config_id
+        UNION ALL
+        SELECT c.kind::text, sl.reserve_item_id
+          FROM tournament.pick_ban_config_slot sl JOIN tournament.pick_ban_config c ON c.id = sl.pick_ban_config_id
+         WHERE sl.reserve_item_id IS NOT NULL
+        UNION ALL
+        SELECT s.kind::text, e.item_id
+          FROM encounter.pick_ban_entry e JOIN encounter.pick_ban_session s ON s.id = e.session_id) x
+ WHERE (x.kind = 'map' AND NOT EXISTS (SELECT 1 FROM overwatch.map m WHERE m.id = x.item_id))
+    OR (x.kind = 'hero' AND NOT EXISTS (SELECT 1 FROM overwatch.hero h WHERE h.id = x.item_id))
+"""
 
 
 def _preflight() -> None:
@@ -189,10 +213,298 @@ _COPY = (
     """,
 )
 
+#: Every hard map reference, rewritten through entity_legacy and repointed. The new FK is the proof: an id left behind
+#: lies below every new id and fails it. ``matches.*`` and ``casual.match`` die in P9; their plain FK keeps today's
+#: ON DELETE, their kind is enforced where their data goes (``stats.*``).
+_MAPS = (
+    """
+    ALTER TABLE encounter.game
+      ADD COLUMN map_kind VARCHAR(16) NOT NULL DEFAULT 'map' CONSTRAINT ck_game_map_kind CHECK (map_kind = 'map'),
+      DROP CONSTRAINT encounter_game_map_id_fkey
+    """,
+    "UPDATE encounter.game g SET map_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = g.map_id",
+    """
+    ALTER TABLE encounter.game ADD CONSTRAINT fk_game_map FOREIGN KEY (map_id, map_kind)
+      REFERENCES catalog.entity (id, kind) ON DELETE RESTRICT
+    """,
+    """
+    ALTER TABLE balancer.custom_game_lobby
+      ADD COLUMN next_map_kind VARCHAR(16) NOT NULL DEFAULT 'map'
+        CONSTRAINT ck_custom_game_lobby_next_map_kind CHECK (next_map_kind = 'map'),
+      DROP CONSTRAINT custom_game_lobby_next_map_id_fkey
+    """,
+    """
+    UPDATE balancer.custom_game_lobby b SET next_map_id = l.entity_id
+      FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = b.next_map_id
+    """,
+    """
+    ALTER TABLE balancer.custom_game_lobby ADD CONSTRAINT fk_custom_game_lobby_next_map
+      FOREIGN KEY (next_map_id, next_map_kind) REFERENCES catalog.entity (id, kind) ON DELETE SET NULL (next_map_id)
+    """,
+    "ALTER TABLE matches.match DROP CONSTRAINT match_map_id_fkey",
+    "UPDATE matches.match m SET map_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = m.map_id",
+    "ALTER TABLE matches.match ADD CONSTRAINT match_map_id_fkey FOREIGN KEY (map_id) REFERENCES catalog.entity (id) ON DELETE CASCADE",
+    # Legacy mix rows: mixround01_reconcile compares their map with encounter.game's, and mixround02 trusts it.
+    "ALTER TABLE casual.match DROP CONSTRAINT match_map_id_fkey",
+    "UPDATE casual.match m SET map_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = m.map_id",
+    "ALTER TABLE casual.match ADD CONSTRAINT match_map_id_fkey FOREIGN KEY (map_id) REFERENCES catalog.entity (id) ON DELETE SET NULL",
+    # Survives only where enclayer02 ran as a stamp; the release drops it before this revision.
+    """
+    DO $$
+    BEGIN
+      IF to_regclass('tournament.encounter_map_code') IS NOT NULL THEN
+        ALTER TABLE tournament.encounter_map_code DROP CONSTRAINT encounter_map_code_map_id_fkey;
+        UPDATE tournament.encounter_map_code c SET map_id = l.entity_id
+          FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = c.map_id;
+        ALTER TABLE tournament.encounter_map_code ADD CONSTRAINT encounter_map_code_map_id_fkey
+          FOREIGN KEY (map_id) REFERENCES catalog.entity (id) ON DELETE SET NULL;
+      END IF;
+    END $$
+    """,
+)
+
+#: The interim hero-stats view (P4 replaces it with stats.mv_entity_global_stats) joined ``overwatch.map``. Created
+#: WITH NO DATA as before: the app-worker's first refresh is a plain REFRESH (hero_stats_refresh.py).
+_STATS_VIEW = (
+    "DROP MATERIALIZED VIEW matches.mv_hero_global_stats",
+    """
+    CREATE MATERIALIZED VIEW matches.mv_hero_global_stats AS
+    WITH qualified AS (
+        SELECT DISTINCT s.match_id, s.user_id, s.hero_id
+        FROM matches.statistics s
+        WHERE s.round = 0 AND s.name = 'HeroTimePlayed' AND s.value > 60
+    ),
+    eligible AS (
+        SELECT st.match_id, st.user_id, st.hero_id, st.name, st.value
+        FROM matches.statistics st
+        JOIN qualified q
+          ON q.match_id = st.match_id AND q.user_id = st.user_id AND q.hero_id = st.hero_id
+        WHERE st.round = 0 AND st.hero_id IS NOT NULL
+    ),
+    agg AS (
+        SELECT e.hero_id, e.name, sum(e.value) AS sum_value, sum(m."time") AS sum_time
+        FROM eligible e
+        JOIN matches.match m ON m.id = e.match_id
+        GROUP BY e.hero_id, e.name
+    ),
+    ranked AS (
+        SELECT e.hero_id, e.name, e.match_id, e.user_id, e.value,
+               row_number() OVER (
+                 PARTITION BY e.hero_id, e.name
+                 ORDER BY e.value * CASE WHEN e.name IN (
+                              'Deaths', 'DamageTaken', 'EnvironmentalDeaths',
+                              'ShotsMissed', 'DamageFB', 'Performance'
+                          ) THEN -1.0 ELSE 1.0 END DESC,
+                          e.match_id DESC
+               ) AS rn
+        FROM eligible e
+    ),
+    best AS (
+        SELECT r.hero_id, r.name, r.value AS best_value,
+               m.encounter_id,
+               mp.name AS map_name, mp.image_path AS map_image_path,
+               t.name AS tournament_name,
+               u.name AS username
+        FROM ranked r
+        JOIN matches.match m          ON m.id = r.match_id
+        JOIN catalog.entity mp        ON mp.id = m.map_id
+        JOIN encounter.encounter enc  ON enc.id = m.encounter_id
+        JOIN tournament.tournament t  ON t.id = enc.tournament_id
+        JOIN players."user" u         ON u.id = r.user_id
+        WHERE r.rn = 1
+    )
+    SELECT
+        a.name AS name,
+        a.hero_id AS hero_id,
+        b.best_value AS best_value,
+        (a.sum_value / nullif(a.sum_time, 0)) * 600 AS avg,
+        jsonb_build_object(
+            'encounter_id', b.encounter_id,
+            'map_name', b.map_name,
+            'map_image_path', b.map_image_path,
+            'tournament_name', b.tournament_name,
+            'username', b.username
+        ) AS metadata
+    FROM agg a
+    JOIN best b ON b.hero_id = a.hero_id AND b.name = a.name
+    WITH NO DATA
+    """,
+    "CREATE UNIQUE INDEX ix_mv_hero_global_stats_name_hero ON matches.mv_hero_global_stats (name, hero_id)",
+)
+
+# ── pick-ban soft ids (D84): columns set-based, documents row by row ─────────────────────────────────────────────
+
+_PICK_BAN_COLUMNS = (
+    """
+    UPDATE tournament.pick_ban_config_item i SET item_id = l.entity_id
+      FROM tournament.pick_ban_config c, catalog.entity_legacy l
+     WHERE c.id = i.pick_ban_config_id AND c.kind::text = :kind AND l.legacy_kind = :kind AND l.legacy_id = i.item_id
+    """,
+    """
+    UPDATE tournament.pick_ban_config_slot_item si SET item_id = l.entity_id
+      FROM tournament.pick_ban_config_slot sl, tournament.pick_ban_config c, catalog.entity_legacy l
+     WHERE sl.id = si.pick_ban_config_slot_id AND c.id = sl.pick_ban_config_id AND c.kind::text = :kind
+       AND l.legacy_kind = :kind AND l.legacy_id = si.item_id
+    """,
+    """
+    UPDATE tournament.pick_ban_config_slot sl SET reserve_item_id = l.entity_id
+      FROM tournament.pick_ban_config c, catalog.entity_legacy l
+     WHERE c.id = sl.pick_ban_config_id AND c.kind::text = :kind AND l.legacy_kind = :kind AND l.legacy_id = sl.reserve_item_id
+    """,
+    """
+    UPDATE encounter.pick_ban_entry e SET item_id = l.entity_id
+      FROM encounter.pick_ban_session s, catalog.entity_legacy l
+     WHERE s.id = e.session_id AND s.kind::text = :kind AND l.legacy_kind = :kind AND l.legacy_id = e.item_id
+    """,
+)
+_JOURNAL_ACTIONS = ("acted", "draft_locked", "draft_set", "step_auto_resolved")
+
+
+def _remap(value: Any, ids: Mapping[int, int]) -> Any:
+    """One soft id; anything that is not an int (or is a bool) is not an id and stays."""
+    return ids.get(value, value) if isinstance(value, int) and not isinstance(value, bool) else value
+
+
+def remap_condition(node: Any, ids: Mapping[int, int]) -> Any:
+    """Every ``item_in`` leaf's ``item_ids`` at any depth of a ruleset or step document."""
+    if isinstance(node, list):
+        return [remap_condition(value, ids) for value in node]
+    if not isinstance(node, dict):
+        return node
+    out = {key: remap_condition(value, ids) for key, value in node.items()}
+    params = out.get("params")
+    if out.get("type") == "item_in" and isinstance(params, dict) and isinstance(params.get("item_ids"), list):
+        out["params"] = {**params, "item_ids": [_remap(value, ids) for value in params["item_ids"]]}
+    return out
+
+
+def remap_pool(pool: dict, ids: Mapping[int, int]) -> dict:
+    out = dict(pool)
+    if isinstance(out.get("items"), list):
+        out["items"] = [_remap(value, ids) for value in out["items"]]
+    if isinstance(out.get("slots"), list):
+        out["slots"] = [
+            [_remap(value, ids) for value in slot] if isinstance(slot, list) else slot for slot in out["slots"]
+        ]
+    return out
+
+
+def remap_reserves(reserves: dict | None, ids: Mapping[int, int]) -> dict | None:
+    return None if reserves is None else {position: _remap(value, ids) for position, value in reserves.items()}
+
+
+def side_pick_steps(sequence: list | None) -> frozenset[int]:
+    """Step indexes whose answers are side indexes, not catalog ids."""
+    return frozenset(
+        step["index"] for step in sequence or () if isinstance(step, dict) and step.get("action") == "side_pick"
+    )
+
+
+def remap_items(items: list | None, ids: Mapping[int, int]) -> list:
+    return [
+        {**item, "item_id": _remap(item["item_id"], ids)} if isinstance(item, dict) and "item_id" in item else item
+        for item in items or []
+    ]
+
+
+def remap_journal(data: dict, ids: Mapping[int, int]) -> dict:
+    out = dict(data)
+    if "item_id" in out:
+        out["item_id"] = _remap(out["item_id"], ids)
+    if isinstance(out.get("items"), list):
+        out["items"] = remap_items(out["items"], ids)
+    if isinstance(out.get("item_ids"), list):
+        out["item_ids"] = [_remap(value, ids) for value in out["item_ids"]]
+    return out
+
+
+def _rewrite_documents(
+    bind, select_sql: str, update_sql: str, kind: str, remap: Callable[[Any], dict[str, Any]]
+) -> None:
+    changes: list[dict[str, Any]] = []
+    for row in bind.execute(sa.text(select_sql), {"kind": kind}).mappings().all():
+        new = remap(row)
+        if any(new[column] != row[column] for column in new):
+            changes.append(
+                {
+                    "id": row["id"],
+                    **{column: None if value is None else json.dumps(value) for column, value in new.items()},
+                }
+            )
+    if changes:
+        bind.execute(sa.text(update_sql), changes)
+
+
+def _rewrite_pick_ban(kind: str) -> None:
+    """Every soft reference of one pick-ban kind (``map`` | ``hero``, equal to the legacy kind)."""
+    bind = op.get_bind()
+    for statement in _PICK_BAN_COLUMNS:
+        bind.execute(sa.text(statement), {"kind": kind})
+    ids = dict(
+        bind.execute(
+            sa.text("SELECT legacy_id, entity_id FROM catalog.entity_legacy WHERE legacy_kind = :kind"), {"kind": kind}
+        )
+        .tuples()
+        .all()
+    )
+    _rewrite_documents(
+        bind,
+        "SELECT id, ruleset_json FROM tournament.pick_ban_config WHERE kind::text = :kind",
+        "UPDATE tournament.pick_ban_config SET ruleset_json = CAST(:ruleset_json AS JSON) WHERE id = :id",
+        kind,
+        lambda row: {"ruleset_json": remap_condition(row["ruleset_json"], ids)},
+    )
+    _rewrite_documents(
+        bind,
+        "SELECT id, pool_json, slot_reserves_json, ruleset_json, resolved_sequence_json"
+        "  FROM encounter.pick_ban_session WHERE kind::text = :kind",
+        "UPDATE encounter.pick_ban_session SET pool_json = CAST(:pool_json AS JSON),"
+        " slot_reserves_json = CAST(:slot_reserves_json AS JSON), ruleset_json = CAST(:ruleset_json AS JSON),"
+        " resolved_sequence_json = CAST(:resolved_sequence_json AS JSON) WHERE id = :id",
+        kind,
+        lambda row: {
+            "pool_json": remap_pool(row["pool_json"], ids),
+            "slot_reserves_json": remap_reserves(row["slot_reserves_json"], ids),
+            "ruleset_json": remap_condition(row["ruleset_json"], ids),
+            "resolved_sequence_json": remap_condition(row["resolved_sequence_json"], ids),
+        },
+    )
+    _rewrite_documents(
+        bind,
+        "SELECT sub.id, sub.step_index, sub.items_json, s.resolved_sequence_json"
+        "  FROM encounter.pick_ban_submission sub JOIN encounter.pick_ban_session s ON s.id = sub.session_id"
+        " WHERE s.kind::text = :kind",
+        "UPDATE encounter.pick_ban_submission SET items_json = CAST(:items_json AS JSON) WHERE id = :id",
+        kind,
+        lambda row: {
+            "items_json": row["items_json"]
+            if row["step_index"] in side_pick_steps(row["resolved_sequence_json"])
+            else remap_items(row["items_json"], ids)
+        },
+    )
+    _rewrite_documents(
+        bind,
+        "SELECT r.id, r.data, s.resolved_sequence_json"
+        "  FROM encounter.room_event r"
+        "  LEFT JOIN encounter.pick_ban_session s ON s.encounter_id = r.encounter_id AND s.kind::text = r.kind"
+        f" WHERE r.kind = :kind AND r.action IN {_JOURNAL_ACTIONS!r}",
+        "UPDATE encounter.room_event SET data = CAST(:data AS JSON) WHERE id = :id",
+        kind,
+        lambda row: {
+            "data": row["data"]
+            if row["data"].get("action") == "side_pick"
+            or row["data"].get("step_index") in side_pick_steps(row["resolved_sequence_json"])
+            else remap_journal(row["data"], ids)
+        },
+    )
+
 
 def upgrade() -> None:
     _preflight()
-    for statement in (*_SCHEMA, *_COPY):
+    for statement in (*_SCHEMA, *_COPY, *_MAPS):
+        op.execute(statement)
+    _rewrite_pick_ban("map")
+    for statement in _STATS_VIEW:
         op.execute(statement)
 
 

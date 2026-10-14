@@ -28,6 +28,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared.core import http_status as status
 from shared.core.enums import (
@@ -38,9 +39,8 @@ from shared.core.enums import (
 )
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain import pick_ban_rules as pbr
-from shared.models.catalog.gamemode import Gamemode
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.catalog.hero import Hero
-from shared.models.catalog.map import Map
 from shared.models.tournament.pick_ban import (
     PickBanConfig,
     PickBanConfigItem,
@@ -87,7 +87,9 @@ async def group_vocabulary(session: AsyncSession, kind: PickBanKind) -> list[str
     """
     if kind == PickBanKind.HERO:
         return list(pbr.HERO_GROUPS)
-    slugs = await session.scalars(select(Gamemode.slug).order_by(Gamemode.slug))
+    slugs = await session.scalars(
+        select(CatalogEntity.slug).where(CatalogEntity.kind == "mode").order_by(CatalogEntity.slug)
+    )
     return [group for group in (pbr.normalize_group(slug) for slug in slugs) if group]
 
 
@@ -102,7 +104,12 @@ async def pool_group_counts(session: AsyncSession, kind: PickBanKind, item_ids: 
     if kind == PickBanKind.HERO:
         query = select(Hero.type).where(Hero.id.in_(item_ids))
     else:
-        query = select(Gamemode.slug).join(Map, Map.gamemode_id == Gamemode.id).where(Map.id.in_(item_ids))
+        mode = aliased(CatalogEntity, name="mode")
+        query = (
+            select(mode.slug)
+            .join(CatalogEntity, CatalogEntity.parent_id == mode.id)
+            .where(CatalogEntity.id.in_(item_ids))
+        )
     counts: dict[str, int] = {}
     for raw in await session.scalars(query):
         group = pbr.normalize_group(raw)

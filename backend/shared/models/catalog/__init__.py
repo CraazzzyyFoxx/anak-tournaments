@@ -4,6 +4,4 @@
 from .alias_miss import *
 from .discipline import *
 from .entity import *
-from .gamemode import *
 from .hero import *
-from .map import *

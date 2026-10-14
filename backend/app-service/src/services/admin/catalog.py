@@ -45,7 +45,7 @@ def check_class(spec: DisciplineSpec, kind: str, attrs: dict) -> None:
 
 
 def check_parent(spec: DisciplineSpec, kind: str, parent_id: int | None) -> None:
-    """A map of a game with modes sits under one (``overwatch.map.gamemode_id`` was NOT NULL); nothing else has a parent."""
+    """A map of a game with modes sits under one; nothing else has a parent."""
     if kind == "map" and "mode" in spec.kinds:
         if parent_id is None:
             raise HTTPException(

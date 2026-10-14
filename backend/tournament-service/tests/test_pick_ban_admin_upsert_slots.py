@@ -287,7 +287,7 @@ class _FakeSession:
         entity = self._record(query)
         if entity is pick_ban_models.PickBanConfig:
             return _Result(self._configs)
-        if entity is catalog_models.Gamemode:
+        if entity is catalog_models.CatalogEntity:
             return _Result(list(GAMEMODE_SLUGS))
         if entity is catalog_models.Hero:
             return _Result(list(self._hero_types))
@@ -959,7 +959,7 @@ class RunningSessionsAreUntouched(_UpsertCase):
         envelope, session = await self.invoke(slot_body(), existing=existing)
 
         self.assertTrue(envelope["ok"], envelope)
-        self.assertEqual(["Gamemode", "PickBanConfig", "Tournament"], sorted(session.statements))
+        self.assertEqual(["CatalogEntity", "PickBanConfig", "Tournament"], sorted(session.statements))
         self.assertEqual(["AuditLog"], [type(obj).__name__ for obj in session.added])
 
 

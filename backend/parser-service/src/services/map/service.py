@@ -7,7 +7,7 @@ import typing
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.repository import MapRepository
+from shared.repository import CatalogEntityRepository
 from src import models, schemas
 from src.core import errors, utils
 from src.services import catalog_aliases
@@ -18,41 +18,33 @@ __all__ = ("MapService", "map_service", "map_entities", "to_pydantic")
 def map_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     entities = []
     if "gamemode" in in_entities:
-        entities.append(utils.join_entity(child, models.Map.gamemode))
+        entities.append(utils.join_entity(child, models.CatalogEntity.parent))
 
     return entities
 
 
-def to_pydantic(map: models.Map, entities: list[str]) -> schemas.MapRead:
-    gamemode: schemas.GamemodeRead | None = None
-    if "gamemode" in entities:
-        gamemode = schemas.GamemodeRead(**map.gamemode.to_dict())
-    return schemas.MapRead(
-        id=map.id,
-        name=map.name,
-        image_path=map.image_path,
-        gamemode=gamemode,
-    )
+def to_pydantic(map: models.CatalogEntity, entities: list[str]) -> schemas.MapRead:
+    return schemas.MapRead.from_entity(map, with_gamemode="gamemode" in entities)
 
 
 class MapService:
-    def __init__(self, *, repo: MapRepository = MapRepository()) -> None:
+    def __init__(
+        self, *, repo: CatalogEntityRepository = CatalogEntityRepository("map", discipline=catalog_aliases.DISCIPLINE)
+    ) -> None:
         self.repo = repo
-
-    async def get_by_names(self, session: AsyncSession, names: list[str]) -> dict[str, models.Map]:
-        """All maps whose name is in ``names``, indexed by name, in one query."""
-        return await self.repo.get_many_by(session, models.Map.name, names)
 
     async def get_by_name_or_alias_and_gamemode(
         self, session: AsyncSession, name: str, gamemode: str
-    ) -> models.Map | None:
+    ) -> models.CatalogEntity | None:
         """Thin wrapper over the repository — it owns the predicate so the SQL
         stays assertable without a database."""
-        return await self.repo.get_by_name_or_alias_and_gamemode(session, name=name, gamemode=gamemode)
+        return await self.repo.get_map_by_name_or_alias(
+            session, discipline=catalog_aliases.DISCIPLINE, name=name, mode_name=gamemode
+        )
 
     async def resolve_by_name_or_alias_and_gamemode(
         self, session: AsyncSession, name: str, gamemode: str, *, log_record_id: int | None = None
-    ) -> models.Map:
+    ) -> models.CatalogEntity:
         """Resolve a log's raw map + gamemode names through `name` or `aliases`."""
         map = await self.get_by_name_or_alias_and_gamemode(session, name, gamemode)
         if not map:

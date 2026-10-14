@@ -49,11 +49,11 @@ class UserCompareQueries:
         left_hero_id: int | None,
         right_hero_id: int | None,
         map_id: int | None,
-    ) -> tuple[models.Hero | None, models.Hero | None, models.Map | None]:
+    ) -> tuple[models.Hero | None, models.Hero | None, models.CatalogEntity | None]:
         """Load the optional left hero, right hero, and map in one round trip."""
         left_hero = aliased(models.Hero, name="compare_left_hero")
         right_hero = aliased(models.Hero, name="compare_right_hero")
-        compare_map = aliased(models.Map, name="compare_map")
+        compare_map = aliased(models.CatalogEntity, name="compare_map")
         anchor = sa.select(sa.literal(1).label("anchor")).subquery("compare_catalog_anchor")
 
         statement = (

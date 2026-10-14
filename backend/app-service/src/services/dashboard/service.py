@@ -98,8 +98,12 @@ class DashboardService:
             .where(registration_open_clause(), *ws_filters)
         )
         heroes_total = sa.select(sa.func.count(models.Hero.id))
-        gamemodes_total = sa.select(sa.func.count(models.Gamemode.id))
-        maps_total = sa.select(sa.func.count(models.Map.id))
+        gamemodes_total = sa.select(sa.func.count(models.CatalogEntity.id)).where(
+            models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "mode"
+        )
+        maps_total = sa.select(sa.func.count(models.CatalogEntity.id)).where(
+            models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "map"
+        )
 
         results = await session.execute(
             sa.select(

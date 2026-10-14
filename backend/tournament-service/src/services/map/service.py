@@ -27,6 +27,6 @@ def map_entities(in_entities: list[str], child: typing.Any | None = None) -> lis
     """
     entities = []
     if "gamemode" in in_entities:
-        entities.append(utils.join_entity(child, models.Map.gamemode))
+        entities.append(utils.join_entity(child, models.CatalogEntity.parent))
 
     return entities

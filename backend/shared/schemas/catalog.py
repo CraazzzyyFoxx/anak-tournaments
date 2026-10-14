@@ -13,12 +13,13 @@ parser-service and tournament-service, so declaring ``aliases`` here would widen
 two unrelated public payloads. app-service subclasses these three models to add
 it.
 
-No ``model_config`` here on purpose: callers that read ORM objects pass
-``from_attributes=True`` to ``model_validate`` themselves.
+Built from a ``catalog.entity`` row with ``from_entity``; the wire shape is Overwatch's until P7 makes the
+reads data-driven.
 """
 
 import typing
 from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -38,11 +39,27 @@ __all__ = (
 )
 
 
+def _entity_fields(entity: Any) -> dict[str, Any]:
+    """What every catalog read model takes from a ``catalog.entity`` row (``aliases`` is read by the subclasses that
+    declare it and ignored by the rest)."""
+    return {
+        "id": entity.id,
+        "slug": entity.slug,
+        "name": entity.name,
+        "image_path": entity.image_path or "",
+        "aliases": list(entity.aliases or []),
+    }
+
+
 class GamemodeRead(BaseRead):
     slug: str
     name: str
     image_path: str
     description: str | None
+
+    @classmethod
+    def from_entity(cls, entity: Any) -> typing.Self:
+        return cls.model_validate({**_entity_fields(entity), "description": (entity.attrs or {}).get("description")})
 
 
 class HeroRead(BaseRead):
@@ -60,6 +77,21 @@ class MapRead(BaseRead):
     in_competitive: bool = True
 
     gamemode: GamemodeRead | None
+
+    @classmethod
+    def from_entity(cls, entity: Any, *, with_gamemode: bool = False) -> typing.Self:
+        """``with_gamemode`` reads ``entity.parent``, which the caller must have loaded."""
+        parent = entity.parent if with_gamemode else None
+        return cls.model_validate(
+            {
+                **_entity_fields(entity),
+                "gamemode_id": entity.parent_id,
+                "in_competitive": (entity.attrs or {}).get("in_competitive", True),
+                "gamemode": None
+                if parent is None
+                else {**_entity_fields(parent), "description": (parent.attrs or {}).get("description")},
+            }
+        )
 
 
 class HeroPlaytime(BaseModel):

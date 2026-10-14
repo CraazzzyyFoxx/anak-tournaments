@@ -76,7 +76,12 @@ def _ensure_impact_badge_fixture(db: Session) -> dict[str, int]:
     if db.get(models.User, ids["user_a"]) is not None:
         return ids
 
-    map_row = db.query(models.Map.id).order_by(models.Map.id).first()
+    map_row = (
+        db.query(models.CatalogEntity.id)
+        .filter_by(discipline="overwatch", kind="map")
+        .order_by(models.CatalogEntity.id)
+        .first()
+    )
     assert map_row is not None, "no map seeded in dev DB"
     map_id = map_row[0]
 

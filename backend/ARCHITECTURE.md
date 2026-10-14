@@ -337,6 +337,26 @@ Unchanged, repo-wide, since `backend/docs/repository-boundaries.md`:
   ratcheted — an exemption whose file stopped writing directly fails the suite — so neither
   list can rot the way the single allowlist did.
 
+### Map and mode catalog reads
+
+Maps and modes are `CatalogEntity` rows (`kind="map"` / `"mode"`). Overwatch-shaped
+public reads use `CatalogEntityRepository(kind, discipline="overwatch")`; generic map
+existence checks use `CatalogEntityRepository("map")`. A map's mode is `parent_id` /
+`parent`, while the response still spells it `gamemode_id` / `gamemode`.
+`MapRead.from_entity` and `GamemodeRead.from_entity` preserve those wire shapes and
+aliases; callers load `parent` before requesting the `gamemode` expansion. Public map
+listing sorts by `parent_id`, not the removed ORM attribute `gamemode_id`.
+The separate user-map statistics sort keeps its `gamemode_id` wire key and translates
+it to `parent_id` when building SQL.
+
+`discipline01` rewrites hard map references and map pick-ban ids (including snapshots
+and room events) through `catalog.entity_legacy`. Side-pick answers are side indexes
+and stay unchanged; preflight counts dangling soft ids, which stay unchanged too.
+Games and mix-lobby maps have kind-constant composite FKs. The retired matches,
+casual matches and surviving legacy map-code table retain their original delete
+behavior through plain catalog FKs. The interim hero-statistics view joins the
+catalog and starts unpopulated for the existing worker to refresh.
+
 ## Import layering between domains, when it's worth enforcing
 
 Most services are a flat set of mutually-non-importing domains (`balancer-service`'s

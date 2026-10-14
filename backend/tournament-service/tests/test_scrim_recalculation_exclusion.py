@@ -71,7 +71,7 @@ def _compile_bigint_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN2
 
 # The tables reachable from ``recalculate_for_tournament`` and from the scrim
 # predicate. Foreign keys leaving this set (``workspace``, ``players.user``,
-# ``overwatch.map``, ``auth.user``) are unenforced under SQLite, so those tables
+# ``catalog.entity``, ``auth.user``) are unenforced under SQLite, so those tables
 # are deliberately not created.
 TABLE_NAMES = (
     "tournament.tournament",

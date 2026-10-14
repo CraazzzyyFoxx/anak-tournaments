@@ -715,11 +715,11 @@ class EncounterService:
         )
 
         hot_map_rows = await session.execute(
-            sa.select(models.Map.name, sa.func.count(models.Match.id))
+            sa.select(models.CatalogEntity.name, sa.func.count(models.Match.id))
             .select_from(models.Match)
             .join(base_ids, base_ids.c.id == models.Match.encounter_id)
-            .join(models.Map, models.Match.map_id == models.Map.id)
-            .group_by(models.Map.name)
+            .join(models.CatalogEntity, models.Match.map_id == models.CatalogEntity.id)
+            .group_by(models.CatalogEntity.name)
             .order_by(sa.func.count(models.Match.id).desc())
             .limit(6)
         )

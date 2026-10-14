@@ -72750,7 +72750,7 @@ export enum PathsApiV1HeroesStatisticsPlaytimeGetParametersQuerySort {
 }
 export enum PathsApiV1MapsGetParametersQuerySort {
     id = "id",
-    gamemode_id = "gamemode_id",
+    parent_id = "parent_id",
     name = "name",
     similarity_name = "similarity:name"
 }

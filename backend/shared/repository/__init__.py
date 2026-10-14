@@ -13,9 +13,7 @@ from .baselines import StatBaselineRepository
 from .catalog import (
     CatalogAliasMissRepository,
     CatalogEntityRepository,
-    GamemodeRepository,
     HeroRepository,
-    MapRepository,
 )
 from .challonge import (
     TOURNAMENT_SOURCE_TYPE,
@@ -244,12 +242,10 @@ __all__ = (
     "EncounterTeamReportRepository",
     "EncounterTeamRepository",
     "FavoritePlayerRepository",
-    "GamemodeRepository",
     "GoogleSheetBindingRepository",
     "GoogleSheetFeedRepository",
     "HeroRepository",
     "LogProcessingRepository",
-    "MapRepository",
     "MatchEventRepository",
     "MatchKillFeedRepository",
     "MatchRepository",

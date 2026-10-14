@@ -159,7 +159,7 @@ def to_match_with_user_stats(
     on the schema itself. ``score`` and the two team ids follow the encounter's
     slots 1 and 2, not the log's.
     """
-    map_read = schemas.MapRead.model_validate(match.map, from_attributes=True) if match.map is not None else None
+    map_read = schemas.MapRead.from_entity(match.map, with_gamemode=True) if match.map is not None else None
     hero_objs = [schemas.HeroRead.model_validate(h) for h in (heroes or [])]
     first, second = _duel_team_ids(seats)
     return schemas.MatchReadWithUserStats(

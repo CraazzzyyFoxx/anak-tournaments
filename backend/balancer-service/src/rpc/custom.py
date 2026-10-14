@@ -532,7 +532,9 @@ async def _dump_rounds(session: Any, rounds: list[Any]) -> list[dict[str, Any]]:
     map_info: dict[int, tuple[str, str]] = {}
     if map_ids:
         rows = await session.execute(
-            sa.select(models.Map.id, models.Map.name, models.Map.image_path).where(models.Map.id.in_(map_ids))
+            sa.select(models.CatalogEntity.id, models.CatalogEntity.name, models.CatalogEntity.image_path).where(
+                models.CatalogEntity.id.in_(map_ids)
+            )
         )
         map_info = {row.id: (row.name, row.image_path) for row in rows}
     return [_dump_round(round_, map_info) for round_ in rounds]

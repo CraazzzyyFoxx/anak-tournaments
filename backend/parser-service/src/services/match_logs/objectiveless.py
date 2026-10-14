@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared.domain.objectiveless_maps import (
     OBJECTIVELESS_GAMEMODES,
@@ -30,11 +31,12 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int) -> bo
     Flushes nothing and commits nothing: the caller owns the transaction.
     """
     # Analytical: the gamemode slug rides along with each match row.
+    mode = aliased(models.CatalogEntity, name="mode")
     rows = (
         await session.execute(
-            sa.select(models.Match, models.Gamemode.slug)
-            .join(models.Map, models.Map.id == models.Match.map_id)
-            .join(models.Gamemode, models.Gamemode.id == models.Map.gamemode_id)
+            sa.select(models.Match, mode.slug)
+            .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
+            .join(mode, mode.id == models.CatalogEntity.parent_id)
             .where(models.Match.encounter_id == encounter_id)
         )
     ).all()

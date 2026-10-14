@@ -25,10 +25,9 @@ repository = importlib.import_module("shared.repository")
 
 class CatalogAliasSchemaTests(TestCase):
     def test_catalog_entities_carry_a_non_nullable_jsonb_aliases_column(self) -> None:
-        for model in (shared_models.Hero, shared_models.Map, shared_models.Gamemode):
-            column = model.__table__.c["aliases"]
-            self.assertFalse(column.nullable, f"{model.__name__}.aliases must be NOT NULL")
-            self.assertEqual("JSONB", type(column.type).__name__)
+        column = shared_models.CatalogEntity.__table__.c["aliases"]
+        self.assertFalse(column.nullable, "CatalogEntity.aliases must be NOT NULL")
+        self.assertEqual("JSONB", type(column.type).__name__)
 
     def test_alias_miss_kind_is_the_core_vocabulary(self) -> None:
         constraint = next(
@@ -53,15 +52,19 @@ class CatalogAliasSchemaTests(TestCase):
 
 class MapAliasLookupTests(TestCase):
     def test_map_lookup_matches_name_or_alias_for_both_map_and_gamemode(self) -> None:
-        query = repository.MapRepository.build_name_or_alias_query(name="Илиос", gamemode="Контроль")
+        query = repository.CatalogEntityRepository.build_map_name_or_alias_query(
+            discipline="overwatch", name="Илиос", mode_name="Контроль"
+        )
         sql = str(query.compile(compile_kwargs={"literal_binds": True}))
 
-        self.assertIn("overwatch.map.name = 'Илиос'", sql)
-        self.assertIn("overwatch.gamemode.name = 'Контроль'", sql)
+        self.assertIn("catalog.entity.name = 'Илиос'", sql)
+        self.assertIn("mode.name = 'Контроль'", sql)
         # One containment test per side: map.aliases and gamemode.aliases.
         self.assertEqual(2, sql.count("@>"), f"expected two JSONB containment predicates in:\n{sql}")
 
     def test_the_query_joins_the_gamemode_so_both_predicates_bind(self) -> None:
-        query = repository.MapRepository.build_name_or_alias_query(name="Ilios", gamemode="Control")
+        query = repository.CatalogEntityRepository.build_map_name_or_alias_query(
+            discipline="overwatch", name="Ilios", mode_name="Control"
+        )
         sql = str(query.compile(compile_kwargs={"literal_binds": True}))
-        self.assertIn("JOIN overwatch.gamemode", sql)
+        self.assertIn("JOIN catalog.entity AS mode", sql)

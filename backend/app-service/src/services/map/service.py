@@ -6,7 +6,7 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.repository import MapRepository
+from shared.repository import CatalogEntityRepository
 from src import models, schemas
 from src.core import config, errors, pagination
 from src.services.hero.queries import HeroQueries
@@ -21,35 +21,20 @@ class MapService:
     def __init__(
         self,
         *,
-        repo: MapRepository = MapRepository(),
+        repo: CatalogEntityRepository = CatalogEntityRepository("map", discipline="overwatch"),
         hero_queries: HeroQueries = hero_queries,
     ) -> None:
         self.repo = repo
         self.hero_queries = hero_queries
 
     @staticmethod
-    def to_read(game_map: models.Map, entities: list[str]) -> schemas.MapRead:
-        """Serialize a Map into ``MapRead``, expanding the requested relations.
-
-        ``entities`` only gates ``gamemode``; the relation must already be loaded by
-        the caller's query (`MapRepository.load_options`), so this stays a pure
-        in-memory projection.
-
-        The one-line ``GamemodeRead`` construction is duplicated from
-        ``read_registry._gamemode_read`` on purpose: reaching for it would add a
-        dependency on the generic read engine for one repeated line.
-        """
-        gamemode: schemas.GamemodeRead | None = None
-        if "gamemode" in entities:
-            gamemode = schemas.GamemodeRead(**game_map.gamemode.to_dict())
-        return schemas.MapRead(
-            **game_map.to_dict(),
-            gamemode=gamemode,
-        )
+    def to_read(game_map: models.CatalogEntity, entities: list[str]) -> schemas.MapRead:
+        """Project the OW-shaped map read; the caller loads its parent when ``gamemode`` is requested."""
+        return schemas.MapRead.from_entity(game_map, with_gamemode="gamemode" in entities)
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> schemas.MapRead:
         """Retrieve a map by ID and convert to its Pydantic schema."""
-        game_map = await self.repo.get_expanded(session, id, entities)
+        game_map = await self.repo.get(session, id, options=self.repo.load_options(entities))
         if not game_map:
             raise errors.ApiHTTPException(
                 status_code=404,
@@ -62,8 +47,8 @@ class MapService:
     async def get_all(
         self, session: AsyncSession, params: pagination.PaginationSortParams
     ) -> pagination.Paginated[schemas.MapRead]:
-        """Paginated maps — delegates to `MapRepository.all`."""
-        game_maps, total = await self.repo.all(session, params, entities=params.entities)
+        """Paginated maps scoped to the Overwatch catalog."""
+        game_maps, total = await self.repo.get_all(session, params, options=self.repo.load_options(params.entities))
         return pagination.Paginated(
             total=total,
             page=params.page,
@@ -257,7 +242,7 @@ class MapService:
         """``(id, name)`` pairs for the admin/filter pickers, name-ordered.
 
         Was inlined in `rpc/maps.py`; the projection itself now lives on
-        `MapRepository.list_lookup`, so this only shapes the DTO.
+        `CatalogEntityRepository.list_lookup`, so this only shapes the DTO.
         """
         rows = await self.repo.list_lookup(session)
         return [schemas.LookupItem(id=row.id, name=row.name) for row in rows]
@@ -269,7 +254,7 @@ class MapService:
         params: schemas.UserMapsSearchParams,
         *,
         workspace_id: int | None = None,
-    ) -> tuple[typing.Sequence[tuple[models.Map, int, int, int, int, float]], int]:
+    ) -> tuple[typing.Sequence[tuple[models.CatalogEntity, int, int, int, int, float]], int]:
         """Paginated top maps for a user as ``(map, matches, wins, losses, draws, win_rate)``
         rows plus the total map count.
 
@@ -322,7 +307,7 @@ class MapService:
 
         subquery_query = (
             sa.select(
-                models.Map.id.label("map_id"),
+                models.CatalogEntity.id.label("map_id"),
                 sa.func.count(user_match_teams.c.match_id).label("count"),
                 sa.func.sum(user_win).label("win"),
                 sa.func.sum(user_loss).label("loss"),
@@ -332,8 +317,8 @@ class MapService:
                 .label("winrate"),
             )
             .select_from(user_match_teams)
-            .join(models.Map, models.Map.id == user_match_teams.c.map_id)
-            .group_by(models.Map.id)
+            .join(models.CatalogEntity, models.CatalogEntity.id == user_match_teams.c.map_id)
+            .group_by(models.CatalogEntity.id)
         )
 
         if params.tournament_id or workspace_id:
@@ -350,11 +335,11 @@ class MapService:
                 ).where(models.Tournament.workspace_id == workspace_id)
 
         if params.gamemode_id:
-            subquery_query = subquery_query.where(sa.and_(models.Map.gamemode_id == params.gamemode_id))
+            subquery_query = subquery_query.where(sa.and_(models.CatalogEntity.parent_id == params.gamemode_id))
 
         if params.query:
             fields = params.fields if params.fields else ["name"]
-            subquery_query = pagination.apply_search(models.Map, subquery_query, params.query, fields)
+            subquery_query = pagination.apply_search(models.CatalogEntity, subquery_query, params.query, fields)
 
         if params.min_count:
             subquery_query = subquery_query.having(sa.func.count(user_match_teams.c.match_id) >= params.min_count)
@@ -364,20 +349,21 @@ class MapService:
         total_query = sa.select(sa.func.count()).select_from(subquery)
 
         query = sa.select(
-            models.Map,
+            models.CatalogEntity,
             subquery.c.count,
             subquery.c.win,
             subquery.c.loss,
             subquery.c.draw,
             subquery.c.winrate,
-        ).join(subquery, subquery.c.map_id == models.Map.id)
+        ).join(subquery, subquery.c.map_id == models.CatalogEntity.id)
         if "gamemode" in params.entities:
-            query = query.options(selectinload(models.Map.gamemode))
+            query = query.options(selectinload(models.CatalogEntity.parent))
 
-        query = params.apply_sort(query)
+        sort_params = replace(params, sort="parent_id") if params.sort == "gamemode_id" else params
+        query = sort_params.apply_sort(query)
         if params.sort == "winrate":
             query = query.order_by(subquery.c.count.desc())
-        query = query.order_by(models.Map.id.asc())
+        query = query.order_by(models.CatalogEntity.id.asc())
         query = params.apply_pagination(query)
 
         result = await session.execute(query)

@@ -8,12 +8,12 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core import enums
-from shared.core.pagination import PaginationSortParams, PaginationSortSearchParams
+from shared.core.pagination import PaginationSortSearchParams
 from shared.repository.base import BaseRepository
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 
@@ -77,6 +77,36 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
         entity = models.CatalogEntity
         result = await session.execute(sa.select(entity.id, entity.name).where(*self._scope()).order_by(entity.name))
         return result.all()
+
+    @staticmethod
+    def build_map_name_or_alias_query(
+        *, discipline: str, name: str, mode_name: str
+    ) -> sa.Select[tuple[models.CatalogEntity]]:
+        """A map by name-or-alias inside a mode by name-or-alias, as a match log names both. Synchronous so the
+        predicates can be asserted without a database; ``aliases @> '["…"]'`` on each side.
+
+        ponytail: no GIN index on aliases — ~45 maps and ~10 modes, one query per log. Add
+        ``USING gin (aliases jsonb_path_ops)`` when maps reach the hundreds.
+        """
+        game_map = models.CatalogEntity
+        mode = aliased(models.CatalogEntity, name="mode")
+        return (
+            sa.select(game_map)
+            .join(mode, mode.id == game_map.parent_id)
+            .where(
+                game_map.discipline == discipline,
+                game_map.kind == "map",
+                mode.kind == "mode",
+                sa.or_(game_map.name == name, game_map.aliases.contains(_jsonb_array(name))),
+                sa.or_(mode.name == mode_name, mode.aliases.contains(_jsonb_array(mode_name))),
+            )
+        )
+
+    async def get_map_by_name_or_alias(
+        self, session: AsyncSession, *, discipline: str, name: str, mode_name: str
+    ) -> models.CatalogEntity | None:
+        query = self.build_map_name_or_alias_query(discipline=discipline, name=name, mode_name=mode_name)
+        return (await session.execute(query)).scalar_one_or_none()
 
 
 class HeroRepository(BaseRepository[models.Hero]):
@@ -199,123 +229,6 @@ class HeroRepository(BaseRepository[models.Hero]):
 
         result = await session.execute(query)
         return result.all()  # type: ignore[return-value]
-
-
-class GamemodeRepository(BaseRepository[models.Gamemode]):
-    def __init__(self) -> None:
-        super().__init__(models.Gamemode)
-
-    async def get_by_name(self, session: AsyncSession, name: str) -> models.Gamemode | None:
-        return await self.get_by(session, name=name)
-
-    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
-        """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
-        result = await session.execute(
-            sa.select(models.Gamemode.id, models.Gamemode.name).order_by(models.Gamemode.name)
-        )
-        return result.all()
-
-    @staticmethod
-    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
-        """Loader options for the relations an ``entities`` token list asks for.
-
-        ``maps`` is the only expandable relation on a gamemode. Which relation a
-        token loads is a property of the table, not of the request, so it lives
-        here rather than in a per-caller ``if "maps" in entities`` branch — and
-        unknown tokens are ignored, so a caller may pass its whole list through.
-        """
-        return [selectinload(models.Gamemode.maps)] if "maps" in entities else []
-
-    async def get_expanded(
-        self, session: AsyncSession, gamemode_id: int, entities: Sequence[str] = ()
-    ) -> models.Gamemode | None:
-        return await self.get(session, gamemode_id, options=self.load_options(entities))
-
-    async def all(
-        self,
-        session: AsyncSession,
-        params: PaginationSortSearchParams,
-        *,
-        entities: Sequence[str] = (),
-    ) -> tuple[Sequence[models.Gamemode], int]:
-        return await self.get_all(session, params, options=self.load_options(entities))
-
-
-class MapRepository(BaseRepository[models.Map]):
-    def __init__(self) -> None:
-        super().__init__(models.Map)
-
-    @staticmethod
-    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
-        """``gamemode`` is the only expandable relation on a map — see
-        `GamemodeRepository.load_options`."""
-        return [selectinload(models.Map.gamemode)] if "gamemode" in entities else []
-
-    async def get_expanded(self, session: AsyncSession, map_id: int, entities: Sequence[str] = ()) -> models.Map | None:
-        return await self.get(session, map_id, options=self.load_options(entities))
-
-    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
-        """``(id, name)`` name-ordered — see `HeroRepository.list_lookup`."""
-        result = await session.execute(sa.select(models.Map.id, models.Map.name).order_by(models.Map.name))
-        return result.all()
-
-    async def get_by_name(
-        self,
-        session: AsyncSession,
-        name: str,
-        *,
-        entities: Sequence[str] = (),
-    ) -> models.Map | None:
-        return await self.get_by(session, options=self.load_options(entities), name=name)
-
-    @staticmethod
-    def build_name_or_alias_query(*, name: str, gamemode: str) -> sa.Select:
-        """Map by name-or-alias inside a gamemode by name-or-alias.
-
-        Replaces the three hardcoded translation dicts the parser used to carry:
-        `aliases` is filled by the OverFast sync (heroes) and by the admin UI
-        (maps, gamemodes). Kept synchronous and separate from the executing
-        wrapper so the predicates can be asserted without a database.
-
-        `JSONB.contains(...)` compiles to `aliases @> CAST('["…"]' AS JSONB)`.
-        """
-        # ponytail: no GIN index on aliases — ~45 maps and ~10 gamemodes, one
-        # query per log. Add `USING gin (aliases jsonb_path_ops)` when maps
-        # reach the hundreds.
-        return (
-            sa.select(models.Map)
-            .join(models.Gamemode)
-            .where(
-                sa.or_(models.Map.name == name, models.Map.aliases.contains(_jsonb_array(name))),
-                sa.or_(
-                    models.Gamemode.name == gamemode,
-                    models.Gamemode.aliases.contains(_jsonb_array(gamemode)),
-                ),
-            )
-        )
-
-    async def get_by_name_or_alias_and_gamemode(
-        self,
-        session: AsyncSession,
-        *,
-        name: str,
-        gamemode: str,
-        with_gamemode: bool = False,
-    ) -> models.Map | None:
-        query = self.build_name_or_alias_query(name=name, gamemode=gamemode)
-        if with_gamemode:
-            query = query.options(selectinload(models.Map.gamemode))
-        result = await session.execute(query)
-        return result.scalar_one_or_none()
-
-    async def all(
-        self,
-        session: AsyncSession,
-        params: PaginationSortParams | PaginationSortSearchParams,
-        *,
-        entities: Sequence[str] = (),
-    ) -> tuple[Sequence[models.Map], int]:
-        return await self.get_all(session, params, options=self.load_options(entities))
 
 
 class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):

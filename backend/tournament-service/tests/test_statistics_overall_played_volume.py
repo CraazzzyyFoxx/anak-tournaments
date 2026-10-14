@@ -25,8 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core import enums  # noqa: E402
-from shared.models.catalog.gamemode import Gamemode  # noqa: E402
-from shared.models.catalog.map import Map  # noqa: E402
+from shared.models.catalog.entity import CatalogEntity  # noqa: E402
 from shared.models.matches.match import Match  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Team, Tournament  # noqa: E402
@@ -45,10 +44,20 @@ async def _seed(session: Any) -> tuple[int, int]:
     dropping both clears the lot (the test DB ships no maps to borrow).
     """
     suffix = uuid.uuid4().hex[:12]
-    gamemode = Gamemode(slug=f"ovstat-{suffix}", name=f"Overall stats {suffix}", image_path="x")
+    gamemode = CatalogEntity(
+        discipline="overwatch", kind="mode", slug=f"ovstat-{suffix}", name=f"Overall stats {suffix}", image_path="x"
+    )
     session.add(gamemode)
     await session.flush()
-    played_map = Map(gamemode_id=gamemode.id, name=f"Overall stats {suffix}", image_path="x")
+    played_map = CatalogEntity(
+        discipline="overwatch",
+        kind="map",
+        slug=f"ovstat-{suffix}",
+        parent_id=gamemode.id,
+        name=f"Overall stats {suffix}",
+        image_path="x",
+        attrs={"in_competitive": True},
+    )
     session.add(played_map)
     await session.flush()
     map_id = played_map.id
@@ -141,8 +150,8 @@ def test_overall_counts_played_volume(db_session) -> None:
             await db_session.rollback()
             # Workspace first: its matches hold the map.
             await db_session.execute(sa.delete(Workspace).where(Workspace.id == seeded[0]))
-            await db_session.execute(sa.delete(Map).where(Map.gamemode_id == seeded[1]))
-            await db_session.execute(sa.delete(Gamemode).where(Gamemode.id == seeded[1]))
+            await db_session.execute(sa.delete(CatalogEntity).where(CatalogEntity.parent_id == seeded[1]))
+            await db_session.execute(sa.delete(CatalogEntity).where(CatalogEntity.id == seeded[1]))
             await db_session.commit()
 
     overall = asyncio.run(_run())

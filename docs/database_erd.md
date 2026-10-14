@@ -608,16 +608,6 @@ erDiagram
         bigint legacy_id PK
         bigint entity_id FK
     }
-    OVERWATCH_GAMEMODE {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        varchar slug UK
-        varchar name UK
-        varchar image_path
-        varchar description "nullable"
-        jsonb aliases
-    }
     OVERWATCH_HERO {
         bigint id PK
         timestamptz created_at
@@ -629,23 +619,12 @@ erDiagram
         varchar color
         jsonb aliases
     }
-    OVERWATCH_MAP {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint gamemode_id FK
-        varchar name UK
-        varchar image_path
-        boolean in_competitive
-        jsonb aliases
-    }
 
     CATALOG_DISCIPLINE ||--o{ CATALOG_ALIAS_MISS : "discipline"
     CATALOG_DISCIPLINE ||--o{ CATALOG_ENTITY : "discipline"
     CATALOG_ENTITY |o--o{ CATALOG_ENTITY : "parent_id"
     CATALOG_ENTITY ||--o{ CATALOG_ENTITY : "discipline"
     CATALOG_ENTITY ||--o{ CATALOG_ENTITY_LEGACY : "entity_id"
-    OVERWATCH_GAMEMODE ||--o{ OVERWATCH_MAP : "gamemode_id"
 ```
 
 Composite unique keys:
@@ -1422,6 +1401,7 @@ erDiagram
         bigint encounter_id FK
         int position
         bigint map_id FK "nullable"
+        varchar(16) map_kind FK
         encountergamestate state
         encountergameresultsource result_source "nullable"
         int result_version
@@ -1615,6 +1595,8 @@ erDiagram
     BALANCER_CUSTOM_GAME |o--o{ ENCOUNTER_ENCOUNTER : "custom_game_id"
     BALANCER_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "discipline"
     BALANCER_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
+    CATALOG_ENTITY |o--o{ ENCOUNTER_GAME : "map_id"
+    CATALOG_ENTITY ||--o{ ENCOUNTER_GAME : "map_kind"
     ENCOUNTER_ENCOUNTER |o--o{ ENCOUNTER_TEAM : "tournament_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME_CLAIM : "encounter_id"
@@ -1671,7 +1653,6 @@ erDiagram
     ENCOUNTER_TEAM_MEMBER ||--o| ENCOUNTER_TEAM_MEMBER_ROLE : "team_member_id"
     ENCOUNTER_TEAM_REPORT ||--o{ ENCOUNTER_TEAM_REPORT_RESULT : "encounter_id"
     ENCOUNTER_TEAM_REPORT ||--o| ENCOUNTER_TEAM_REPORT_RESULT : "report_id"
-    OVERWATCH_MAP |o--o{ ENCOUNTER_GAME : "map_id"
     PLAYERS_USER |o--o{ ENCOUNTER_GAME_CLAIM : "reporter_user_id"
     PLAYERS_USER |o--o{ ENCOUNTER_READINESS : "ready_user_id"
     PLAYERS_USER |o--o{ ENCOUNTER_RESULT_AUDIT : "actor_user_id"
@@ -2268,6 +2249,7 @@ erDiagram
         jsonb balance_result_json "nullable"
         int balance_result_version
         bigint next_map_id FK "nullable"
+        varchar(16) next_map_kind FK
         timestamptz balanced_at "nullable"
         bigint team1_voice_channel_id "nullable"
         bigint team2_voice_channel_id "nullable"
@@ -2315,10 +2297,11 @@ erDiagram
     BALANCER_CUSTOM_GAME_PLAYER ||--o| BALANCER_CUSTOM_GAME_PLAYER_ROLE : "custom_game_player_id"
     BALANCER_CUSTOM_GAME_ROUND ||--o| BALANCER_CUSTOM_GAME_ROUND_MEMBER : "encounter_id"
     CATALOG_DISCIPLINE ||--o{ BALANCER_CUSTOM_GAME : "discipline"
+    CATALOG_ENTITY |o--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_id"
+    CATALOG_ENTITY ||--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_kind"
     ENCOUNTER_ENCOUNTER ||--o| BALANCER_CUSTOM_GAME_ROUND : "encounter_id"
     ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "scoring_rule_id"
     ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
-    OVERWATCH_MAP |o--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_CUSTOM_GAME_PLAYER : "workspace_member_id"
     PUBLIC_WORKSPACE_MEMBER ||--o| BALANCER_CUSTOM_GAME_ROUND_MEMBER : "workspace_member_id"
@@ -2432,6 +2415,7 @@ erDiagram
         float value
     }
 
+    CATALOG_ENTITY ||--o{ MATCHES_MATCH : "map_id"
     ENCOUNTER_ENCOUNTER ||--o{ MATCHES_MATCH : "encounter_id"
     LOG_PROCESSING_RECORD |o--o{ MATCHES_MATCH : "log_record_id"
     MATCHES_MATCH ||--o{ MATCHES_EVENT : "match_id"
@@ -2442,7 +2426,6 @@ erDiagram
     OVERWATCH_HERO |o--o{ MATCHES_STATISTICS : "hero_id"
     OVERWATCH_HERO ||--o{ MATCHES_KILL_FEED : "killer_hero_id"
     OVERWATCH_HERO ||--o{ MATCHES_KILL_FEED : "victim_hero_id"
-    OVERWATCH_MAP ||--o{ MATCHES_MATCH : "map_id"
     PLAYERS_USER |o--o{ MATCHES_EVENT : "related_user_id"
     PLAYERS_USER ||--o{ MATCHES_EVENT : "user_id"
     PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "killer_id"

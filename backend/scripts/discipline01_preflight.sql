@@ -27,3 +27,22 @@ SELECT v.legacy_kind, v.legacy_id, v.field, v.value_length
   ) v
  WHERE v.value_length > v.max_length
  ORDER BY v.legacy_kind, v.legacy_id, v.field;
+
+\echo 'count: pick-ban ids that name no catalog row (left as they are; below every new id)'
+SELECT count(*) AS dangling_pick_ban_ids
+  FROM (SELECT c.kind::text AS kind, i.item_id::bigint AS item_id
+          FROM tournament.pick_ban_config_item i JOIN tournament.pick_ban_config c ON c.id = i.pick_ban_config_id
+        UNION ALL
+        SELECT c.kind::text, si.item_id
+          FROM tournament.pick_ban_config_slot_item si
+          JOIN tournament.pick_ban_config_slot sl ON sl.id = si.pick_ban_config_slot_id
+          JOIN tournament.pick_ban_config c ON c.id = sl.pick_ban_config_id
+        UNION ALL
+        SELECT c.kind::text, sl.reserve_item_id
+          FROM tournament.pick_ban_config_slot sl JOIN tournament.pick_ban_config c ON c.id = sl.pick_ban_config_id
+         WHERE sl.reserve_item_id IS NOT NULL
+        UNION ALL
+        SELECT s.kind::text, e.item_id
+          FROM encounter.pick_ban_entry e JOIN encounter.pick_ban_session s ON s.id = e.session_id) x
+ WHERE (x.kind = 'map' AND NOT EXISTS (SELECT 1 FROM overwatch.map m WHERE m.id = x.item_id))
+    OR (x.kind = 'hero' AND NOT EXISTS (SELECT 1 FROM overwatch.hero h WHERE h.id = x.item_id));

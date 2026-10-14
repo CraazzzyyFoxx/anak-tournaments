@@ -355,7 +355,8 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
             mode = (
                 await s.execute(
                     sa.text(
-                        "INSERT INTO overwatch.gamemode (slug, name, image_path) VALUES (:tag, :tag, 'x') RETURNING id"
+                        "INSERT INTO catalog.entity (discipline, kind, slug, name, image_path)"
+                        " VALUES ('overwatch', 'mode', :tag, :tag, 'x') RETURNING id"
                     ),
                     {"tag": tag},
                 )
@@ -363,7 +364,8 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
             map_id = (
                 await s.execute(
                     sa.text(
-                        "INSERT INTO overwatch.map (gamemode_id, name, image_path) VALUES (:mode, :tag, 'x') RETURNING id"
+                        "INSERT INTO catalog.entity (discipline, kind, slug, parent_id, name, image_path)"
+                        " VALUES ('overwatch', 'map', :tag, :mode, :tag, 'x') RETURNING id"
                     ),
                     {"mode": mode, "tag": tag},
                 )
@@ -406,8 +408,8 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
                 with self.subTest(table=table):
                     self.assertEqual(1, await self._scalar(f"SELECT count(*) FROM {table} WHERE {column} = :e"))
         finally:
-            await self._execute("DELETE FROM overwatch.map WHERE id = :map_id", map_id=map_id)
-            await self._execute("DELETE FROM overwatch.gamemode WHERE id = :mode", mode=mode)
+            await self._execute("DELETE FROM catalog.entity WHERE id = :map_id", map_id=map_id)
+            await self._execute("DELETE FROM catalog.entity WHERE id = :mode", mode=mode)
 
     # ── 14–16: cascades from each owner ──
 

@@ -30,3 +30,7 @@ def _blocks(prefix: str) -> list[tuple[str, str]]:
 
 def test_the_sql_file_runs_exactly_the_revisions_stop_checks() -> None:
     assert [(q, body) for q, body in _blocks(r"\d+\. ")] == [(q, _squash(sql)) for q, sql in mod.PREFLIGHT]
+
+
+def test_the_sql_file_counts_the_pick_ban_ids_the_revision_cannot_map() -> None:
+    assert [body for _q, body in _blocks("count: ")] == [_squash(mod.DANGLING_PICK_BAN_IDS)]

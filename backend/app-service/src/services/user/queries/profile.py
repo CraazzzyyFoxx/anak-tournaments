@@ -536,13 +536,13 @@ class UserProfileQueries:
                 ranked_cte.c.name,
                 ranked_cte.c.value.label("best_value"),
                 models.Match.encounter_id,
-                models.Map.name.label("map_name"),
-                models.Map.image_path.label("map_link"),
+                models.CatalogEntity.name.label("map_name"),
+                models.CatalogEntity.image_path.label("map_link"),
                 models.Tournament.name.label("tournament_name"),
             )
             .select_from(ranked_cte)
             .join(models.Match, models.Match.id == ranked_cte.c.match_id)
-            .join(models.Map, models.Map.id == models.Match.map_id)
+            .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
             .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
             .where(ranked_cte.c.row_num == 1)

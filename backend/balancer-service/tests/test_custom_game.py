@@ -2753,7 +2753,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.session.scalar = AsyncMock(
             side_effect=[
                 {"mix_discord_channel_id": "777"},
-                _row(id=42, name="Busan", gamemode=_row(name="Control"), image_path="https://s3.example/busan.jpg"),
+                _row(id=42, name="Busan", parent=_row(name="Control"), image_path="https://s3.example/busan.jpg"),
             ]
         )
         # Only the first seat's account linked a Discord.

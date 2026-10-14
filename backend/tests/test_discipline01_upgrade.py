@@ -17,7 +17,7 @@ import sys
 
 import psycopg
 import pytest
-from psycopg.types.json import Jsonb
+from psycopg.types.json import Json, Jsonb
 
 from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
 
@@ -29,6 +29,7 @@ MIGRATED_DB = "discipline01_migrated"
 REJECTED_DB = "discipline01_rejected"
 #: Every overwatch id the template ever issued is below this; every new id must be above it.
 ID_FLOOR = 900
+DANGLING_ID = 850  # below every new id, names no map
 
 _spec = importlib.util.spec_from_file_location(
     "discipline01_revision", BACKEND / "migrations" / "versions" / "discipline01_catalog.py"
@@ -170,6 +171,7 @@ def _seed(conn) -> dict:
         occurrences=1,
         resolved_at="2026-10-01T00:00:00Z",
     )
+    _seed_map_references(conn, ids)
     return ids
 
 
@@ -184,7 +186,8 @@ def legacy_template():
     with _connect(TEMPLATE_DB) as conn:
         ids = _seed(conn)
         preflight = {question: _rows(conn, sql) for question, sql in revision.PREFLIGHT}
-    yield {"ids": ids, "preflight": preflight}
+        dangling = _scalar(conn, revision.DANGLING_PICK_BAN_IDS)
+    yield {"ids": ids, "preflight": preflight, "dangling": dangling}
     with _connect("postgres") as admin:
         for name in (MIGRATED_DB, REJECTED_DB, TEMPLATE_DB):
             admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
@@ -371,10 +374,237 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         tx.rollback()
     assert listed == []
     assert set(statuses.values()) == {"ok"}
-    assert {"heroes", "gamemodes", "maps", "alias misses"} <= set(statuses)
+    assert {"heroes", "gamemodes", "maps", "alias misses", "pick-ban ids"} <= set(statuses)
 
 
 def test_the_chain_ends_at_discipline01_with_every_constraint_validated(migrated) -> None:
     conn = migrated["conn"]
     assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == TARGET
     assert _rows(conn, "SELECT conrelid::regclass::text, conname FROM pg_constraint WHERE NOT convalidated") == []
+
+
+def _seed_map_references(conn, ids: dict) -> None:
+    """Every kind of map reference: a game, a mix lobby, the legacy stats and mix rows, and a whole map pick-ban."""
+    ilios, kings, colosseo = ids["ilios"], ids["kings"], ids["colosseo"]
+    ids["ws"] = _insert(conn, "workspace", slug="disc01-up", name="disc01-up")
+    ids["rule"] = _insert(
+        conn, "encounter.scoring_rule", workspace_id=ids["ws"], preset="wins", game_formula="1", end_formula="1"
+    )
+    ids["t"] = _insert(conn, "tournament.tournament", workspace_id=ids["ws"], name="T", slug="disc01-t", status="live")
+    ids["team_a"] = _insert(conn, "tournament.team", tournament_id=ids["t"], name="A", balancer_name="A")
+    ids["team_b"] = _insert(conn, "tournament.team", tournament_id=ids["t"], name="B", balancer_name="B")
+    ids["enc"] = _insert(
+        conn,
+        "encounter.encounter",
+        workspace_id=ids["ws"],
+        discipline="overwatch",
+        tournament_id=ids["t"],
+        scoring_rule_id=ids["rule"],
+        name="A vs B",
+        slot_count=2,
+        status="PENDING",
+    )
+    ids["game"] = _insert(conn, "encounter.game", encounter_id=ids["enc"], position=1, map_id=ilios)
+    ids["game_unmapped"] = _insert(conn, "encounter.game", encounter_id=ids["enc"], position=2)
+    ids["mix"] = _insert(
+        conn, "balancer.custom_game", workspace_id=ids["ws"], name="Friday", scoring_rule_id=ids["rule"]
+    )
+    conn.execute(
+        "INSERT INTO balancer.custom_game_lobby (custom_game_id, lobby_index, next_map_id) VALUES (%s, 0, %s)",
+        (ids["mix"], kings),
+    )
+    ids["match"] = _insert(
+        conn,
+        "matches.match",
+        home_team_id=ids["team_a"],
+        away_team_id=ids["team_b"],
+        home_score=2,
+        away_score=1,
+        encounter_id=ids["enc"],
+        map_id=ilios,
+    )
+    ids["casual"] = _insert(conn, "casual.match", custom_game_id=ids["mix"], lobby_index=0, map_id=kings)
+    not_kings = {"type": "not", "child": {"type": "item_in", "params": {"item_ids": [kings]}}}
+    ruleset = {"version": 2, "phases": [{"id": "p", "pool_filter": not_kings, "steps": []}]}
+    ids["config"] = _insert(
+        conn, "tournament.pick_ban_config", tournament_id=ids["t"], kind="map", mode="slots", ruleset_json=Json(ruleset)
+    )
+    ids["config_item"] = _insert(
+        conn, "tournament.pick_ban_config_item", pick_ban_config_id=ids["config"], item_id=ilios
+    )
+    ids["config_dangling"] = _insert(
+        conn, "tournament.pick_ban_config_item", pick_ban_config_id=ids["config"], item_id=DANGLING_ID
+    )
+    ids["slot"] = _insert(
+        conn, "tournament.pick_ban_config_slot", pick_ban_config_id=ids["config"], position=1, reserve_item_id=kings
+    )
+    ids["slot_item"] = _insert(
+        conn, "tournament.pick_ban_config_slot_item", pick_ban_config_slot_id=ids["slot"], item_id=colosseo
+    )
+    sequence = [
+        {"index": 0, "action": "ban", "eligible": {"type": "item_in", "params": {"item_ids": [ilios]}}},
+        {"index": 1, "action": "side_pick", "eligible": {}},
+    ]
+    ids["session"] = _insert(
+        conn,
+        "encounter.pick_ban_session",
+        encounter_id=ids["enc"],
+        kind="map",
+        seed_source="bracket_slot",
+        pool_json=Json({"mode": "slots", "rotation": "fixed", "items": [ilios], "slots": [[ilios, colosseo]]}),
+        slot_reserves_json=Json({"1": kings}),
+        ruleset_json=Json(ruleset),
+        resolved_sequence_json=Json(sequence),
+    )
+    ids["entry"] = _insert(
+        conn, "encounter.pick_ban_entry", session_id=ids["session"], encounter_id=ids["enc"], item_id=ilios, order=0
+    )
+    for key, step, item in (("sub_ban", 0, ilios), ("sub_side", 1, ilios)):
+        ids[key] = _insert(
+            conn,
+            "encounter.pick_ban_submission",
+            session_id=ids["session"],
+            encounter_id=ids["enc"],
+            step_index=step,
+            state="locked",
+            items_json=Json([{"item_id": item, "target_player_id": None}]),
+        )
+    for key, action, data in (
+        (
+            "ev_acted",
+            "acted",
+            {"step_index": 0, "round": 1, "action": "ban", "item_id": ilios, "target_player_id": None},
+        ),
+        ("ev_auto", "step_auto_resolved", {"step_index": 0, "round": 1, "action": "ban", "item_ids": [ilios]}),
+        (
+            "ev_draft",
+            "draft_locked",
+            {"step_index": 0, "round": 1, "items": [{"item_id": ilios, "target_player_id": None}]},
+        ),
+        # A side_pick names a side index; the legacy map id stands in for one so that a rewrite would show.
+        (
+            "ev_side",
+            "acted",
+            {"step_index": 1, "round": 1, "action": "side_pick", "item_id": ilios, "target_player_id": None},
+        ),
+    ):
+        ids[key] = _insert(
+            conn,
+            "encounter.room_event",
+            encounter_id=ids["enc"],
+            kind="map",
+            action=action,
+            source="captain",
+            data=Json(data),
+        )
+
+
+def test_the_preflight_counts_the_pick_ban_id_it_cannot_map(legacy_template) -> None:
+    assert legacy_template["dangling"] == 1
+
+
+def test_games_lobbies_and_legacy_rows_point_at_the_map_entities(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    ilios, kings = _entity_of(conn, "map", ids["ilios"]), _entity_of(conn, "map", ids["kings"])
+    assert _rows(
+        conn,
+        "SELECT map_id, map_kind FROM encounter.game WHERE id IN (%s, %s) ORDER BY position",
+        (ids["game"], ids["game_unmapped"]),
+    ) == [(ilios, "map"), (None, "map")]
+    assert _rows(
+        conn,
+        "SELECT next_map_id, next_map_kind FROM balancer.custom_game_lobby WHERE custom_game_id = %s",
+        (ids["mix"],),
+    ) == [(kings, "map")]
+    assert _scalar(conn, "SELECT map_id FROM matches.match WHERE id = %s", (ids["match"],)) == ilios
+    assert _scalar(conn, "SELECT map_id FROM casual.match WHERE id = %s", (ids["casual"],)) == kings
+
+
+def test_pick_ban_config_columns_and_rules_are_rewritten(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    ilios, kings, colosseo = (_entity_of(conn, "map", ids[key]) for key in ("ilios", "kings", "colosseo"))
+    assert (
+        _scalar(conn, "SELECT item_id FROM tournament.pick_ban_config_item WHERE id = %s", (ids["config_item"],))
+        == ilios
+    )
+    assert (
+        _scalar(conn, "SELECT item_id FROM tournament.pick_ban_config_item WHERE id = %s", (ids["config_dangling"],))
+        == DANGLING_ID
+    )
+    assert (
+        _scalar(conn, "SELECT reserve_item_id FROM tournament.pick_ban_config_slot WHERE id = %s", (ids["slot"],))
+        == kings
+    )
+    assert (
+        _scalar(conn, "SELECT item_id FROM tournament.pick_ban_config_slot_item WHERE id = %s", (ids["slot_item"],))
+        == colosseo
+    )
+    ruleset = _scalar(conn, "SELECT ruleset_json FROM tournament.pick_ban_config WHERE id = %s", (ids["config"],))
+    assert ruleset["phases"][0]["pool_filter"]["child"]["params"]["item_ids"] == [kings]
+
+
+def test_a_session_snapshot_and_its_board_are_rewritten(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    ilios, kings, colosseo = (_entity_of(conn, "map", ids[key]) for key in ("ilios", "kings", "colosseo"))
+    pool, reserves, ruleset, sequence = _rows(
+        conn,
+        "SELECT pool_json, slot_reserves_json, ruleset_json, resolved_sequence_json FROM encounter.pick_ban_session WHERE id = %s",
+        (ids["session"],),
+    )[0]
+    assert (pool["items"], pool["slots"], pool["mode"]) == ([ilios], [[ilios, colosseo]], "slots")
+    assert reserves == {"1": kings}
+    assert ruleset["phases"][0]["pool_filter"]["child"]["params"]["item_ids"] == [kings]
+    assert sequence[0]["eligible"]["params"]["item_ids"] == [ilios]
+    assert _scalar(conn, "SELECT item_id FROM encounter.pick_ban_entry WHERE id = %s", (ids["entry"],)) == ilios
+
+
+def test_submissions_and_the_room_journal_are_rewritten_except_side_picks(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    ilios = _entity_of(conn, "map", ids["ilios"])
+    legacy = ids["ilios"]
+    items = dict(
+        _rows(conn, "SELECT id, items_json FROM encounter.pick_ban_submission WHERE session_id = %s", (ids["session"],))
+    )
+    assert items[ids["sub_ban"]] == [{"item_id": ilios, "target_player_id": None}]
+    assert items[ids["sub_side"]] == [{"item_id": legacy, "target_player_id": None}]
+    data = dict(_rows(conn, "SELECT id, data FROM encounter.room_event WHERE encounter_id = %s", (ids["enc"],)))
+    assert data[ids["ev_acted"]]["item_id"] == ilios
+    assert data[ids["ev_auto"]]["item_ids"] == [ilios]
+    assert data[ids["ev_draft"]]["items"] == [{"item_id": ilios, "target_player_id": None}]
+    assert data[ids["ev_side"]]["item_id"] == legacy
+
+
+def test_the_hero_stats_view_joins_the_catalog_and_waits_for_its_refresh(migrated) -> None:
+    conn = migrated["conn"]
+    definition = _scalar(conn, "SELECT pg_get_viewdef('matches.mv_hero_global_stats'::regclass)")
+    assert "catalog.entity" in definition and "overwatch." not in definition
+    assert (
+        _scalar(conn, "SELECT relispopulated FROM pg_class WHERE oid = 'matches.mv_hero_global_stats'::regclass")
+        is False
+    )
+    assert _scalar(conn, "SELECT count(*) FROM pg_indexes WHERE indexname = 'ix_mv_hero_global_stats_name_hero'") == 1
+
+
+def test_no_reference_outside_the_legacy_schema_points_at_old_maps_or_modes(migrated) -> None:
+    rows = _rows(
+        migrated["conn"],
+        "SELECT conrelid::regclass::text, conname FROM pg_constraint WHERE contype = 'f'"
+        " AND confrelid IN ('overwatch.map'::regclass, 'overwatch.gamemode'::regclass)"
+        " AND conrelid::regclass::text NOT LIKE 'overwatch.%'",
+    )
+    assert rows == []
+
+
+def test_the_reconcile_lists_a_soft_id_left_in_legacy_space(migrated) -> None:
+    ids = migrated["ids"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        tx.execute(
+            "UPDATE tournament.pick_ban_config_item SET item_id = %s WHERE id = %s", (ids["ilios"], ids["config_item"])
+        )
+        create, summary, skipped = _statements(RECONCILE_SQL)
+        tx.execute(create)
+        statuses = {row[0]: row[3] for row in _rows(tx, summary)}
+        listed = _rows(tx, skipped)
+        tx.rollback()
+    assert statuses["pick-ban ids"] == "MISMATCH"
+    assert [(cls, legacy_id) for cls, legacy_id, _detail in listed] == [("pick-ban ids", ids["config_item"])]

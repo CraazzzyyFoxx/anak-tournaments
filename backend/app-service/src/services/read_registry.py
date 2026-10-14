@@ -18,7 +18,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementRule
-from shared.repository import GamemodeRepository
+from shared.repository import CatalogEntityRepository
 from shared.rpc.crud import CrudDispatcher, EntityConfig
 from shared.rpc.query import build_query_model
 from shared.services.workspace_scope import ALL_WORKSPACES
@@ -33,11 +33,11 @@ from src.services.map.service import maps as map_service
 # constrains the `sort` field; an out-of-set value raises ValidationError, which
 # the engine maps to ``unprocessable`` (same 422 as the HTTP route).
 _HERO_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
-_MAP_SORT = typing.Literal["id", "gamemode_id", "name", "similarity:name"]
+_MAP_SORT = typing.Literal["id", "parent_id", "name", "similarity:name"]
 _GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
 _ACH_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
 
-_gamemode_repo = GamemodeRepository()
+_gamemode_repo = CatalogEntityRepository("mode", discipline="overwatch")
 
 
 def _entities(data: dict[str, Any]) -> list[str]:
@@ -75,21 +75,17 @@ async def _map_list(session: AsyncSession, data: dict[str, Any]) -> Any:
 # --- gamemode ----------------------------------------------------------------
 # Gamemode is a pure reference table: no cache, no analytical SQL, no
 # transaction, nothing bespoke. Its whole read surface is these three functions
-# over `GamemodeRepository`, so it has no service module of its own — a class
+# over `CatalogEntityRepository`, so it has no service module of its own — a class
 # holding only `repo.get` + 404 + schema construction earned nothing.
 
 
-def _gamemode_read(gamemode: models.Gamemode) -> schemas.GamemodeRead:
-    """Spreads ``to_dict()`` rather than enumerating fields, matching the map and
-    hero serializers. The enumerated version silently dropped every column added
-    after it was written: ``aliases`` fell back to the schema default ``[]``, so
-    the admin dialog rendered an empty editor over real data and saving it would
-    have wiped the aliases the log parser resolves names through."""
-    return schemas.GamemodeRead(**gamemode.to_dict())
+def _gamemode_read(gamemode: models.CatalogEntity) -> schemas.GamemodeRead:
+    """Include every field the read model declares, including aliases rather than their empty default."""
+    return schemas.GamemodeRead.from_entity(gamemode)
 
 
 async def _gamemode_get(session: AsyncSession, obj_id: int, data: dict[str, Any]) -> Any:
-    gamemode = await _gamemode_repo.get_expanded(session, obj_id, _entities(data))
+    gamemode = await _gamemode_repo.get(session, obj_id)
     if gamemode is None:
         raise errors.ApiHTTPException(
             status_code=404,
@@ -101,7 +97,7 @@ async def _gamemode_get(session: AsyncSession, obj_id: int, data: dict[str, Any]
 async def _gamemode_list(session: AsyncSession, data: dict[str, Any]) -> Any:
     qp = build_query_model(pagination.PaginationSortSearchQueryParams[_GAMEMODE_SORT], data.get("query"))
     params = pagination.PaginationSortSearchParams.from_query_params(qp)
-    gamemodes, total = await _gamemode_repo.all(session, params, entities=params.entities)
+    gamemodes, total = await _gamemode_repo.get_all(session, params)
     return pagination.Paginated(
         total=total,
         per_page=params.per_page,
@@ -150,7 +146,7 @@ REGISTRY: dict[str, EntityConfig] = {
     ),
     "map": EntityConfig(
         entity="map",
-        model=models.Map,
+        model=models.CatalogEntity,
         permission_resource="map",
         serializer=_ser,
         public_read=True,
@@ -161,7 +157,7 @@ REGISTRY: dict[str, EntityConfig] = {
     ),
     "gamemode": EntityConfig(
         entity="gamemode",
-        model=models.Gamemode,
+        model=models.CatalogEntity,
         permission_resource="gamemode",
         serializer=_ser,
         public_read=True,

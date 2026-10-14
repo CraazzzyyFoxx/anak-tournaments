@@ -1,4 +1,4 @@
-"""Query-shape contracts for the optimized user comparison reads."""
+"""Query-shape contracts for optimized user reads."""
 
 import asyncio
 import re
@@ -12,6 +12,7 @@ from shared.division_grid import DEFAULT_GRID
 from src import models, schemas
 from src.core import enums, errors, pagination
 from src.services.dashboard.service import dashboard as dashboard_service
+from src.services.map.service import maps as map_service
 from src.services.statistics.queries import encounter_query
 from src.services.statistics.queries import queries as statistics_queries
 from src.services.user import service as user_service
@@ -219,13 +220,13 @@ def test_statistics_by_heroes_defers_metadata_join_off_the_window() -> None:
     # The ranking CTE ranks the slim eligible set with no metadata joins.
     ranked_body = sql.split("hero_stats_ranked AS")[1].split("best_result_cte AS")[0]
     assert "row_number() OVER" in ranked_body
-    assert "overwatch.map" not in ranked_body
+    assert "catalog.entity" not in ranked_body
     assert "tournament.tournament" not in ranked_body
     assert "matches.match " not in ranked_body
 
     # Metadata is hydrated only for the winning row per (hero, stat).
     assert "FROM hero_stats_ranked JOIN matches.match" in sql
-    assert "JOIN overwatch.map" in sql
+    assert "JOIN catalog.entity" in sql
     assert "WHERE hero_stats_ranked.row_num = 1" in sql
 
 
@@ -257,6 +258,18 @@ class _CaptureSession:
     async def scalars(self, statement):
         self.statements.append(statement)
         return _Rows()
+
+
+@pytest.mark.parametrize("order", ["asc", "desc"])
+def test_user_map_gamemode_sort_orders_by_the_catalog_parent_without_changing_the_wire_key(order: str) -> None:
+    session = _CaptureSession()
+    params = schemas.UserMapsSearchParams(sort="gamemode_id", order=order)
+
+    asyncio.run(map_service.get_top_maps(session, 7, params))
+
+    sql = _postgres_sql(session.statements[0])
+    assert f"ORDER BY parent_id {order.upper()}" in sql
+    assert params.sort == "gamemode_id"
 
 
 def _assert_indexable_encounter_join(sql: str) -> None:

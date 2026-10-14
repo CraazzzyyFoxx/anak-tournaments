@@ -48,9 +48,8 @@ from shared.domain import pick_ban_engine as engine
 from shared.domain import pick_ban_rules as pbr
 from shared.domain.encounter_scoring import GameLine, resolve_placements
 from shared.domain.pick_ban_config import has_pool, pick_config
-from shared.models.catalog.gamemode import Gamemode
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.catalog.hero import Hero
-from shared.models.catalog.map import Map
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
 from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
@@ -268,11 +267,15 @@ async def load_item_groups(session: AsyncSession, kind: PickBanKind, item_ids: l
         # A bare column select can yield the stored string instead of the enum
         # member depending on the result processor -- `.value` on a str raises.
         return {row[0]: getattr(row[1], "value", row[1]) for row in rows.all()}
-    maps = (await session.execute(select(Map.id, Map.gamemode_id).where(Map.id.in_(item_ids)))).all()
+    maps = (
+        await session.execute(select(CatalogEntity.id, CatalogEntity.parent_id).where(CatalogEntity.id.in_(item_ids)))
+    ).all()
     gamemode_ids = sorted({row[1] for row in maps if row[1] is not None})
     slugs: dict[int, str] = {}
     if gamemode_ids:
-        rows = await session.execute(select(Gamemode.id, Gamemode.slug).where(Gamemode.id.in_(gamemode_ids)))
+        rows = await session.execute(
+            select(CatalogEntity.id, CatalogEntity.slug).where(CatalogEntity.id.in_(gamemode_ids))
+        )
         slugs = {row[0]: row[1] for row in rows.all()}
     return {row[0]: slugs.get(row[1]) for row in maps}
 

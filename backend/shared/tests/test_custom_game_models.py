@@ -39,6 +39,7 @@ class TestCustomGameModel:
             "balance_result_version",
             "selected_variant_index",
             "next_map_id",
+            "next_map_kind",
             "balanced_at",
         } <= set(columns.keys())
         assert [column.name for column in models.CustomGameLobby.__table__.primary_key] == [

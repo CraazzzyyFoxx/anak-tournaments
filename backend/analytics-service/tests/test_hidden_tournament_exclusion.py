@@ -58,7 +58,7 @@ def _compile_array_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN20
 
 
 # The tables reachable from the queries under test. Their foreign keys into
-# tables outside this set (``players.user``, ``overwatch.map``, ``workspace``)
+# tables outside this set (``players.user``, ``catalog.entity``, ``workspace``)
 # are unenforced under SQLite, so those tables are deliberately not created.
 TABLES = (
     models.Tournament.__table__,

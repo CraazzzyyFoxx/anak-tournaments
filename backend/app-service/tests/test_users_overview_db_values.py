@@ -237,15 +237,19 @@ async def _seed(session: Any) -> _Seed:
     gamemode_id = (
         await session.execute(
             sa.text(
-                "insert into overwatch.gamemode (name, slug, image_path) values (:n, :s, '') returning id",
+                "insert into catalog.entity (discipline, kind, name, slug, image_path)"
+                " values ('overwatch', 'mode', :n, :s, '') returning id",
             ),
             {"n": f"Mode {suffix}", "s": f"mode-{suffix}"},
         )
     ).scalar_one()
     map_id = (
         await session.execute(
-            sa.text("insert into overwatch.map (name, gamemode_id, image_path) values (:n, :g, '') returning id"),
-            {"n": f"Map {suffix}", "g": gamemode_id},
+            sa.text(
+                "insert into catalog.entity (discipline, kind, name, slug, parent_id, image_path)"
+                " values ('overwatch', 'map', :n, :s, :g, '') returning id"
+            ),
+            {"n": f"Map {suffix}", "s": f"map-{suffix}", "g": gamemode_id},
         )
     ).scalar_one()
     match_id = (

@@ -153,7 +153,7 @@ class BaseRepository[ModelType: Base]:
         One query instead of a get-then-create/update probe per item — the
         "does this already exist" half of every external-catalog sync
         (OverFast heroes/maps/gamemodes, ...): ``field`` is the mapped column
-        to match on (``models.Hero.slug``, ``models.Map.name``, ...),
+        to match on (``models.Hero.slug``, ``models.CatalogEntity.name``, ...),
         deduplicated internally since a caller's list commonly isn't.
         """
         if not values:

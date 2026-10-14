@@ -3,8 +3,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from shared.core import db, enums
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.catalog.hero import Hero
-from shared.models.catalog.map import Map
 from shared.models.encounter.encounter import Encounter
 from shared.models.identity.user import User
 from shared.models.ingestion.log_processing import LogProcessingRecord
@@ -67,7 +67,7 @@ class Match(db.TimeStampIntegerMixin):
     )
 
     encounter_id: Mapped[int] = mapped_column(ForeignKey(Encounter.id, ondelete="CASCADE"), index=True)
-    map_id: Mapped[int] = mapped_column(ForeignKey("overwatch.map.id", ondelete="CASCADE"), index=True)
+    map_id: Mapped[int] = mapped_column(ForeignKey("catalog.entity.id", ondelete="CASCADE"), index=True)
     # Which map OF THE SERIES this row is, 1-based in play order. Only the
     # legacy captain-report reconciliation ever stamped it; the parser leaves it
     # NULL, and the series position now lives on `encounter_game.position`. The
@@ -78,7 +78,7 @@ class Match(db.TimeStampIntegerMixin):
     home_team: Mapped[Team] = relationship(foreign_keys=[home_team_id])
     away_team: Mapped[Team] = relationship(foreign_keys=[away_team_id])
     encounter: Mapped[Encounter] = relationship(back_populates="matches")
-    map: Mapped[Map] = relationship()
+    map: Mapped[CatalogEntity] = relationship()
     # lazy="raise": only the admin surfaces need it, and an implicit load here
     # would fire inside async paths that cannot do IO on attribute access.
     log_record: Mapped[LogProcessingRecord | None] = relationship(lazy="raise")

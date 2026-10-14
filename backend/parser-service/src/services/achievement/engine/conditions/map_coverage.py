@@ -20,6 +20,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared.core.enums import LogStatsName
 from shared.models.achievements.achievement import AchievementGrain
@@ -83,7 +84,7 @@ async def execute_map_coverage(
     if field == "map":
         distinct_col = models.Match.map_id
     elif field == "gamemode":
-        distinct_col = models.Map.gamemode_id
+        distinct_col = models.CatalogEntity.parent_id
     else:
         raise ValueError(f"Unsupported map_coverage field: {field!r}")
 
@@ -101,7 +102,7 @@ async def execute_map_coverage(
         sa.select(*group_cols, count_expr.label("measured"))
         .select_from(models.MatchStatistics)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Map, models.Map.id == models.Match.map_id)
+        .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(models.Tournament.workspace_id == context.workspace_id, _PLAYED_MAP)
@@ -113,9 +114,8 @@ async def execute_map_coverage(
         query = query.where(_PLAYER_WON_MAP)
 
     if gamemode:
-        query = query.join(models.Gamemode, models.Gamemode.id == models.Map.gamemode_id).where(
-            models.Gamemode.name == gamemode
-        )
+        mode = aliased(models.CatalogEntity, name="mode")
+        query = query.join(mode, mode.id == models.CatalogEntity.parent_id).where(mode.name == gamemode)
 
     if context.tournament and scope == "tournament":
         query = query.where(models.Encounter.tournament_id == context.tournament.id)
@@ -162,23 +162,23 @@ async def execute_map_winrate(
     query = (
         sa.select(
             models.MatchStatistics.user_id,
-            models.Map.name.label("map_name"),
+            models.CatalogEntity.name.label("map_name"),
             won_expr.label("wins"),
             played_expr.label("played"),
             winrate_expr.label("winrate"),
         )
         .select_from(models.MatchStatistics)
         .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Map, models.Map.id == models.Match.map_id)
+        .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
         .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(models.Tournament.workspace_id == context.workspace_id, _PLAYED_MAP)
-        .group_by(models.MatchStatistics.user_id, models.Map.id, models.Map.name)
+        .group_by(models.MatchStatistics.user_id, models.CatalogEntity.id, models.CatalogEntity.name)
         .having(played_expr >= min_matches, op_fn(winrate_expr, value))
     )
 
     if map_filter:
-        query = query.where(models.Map.name == map_filter)
+        query = query.where(models.CatalogEntity.name == map_filter)
 
     result = await session.execute(query)
     # One player can clear the bar on several maps; the evidence shows the best.

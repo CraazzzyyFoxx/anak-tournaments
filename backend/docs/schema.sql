@@ -1,6 +1,6 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 157
+-- Tables: 155
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -683,13 +683,15 @@ CREATE TABLE balancer.custom_game_lobby (
 	balance_result_json JSONB,
 	balance_result_version INTEGER DEFAULT '1' NOT NULL,
 	next_map_id BIGINT,
+	next_map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
 	balanced_at TIMESTAMP WITH TIME ZONE,
 	team1_voice_channel_id BIGINT,
 	team2_voice_channel_id BIGINT,
 	PRIMARY KEY (custom_game_id, lobby_index),
 	CONSTRAINT ck_custom_game_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
-	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE,
-	FOREIGN KEY(next_map_id) REFERENCES overwatch.map (id) ON DELETE SET NULL
+	CONSTRAINT ck_custom_game_lobby_next_map_kind CHECK (next_map_kind = 'map'),
+	CONSTRAINT fk_custom_game_lobby_next_map FOREIGN KEY(next_map_id, next_map_kind) REFERENCES catalog.entity (id, kind) ON DELETE SET NULL (next_map_id),
+	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE
 );
 
 CREATE TABLE balancer.custom_game_player (
@@ -1485,6 +1487,7 @@ CREATE TABLE encounter.game (
 	encounter_id BIGINT NOT NULL,
 	position INTEGER NOT NULL,
 	map_id BIGINT,
+	map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
 	state encounter.encountergamestate DEFAULT 'planned' NOT NULL,
 	result_source encounter.encountergameresultsource,
 	result_version INTEGER DEFAULT '0' NOT NULL,
@@ -1492,9 +1495,10 @@ CREATE TABLE encounter.game (
 	PRIMARY KEY (id),
 	CONSTRAINT uq_game_id_encounter UNIQUE (id, encounter_id),
 	CONSTRAINT ck_game_position CHECK (position >= 1),
+	CONSTRAINT ck_game_map_kind CHECK (map_kind = 'map'),
+	CONSTRAINT fk_game_map FOREIGN KEY(map_id, map_kind) REFERENCES catalog.entity (id, kind) ON DELETE RESTRICT,
 	CONSTRAINT ck_game_confirmed_shape CHECK (state != 'confirmed' OR (result_source IS NOT NULL AND confirmed_at IS NOT NULL)),
-	FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE,
-	FOREIGN KEY(map_id) REFERENCES overwatch.map (id) ON DELETE RESTRICT
+	FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE
 );
 
 CREATE INDEX ix_game_encounter_id ON encounter.game (encounter_id);
@@ -1963,7 +1967,7 @@ CREATE TABLE matches.match (
 	FOREIGN KEY(away_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(log_record_id) REFERENCES log_processing.record (id) ON DELETE SET NULL,
 	FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE,
-	FOREIGN KEY(map_id) REFERENCES overwatch.map (id) ON DELETE CASCADE
+	FOREIGN KEY(map_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
 );
 
 CREATE INDEX ix_matches_match_away_team_id ON matches.match (away_team_id);
@@ -2024,20 +2028,6 @@ CREATE INDEX ix_match_statistics_user_round_name ON matches.statistics (user_id,
 
 CREATE INDEX ix_matches_statistics_team_id ON matches.statistics (team_id);
 
-CREATE TABLE overwatch.gamemode (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	slug VARCHAR NOT NULL,
-	name VARCHAR NOT NULL,
-	image_path VARCHAR NOT NULL,
-	description VARCHAR,
-	aliases JSONB DEFAULT '[]'::jsonb NOT NULL,
-	PRIMARY KEY (id),
-	UNIQUE (slug),
-	UNIQUE (name)
-);
-
 CREATE TABLE overwatch.hero (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -2050,20 +2040,6 @@ CREATE TABLE overwatch.hero (
 	aliases JSONB DEFAULT '[]'::jsonb NOT NULL,
 	PRIMARY KEY (id),
 	UNIQUE (slug),
-	UNIQUE (name)
-);
-
-CREATE TABLE overwatch.map (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	gamemode_id BIGINT NOT NULL,
-	name VARCHAR NOT NULL,
-	image_path VARCHAR NOT NULL,
-	in_competitive BOOLEAN DEFAULT true NOT NULL,
-	aliases JSONB DEFAULT '[]'::jsonb NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(gamemode_id) REFERENCES overwatch.gamemode (id),
 	UNIQUE (name)
 );
 

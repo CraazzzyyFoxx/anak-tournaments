@@ -33,6 +33,7 @@ from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.domain.roster_shape import resolve_roster_shape
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
+    CatalogEntityRepository,
     CustomGameCoHostRepository,
     CustomGameLobbyRepository,
     CustomGamePlayerRepository,
@@ -40,7 +41,6 @@ from shared.repository import (
     CustomGameRepository,
     CustomGameRoundRepository,
     CustomGameTeamNameRepository,
-    MapRepository,
     ScoringRuleRepository,
     UserBalancerConfigRepository,
     UserRepository,
@@ -413,7 +413,7 @@ class CustomGameService:
         team_names: CustomGameTeamNameRepository = CustomGameTeamNameRepository(),
         mix_rounds: CustomGameRoundRepository = CustomGameRoundRepository(),
         write_round=record_mix_round,
-        maps: MapRepository = MapRepository(),
+        maps: CatalogEntityRepository = CatalogEntityRepository("map"),
         host_prefs: UserBalancerConfigRepository = UserBalancerConfigRepository(),
         ranks: MemberRankService | None = None,
         scoring_rules: ScoringRuleRepository = ScoringRuleRepository(),
@@ -2243,12 +2243,12 @@ class CustomGameService:
             # The gamemode is eager-loaded: an async session raises on an
             # unawaited lazy load, and the card names the mode next to the map.
             row = await session.scalar(
-                sa.select(models.Map)
-                .options(selectinload(models.Map.gamemode))
-                .where(models.Map.id == lobby.next_map_id)
+                sa.select(models.CatalogEntity)
+                .options(selectinload(models.CatalogEntity.parent))
+                .where(models.CatalogEntity.id == lobby.next_map_id)
             )
             if row is not None:
-                next_map = (row.name, row.gamemode.name if row.gamemode is not None else None)
+                next_map = (row.name, row.parent.name if row.parent is not None else None)
                 map_image = row.image_path or None
         # The host's knob, resolved: the card promises what recording this
         # match will actually move. ``0`` is "off", and off prints nothing.

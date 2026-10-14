@@ -9,8 +9,8 @@ from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_naming import build_encounter_name
 from shared.repository import (
+    CatalogEntityRepository,
     EncounterRepository,
-    MapRepository,
     MatchRepository,
     StageItemRepository,
     StageRepository,
@@ -155,7 +155,7 @@ class AdminEncounterService:
         *,
         encounter_repo: EncounterRepository = EncounterRepository(),
         match_repo: MatchRepository = MatchRepository(),
-        map_repo: MapRepository = MapRepository(),
+        map_repo: CatalogEntityRepository = CatalogEntityRepository("map"),
         stage_repo: StageRepository = StageRepository(),
         stage_item_repo: StageItemRepository = StageItemRepository(),
         team_repo: TeamRepository = TeamRepository(),

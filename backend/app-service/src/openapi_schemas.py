@@ -33,7 +33,7 @@ from src import schemas
 # build the generic query-param aliases below). Drift only affects the `sort`
 # enum shown in docs.
 _HERO_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
-_MAP_SORT = typing.Literal["id", "gamemode_id", "name", "similarity:name"]
+_MAP_SORT = typing.Literal["id", "parent_id", "name", "similarity:name"]
 _GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
 _ACH_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]
 _USER_SORT = typing.Literal["id", "name", "similarity:name"]

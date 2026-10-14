@@ -220,7 +220,7 @@ class UserEncounterQueries:
             )
             .select_from(models.Player)
             .options(
-                joinedload(models.Match.map).joinedload(models.Map.gamemode),
+                joinedload(models.Match.map).joinedload(models.CatalogEntity.parent),
                 joinedload(models.Encounter.tournament),
             )
             .join(models.Team, models.Player.team_id == models.Team.id)
@@ -549,7 +549,7 @@ class UserEncounterQueries:
             .select_from(encounters_query)
             .options(
                 joinedload(models.Encounter.tournament),
-                joinedload(models.Match.map).joinedload(models.Map.gamemode),
+                joinedload(models.Match.map).joinedload(models.CatalogEntity.parent),
             )
             .join(models.Encounter, encounters_query.c.id == models.Encounter.id)
             .join(models.Match, models.Encounter.id == models.Match.encounter_id, isouter=True)

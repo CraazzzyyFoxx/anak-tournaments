@@ -121,7 +121,12 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
     role, division = _pick_unused_role_division_pair(db)
     other_division = 1 if division != 1 else 2
     hero_row = db.query(models.Hero.id).order_by(models.Hero.id).first()
-    map_row = db.query(models.Map.id).order_by(models.Map.id).first()
+    map_row = (
+        db.query(models.CatalogEntity.id)
+        .filter_by(discipline="overwatch", kind="map")
+        .order_by(models.CatalogEntity.id)
+        .first()
+    )
     assert hero_row is not None
     assert map_row is not None
     hero_id = hero_row[0]

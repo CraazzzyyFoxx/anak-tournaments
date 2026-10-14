@@ -2,7 +2,7 @@
 
 ``match_event_count`` reads ``matches.event`` (written by the log parser and,
 until now, read by nothing); ``map_coverage`` / ``map_winrate`` read
-``overwatch.map`` + ``overwatch.gamemode`` through ``Match.map_id``.
+``catalog.entity`` maps and their parent modes through ``Match.map_id``.
 """
 
 from __future__ import annotations
@@ -61,8 +61,11 @@ class _MapFixture(_scrim._Fixture):
     def gamemode(self, name: str) -> int:
         gamemode_id = self._id()
         self.insert(
-            models.Gamemode.__table__,
+            models.CatalogEntity.__table__,
             id=gamemode_id,
+            discipline="overwatch",
+            kind="mode",
+            attrs={},
             slug=name.lower().replace(" ", "-"),
             name=name,
             image_path=f"{name}.png",
@@ -73,12 +76,15 @@ class _MapFixture(_scrim._Fixture):
     def map(self, gamemode_id: int, name: str) -> int:
         map_id = self._id()
         self.insert(
-            models.Map.__table__,
+            models.CatalogEntity.__table__,
             id=map_id,
-            gamemode_id=gamemode_id,
+            discipline="overwatch",
+            kind="map",
+            slug=name.lower().replace(" ", "-"),
+            parent_id=gamemode_id,
             name=name,
             image_path=f"{name}.png",
-            in_competitive=True,
+            attrs={"in_competitive": True},
             aliases=[],
         )
         return map_id

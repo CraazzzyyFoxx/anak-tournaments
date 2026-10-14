@@ -143,6 +143,13 @@ class CustomGameLobby(db.Base):
     __tablename__ = "custom_game_lobby"
     __table_args__ = (
         CheckConstraint(f"lobby_index BETWEEN 0 AND {MAX_LOBBIES - 1}", name="ck_custom_game_lobby_index"),
+        CheckConstraint("next_map_kind = 'map'", name="ck_custom_game_lobby_next_map_kind"),
+        ForeignKeyConstraint(
+            ["next_map_id", "next_map_kind"],
+            ["catalog.entity.id", "catalog.entity.kind"],
+            ondelete="SET NULL (next_map_id)",
+            name="fk_custom_game_lobby_next_map",
+        ),
         {"schema": "balancer"},
     )
 
@@ -157,7 +164,8 @@ class CustomGameLobby(db.Base):
     balance_result_version: Mapped[int] = mapped_column(Integer(), nullable=False, default=1, server_default="1")
     # The map this lobby's next match is played on -- rolled ahead of the lobby
     # loading in, consumed and cleared by ``record_outcome``.
-    next_map_id: Mapped[int | None] = mapped_column(ForeignKey("overwatch.map.id", ondelete="SET NULL"), nullable=True)
+    next_map_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    next_map_kind: Mapped[str] = mapped_column(String(16), default="map", server_default="map")
     balanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # The two team voices this lobby's teams are moved into (team 1, team 2):
     # voices of the workspace's voice category that are not general voices.
