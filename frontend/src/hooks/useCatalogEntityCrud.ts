@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
 
+import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { hasUnsavedChanges } from "@/lib/form-change";
 
 interface CatalogEntityService<TEntity, TCreate, TUpdate> {
@@ -11,7 +12,7 @@ interface CatalogEntityService<TEntity, TCreate, TUpdate> {
 }
 
 interface UseCatalogEntityCrudOptions<TEntity, TCreate, TUpdate> {
-  /** Invalidated on every mutation success; pass the same key the list uses. */
+  /** Invalidated on CRUD success; sync refreshes every catalog kind. Pass the same key the list uses. */
   queryKey: QueryKey;
   /** Key order matters: `hasUnsavedChanges` compares JSON, so `getForm` below
    *  must list the same fields in the same order or every dialog opens dirty. */
@@ -73,7 +74,13 @@ export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TU
 
   const syncMutation = useMutation({
     mutationFn: () => service.sync(),
-    onSuccess: invalidate,
+    onSuccess: async () => {
+      await Promise.all(
+        ["heroes", "maps", "gamemodes"].map((entity) =>
+          queryClient.invalidateQueries({ queryKey: adminQueryKeys.contentEntity(entity) })
+        )
+      );
+    },
   });
 
   const openCreate = () => {

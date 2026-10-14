@@ -206,6 +206,21 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
 
     async def test_overfast_brings_modes_then_maps_under_them_then_heroes_with_every_locale(self) -> None:
         tag = self.tag
+        locales = (
+            "en-us",
+            "de-de",
+            "en-gb",
+            "es-es",
+            "es-mx",
+            "fr-fr",
+            "it-it",
+            "ja-jp",
+            "ko-kr",
+            "pl-pl",
+            "pt-br",
+            "ru-ru",
+            "zh-tw",
+        )
         routes = {
             "/gamemodes": [
                 {
@@ -225,14 +240,14 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
                     "country_code": None,
                 }
             ],
-            f"/heroes?locale={overwatch_sync.CANONICAL_LOCALE}": [
+            "/heroes?locale=en-us": [
                 {"key": f"{tag}-ana", "name": f"{tag} Ana", "portrait": "https://of/ana.png", "role": "support"}
             ],
             **{
                 f"/heroes?locale={locale}": [
                     {"key": f"{tag}-ana", "name": f"{tag} Ana {locale}", "portrait": "x", "role": "support"}
                 ]
-                for locale in overwatch_sync.ALIAS_LOCALES
+                for locale in locales[1:]
             },
         }
         http = _Http(routes)
@@ -247,8 +262,11 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         assert ilios.attrs == {"in_competitive": True}
         (hero,) = await self._rows("overwatch", "character")
         assert hero[3] == {"class": "support"}
-        assert hero[4] == sorted(f"{tag} Ana {locale}" for locale in overwatch_sync.ALIAS_LOCALES)
-        for locale in (overwatch_sync.CANONICAL_LOCALE, *overwatch_sync.ALIAS_LOCALES):
+        assert hero[4] == sorted(f"{tag} Ana {locale}" for locale in locales[1:])
+        assert {path for path in http.paths if path.startswith("/heroes?locale=")} == {
+            f"/heroes?locale={locale}" for locale in locales
+        }
+        for locale in locales:
             assert http.paths.count(f"/heroes?locale={locale}") == 1
 
     async def test_overfast_existing_maps_keep_admin_attrs_and_parent_and_new_maps_are_competitive(self) -> None:
