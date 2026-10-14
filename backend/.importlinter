@@ -1,0 +1,35 @@
+[importlinter]
+# Core reaches a discipline module only through the registry ``shared.disciplines`` (D83, D99).
+# Services are covered by backend/tests/test_discipline_module_boundary.py (their root package is ``src``).
+root_packages =
+    shared
+
+[importlinter:contract:core-reaches-modules-through-the-registry]
+name = shared core never imports shared.disciplines.<slug>
+type = forbidden
+# The registry itself imports the modules; core importing the registry is the allowed indirect path.
+allow_indirect_imports = True
+source_modules =
+    shared.balancer
+    shared.balancer_registration_statuses
+    shared.balancer_subrole_catalog
+    shared.catalog_aliases
+    shared.clients
+    shared.core
+    shared.division_grid
+    shared.domain
+    shared.hero_catalog
+    shared.jobs
+    shared.messaging
+    shared.models
+    shared.observability
+    shared.quota
+    shared.rbac
+    shared.repository
+    shared.rpc
+    shared.schemas
+    shared.services
+    shared.tenancy
+forbidden_modules =
+    shared.disciplines.overwatch
+    shared.disciplines.lol

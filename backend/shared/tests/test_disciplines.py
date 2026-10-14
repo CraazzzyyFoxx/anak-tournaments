@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from shared.disciplines import DISCIPLINES, DisciplineSpec, discipline
+from shared.disciplines import CATALOG_KINDS, DISCIPLINES, DisciplineSpec, discipline
 from shared.domain import pick_ban_rules as pbr
 
 #: Participation ids: resolved actors are participations, never sides.
@@ -47,6 +47,24 @@ def test_an_unknown_code_resolves_to_a_side_less_stand_in():
     spec = discipline("chess")
     assert spec.code == "chess"
     assert spec.sides == ()
+
+
+def test_the_registry_holds_the_two_modules() -> None:
+    assert {"overwatch", "lol"} <= set(DISCIPLINES)
+    assert DISCIPLINES["lol"].name == "League of Legends"
+
+
+def test_a_module_labels_only_kinds_of_the_core_vocabulary() -> None:
+    # D101: the kind is the core's word; what a game calls it is the module's.
+    assert DISCIPLINES["overwatch"].kinds == {"character": "Hero", "map": "Map", "mode": "Mode"}
+    assert DISCIPLINES["lol"].kinds == {"character": "Champion", "map": "Map"}
+    for code in ("overwatch", "lol"):
+        assert set(DISCIPLINES[code].kinds) <= set(CATALOG_KINDS)
+
+
+def test_an_unknown_code_has_no_catalog_kinds() -> None:
+    assert discipline("chess").kinds == {}
+    assert discipline("chess").character_classes == ()
 
 
 # ── v1 / legacy actor tokens resolve to slots ───────────────────────────────
