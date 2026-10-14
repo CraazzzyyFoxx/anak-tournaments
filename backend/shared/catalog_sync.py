@@ -1,9 +1,9 @@
 """What every discipline's catalog sync shares (D85): the image mirror and the upsert of one kind.
 
 A module's sync (``shared/disciplines/<slug>/catalog_sync.py``) fetches its source and hands rows here. A row is matched
-by slug inside its discipline and kind. A new row is created whole; an existing row keeps its name and attrs
-(an admin may have edited them) and gets the source's image (unless already on our bucket) and the union of the
-aliases. An existing parent is kept; a missing one is filled from the source. Nothing is ever deleted.
+by slug first, then by exact name, inside its discipline and kind. A new row is created whole; an existing row keeps
+its slug, name and attrs (an admin may have edited them) and gets the source's image (unless already on our bucket)
+and the union of the aliases. An existing parent is kept; a missing one is filled from the source. Nothing is deleted.
 """
 
 from __future__ import annotations
@@ -118,6 +118,10 @@ async def apply_source(
     repo = CatalogEntityRepository(kind, discipline=discipline)
     entity = models.CatalogEntity
     existing = await repo.get_many_by(session, entity.slug, [row.slug for row in rows])
+    existing_by_name = await repo.get_many_by(session, entity.name, [row.name for row in rows])
+    for row in rows:
+        if row.slug not in existing and row.name in existing_by_name:
+            existing[row.slug] = existing_by_name[row.name]
     parents = await CatalogEntityRepository("mode", discipline=discipline).get_many_by(
         session, entity.slug, sorted({row.parent_slug for row in rows if row.parent_slug})
     )

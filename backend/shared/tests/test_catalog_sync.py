@@ -17,6 +17,7 @@ from shared.disciplines import DISCIPLINES
 from shared.disciplines.lol import catalog_sync as lol_sync
 from shared.disciplines.overwatch import catalog_sync as overwatch_sync
 from shared.models.catalog.entity import CatalogEntity
+from shared.repository import CatalogEntityRepository
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 
@@ -236,6 +237,58 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
                 {"class": "tank"},
                 [],
             ),
+        ]
+
+    async def test_sync_finds_an_entity_after_an_admin_changes_its_slug(self) -> None:
+        source = SourceEntity(
+            slug=f"{self.tag}-ana",
+            name=f"{self.tag} Ana",
+            image_url="https://src/ana.png",
+            attrs={"class": "support"},
+            aliases=("Ана",),
+        )
+        repo = CatalogEntityRepository("character", discipline="overwatch")
+        async with self.Session() as s:
+            assert (
+                await apply_source(
+                    s, _Http({}), CatalogImageMirror(_S3()), discipline="overwatch", kind="character", rows=[source]
+                )
+                == 1
+            )
+            current = await repo.get_by(s, name=source.name)
+            entity_id = current.id
+            await repo.update_fields(
+                s,
+                current,
+                {
+                    "slug": f"{self.tag}-ana-edited",
+                    "aliases": [*current.aliases, "Ana-hand"],
+                    "image_path": f"{BUCKET}edited.png",
+                },
+            )
+            await s.commit()
+        updated_source = SourceEntity(
+            slug=source.slug,
+            name=source.name,
+            image_url=source.image_url,
+            attrs={"class": "damage"},
+            aliases=("아나",),
+        )
+        async with self.Session() as s:
+            created = await apply_source(
+                s, _Http({}), CatalogImageMirror(_S3()), discipline="overwatch", kind="character", rows=[updated_source]
+            )
+            current = await repo.get_by(s, name=source.name)
+            assert current.id == entity_id
+        assert created == 0
+        assert await self._rows("overwatch", "character") == [
+            (
+                f"{self.tag}-ana-edited",
+                source.name,
+                f"{BUCKET}edited.png",
+                {"class": "support"},
+                ["Ana-hand", "Ана", "아나"],
+            )
         ]
 
     async def test_overfast_brings_modes_then_maps_under_them_then_heroes_with_every_locale(self) -> None:
