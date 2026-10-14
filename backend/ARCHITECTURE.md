@@ -44,9 +44,9 @@ src/domain/**/*.py                 PURE LOGIC. Dataclasses, algorithms, validati
                                    `asyncio.run`. See "The domain/ boundary, precisely" below.
   ↓
 shared.repository.*                CRUD. `BaseRepository[Model]` + concrete repos
-                                   (`HeroRepository`, `DraftPickRepository`, …). Accepts a
-                                   session, returns ORM rows or row tuples. Never imports
-                                   Pydantic, FastAPI/FastStream, cache clients, or outbox
+                                   (`CatalogEntityRepository("character", discipline="overwatch")`,
+                                   `DraftPickRepository`, …). Accepts a session, returns ORM rows
+                                   or row tuples. Never imports Pydantic, FastAPI/FastStream, cache clients, or outbox
                                    publishers. Write methods flush only — see
                                    `backend/docs/repository-boundaries.md`.
   ↓
@@ -70,9 +70,9 @@ wire carries; `domain` is what the algorithm thinks in. See
 `arbitrary_types_allowed`, defeating Pydantic validation, if merged into `schemas`).
 
 `src/clients/*.py` sits beside the stack too, for the same reason schemas do: a wrapper
-around a *shared* external-API client (`shared.clients.ChallongeClient`, a bespoke
-`OverFastCatalogClient`, ...) has no orchestration to inject collaborators into and no pure
-algorithm to test — it isn't a `service` and isn't `domain`. It gets `src/clients/<name>.py`,
+around a *shared* external-API client (for example, `shared.clients.ChallongeClient`) has no
+orchestration to inject collaborators into and no pure algorithm to test — it isn't a `service`
+and isn't `domain`. It gets `src/clients/<name>.py`,
 holding exactly one line of substance: construct the instance from this service's settings,
 export it.
 

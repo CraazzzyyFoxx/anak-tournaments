@@ -3,8 +3,8 @@
 A single PostgreSQL database shared by every Python service in the monorepo. The ORM models
 (SQLAlchemy) live in `backend/shared/models/<package>/`; the tables themselves are split across
 **Postgres schemas**, which double as domain boundaries. A package name does not always match a
-schema name — `ranks/` writes to `overwatch_rank`, `ingestion/` to `log_processing`, and
-`catalog/` spans `overwatch` and `catalog`; `custom_game` and `registration` write into `balancer`.
+schema name — `ranks/` writes to `overwatch_rank` and `ingestion/` to `log_processing`;
+`catalog/` writes only to `catalog`, while `custom_game` and `registration` write into `balancer`.
 
 > **Every entity diagram in this document is generated** from `Base.metadata` by
 > `backend/scripts/export_erd.py`, one diagram per model package. The prose around them is
@@ -55,8 +55,8 @@ Alembic head: **`discipline01`** (115 revisions in `backend/migrations/versions/
 | `tournament` | Tournament structure, bracket position, advancement edges, pick/ban templates, scrim rooms | tournament-service |
 | `encounter` | Match layer: encounters, participations, games, claims, series reports, scoring rules, result journal, pick/ban sessions | tournament-service |
 | `casual` | Legacy mix history (matches, teams, players). Read by nothing since V2 and mapped by no model; dropped by the gated `mixround02` | — (no service) |
-| `overwatch` | Game catalog — heroes, maps, game modes | app-service / parser-service |
-| `catalog` | Disciplines the platform knows (`overwatch` in V1) | seeded by migration; no service writes it |
+| `overwatch` | Legacy catalog, read and written by no service and mapped by no model; retained until the gated `discipline02` | — (no service) |
+| `catalog` | Disciplines (`overwatch`, `lol`), entities, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin), parser-service (sync/misses); disciplines and legacy ids seeded by migration |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
 | `matches` | Parsed match logs and derived statistics | parser-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
@@ -81,7 +81,8 @@ The hubs almost every domain converges on:
 - **`encounter.encounter`** — the root of the match layer: participations, games, claims,
   reports and the result journal hang off it, and parsed matches, achievement results and
   analytics point at it.
-- **`overwatch.hero`** — referenced by statistics, registration preferences and achievements.
+- **`catalog.entity`** — discipline-scoped characters, maps and modes, referenced by statistics,
+  registration preferences, achievements, encounter games and mix-lobby map selections.
 
 Full identity semantics — who owns which table, what a virtual player is, how linking works —
 are in [`users-identity.md`](./users-identity.md). System context is in
@@ -109,8 +110,7 @@ flowchart TB
         TOUR["tournament<br/>(stages, teams, bracket, pick/ban templates)"]
         ENC["encounter<br/>(match layer: participations, games, results)"]
         MATCHES["matches<br/>(match logs, statistics)"]
-        OW["overwatch<br/>(hero / map / gamemode)"]
-        CAT["catalog<br/>(disciplines)"]
+        CAT["catalog<br/>(disciplines, entities, alias misses)"]
         RANK["overwatch_rank<br/>(rank snapshots)"]
     end
 
@@ -143,29 +143,28 @@ flowchart TB
     TOUR --> WS
     TOUR --> GRID
     TOUR --> PLAYERS
-    TOUR --> OW
     TOUR --> CAT
     TOUR --> ENC
     ENC --> TOUR
     ENC --> WS
-    ENC --> OW
+    ENC --> CAT
     MATCHES --> TOUR
     MATCHES --> ENC
-    MATCHES --> OW
+    MATCHES --> CAT
     MATCHES --> PLAYERS
     MATCHES --> LOG
-    OW --> LOG
     RANK --> PLAYERS
 
     REG --> TOUR
     REG --> WS
-    REG --> OW
+    REG --> CAT
     BAL --> TOUR
     BAL --> WS
     DRAFT --> BAL
     DRAFT --> REG
     DRAFT --> TOUR
     MIX --> WS
+    MIX --> CAT
     MIX --> ENC
     ENC --> MIX
 
@@ -173,7 +172,7 @@ flowchart TB
     ACH --> TOUR
     ACH --> ENC
     ACH --> MATCHES
-    ACH --> OW
+    ACH --> CAT
     AN --> TOUR
     AN --> ENC
     AN --> WS
@@ -544,29 +543,42 @@ Composite unique keys:
 - `BALANCER_MEMBER_HIDDEN_RATING` unique on (`workspace_member_id`, `role`)
 <!-- /ERD:auto -->
 
-## catalog — `overwatch`, `catalog`
+## catalog — `catalog`
 
-The game catalog — heroes, maps, game modes — plus the misses log that records catalog names
-arriving from logs that no alias resolves.
+`catalog.discipline` lists the games the platform knows (`overwatch` and `lol`), referenced by
+tournaments, mixes and encounters. Behaviour lives in `backend/shared/disciplines/<slug>/`,
+reached only through the `shared.disciplines` registry: supported catalog kinds and their labels,
+character classes, catalog sync source and sides. P1 adds catalog support, not LoL gameplay or
+its later blue/red side declaration.
 
-Logs arrive with map, gamemode and hero names in the player client's locale, so every catalog
-entity carries `aliases` (a JSONB array of strings). Hero aliases are populated by the OverFast
-sync across the Blizzard locales; map and gamemode aliases are maintained by hand, because those
-endpoints take no locale parameter. This replaced three hardcoded translation dictionaries in
-the parser, each of which needed a service redeploy for every new map, hero or client locale.
+`catalog.entity` holds `character`, `map` and `mode` rows. A module labels those core kinds
+("Hero" or "Champion" for `character`) without inventing kinds. Names and slugs are unique per
+discipline and kind; a map's mode is its `parent_id`, constrained to the same discipline, and a
+character's class is `attrs.class`. Admin CRUD is generic by discipline and kind through
+app-service; public hero/map/gamemode reads still project Overwatch-shaped responses.
 
-A name that resolves to neither a canonical value nor an alias lands in `catalog_alias_miss` —
-the "add an alias" queue in the admin UI. It is keyed on `(entity_type, raw_name)` with an
-`occurrences` counter, and `resolved_at` is cleared again when a supposedly resolved name comes
-back. Its link to the log record it last arrived on is nullable, so pruning ingestion records
-does not empty the queue.
+Overwatch logs resolve canonical names or `aliases` (a JSONB array) within that discipline.
+The OverFast module sync adds hero aliases from all 13 Blizzard locales; map and mode aliases
+are admin-maintained because their endpoints have no locale parameter. The LoL module sync
+uses Data Dragon's latest published champion and map catalog. Both dispatch through
+`rpc.parser.catalog.sync`, preserve existing names and `attrs`, and fill a source parent only
+where the stored `parent_id` is null. Mirrored images live under
+`assets/<discipline>/<kind>/<slug>.<ext>` and existing bucket images survive a sync. Rows missing
+from a later sync are not deleted or deactivated.
 
-`catalog.discipline` is the registry of games the platform knows: a `code` and a `name`, with
-one row, `overwatch`, in V1. It exists so that the `discipline` column on `tournament.tournament`
-and `encounter.encounter` references something and a typo cannot reach the match layer; what the
-code knows about a discipline beyond that (whether its games have sides) is in
-`backend/shared/disciplines/`. The heroes, maps and game modes above are still the Overwatch
-catalog, not yet scoped by discipline.
+Unresolved log names land in `catalog.alias_miss`, the admin alias worklist keyed by
+`(discipline, kind, raw_name)`, with an `occurrences` counter. Attaching an alias or dismissing
+the miss stamps `resolved_at`; seeing the name again clears it. `last_ingest_job_id` is a
+nullable breadcrumb, currently a `log_processing.record` id without a foreign key. P4's
+`stats01` must remap or clear it before adding the `stats.ingest_job` FK.
+
+`discipline01` copies the old catalog into new entity ids above every id `overwatch.*` ever
+issued. It rewrites existing references, including `matches.*` in place and pick/ban ids in
+`encounter.room_event.data`. `catalog.entity_legacy (legacy_kind, legacy_id) → entity_id` is
+retained only for reconciliation and the old-link lookup/redirect. No service reads or writes
+`overwatch.*`; those legacy tables and the mapping go in the gated `discipline02` (P9), not P1.
+Retired `casual.match.map_id` and surviving `tournament.encounter_map_code.map_id` have plain
+FKs to `catalog.entity(id)`, as `matches.*` does, rather than the new kind-checked composite FKs.
 
 <!-- ERD:auto catalog -->
 ```mermaid
@@ -3210,13 +3222,12 @@ the top of this document is the only revision claim here.
 - **Member ranks unified.** `balancer.member_rank` replaced three separate per-context rank
   stores. The nullable `author_user_id` is the only discriminator between workspace canon and an
   author's private book, enforced by two partial unique indexes.
-- **Catalog aliases.** `aliases` (JSONB, `NOT NULL DEFAULT '[]'`) on `overwatch.hero` / `map` /
-  `gamemode` plus `overwatch.catalog_alias_miss` replaced three hardcoded translation
-  dictionaries in the parser (103 entries across 7 gamemodes, 32 maps and 50 heroes), each of
-  which had required a service redeploy for a new map, hero or client locale. The data migration
-  carried every entry over and warned about each canonical name missing from the catalog instead
-  of dropping it silently. No expand/contract was needed: a column with a default is invisible to
-  the old code.
+- **Catalog aliases and discipline catalog.** JSONB aliases and the alias-miss worklist originally
+  replaced three hardcoded parser translation dictionaries (103 entries across 7 gamemodes,
+  32 maps and 50 heroes). `discipline01` now copies that data from `overwatch.*` into
+  `catalog.entity` and `catalog.alias_miss`, rewrites hard and pick/ban references to new ids, and
+  leaves `catalog.entity_legacy` for reconciliation and old-link redirects. Runtime code has cut
+  over completely; the old catalog is retained until the gated `discipline02` contract migration.
 - **Workspace Discord guild.** `public.workspace.discord_guild_id` became the single source of
   the guild snowflake — UNIQUE, with a verification timestamp and verifier, mirroring the custom
   domain pattern. Rolling it out needed a mandatory order: add and backfill the column *before*

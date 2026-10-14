@@ -3,7 +3,8 @@
 Parser owns everything that turns raw Overwatch artefacts into domain data: match-log files
 uploaded from the tournament admin or dropped into a Discord channel, Overwatch rank telemetry
 polled from OverFast, the declarative achievement engine evaluated on top of parsed results, and
-the MVP impact scoring derived from match statistics. It is a separate process because that work
+the MVP impact scoring derived from match statistics. It also syncs discipline catalogs through
+their modules (OverFast for Overwatch, Data Dragon for LoL). It is a separate process because that work
 is minutes-long, IO-bound and bursty — one log parse holds a database session and one unacked
 delivery for as long as the file takes — and must never share a channel or a request path with
 interactive reads.
@@ -28,13 +29,15 @@ System overview: [`../../docs/architecture.md`](../../docs/architecture.md). Cod
 - **Match-log ingestion** — the authority for the `log_processing.record` lifecycle and for every
   row parsed out of a log: matches (one per played map), per-round statistics, the kill feed and
   the assist/ultimate/hero-swap event stream.
-- **Catalog name resolution** — logs carry map/gamemode/hero names in the reporting client's
-  locale, so names resolve through the `aliases` column on `overwatch.{hero,map,gamemode}`, never
-  through code. Anything resolving to neither the canonical name nor an alias lands in
-  `overwatch.catalog_alias_miss` — the "add an alias" queue behind `/admin/aliases`, keyed on
-  `(entity_type, raw_name)` with an occurrence counter. A map/gamemode miss is written in its own
-  transaction so the 404 that fails the log cannot roll it away; hero misses are batched per log
-  because they are soft (an unknown hero drops that stat/kill row and the log still completes).
+- **Catalog name resolution** — Overwatch logs carry map/gamemode/hero names in the reporting
+  client's locale, so names resolve through the canonical name or `catalog.entity.aliases`, scoped
+  to `discipline = 'overwatch'` and kind `map`, `mode` or `character`, never through code.
+  Unresolved names land in `catalog.alias_miss` — the "add an alias" queue behind `/admin/aliases`,
+  keyed on `(discipline, kind, raw_name)` with an occurrence counter. A map/gamemode miss is written
+  in its own transaction so the 404 that fails the log cannot roll it away; hero misses are batched
+  per log because they are soft (an unknown hero drops that stat/kill row and the log still completes).
+  The nullable `last_ingest_job_id` breadcrumb currently holds a `log_processing.record` id;
+  `stats01` will remap or clear it before adding the ingest-job FK in P4.
 - **Player resolution from logs** — creates virtual players for battle tags with no account and
   upserts the battlenet `social_account` when a known player renames mid-log.
 - **Overwatch rank collection** — selects due battle tags, fetches career summaries from OverFast
@@ -59,7 +62,7 @@ RPC namespace: `rpc.parser.*` (single namespace, registered in `src/rpc/`).
 | `rpc.parser.ach.*` | Achievement rules CRUD, condition-type catalog and tree validation, seed/reset, export/import and cross-workspace library import, evaluation trigger and runs, rule test/dry-run, qualifying-user list, manual overrides |
 | `rpc.parser.subscription.*` | Subscription collection admin: health stats, check log, per-user entitlement, trigger a re-check or a sweep |
 | `rpc.parser.impact.*` | Superuser recompute of the impact-scoring baselines |
-| `rpc.parser.catalog.sync` | Superuser sync of one discipline through its module's source (OverFast, Data Dragon) |
+| `rpc.parser.catalog.sync` | Superuser `POST /api/v1/admin/catalog-sync/{discipline}`; dispatches through `shared.disciplines` to that module's source (OverFast or Data Dragon) |
 | `rpc.parser.settings.*` | Superuser global settings CRUD (`public.settings`) |
 | `rpc.parser.discord_channel.*` | Per-tournament Discord channel binding, plus an on-demand channel-history backfill |
 
@@ -227,8 +230,9 @@ Writes:
   `discord_channel`.
 - `overwatch_rank` — `battle_tag_state`, `rank_snapshot`, `fetch_log`.
 - `achievements` — `rule`, `evaluation_result`, `evaluation_run`, `override`.
-- `catalog` — `alias_miss`, plus `entity` aliases and rows written by the catalog sync of a
-  discipline through its module (OverFast, Data Dragon); app-service owns the public reads.
+- `catalog` — `alias_miss` for unresolved Overwatch log names, plus `entity` aliases and rows
+  written by each discipline module's sync; app-service owns the public reads and generic admin CRUD.
+  No runtime access to the legacy `overwatch` schema remains.
 - `subscriptions` — `entitlement`, `check_log` (shared with tournament-service, which owns
   requirements).
 - `public.settings` — global key-namespaced settings.
@@ -264,9 +268,16 @@ No service ships its own migrations — there is one Alembic project at
 - **Discord and Twitch APIs** — subscription entitlement verification.
 - Discord and Twitch calls egress through the outbound **`proxy`** container.
 
-Adding a map, character or locale needs no deploy: sync the discipline's whole catalog, or add the alias in
-`/admin/{heroes,maps,gamemodes}` — or straight from the miss queue in `/admin/aliases`, which
-attaches the alias and closes the miss in one request.
+Sync adds missing rows and aliases without overwriting an existing row's name or `attrs`, including
+admin-edited classes and map flags. New Overwatch maps start with `attrs.in_competitive = true`.
+An existing parent is never replaced: a source parent fills `parent_id` only when it is null.
+Images already on the bucket survive, and rows absent from a later source response are not deleted
+or deactivated.
+
+Adding a catalog row or alias needs no deploy: sync the whole discipline or use
+`/api/v1/admin/catalog/{discipline}/{kind}[/{id}]`. The existing Overwatch pages
+`/admin/{heroes,maps,gamemodes}` adapt to that API; `/admin/aliases` attaches `{entity_id, alias}`
+to a matching discipline and kind and closes the miss in one request.
 
 ## Configuration
 

@@ -30,7 +30,7 @@ player-facing subset see [`../frontend/src/i18n/GLOSSARY.md`](../frontend/src/i1
 | **Stage item / stage item input** | The current bracket model: a stage decomposes into items (a group, a bracket round), and items declare their inputs. `group` is the legacy model kept for historical tournaments. |
 | **Group stage / round-robin / Swiss** | Stage formats. Round-robin plays every pairing; Swiss pairs by current score for a fixed number of rounds. |
 | **Bracket** | The elimination tree, single or double. |
-| **Discipline** | The game a tournament, and every encounter under it, is played in: `catalog.discipline.code`, `overwatch` in V1. Copied onto each encounter from its owning tournament and never changed. Behaviour the code knows about a discipline (whether it has sides) lives in `backend/shared/disciplines/`. |
+| **Discipline** | The game a tournament, and every encounter under it, is played in: `catalog.discipline.code`, currently `overwatch` and `lol`. Copied onto each encounter from its owner and never changed. Behaviour lives in a module under `backend/shared/disciplines/<slug>/`, reached only through the registry `shared.disciplines`: kinds and their labels, character classes, catalog sync source, and sides where declared. P1 adds the catalog; LoL sides and gameplay support arrive in later phases. |
 | **Encounter** | One meeting of N participants, `encounter.encounter` — the root of the game-neutral match layer. A best-of duel is an encounter with `slot_count = 2`, an FFA lobby (not the *Mix lobby* below) one with `slot_count = N`; there is no `format` column and no home or away side. Its bracket position (stage, stage item, round) lives in `tournament.bracket_encounter`, not on the encounter. |
 | **Encounter owner** | What an encounter belongs to: exactly one of `tournament_id` (a tournament round) or `custom_game_id` (a pickup mix round), enforced by `ck_encounter_owner`. Tournament code reads tournament-owned encounters only; the owner key also carries the workspace and discipline, so the copies cannot disagree with the owner. |
 | **Mix round** | One recorded round of a pickup mix: an `encounter.encounter` owned by `balancer.custom_game` (`custom_game_id`, no tournament), Bo1, result source `host`. The balancer facts of it live in `balancer.custom_game_round`; who sat where is the participation roster (`encounter.team_member`). |
@@ -71,6 +71,8 @@ player-facing subset see [`../frontend/src/i18n/GLOSSARY.md`](../frontend/src/i1
 
 | Term | Meaning |
 | --- | --- |
+| **Catalog entity** | A character, map or mode of one discipline in `catalog.entity`; a map's mode is its parent (`parent_id`), and a character's class is `attrs.class`. |
+| **Kind** | The core's catalog vocabulary: `character` / `map` / `mode`. A module declares which kinds it has and only labels them — for example, "Hero" or "Champion" for `character`. |
 | **Map pool** | The set of maps available to a stage or round. |
 | **Map veto / pick-ban** | The pick and ban sequence that reduces a pool to the maps actually played, driven by a `map_veto_config`. |
 | **Reserve map** | The map held back for a tie. |

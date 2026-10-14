@@ -166,10 +166,11 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
-`public`, `tournament`, `encounter`, `catalog`, `matches`, `overwatch`, `overwatch_rank`,
-`balancer`, `achievements`, `analytics`, `log_processing`, `realtime`, plus `casual` — legacy mix
-history that nothing reads since V2, dropped by the gated `mixround02`. Full entity diagrams are
-in [`docs/database_erd.md`](./database_erd.md).
+`public`, `tournament`, `encounter`, `catalog`, `matches`, `overwatch_rank`,
+`balancer`, `achievements`, `analytics`, `log_processing`, `realtime`, plus two legacy schemas:
+`overwatch` — the old catalog, read by nobody at runtime and dropped by the gated `discipline02`;
+and `casual` — mix history that nothing reads since V2, dropped by the gated `mixround02`.
+Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
 
 - **Multitenancy.** `public.workspace` is the tenant root. Nearly every business table
   carries `workspace_id` (directly or transitively via `tournament` / `workspace_member`);
@@ -192,7 +193,7 @@ in [`docs/database_erd.md`](./database_erd.md).
   pre-game pick/ban room hang off the encounter in the same schema. The bracket position
   (stage, stage item, round) and the advancement edges stay in `tournament`
   (`bracket_encounter`, `encounter_link`), so the match layer carries no tournament structure.
-  `catalog.discipline` lists the games the platform knows (`overwatch` in V1); every tournament,
+  `catalog.discipline` lists the games the platform knows (`overwatch` and `lol`); every tournament,
   mix and encounter carries its `discipline`, and one composite foreign key keeps the copy from
   disagreeing with its owner. Every result change goes through one writer,
   `backend/shared/services/encounter/result.py`: one transaction, the encounter row locked,
@@ -203,6 +204,18 @@ in [`docs/database_erd.md`](./database_erd.md).
   by the ORM, until a gated second revision (`enclayer02`, run with
   `OWT_APPLY_ENCOUNTER_LAYER_DROP=1` in the deploy after V1; see CONTRIBUTING) drops them.
   Vocabulary: [`glossary.md`](./glossary.md).
+- **Discipline catalog (`catalog`).** `catalog.entity` holds each discipline's `character`, `map`
+  and `mode` rows, with names, aliases, images and JSONB `attrs`; a map's mode is its `parent_id`,
+  and a character's class is `attrs.class`. Names and slugs are unique per discipline and kind.
+  Behaviour lives under `backend/shared/disciplines/<slug>/`, reached only through the
+  `shared.disciplines` registry: supported kinds and labels ("Hero", "Champion"), character classes,
+  sides and catalog sync. P1 ships Overwatch's OverFast source and LoL's Data Dragon source, not
+  LoL gameplay support. Parser-service dispatches `rpc.parser.catalog.sync` to the module;
+  app-service provides generic admin CRUD by discipline and kind on `rpc.app.catalog.admin_*`.
+  `catalog.alias_miss` is the unresolved-name worklist, keyed by `(discipline, kind, raw_name)`.
+  `catalog.entity_legacy` maps old hero/map/gamemode ids to the new ids for migration reconciliation
+  and the old-link redirect (`rpc.app.catalog.legacy`) only; it goes with `overwatch.*` in
+  `discipline02`. Runtime catalog reads and writes use `catalog.entity`, never `overwatch.*`.
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
   `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only
