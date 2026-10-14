@@ -15,9 +15,12 @@ from loguru import logger
 from sqlalchemy.dialects.postgresql import Insert
 
 from shared.repository import CatalogAliasMissRepository
-from src.core import db, enums
+from src.core import db
 
-__all__ = ("MISS_NAME_MAX_LENGTH", "build_miss_upsert", "record_misses")
+__all__ = ("DISCIPLINE", "MISS_NAME_MAX_LENGTH", "build_miss_upsert", "record_misses")
+
+#: The Workshop CSV decoder is Overwatch's; P5 moves it into the module.
+DISCIPLINE = "overwatch"
 
 # Matches `CatalogAliasMiss.raw_name`; a longer name is truncated rather than
 # dropped so the queue still shows that something unknown arrived.
@@ -27,22 +30,23 @@ _misses = CatalogAliasMissRepository()
 
 
 def build_miss_upsert(
-    entity_type: enums.CatalogEntityType,
+    kind: str,
     raw_names: Iterable[str],
     *,
     log_record_id: int | None = None,
 ) -> Insert:
     """The upsert on its own, so the SQL can be asserted without a database."""
     return _misses.build_miss_upsert(
-        entity_type,
+        DISCIPLINE,
+        kind,
         raw_names,
-        log_record_id=log_record_id,
+        ingest_job_id=log_record_id,
         name_max_length=MISS_NAME_MAX_LENGTH,
     )
 
 
 async def record_misses(
-    entity_type: enums.CatalogEntityType,
+    kind: str,
     raw_names: Iterable[str],
     *,
     log_record_id: int | None = None,
@@ -55,11 +59,12 @@ async def record_misses(
         async with db.async_session_maker() as session:
             await _misses.record_miss(
                 session,
-                entity_type,
+                DISCIPLINE,
+                kind,
                 names,
-                log_record_id=log_record_id,
+                ingest_job_id=log_record_id,
                 name_max_length=MISS_NAME_MAX_LENGTH,
             )
             await session.commit()
     except Exception as exc:
-        logger.warning(f"Failed to record {entity_type.value} alias misses {sorted(names)}: {exc}")
+        logger.warning(f"Failed to record {kind} alias misses {sorted(names)}: {exc}")

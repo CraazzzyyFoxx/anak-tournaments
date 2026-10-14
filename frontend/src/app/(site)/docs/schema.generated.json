@@ -172,21 +172,29 @@
     },
     {
       "key": "catalog",
-      "mermaid": "erDiagram\n    CATALOG_DISCIPLINE {\n        varchar(32) code PK\n        varchar(64) name\n        timestamptz created_at\n    }\n    CATALOG_ENTITY {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar(32) discipline FK\n        varchar(16) kind\n        varchar(64) slug\n        varchar(128) name\n        varchar image_path \"nullable\"\n        bigint parent_id FK \"nullable\"\n        jsonb attrs\n        jsonb aliases\n        boolean active\n    }\n    CATALOG_ENTITY_LEGACY {\n        varchar(16) legacy_kind PK\n        bigint legacy_id PK\n        bigint entity_id FK\n    }\n    OVERWATCH_CATALOG_ALIAS_MISS {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        catalogentitytype entity_type\n        varchar(128) raw_name\n        int occurrences\n        timestamptz first_seen_at\n        timestamptz last_seen_at\n        bigint last_log_record_id FK \"nullable\"\n        timestamptz resolved_at \"nullable\"\n    }\n    OVERWATCH_GAMEMODE {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar slug UK\n        varchar name UK\n        varchar image_path\n        varchar description \"nullable\"\n        jsonb aliases\n    }\n    OVERWATCH_HERO {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar slug UK\n        varchar name UK\n        varchar image_path\n        heroclass type\n        varchar color\n        jsonb aliases\n    }\n    OVERWATCH_MAP {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint gamemode_id FK\n        varchar name UK\n        varchar image_path\n        boolean in_competitive\n        jsonb aliases\n    }\n\n    CATALOG_DISCIPLINE ||--o{ CATALOG_ENTITY : \"discipline\"\n    CATALOG_ENTITY |o--o{ CATALOG_ENTITY : \"parent_id\"\n    CATALOG_ENTITY ||--o{ CATALOG_ENTITY : \"discipline\"\n    CATALOG_ENTITY ||--o{ CATALOG_ENTITY_LEGACY : \"entity_id\"\n    LOG_PROCESSING_RECORD |o--o{ OVERWATCH_CATALOG_ALIAS_MISS : \"last_log_record_id\"\n    OVERWATCH_GAMEMODE ||--o{ OVERWATCH_MAP : \"gamemode_id\"",
+      "mermaid": "erDiagram\n    CATALOG_ALIAS_MISS {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar(32) discipline FK\n        varchar(16) kind\n        varchar(128) raw_name\n        int occurrences\n        timestamptz first_seen_at\n        timestamptz last_seen_at\n        bigint last_ingest_job_id \"nullable\"\n        timestamptz resolved_at \"nullable\"\n    }\n    CATALOG_DISCIPLINE {\n        varchar(32) code PK\n        varchar(64) name\n        timestamptz created_at\n    }\n    CATALOG_ENTITY {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar(32) discipline FK\n        varchar(16) kind\n        varchar(64) slug\n        varchar(128) name\n        varchar image_path \"nullable\"\n        bigint parent_id FK \"nullable\"\n        jsonb attrs\n        jsonb aliases\n        boolean active\n    }\n    CATALOG_ENTITY_LEGACY {\n        varchar(16) legacy_kind PK\n        bigint legacy_id PK\n        bigint entity_id FK\n    }\n    OVERWATCH_GAMEMODE {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar slug UK\n        varchar name UK\n        varchar image_path\n        varchar description \"nullable\"\n        jsonb aliases\n    }\n    OVERWATCH_HERO {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        varchar slug UK\n        varchar name UK\n        varchar image_path\n        heroclass type\n        varchar color\n        jsonb aliases\n    }\n    OVERWATCH_MAP {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint gamemode_id FK\n        varchar name UK\n        varchar image_path\n        boolean in_competitive\n        jsonb aliases\n    }\n\n    CATALOG_DISCIPLINE ||--o{ CATALOG_ALIAS_MISS : \"discipline\"\n    CATALOG_DISCIPLINE ||--o{ CATALOG_ENTITY : \"discipline\"\n    CATALOG_ENTITY |o--o{ CATALOG_ENTITY : \"parent_id\"\n    CATALOG_ENTITY ||--o{ CATALOG_ENTITY : \"discipline\"\n    CATALOG_ENTITY ||--o{ CATALOG_ENTITY_LEGACY : \"entity_id\"\n    OVERWATCH_GAMEMODE ||--o{ OVERWATCH_MAP : \"gamemode_id\"",
       "schemas": [
         "catalog",
         "overwatch"
       ],
       "tables": [
+        "catalog.alias_miss",
         "catalog.discipline",
         "catalog.entity",
         "catalog.entity_legacy",
-        "overwatch.catalog_alias_miss",
         "overwatch.gamemode",
         "overwatch.hero",
         "overwatch.map"
       ],
       "unique_keys": [
+        {
+          "columns": [
+            "discipline",
+            "kind",
+            "raw_name"
+          ],
+          "table": "CATALOG_ALIAS_MISS"
+        },
         {
           "columns": [
             "id",
@@ -224,13 +232,6 @@
             "slug"
           ],
           "table": "CATALOG_ENTITY"
-        },
-        {
-          "columns": [
-            "entity_type",
-            "raw_name"
-          ],
-          "table": "OVERWATCH_CATALOG_ALIAS_MISS"
         }
       ]
     },

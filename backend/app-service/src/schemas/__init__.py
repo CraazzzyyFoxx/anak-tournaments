@@ -13,8 +13,6 @@ from .notification import *
 from .workspace import *
 from .admin.audit import *
 from .admin.catalog_alias import *
-from .admin.gamemode import *
-from .admin.hero import *
-from .admin.map import *
+from .admin.catalog import *
 from .admin.user import *
 from .admin.user_merge import *

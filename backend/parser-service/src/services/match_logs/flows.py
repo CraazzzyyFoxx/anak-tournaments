@@ -1159,9 +1159,7 @@ class MatchLogProcessor:
         # Own transaction, and before the commit below, so the queue records the
         # gaps whether this log ends up committed or rolled back.
         if self.hero_misses:
-            await catalog_aliases.record_misses(
-                enums.CatalogEntityType.hero, self.hero_misses, log_record_id=self.log_record_id
-            )
+            await catalog_aliases.record_misses("character", self.hero_misses, log_record_id=self.log_record_id)
 
         try:
             await _bulk_insert(session, models.MatchKillFeed, [_kill_feed_row(k) for k in kill_feed_db_objects])

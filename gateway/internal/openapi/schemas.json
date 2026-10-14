@@ -797,6 +797,174 @@
       },
       "summary": "List audit log entries"
     },
+    "rpc.app.catalog.admin_create": {
+      "description": "Permission: superuser only. Creates a catalog entity; slug defaults to the slugified name and must fit 64 characters (422 otherwise); a character's attrs.class must be one of the discipline's classes; a map of a discipline with modes needs its mode as parent_id.",
+      "request": {
+        "array": false,
+        "ref": "app.CatalogEntityCreate"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.CatalogEntityRead"
+      },
+      "summary": "Create catalog entity"
+    },
+    "rpc.app.catalog.admin_delete": {
+      "description": "Permission: superuser only. Deletes a catalog entity by id, returns 204; fails while a game, pool or legacy mapping references it.",
+      "summary": "Delete catalog entity"
+    },
+    "rpc.app.catalog.admin_list": {
+      "description": "Permission: superuser only. Returns a paginated list of one discipline's catalog entities of one kind (character, map, mode); filters search, parent_id, attrs (JSON containment), active; 404 for a kind the discipline does not declare.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 50,
+            "maximum": 500,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "id",
+            "enum": [
+              "id",
+              "name",
+              "slug",
+              "parent_id",
+              "created_at",
+              "updated_at"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "search",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Search"
+          }
+        },
+        {
+          "name": "parent_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Id"
+          }
+        },
+        {
+          "name": "attrs",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Attrs"
+          }
+        },
+        {
+          "name": "active",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Active"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_CatalogEntityRead_"
+      },
+      "summary": "Admin list catalog entities"
+    },
+    "rpc.app.catalog.admin_update": {
+      "description": "Permission: superuser only. Updates a catalog entity by id; attrs is a shallow merge (present keys replace, absent keys keep). Explicit null is refused for name, slug, attrs and active (422); image_path and parent_id can be cleared. Renaming preserves the stored slug; an explicit slug must fit 64 characters.",
+      "request": {
+        "array": false,
+        "ref": "app.CatalogEntityUpdate"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.CatalogEntityRead"
+      },
+      "summary": "Update catalog entity"
+    },
     "rpc.app.catalog_aliases.attach": {
       "description": "Permission: superuser only. Adds the raw name to the target entity's aliases and closes the matching miss in one transaction; 404 if the entity is missing.",
       "request": {
@@ -810,7 +978,7 @@
       "summary": "Dismiss a catalog alias miss"
     },
     "rpc.app.catalog_aliases.misses_list": {
-      "description": "Permission: superuser only. Returns a paginated queue of hero/map/gamemode names from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.",
+      "description": "Permission: superuser only. Returns a paginated queue of catalog names (any discipline and kind) from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.",
       "query_params": [
         {
           "name": "page",
@@ -877,18 +1045,40 @@
           }
         },
         {
-          "name": "entity_type",
+          "name": "discipline",
           "required": false,
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/app.CatalogEntityType"
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "default": null
+            "default": null,
+            "title": "Discipline"
+          }
+        },
+        {
+          "name": "kind",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "enum": [
+                  "character",
+                  "map",
+                  "mode"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Kind"
           }
         },
         {
@@ -907,38 +1097,6 @@
       },
       "summary": "List catalog alias misses"
     },
-    "rpc.app.gamemodes.admin_create": {
-      "description": "Permission: superuser only. Creates a gamemode.",
-      "request": {
-        "array": false,
-        "ref": "app.GamemodeCreate"
-      },
-      "response": {
-        "array": false,
-        "ref": "app.GamemodeRead"
-      },
-      "summary": "Create gamemode"
-    },
-    "rpc.app.gamemodes.admin_delete": {
-      "description": "Permission: superuser only. Deletes a gamemode by id, returns 204.",
-      "summary": "Delete gamemode"
-    },
-    "rpc.app.gamemodes.admin_list": {
-      "description": "Permission: superuser only. Returns a paginated admin list of gamemodes.",
-      "summary": "Admin list gamemodes"
-    },
-    "rpc.app.gamemodes.admin_update": {
-      "description": "Permission: superuser only. Updates a gamemode by id.",
-      "request": {
-        "array": false,
-        "ref": "app.GamemodeUpdate"
-      },
-      "response": {
-        "array": false,
-        "ref": "app.GamemodeRead"
-      },
-      "summary": "Update gamemode"
-    },
     "rpc.app.gamemodes.lookup": {
       "description": "Permission: public; no authentication required. Returns all gamemodes as id/name lookup items ordered by name (no pagination).",
       "response": {
@@ -946,38 +1104,6 @@
         "ref": "app.LookupItem"
       },
       "summary": "Gamemode lookup"
-    },
-    "rpc.app.heroes.admin_create": {
-      "description": "Permission: superuser only. Creates a hero.",
-      "request": {
-        "array": false,
-        "ref": "app.HeroCreate"
-      },
-      "response": {
-        "array": false,
-        "ref": "app.HeroRead"
-      },
-      "summary": "Create hero"
-    },
-    "rpc.app.heroes.admin_delete": {
-      "description": "Permission: superuser only. Deletes a hero by id, returns 204.",
-      "summary": "Delete hero"
-    },
-    "rpc.app.heroes.admin_list": {
-      "description": "Permission: superuser only. Returns a paginated admin list of heroes.",
-      "summary": "Admin list heroes"
-    },
-    "rpc.app.heroes.admin_update": {
-      "description": "Permission: superuser only. Updates a hero by id.",
-      "request": {
-        "array": false,
-        "ref": "app.HeroUpdate"
-      },
-      "response": {
-        "array": false,
-        "ref": "app.HeroRead"
-      },
-      "summary": "Update hero"
     },
     "rpc.app.heroes.leaderboard": {
       "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated per-hero player leaderboard resolved against the workspace context and its division grid.",
@@ -1168,38 +1294,6 @@
         "ref": "app.Paginated_HeroPlaytime_"
       },
       "summary": "Hero playtime stats"
-    },
-    "rpc.app.maps.admin_create": {
-      "description": "Permission: superuser only. Creates a map.",
-      "request": {
-        "array": false,
-        "ref": "app.MapCreate"
-      },
-      "response": {
-        "array": false,
-        "ref": "app.MapRead"
-      },
-      "summary": "Create map"
-    },
-    "rpc.app.maps.admin_delete": {
-      "description": "Permission: superuser only. Deletes a map by id, returns 204.",
-      "summary": "Delete map"
-    },
-    "rpc.app.maps.admin_list": {
-      "description": "Permission: superuser only. Returns a paginated admin list of maps.",
-      "summary": "Admin list maps"
-    },
-    "rpc.app.maps.admin_update": {
-      "description": "Permission: superuser only. Updates a map by id.",
-      "request": {
-        "array": false,
-        "ref": "app.MapUpdate"
-      },
-      "response": {
-        "array": false,
-        "ref": "app.MapRead"
-      },
-      "summary": "Update map"
     },
     "rpc.app.maps.lookup": {
       "description": "Permission: public; no authentication required. Returns all maps as id/name lookup items ordered by name (no pagination).",
@@ -13385,15 +13479,12 @@
           "type": "string"
         },
         "entity_id": {
+          "exclusiveMinimum": 0,
           "title": "Entity Id",
           "type": "integer"
-        },
-        "entity_type": {
-          "$ref": "#/components/schemas/app.CatalogEntityType"
         }
       },
       "required": [
-        "entity_type",
         "entity_id",
         "alias"
       ],
@@ -13402,6 +13493,18 @@
     },
     "app.CatalogAliasMissListQueryParams": {
       "properties": {
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "entities": {
           "items": {
             "type": "string"
@@ -13409,21 +13512,27 @@
           "title": "Entities",
           "type": "array"
         },
-        "entity_type": {
+        "include_resolved": {
+          "default": false,
+          "title": "Include Resolved",
+          "type": "boolean"
+        },
+        "kind": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.CatalogEntityType"
+              "enum": [
+                "character",
+                "map",
+                "mode"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "default": null
-        },
-        "include_resolved": {
-          "default": false,
-          "title": "Include Resolved",
-          "type": "boolean"
+          "default": null,
+          "title": "Kind"
         },
         "only_count": {
           "default": false,
@@ -13465,8 +13574,9 @@
     "app.CatalogAliasMissRead": {
       "description": "One unresolved catalog name, with how often logs have hit it.",
       "properties": {
-        "entity_type": {
-          "$ref": "#/components/schemas/app.CatalogEntityType"
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
         },
         "first_seen_at": {
           "format": "date-time",
@@ -13477,7 +13587,11 @@
           "title": "Id",
           "type": "integer"
         },
-        "last_log_record_id": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "last_ingest_job_id": {
           "anyOf": [
             {
               "type": "integer"
@@ -13487,7 +13601,7 @@
             }
           ],
           "default": null,
-          "title": "Last Log Record Id"
+          "title": "Last Ingest Job Id"
         },
         "last_log_tournament_id": {
           "anyOf": [
@@ -13530,7 +13644,8 @@
       },
       "required": [
         "id",
-        "entity_type",
+        "discipline",
+        "kind",
         "raw_name",
         "occurrences",
         "first_seen_at",
@@ -13539,15 +13654,398 @@
       "title": "CatalogAliasMissRead",
       "type": "object"
     },
-    "app.CatalogEntityType": {
-      "description": "Catalog entity an alias (or an unresolved-name miss) belongs to.\n\nMatch logs carry map/gamemode/hero names in the reporting client's locale,\nso every catalog entity keeps a list of alternative names it answers to.",
-      "enum": [
-        "hero",
-        "map",
-        "gamemode"
+    "app.CatalogEntityCreate": {
+      "properties": {
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "attrs": {
+          "additionalProperties": true,
+          "title": "Attrs",
+          "type": "object"
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Path"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "slug": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slug"
+        }
+      },
+      "required": [
+        "name"
       ],
-      "title": "CatalogEntityType",
-      "type": "string"
+      "title": "CatalogEntityCreate",
+      "type": "object"
+    },
+    "app.CatalogEntityListQueryParams": {
+      "properties": {
+        "active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active"
+        },
+        "attrs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attrs"
+        },
+        "entities": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Entities",
+          "type": "array"
+        },
+        "only_count": {
+          "default": false,
+          "title": "Only Count",
+          "type": "boolean"
+        },
+        "order": {
+          "$ref": "#/components/schemas/app.SortOrder",
+          "default": "asc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "per_page": {
+          "default": 50,
+          "maximum": 500,
+          "minimum": -1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Search"
+        },
+        "sort": {
+          "default": "id",
+          "enum": [
+            "id",
+            "name",
+            "slug",
+            "parent_id",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "Sort",
+          "type": "string"
+        }
+      },
+      "title": "CatalogEntityListQueryParams",
+      "type": "object"
+    },
+    "app.CatalogEntityParentRead": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "slug",
+        "name"
+      ],
+      "title": "CatalogEntityParentRead",
+      "type": "object"
+    },
+    "app.CatalogEntityRead": {
+      "properties": {
+        "active": {
+          "title": "Active",
+          "type": "boolean"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "attrs": {
+          "additionalProperties": true,
+          "title": "Attrs",
+          "type": "object"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Path"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.CatalogEntityParentRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Id"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated At"
+        }
+      },
+      "required": [
+        "id",
+        "created_at",
+        "discipline",
+        "kind",
+        "slug",
+        "name",
+        "image_path",
+        "parent_id",
+        "attrs",
+        "aliases",
+        "active"
+      ],
+      "title": "CatalogEntityRead",
+      "type": "object"
+    },
+    "app.CatalogEntityUpdate": {
+      "properties": {
+        "active": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Active"
+        },
+        "aliases": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aliases"
+        },
+        "attrs": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attrs"
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Path"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "parent_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Id"
+        },
+        "slug": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Slug"
+        }
+      },
+      "title": "CatalogEntityUpdate",
+      "type": "object"
     },
     "app.DashboardActiveTournamentStats": {
       "properties": {
@@ -13943,35 +14441,6 @@
       "title": "EncounterReadWithUserStats",
       "type": "object"
     },
-    "app.GamemodeCreate": {
-      "description": "Schema for creating a gamemode",
-      "properties": {
-        "aliases": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Aliases"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "title": "GamemodeCreate",
-      "type": "object"
-    },
     "app.GamemodeRead": {
       "properties": {
         "aliases": {
@@ -14020,40 +14489,6 @@
       "title": "GamemodeRead",
       "type": "object"
     },
-    "app.GamemodeUpdate": {
-      "description": "Schema for updating a gamemode",
-      "properties": {
-        "aliases": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Aliases"
-        },
-        "name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Name"
-        }
-      },
-      "title": "GamemodeUpdate",
-      "type": "object"
-    },
     "app.HeroClass": {
       "description": "A roster role OR a hero's class -- two concepts on one Postgres type.\n\n``tank``/``damage``/``support`` mean both things at once, which is why the\nsame ``heroclass`` type backs ``overwatch.hero.type``,\n``matches.stat_baselines.role`` and ``tournament.player.role``. ``flex``\nonly ever means the third: a player who holds no fixed role, which is what\na role-less (all-``flex``) roster shape drafts and balances for. No hero has\na class of \"flex\", so the two hero-side columns are narrowed back to\n:data:`HERO_TYPE_CLASSES` / :data:`HeroTypeClass` in the schema layer and by\nCHECK constraints in the database (migration ``heroflex0001``).\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.\n\nTHE single role enum for the whole backend (frontend mirror:\n``PlayerRoleOption`` in ``lib/roster/player-role.ts``). One spelling per role, in\ncode, on the wire and in the database: :attr:`slot_code` is the lowercase\nmember name. This docstring is the public OpenAPI description of the enum,\nso the retired spelling is documented on :attr:`slot_code` instead.",
       "enum": [
@@ -14064,69 +14499,6 @@
       ],
       "title": "HeroClass",
       "type": "string"
-    },
-    "app.HeroCreate": {
-      "description": "Schema for creating a hero",
-      "properties": {
-        "aliases": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Aliases"
-        },
-        "color": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Color"
-        },
-        "image_path": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Path"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "role": {
-          "enum": [
-            "Tank",
-            "Damage",
-            "Support"
-          ],
-          "title": "Role",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "role"
-      ],
-      "title": "HeroCreate",
-      "type": "object"
     },
     "app.HeroLeaderboardEntry": {
       "properties": {
@@ -14572,81 +14944,6 @@
       "title": "HeroStatBest",
       "type": "object"
     },
-    "app.HeroUpdate": {
-      "description": "Schema for updating a hero",
-      "properties": {
-        "aliases": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Aliases"
-        },
-        "color": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Color"
-        },
-        "image_path": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Path"
-        },
-        "name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Name"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "enum": [
-                "Tank",
-                "Damage",
-                "Support"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Role"
-        }
-      },
-      "title": "HeroUpdate",
-      "type": "object"
-    },
     "app.HeroWithUserStats": {
       "properties": {
         "hero": {
@@ -14794,57 +15091,6 @@
       "title": "LookupItem",
       "type": "object"
     },
-    "app.MapCreate": {
-      "description": "Schema for creating a map",
-      "properties": {
-        "aliases": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Aliases"
-        },
-        "gamemode_id": {
-          "title": "Gamemode Id",
-          "type": "integer"
-        },
-        "image_path": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Path"
-        },
-        "in_competitive": {
-          "default": true,
-          "title": "In Competitive",
-          "type": "boolean"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "gamemode_id"
-      ],
-      "title": "MapCreate",
-      "type": "object"
-    },
     "app.MapRead": {
       "properties": {
         "aliases": {
@@ -14895,76 +15141,6 @@
         "gamemode"
       ],
       "title": "MapRead",
-      "type": "object"
-    },
-    "app.MapUpdate": {
-      "description": "Schema for updating a map",
-      "properties": {
-        "aliases": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Aliases"
-        },
-        "gamemode_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Gamemode Id"
-        },
-        "image_path": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Path"
-        },
-        "in_competitive": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "In Competitive"
-        },
-        "name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Name"
-        }
-      },
-      "title": "MapUpdate",
       "type": "object"
     },
     "app.MatchReadWithUserStats": {
@@ -15885,6 +16061,37 @@
         "results"
       ],
       "title": "Paginated[CatalogAliasMissRead]",
+      "type": "object"
+    },
+    "app.Paginated_CatalogEntityRead_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.CatalogEntityRead"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[CatalogEntityRead]",
       "type": "object"
     },
     "app.Paginated_EncounterReadWithUserStats_": {

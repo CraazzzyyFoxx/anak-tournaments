@@ -15,7 +15,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 from shared.repository import MapRepository
 from src import models, schemas
 from src.clients.overfast import OverFastCatalogClient, overfast_catalog_client
-from src.core import enums, errors, pagination, utils
+from src.core import errors, pagination, utils
 from src.services import catalog_aliases
 from src.services.catalog_images import CatalogImageMirror, catalog_image_mirror, map_slug
 from src.services.gamemode.service import gamemode_service
@@ -76,10 +76,8 @@ class MapService:
             # Recorded BEFORE the raise and in its own transaction: the 404 rolls
             # the log-processing session back. Both names go in — a failed join
             # cannot tell which of the two was the unknown one.
-            await catalog_aliases.record_misses(enums.CatalogEntityType.map, [name], log_record_id=log_record_id)
-            await catalog_aliases.record_misses(
-                enums.CatalogEntityType.gamemode, [gamemode], log_record_id=log_record_id
-            )
+            await catalog_aliases.record_misses("map", [name], log_record_id=log_record_id)
+            await catalog_aliases.record_misses("mode", [gamemode], log_record_id=log_record_id)
             raise errors.ApiHTTPException(
                 status_code=404,
                 detail=[

@@ -319,43 +319,30 @@ class MapRepository(BaseRepository[models.Map]):
 
 
 class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
-    """``overwatch.catalog_alias_miss`` — the unresolved-name worklist.
+    """``catalog.alias_miss`` — the unresolved-name worklist.
 
-    Rows are never deleted; ``resolved_at`` is stamped on attach/dismiss and
-    cleared again when the same name reappears (see the model docstring).
+    Rows are never deleted; ``resolved_at`` is stamped on attach/dismiss and cleared when the same name reappears.
     """
 
     def __init__(self) -> None:
         super().__init__(models.CatalogAliasMiss)
 
-    async def resolve_by_raw_name(
-        self,
-        session: AsyncSession,
-        *,
-        entity_type: enums.CatalogEntityType,
-        raw_name: str,
-    ) -> None:
-        """Close the miss for one ``(entity_type, raw_name)`` pair.
-
-        Set-based rather than load-then-mutate: the pair is unique
-        (``uq_catalog_alias_miss_entity_raw``) but may legitimately be absent —
-        an alias can be attached before any log ever missed on it.
-        """
+    async def resolve_by_raw_name(self, session: AsyncSession, *, discipline: str, kind: str, raw_name: str) -> None:
+        """Close a miss, which may legitimately be absent (an alias attached before any log missed on it)."""
+        miss = models.CatalogAliasMiss
         await session.execute(
-            sa.update(models.CatalogAliasMiss)
-            .where(
-                models.CatalogAliasMiss.entity_type == entity_type,
-                models.CatalogAliasMiss.raw_name == raw_name,
-            )
+            sa.update(miss)
+            .where(miss.discipline == discipline, miss.kind == kind, miss.raw_name == raw_name)
             .values(resolved_at=sa.func.now())
         )
 
     def build_miss_upsert(
         self,
-        entity_type: enums.CatalogEntityType,
+        discipline: str,
+        kind: str,
         raw_names: typing.Iterable[str],
         *,
-        log_record_id: int | None = None,
+        ingest_job_id: int | None = None,
         name_max_length: int = 128,
     ):
         """The upsert statement, so SQL can be asserted without a database."""
@@ -363,19 +350,20 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
         statement = pg_insert(self.model).values(
             [
                 {
-                    "entity_type": entity_type,
+                    "discipline": discipline,
+                    "kind": kind,
                     "raw_name": name[:name_max_length],
-                    "last_log_record_id": log_record_id,
+                    "last_ingest_job_id": ingest_job_id,
                 }
                 for name in names
             ]
         )
         return statement.on_conflict_do_update(
-            constraint="uq_catalog_alias_miss_entity_raw",
+            constraint="uq_alias_miss",
             set_={
                 "occurrences": self.model.occurrences + 1,
                 "last_seen_at": sa.func.now(),
-                "last_log_record_id": statement.excluded.last_log_record_id,
+                "last_ingest_job_id": statement.excluded.last_ingest_job_id,
                 "resolved_at": None,
             },
         )
@@ -383,26 +371,19 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
     async def record_miss(
         self,
         session: AsyncSession,
-        entity_type: enums.CatalogEntityType,
+        discipline: str,
+        kind: str,
         raw_names: typing.Iterable[str],
         *,
-        log_record_id: int | None = None,
+        ingest_job_id: int | None = None,
         name_max_length: int = 128,
     ) -> None:
-        """Upsert one occurrence-tracked miss row per cleaned name.
-
-        A name showing up again reopens a dismissed miss (``resolved_at`` reset
-        to ``None`` on conflict) — "hidden, but it keeps coming back" must stay
-        visible instead of being lost.
-        """
+        """Upsert one occurrence-tracked row per cleaned name; reappearing names reopen dismissed misses."""
         names = sorted({name.strip() for name in raw_names if name and name.strip()})
         if not names:
             return
         await session.execute(
             self.build_miss_upsert(
-                entity_type,
-                names,
-                log_record_id=log_record_id,
-                name_max_length=name_max_length,
+                discipline, kind, names, ingest_job_id=ingest_job_id, name_max_length=name_max_length
             )
         )

@@ -379,61 +379,27 @@ DOCS: dict[str, dict] = {
         "summary": "Download match log",
         "description": "Permission: any authenticated user — the gateway route requires a session and the handler performs no further permission or ownership check. Returns the raw match-log file bytes for a match (base64 from the worker, decoded by the gateway); 404 if the match or log is missing.",
     },
-    # ── metadata admin: heroes ─────────────────────────────────────────────────────────
-    "rpc.app.heroes.admin_list": {
-        "summary": "Admin list heroes",
-        "description": "Permission: superuser only. Returns a paginated admin list of heroes.",
+    # ── game catalog admin (catalog.entity) ────────────────────────────────────────────
+    "rpc.app.catalog.admin_list": {
+        "summary": "Admin list catalog entities",
+        "description": "Permission: superuser only. Returns a paginated list of one discipline's catalog entities of one kind (character, map, mode); filters search, parent_id, attrs (JSON containment), active; 404 for a kind the discipline does not declare.",
     },
-    "rpc.app.heroes.admin_create": {
-        "summary": "Create hero",
-        "description": "Permission: superuser only. Creates a hero.",
+    "rpc.app.catalog.admin_create": {
+        "summary": "Create catalog entity",
+        "description": "Permission: superuser only. Creates a catalog entity; slug defaults to the slugified name and must fit 64 characters (422 otherwise); a character's attrs.class must be one of the discipline's classes; a map of a discipline with modes needs its mode as parent_id.",
     },
-    "rpc.app.heroes.admin_update": {
-        "summary": "Update hero",
-        "description": "Permission: superuser only. Updates a hero by id.",
+    "rpc.app.catalog.admin_update": {
+        "summary": "Update catalog entity",
+        "description": "Permission: superuser only. Updates a catalog entity by id; attrs is a shallow merge (present keys replace, absent keys keep). Explicit null is refused for name, slug, attrs and active (422); image_path and parent_id can be cleared. Renaming preserves the stored slug; an explicit slug must fit 64 characters.",
     },
-    "rpc.app.heroes.admin_delete": {
-        "summary": "Delete hero",
-        "description": "Permission: superuser only. Deletes a hero by id, returns 204.",
-    },
-    # ── metadata admin: maps ────────────────────────────────────────────────────────────
-    "rpc.app.maps.admin_list": {
-        "summary": "Admin list maps",
-        "description": "Permission: superuser only. Returns a paginated admin list of maps.",
-    },
-    "rpc.app.maps.admin_create": {
-        "summary": "Create map",
-        "description": "Permission: superuser only. Creates a map.",
-    },
-    "rpc.app.maps.admin_update": {
-        "summary": "Update map",
-        "description": "Permission: superuser only. Updates a map by id.",
-    },
-    "rpc.app.maps.admin_delete": {
-        "summary": "Delete map",
-        "description": "Permission: superuser only. Deletes a map by id, returns 204.",
-    },
-    # ── metadata admin: gamemodes ─────────────────────────────────────────────────────────
-    "rpc.app.gamemodes.admin_list": {
-        "summary": "Admin list gamemodes",
-        "description": "Permission: superuser only. Returns a paginated admin list of gamemodes.",
-    },
-    "rpc.app.gamemodes.admin_create": {
-        "summary": "Create gamemode",
-        "description": "Permission: superuser only. Creates a gamemode.",
-    },
-    "rpc.app.gamemodes.admin_update": {
-        "summary": "Update gamemode",
-        "description": "Permission: superuser only. Updates a gamemode by id.",
-    },
-    "rpc.app.gamemodes.admin_delete": {
-        "summary": "Delete gamemode",
-        "description": "Permission: superuser only. Deletes a gamemode by id, returns 204.",
+    "rpc.app.catalog.admin_delete": {
+        "summary": "Delete catalog entity",
+        "description": "Permission: superuser only. Deletes a catalog entity by id, returns 204; fails while a game, pool or legacy mapping references it.",
     },
     # ── metadata admin: catalog alias-miss queue ──────────────────────────────────────────
     "rpc.app.catalog_aliases.misses_list": {
         "summary": "List catalog alias misses",
-        "description": "Permission: superuser only. Returns a paginated queue of hero/map/gamemode names from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.",
+        "description": "Permission: superuser only. Returns a paginated queue of catalog names (any discipline and kind) from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.",
     },
     "rpc.app.catalog_aliases.attach": {
         "summary": "Attach a catalog alias",

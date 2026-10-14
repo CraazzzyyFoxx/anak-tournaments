@@ -571,6 +571,19 @@ catalog, not yet scoped by discipline.
 <!-- ERD:auto catalog -->
 ```mermaid
 erDiagram
+    CATALOG_ALIAS_MISS {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        varchar(32) discipline FK
+        varchar(16) kind
+        varchar(128) raw_name
+        int occurrences
+        timestamptz first_seen_at
+        timestamptz last_seen_at
+        bigint last_ingest_job_id "nullable"
+        timestamptz resolved_at "nullable"
+    }
     CATALOG_DISCIPLINE {
         varchar(32) code PK
         varchar(64) name
@@ -594,18 +607,6 @@ erDiagram
         varchar(16) legacy_kind PK
         bigint legacy_id PK
         bigint entity_id FK
-    }
-    OVERWATCH_CATALOG_ALIAS_MISS {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        catalogentitytype entity_type
-        varchar(128) raw_name
-        int occurrences
-        timestamptz first_seen_at
-        timestamptz last_seen_at
-        bigint last_log_record_id FK "nullable"
-        timestamptz resolved_at "nullable"
     }
     OVERWATCH_GAMEMODE {
         bigint id PK
@@ -639,22 +640,22 @@ erDiagram
         jsonb aliases
     }
 
+    CATALOG_DISCIPLINE ||--o{ CATALOG_ALIAS_MISS : "discipline"
     CATALOG_DISCIPLINE ||--o{ CATALOG_ENTITY : "discipline"
     CATALOG_ENTITY |o--o{ CATALOG_ENTITY : "parent_id"
     CATALOG_ENTITY ||--o{ CATALOG_ENTITY : "discipline"
     CATALOG_ENTITY ||--o{ CATALOG_ENTITY_LEGACY : "entity_id"
-    LOG_PROCESSING_RECORD |o--o{ OVERWATCH_CATALOG_ALIAS_MISS : "last_log_record_id"
     OVERWATCH_GAMEMODE ||--o{ OVERWATCH_MAP : "gamemode_id"
 ```
 
 Composite unique keys:
 
+- `CATALOG_ALIAS_MISS` unique on (`discipline`, `kind`, `raw_name`)
 - `CATALOG_ENTITY` unique on (`id`, `discipline`)
 - `CATALOG_ENTITY` unique on (`id`, `kind`)
 - `CATALOG_ENTITY` unique on (`id`, `discipline`, `kind`)
 - `CATALOG_ENTITY` unique on (`discipline`, `kind`, `name`)
 - `CATALOG_ENTITY` unique on (`discipline`, `kind`, `slug`)
-- `OVERWATCH_CATALOG_ALIAS_MISS` unique on (`entity_type`, `raw_name`)
 <!-- /ERD:auto -->
 
 ## division_grid — `public`

@@ -5547,7 +5547,7 @@ export interface paths {
         };
         /**
          * List catalog alias misses
-         * @description Permission: superuser only. Returns a paginated queue of hero/map/gamemode names from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.
+         * @description Permission: superuser only. Returns a paginated queue of catalog names (any discipline and kind) from match logs that no alias resolved, ordered by occurrences then recency; open misses only unless include_resolved=true.
          *
          *     RPC subject: `rpc.app.catalog_aliases.misses_list`
          */
@@ -5580,6 +5580,62 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/catalog/{discipline}/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin list catalog entities
+         * @description Permission: superuser only. Returns a paginated list of one discipline's catalog entities of one kind (character, map, mode); filters search, parent_id, attrs (JSON containment), active; 404 for a kind the discipline does not declare.
+         *
+         *     RPC subject: `rpc.app.catalog.admin_list`
+         */
+        get: operations["get__api_v1_admin_catalog__discipline___kind_"];
+        put?: never;
+        /**
+         * Create catalog entity
+         * @description Permission: superuser only. Creates a catalog entity; slug defaults to the slugified name and must fit 64 characters (422 otherwise); a character's attrs.class must be one of the discipline's classes; a map of a discipline with modes needs its mode as parent_id.
+         *
+         *     RPC subject: `rpc.app.catalog.admin_create`
+         */
+        post: operations["post__api_v1_admin_catalog__discipline___kind_"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/catalog/{discipline}/{kind}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete catalog entity
+         * @description Permission: superuser only. Deletes a catalog entity by id, returns 204; fails while a game, pool or legacy mapping references it.
+         *
+         *     RPC subject: `rpc.app.catalog.admin_delete`
+         */
+        delete: operations["delete__api_v1_admin_catalog__discipline___kind___id_"];
+        options?: never;
+        head?: never;
+        /**
+         * Update catalog entity
+         * @description Permission: superuser only. Updates a catalog entity by id; attrs is a shallow merge (present keys replace, absent keys keep). Explicit null is refused for name, slug, attrs and active (422); image_path and parent_id can be cleared. Renaming preserves the stored slug; an explicit slug must fit 64 characters.
+         *
+         *     RPC subject: `rpc.app.catalog.admin_update`
+         */
+        patch: operations["patch__api_v1_admin_catalog__discipline___kind___id_"];
         trace?: never;
     };
     "/api/v1/admin/challonge/matches": {
@@ -6270,122 +6326,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/gamemodes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Admin list gamemodes
-         * @description Permission: superuser only. Returns a paginated admin list of gamemodes.
-         *
-         *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
-         *
-         *     RPC subject: `rpc.app.gamemodes.admin_list`
-         */
-        get: operations["get__api_v1_admin_gamemodes"];
-        put?: never;
-        /**
-         * Create gamemode
-         * @description Permission: superuser only. Creates a gamemode.
-         *
-         *     RPC subject: `rpc.app.gamemodes.admin_create`
-         */
-        post: operations["post__api_v1_admin_gamemodes"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/gamemodes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete gamemode
-         * @description Permission: superuser only. Deletes a gamemode by id, returns 204.
-         *
-         *     RPC subject: `rpc.app.gamemodes.admin_delete`
-         */
-        delete: operations["delete__api_v1_admin_gamemodes__id_"];
-        options?: never;
-        head?: never;
-        /**
-         * Update gamemode
-         * @description Permission: superuser only. Updates a gamemode by id.
-         *
-         *     RPC subject: `rpc.app.gamemodes.admin_update`
-         */
-        patch: operations["patch__api_v1_admin_gamemodes__id_"];
-        trace?: never;
-    };
-    "/api/v1/admin/heroes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Admin list heroes
-         * @description Permission: superuser only. Returns a paginated admin list of heroes.
-         *
-         *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
-         *
-         *     RPC subject: `rpc.app.heroes.admin_list`
-         */
-        get: operations["get__api_v1_admin_heroes"];
-        put?: never;
-        /**
-         * Create hero
-         * @description Permission: superuser only. Creates a hero.
-         *
-         *     RPC subject: `rpc.app.heroes.admin_create`
-         */
-        post: operations["post__api_v1_admin_heroes"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/heroes/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete hero
-         * @description Permission: superuser only. Deletes a hero by id, returns 204.
-         *
-         *     RPC subject: `rpc.app.heroes.admin_delete`
-         */
-        delete: operations["delete__api_v1_admin_heroes__id_"];
-        options?: never;
-        head?: never;
-        /**
-         * Update hero
-         * @description Permission: superuser only. Updates a hero by id.
-         *
-         *     RPC subject: `rpc.app.heroes.admin_update`
-         */
-        patch: operations["patch__api_v1_admin_heroes__id_"];
-        trace?: never;
-    };
     "/api/v1/admin/logs/history": {
         parameters: {
             query?: never;
@@ -6494,64 +6434,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/maps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Admin list maps
-         * @description Permission: superuser only. Returns a paginated admin list of maps.
-         *
-         *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
-         *
-         *     RPC subject: `rpc.app.maps.admin_list`
-         */
-        get: operations["get__api_v1_admin_maps"];
-        put?: never;
-        /**
-         * Create map
-         * @description Permission: superuser only. Creates a map.
-         *
-         *     RPC subject: `rpc.app.maps.admin_create`
-         */
-        post: operations["post__api_v1_admin_maps"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/maps/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Delete map
-         * @description Permission: superuser only. Deletes a map by id, returns 204.
-         *
-         *     RPC subject: `rpc.app.maps.admin_delete`
-         */
-        delete: operations["delete__api_v1_admin_maps__id_"];
-        options?: never;
-        head?: never;
-        /**
-         * Update map
-         * @description Permission: superuser only. Updates a map by id.
-         *
-         *     RPC subject: `rpc.app.maps.admin_update`
-         */
-        patch: operations["patch__api_v1_admin_maps__id_"];
         trace?: never;
     };
     "/api/v1/admin/matches": {
@@ -19962,14 +19844,14 @@ export interface components {
             alias: string;
             /** Entity Id */
             entity_id: number;
-            entity_type: components["schemas"]["app.CatalogEntityType"];
         };
         /**
          * CatalogAliasMissRead
          * @description One unresolved catalog name, with how often logs have hit it.
          */
         "app.CatalogAliasMissRead": {
-            entity_type: components["schemas"]["app.CatalogEntityType"];
+            /** Discipline */
+            discipline: string;
             /**
              * First Seen At
              * Format: date-time
@@ -19977,11 +19859,13 @@ export interface components {
             first_seen_at: string;
             /** Id */
             id: number;
+            /** Kind */
+            kind: string;
             /**
-             * Last Log Record Id
+             * Last Ingest Job Id
              * @default null
              */
-            last_log_record_id: number | null;
+            last_ingest_job_id: number | null;
             /**
              * Last Log Tournament Id
              * @default null
@@ -20002,158 +19886,122 @@ export interface components {
              */
             resolved_at: string | null;
         };
-        /**
-         * CatalogEntityType
-         * @description Catalog entity an alias (or an unresolved-name miss) belongs to.
-         *
-         *     Match logs carry map/gamemode/hero names in the reporting client's locale,
-         *     so every catalog entity keeps a list of alternative names it answers to.
-         * @enum {string}
-         */
-        "app.CatalogEntityType": AppCatalogEntityType;
-        /**
-         * GamemodeCreate
-         * @description Schema for creating a gamemode
-         */
-        "app.GamemodeCreate": {
+        /** CatalogEntityCreate */
+        "app.CatalogEntityCreate": {
             /**
-             * Aliases
-             * @default null
-             */
-            aliases: string[] | null;
-            /** Name */
-            name: string;
-        };
-        /**
-         * GamemodeUpdate
-         * @description Schema for updating a gamemode
-         */
-        "app.GamemodeUpdate": {
-            /**
-             * Aliases
-             * @default null
-             */
-            aliases: string[] | null;
-            /**
-             * Name
-             * @default null
-             */
-            name: string | null;
-        };
-        /**
-         * HeroCreate
-         * @description Schema for creating a hero
-         */
-        "app.HeroCreate": {
-            /**
-             * Aliases
-             * @default null
-             */
-            aliases: string[] | null;
-            /**
-             * Color
-             * @default null
-             */
-            color: string | null;
-            /**
-             * Image Path
-             * @default null
-             */
-            image_path: string | null;
-            /** Name */
-            name: string;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: AppHeroCreateRole;
-        };
-        /**
-         * HeroUpdate
-         * @description Schema for updating a hero
-         */
-        "app.HeroUpdate": {
-            /**
-             * Aliases
-             * @default null
-             */
-            aliases: string[] | null;
-            /**
-             * Color
-             * @default null
-             */
-            color: string | null;
-            /**
-             * Image Path
-             * @default null
-             */
-            image_path: string | null;
-            /**
-             * Name
-             * @default null
-             */
-            name: string | null;
-            /**
-             * Role
-             * @default null
-             */
-            role: AppHeroUpdateRoleAnyOf0 | null;
-        };
-        /**
-         * MapCreate
-         * @description Schema for creating a map
-         */
-        "app.MapCreate": {
-            /**
-             * Aliases
-             * @default null
-             */
-            aliases: string[] | null;
-            /** Gamemode Id */
-            gamemode_id: number;
-            /**
-             * Image Path
-             * @default null
-             */
-            image_path: string | null;
-            /**
-             * In Competitive
+             * Active
              * @default true
              */
-            in_competitive: boolean;
+            active: boolean;
+            /** Aliases */
+            aliases?: string[];
+            /** Attrs */
+            attrs?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Image Path
+             * @default null
+             */
+            image_path: string | null;
             /** Name */
             name: string;
+            /**
+             * Parent Id
+             * @default null
+             */
+            parent_id: number | null;
+            /**
+             * Slug
+             * @default null
+             */
+            slug: string | null;
         };
-        /**
-         * MapUpdate
-         * @description Schema for updating a map
-         */
-        "app.MapUpdate": {
+        /** CatalogEntityParentRead */
+        "app.CatalogEntityParentRead": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** CatalogEntityRead */
+        "app.CatalogEntityRead": {
+            /** Active */
+            active: boolean;
+            /** Aliases */
+            aliases: string[];
+            /** Attrs */
+            attrs: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Discipline */
+            discipline: string;
+            /** Id */
+            id: number;
+            /** Image Path */
+            image_path: string | null;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** @default null */
+            parent: components["schemas"]["app.CatalogEntityParentRead"] | null;
+            /** Parent Id */
+            parent_id: number | null;
+            /** Slug */
+            slug: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+        };
+        /** CatalogEntityUpdate */
+        "app.CatalogEntityUpdate": {
+            /**
+             * Active
+             * @default null
+             */
+            active: boolean | null;
             /**
              * Aliases
              * @default null
              */
             aliases: string[] | null;
             /**
-             * Gamemode Id
+             * Attrs
              * @default null
              */
-            gamemode_id: number | null;
+            attrs: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Image Path
              * @default null
              */
             image_path: string | null;
             /**
-             * In Competitive
-             * @default null
-             */
-            in_competitive: boolean | null;
-            /**
              * Name
              * @default null
              */
             name: string | null;
+            /**
+             * Parent Id
+             * @default null
+             */
+            parent_id: number | null;
+            /**
+             * Slug
+             * @default null
+             */
+            slug: string | null;
         };
         /**
          * NotificationAdminItem
@@ -20282,6 +20130,17 @@ export interface components {
             per_page: number;
             /** Results */
             results: components["schemas"]["app.CatalogAliasMissRead"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[CatalogEntityRead] */
+        "app.Paginated_CatalogEntityRead_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.CatalogEntityRead"][];
             /** Total */
             total: number;
         };
@@ -47786,7 +47645,8 @@ export interface operations {
                 only_count?: boolean;
                 sort?: PathsApiV1AdminCatalogAliasesMissesGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
-                entity_type?: components["schemas"]["app.CatalogEntityType"] | null;
+                discipline?: string | null;
+                kind?: PathsApiV1AdminCatalogAliasesMissesGetParametersQueryKindAnyOf0 | null;
                 include_resolved?: boolean;
             };
             header?: never;
@@ -47880,6 +47740,341 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_admin_catalog__discipline___kind_: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                entities?: string[];
+                only_count?: boolean;
+                sort?: PathsApiV1AdminCatalogDisciplineKindGetParametersQuerySort;
+                order?: components["schemas"]["app.SortOrder"];
+                search?: string | null;
+                parent_id?: number | null;
+                attrs?: string | null;
+                active?: boolean | null;
+            };
+            header?: never;
+            path: {
+                discipline: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.Paginated_CatalogEntityRead_"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_admin_catalog__discipline___kind_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discipline: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.CatalogEntityCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.CatalogEntityRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    delete__api_v1_admin_catalog__discipline___kind___id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discipline: string;
+                kind: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patch__api_v1_admin_catalog__discipline___kind___id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discipline: string;
+                kind: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.CatalogEntityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.CatalogEntityRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -50545,634 +50740,6 @@ export interface operations {
             };
         };
     };
-    get__api_v1_admin_gamemodes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_admin_gamemodes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["app.GamemodeCreate"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.GamemodeRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    delete__api_v1_admin_gamemodes__id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    patch__api_v1_admin_gamemodes__id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["app.GamemodeUpdate"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.GamemodeRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_admin_heroes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_admin_heroes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["app.HeroCreate"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.HeroRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    delete__api_v1_admin_heroes__id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    patch__api_v1_admin_heroes__id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["app.HeroUpdate"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.HeroRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     get__api_v1_admin_logs_history: {
         parameters: {
             query?: {
@@ -51511,320 +51078,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["parser.LogRecordRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_admin_maps: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_admin_maps: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["app.MapCreate"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.MapRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    delete__api_v1_admin_maps__id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    patch__api_v1_admin_maps__id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["app.MapUpdate"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.MapRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -73764,6 +73017,19 @@ export enum PathsApiV1AdminCatalogAliasesMissesGetParametersQuerySort {
     first_seen_at = "first_seen_at",
     last_seen_at = "last_seen_at"
 }
+export enum PathsApiV1AdminCatalogAliasesMissesGetParametersQueryKindAnyOf0 {
+    character = "character",
+    map = "map",
+    mode = "mode"
+}
+export enum PathsApiV1AdminCatalogDisciplineKindGetParametersQuerySort {
+    id = "id",
+    name = "name",
+    slug = "slug",
+    parent_id = "parent_id",
+    created_at = "created_at",
+    updated_at = "updated_at"
+}
 export enum PathsApiV1AdminWsWorkspace_idAchievementsRulesGetParametersQuerySort {
     id = "id",
     name = "name",
@@ -74316,21 +73582,6 @@ export enum AppAuthMergePolicyConflict_choices {
 export enum AppAuthMergePolicyOther_account_action {
     keep = "keep",
     delete = "delete"
-}
-export enum AppCatalogEntityType {
-    hero = "hero",
-    map = "map",
-    gamemode = "gamemode"
-}
-export enum AppHeroCreateRole {
-    Tank = "Tank",
-    Damage = "Damage",
-    Support = "Support"
-}
-export enum AppHeroUpdateRoleAnyOf0 {
-    Tank = "Tank",
-    Damage = "Damage",
-    Support = "Support"
 }
 export enum AppUserMergeFieldPolicyAvatar_url {
     source = "source",

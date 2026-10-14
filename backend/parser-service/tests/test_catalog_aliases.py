@@ -20,7 +20,6 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 os.environ["DEBUG"] = "true"
 
 shared_models = importlib.import_module("shared.models")
-shared_enums = importlib.import_module("shared.core.enums")
 repository = importlib.import_module("shared.repository")
 
 
@@ -31,25 +30,25 @@ class CatalogAliasSchemaTests(TestCase):
             self.assertFalse(column.nullable, f"{model.__name__}.aliases must be NOT NULL")
             self.assertEqual("JSONB", type(column.type).__name__)
 
-    def test_entity_type_enum_covers_the_three_catalog_entities(self) -> None:
-        self.assertEqual(
-            {"hero", "map", "gamemode"},
-            {member.value for member in shared_enums.CatalogEntityType},
+    def test_alias_miss_kind_is_the_core_vocabulary(self) -> None:
+        constraint = next(
+            c
+            for c in shared_models.CatalogAliasMiss.__table__.constraints
+            if getattr(c, "name", None) == "ck_alias_miss_kind"
         )
+        self.assertEqual("kind IN ('character', 'map', 'mode')", str(constraint.sqltext))
 
     def test_alias_miss_is_unique_per_entity_and_raw_name(self) -> None:
         table = shared_models.CatalogAliasMiss.__table__
-        self.assertEqual("overwatch", table.schema)
-        constraint = next(
-            c for c in table.constraints if getattr(c, "name", None) == "uq_catalog_alias_miss_entity_raw"
-        )
-        self.assertEqual(["entity_type", "raw_name"], [c.name for c in constraint.columns])
+        self.assertEqual("catalog", table.schema)
+        constraint = next(c for c in table.constraints if getattr(c, "name", None) == "uq_alias_miss")
+        self.assertEqual(["discipline", "kind", "raw_name"], [c.name for c in constraint.columns])
 
     def test_alias_miss_keeps_a_counter_and_a_resolution_stamp(self) -> None:
         columns = shared_models.CatalogAliasMiss.__table__.c
         self.assertFalse(columns["occurrences"].nullable)
         self.assertTrue(columns["resolved_at"].nullable)
-        self.assertTrue(columns["last_log_record_id"].nullable)
+        self.assertTrue(columns["last_ingest_job_id"].nullable)
 
 
 class MapAliasLookupTests(TestCase):

@@ -65,6 +65,11 @@ import {
   CatalogAliasAttachInput,
   CatalogAliasMissQuery,
   CatalogAliasMissRead,
+  CatalogAliasMissWire,
+  CatalogEntityRead,
+  CatalogEntityWrite,
+  CatalogEntityType,
+  CatalogKind,
   AchievementCreateInput,
   AchievementUpdateInput,
   AchievementRegistryEntry,
@@ -190,6 +195,79 @@ function buildAdminListQuery(params: {
     ...(params.sort && { sort: params.sort }),
     ...(params.order && { order: params.order })
   };
+}
+
+/**
+ * Content pages keep their per-kind view models; P7 makes them discipline-driven.
+ * These adapters translate their fields onto the generic catalog API.
+ */
+const OVERWATCH_CATALOG = "/api/v1/admin/catalog/overwatch";
+const KIND_OF_ENTITY: Record<CatalogEntityType, CatalogKind> = { hero: "character", map: "map", gamemode: "mode" };
+const ENTITY_OF_KIND: Record<CatalogKind, CatalogEntityType> = { character: "hero", map: "map", mode: "gamemode" };
+
+function stamps(entity: CatalogEntityRead): { created_at: Date; updated_at: Date | null } {
+  return { created_at: new Date(entity.created_at), updated_at: entity.updated_at ? new Date(entity.updated_at) : null };
+}
+
+function entityToHero(entity: CatalogEntityRead): Hero {
+  const className = String(entity.attrs.class ?? "");
+  const role = className ? className.charAt(0).toUpperCase() + className.slice(1) : className;
+  return {
+    id: entity.id,
+    ...stamps(entity),
+    name: entity.name,
+    slug: entity.slug,
+    image_path: entity.image_path ?? "",
+    type: role,
+    role,
+    color: String(entity.attrs.color ?? "#ffffff"),
+    aliases: entity.aliases
+  };
+}
+
+function entityToGamemode(entity: CatalogEntityRead): Gamemode {
+  return {
+    id: entity.id,
+    ...stamps(entity),
+    name: entity.name,
+    slug: entity.slug,
+    image_path: entity.image_path ?? "",
+    description: typeof entity.attrs.description === "string" ? entity.attrs.description : "",
+    aliases: entity.aliases
+  };
+}
+
+function entityToMap(entity: CatalogEntityRead): MapRead {
+  const parent = entity.parent ?? { id: entity.parent_id ?? 0, slug: "", name: "" };
+  return {
+    id: entity.id,
+    ...stamps(entity),
+    name: entity.name,
+    image_path: entity.image_path ?? "",
+    gamemode_id: parent.id,
+    in_competitive: entity.attrs.in_competitive !== false,
+    aliases: entity.aliases,
+    gamemode: { ...parent, image_path: "", description: "", aliases: [], created_at: new Date(entity.created_at), updated_at: null }
+  };
+}
+
+function heroWrite(data: HeroCreateInput | HeroUpdateInput): CatalogEntityWrite {
+  return {
+    ...(data.name !== undefined && { name: data.name }),
+    ...(data.image_path !== undefined && { image_path: data.image_path }),
+    ...(data.aliases !== undefined && { aliases: data.aliases }),
+    ...((data.role !== undefined || data.color !== undefined) && {
+      attrs: {
+        ...(data.role !== undefined && { class: data.role.toLowerCase() }),
+        ...(data.color !== undefined && { color: data.color })
+      }
+    })
+  };
+}
+
+async function entityPage<T>(path: string, query: Record<string, unknown>, map: (entity: CatalogEntityRead) => T): Promise<PaginatedResponse<T>> {
+  const page: PaginatedResponse<CatalogEntityRead> = await (await apiFetch(path, { query })).json();
+  return { ...page, results: page.results.map(map) };
 }
 
 class AdminService {
@@ -874,48 +952,32 @@ class AdminService {
   // ─── Hero CRUD ─────────────────────────────────────────────────────────────
 
   async getHeroes(
-    params: {
-      page?: number;
-      per_page?: number;
-      search?: string;
-      role?: string;
-      sort?: string;
-      order?: string;
-    } = {}
+    params: { page?: number; per_page?: number; search?: string; role?: string; sort?: string; order?: string } = {}
   ): Promise<PaginatedResponse<Hero>> {
-    const response = await apiFetch("/api/v1/admin/heroes", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.role && { role: params.role }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
-    });
-    return response.json();
+    // `role` is a page column, not a catalog column: unsortable server-side.
+    const { role, sort, ...list } = params;
+    return entityPage(
+      `${OVERWATCH_CATALOG}/character`,
+      {
+        ...buildAdminListQuery({ ...list, sort: sort === "role" ? undefined : sort }),
+        ...(role && { attrs: JSON.stringify({ class: role.toLowerCase() }) })
+      },
+      entityToHero
+    );
   }
 
   async createHero(data: HeroCreateInput): Promise<Hero> {
-    const response = await apiFetch("/api/v1/admin/heroes", {
-      method: "POST",
-      body: data
-    });
-    return response.json();
+    const response = await apiFetch(`${OVERWATCH_CATALOG}/character`, { method: "POST", body: heroWrite(data) });
+    return entityToHero(await response.json());
   }
 
   async updateHero(id: number, data: HeroUpdateInput): Promise<Hero> {
-    const response = await apiFetch(`/api/v1/admin/heroes/${id}`, {
-      method: "PATCH",
-      body: data
-    });
-    return response.json();
+    const response = await apiFetch(`${OVERWATCH_CATALOG}/character/${id}`, { method: "PATCH", body: heroWrite(data) });
+    return entityToHero(await response.json());
   }
 
   async deleteHero(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/heroes/${id}`, {
-      method: "DELETE"
-    });
+    await apiFetch(`${OVERWATCH_CATALOG}/character/${id}`, { method: "DELETE" });
   }
 
   async syncHeroes(): Promise<BulkOperationResult> {
@@ -928,40 +990,23 @@ class AdminService {
   // ─── Gamemode CRUD ─────────────────────────────────────────────────────────
 
   async getGamemodes(
-    params: {
-      page?: number;
-      per_page?: number;
-      search?: string;
-      sort?: string;
-      order?: string;
-    } = {}
+    params: { page?: number; per_page?: number; search?: string; sort?: string; order?: string } = {}
   ): Promise<PaginatedResponse<Gamemode>> {
-    const response = await apiFetch("/api/v1/admin/gamemodes", {
-      query: buildAdminListQuery(params)
-    });
-    return response.json();
+    return entityPage(`${OVERWATCH_CATALOG}/mode`, buildAdminListQuery(params), entityToGamemode);
   }
 
   async createGamemode(data: GamemodeCreateInput): Promise<Gamemode> {
-    const response = await apiFetch("/api/v1/admin/gamemodes", {
-      method: "POST",
-      body: data
-    });
-    return response.json();
+    const response = await apiFetch(`${OVERWATCH_CATALOG}/mode`, { method: "POST", body: data });
+    return entityToGamemode(await response.json());
   }
 
   async updateGamemode(id: number, data: GamemodeUpdateInput): Promise<Gamemode> {
-    const response = await apiFetch(`/api/v1/admin/gamemodes/${id}`, {
-      method: "PATCH",
-      body: data
-    });
-    return response.json();
+    const response = await apiFetch(`${OVERWATCH_CATALOG}/mode/${id}`, { method: "PATCH", body: data });
+    return entityToGamemode(await response.json());
   }
 
   async deleteGamemode(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/gamemodes/${id}`, {
-      method: "DELETE"
-    });
+    await apiFetch(`${OVERWATCH_CATALOG}/mode/${id}`, { method: "DELETE" });
   }
 
   async syncGamemodes(): Promise<BulkOperationResult> {
@@ -984,41 +1029,47 @@ class AdminService {
       order?: string;
     } = {}
   ): Promise<PaginatedResponse<MapRead>> {
-    const response = await apiFetch("/api/v1/admin/maps", {
-      query: {
-        ...(params.page != null && { page: params.page }),
-        ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.search && { search: params.search }),
-        ...(params.gamemode_id != null && { gamemode_id: params.gamemode_id }),
+    const { gamemode_id, in_competitive, sort, ...list } = params;
+    return entityPage(
+      `${OVERWATCH_CATALOG}/map`,
+      {
+        ...buildAdminListQuery({ ...list, sort: sort === "gamemode_id" ? "parent_id" : sort }),
+        ...(gamemode_id != null && { parent_id: gamemode_id }),
         // `!= null`, not truthiness: `false` is a real filter value (casual pool).
-        ...(params.in_competitive != null && { in_competitive: params.in_competitive }),
-        ...(params.sort && { sort: params.sort }),
-        ...(params.order && { order: params.order })
-      }
-    });
-    return response.json();
+        ...(in_competitive != null && { attrs: JSON.stringify({ in_competitive }) })
+      },
+      entityToMap
+    );
   }
 
   async createMap(data: MapCreateInput): Promise<MapRead> {
-    const response = await apiFetch("/api/v1/admin/maps", {
+    const response = await apiFetch(`${OVERWATCH_CATALOG}/map`, {
       method: "POST",
-      body: data
+      body: {
+        name: data.name,
+        parent_id: data.gamemode_id,
+        aliases: data.aliases ?? [],
+        attrs: { in_competitive: data.in_competitive ?? true }
+      }
     });
-    return response.json();
+    return entityToMap(await response.json());
   }
 
   async updateMap(id: number, data: MapUpdateInput): Promise<MapRead> {
-    const response = await apiFetch(`/api/v1/admin/maps/${id}`, {
+    const response = await apiFetch(`${OVERWATCH_CATALOG}/map/${id}`, {
       method: "PATCH",
-      body: data
+      body: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.aliases !== undefined && { aliases: data.aliases }),
+        ...(data.gamemode_id != null && { parent_id: data.gamemode_id }),
+        ...(data.in_competitive != null && { attrs: { in_competitive: data.in_competitive } })
+      }
     });
-    return response.json();
+    return entityToMap(await response.json());
   }
 
   async deleteMap(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/maps/${id}`, {
-      method: "DELETE"
-    });
+    await apiFetch(`${OVERWATCH_CATALOG}/map/${id}`, { method: "DELETE" });
   }
 
   async syncMaps(): Promise<BulkOperationResult> {
@@ -1034,18 +1085,24 @@ class AdminService {
    * Names the log parser could not resolve, worst offenders first. Open misses
    * only unless `include_resolved` asks for the dismissed ones too.
    */
-  async getCatalogAliasMisses(
-    params: CatalogAliasMissQuery = {}
-  ): Promise<PaginatedResponse<CatalogAliasMissRead>> {
+  async getCatalogAliasMisses(params: CatalogAliasMissQuery = {}): Promise<PaginatedResponse<CatalogAliasMissRead>> {
     const response = await apiFetch("/api/v1/admin/catalog-aliases/misses", {
       query: {
         ...(params.page != null && { page: params.page }),
         ...(params.per_page != null && { per_page: params.per_page }),
-        ...(params.entity_type && { entity_type: params.entity_type }),
+        ...(params.entity_type && { kind: KIND_OF_ENTITY[params.entity_type] }),
         ...(params.include_resolved && { include_resolved: params.include_resolved })
       }
     });
-    return response.json();
+    const page: PaginatedResponse<CatalogAliasMissWire> = await response.json();
+    return {
+      ...page,
+      results: page.results.map(({ kind, discipline: _discipline, last_ingest_job_id, ...miss }) => ({
+        ...miss,
+        entity_type: ENTITY_OF_KIND[kind],
+        last_log_record_id: last_ingest_job_id
+      }))
+    };
   }
 
   /**
@@ -1055,7 +1112,7 @@ class AdminService {
   async attachCatalogAlias(data: CatalogAliasAttachInput): Promise<void> {
     await apiFetch("/api/v1/admin/catalog-aliases/attach", {
       method: "POST",
-      body: data
+      body: { entity_id: data.entity_id, alias: data.alias }
     });
   }
 

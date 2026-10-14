@@ -36,7 +36,6 @@ CREATE TYPE abilityevent AS ENUM ('PrimaryFire', 'SecondaryFire', 'Ability1', 'A
 CREATE TYPE matches.matchsource AS ENUM ('log_parser', 'captain_report');
 CREATE TYPE heroclass AS ENUM ('tank', 'damage', 'support', 'flex');
 CREATE TYPE logstatsname AS ENUM ('Eliminations', 'FinalBlows', 'Deaths', 'AllDamageDealt', 'BarrierDamageDealt', 'HeroDamageDealt', 'HealingDealt', 'HealingReceived', 'SelfHealing', 'DamageTaken', 'DamageBlocked', 'DefensiveAssists', 'OffensiveAssists', 'UltimatesEarned', 'UltimatesUsed', 'MultikillBest', 'Multikills', 'SoloKills', 'ObjectiveKills', 'EnvironmentalKills', 'EnvironmentalDeaths', 'CriticalHits', 'CriticalHitAccuracy', 'ScopedAccuracy', 'ScopedCriticalHitAccuracy', 'ScopedCriticalHitKills', 'ShotsFired', 'ShotsHit', 'ShotsMissed', 'ScopedShotsFired', 'ScopedShotsHit', 'WeaponAccuracy', 'HeroTimePlayed', 'FirstPicks', 'FirstDeaths', 'UltimateKills', 'SupportKills', 'Performance', 'PerformancePoints', 'KD', 'KDA', 'DamageDelta', 'FBE', 'DamageFB', 'Assists', 'ImpactPoints', 'ImpactRank', 'OverperformanceScore');
-CREATE TYPE catalogentitytype AS ENUM ('hero', 'map', 'gamemode');
 CREATE TYPE tournament.pickbanmode AS ENUM ('pool', 'slots');
 CREATE TYPE tournament.pickbanfirstpickrule AS ENUM ('higher_seed');
 CREATE TYPE tournament.pickbanrotation AS ENUM ('fixed', 'alternate', 'result_winner_first', 'result_loser_first', 'result_loser_choice');
@@ -1375,6 +1374,24 @@ CREATE TABLE balancer.workspace_config (
 
 CREATE INDEX ix_balancer_workspace_config_workspace_id ON balancer.workspace_config (workspace_id);
 
+CREATE TABLE catalog.alias_miss (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	discipline VARCHAR(32) NOT NULL,
+	kind VARCHAR(16) NOT NULL,
+	raw_name VARCHAR(128) NOT NULL,
+	occurrences INTEGER DEFAULT '1' NOT NULL,
+	first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	last_ingest_job_id BIGINT,
+	resolved_at TIMESTAMP WITH TIME ZONE,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_alias_miss_kind CHECK (kind IN ('character', 'map', 'mode')),
+	CONSTRAINT uq_alias_miss UNIQUE (discipline, kind, raw_name),
+	CONSTRAINT fk_alias_miss_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
+);
+
 CREATE TABLE catalog.discipline (
 	code VARCHAR(32) NOT NULL,
 	name VARCHAR(64) NOT NULL,
@@ -2006,22 +2023,6 @@ CREATE INDEX ix_match_statistics_user_name_r0 ON matches.statistics (user_id, na
 CREATE INDEX ix_match_statistics_user_round_name ON matches.statistics (user_id, round, name);
 
 CREATE INDEX ix_matches_statistics_team_id ON matches.statistics (team_id);
-
-CREATE TABLE overwatch.catalog_alias_miss (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	entity_type catalogentitytype NOT NULL,
-	raw_name VARCHAR(128) NOT NULL,
-	occurrences INTEGER DEFAULT '1' NOT NULL,
-	first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	last_log_record_id BIGINT,
-	resolved_at TIMESTAMP WITH TIME ZONE,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_catalog_alias_miss_entity_raw UNIQUE (entity_type, raw_name),
-	FOREIGN KEY(last_log_record_id) REFERENCES log_processing.record (id) ON DELETE SET NULL
-);
 
 CREATE TABLE overwatch.gamemode (
 	id BIGSERIAL NOT NULL,

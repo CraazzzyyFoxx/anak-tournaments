@@ -28,7 +28,6 @@ flows = importlib.import_module("src.services.match_logs.flows")
 map_flows = importlib.import_module("src.services.map.flows")
 map_service_module = importlib.import_module("src.services.map.service")
 map_service = map_service_module.map_service
-shared_enums = importlib.import_module("shared.core.enums")
 errors = flows.errors
 
 
@@ -122,8 +121,8 @@ class MapAliasResolutionTests(IsolatedAsyncioTestCase):
         # Both names, because a failed join cannot say which one was unknown.
         self.assertEqual(
             [
-                (shared_enums.CatalogEntityType.map, ["Хогвартс"], 11),
-                (shared_enums.CatalogEntityType.gamemode, ["Контроль"], 11),
+                ("map", ["Хогвартс"], 11),
+                ("mode", ["Контроль"], 11),
             ],
             recorded,
         )
@@ -191,7 +190,7 @@ class HeroMissFlushTests(IsolatedAsyncioTestCase):
         self.assertEqual(
             [
                 ("create_stats",),
-                ("record_misses", shared_enums.CatalogEntityType.hero, ["Ана", "Кхтон"], 11),
+                ("record_misses", "character", ["Ана", "Кхтон"], 11),
                 ("commit",),
             ],
             calls,

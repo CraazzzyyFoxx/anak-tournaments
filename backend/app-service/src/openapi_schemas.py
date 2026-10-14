@@ -198,13 +198,13 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.quota.operations": Op(response=QuotaOperationRead, response_array=True),
     "rpc.app.quota.operation_upsert": Op(request=QuotaOperationWrite, response=QuotaOperationRead),
     "rpc.app.quota.workspace_usage": Op(response=QuotaUsageRead, query_params=(_WS,)),
-    # ── metadata admin (hero/map/gamemode) ─────────────────────────────────
-    "rpc.app.heroes.admin_create": Op(request=schemas.HeroCreate, response=schemas.HeroRead),
-    "rpc.app.heroes.admin_update": Op(request=schemas.HeroUpdate, response=schemas.HeroRead),
-    "rpc.app.maps.admin_create": Op(request=schemas.MapCreate, response=schemas.MapRead),
-    "rpc.app.maps.admin_update": Op(request=schemas.MapUpdate, response=schemas.MapRead),
-    "rpc.app.gamemodes.admin_create": Op(request=schemas.GamemodeCreate, response=schemas.GamemodeRead),
-    "rpc.app.gamemodes.admin_update": Op(request=schemas.GamemodeUpdate, response=schemas.GamemodeRead),
+    # ── game catalog admin (catalog.entity) ─────────────────────────────────
+    "rpc.app.catalog.admin_list": Op(
+        response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
+    ),
+    "rpc.app.catalog.admin_create": Op(request=schemas.CatalogEntityCreate, response=schemas.CatalogEntityRead),
+    "rpc.app.catalog.admin_update": Op(request=schemas.CatalogEntityUpdate, response=schemas.CatalogEntityRead),
+    "rpc.app.catalog.admin_delete": Op(),
     # ── metadata admin: catalog alias-miss queue ───────────────────────────
     "rpc.app.catalog_aliases.misses_list": Op(
         response=Paginated[schemas.CatalogAliasMissRead], query=schemas.CatalogAliasMissListQueryParams

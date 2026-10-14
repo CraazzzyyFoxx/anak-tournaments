@@ -1346,6 +1346,56 @@ export interface CatalogAliasAttachInput {
   alias: string;
 }
 
+// ─── Game catalog (generic admin CRUD) ───────────────────────────────────────
+
+export type CatalogKind = "character" | "map" | "mode";
+
+export interface CatalogEntityParentRead {
+  id: number;
+  slug: string;
+  name: string;
+}
+
+export interface CatalogEntityRead {
+  id: number;
+  created_at: string;
+  updated_at: string | null;
+  discipline: string;
+  kind: CatalogKind;
+  slug: string;
+  name: string;
+  image_path: string | null;
+  parent_id: number | null;
+  attrs: Record<string, unknown>;
+  aliases: string[];
+  active: boolean;
+  parent: CatalogEntityParentRead | null;
+}
+
+export interface CatalogEntityWrite {
+  name?: string;
+  slug?: string;
+  image_path?: string | null;
+  parent_id?: number | null;
+  attrs?: Record<string, unknown>;
+  aliases?: string[];
+  active?: boolean;
+}
+
+/** A miss as the API sends it; the unresolved page keeps its `entity_type` view model. */
+export interface CatalogAliasMissWire {
+  id: number;
+  discipline: string;
+  kind: CatalogKind;
+  raw_name: string;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_ingest_job_id: number | null;
+  last_log_tournament_id: number | null;
+  resolved_at: string | null;
+}
+
 // ─── Achievement ─────────────────────────────────────────────────────────────
 
 export interface AchievementCreateInput {

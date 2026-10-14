@@ -3,7 +3,7 @@ the entity it meant, or dismiss it.
 
 The parser resolves hero/map/gamemode names from the canonical ``name`` plus the
 ``aliases`` JSONB list; a name that resolves to neither is upserted into
-``overwatch.catalog_alias_miss`` with an occurrence counter. This module is the
+``catalog.alias_miss`` with an occurrence counter. This module is the
 other end of that pipe.
 
 ``attach`` is a dedicated operation rather than a ``PATCH aliases=[…]`` from the
@@ -18,28 +18,12 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.catalog_aliases import normalize_aliases
-from shared.core import enums
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.repository import (
-    BaseRepository,
-    CatalogAliasMissRepository,
-    GamemodeRepository,
-    HeroRepository,
-    MapRepository,
-)
+from shared.repository import CatalogAliasMissRepository, CatalogEntityRepository
 from src import models, schemas
 
 __all__ = ("CatalogAliasService", "catalog_aliases")
-
-# The three catalog tables that carry an `aliases` column, keyed by the enum the
-# miss row and the attach payload both use. Repositories rather than model
-# classes: `attach` needs a `get`, not a dynamic `session.get(model, id)`.
-ENTITY_REPOSITORIES: dict[enums.CatalogEntityType, BaseRepository] = {
-    enums.CatalogEntityType.hero: HeroRepository(),
-    enums.CatalogEntityType.map: MapRepository(),
-    enums.CatalogEntityType.gamemode: GamemodeRepository(),
-}
 
 
 class CatalogAliasService:
@@ -50,18 +34,20 @@ class CatalogAliasService:
         self,
         *,
         misses: CatalogAliasMissRepository = CatalogAliasMissRepository(),
-        entities: dict[enums.CatalogEntityType, BaseRepository] | None = None,
+        entities: CatalogEntityRepository = CatalogEntityRepository(),
     ) -> None:
         self.misses = misses
-        self.entities = ENTITY_REPOSITORIES if entities is None else entities
+        self.entities = entities
 
     async def list_misses(self, session: AsyncSession, params: schemas.CatalogAliasMissListParams) -> dict:
         miss = models.CatalogAliasMiss
         filters: list[sa.ColumnElement[bool]] = []
         if not params.include_resolved:
             filters.append(miss.resolved_at.is_(None))
-        if params.entity_type is not None:
-            filters.append(miss.entity_type == params.entity_type)
+        if params.discipline is not None:
+            filters.append(miss.discipline == params.discipline)
+        if params.kind is not None:
+            filters.append(miss.kind == params.kind)
 
         total = await session.scalar(sa.select(sa.func.count()).select_from(miss).where(*filters)) or 0
         # LEFT JOIN for the tournament: a log record is only addressable in the admin
@@ -72,7 +58,7 @@ class CatalogAliasService:
         record = models.LogProcessingRecord
         query = (
             sa.select(miss, record.tournament_id)
-            .outerjoin(record, record.id == miss.last_log_record_id)
+            .outerjoin(record, record.id == miss.last_ingest_job_id)
             .where(*filters)
             .order_by(miss.occurrences.desc(), miss.last_seen_at.desc(), miss.id.desc())
         )
@@ -92,19 +78,14 @@ class CatalogAliasService:
 
     async def attach(self, session: AsyncSession, data: schemas.CatalogAliasAttach) -> None:
         """Add ``alias`` to the entity's ``aliases`` and close the matching miss, atomically."""
-        obj = await self.entities[data.entity_type].get(session, data.entity_id)
-        if obj is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{data.entity_type.value.capitalize()} not found",
-            )
-
-        # JSONB does not track in-place mutation: `obj.aliases.append(...)` never
-        # reaches the UPDATE. Reassign. `canonical` drops an attach of the entity's
-        # own name, which the lookup already matches on.
-        obj.aliases = normalize_aliases([*obj.aliases, data.alias], canonical=obj.name)
-
-        await self.misses.resolve_by_raw_name(session, entity_type=data.entity_type, raw_name=data.alias)
+        entity = await self.entities.get(session, data.entity_id)
+        if entity is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog entity not found")
+        # JSONB does not track in-place mutation: reassign. `canonical` drops the entity's own name.
+        entity.aliases = normalize_aliases([*entity.aliases, data.alias], canonical=entity.name)
+        await self.misses.resolve_by_raw_name(
+            session, discipline=entity.discipline, kind=entity.kind, raw_name=data.alias
+        )
         await session.commit()
 
     async def dismiss(self, session: AsyncSession, miss_id: int) -> None:

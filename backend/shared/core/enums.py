@@ -72,18 +72,6 @@ HERO_TYPE_CLASSES: Final[tuple[HeroClass, ...]] = (HeroClass.tank, HeroClass.dam
 HeroTypeClass = Literal[HeroClass.tank, HeroClass.damage, HeroClass.support]
 
 
-class CatalogEntityType(StrEnum):
-    """Catalog entity an alias (or an unresolved-name miss) belongs to.
-
-    Match logs carry map/gamemode/hero names in the reporting client's locale,
-    so every catalog entity keeps a list of alternative names it answers to.
-    """
-
-    hero = "hero"
-    map = "map"
-    gamemode = "gamemode"
-
-
 class RankPlatform(StrEnum):
     """Overwatch competitive platform as exposed by OverFast."""
 
@@ -629,7 +617,6 @@ __all__ = [
     "HeroClass",
     "HERO_TYPE_CLASSES",
     "HeroTypeClass",
-    "CatalogEntityType",
     "RankPlatform",
     "RankDivision",
     "RankCollectionStatus",

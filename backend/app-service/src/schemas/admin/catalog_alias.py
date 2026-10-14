@@ -16,7 +16,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from shared.core import enums
 from src.core import pagination
 from src.schemas import BaseRead
 
@@ -36,14 +35,14 @@ ALIAS_MAX_LENGTH = 128
 class CatalogAliasMissRead(BaseRead):
     """One unresolved catalog name, with how often logs have hit it."""
 
-    entity_type: enums.CatalogEntityType
+    discipline: str
+    kind: str
     raw_name: str
     occurrences: int
     first_seen_at: datetime
     last_seen_at: datetime
-    last_log_record_id: int | None = None
-    # Joined from `log_processing.record`, not stored: a log record is only
-    # addressable in the admin UI as /admin/tournaments/{id}/matches/logs.
+    last_ingest_job_id: int | None = None
+    # Joined through `log_processing.record` until P4; the UI links to the tournament's logs.
     last_log_tournament_id: int | None = None
     resolved_at: datetime | None = None
 
@@ -55,22 +54,23 @@ class CatalogAliasMissListQueryParams(
     # `sort`/`order` are inherited but unused: the queue is always ordered by how
     # much the missing alias hurts (occurrences, then recency).
     sort: typing.Literal["id", "occurrences", "first_seen_at", "last_seen_at"] = "occurrences"
-    entity_type: enums.CatalogEntityType | None = None
+    discipline: str | None = None
+    kind: typing.Literal["character", "map", "mode"] | None = None
     include_resolved: bool = False
 
 
 @dataclass
 class CatalogAliasMissListParams(pagination.PaginationSortParams):
     per_page: int = 50
-    entity_type: enums.CatalogEntityType | None = None
+    discipline: str | None = None
+    kind: typing.Literal["character", "map", "mode"] | None = None
     include_resolved: bool = False
 
 
 class CatalogAliasAttach(BaseModel):
     """Attach `alias` to one catalog entity and close the matching miss."""
 
-    entity_type: enums.CatalogEntityType
-    entity_id: int
+    entity_id: int = Field(gt=0)
     alias: str = Field(min_length=1, max_length=ALIAS_MAX_LENGTH)
 
     @field_validator("alias")
