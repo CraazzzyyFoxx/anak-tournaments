@@ -104,6 +104,81 @@ def _preflight() -> None:
         raise RuntimeError("discipline01 pre-flight failed; resolve these rows by hand first:\n" + "\n".join(failures))
 
 
+#: Copied from enclayer01's name-agnostic DDL, generalized to PK/unique constraints too.
+#: A restored live schema need not use the names assigned by the migration chain.
+_CONSTRAINTS_ON = """
+    SELECT c.conname FROM pg_constraint c
+     WHERE c.conrelid = CAST(:table AS regclass) AND c.contype = :contype
+       AND (:contype = 'p' OR
+            ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+                   ORDER BY k.ord) = CAST(:columns AS text[]))
+     ORDER BY c.conname
+"""
+_PLAIN_INDEXES_ON = """
+    SELECT ic.relname FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
+     WHERE i.indrelid = CAST(:table AS regclass)
+       AND NOT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid)
+       AND ARRAY(SELECT a.attname::text FROM unnest(CAST(i.indkey AS int2[])) WITH ORDINALITY AS k(attnum, ord)
+                   JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k.attnum
+                  ORDER BY k.ord) = CAST(:columns AS text[])
+     ORDER BY ic.relname
+"""
+
+
+def _name(table: str, columns: Sequence[str], contype: str) -> str:
+    bind = op.get_bind()
+    names = (
+        bind.execute(
+            sa.text(_PLAIN_INDEXES_ON if contype == "index" else _CONSTRAINTS_ON),
+            {"table": table, "columns": list(columns), "contype": contype},
+        )
+        .scalars()
+        .all()
+    )
+    if len(names) != 1:
+        raise RuntimeError(f"discipline01 expected exactly one {contype} on {table}{tuple(columns)}, found {names}")
+    return bind.dialect.identifier_preparer.quote(names[0])
+
+
+def _drop_fks(table: str, *columns: str):
+    def run() -> None:
+        op.execute(f"ALTER TABLE {table} DROP CONSTRAINT {_name(table, columns, 'f')}")
+
+    return run
+
+
+def _rename_registration_objects() -> None:
+    table = "balancer.registration_role_entity"
+    sequence = (
+        op.get_bind().execute(sa.text("SELECT pg_get_serial_sequence(:table, 'id')"), {"table": table}).scalar_one()
+    )
+    op.execute(f"ALTER SEQUENCE {sequence} RENAME TO registration_role_entity_id_seq")
+    for columns, contype, new in (
+        ((), "p", "registration_role_entity_pkey"),
+        (("role_id",), "f", "registration_role_entity_role_id_fkey"),
+        (("role_id", "priority"), "u", "uq_reg_role_entity_role_priority"),
+        (("role_id", "entity_id"), "u", "uq_reg_role_entity_role_entity"),
+    ):
+        op.execute(f"ALTER TABLE {table} RENAME CONSTRAINT {_name(table, columns, contype)} TO {new}")
+    index = _name(table, ("role_id",), "index")
+    op.execute(f"ALTER INDEX balancer.{index} RENAME TO ix_balancer_registration_role_entity_role_id")
+
+
+def _retired_map(table: str, on_delete: str):
+    def run() -> None:
+        if op.get_bind().execute(sa.text("SELECT to_regclass(:table)"), {"table": table}).scalar_one() is None:
+            return
+        _drop_fks(table, "map_id")()
+        op.execute(
+            f"UPDATE {table} t SET map_id = l.entity_id FROM catalog.entity_legacy l"
+            " WHERE l.legacy_kind = 'map' AND l.legacy_id = t.map_id"
+        )
+        op.execute(f"ALTER TABLE {table} ADD FOREIGN KEY (map_id) REFERENCES catalog.entity (id) ON DELETE {on_delete}")
+
+    return run
+
+
 _SCHEMA = (
     "INSERT INTO catalog.discipline (code, name) VALUES ('lol', 'League of Legends') ON CONFLICT (code) DO NOTHING",
     """
@@ -163,9 +238,9 @@ _NEXT_ENTITY_ID = "nextval(pg_get_serial_sequence('catalog.entity', 'id'))"
 _COPY = (
     """
     SELECT setval(pg_get_serial_sequence('catalog.entity', 'id'), greatest(
-      (SELECT last_value FROM overwatch.hero_id_seq),
-      (SELECT last_value FROM overwatch.map_id_seq),
-      (SELECT last_value FROM overwatch.gamemode_id_seq),
+      coalesce(pg_sequence_last_value(pg_get_serial_sequence('overwatch.hero', 'id')::regclass), 1),
+      coalesce(pg_sequence_last_value(pg_get_serial_sequence('overwatch.map', 'id')::regclass), 1),
+      coalesce(pg_sequence_last_value(pg_get_serial_sequence('overwatch.gamemode', 'id')::regclass), 1),
       (SELECT coalesce(max(id), 1) FROM overwatch.hero),
       (SELECT coalesce(max(id), 1) FROM overwatch.map),
       (SELECT coalesce(max(id), 1) FROM overwatch.gamemode)
@@ -217,21 +292,21 @@ _COPY = (
 #: lies below every new id and fails it. ``matches.*`` and ``casual.match`` die in P9; their plain FK keeps today's
 #: ON DELETE, their kind is enforced where their data goes (``stats.*``).
 _MAPS = (
+    _drop_fks("encounter.game", "map_id"),
     """
     ALTER TABLE encounter.game
-      ADD COLUMN map_kind VARCHAR(16) NOT NULL DEFAULT 'map' CONSTRAINT ck_game_map_kind CHECK (map_kind = 'map'),
-      DROP CONSTRAINT encounter_game_map_id_fkey
+      ADD COLUMN map_kind VARCHAR(16) NOT NULL DEFAULT 'map' CONSTRAINT ck_game_map_kind CHECK (map_kind = 'map')
     """,
     "UPDATE encounter.game g SET map_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = g.map_id",
     """
     ALTER TABLE encounter.game ADD CONSTRAINT fk_game_map FOREIGN KEY (map_id, map_kind)
       REFERENCES catalog.entity (id, kind) ON DELETE RESTRICT
     """,
+    _drop_fks("balancer.custom_game_lobby", "next_map_id"),
     """
     ALTER TABLE balancer.custom_game_lobby
       ADD COLUMN next_map_kind VARCHAR(16) NOT NULL DEFAULT 'map'
-        CONSTRAINT ck_custom_game_lobby_next_map_kind CHECK (next_map_kind = 'map'),
-      DROP CONSTRAINT custom_game_lobby_next_map_id_fkey
+        CONSTRAINT ck_custom_game_lobby_next_map_kind CHECK (next_map_kind = 'map')
     """,
     """
     UPDATE balancer.custom_game_lobby b SET next_map_id = l.entity_id
@@ -241,36 +316,22 @@ _MAPS = (
     ALTER TABLE balancer.custom_game_lobby ADD CONSTRAINT fk_custom_game_lobby_next_map
       FOREIGN KEY (next_map_id, next_map_kind) REFERENCES catalog.entity (id, kind) ON DELETE SET NULL (next_map_id)
     """,
-    "ALTER TABLE matches.match DROP CONSTRAINT match_map_id_fkey",
+    _drop_fks("matches.match", "map_id"),
     "UPDATE matches.match m SET map_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = m.map_id",
     "ALTER TABLE matches.match ADD CONSTRAINT match_map_id_fkey FOREIGN KEY (map_id) REFERENCES catalog.entity (id) ON DELETE CASCADE",
     # Legacy mix rows: mixround01_reconcile compares their map with encounter.game's, and mixround02 trusts it.
-    "ALTER TABLE casual.match DROP CONSTRAINT match_map_id_fkey",
-    "UPDATE casual.match m SET map_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = m.map_id",
-    "ALTER TABLE casual.match ADD CONSTRAINT match_map_id_fkey FOREIGN KEY (map_id) REFERENCES catalog.entity (id) ON DELETE SET NULL",
+    _retired_map("casual.match", "SET NULL"),
     # Survives only where enclayer02 ran as a stamp; the release drops it before this revision.
-    """
-    DO $$
-    BEGIN
-      IF to_regclass('tournament.encounter_map_code') IS NOT NULL THEN
-        ALTER TABLE tournament.encounter_map_code DROP CONSTRAINT encounter_map_code_map_id_fkey;
-        UPDATE tournament.encounter_map_code c SET map_id = l.entity_id
-          FROM catalog.entity_legacy l WHERE l.legacy_kind = 'map' AND l.legacy_id = c.map_id;
-        ALTER TABLE tournament.encounter_map_code ADD CONSTRAINT encounter_map_code_map_id_fkey
-          FOREIGN KEY (map_id) REFERENCES catalog.entity (id) ON DELETE SET NULL;
-      END IF;
-    END $$
-    """,
+    _retired_map("tournament.encounter_map_code", "SET NULL"),
 )
 
 #: Every hard hero reference, rewritten through entity_legacy and repointed (the FK is the proof, as for maps).
 _HEROES = (
-    # Pending deferred RI events block ALTER TABLE on matches.event; drain valid-row checks before the rewrite.
-    "SET CONSTRAINTS ALL IMMEDIATE",
-    "ALTER TABLE matches.statistics DROP CONSTRAINT statistics_hero_id_fkey",
+    _drop_fks("matches.statistics", "hero_id"),
     "UPDATE matches.statistics s SET hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = s.hero_id",
     "ALTER TABLE matches.statistics ADD CONSTRAINT statistics_hero_id_fkey FOREIGN KEY (hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE",
-    "ALTER TABLE matches.event DROP CONSTRAINT assists_hero_id_fkey, DROP CONSTRAINT assists_related_hero_id_fkey",
+    _drop_fks("matches.event", "hero_id"),
+    _drop_fks("matches.event", "related_hero_id"),
     "UPDATE matches.event e SET hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = e.hero_id",
     "UPDATE matches.event e SET related_hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = e.related_hero_id",
     """
@@ -278,7 +339,8 @@ _HEROES = (
       ADD CONSTRAINT assists_hero_id_fkey FOREIGN KEY (hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE,
       ADD CONSTRAINT assists_related_hero_id_fkey FOREIGN KEY (related_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
     """,
-    "ALTER TABLE matches.kill_feed DROP CONSTRAINT kill_feed_killer_hero_id_fkey, DROP CONSTRAINT kill_feed_victim_hero_id_fkey",
+    _drop_fks("matches.kill_feed", "killer_hero_id"),
+    _drop_fks("matches.kill_feed", "victim_hero_id"),
     "UPDATE matches.kill_feed k SET killer_hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = k.killer_hero_id",
     "UPDATE matches.kill_feed k SET victim_hero_id = l.entity_id FROM catalog.entity_legacy l WHERE l.legacy_kind = 'hero' AND l.legacy_id = k.victim_hero_id",
     """
@@ -288,16 +350,11 @@ _HEROES = (
     """,
     # A registration's top heroes become preferred catalog entities (spec §14.2, §8.3 "registration_role_entity").
     "ALTER TABLE balancer.registration_role_hero RENAME TO registration_role_entity",
-    "ALTER SEQUENCE balancer.registration_role_hero_id_seq RENAME TO registration_role_entity_id_seq",
+    _drop_fks("balancer.registration_role_entity", "hero_id"),
     "ALTER TABLE balancer.registration_role_entity RENAME COLUMN hero_id TO entity_id",
-    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT registration_role_hero_pkey TO registration_role_entity_pkey",
-    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT registration_role_hero_role_id_fkey TO registration_role_entity_role_id_fkey",
-    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT uq_reg_role_hero_role_priority TO uq_reg_role_entity_role_priority",
-    "ALTER TABLE balancer.registration_role_entity RENAME CONSTRAINT uq_reg_role_hero_role_hero TO uq_reg_role_entity_role_entity",
-    "ALTER INDEX balancer.ix_balancer_registration_role_hero_role_id RENAME TO ix_balancer_registration_role_entity_role_id",
+    _rename_registration_objects,
     """
     ALTER TABLE balancer.registration_role_entity
-      DROP CONSTRAINT registration_role_hero_hero_id_fkey,
       ADD COLUMN entity_kind VARCHAR(16) NOT NULL DEFAULT 'character'
         CONSTRAINT ck_registration_role_entity_kind CHECK (entity_kind = 'character')
     """,
@@ -310,9 +367,9 @@ _HEROES = (
       FOREIGN KEY (entity_id, entity_kind) REFERENCES catalog.entity (id, kind) ON DELETE CASCADE
     """,
     # Achievements: the rule gets its discipline and an entity of that discipline (D96).
+    _drop_fks("achievements.rule", "hero_id"),
     """
     ALTER TABLE achievements.rule
-      DROP CONSTRAINT rule_hero_id_fkey,
       ADD COLUMN discipline VARCHAR(32) NOT NULL DEFAULT 'overwatch'
         CONSTRAINT fk_rule_discipline REFERENCES catalog.discipline (code),
       ADD COLUMN entity_kind VARCHAR(16) NOT NULL DEFAULT 'character' CONSTRAINT ck_rule_entity_kind CHECK (entity_kind = 'character')
@@ -562,13 +619,28 @@ def _rewrite_pick_ban(kind: str) -> None:
 
 
 def upgrade() -> None:
+    # Earlier revisions in the same invocation can leave RI events pending on any of these tables.
+    op.execute("SET CONSTRAINTS ALL IMMEDIATE")
+    immediate = (
+        op.get_bind()
+        .execute(
+            sa.text("SELECT conrelid::regclass, conname FROM pg_constraint WHERE condeferrable AND NOT condeferred")
+        )
+        .all()
+    )
+    if immediate:
+        raise RuntimeError(f"discipline01 cannot restore INITIALLY IMMEDIATE constraints: {immediate}")
     _preflight()
     for statement in (*_SCHEMA, *_COPY, *_MAPS, *_HEROES):
-        op.execute(statement)
+        if isinstance(statement, str):
+            op.execute(statement)
+        else:
+            statement()
     _rewrite_pick_ban("map")
     _rewrite_pick_ban("hero")
     for statement in _STATS_VIEW:
         op.execute(statement)
+    op.execute("SET CONSTRAINTS ALL DEFERRED")
 
 
 def downgrade() -> None:

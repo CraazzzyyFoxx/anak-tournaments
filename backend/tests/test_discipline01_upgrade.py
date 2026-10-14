@@ -17,6 +17,10 @@ import sys
 
 import psycopg
 import pytest
+import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from psycopg import sql
 from psycopg.types.json import Json, Jsonb
 
 from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
@@ -27,8 +31,9 @@ TARGET = "discipline01"
 TEMPLATE_DB = "discipline01_legacy_tpl"
 MIGRATED_DB = "discipline01_migrated"
 REJECTED_DB = "discipline01_rejected"
-#: Every overwatch id the template ever issued is below this; every new id must be above it.
-ID_FLOOR = 900
+#: Exercise both a row above its sequence and an issued (but absent) id above every row.
+EXPLICIT_HERO_ID = 1200
+ID_FLOOR = 2000
 DANGLING_ID = 850  # below every new id, names no map
 
 _spec = importlib.util.spec_from_file_location(
@@ -98,8 +103,8 @@ def _statements(sql: str) -> list[str]:
 
 def _seed(conn) -> dict:
     ids: dict = {}
-    # Push the issued ids up so the floor is observable, and leave a deleted map behind it.
-    conn.execute(f"SELECT setval('overwatch.map_id_seq', {ID_FLOOR}, true)")
+    # Leave a deleted map behind the surviving rows.
+    conn.execute("SELECT setval(pg_get_serial_sequence('overwatch.map', 'id'), 900, true)")
     ids["control"] = _insert(
         conn,
         "overwatch.gamemode",
@@ -150,6 +155,7 @@ def _seed(conn) -> dict:
     ids["rein"] = _insert(
         conn,
         "overwatch.hero",
+        id=EXPLICIT_HERO_ID,
         slug="reinhardt-d1",
         name="Reinhardt D1",
         image_path="https://cdn/rein.png",
@@ -171,9 +177,48 @@ def _seed(conn) -> dict:
         occurrences=1,
         resolved_at="2026-10-01T00:00:00Z",
     )
+    conn.execute("SELECT setval(pg_get_serial_sequence('overwatch.gamemode', 'id'), %s, true)", (ID_FLOOR,))
     _seed_map_references(conn, ids)
     _seed_hero_references(conn, ids)
     return ids
+
+
+def _rename_legacy_objects(conn) -> None:
+    """A restored database need not have any chain-generated constraint/index/sequence names."""
+    tables = (
+        "encounter.game",
+        "balancer.custom_game_lobby",
+        "matches.match",
+        "casual.match",
+        "matches.statistics",
+        "matches.event",
+        "matches.kill_feed",
+        "balancer.registration_role_hero",
+        "achievements.rule",
+    )
+    for table in tables:
+        names = _rows(
+            conn,
+            "SELECT conname FROM pg_constraint WHERE conrelid = %s::regclass AND contype IN ('f', 'p', 'u')"
+            " ORDER BY conname",
+            (table,),
+        )
+        for index, (name,) in enumerate(names):
+            conn.execute(
+                sql.SQL("ALTER TABLE {} RENAME CONSTRAINT {} TO {}").format(
+                    sql.Identifier(*table.split(".")),
+                    sql.Identifier(name),
+                    sql.Identifier(f"restored_{table.replace('.', '_')}_{index}"),
+                )
+            )
+    conn.execute('ALTER INDEX balancer.ix_balancer_registration_role_hero_role_id RENAME TO "restored_role_lookup"')
+    for table in ("overwatch.hero", "overwatch.map", "overwatch.gamemode", "balancer.registration_role_hero"):
+        sequence = _scalar(conn, "SELECT pg_get_serial_sequence(%s, 'id')", (table,))
+        conn.execute(
+            sql.SQL("ALTER SEQUENCE {} RENAME TO {}").format(
+                sql.SQL(sequence), sql.Identifier(f"restored_{table.split('.')[1]}_serial")
+            )
+        )
 
 
 @pytest.fixture(scope="module")
@@ -188,6 +233,7 @@ def legacy_template():
         ids = _seed(conn)
         preflight = {question: _rows(conn, sql) for question, sql in revision.PREFLIGHT}
         dangling = _scalar(conn, revision.DANGLING_PICK_BAN_IDS)
+        _rename_legacy_objects(conn)
     yield {"ids": ids, "preflight": preflight, "dangling": dangling}
     with _connect("postgres") as admin:
         for name in (MIGRATED_DB, REJECTED_DB, TEMPLATE_DB):
@@ -347,6 +393,98 @@ def test_new_ids_start_above_every_id_overwatch_ever_issued(migrated) -> None:
     assert _scalar(conn, "SELECT min(id) FROM catalog.entity") > ID_FLOOR
     assert _scalar(conn, "SELECT count(*) FROM catalog.entity_legacy") == 7
     assert _scalar(conn, "SELECT count(DISTINCT entity_id) FROM catalog.entity_legacy") == 7
+    assert _entity_of(conn, "hero", EXPLICIT_HERO_ID) > ID_FLOOR
+
+
+def test_a_row_above_its_sequence_is_also_an_id_floor(legacy_template) -> None:
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT max(id) FROM overwatch.hero") == EXPLICIT_HERO_ID
+        assert (
+            _scalar(conn, "SELECT pg_sequence_last_value(pg_get_serial_sequence('overwatch.hero', 'id')::regclass)")
+            < EXPLICIT_HERO_ID
+        )
+        conn.execute("SELECT setval(pg_get_serial_sequence('overwatch.gamemode', 'id'), 1000, true)")
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT min(id) FROM catalog.entity") > EXPLICIT_HERO_ID
+
+
+def test_absent_casual_match_is_skipped_and_surviving_map_code_is_rewritten(legacy_template) -> None:
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        conn.execute("DROP TABLE casual.match CASCADE")
+        conn.execute(
+            "CREATE TABLE tournament.encounter_map_code (id BIGSERIAL PRIMARY KEY,"
+            " map_id BIGINT CONSTRAINT restored_map_reference REFERENCES overwatch.map(id))"
+        )
+        code = _insert(conn, "tournament.encounter_map_code", map_id=legacy_template["ids"]["ilios"])
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT map_id FROM tournament.encounter_map_code WHERE id = %s", (code,)) == _entity_of(
+            conn, "map", legacy_template["ids"]["ilios"]
+        )
+
+
+@pytest.mark.parametrize("matches", (0, 2))
+def test_a_missing_or_ambiguous_foreign_key_stops_instead_of_guessing(legacy_template, matches) -> None:
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        if matches == 0:
+            name = _scalar(
+                conn,
+                "SELECT c.conname FROM pg_constraint c JOIN pg_attribute a"
+                " ON a.attrelid = c.conrelid AND c.conkey = ARRAY[a.attnum]"
+                " WHERE c.conrelid = 'encounter.game'::regclass AND c.contype = 'f' AND a.attname = 'map_id'",
+            )
+            conn.execute(sql.SQL("ALTER TABLE encounter.game DROP CONSTRAINT {}").format(sql.Identifier(name)))
+        else:
+            conn.execute("ALTER TABLE encounter.game ADD FOREIGN KEY (map_id) REFERENCES overwatch.map(id)")
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode != 0
+    assert "expected exactly one f on encounter.game('map_id',)" in done.stderr
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT to_regclass('catalog.entity')") is None
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == PRE_REVISION
+
+
+def test_upgrade_restores_deferral_for_the_following_revision(legacy_template) -> None:
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    engine = sa.create_engine(_url(REJECTED_DB))
+    try:
+        with engine.connect() as conn, conn.begin() as tx:
+            conn.exec_driver_sql("CREATE TABLE deferral_probe (value INTEGER UNIQUE DEFERRABLE INITIALLY DEFERRED)")
+            conn.exec_driver_sql("INSERT INTO deferral_probe VALUES (1)")
+            with Operations.context(MigrationContext.configure(conn)):
+                revision.upgrade()
+            conn.exec_driver_sql("INSERT INTO deferral_probe VALUES (1)")
+            conn.exec_driver_sql("DELETE FROM deferral_probe")
+            conn.exec_driver_sql("SET CONSTRAINTS ALL IMMEDIATE")
+            tx.rollback()
+    finally:
+        engine.dispose()
+
+
+def test_one_invocation_upgrades_the_predecessor_through_discipline01(legacy_template) -> None:
+    _recreate(REJECTED_DB)
+    done = _alembic(REJECTED_DB, "enclayer02", OWT_APPLY_ENCOUNTER_LAYER_DROP="1")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        mode = _insert(conn, "overwatch.gamemode", slug="single", name="Single", image_path="")
+        map_id = _insert(conn, "overwatch.map", name="Single map", gamemode_id=mode, image_path="")
+        workspace = _insert(conn, "workspace", slug="single", name="Single")
+        mix = _insert(conn, "balancer.custom_game", workspace_id=workspace, name="Single")
+        match = _insert(conn, "casual.match", custom_game_id=mix, lobby_index=0, map_id=map_id)
+        _insert(conn, "casual.team", match_id=match, side="home", name="A", score=1)
+        _insert(conn, "casual.team", match_id=match, side="away", name="B", score=0)
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    assert "enclayer02 -> mixround01" in done.stderr and "mixround01 -> discipline01" in done.stderr
+    with _connect(REJECTED_DB) as conn:
+        assert _rows(conn, "SELECT map_id, map_kind FROM encounter.game") == [(_entity_of(conn, "map", map_id), "map")]
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == TARGET
 
 
 def test_alias_misses_move_with_their_kind(migrated) -> None:
