@@ -2,18 +2,22 @@
 
 import asyncio
 import logging
+import sys
 from datetime import UTC, datetime
+from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared.core.errors import BaseAPIException
 from shared.disciplines import DISCIPLINES
+from shared.testing import create_test_async_engine
 from src import openapi_docs, openapi_schemas, schemas
 from src.rpc import metadata_admin as metadata_admin_rpc
 from src.services.admin import catalog as catalog_module
-from src.services.admin.catalog import CatalogAdminService, check_class, check_parent, kind_spec, to_read
+from src.services.admin.catalog import CatalogAdminService, check_attrs, check_parent, kind_spec, to_read
 from tests.conftest import _CaptureBroker
 
 _SUBJECTS = (
@@ -52,12 +56,12 @@ def test_an_unknown_discipline_or_an_undeclared_kind_is_not_found() -> None:
 
 def test_a_character_class_is_the_modules_to_allow() -> None:
     overwatch, lol = DISCIPLINES["overwatch"], DISCIPLINES["lol"]
-    check_class(overwatch, "character", {"class": "tank"})
-    check_class(lol, "character", {"class": "Mage"})
-    check_class(overwatch, "map", {})  # only characters carry a class
+    check_attrs(overwatch, "character", {"class": "tank"})
+    check_attrs(lol, "character", {"class": "Mage"})
+    check_attrs(overwatch, "map", {})  # only characters carry a class
     for spec, attrs in ((overwatch, {"class": "flex"}), (overwatch, {"class": "Mage"}), (overwatch, {})):
         with pytest.raises(BaseAPIException) as refused:
-            check_class(spec, "character", attrs)
+            check_attrs(spec, "character", attrs)
         assert refused.value.status_code == 422
 
 
@@ -128,6 +132,79 @@ def catalog_repo(monkeypatch: pytest.MonkeyPatch):
     repo.update_fields.side_effect = update_fields
     monkeypatch.setattr(catalog_module, "CatalogEntityRepository", lambda *args, **kwargs: repo)
     return repo
+
+
+@pytest.mark.parametrize("operation", ("create", "patch"))
+@pytest.mark.parametrize(
+    ("kind", "attrs"),
+    (
+        ("character", {"class": "flex"}),
+        ("character", {"class": ["tank"]}),
+        ("character", {"class": "support", "color": None}),
+        ("character", {"class": "support", "color": 123}),
+        ("map", {"in_competitive": None}),
+        ("map", {"in_competitive": "false"}),
+        ("map", {"in_competitive": 1}),
+    ),
+)
+def test_create_and_patch_reject_attrs_that_break_catalog_reads(catalog_repo, operation, kind, attrs) -> None:
+    session, service = AsyncMock(), CatalogAdminService()
+    if kind == "map":
+        catalog_repo.get.return_value.kind = kind
+        catalog_repo.get.return_value.attrs = {"in_competitive": True}
+        catalog_repo.get.return_value.parent_id = 902
+    with pytest.raises(BaseAPIException) as refused:
+        if operation == "create":
+            asyncio.run(
+                service.create(
+                    session,
+                    "overwatch",
+                    kind,
+                    schemas.CatalogEntityCreate(name="New", attrs=attrs, parent_id=902 if kind == "map" else None),
+                )
+            )
+        else:
+            asyncio.run(service.update(session, "overwatch", kind, 901, schemas.CatalogEntityUpdate(attrs=attrs)))
+    assert refused.value.status_code == 422
+    assert "attrs." in refused.value.detail
+    catalog_repo.create.assert_not_awaited()
+    catalog_repo.update_fields.assert_not_awaited()
+
+
+class CatalogDeleteDbTests(IsolatedAsyncioTestCase):
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_a_legacy_reference_returns_in_use_instead_of_deleting_the_entity(self) -> None:
+        from src import models
+
+        engine = create_test_async_engine()
+        Session = async_sessionmaker(engine, expire_on_commit=False)
+        try:
+            async with Session() as session:
+                entity = await CatalogAdminService().create(
+                    session,
+                    "overwatch",
+                    "character",
+                    schemas.CatalogEntityCreate(name="Delete conflict check", attrs={"class": "support"}),
+                )
+                entity_id = entity.id
+                legacy = models.CatalogEntityLegacy(legacy_kind="hero", legacy_id=entity_id, entity_id=entity_id)
+                session.add(legacy)
+                await session.commit()
+                try:
+                    with self.assertRaises(BaseAPIException) as refused:
+                        await CatalogAdminService().delete(session, "overwatch", "character", entity_id)
+                    assert refused.exception.status_code == 409
+                    assert "in use" in refused.exception.detail
+                    assert await session.get(models.CatalogEntity, entity_id) is not None
+                finally:
+                    await session.rollback()
+                    await session.delete(legacy)
+                    await session.commit()
+                    await CatalogAdminService().delete(session, "overwatch", "character", entity_id)
+        finally:
+            await engine.dispose()
 
 
 def test_create_rejects_an_overlong_derived_slug_without_truncation(catalog_repo) -> None:

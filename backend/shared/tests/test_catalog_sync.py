@@ -153,6 +153,40 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
             )
             return [tuple(row) for row in result.all()]
 
+    async def test_bad_source_attrs_reject_the_batch_before_writing_or_mirroring(self) -> None:
+        cases = (
+            ("overwatch", "character", {}),
+            ("overwatch", "character", {"class": "flex"}),
+            ("overwatch", "character", {"class": ["tank"]}),
+            ("lol", "character", {"class": "tank"}),
+            ("overwatch", "character", {"class": "support", "color": None}),
+            ("overwatch", "character", {"class": "support", "color": 123}),
+            ("overwatch", "map", {"in_competitive": None}),
+            ("overwatch", "map", {"in_competitive": "false"}),
+            ("overwatch", "map", {"in_competitive": 1}),
+        )
+        for discipline, kind, attrs in cases:
+            with self.subTest(discipline=discipline, kind=kind, attrs=attrs):
+                http, s3 = _Http({}), _S3()
+                valid = {"class": "support"} if kind == "character" else {"in_competitive": True}
+                if discipline == "lol":
+                    valid = {"class": "Mage"}
+                rows = [
+                    SourceEntity(
+                        slug=f"{self.tag}-good", name=f"{self.tag} Good", image_url="https://src/good", attrs=valid
+                    ),
+                    SourceEntity(
+                        slug=f"{self.tag}-bad", name=f"{self.tag} Bad", image_url="https://src/bad", attrs=attrs
+                    ),
+                ]
+                async with self.Session() as session:
+                    with self.assertRaisesRegex(ValueError, "attrs[.]"):
+                        await apply_source(
+                            session, http, CatalogImageMirror(s3), discipline=discipline, kind=kind, rows=rows
+                        )
+                assert await self._rows(discipline, kind) == []
+                assert http.paths == [] and s3.keys == []
+
     async def test_an_existing_row_keeps_its_name_and_class_and_gains_aliases(self) -> None:
         async with self.Session() as s:
             s.add(

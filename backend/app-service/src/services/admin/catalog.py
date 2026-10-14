@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,7 +21,7 @@ from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.repository import CatalogEntityRepository
 from src import models, schemas
 
-__all__ = ("CatalogAdminService", "catalog", "check_class", "check_parent", "kind_spec", "to_read")
+__all__ = ("CatalogAdminService", "catalog", "check_attrs", "check_parent", "kind_spec", "to_read")
 
 _WITH_PARENT = [selectinload(models.CatalogEntity.parent)]
 
@@ -35,13 +36,11 @@ def kind_spec(discipline: str, kind: str) -> DisciplineSpec:
     return spec
 
 
-def check_class(spec: DisciplineSpec, kind: str, attrs: dict) -> None:
-    """A character's ``attrs.class`` is one the module allows (an OW hero is never ``flex``)."""
-    if kind == "character" and spec.character_classes and attrs.get("class") not in spec.character_classes:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"attrs.class must be one of: {', '.join(spec.character_classes)}",
-        )
+def check_attrs(spec: DisciplineSpec, kind: str, attrs: dict) -> None:
+    try:
+        spec.validate_attrs(kind, attrs)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 def check_parent(spec: DisciplineSpec, kind: str, parent_id: int | None) -> None:
@@ -103,7 +102,7 @@ class CatalogAdminService:
         self, session: AsyncSession, discipline: str, kind: str, data: schemas.CatalogEntityCreate
     ) -> models.CatalogEntity:
         spec = kind_spec(discipline, kind)
-        check_class(spec, kind, data.attrs)
+        check_attrs(spec, kind, data.attrs)
         check_parent(spec, kind, data.parent_id)
         await self._parent_exists(session, spec, data.parent_id)
         repo = CatalogEntityRepository(kind, discipline=discipline)
@@ -135,7 +134,7 @@ class CatalogAdminService:
         changes = data.model_dump(exclude_unset=True)
         if "attrs" in changes:
             changes["attrs"] = {**entity.attrs, **changes["attrs"]}
-        check_class(spec, kind, changes.get("attrs", entity.attrs))
+        check_attrs(spec, kind, changes.get("attrs", entity.attrs))
         check_parent(spec, kind, changes.get("parent_id", entity.parent_id))
         if "parent_id" in changes:
             await self._parent_exists(session, spec, changes["parent_id"])
@@ -158,8 +157,14 @@ class CatalogAdminService:
         entity = await repo.get(session, entity_id)
         if entity is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog entity not found")
-        await repo.delete(session, entity)
-        await session.commit()
+        try:
+            await repo.delete(session, entity)
+            await session.commit()
+        except IntegrityError as exc:
+            await session.rollback()
+            if getattr(exc.orig, "sqlstate", None) == "23503":
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog entity is in use") from exc
+            raise
 
 
 catalog = CatalogAdminService()

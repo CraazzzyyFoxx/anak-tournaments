@@ -1,12 +1,12 @@
 """What the code knows about a discipline, beside what the DB stores (D25, D48, D83, D101).
 
-Pure data, no DB: the pick-ban engine, the ruleset validator and the game writer all read it, and none of them may do
+Pure declarations and validation, no DB: the pick-ban engine, ruleset validator and game writer read it, and none may do
 IO to answer "does this game have sides".
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -37,3 +37,12 @@ class DisciplineSpec:
     #: Allowed ``attrs.class`` values of a ``character``; ``()`` leaves the class unchecked.
     character_classes: tuple[str, ...] = ()
     catalog_sync: CatalogSync | None = field(default=None, compare=False)
+
+    def validate_attrs(self, kind: str, attrs: Mapping[str, object]) -> None:
+        """Reject catalog values that the public projections cannot read; absent optional keys use defaults."""
+        if kind == "character" and self.character_classes and attrs.get("class") not in self.character_classes:
+            raise ValueError(f"attrs.class must be one of: {', '.join(self.character_classes)}")
+        if "color" in attrs and not isinstance(attrs["color"], str):
+            raise ValueError("attrs.color must be a string")
+        if "in_competitive" in attrs and not isinstance(attrs["in_competitive"], bool):
+            raise ValueError("attrs.in_competitive must be a boolean")

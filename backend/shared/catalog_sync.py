@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.clients import S3Client
 from shared.clients.http_client import ResilientHttpClient
+from shared.disciplines import DISCIPLINES
 from shared.repository import CatalogEntityRepository
 
 __all__ = ("CatalogImageMirror", "SourceEntity", "apply_source", "fetch_json", "merge_aliases")
@@ -111,6 +112,9 @@ async def apply_source(
     rows: Sequence[SourceEntity],
 ) -> int:
     """Upsert one kind of one discipline from its source; returns how many rows were created. Commits."""
+    spec = DISCIPLINES[discipline]
+    for row in rows:
+        spec.validate_attrs(kind, row.attrs)
     repo = CatalogEntityRepository(kind, discipline=discipline)
     entity = models.CatalogEntity
     existing = await repo.get_many_by(session, entity.slug, [row.slug for row in rows])
