@@ -452,6 +452,7 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
                     "11": {"MapName": f"{tag} Rift", "MapId": "11", "image": {"full": "map11.png"}},
                     "12": {"MapName": f"{tag} Abyss", "MapId": "12", "image": {"full": "map12.png"}},
                     "21": {"MapName": f"{tag} Rift", "MapId": "21", "image": {"full": "map21.png"}},
+                    "453": {"MapName": " ", "MapId": "453", "image": {"full": "map453.png"}},
                 }
             },
         }
@@ -469,4 +470,6 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         assert f"assets/lol/map/{tag}-rift.png" in s3.keys
         assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map11.png" in http.paths
         assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map21.png" not in http.paths
+        # A map id without a name (Data Dragon 16.20 lists 453 so) is skipped, image and all.
+        assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map453.png" not in http.paths
         assert await self._rows("lol", "mode") == []

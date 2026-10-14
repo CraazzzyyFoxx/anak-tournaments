@@ -49,10 +49,12 @@ async def _sync(session: AsyncSession, images: CatalogImageMirror, http: Resilie
             for champion in champions
         ],
     )
-    # Data Dragon repeats a map name across map ids (seasonal variants); the oldest id wins.
+    # Data Dragon repeats a map name across map ids (seasonal variants); the oldest id wins. It also lists
+    # map ids with an empty MapName (453 in 16.20): nothing to show or match a log against, so they are skipped.
     by_name: dict[str, dict] = {}
     for game_map in sorted(maps, key=lambda entry: int(entry["MapId"])):
-        by_name.setdefault(game_map["MapName"], game_map)
+        if name := game_map["MapName"].strip():
+            by_name.setdefault(name, game_map)
     await apply_source(
         session,
         http,
