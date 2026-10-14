@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -193,6 +194,51 @@ def test_compare_catalog_entities_execute_one_statement() -> None:
 
     assert [entity.id for entity in entities] == [1, 2, 3]
     session.execute.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("discipline", "kind", "valid_map"),
+    [
+        ("overwatch", "map", True),
+        ("overwatch", "mode", False),
+        ("overwatch", "character", False),
+        ("lol", "map", False),
+    ],
+)
+def test_hero_compare_resolves_only_overwatch_maps(db_session, discipline: str, kind: str, valid_map: bool) -> None:
+    async def run() -> None:
+        tag = f"compare-map-{uuid.uuid4().hex}"
+        try:
+            parent_id = None
+            if valid_map:
+                mode = models.CatalogEntity(discipline="overwatch", kind="mode", slug=tag, name=tag)
+                db_session.add(mode)
+                await db_session.flush()
+                parent_id = mode.id
+            entity = models.CatalogEntity(discipline=discipline, kind=kind, slug=tag, name=tag, parent_id=parent_id)
+            db_session.add(entity)
+            await db_session.flush()
+            params = schemas.UserHeroCompareParams(baseline="global", map_id=entity.id)
+            with (
+                patch.object(user_service.users, "get", AsyncMock(return_value=SimpleNamespace(id=7, name="Subject"))),
+                patch.object(compare_queries, "get_user_hero_compare_stats", AsyncMock(return_value=(1200.0, {}))),
+                patch.object(
+                    compare_queries, "get_users_hero_compare_stats", AsyncMock(return_value=({8: 1200.0}, {}))
+                ),
+            ):
+                if valid_map:
+                    response = await user_service.users.get_hero_compare(db_session, 7, params, grid=DEFAULT_GRID)
+                    assert response.map.id == entity.id
+                else:
+                    with pytest.raises(errors.ApiHTTPException) as exc:
+                        await user_service.users.get_hero_compare(db_session, 7, params, grid=DEFAULT_GRID)
+                    assert exc.value.status_code == 404
+                    assert exc.value.detail[0]["code"] == "not_found"
+                    assert exc.value.detail[0]["msg"] == f"Map with ID {entity.id} not found"
+        finally:
+            await db_session.rollback()
+
+    asyncio.run(run())
 
 
 def test_statistics_by_heroes_defers_metadata_join_off_the_window() -> None:

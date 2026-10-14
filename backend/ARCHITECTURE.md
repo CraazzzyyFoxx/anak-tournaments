@@ -348,6 +348,8 @@ aliases; callers load `parent` before requesting the `gamemode` expansion. Publi
 listing sorts by `parent_id`, not the removed ORM attribute `gamemode_id`.
 The separate user-map statistics sort keeps its `gamemode_id` wire key and translates
 it to `parent_id` when building SQL.
+Hero comparison resolves only Overwatch maps in its catalog outer join; another kind
+or discipline returns map-not-found while preserving the anchor row and hero lookups.
 
 `discipline01` rewrites hard map references and map pick-ban ids (including snapshots
 and room events) through `catalog.entity_legacy`. Side-pick answers are side indexes

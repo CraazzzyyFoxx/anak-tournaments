@@ -61,7 +61,14 @@ class UserCompareQueries:
             .select_from(anchor)
             .outerjoin(left_hero, left_hero.id == left_hero_id if left_hero_id is not None else sa.false())
             .outerjoin(right_hero, right_hero.id == right_hero_id if right_hero_id is not None else sa.false())
-            .outerjoin(compare_map, compare_map.id == map_id if map_id is not None else sa.false())
+            .outerjoin(
+                compare_map,
+                sa.and_(
+                    compare_map.id == map_id if map_id is not None else sa.false(),
+                    compare_map.kind == "map",
+                    compare_map.discipline == "overwatch",
+                ),
+            )
         )
         row = (await session.execute(statement)).one()
         return row[0], row[1], row[2]
