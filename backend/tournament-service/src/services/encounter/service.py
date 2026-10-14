@@ -35,7 +35,7 @@ hero_jsonb_object = sa.func.jsonb_build_object(
     "slug",
     models.CatalogEntity.slug,
     "image_path",
-    models.CatalogEntity.image_path,
+    sa.func.coalesce(models.CatalogEntity.image_path, ""),
     "color",
     sa.func.coalesce(models.CatalogEntity.attrs["color"].astext, "#ffffff"),
     "type",

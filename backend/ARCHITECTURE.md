@@ -359,6 +359,8 @@ Heroes are `CatalogEntity` rows of `kind="character"`, read through
 in `attrs`; `HeroRead.from_entity` keeps the `HeroClass` value spelling and defaults
 missing color to `#ffffff`. Direct Overwatch hero lookups and joins constrain both
 kind and discipline, including the aliased kill-feed heroes.
+Nullable catalog images become `""` in both entity adapters and SQL JSON hero
+projections, preserving the string-valued `HeroRead.image_path` wire contract.
 
 Registration picks live in `balancer.registration_role_entity` with `entity_id`,
 `entity_kind="character"` and an `entity` relationship; the collection remains
