@@ -70,6 +70,7 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`workspace-domains.md`](./workspace-domains.md) | Workspace subdomains and custom domains: DNS, certificates, verification |
 | [`../backend/analytics-service/docs/runbook-shift-recompute.md`](../backend/analytics-service/docs/runbook-shift-recompute.md) | Recomputing OpenSkill rating shifts |
 | [`encounter-layer-v1-release.md`](./encounter-layer-v1-release.md) | Shipping the encounter layer V1: breaking API changes, the preflight → upgrade → recompute → reconcile cutover, what is unmeasured |
+| [`multi-game-p1-catalog-release.md`](./multi-game-p1-catalog-release.md) | Shipping the multi-game P1 catalog: wire breaks, preflight/reconcile, cache and queue drain, hero-stats view population, dev/staging resets |
 
 ## Designs, plans and reviews
 
