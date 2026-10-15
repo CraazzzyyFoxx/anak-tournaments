@@ -166,7 +166,7 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
-`public`, `tournament`, `encounter`, `catalog`, `matches`, `overwatch_rank`,
+`public`, `tournament`, `encounter`, `catalog`, `roster`, `matches`, `overwatch_rank`,
 `balancer`, `achievements`, `analytics`, `log_processing`, `realtime`, plus two legacy schemas:
 `overwatch` — the old catalog, read by nobody at runtime and dropped by the gated `discipline02`;
 and `casual` — mix history that nothing reads since V2, dropped by the gated `mixround02`.
@@ -216,6 +216,27 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   `catalog.entity_legacy` maps old hero/map/gamemode ids to the new ids for migration reconciliation
   and the old-link redirect (`rpc.app.catalog.legacy`) only; it goes with `overwatch.*` in
   `discipline02`. Runtime catalog reads and writes use `catalog.entity`, never `overwatch.*`.
+  App-service startup projects module-declared role dimensions and roles into
+  `catalog.role_dimension` / `catalog.role`; a removed module role is deactivated, not deleted.
+  Exactly one dimension per discipline is rated. Workspace sub-roles share that ontology, with
+  immutable parents and `<parent>_<slug>` codes. `CatalogRoleRepository` resolves an owner's
+  discipline, dimension and workspace; the RBAC `RoleRepository` is a different repository.
+  An assignment stores one leaf through `(role_id, dimension_id)`, never a separate parent
+  assignment. Responses use `RoleRef` (`dimension`, leaf `role`, derived `parent`); inputs ignore
+  `parent`. `flex` is an open-slot key only, never a catalog role.
+- **Team formats (`roster`).** `team_format`, `team_format_dimension` and `format_role_rule`
+  hold starter/substitute bounds, dimension modes and hard/recommended role quotas.
+  Tournaments own an editable copy of the workspace default or module preset; mixes freeze
+  their copy at creation (explicit preset, else clone format, else workspace default, else preset).
+  There is no live inheritance and no runtime use of the three legacy slot-map columns.
+  `roster.team_format_legacy` is only a migration reconciliation snapshot, retained until P9's
+  `discipline02`, along with `encounter.team_member_role_legacy` and legacy role columns.
+  `encounter.team_member_role (team_member_id, dimension_id, role_id)` stores snapshot leaves.
+  Composite assignment/quota FKs into `catalog.role` are `DEFERRABLE INITIALLY DEFERRED`.
+  Hard validation checks every active dimension for each starter; benches are excluded.
+  Only tournament/MOO sub-role rules with `recommended_max <= 1` gate the existing collision
+  penalty; other recommendations, and all mix recommendations, are post-solve advisories and
+  equal-objective tie-breakers. See the [P2 release and cutover guide](./multi-game-p2-roles-release.md).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
   `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only
@@ -233,8 +254,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   (`dimension`, leaf `role`, output-only `parent`); form answers deliberately
   retain `{role, subrole?, is_primary, top_heroes?}` with an unprefixed sub-role
   slug. Both writers resolve against the tournament discipline and owning
-  workspace. The roster engine uses module role codes rather than Overwatch
-  enums; pre-P2 balancer payload adapters retain their existing shapes.
+  workspace. The roster engine uses module role codes rather than Overwatch enums.
 - **Mix role preferences (P2).** `balancer.custom_game_player_role` stores ordered
   `(role_id, dimension_id)` references, restricted to module roles of the mix's
   rated dimension. Host and self-service `roles` inputs and outputs now use

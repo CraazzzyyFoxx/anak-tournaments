@@ -92,6 +92,15 @@ Only active sub-role rules with `recommended_max <= 1` enable the tournament sol
 and break equal-objective ties only. The mix engine has no collision term, so all its recommendations
 use that post-solve path; neither engine gains a new Rust objective.
 
+Mix creation accepts `discipline` and optional `team_format_preset`. The effective discipline must
+be enabled in the workspace, including on clones. Format selection is explicit preset, else the
+clone's format, else the workspace default, else the module preset; the mix freezes its own copy.
+Host mix preferences no longer edit `role_mask` / `roster_shape`, and `role_settings.flex` is now
+`open_slot_settings`. Workspace defaults use
+`GET|PUT /api/v1/workspaces/{workspace_id}/team-formats/{discipline}`; tournament copies use
+`GET|PUT /api/v1/admin/tournaments/{tournament_id}/team-format`.
+See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for the complete wire cutover.
+
 
 ## Interface
 
@@ -286,7 +295,7 @@ Writes, all in the `balancer` schema unless noted:
 - `draft_session`, `draft_team`, `draft_player`, `draft_pick`, `draft_audit_event` — the live draft.
 - `workspace_config`, `tournament_config`, `user_config` — the three balancer config scopes: the
   workspace's (including the mix ranker's knobs), one tournament's, and one account's own mix
-  settings (solver knobs, roster shape, points per win, rating mode) that every mix it hosts runs with.
+  settings (solver knobs, points per win, rating mode); roster rules belong to each mix's frozen format.
 - `custom_game`, `custom_game_co_host`, `custom_game_player`, `custom_game_player_role`,
   `custom_game_team_name` — mixes.
 - `member_rank` — both rank layers.
@@ -294,11 +303,12 @@ Writes, all in the `balancer` schema unless noted:
 - `custom_game_round`, `custom_game_round_member` — what only the balancer reads about a recorded round: its lobby,
   the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy in another lobby".
 - `encounter.encounter`, `encounter.team` (two participations), `encounter.team_member` (+
-  `team_member_role` when a seat has a role), `encounter.game` (one confirmed game),
+  `team_member_role (team_member_id, dimension_id, role_id)` for leaf assignments), `encounter.game` (one confirmed game),
   `encounter.game_team`, and one `encounter.result_audit` journal row, written through the shared
   result writer (`apply_result`) — all owned by the mix (`custom_game_id`, result source `host`).
   `record_outcome` writes them in one transaction through `record_mix_round`; they are the only
   durable trace of a played mix game.
+- `roster.team_format`, `team_format_dimension`, `format_role_rule` — the mix-owned format copy.
 
 Reads only: `balancer.registration*` (tournament-service owns those writes — a draft pool entry *is*
 a registration, which is why roles, ranks and top heroes are never copied into draft-local tables),

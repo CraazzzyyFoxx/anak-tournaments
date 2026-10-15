@@ -253,6 +253,23 @@ that this worker drains. That makes the tournament worker a hard dependency for 
 delivery: while it is down, outbox rows accumulate and *no* service's domain events are published.
 They are not lost — the sweeper catches up on the next tick — but they are delayed.
 
+## Role ontology and team formats
+
+Tournament creation accepts `discipline` (default `overwatch`), validated against the workspace's
+`disciplines_enabled`. The tournament owns a copy of the workspace default or module preset, not
+a live inherited slot map. Read or replace it through
+`GET|PUT /api/v1/admin/tournaments/{tournament_id}/team-format`; workspace templates use
+`GET|PUT /api/v1/workspaces/{workspace_id}/team-formats/{discipline}`. Both use
+`TeamFormatRead` / `TeamFormatWrite`; tournament create/update/read no longer carry `roster_slots_json`.
+
+Players and registration APIs carry leaf `RoleRef {dimension, role, parent}` values. The parent is
+derived, never trusted on input. Workspace sub-role codes are `<parent>_<slug>`; the retained
+`/api/v1/admin/player-sub-roles` API exposes the suffix as `slug` and refuses parent changes.
+Public form answers deliberately keep `{role, subrole?, is_primary, top_heroes?}` with suffixes.
+The `owt-1` player-pool export uses leaf refs in `owt.primary_role` and `owt.roles[].role`;
+its frozen solver `stats.classes` remains unchanged.
+See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for errors and cutover steps.
+
 ## Data owned
 
 One PostgreSQL database, one SQLAlchemy metadata in [`../shared/`](../shared/README.md). Domain
@@ -262,20 +279,22 @@ project at [`../migrations/`](../migrations/).
 **Writes:**
 
 - **`tournament`** — the structure: `tournament`, `tournament_phase_schedule`, `stage`, `stage_item`,
-  `stage_item_input`, `stage_round_best_of`, `team`, `player`, `player_sub_role`,
+  `stage_item_input`, `stage_round_best_of`, `team`, `player`, `player_role`,
   `bracket_encounter` (an encounter's stage, stage item and round), `encounter_link`,
   `encounter_report_form`, the `pick_ban_config*` template tables, `standing`, `recalculation_state`,
   `computation_job`, the four `challonge_*` mapping/log tables, `scrim_room`,
   `tournament_preview_access`, `tournament_link`, `slug_redirect`, `encounter_saved_view`.
 - **`encounter`** — the match layer, written through the single writers in
   [`shared/services/encounter/`](../shared/services/encounter/): `encounter`, `team` (participations)
-  with `team_member` / `team_member_role`, `game` and `game_team`, `game_claim` /
+  with `team_member` / `team_member_role (team_member_id, dimension_id, role_id)`, `game` and `game_team`, `game_claim` /
   `game_claim_result`, `team_report` / `team_report_result`, `scoring_rule`, `result_audit`,
   `readiness`, `room_event`, and the `pick_ban_session` / `pick_ban_entry` / `pick_ban_submission`
   tables of the pre-game room. Seats change only through `participants.py`, results only through
   `result.py`.
+- **`catalog.role`** — workspace sub-role administration; module roles are projected at app startup.
+- **`roster`** — tournament-owned `team_format`, `team_format_dimension` and `format_role_rule`.
 - **`balancer`** — the registration side of the tournament domain: `registration`, `registration_role`,
-  `registration_role_hero`, `registration_form`, `registration_status`, `registration_team`,
+  `registration_role_entity`, `registration_form`, `registration_status`, `registration_team`,
   `registration_team_invite`, `registration_google_sheet_feed` / `_binding`. Balancing itself
   (`balancer.*` team-building tables) belongs to `balancer-service`.
 - **`subscriptions`** — `provider_config` and `requirement` through the admin RPCs, plus the
@@ -286,9 +305,10 @@ project at [`../migrations/`](../migrations/).
   bracket events.
 
 **Reads only:** `players` (player identity behind rosters and registrations), `auth` (actor columns
-on audit rows), `public.workspace` / `public.workspace_member` (tenancy anchors), `overwatch` (hero
-and map catalog for pick/ban), `catalog` (the `discipline` registry behind a tournament's
-`discipline`), `matches` (parsed match rows surfaced by the admin match reads).
+on audit rows), `public.workspace` / `public.workspace_member` (tenancy anchors), `catalog.entity`
+(characters and maps for pick/ban), `catalog.discipline` / `catalog.role_dimension` (the owner's
+ontology), `matches` (parsed match rows surfaced by the admin match reads). Legacy
+`tournament.player_sub_role` and role columns have no runtime readers or writers.
 
 Entity diagrams: [tournament](../../docs/database_erd.md#tournament--tournament-casual),
 [encounter](../../docs/database_erd.md#encounter--encounter),

@@ -45,7 +45,7 @@ src/domain/**/*.py                 PURE LOGIC. Dataclasses, algorithms, validati
   ↓
 shared.repository.*                CRUD. `BaseRepository[Model]` + concrete repos
                                    (`CatalogEntityRepository("character", discipline="overwatch")`,
-                                   `DraftPickRepository`, …). Accepts a session, returns ORM rows
+                                   `CatalogRoleRepository`, `DraftPickRepository`, …). Accepts a session, returns ORM rows
                                    or row tuples. Never imports Pydantic, FastAPI/FastStream, cache clients, or outbox
                                    publishers. Write methods flush only — see
                                    `backend/docs/repository-boundaries.md`.
@@ -188,10 +188,11 @@ singletons, one shared injected `feasibility_service`.
 **`domain/<x>.py`** (`balancer-service/src/domain/draft/rules.py`):
 
 ```python
-def resolve_pick_slot(shape: RosterShape, counts: Mapping[str, int], player: DraftPlayer, target_role: HeroClass | None) -> SlotDecision:
-    if not role_is_legal(player, target_role if shape.has_role_slots else None):
-        raise _err("illegal_role", ...)
-    ...
+def resolve_pick_slot(
+    shape: RosterShape, counts: Mapping[str, int], roster: PlayerRoster | None,
+    target_role: str | None,
+) -> SlotDecision:
+    """Validate a pick against module role codes and the remaining projected slots."""
 ```
 
 No `session`, no `await`, no repository import. `services/draft/selection.py`'s
@@ -379,6 +380,27 @@ casual matches and surviving legacy map-code table retain their original delete
 behavior through plain catalog FKs, as do the hero columns of statistics, events
 and kill feeds. The interim hero-statistics view joins the
 catalog and starts unpopulated for the existing worker to refresh.
+
+### Role ontology and team formats
+
+`CatalogRoleRepository` is the ontology repository; `RoleRepository` remains the RBAC repository.
+App-service startup projects `shared.disciplines` declarations into `catalog.role_dimension` /
+`catalog.role`, with exactly one rated dimension per discipline and deactivation rather than
+deletion for removed module roles. Workspace sub-roles use `<parent>_<slug>` codes and immutable
+parents. Resolve every reference against the owner's discipline, dimension and workspace.
+
+Assignments store one leaf through `(role_id, dimension_id)`. Composite assignment/quota FKs into
+`catalog.role` are `DEFERRABLE INITIALLY DEFERRED`. `RoleRef` is the wire boundary:
+`{dimension, role, parent}` codes, with a derived output-only parent that inputs ignore.
+The domain uses module codes and ontology nodes, not API role enums. `flex` remains only an
+open-slot key; it has no catalog row or assignment.
+
+`roster.team_format` owns relational sizes, dimension modes and quotas. A tournament gets an
+editable copy; a mix freezes its copy at creation. Legacy slot columns, role columns,
+`encounter.team_member_role_legacy` and the migration-only `roster.team_format_legacy` snapshot
+stay for reconciliation until `discipline02`, with no runtime reads or writes.
+The [P2 release guide](../docs/multi-game-p2-roles-release.md) lists wire changes and cutover gates.
+
 
 ## Import layering between domains, when it's worth enforcing
 

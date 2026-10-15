@@ -94,6 +94,26 @@ hero/map query filters on `/users/heroes-compare`, `/users/compare` and
 `/tournaments/{id}/matches` with a 308, preserving the other query parameters. The route,
 mapping table and redirect are temporary.
 
+### Role ontology and workspace formats
+
+At startup the app projects module-declared dimensions and roles into `catalog.role_dimension` /
+`catalog.role`; exactly one dimension per discipline is rated. Removed module roles are deactivated,
+not deleted. `CatalogRoleRepository` resolves module roles and the owner's workspace sub-roles;
+their codes are `<parent>_<slug>` (for example `support_main`), with immutable parents.
+
+Workspace reads expose `disciplines_enabled`, writable by superusers only. Workspace default
+formats are read/written through
+`GET|PUT /api/v1/workspaces/{workspace_id}/team-formats/{discipline}` using
+`TeamFormatRead` / `TeamFormatWrite`; `default_roster_slots_json` is no longer on the wire.
+Tournaments own editable copies; mixes freeze copies at creation, so editing a template does not
+rewrite existing events.
+
+User/player role fields use leaf `RoleRef {dimension, role, parent}` values; inputs ignore `parent`.
+GET role filters carry JSON refs. On overview, overview stats and catalog reads, omission means
+no filter, while explicit `role=null` selects no rated-role assignment (the UI's Flex chip).
+Compare controls do not offer Flex. `flex` is an open-slot key, not an ontology role.
+See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for all wire breaks.
+
 ### Consumed queue
 
 `tournament_changed_app_service`, bound to the `tournament.changed` topic exchange on
@@ -149,8 +169,10 @@ There are no per-service migrations. All models live in one SQLAlchemy metadata 
 - `public` — `workspace`, `workspace_member`, `audit_log`
   ([tenancy](../../docs/database_erd.md#tenancy--public),
   [platform](../../docs/database_erd.md#platform--public-realtime)).
-- `catalog` — `entity`, `alias_miss`
+- `catalog` — `entity`, `alias_miss`, plus the startup `role_dimension` / module `role` projection
   ([catalog](../../docs/database_erd.md#catalog--catalog)).
+- `roster` — workspace defaults in `team_format`, `team_format_dimension`, `format_role_rule`
+  ([roster](../../docs/database_erd.md#roster--roster)).
 - `achievements` — `override` and `evaluation_result`, only to repoint `workspace_member_id` during a
   merge ([achievements](../../docs/database_erd.md#achievements--achievements)).
 

@@ -56,8 +56,8 @@ Alembic head: **`discipline01b`** (116 revisions in `backend/migrations/versions
 | `encounter` | Match layer: encounters, participations, games, claims, series reports, scoring rules, result journal, pick/ban sessions | tournament-service |
 | `casual` | Legacy mix history (matches, teams, players). Read by nothing since V2 and mapped by no model; dropped by the gated `mixround02` | — (no service) |
 | `overwatch` | Legacy catalog, read and written by no service and mapped by no model; retained until the gated `discipline02` | — (no service) |
-| `catalog` | Disciplines (`overwatch`, `lol`), entities, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin), parser-service (sync/misses); disciplines and legacy ids seeded by migration |
-| `roster` | Workspace team-format templates and frozen tournament/mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
+| `catalog` | Disciplines (`overwatch`, `lol`), entities, role dimensions/module roles/workspace sub-roles, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin/ontology projection), parser-service (entity sync/misses); migration seeds the initial projection |
+| `roster` | Workspace team-format templates, tournament-owned copies and frozen mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
 | `matches` | Parsed match logs and derived statistics | parser-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
@@ -549,14 +549,28 @@ Composite unique keys:
 `catalog.discipline` lists the games the platform knows (`overwatch` and `lol`), referenced by
 tournaments, mixes and encounters. Behaviour lives in `backend/shared/disciplines/<slug>/`,
 reached only through the `shared.disciplines` registry: supported catalog kinds and their labels,
-character classes, catalog sync source and sides. P1 adds catalog support, not LoL gameplay or
-its later blue/red side declaration.
+character classes, catalog sync source, sides, role ontology and team-format presets. Catalog and
+role support do not by themselves enable LoL gameplay.
 
 `catalog.entity` holds `character`, `map` and `mode` rows. A module labels those core kinds
 ("Hero" or "Champion" for `character`) without inventing kinds. Names and slugs are unique per
 discipline and kind; a map's mode is its `parent_id`, constrained to the same discipline, and a
 character's class is `attrs.class`. Admin CRUD is generic by discipline and kind through
 app-service; public hero/map/gamemode reads still project Overwatch-shaped responses.
+
+App-service startup projects each module's declarations into `catalog.role_dimension` and
+`catalog.role`, deactivating removed module roles rather than deleting history. Each dimension has
+`single`/`multi` cardinality; exactly one per discipline is rated. Workspace sub-roles have an
+immutable `parent_role_id` and `<parent>_<slug>` code, unique per workspace and dimension.
+`CatalogRoleRepository` scopes reads by discipline, dimension and workspace.
+Assignments hold one leaf, with its parent derived; `flex` creates no assignment. The wire is
+`RoleRef {dimension, role, parent}`, where `parent` is output-only and ignored on input.
+`tournament.player_role` and `encounter.team_member_role` use role/dimension ids, as do registration,
+mix, draft, balancer-slot and ML-artifact references. The encounter table's key is
+`(team_member_id, dimension_id, role_id)`; the old text table is retained as
+`encounter.team_member_role_legacy` for reconciliation until `discipline02`.
+Composite assignment/quota FKs into `catalog.role` are `DEFERRABLE INITIALLY DEFERRED`, not
+immediate constraints. Legacy columns remain migration-only; rank tables stay code-keyed until P3.
 
 Overwatch logs resolve canonical names or `aliases` (a JSONB array) within that discipline.
 The OverFast module sync adds hero aliases from all 13 Blizzard locales; map and mode aliases
@@ -677,7 +691,14 @@ Composite unique keys:
 Team formats describe starter and substitute bounds, dimension modes and role quotas against the
 discipline's catalog ontology. A workspace may keep one default per discipline; creation copies it
 (or the module preset) into each tournament or mix, so later template edits do not change existing events.
+A tournament can edit its copy; a mix freezes its format at creation, with an explicit preset taking
+precedence over a clone's format, then the workspace default, then the module preset.
 `flex` is only the projected open-slot key, never a catalog role or a quota rule.
+Migrated and preset formats set substitute bounds to zero; registration benches still use
+`registration_form.max_substitutes`, and current validation applies to starters only.
+Hard constraints cover every active dimension. Only the tournament/MOO solver has a sub-role
+collision term gated by `recommended_max <= 1`; other recommendations and all mix recommendations
+are post-solve advisories and equal-objective tie-breakers.
 
 `roster.team_format_legacy` is a migration-only snapshot of the owners and effective slot maps
 carried by `discipline01b`. Reconciliation checks exact format semantics against this independent
