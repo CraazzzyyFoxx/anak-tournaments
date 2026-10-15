@@ -403,7 +403,8 @@ Table analytics.ml_model_artifact {
   updated_at timestamptz
   algorithm_id bigint [not null]
   model_kind VARCHAR(32) [not null]
-  role VARCHAR(16)
+  dimension_id bigint
+  role_id bigint
   version VARCHAR(32) [not null]
   storage_uri text [not null]
   feature_version VARCHAR(32) [not null]
@@ -412,7 +413,7 @@ Table analytics.ml_model_artifact {
   feature_importance json
   is_active boolean [not null, default: false]
   indexes {
-    (algorithm_id, model_kind, role, version) [unique, name: "uq_analytics_ml_model_artifact"]
+    (algorithm_id, model_kind, role_id, version) [unique, name: "uq_analytics_ml_model_artifact_role"]
     (algorithm_id) [name: "ix_analytics_ml_model_artifact_algorithm_id"]
     (is_active) [name: "ix_analytics_ml_model_artifact_is_active"]
     (model_kind) [name: "ix_analytics_ml_model_artifact_model_kind"]
@@ -1149,8 +1150,8 @@ Table balancer.registration_identity {
   handle VARCHAR(255) [not null]
   handle_normalized VARCHAR(255) [not null]
   indexes {
-    (registration_id, provider, position) [unique, name: "uq_balancer_registration_identity_position"]
     (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
+    (registration_id, provider, position) [unique, name: "uq_balancer_registration_identity_position"]
     (provider, handle_normalized) [name: "ix_balancer_registration_identity_handle"]
     (registration_id) [name: "ix_balancer_registration_identity_registration_id"]
   }
@@ -1182,8 +1183,8 @@ Table balancer.registration_role_entity {
   entity_kind VARCHAR(16) [not null, default: `character`]
   priority int [not null]
   indexes {
-    (role_id, priority) [unique, name: "uq_reg_role_entity_role_priority"]
     (role_id, entity_id) [unique, name: "uq_reg_role_entity_role_entity"]
+    (role_id, priority) [unique, name: "uq_reg_role_entity_role_priority"]
     (role_id) [name: "ix_balancer_registration_role_entity_role_id"]
   }
 }
@@ -2625,9 +2626,9 @@ Table roster.team_format {
   substitute_min int [not null, default: 0]
   substitute_max int [not null, default: 0]
   indexes {
-    (id, discipline) [unique, name: "uq_team_format_key"]
     (tournament_id) [unique, name: "uq_team_format_tournament"]
     (custom_game_id) [unique, name: "uq_team_format_custom_game"]
+    (id, discipline) [unique, name: "uq_team_format_key"]
     (workspace_id, discipline) [unique, name: "uq_team_format_workspace_default"]
   }
 }
@@ -3323,6 +3324,8 @@ Ref: analytics.job.requested_by_user_id > auth.user.id [delete: set null]
 Ref: analytics.match_quality.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: analytics.match_quality.algorithm_id > analytics.algorithms.id [delete: cascade]
 Ref: analytics.ml_model_artifact.algorithm_id > analytics.algorithms.id [delete: cascade]
+Ref: analytics.ml_model_artifact.dimension_id > catalog.role.dimension_id
+Ref: analytics.ml_model_artifact.role_id > catalog.role.id
 Ref: analytics.ml_model_artifact.training_cutoff_tournament_id > tournament.tournament.id [delete: set null]
 Ref: analytics.performance.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: analytics.performance.player_id > tournament.player.id [delete: cascade]
@@ -3613,17 +3616,17 @@ Ref: roster.format_role_rule.team_format_id > roster.team_format_dimension.team_
 Ref: roster.format_role_rule.dimension_id > catalog.role.dimension_id
 Ref: roster.format_role_rule.dimension_id > roster.team_format_dimension.dimension_id [delete: cascade]
 Ref: roster.format_role_rule.role_id > catalog.role.id
+Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
-Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
+Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
 Ref: roster.team_format.discipline > catalog.discipline.code
 Ref: roster.team_format.discipline > balancer.custom_game.discipline [delete: cascade]
-Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
 Ref: roster.team_format.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: roster.team_format.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: roster.team_format_dimension.team_format_id > roster.team_format.id [delete: cascade]
-Ref: roster.team_format_dimension.discipline > catalog.role_dimension.discipline
 Ref: roster.team_format_dimension.discipline > roster.team_format.discipline [delete: cascade]
+Ref: roster.team_format_dimension.discipline > catalog.role_dimension.discipline
 Ref: roster.team_format_dimension.dimension_id > catalog.role_dimension.id
 Ref: subscriptions.check_log.workspace_id > workspace.id [delete: set null]
 Ref: subscriptions.check_log.auth_user_id > auth.user.id [delete: set null]

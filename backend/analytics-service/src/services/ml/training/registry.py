@@ -16,7 +16,7 @@ import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.repository import AnalyticsAlgorithmRepository, MLModelArtifactRepository
+from shared.repository import AnalyticsAlgorithmRepository, CatalogRoleRepository, MLModelArtifactRepository
 from src import models
 
 __all__ = ("ModelRegistryService", "registry_service")
@@ -57,11 +57,17 @@ class ModelRegistryService:
         ``(algorithm_id, model_kind, role)`` are flipped to ``is_active=False``
         so only the freshly-registered row is loaded by inference.
         """
+        role_row = (
+            (await CatalogRoleRepository().rated_rows(session, discipline="overwatch", workspace_id=None))[role]
+            if role is not None
+            else None
+        )
+        role_id = role_row.id if role_row is not None else None
         existing = await self.artifacts.get_by_identity(
             session,
             algorithm_id=algorithm_id,
             model_kind=model_kind,
-            role=role,
+            role_id=role_id,
             version=version,
         )
         if existing is None:
@@ -70,7 +76,9 @@ class ModelRegistryService:
                 models.MLModelArtifact(
                     algorithm_id=algorithm_id,
                     model_kind=model_kind,
-                    role=role,
+                    dimension_id=role_row.dimension_id if role_row is not None else None,
+                    role_id=role_id,
+                    role_row=role_row,
                     version=version,
                     storage_uri=storage_uri,
                     feature_version=feature_version,
@@ -99,7 +107,7 @@ class ModelRegistryService:
                 session,
                 algorithm_id=algorithm_id,
                 model_kind=model_kind,
-                role=role,
+                role_id=role_id,
                 keep_version=version,
             )
 
@@ -112,7 +120,7 @@ class ModelRegistryService:
         *,
         algorithm_id: int,
         model_kind: str,
-        role: str | None,
+        role_id: int | None,
         keep_version: str,
     ) -> None:
         """Flip ``is_active=False`` on every artifact sharing key but not version."""
@@ -120,7 +128,7 @@ class ModelRegistryService:
             session,
             algorithm_id=algorithm_id,
             model_kind=model_kind,
-            role=role,
+            role_id=role_id,
             keep_version=keep_version,
         )
 
@@ -133,11 +141,16 @@ class ModelRegistryService:
         role: str | None,
     ) -> models.MLModelArtifact | None:
         """Return the active artifact row matching the key, if any."""
+        role_id = (
+            (await CatalogRoleRepository().rated_rows(session, discipline="overwatch", workspace_id=None))[role].id
+            if role is not None
+            else None
+        )
         return await self.artifacts.get_active(
             session,
             algorithm_id=algorithm_id,
             model_kind=model_kind,
-            role=role,
+            role_id=role_id,
         )
 
     async def load_active_artifacts(

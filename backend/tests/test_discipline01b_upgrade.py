@@ -158,7 +158,12 @@ def _seed(conn) -> dict:
 
 def _scramble_names(conn) -> None:
     """Restored databases need not carry the migration chain's constraint names."""
-    for table in ("balancer.registration_role", "encounter.team_member_role", "balancer.custom_game_player_role"):
+    for table in (
+        "balancer.registration_role",
+        "encounter.team_member_role",
+        "balancer.custom_game_player_role",
+        "analytics.ml_model_artifact",
+    ):
         for index, (name,) in enumerate(
             _rows(
                 conn,
@@ -414,6 +419,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         "mix player roles",
         "draft roles",
         "balancer slots",
+        "ml artifacts",
     } <= set(statuses)
 
 
@@ -502,6 +508,27 @@ def _seed_team_formats(conn, ids: dict) -> None:
     bteam = _insert(conn, "balancer.team", balance_id=balance, name="A", balancer_name="A", avg_sr=0, total_sr=0)
     for key, role in (("slot_tank", "Tank"), ("slot_flex", "flex")):
         ids[key] = _insert(conn, "balancer.team_slot", team_id=bteam, role=role, assigned_rank=2000)
+    algorithm = _insert(conn, "analytics.algorithms", name="d1b-algo")
+    for key, role in (("artifact_tank", "tank"), ("artifact_all", None)):
+        ids[key] = _insert(
+            conn,
+            "analytics.ml_model_artifact",
+            algorithm_id=algorithm,
+            model_kind="performance",
+            role=role,
+            version="1",
+            storage_uri="s3://x",
+            feature_version="1",
+        )
+
+
+def test_ml_artifacts_point_at_their_role_or_none(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    tank = _scalar(conn, "SELECT role_id FROM analytics.ml_model_artifact WHERE id = %s", (ids["artifact_tank"],))
+    assert _scalar(conn, "SELECT code FROM catalog.role WHERE id = %s", (tank,)) == "tank"
+    assert (
+        _scalar(conn, "SELECT role_id FROM analytics.ml_model_artifact WHERE id = %s", (ids["artifact_all"],)) is None
+    )
 
 
 def test_balancer_slots_point_at_module_roles_and_flex_is_open(migrated) -> None:
@@ -938,4 +965,38 @@ def test_draft_role_reconcile_rejects_roles_outside_the_owners_rated_module(wron
         tx.execute(function)
         tx.execute(create)
         assert ("draft roles", player_id, "captain Tank") in _rows(tx, skipped)
+        tx.rollback()
+
+
+@pytest.mark.parametrize("wrong_scope", ["discipline", "dimension", "workspace"])
+def test_ml_artifact_reconcile_rejects_roles_outside_the_overwatch_rated_module(wrong_scope, migrated) -> None:
+    ids = migrated["ids"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        role_id, dimension_id = _rows(
+            tx,
+            "SELECT role_id, dimension_id FROM analytics.ml_model_artifact WHERE id = %s",
+            (ids["artifact_tank"],),
+        )[0]
+        values = {"dimension_id": dimension_id, "code": "tank", "name": "Tank"}
+        if wrong_scope in ("discipline", "dimension"):
+            values["dimension_id"] = _insert(
+                tx,
+                "catalog.role_dimension",
+                discipline="lol" if wrong_scope == "discipline" else "overwatch",
+                code="other",
+                name="Other",
+                selection_mode="single",
+                rated=wrong_scope == "discipline",
+            )
+        else:
+            values.update(workspace_id=ids["ws_a"], parent_role_id=role_id)
+        replacement = _insert(tx, "catalog.role", **values)
+        tx.execute(
+            "UPDATE analytics.ml_model_artifact SET role_id = %s, dimension_id = %s WHERE id = %s",
+            (replacement, values["dimension_id"], ids["artifact_tank"]),
+        )
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        assert ("ml artifacts", ids["artifact_tank"], "tank") in _rows(tx, skipped)
         tx.rollback()

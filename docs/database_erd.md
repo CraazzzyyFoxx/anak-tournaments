@@ -2798,7 +2798,8 @@ erDiagram
         timestamptz updated_at "nullable"
         bigint algorithm_id FK
         varchar(32) model_kind
-        varchar(16) role "nullable"
+        bigint dimension_id FK "nullable"
+        bigint role_id FK "nullable"
         varchar(32) version
         text storage_uri
         varchar(32) feature_version
@@ -2892,6 +2893,8 @@ erDiagram
     ANALYTICS_ALGORITHMS ||--o{ ANALYTICS_STANDINGS_DISTRIBUTION : "algorithm_id"
     AUTH_USER |o--o{ ANALYTICS_ANOMALY_FEEDBACK : "reviewer_user_id"
     AUTH_USER |o--o{ ANALYTICS_JOB : "requested_by_user_id"
+    CATALOG_ROLE |o--o{ ANALYTICS_ML_MODEL_ARTIFACT : "dimension_id"
+    CATALOG_ROLE |o--o{ ANALYTICS_ML_MODEL_ARTIFACT : "role_id"
     ENCOUNTER_ENCOUNTER |o--o{ ANALYTICS_PLAYER_ANOMALY : "source_encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ANALYTICS_MATCH_QUALITY : "encounter_id"
     PUBLIC_WORKSPACE |o--o{ ANALYTICS_JOB : "workspace_id"
@@ -2915,7 +2918,7 @@ Composite unique keys:
 
 - `ANALYTICS_ANOMALY_FEEDBACK` unique on (`tournament_id`, `player_id`, `kind`)
 - `ANALYTICS_MATCH_QUALITY` unique on (`encounter_id`, `algorithm_id`)
-- `ANALYTICS_ML_MODEL_ARTIFACT` unique on (`algorithm_id`, `model_kind`, `role`, `version`)
+- `ANALYTICS_ML_MODEL_ARTIFACT` unique on (`algorithm_id`, `model_kind`, `role_id`, `version`)
 - `ANALYTICS_PERFORMANCE` unique on (`tournament_id`, `player_id`, `algorithm_id`)
 - `ANALYTICS_PLAYER_ANOMALY` unique on (`tournament_id`, `player_id`, `kind`, `source_encounter_id`)
 - `ANALYTICS_PLAYER_SHIFT` unique on (`tournament_id`, `player_id`)

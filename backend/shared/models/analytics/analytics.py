@@ -1,10 +1,23 @@
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy import text as sa_text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
+from shared.models.catalog import CatalogRole
 from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.team import Player, Team
 from shared.models.tournament.tournament import Tournament
@@ -85,7 +98,7 @@ class MLModelArtifact(db.TimeStampIntegerMixin):
     """Registry of trained ML model artifacts.
 
     Storage URI points to the serialised booster on disk or S3. One row per
-    (algorithm_id, model_kind, role, version) tuple; ``is_active=True`` rows
+    (algorithm_id, model_kind, role_id, version) tuple; ``is_active=True`` rows
     are loaded by the inference runner.
     """
 
@@ -94,16 +107,25 @@ class MLModelArtifact(db.TimeStampIntegerMixin):
         UniqueConstraint(
             "algorithm_id",
             "model_kind",
-            "role",
+            "role_id",
             "version",
-            name="uq_analytics_ml_model_artifact",
+            name="uq_analytics_ml_model_artifact_role",
+        ),
+        ForeignKeyConstraint(
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_ml_model_artifact_role",
+            deferrable=True,
+            initially="DEFERRED",
         ),
         {"schema": "analytics"},
     )
 
     algorithm_id: Mapped[int] = mapped_column(ForeignKey(AnalyticsAlgorithm.id, ondelete="CASCADE"), index=True)
     model_kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
-    role: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    dimension_id: Mapped[int | None] = mapped_column(BigInteger)
+    role_id: Mapped[int | None] = mapped_column(BigInteger)
+    role_row: Mapped[CatalogRole | None] = relationship(lazy="joined", foreign_keys=[role_id])
     version: Mapped[str] = mapped_column(String(32), nullable=False)
     storage_uri: Mapped[str] = mapped_column(Text(), nullable=False)
     feature_version: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -115,6 +137,10 @@ class MLModelArtifact(db.TimeStampIntegerMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean(), nullable=False, server_default="false", default=False, index=True
     )
+
+    @property
+    def role(self) -> str | None:
+        return self.role_row.code if self.role_row is not None else None
 
 
 class AnalyticsPerformance(db.TimeStampIntegerMixin):

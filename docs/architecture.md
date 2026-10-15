@@ -253,6 +253,13 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   All role inputs resolve through the tournament's discipline: foreign dimensions
   return 422 `role_dimension_mismatch`, and sub-roles cannot pin a captain or pick.
   Submitted `parent` is ignored. The pure draft domain uses module codes, not enums.
+- **ML artifact roles (P2 wire break).** `analytics.ml_model_artifact` identifies
+  role-specific models through `(role_id, dimension_id)` in `catalog.role`;
+  all-role models keep both values `NULL`. Identity and activation are keyed by
+  role id, not the retained migration-only `role` column. The registry remains
+  Overwatch-only until P6 and resolves only its rated module roles (no workspace
+  sub-roles). Artifact responses now expose `role` as `RoleRef | null`, for example
+  `{"dimension":"player_role","role":"tank","parent":null}`, instead of a string.
 - **RBAC.** Grant-only permission catalog + workspace system roles, with a
   `user_permission_deny` overlay. Bootstrapped from `backend/shared/rbac/`.
 - **Migrations.** A single Alembic project under `backend/migrations/`. `make migrate` runs

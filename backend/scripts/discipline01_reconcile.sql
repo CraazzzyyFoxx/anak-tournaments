@@ -174,6 +174,13 @@ SELECT 'balancer slots', s.id, s.role,
   JOIN tournament.tournament t ON t.id = b.tournament_id
  WHERE s.role IS NOT NULL
 UNION ALL
+SELECT 'ml artifacts', a.id, a.role,
+       EXISTS (SELECT 1 FROM catalog.role r JOIN catalog.role_dimension d ON d.id = r.dimension_id
+                WHERE r.id = a.role_id AND r.dimension_id = a.dimension_id AND r.workspace_id IS NULL
+                  AND d.discipline = 'overwatch' AND d.rated AND r.code = lower(btrim(a.role)))
+  FROM analytics.ml_model_artifact a
+ WHERE a.role IS NOT NULL
+UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        NOT EXISTS (SELECT 1 FROM catalog.entity_legacy l WHERE l.legacy_kind = soft.kind AND l.legacy_id = soft.item_id)

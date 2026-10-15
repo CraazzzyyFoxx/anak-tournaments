@@ -283,14 +283,14 @@ class MLModelArtifactRepository(BaseRepository[models.MLModelArtifact]):
         *,
         algorithm_id: int,
         model_kind: str,
-        role: str | None,
+        role_id: int | None,
         version: str,
     ) -> models.MLModelArtifact | None:
         return await session.scalar(
             sa.select(models.MLModelArtifact).where(
                 models.MLModelArtifact.algorithm_id == algorithm_id,
                 models.MLModelArtifact.model_kind == model_kind,
-                models.MLModelArtifact.role == role,
+                models.MLModelArtifact.role_id == role_id,
                 models.MLModelArtifact.version == version,
             )
         )
@@ -301,13 +301,13 @@ class MLModelArtifactRepository(BaseRepository[models.MLModelArtifact]):
         *,
         algorithm_id: int,
         model_kind: str,
-        role: str | None,
+        role_id: int | None,
     ) -> models.MLModelArtifact | None:
         return await session.scalar(
             sa.select(models.MLModelArtifact).where(
                 models.MLModelArtifact.algorithm_id == algorithm_id,
                 models.MLModelArtifact.model_kind == model_kind,
-                models.MLModelArtifact.role == role,
+                models.MLModelArtifact.role_id == role_id,
                 models.MLModelArtifact.is_active.is_(True),
             )
         )
@@ -343,7 +343,7 @@ class MLModelArtifactRepository(BaseRepository[models.MLModelArtifact]):
         *,
         algorithm_id: int,
         model_kind: str,
-        role: str | None,
+        role_id: int | None,
         keep_version: str,
     ) -> None:
         await session.execute(
@@ -351,7 +351,7 @@ class MLModelArtifactRepository(BaseRepository[models.MLModelArtifact]):
             .where(
                 models.MLModelArtifact.algorithm_id == algorithm_id,
                 models.MLModelArtifact.model_kind == model_kind,
-                models.MLModelArtifact.role == role,
+                models.MLModelArtifact.role_id == role_id,
                 models.MLModelArtifact.version != keep_version,
             )
             .values(is_active=False)

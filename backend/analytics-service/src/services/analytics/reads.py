@@ -589,8 +589,19 @@ class AnalyticsReadFlowsService:
         *,
         model_kind: str | None = None,
         active_only: bool = False,
-    ) -> typing.Sequence[models.MLModelArtifact]:
-        return await self.artifacts.list_filtered(session, model_kind=model_kind, active_only=active_only)
+    ) -> list[schemas.MLArtifactRow]:
+        rows = await self.artifacts.list_filtered(session, model_kind=model_kind, active_only=active_only)
+        return [
+            schemas.MLArtifactRow(
+                **{field: getattr(row, field) for field in schemas.MLArtifactRow.model_fields if field != "role"},
+                role=(
+                    RoleRef(dimension=row.role_row.dimension.code, role=row.role_row.code)
+                    if row.role_row is not None
+                    else None
+                ),
+            )
+            for row in rows
+        ]
 
 
 flows_service = AnalyticsReadFlowsService()

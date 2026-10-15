@@ -1,3 +1,4 @@
+import type { RoleRef } from "@/lib/roster/team-format";
 import { Player, Team } from "@/types/team.types";
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -191,7 +192,7 @@ export interface MLArtifact {
   id: number;
   algorithm_id: number;
   model_kind: MLModelKind | string;
-  role: string | null;
+  role: RoleRef | null;
   version: string;
   storage_uri: string;
   feature_version: string;

@@ -254,7 +254,8 @@ CREATE TABLE analytics.ml_model_artifact (
 	updated_at TIMESTAMP WITH TIME ZONE,
 	algorithm_id BIGINT NOT NULL,
 	model_kind VARCHAR(32) NOT NULL,
-	role VARCHAR(16),
+	dimension_id BIGINT,
+	role_id BIGINT,
 	version VARCHAR(32) NOT NULL,
 	storage_uri TEXT NOT NULL,
 	feature_version VARCHAR(32) NOT NULL,
@@ -263,7 +264,8 @@ CREATE TABLE analytics.ml_model_artifact (
 	feature_importance JSON,
 	is_active BOOLEAN DEFAULT 'false' NOT NULL,
 	PRIMARY KEY (id),
-	CONSTRAINT uq_analytics_ml_model_artifact UNIQUE (algorithm_id, model_kind, role, version),
+	CONSTRAINT uq_analytics_ml_model_artifact_role UNIQUE (algorithm_id, model_kind, role_id, version),
+	CONSTRAINT fk_ml_model_artifact_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(algorithm_id) REFERENCES analytics.algorithms (id) ON DELETE CASCADE,
 	FOREIGN KEY(training_cutoff_tournament_id) REFERENCES tournament.tournament (id) ON DELETE SET NULL
 );

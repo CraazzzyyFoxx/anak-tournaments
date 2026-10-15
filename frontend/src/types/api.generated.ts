@@ -11658,8 +11658,7 @@ export interface components {
             } | null;
             /** Model Kind */
             model_kind: string;
-            /** Role */
-            role: string | null;
+            role: components["schemas"]["analytics.RoleRef"] | null;
             /** Storage Uri */
             storage_uri: string;
             /** Training Cutoff Tournament Id */

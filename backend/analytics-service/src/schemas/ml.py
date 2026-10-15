@@ -11,6 +11,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from shared.schemas.role import RoleRef
+
 __all__ = (
     "PerformanceRow",
     "StandingsRow",
@@ -84,7 +86,7 @@ class MLArtifactRow(BaseModel):
     id: int
     algorithm_id: int
     model_kind: str
-    role: str | None
+    role: RoleRef | None
     version: str
     storage_uri: str
     feature_version: str

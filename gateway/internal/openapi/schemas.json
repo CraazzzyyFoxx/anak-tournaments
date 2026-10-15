@@ -11185,13 +11185,12 @@
         "role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/analytics.RoleRef"
             },
             {
               "type": "null"
             }
-          ],
-          "title": "Role"
+          ]
         },
         "storage_uri": {
           "title": "Storage Uri",

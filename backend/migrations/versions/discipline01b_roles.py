@@ -495,6 +495,24 @@ _BALANCER_SLOTS = (
 )
 
 
+_ML_ARTIFACTS = (
+    "ALTER TABLE analytics.ml_model_artifact ADD COLUMN dimension_id BIGINT, ADD COLUMN role_id BIGINT",
+    """
+    UPDATE analytics.ml_model_artifact a
+       SET role_id = r.id, dimension_id = r.dimension_id
+      FROM catalog.role r JOIN catalog.role_dimension d ON d.id = r.dimension_id
+     WHERE d.discipline = 'overwatch' AND d.rated AND r.workspace_id IS NULL AND r.code = lower(btrim(a.role))
+    """,
+    _drop_constraint("analytics.ml_model_artifact", ("algorithm_id", "model_kind", "role", "version"), "u"),
+    """
+    ALTER TABLE analytics.ml_model_artifact
+      ADD CONSTRAINT uq_analytics_ml_model_artifact_role UNIQUE (algorithm_id, model_kind, role_id, version),
+      ADD CONSTRAINT fk_ml_model_artifact_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id)
+      DEFERRABLE INITIALLY DEFERRED
+    """,
+)
+
+
 def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
     op.execute("SET CONSTRAINTS ALL IMMEDIATE")
@@ -511,6 +529,7 @@ def upgrade() -> None:
         *_MIX_ROLES,
         *_DRAFT_ROLES,
         *_BALANCER_SLOTS,
+        *_ML_ARTIFACTS,
     ):
         if callable(statement):
             statement()
