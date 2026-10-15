@@ -191,6 +191,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             self.captain_user_ids = [u.id for u in users]
             self.captain_auth_user_ids = [u.id for u in auth_users]
             self.captain_member_ids = [m.id for m in members]
+            self.export_user_ids = []
             await s.commit()
 
     async def asyncTearDown(self) -> None:
@@ -212,7 +213,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.execute(sa.delete(Tournament).where(Tournament.id == self.tournament_id))
             # players.user.auth_user_id is a plain column on User (no separate
             # link-table row to clean up); deleting the User rows below is enough.
-            await s.execute(sa.delete(User).where(User.id.in_(self.captain_user_ids)))
+            await s.execute(sa.delete(User).where(User.id.in_(self.captain_user_ids + self.export_user_ids)))
             await s.execute(sa.delete(models.AuthUser).where(models.AuthUser.id.in_(self.captain_auth_user_ids)))
             await s.execute(sa.delete(Workspace).where(Workspace.id == self.workspace_id))
             await s.commit()
@@ -304,6 +305,29 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         await lifecycle.lifecycle_service.seed(s, draft, seats=await self._seats(s))
         await s.commit()
         return draft
+
+    async def _provision_export_identities(self, session) -> None:
+        rows = (
+            await session.execute(
+                sa.select(BalancerRegistration.workspace_member_id, BalancerRegistrationIdentity.handle)
+                .join(
+                    BalancerRegistrationIdentity,
+                    BalancerRegistrationIdentity.registration_id == BalancerRegistration.id,
+                )
+                .where(BalancerRegistration.tournament_id == self.tournament_id)
+            )
+        ).all()
+        for member_id, tag in rows:
+            if member_id is not None:
+                member = await session.get(WorkspaceMember, member_id)
+                user = await session.get(User, member.player_id)
+                user.name = tag
+            else:
+                user = User(name=tag)
+                session.add(user)
+                await session.flush()
+                self.export_user_ids.append(user.id)
+        await session.commit()
 
     async def test_seed_creates_snake_picks_and_ready(self) -> None:
         async with self.Session() as s:
@@ -736,6 +760,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 await s.commit()
 
             self.assertEqual(draft.status, DraftStatus.COMPLETED.value)
+            await self._provision_export_identities(s)
 
             _, removed, imported = await draft_export.export_service.export(s, draft)
             await s.commit()
@@ -823,6 +848,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 current = await s.get(DraftPick, draft.current_pick_id)
                 await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
                 await s.commit()
+            await self._provision_export_identities(s)
 
             _, removed1, imported1 = await draft_export.export_service.export(s, draft)
             await s.commit()

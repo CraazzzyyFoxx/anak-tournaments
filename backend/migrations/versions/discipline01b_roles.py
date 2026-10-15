@@ -472,6 +472,29 @@ _DRAFT_ROLES = tuple(
 )
 
 
+#: §14.3: NULL role_id is an open slot (formerly flex, D86).
+_BALANCER_SLOTS = (
+    "ALTER TABLE balancer.team_slot ADD COLUMN dimension_id BIGINT, ADD COLUMN role_id BIGINT",
+    """
+    UPDATE balancer.team_slot s
+       SET role_id = r.id, dimension_id = r.dimension_id
+      FROM balancer.team bt
+      JOIN balancer.balance b ON b.id = bt.balance_id
+      JOIN tournament.tournament t ON t.id = b.tournament_id,
+           catalog.role r
+      JOIN catalog.role_dimension d ON d.id = r.dimension_id
+     WHERE bt.id = s.team_id AND d.discipline = t.discipline AND d.rated
+       AND r.workspace_id IS NULL AND r.code = lower(btrim(s.role))
+    """,
+    """
+    ALTER TABLE balancer.team_slot
+      ALTER COLUMN role DROP NOT NULL,
+      ADD CONSTRAINT fk_team_slot_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id)
+      DEFERRABLE INITIALLY DEFERRED
+    """,
+)
+
+
 def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
     op.execute("SET CONSTRAINTS ALL IMMEDIATE")
@@ -487,6 +510,7 @@ def upgrade() -> None:
         *_TEAM_MEMBER_ROLES,
         *_MIX_ROLES,
         *_DRAFT_ROLES,
+        *_BALANCER_SLOTS,
     ):
         if callable(statement):
             statement()

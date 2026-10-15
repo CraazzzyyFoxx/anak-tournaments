@@ -10,8 +10,11 @@ from loguru import logger
 from shared import quota
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.team_format import slot_shape
 from shared.jobs import JobService, JobSpec, RedisMetaStore, Unlimited
 from shared.observability import metrics
+from shared.repository import TournamentRepository
+from shared.repository.roles import CatalogRoleRepository
 from shared.services.balancer_realtime import (
     BALANCER_JOB_FAILED,
     BALANCER_JOB_QUEUED,
@@ -19,7 +22,7 @@ from shared.services.balancer_realtime import (
     BALANCER_JOB_SUCCEEDED,
 )
 from shared.services.roster import roster_engine
-from shared.services.team_format import tournament_slot_shape, workspace_slot_shape
+from shared.services.team_format import tournament_format, workspace_format
 from src.core import db
 from src.core.config import config
 from src.core.job_store import get_job_store
@@ -45,7 +48,7 @@ from src.services.balancer.realtime import (
     emit_job_progress,
 )
 from src.services.balancer.request_parser import BalancerRequestParser
-from src.services.balancer.solver import run_balance
+from src.services.balancer.solver import run_balance, serialize_format_context
 
 _access_policy = WorkspaceAccessPolicy()
 _payload_parser = BalancerRequestParser()
@@ -142,6 +145,20 @@ async def _emit_job_progress(tournament_id: int, **fields: Any) -> None:
         logger.exception("Failed to publish balancer job progress", tournament_id=tournament_id)
 
 
+async def _owner_format_context(session, workspace_id: int, tournament_id: int | None = None) -> dict[str, Any]:
+    if tournament_id is None:
+        team_format, _ = await workspace_format(session, workspace_id=workspace_id, discipline="overwatch")
+    else:
+        tournament = await TournamentRepository().get(session, tournament_id)
+        if tournament is None:
+            raise HTTPException(status_code=404, detail="Tournament not found")
+        team_format, _ = await tournament_format(session, tournament)
+    ontology = await CatalogRoleRepository().ontology(
+        session, discipline=team_format.discipline, workspace_id=workspace_id
+    )
+    return {**serialize_format_context(team_format, ontology), "role_mask": slot_shape(team_format, ontology).slots}
+
+
 async def create_job(
     *,
     session,
@@ -164,10 +181,8 @@ async def create_job(
 
     # Freeze the owner's projection in the payload; standalone uploads still
     # use the Overwatch vertical and its workspace default (or module preset).
-    if tournament_id is None:
-        roster_shape = await workspace_slot_shape(session, workspace_id=workspace_id, discipline="overwatch")
-    else:
-        roster_shape = await tournament_slot_shape(session, tournament_id)
+    format_context = await _owner_format_context(session, workspace_id, tournament_id)
+    player_data["format_context"] = format_context
 
     job_id = uuid.uuid4().hex
     # One accounting call for the whole request: the per-minute token, the daily
@@ -198,7 +213,7 @@ async def create_job(
                     "created_by": user.id,
                     "credential_type": getattr(user, "_credential_type", "access_token"),
                     "api_key_id": api_key_id,
-                    "role_mask": roster_shape.slots,
+                    "role_mask": format_context["role_mask"],
                 },
             ),
         )
@@ -259,7 +274,8 @@ async def create_tournament_job(
         )
     config_overrides = _payload_parser.parse_config_overrides(raw_config)
 
-    roster_shape = await tournament_slot_shape(session, tournament_id)
+    format_context = await _owner_format_context(session, workspace_id, tournament_id)
+    player_data["format_context"] = format_context
 
     job_id = uuid.uuid4().hex
     lease = await quota.lease(
@@ -286,7 +302,7 @@ async def create_tournament_job(
                     "created_by": user.id,
                     "credential_type": getattr(user, "_credential_type", "access_token"),
                     "api_key_id": api_key_id,
-                    "role_mask": roster_shape.slots,
+                    "role_mask": format_context["role_mask"],
                 },
             ),
         )

@@ -29,6 +29,7 @@ from shared.services import team_format as formats  # noqa: E402
 from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from shared.testing.db import ensure_test_postgres  # noqa: E402
+from src.schemas.balancer import TeamData  # noqa: E402
 from src.services.balancer import jobs  # noqa: E402
 from src.services.balancer import solver as solver_module  # noqa: E402
 from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
@@ -39,7 +40,7 @@ FLEX_SHAPE = RosterShape(entries=tuple({"tank": 1, "flex": 4}.items()))
 
 def _shape_resolver(shape=FLEX_SHAPE) -> AsyncMock:
     """Stand in for the DB-backed roster-shape lookup ``create_job`` performs."""
-    return AsyncMock(return_value=shape)
+    return AsyncMock(return_value={"role_mask": shape.slots})
 
 
 def _noop_quota(**overrides) -> SimpleNamespace:
@@ -145,7 +146,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._access_policy", access_policy),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.workspace_slot_shape", _shape_resolver()),
+            patch(f"{JOBS}._owner_format_context", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),
@@ -200,7 +201,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
             patch(f"{JOBS}._emit_job", emit),
-            patch(f"{JOBS}.tournament_slot_shape", _shape_resolver()),
+            patch(f"{JOBS}._owner_format_context", _shape_resolver()),
         ):
             await jobs.create_job(
                 session=SimpleNamespace(),
@@ -265,7 +266,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}.quota", gate),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.workspace_slot_shape", _shape_resolver()),
+            patch(f"{JOBS}._owner_format_context", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),
@@ -355,6 +356,10 @@ class CreateJobFormatIntegrationTests(IsolatedAsyncioTestCase):
                         assert response.job_id == "format-job"
                         assert store.create_job.await_args.kwargs["role_mask"] == expected
                         assert store.create_job.await_args.kwargs["tournament_id"] is None
+                        snapshot = store.create_job.await_args.args[0]["format_context"]
+                        decoded = solver_module._format_kwargs({"format_context": snapshot})
+                        assert decoded["team_format"].discipline == "overwatch"
+                        assert decoded["ontology"].rated.code == "player_role"
                         await formats.save_workspace_format(
                             session,
                             workspace_id=workspace.id,
@@ -598,3 +603,22 @@ class SolverTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(result, {"variants": variants})
         to_thread.assert_awaited_once()
+
+
+def test_format_findings_survive_result_normalization() -> None:
+    team = {
+        "id": 1,
+        "name": "A",
+        "average_mmr": 0.0,
+        "rating_variance": 0.0,
+        "total_discomfort": 0,
+        "max_discomfort": 0,
+        "roster": {},
+        "format_violations": ["role_below_hard_min"],
+        "format_advisories": ["role_below_recommended_min"],
+    }
+    dumped = TeamData.model_validate(team).model_dump()
+    assert (dumped["format_violations"], dumped["format_advisories"]) == (
+        ["role_below_hard_min"],
+        ["role_below_recommended_min"],
+    )

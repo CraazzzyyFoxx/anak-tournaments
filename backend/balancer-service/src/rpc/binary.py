@@ -17,6 +17,8 @@ from faststream.rabbit import RabbitMessage
 from shared import quota
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
+from shared.repository import TournamentRepository
 from shared.services.balancer_realtime import BALANCER_TEAMS_CHANGED
 from shared.services.realtime import Scope, emit, enqueue_invalidation_outbox
 from src.core import db
@@ -80,7 +82,9 @@ def register(broker: Any, logger: Any) -> None:
                 teams = [BalancerTeam.model_validate(team) for team in payload["data"]["teams"]]
             else:
                 internal_payload = InternalBalancerTeamsPayload.model_validate(payload)
-                teams = [team.to_balancer_team() for team in internal_payload.teams]
+                tournament = await TournamentRepository().get(session, tournament_id)
+                dimension = DISCIPLINES[tournament.discipline].rated_dimension.code
+                teams = [team.to_balancer_team(dimension) for team in internal_payload.teams]
 
             # ``import_teams`` commits once (the shared orchestrator owns the
             # boundary), so both signals are staged BEFORE it: `emit` reaches

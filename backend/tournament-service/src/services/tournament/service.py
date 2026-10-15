@@ -214,7 +214,7 @@ class TournamentService:
         self,
         session: AsyncSession,
         workspace_id: int | None = None,
-    ) -> typing.Sequence[tuple[models.Tournament, enums.HeroClass, int, int]]:
+    ) -> typing.Sequence[tuple[models.Tournament, str | None, int, int]]:
         """
         Retrieves aggregated player rank data for computing per-tournament division averages.
 

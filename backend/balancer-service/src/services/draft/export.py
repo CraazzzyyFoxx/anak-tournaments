@@ -16,11 +16,14 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPlayerStatus, DraftStatus
+from shared.disciplines import DISCIPLINES
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.repository import TournamentRepository
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
+from shared.schemas.role import RoleRef
 from shared.services.team_export import ExportPlan, sync_player_ranks, team_materialization
 from src import models
 from src.domain.draft import ranks
@@ -38,6 +41,7 @@ def _draft_to_balancer_payload(
     shape: RosterShape,
     rosters: Mapping[int, PlayerRoster],
     pick_by_player_id: Mapping[int, DraftPick],
+    dimension: str,
 ) -> list[BalancerTeam]:
     """Pure mapping: draft rosters -> balancer export payload.
 
@@ -89,7 +93,7 @@ def _draft_to_balancer_payload(
                     sub_role=workspace_sub_role_slug(role, role_entry.subrole)
                     if role_entry and role_entry.subrole
                     else None,
-                    role=role or FLEX_SLOT_CODE,
+                    role=None if role in (None, FLEX_SLOT_CODE) else RoleRef(dimension=dimension, role=role),
                     rank=rank,
                 )
             )
@@ -136,6 +140,7 @@ class DraftExportService:
         # Resolved picks carry the drafted role + its rank (frozen at finalize).
         pick_rows = await self.picks_repo.list_resolved(session, draft_session.id)
         pick_by_player_id = {pk.picked_player_id: pk for pk in pick_rows if pk.picked_player_id is not None}
+        tournament = await TournamentRepository().get(session, draft_session.tournament_id)
 
         payload = _draft_to_balancer_payload(
             teams,
@@ -143,6 +148,7 @@ class DraftExportService:
             await self.feasibility.resolve_shape(session, draft_session),
             await self.rosters.load(session, draft_session, roster_rows),
             pick_by_player_id,
+            DISCIPLINES[tournament.discipline].rated_dimension.code,
         )
         return teams, payload
 
@@ -156,6 +162,7 @@ class DraftExportService:
         # orchestrator's single transaction (it used to be two: the writer committed
         # the deletes and inserts internally, and the caller committed the backfill).
         linked_ids = [t.exported_team_id for t in teams if t.exported_team_id is not None]
+        session_id = draft_session.id
 
         def _unlink() -> None:
             for t in teams:
@@ -170,7 +177,7 @@ class DraftExportService:
             draft_session.export_status = "success"
 
         async def _on_failure(inner: AsyncSession, exc: BaseException) -> None:
-            fresh = await inner.get(DraftSession, draft_session.id)
+            fresh = await inner.get(DraftSession, session_id)
             if fresh is not None:
                 fresh.export_status = "failed"
 

@@ -2230,7 +2230,8 @@ erDiagram
         timestamptz updated_at "nullable"
         bigint team_id FK
         varchar(255) battle_tag_normalized "nullable"
-        varchar(16) role
+        bigint dimension_id FK "nullable"
+        bigint role_id FK "nullable"
         int assigned_rank
         int discomfort
         boolean is_captain
@@ -2288,6 +2289,8 @@ erDiagram
     CATALOG_ROLE |o--o{ BALANCER_DRAFT_PICK : "target_role_id"
     CATALOG_ROLE |o--o{ BALANCER_DRAFT_PLAYER : "captain_role_id"
     CATALOG_ROLE |o--o{ BALANCER_DRAFT_PLAYER : "dimension_id"
+    CATALOG_ROLE |o--o{ BALANCER_TEAM_SLOT : "dimension_id"
+    CATALOG_ROLE |o--o{ BALANCER_TEAM_SLOT : "role_id"
     PUBLIC_WORKSPACE |o--o{ BALANCER_BALANCE : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_DRAFT_SESSION : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_TOURNAMENT_CONFIG : "workspace_id"

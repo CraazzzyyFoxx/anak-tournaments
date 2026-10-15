@@ -6,6 +6,9 @@ import typing
 
 from loguru import logger
 
+from shared.domain.player_sub_roles import workspace_sub_role_code
+from shared.domain.roles import Ontology
+from shared.domain.team_format import TeamFormat
 from src.domain.balancer.backends import get_backend
 from src.domain.balancer.captain_assignment_service import assign_captains
 from src.domain.balancer.determinism import build_balancer_seed, derive_balancer_seed
@@ -36,6 +39,7 @@ class BalanceContext:
     role_assignment: dict[str, str] | None
     optimizer_seed: int
     overflow_benched: list[Player]
+    original_subclasses: dict[str, dict[str, str]] = dataclasses.field(default_factory=dict)
 
 
 def _filter_valid_players_and_role_counts(
@@ -64,6 +68,8 @@ def _prepare_balance_context(
     role_mask: dict[str, int] | None = None,
     *,
     max_teams: int | None = None,
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
 ) -> BalanceContext:
     """Prepare config, players and role assignment for balancer flows.
 
@@ -101,6 +107,26 @@ def _prepare_balance_context(
     logger.info(f"Loading players with mask: {mask}")
 
     all_players = load_players_from_dict(input_data, mask)
+    original_subclasses = {}
+    if team_format is not None and ontology is not None:
+        penalized = {
+            rule.role
+            for rule in team_format.rules
+            if rule.dimension == ontology.rated.code
+            and team_format.mode(rule.dimension) != "off"
+            and rule.recommended_max is not None
+            and rule.recommended_max <= 1
+            and ontology.node(rule.dimension, rule.role).parent_id is not None
+        }
+        if not penalized:
+            config.sub_role_collision_weight = 0
+        for player in all_players:
+            original_subclasses[player.uuid] = player.subclasses
+            player.subclasses = {
+                role: subtype
+                for role, subtype in player.subclasses.items()
+                if workspace_sub_role_code(role, subtype) in penalized
+            }
     needed_roles = [role for role, count in mask.items() if count > 0]
     valid_players, role_capable_counts = _filter_valid_players_and_role_counts(all_players, needed_roles)
 
@@ -227,6 +253,7 @@ def _prepare_balance_context(
         role_assignment=role_assignment,
         optimizer_seed=derive_balancer_seed(base_seed, "tournament_balancer_optimizer"),
         overflow_benched=overflow_benched,
+        original_subclasses=original_subclasses,
     )
 
 
@@ -237,6 +264,8 @@ def balance_teams(
     role_mask: dict[str, int] | None = None,
     *,
     algorithm: str = "tournament_balancer",
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return ranked balance solutions for the same payload format.
 
@@ -250,7 +279,13 @@ def balance_teams(
     backend = get_backend(algorithm)
 
     context = _prepare_balance_context(
-        input_data, config_overrides, progress_callback, role_mask, max_teams=backend.max_teams
+        input_data,
+        config_overrides,
+        progress_callback,
+        role_mask,
+        max_teams=backend.max_teams,
+        team_format=team_format,
+        ontology=ontology,
     )
     mask = context.config.role_mask
 
@@ -296,6 +331,9 @@ def balance_teams(
         )
     finally:
         normalizer.restore_players(context.players)
+        for player in context.players + context.overflow_benched:
+            if player.uuid in context.original_subclasses:
+                player.subclasses = context.original_subclasses[player.uuid]
 
     if not solutions:
         raise ValueError(f"{backend.name} backend returned no balance solutions.")
@@ -321,9 +359,20 @@ def balance_teams(
             context.has_applied_overrides,
             solution.metrics,
             feasibility=feasibility,
+            team_format=team_format,
+            ontology=ontology,
         )
         for solution in solutions
     ]
+    # Keep the backend's ordering between distinct objectives; recommendations
+    # only break exact objective ties (before response metrics are rounded).
+    objective_ranks = {}
+    ranking = []
+    for index, (solution, payload) in enumerate(zip(solutions, payloads, strict=True)):
+        objective = (solution.metrics.composite_score, solution.metrics.mix_balancer_quality_total)
+        rank = index if objective == (None, None) else objective_ranks.setdefault(objective, index)
+        ranking.append((rank, sum(len(team["format_advisories"]) for team in payload["teams"]), index))
+    payloads = [payloads[index] for _, _, index in sorted(ranking)]
 
     emit_progress(
         progress_callback,
@@ -339,6 +388,17 @@ def balance_teams_tournament(
     config_overrides: dict[str, typing.Any] | None = None,
     progress_callback: ProgressCallback | None = None,
     role_mask: dict[str, int] | None = None,
+    *,
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
 ) -> list[dict[str, typing.Any]]:
     """Return a Pareto front of balance solutions for the same payload format."""
-    return balance_teams(input_data, config_overrides, progress_callback, role_mask, algorithm="tournament_balancer")
+    return balance_teams(
+        input_data,
+        config_overrides,
+        progress_callback,
+        role_mask,
+        algorithm="tournament_balancer",
+        team_format=team_format,
+        ontology=ontology,
+    )

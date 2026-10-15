@@ -27,9 +27,12 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 os.environ["DEBUG"] = "false"
 
+from shared.domain.team_format import FormatDimension, TeamFormat  # noqa: E402
 from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
 from shared.services.team_export import materialization as materialization_module  # noqa: E402
+from shared.tests.test_team_format import _module_ontology  # noqa: E402
 from src.schemas.team import BalancerTeam, BalancerTeamMember  # noqa: E402
 from src.services.team import to_materialization_teams  # noqa: E402
 
@@ -101,7 +104,7 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
                     BalancerTeamMember(
                         uuid=uuid4(),
                         name="Roster#0000",
-                        role="tank",
+                        role=RoleRef(dimension="player_role", role="tank"),
                         rank=3000,
                     )
                 ],
@@ -109,6 +112,21 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
         ]
 
         with (
+            patch.object(
+                materialization_module,
+                "tournament_format",
+                AsyncMock(
+                    return_value=(
+                        TeamFormat("overwatch", "Solo", 1, 1, dimensions=(FormatDimension("player_role", "enforced"),)),
+                        "preset",
+                    )
+                ),
+            ),
+            patch.object(
+                materialization_module.CatalogRoleRepository,
+                "ontology",
+                AsyncMock(return_value=_module_ontology("overwatch")),
+            ),
             patch.object(
                 materialization_module,
                 "find_users_by_battle_tags",
@@ -121,10 +139,10 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
             ) as get_or_create,
             patch.object(
                 materialization_module,
-                "rated_leaf",
+                "resolve_role_ref",
                 AsyncMock(
                     return_value=CatalogRole(
-                        id=1,
+                        id=101,
                         dimension_id=1,
                         code="tank",
                         dimension=RoleDimension(id=1, discipline="overwatch", code="player_role", rated=True),

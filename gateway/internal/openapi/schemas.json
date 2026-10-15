@@ -26957,7 +26957,7 @@
             }
           ],
           "default": null,
-          "description": "tank/damage/support; casual rows may hold any HeroClass.",
+          "description": "Role code; casual rows may also name an open slot.",
           "title": "Role"
         },
         "sigma": {
@@ -27457,6 +27457,20 @@
         "average_mmr": {
           "title": "Average Mmr",
           "type": "number"
+        },
+        "format_advisories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Format Advisories",
+          "type": "array"
+        },
+        "format_violations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Format Violations",
+          "type": "array"
         },
         "id": {
           "title": "Id",
@@ -46470,12 +46484,6 @@
           "type": "boolean"
         },
         "slot_code": {
-          "enum": [
-            "tank",
-            "damage",
-            "support",
-            "flex"
-          ],
           "title": "Slot Code",
           "type": "string"
         }
@@ -46559,12 +46567,6 @@
           "$ref": "#/components/schemas/tournament.RegistrationSubmit"
         },
         "slot_code": {
-          "enum": [
-            "tank",
-            "damage",
-            "support",
-            "flex"
-          ],
           "title": "Slot Code",
           "type": "string"
         }
@@ -46611,12 +46613,6 @@
           "type": "boolean"
         },
         "slot_code": {
-          "enum": [
-            "tank",
-            "damage",
-            "support",
-            "flex"
-          ],
           "title": "Slot Code",
           "type": "string"
         },
@@ -47096,12 +47092,6 @@
           "type": "boolean"
         },
         "slot_code": {
-          "enum": [
-            "tank",
-            "damage",
-            "support",
-            "flex"
-          ],
           "title": "Slot Code",
           "type": "string"
         },

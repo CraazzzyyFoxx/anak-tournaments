@@ -16,7 +16,6 @@ from sqlalchemy.orm import selectinload
 from shared import models
 from shared.core import http_status as status
 from shared.core.enums import (
-    HeroClass,
     MixParticipation,
     MixRatingMode,
     MixRoleSelectionMode,
@@ -48,6 +47,7 @@ from shared.repository import (
     WorkspaceRepository,
 )
 from shared.repository.discord_message import LIVE_STATUSES
+from shared.repository.roles import CatalogRoleRepository
 from shared.repository.workspace import get_or_create_workspace_member
 from shared.schemas.events import DiscordCard, DiscordCommandEvent
 from shared.schemas.role import RoleRef
@@ -83,6 +83,7 @@ from src.domain.mix_stats import SeatOutcome, aggregate_mix_stats, outcome_for
 from src.domain.mix_voice import LobbyVoice, MixVoiceConfig, VoicePlan, plan_move, report, snowflake, voice_config_from
 from src.services.balancer.role_naming import role_slot_code
 from src.services.balancer.solver import run_mix_balance as _run_balance
+from src.services.balancer.solver import serialize_format_context
 from src.services.mix_ranker import MixRankerService, RatedSeat, mix_ranker_service
 from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
@@ -1650,9 +1651,13 @@ class CustomGameService:
             session, game=game, lineup=lineup, host_config=host_config
         )
         role_mask = (await custom_game_slot_shape(session, game)).slots
+        team_format, _ = await custom_game_format(session, game)
+        ontology = await CatalogRoleRepository().ontology(
+            session, discipline=game.discipline, workspace_id=game.workspace_id
+        )
         try:
             result = await self.run_balance(
-                {"players": player_nodes},
+                {"players": player_nodes, "format_context": serialize_format_context(team_format, ontology)},
                 host_config.config_json if host_config is not None else None,
                 _noop_progress,
                 role_mask,
@@ -2694,7 +2699,7 @@ class CustomGameService:
                 if not isinstance(seats, list):
                     continue
                 slot_code = role_slot_code(bucket_name)
-                role = HeroClass.from_slot_code(slot_code).slot_code
+                role = slot_code
                 for uuid in seats:
                     player = players.get(str(uuid))
                     if not isinstance(player, Mapping):

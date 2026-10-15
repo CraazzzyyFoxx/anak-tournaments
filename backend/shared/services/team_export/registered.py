@@ -4,7 +4,7 @@ Decision 14 of ``docs/plans/2026-08-20-team-registration.md``: rather than addin
 third direct writer of ``tournament.team``/``tournament.player``, a registered team
 is turned into the same :class:`MaterializationTeam` payload the balancer and draft
 exports already produce, and handed to the same orchestrator. Battle-tag
-resolution, name dedup, newcomer computation and the slot -> ``HeroClass`` mapping
+resolution, name dedup, newcomer computation and the slot-to-catalog-role mapping
 all come for free and cannot drift.
 
 Roles and ranks are NOT derived here. They come from ``shared.services.roster``,
@@ -207,6 +207,11 @@ async def build_registered_export(
                     battle_tag=roster.battle_tag,
                     workspace_member_id=registration.workspace_member_id,
                     is_substitute=bool(registration.is_substitute),
+                    non_rated_roles=tuple(
+                        entry.catalog_role
+                        for entry in registration.roles
+                        if entry.is_active and not entry.catalog_role.dimension.rated
+                    ),
                 )
             )
 

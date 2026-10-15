@@ -36,7 +36,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.disciplines import discipline
+from shared.domain.roles import RoleNode
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.domain.team_format import export_violations
 from shared.models.catalog.role import CatalogRole
 from shared.models.identity.user import User
 from shared.models.tenancy.workspace import WorkspaceMember
@@ -44,9 +46,12 @@ from shared.models.tournament.player_role import assignment_of
 from shared.models.tournament.team import Player, Team
 from shared.models.tournament.tournament import Tournament
 from shared.repository import get_or_create_workspace_member
+from shared.repository.roles import CatalogRoleRepository
+from shared.schemas.role import RoleRef
 from shared.services.newcomer_status import load_prior_participation
-from shared.services.ontology import rated_leaf
+from shared.services.ontology import rated_leaf, resolve_role_ref
 from shared.services.team_export.identity import find_users_by_battle_tags
+from shared.services.team_format import tournament_format
 
 __all__ = (
     "MaterializationMember",
@@ -96,6 +101,8 @@ class MaterializationMember:
     battle_tag: str | None = None
     workspace_member_id: int | None = None
     is_substitute: bool = False
+    role_ref: RoleRef | None = None
+    non_rated_roles: tuple[CatalogRole, ...] = ()
 
     @property
     def identity_tag(self) -> str | None:
@@ -172,6 +179,12 @@ async def materialize_teams(
         logger.warning("Tournament %s not found, skipping materialization", tournament_id)
         return result
 
+    team_format, _ = await tournament_format(session, tournament)
+    ontology = await CatalogRoleRepository().ontology(
+        session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
+    )
+    leaves: dict[tuple[str | None, str | None, RoleRef | None], CatalogRole | None] = {}
+
     # ── Batch phase: resolve everything the build loop needs up front ──────────
     # 1. Resolve every battle tag (captains + members) in one pass. Ordered so a
     #    strict caller raises on the same tag it always did.
@@ -201,6 +214,51 @@ async def materialize_teams(
             )
         ).all()
         player_id_by_member_id = dict(rows)
+    assignments: dict[int, tuple[CatalogRole, ...]] = {}
+    for team_data in teams:
+        starters: list[tuple[RoleNode, ...]] = []
+        for member in team_data.members:
+            key = (member.slot_code, member.sub_role, member.role_ref)
+            if key not in leaves:
+                if member.role_ref is not None:
+                    leaf = await resolve_role_ref(
+                        session,
+                        discipline=tournament.discipline,
+                        workspace_id=tournament.workspace_id,
+                        ref=member.role_ref,
+                    )
+                    if leaf.parent_role_id is None and member.sub_role:
+                        leaf = await rated_leaf(
+                            session,
+                            discipline=tournament.discipline,
+                            workspace_id=tournament.workspace_id,
+                            role=leaf.code,
+                            sub_role=member.sub_role,
+                        )
+                else:
+                    leaf = await rated_leaf(
+                        session,
+                        discipline=tournament.discipline,
+                        workspace_id=tournament.workspace_id,
+                        role=resolve_slot_role(
+                            member.slot_code, discipline_code=tournament.discipline, on_unresolved=on_unresolved
+                        ),
+                        sub_role=member.sub_role,
+                    )
+                leaves[key] = leaf
+            leaf = leaves[key]
+            assigned = (() if leaf is None else (leaf,)) + member.non_rated_roles
+            assignments[id(member)] = assigned
+            resolved = (
+                player_id_by_member_id.get(member.workspace_member_id) is not None
+                if member.workspace_member_id is not None
+                else member.identity_tag in users_by_tag
+            )
+            if not member.is_substitute and resolved:
+                starters.append(tuple(ontology.by_id(row.id) for row in assigned))
+        codes = export_violations(team_format, ontology, starters)
+        if codes:
+            raise ApiHTTPException(status_code=409, detail=[ApiExc(code="team_format_violation", msg=", ".join(codes))])
 
     resolved_user_ids = {user.id for user in users_by_tag.values()} | set(player_id_by_member_id.values())
 
@@ -260,7 +318,6 @@ async def materialize_teams(
 
     # Build rows, reusing resolved leaves across players on the same role.
     placed_user_ids: set[int] = set(players_in_tournament)
-    leaves: dict[tuple[str | None, str | None], CatalogRole | None] = {}
 
     for team_data in teams:
         name = team_data.display_name
@@ -320,19 +377,9 @@ async def materialize_teams(
                 logger.info("Player %s already in tournament %s, skipping", member.name, tournament_id)
                 continue
 
-            role = resolve_slot_role(
-                member.slot_code, discipline_code=tournament.discipline, on_unresolved=on_unresolved
-            )
-            key = (role, member.sub_role)
-            if key not in leaves:
-                leaves[key] = await rated_leaf(
-                    session,
-                    discipline=tournament.discipline,
-                    workspace_id=tournament.workspace_id,
-                    role=role,
-                    sub_role=member.sub_role,
-                )
-            leaf = leaves[key]
+            assigned = assignments[id(member)]
+            leaf = next((row for row in assigned if row.dimension_id == ontology.rated.id), None)
+            role = ontology.root(ontology.by_id(leaf.id)).code if leaf is not None else None
 
             if member_id is None:
                 workspace_member = members_by_player.get(player_id)
@@ -347,7 +394,7 @@ async def materialize_teams(
                 Player(
                     name=member.name,
                     rank=member.rank,
-                    assignments=[] if leaf is None else [assignment_of(leaf)],
+                    assignments=[assignment_of(row) for row in assigned],
                     tournament_id=tournament_id,
                     team_id=team.id,
                     # A registration-time substitute has replaced nobody yet, so

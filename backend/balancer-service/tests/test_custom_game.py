@@ -43,6 +43,7 @@ from shared.services.member_rank import MIX_ORDER  # noqa: E402
 from shared.services.subscriptions.providers.discord_role import DiscordUnavailable  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
+from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
 from src.domain.mix_ranker import Ranker  # noqa: E402
 from src.domain.mix_self_service import MAX_ROSTER  # noqa: E402
@@ -441,7 +442,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self._images_patch.start()
         self.addCleanup(self._images_patch.stop)
         self.slot_shape = AsyncMock(return_value=RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2))))
-        self.format_lookup = AsyncMock(return_value=(object(), "custom_game"))
+        self.format_lookup = AsyncMock(return_value=(OW_5V5, "custom_game"))
         self.format_read = AsyncMock(
             return_value=SimpleNamespace(
                 roster_shape=RosterShapeRead.from_shape(self.slot_shape.return_value, source="custom_game")
@@ -456,6 +457,12 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             patcher = patch(f"src.services.custom_game.{target}", new=mock)
             patcher.start()
             self.addCleanup(patcher.stop)
+        ontology_patch = patch(
+            "src.services.custom_game.CatalogRoleRepository.ontology",
+            new=AsyncMock(return_value=_module_ontology("overwatch")),
+        )
+        ontology_patch.start()
+        self.addCleanup(ontology_patch.stop)
         # The real ranker over dicts: the hidden book advances on every recorded
         # match and is empty unless a test seeds ``self.ranker.hidden.book``.
         self.ranker = in_memory_ranker()

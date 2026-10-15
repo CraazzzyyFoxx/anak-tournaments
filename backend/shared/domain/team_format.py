@@ -24,6 +24,8 @@ __all__ = (
     "TeamFormatError",
     "Violation",
     "check_team_format",
+    "export_advisories",
+    "export_violations",
     "slot_shape",
     "validate_roster",
 )
@@ -290,3 +292,17 @@ def validate_roster(
         if rule.recommended_max is not None and count > rule.recommended_max:
             advisories.append(Violation("role_above_recommended_max", f"{rule.role}: {count} > {rule.recommended_max}"))
     return RosterVerdict(tuple(violations), tuple(advisories))
+
+
+def export_violations(
+    team_format: TeamFormat, ontology: Ontology, starters: Sequence[Sequence[RoleNode]]
+) -> tuple[str, ...]:
+    """D33: hard rules broken by starters, with every assignment each holds."""
+    return tuple(violation.code for violation in validate_roster(team_format, ontology, starters).violations)
+
+
+def export_advisories(
+    team_format: TeamFormat, ontology: Ontology, starters: Sequence[Sequence[RoleNode]]
+) -> tuple[str, ...]:
+    """§8.3 step 6: missed recommendations; never blocks."""
+    return tuple(advisory.code for advisory in validate_roster(team_format, ontology, starters).advisories)

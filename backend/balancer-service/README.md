@@ -76,6 +76,23 @@ approximation, but only for exactly two equal teams. Its parity tests compare it
 C++ engine captured before that was removed (`tests/fixtures/mix`). Without the extension both
 backends fail (`RuntimeError: Native balancer engines require balancer_native to be installed`).
 
+### Role ontology and team-format checks
+
+Saved `balancer.team_slot` rows reference `(role_id, dimension_id)` in the owner's discipline.
+An open slot has no role (`NULL`); `flex` remains only the solver document's open-slot key.
+Team-member API roles are `{dimension, role, parent?}` or `null`, never a role enum.
+
+Queued tournament/upload jobs freeze their owner's format and ontology alongside the player snapshot;
+mix runs use the mix's format. Every result team includes `format_violations` and `format_advisories`.
+All export paths check each starter's complete assignments, including registered non-rated roles,
+and reject hard violations with HTTP 409 `team_format_violation`. Benches do not count as starters.
+
+Only active sub-role rules with `recommended_max <= 1` enable the tournament solver's
+`AlgorithmConfig.sub_role_collision_weight` term. Other recommendations are post-solve advisories
+and break equal-objective ties only. The mix engine has no collision term, so all its recommendations
+use that post-solve path; neither engine gains a new Rust objective.
+
+
 ## Interface
 
 The worker subscribes to `rpc.balancer.*` and consumes one durable job queue. Method groups:

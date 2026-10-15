@@ -15397,6 +15397,10 @@ export interface components {
         "balancer.TeamData": {
             /** Average Mmr */
             average_mmr: number;
+            /** Format Advisories */
+            format_advisories?: string[];
+            /** Format Violations */
+            format_violations?: string[];
             /** Id */
             id: number;
             /** Max Discomfort */
@@ -17829,11 +17833,8 @@ export interface components {
             /** Name */
             name: string;
             registration: components["schemas"]["tournament.RegistrationSubmit"];
-            /**
-             * Slot Code
-             * @enum {string}
-             */
-            slot_code: TournamentRegistrationTeamCreateRequestSlot_code;
+            /** Slot Code */
+            slot_code: string;
         };
         /** RegistrationTeamExtendInviteRequest */
         "tournament.RegistrationTeamExtendInviteRequest": {
@@ -17869,11 +17870,8 @@ export interface components {
              * @default false
              */
             is_substitute: boolean;
-            /**
-             * Slot Code
-             * @enum {string}
-             */
-            slot_code: TournamentRegistrationTeamInviteCreateRequestSlot_code;
+            /** Slot Code */
+            slot_code: string;
             /**
              * Target Registration Id
              * @default null
@@ -18121,11 +18119,8 @@ export interface components {
              * @default false
              */
             is_substitute: boolean;
-            /**
-             * Slot Code
-             * @enum {string}
-             */
-            slot_code: TournamentRegistrationTeamPlaceMemberRequestSlot_code;
+            /** Slot Code */
+            slot_code: string;
             /**
              * Swap With Registration Id
              * @default null
@@ -20998,7 +20993,7 @@ export interface components {
             rank_value: number;
             /**
              * Role
-             * @description tank/damage/support; casual rows may hold any HeroClass.
+             * @description Role code; casual rows may also name an open slot.
              * @default null
              */
             role: string | null;
@@ -26432,11 +26427,8 @@ export interface components {
              * @default false
              */
             is_substitute: boolean;
-            /**
-             * Slot Code
-             * @enum {string}
-             */
-            slot_code: TournamentRegistrationTeamAttachAdminRequestSlot_code;
+            /** Slot Code */
+            slot_code: string;
         };
         /** RegistrationTeamNotesRequest */
         "tournament.RegistrationTeamNotesRequest": {
@@ -73511,24 +73503,6 @@ export enum TournamentPickBanKind {
     map = "map",
     hero = "hero"
 }
-export enum TournamentRegistrationTeamCreateRequestSlot_code {
-    tank = "tank",
-    damage = "damage",
-    support = "support",
-    flex = "flex"
-}
-export enum TournamentRegistrationTeamInviteCreateRequestSlot_code {
-    tank = "tank",
-    damage = "damage",
-    support = "support",
-    flex = "flex"
-}
-export enum TournamentRegistrationTeamPlaceMemberRequestSlot_code {
-    tank = "tank",
-    damage = "damage",
-    support = "support",
-    flex = "flex"
-}
 export enum TournamentRequirementVerdictReadStage {
     registration = "registration",
     check_in = "check_in"
@@ -73942,12 +73916,6 @@ export enum TournamentRegistrationTeamAdmissionRequestAdmission {
     pending = "pending",
     accepted = "accepted",
     waitlisted = "waitlisted"
-}
-export enum TournamentRegistrationTeamAttachAdminRequestSlot_code {
-    tank = "tank",
-    damage = "damage",
-    support = "support",
-    flex = "flex"
 }
 export enum TournamentSeedTeamsRequestMode {
     snake_sr = "snake_sr",

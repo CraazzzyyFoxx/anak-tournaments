@@ -1324,12 +1324,14 @@ CREATE TABLE balancer.team_slot (
 	updated_at TIMESTAMP WITH TIME ZONE,
 	team_id BIGINT NOT NULL,
 	battle_tag_normalized VARCHAR(255),
-	role VARCHAR(16) NOT NULL,
+	dimension_id BIGINT,
+	role_id BIGINT,
 	assigned_rank INTEGER NOT NULL,
 	discomfort INTEGER DEFAULT '0' NOT NULL,
 	is_captain BOOLEAN DEFAULT 'false' NOT NULL,
 	sort_order INTEGER DEFAULT '0' NOT NULL,
 	PRIMARY KEY (id),
+	CONSTRAINT fk_team_slot_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(team_id) REFERENCES balancer.team (id) ON DELETE CASCADE
 );
 

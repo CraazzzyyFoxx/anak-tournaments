@@ -80,6 +80,7 @@ class RegisteredTeamsService:
             return RegisteredExportResult(skipped=payload.skipped)
 
         source_teams = payload.source_teams
+        source_ids = [team.id for team in source_teams]
 
         def _unlink() -> None:
             for team in source_teams:
@@ -99,8 +100,8 @@ class RegisteredTeamsService:
             # Fresh reads: the rollback detached everything the failed attempt loaded.
             # Row-by-row rather than one bulk UPDATE, matching ``draft/export.py``'s
             # failure hook — the count is tens of teams on an error path.
-            for source in source_teams:
-                fresh = await self.registration_teams.get(inner, source.id)
+            for source_id in source_ids:
+                fresh = await self.registration_teams.get(inner, source_id)
                 if fresh is not None:
                     fresh.export_status = "failed"
                     fresh.export_error = str(exc)[:500]

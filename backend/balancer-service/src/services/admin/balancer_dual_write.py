@@ -8,7 +8,15 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.repository import BalancerBalanceVariantRepository, BalancerTeamRepository, BalancerTeamSlotRepository
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.repository import (
+    BalancerBalanceVariantRepository,
+    BalancerTeamRepository,
+    BalancerTeamSlotRepository,
+    TournamentRepository,
+)
+from shared.repository.roles import CatalogRoleRepository
 from src import models
 from src.schemas.team import InternalBalancerTeamsPayload
 from src.services.balancer.role_naming import role_slot_code
@@ -65,6 +73,8 @@ class BalancerVariantService:
 
         # Link teams to variant and create team_slots
         balancer_teams = {team.balancer_name: team for team in await self.teams.list_for_balance(session, balance.id)}
+        tournament = await TournamentRepository().get(session, balance.tournament_id)
+        rows = await CatalogRoleRepository().rated_rows(session, discipline=tournament.discipline, workspace_id=None)
 
         slots: list[models.BalancerTeamSlot] = []
         for team_data in payload.teams:
@@ -77,13 +87,17 @@ class BalancerVariantService:
             sort_order = 0
             for role_name, players in team_data.roster.items():
                 role_code = role_slot_code(role_name)
+                role_row = rows.get(role_code)
+                if role_row is None and role_code != FLEX_SLOT_CODE:
+                    raise HTTPException(status_code=422, detail=f"unknown_role: {role_code!r}")
                 for player_data in players:
                     name_normalized = player_data.name.replace(" ", "").strip().lower()
                     slots.append(
                         models.BalancerTeamSlot(
                             team_id=balancer_team.id,
                             battle_tag_normalized=name_normalized,
-                            role=role_code,
+                            role_row=role_row,
+                            dimension_id=role_row.dimension_id if role_row is not None else None,
                             assigned_rank=player_data.rating,
                             discomfort=player_data.discomfort or 0,
                             is_captain=player_data.is_captain,

@@ -141,7 +141,7 @@ class PlayerRoster:
     exclude_reason: str | None = None
     checked_in: bool = False
     registration_team_id: int | None = None
-    #: Captain-assigned roster slot (``RosterSlotCode``) -- NOT derivable from
+    #: Captain-assigned roster slot code -- NOT derivable from
     #: ``roles``: ``flex`` is a slot, never a rated role.
     team_slot_code: str | None = None
     is_substitute: bool = False

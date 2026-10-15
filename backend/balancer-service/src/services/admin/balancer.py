@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.models.balancer import WorkspaceBalancerConfig
 from shared.repository import (
     BalancerBalanceRepository,
@@ -248,6 +249,8 @@ class BalancerAdminService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
 
         payload = InternalBalancerTeamsPayload.model_validate(normalize_balance_response_payload(balance.result_json))
+        tournament = await self.tournaments.get(session, balance.tournament_id)
+        dimension = DISCIPLINES[tournament.discipline].rated_dimension.code
         linked_team_ids = [team.exported_team_id for team in balance.teams if team.exported_team_id is not None]
 
         def _unlink() -> None:
@@ -277,7 +280,7 @@ class BalancerAdminService:
             session,
             ExportPlan(
                 tournament_id=balance.tournament_id,
-                teams=to_materialization_teams([team.to_balancer_team() for team in payload.teams]),
+                teams=to_materialization_teams([team.to_balancer_team(dimension) for team in payload.teams]),
                 prior_team_ids=linked_team_ids,
                 on_unresolved="skip",
                 unlink=_unlink,
@@ -303,10 +306,12 @@ class BalancerAdminService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
 
         payload = InternalBalancerTeamsPayload.model_validate(normalize_balance_response_payload(balance.result_json))
+        tournament = await self.tournaments.get(session, balance.tournament_id)
+        dimension = DISCIPLINES[tournament.discipline].rated_dimension.code
         updated = await sync_player_ranks(
             session,
             balance.tournament_id,
-            to_materialization_teams([team.to_balancer_team() for team in payload.teams]),
+            to_materialization_teams([team.to_balancer_team(dimension) for team in payload.teams]),
         )
         return balance, updated
 

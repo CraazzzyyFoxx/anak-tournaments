@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict
 from typing import Any
 
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.roles import DimensionNode, Ontology, RoleNode
+from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat
 from src.domain.balancer.result_serializer import lobby_document
 from src.domain.balancer.runtime import balance_teams, balance_teams_tournament
 from src.services.balancer.config.defaults import MAX_RESULT_VARIANTS
@@ -13,6 +16,35 @@ from src.services.balancer.config.defaults import MAX_RESULT_VARIANTS
 #: by the time it trims, so what a deeper pager costs is the stored document
 #: every mix read ships, not the solve.
 MIX_RESULT_VARIANTS = MAX_RESULT_VARIANTS
+
+
+def serialize_format_context(team_format: TeamFormat, ontology: Ontology) -> dict[str, Any]:
+    """Freeze an owner's format and ontology beside the queued player snapshot."""
+    return {
+        "team_format": asdict(team_format),
+        "dimensions": [asdict(dimension) for dimension in ontology.dimensions.values()],
+        "roles": [asdict(role) for dimension in ontology.dimensions for role in ontology.roles(dimension)],
+    }
+
+
+def _format_kwargs(input_data: dict[str, Any]) -> dict[str, Any]:
+    snapshot = input_data.get("format_context")
+    if snapshot is None:
+        return {}
+    raw = snapshot["team_format"]
+    team_format = TeamFormat(
+        **{key: value for key, value in raw.items() if key not in ("dimensions", "rules")},
+        dimensions=tuple(FormatDimension(**entry) for entry in raw["dimensions"]),
+        rules=tuple(FormatRule(**entry) for entry in raw["rules"]),
+    )
+    return {
+        "team_format": team_format,
+        "ontology": Ontology(
+            team_format.discipline,
+            [DimensionNode(**entry) for entry in snapshot["dimensions"]],
+            [RoleNode(**entry) for entry in snapshot["roles"]],
+        ),
+    }
 
 
 async def run_balance(
@@ -28,6 +60,7 @@ async def run_balance(
             config_overrides,
             progress_callback,
             role_mask,
+            **_format_kwargs(input_data),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -58,6 +91,7 @@ async def run_mix_balance(
         progress_callback,
         role_mask,
         algorithm="mix_balancer",
+        **_format_kwargs(input_data),
     )
     # Stored on the mix and shipped with every read of it: each player once,
     # each option as seat ids (see ``lobby_document``).

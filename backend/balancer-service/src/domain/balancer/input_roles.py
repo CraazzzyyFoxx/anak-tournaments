@@ -2,20 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from shared.core.enums import HeroClass
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 
 
 def normalize_standard_role_code(raw_role: str | None) -> str | None:
-    """Any accepted spelling of a game role -> its canonical slot code.
-
-    Just ``HeroClass.parse`` narrowed to the three game roles: ``flex`` is a
-    SLOT, not a role, so no game role may resolve to it -- a flex slot is worth
-    the best role the player actually plays, synthesized in
-    ``player_loader.parse_player_node``. ``None`` for anything else, which the
-    caller reads as "not a role this roster fields" and skips.
-    """
-    parsed = HeroClass.parse(raw_role)
-    return None if parsed is None or parsed is HeroClass.flex else parsed.slot_code
+    """Normalize a module role code; the reserved open-slot key is not a role."""
+    code = (raw_role or "").strip().lower()
+    return code if code and code != FLEX_SLOT_CODE else None
 
 
 def resolve_input_role_name(raw_role: str | None, role_mask: Mapping[str, int]) -> str | None:

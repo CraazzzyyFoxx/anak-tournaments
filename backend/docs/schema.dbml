@@ -1111,8 +1111,8 @@ Table balancer.registration_google_sheet_binding {
   row_hash VARCHAR(128)
   last_seen_at timestamptz
   indexes {
-    (registration_id) [unique, name: "uq_balancer_registration_google_sheet_binding_registration"]
     (feed_id, source_record_key) [unique, name: "uq_balancer_registration_google_sheet_binding_key"]
+    (registration_id) [unique, name: "uq_balancer_registration_google_sheet_binding_registration"]
     (feed_id) [name: "ix_balancer_registration_google_sheet_binding_feed_id"]
   }
 }
@@ -1300,7 +1300,8 @@ Table balancer.team_slot {
   updated_at timestamptz
   team_id bigint [not null]
   battle_tag_normalized VARCHAR(255)
-  role VARCHAR(16) [not null]
+  dimension_id bigint
+  role_id bigint
   assigned_rank int [not null]
   discomfort int [not null, default: 0]
   is_captain boolean [not null, default: false]
@@ -1428,10 +1429,10 @@ Table catalog.entity {
   active boolean [not null, default: true]
   indexes {
     (id, kind) [unique, name: "uq_entity_id_kind"]
-    (discipline, kind, name) [unique, name: "uq_entity_name"]
-    (id, discipline) [unique, name: "uq_entity_id_discipline"]
-    (id, discipline, kind) [unique, name: "uq_entity_key"]
     (discipline, kind, slug) [unique, name: "uq_entity_slug"]
+    (id, discipline) [unique, name: "uq_entity_id_discipline"]
+    (discipline, kind, name) [unique, name: "uq_entity_name"]
+    (id, discipline, kind) [unique, name: "uq_entity_key"]
   }
 }
 
@@ -1472,8 +1473,8 @@ Table catalog.role_dimension {
   active boolean [not null, default: true]
   sort_order int [not null, default: 0]
   indexes {
-    (id, discipline) [unique, name: "uq_role_dimension_key"]
     (discipline, code) [unique, name: "uq_role_dimension_code"]
+    (id, discipline) [unique, name: "uq_role_dimension_key"]
     (discipline) [unique, name: "uq_role_dimension_rated"]
   }
 }
@@ -1730,8 +1731,8 @@ Table encounter.team {
   score float [not null, default: 0]
   placement int
   indexes {
-    (id, encounter_id, active) [unique, name: "uq_team_id_encounter_active"]
     (id, encounter_id) [unique, name: "uq_team_id_encounter"]
+    (id, encounter_id, active) [unique, name: "uq_team_id_encounter_active"]
     (team_id) [name: "ix_team_team_id"]
     (encounter_id, slot) [unique, name: "uq_team_active_slot"]
     (encounter_id, team_id) [unique, name: "uq_team_active_source"]
@@ -1775,8 +1776,8 @@ Table encounter.team_report {
   comment text
   custom_fields_json json [not null, default: `{}`]
   indexes {
-    (encounter_id, encounter_team_id) [unique, name: "uq_team_report_claimant"]
     (id, encounter_id) [unique, name: "uq_team_report_id_encounter"]
+    (encounter_id, encounter_team_id) [unique, name: "uq_team_report_claimant"]
   }
 }
 
@@ -2315,8 +2316,8 @@ Table division_grid_tier {
   ow_rank_min bigint
   ow_rank_max bigint
   indexes {
-    (version_id, sort_order) [unique]
     (version_id, slug) [unique]
+    (version_id, sort_order) [unique]
     (version_id) [name: "ix_division_grid_tier_version_id"]
   }
 }
@@ -2472,8 +2473,8 @@ Table workspace_member {
   display_name VARCHAR(255)
   removed_at timestamptz
   indexes {
-    (id, workspace_id) [unique, name: "uq_workspace_member_id_workspace"]
     (workspace_id, player_id) [unique, name: "uq_workspace_member_workspace_player"]
+    (id, workspace_id) [unique, name: "uq_workspace_member_id_workspace"]
     (player_id) [name: "ix_workspace_member_player_id"]
     (workspace_id) [name: "ix_workspace_member_workspace_id"]
   }
@@ -2624,8 +2625,8 @@ Table roster.team_format {
   substitute_min int [not null, default: 0]
   substitute_max int [not null, default: 0]
   indexes {
-    (tournament_id) [unique, name: "uq_team_format_tournament"]
     (id, discipline) [unique, name: "uq_team_format_key"]
+    (tournament_id) [unique, name: "uq_team_format_tournament"]
     (custom_game_id) [unique, name: "uq_team_format_custom_game"]
     (workspace_id, discipline) [unique, name: "uq_team_format_workspace_default"]
   }
@@ -2749,8 +2750,8 @@ Table tournament.challonge_match_mapping {
   challonge_match_id int [not null]
   encounter_id bigint [not null]
   indexes {
-    (source_id, challonge_match_id) [unique, name: "uq_challonge_match_mapping_source_match"]
     (source_id, encounter_id) [unique, name: "uq_challonge_match_mapping_source_encounter"]
+    (source_id, challonge_match_id) [unique, name: "uq_challonge_match_mapping_source_match"]
     (encounter_id) [name: "ix_challonge_match_mapping_encounter"]
     (source_id) [name: "ix_challonge_match_mapping_source"]
   }
@@ -3443,6 +3444,8 @@ Ref: balancer.team.balance_id > balancer.balance.id [delete: cascade]
 Ref: balancer.team.variant_id > balancer.balance_variant.id [delete: cascade]
 Ref: balancer.team.exported_team_id > tournament.team.id [delete: set null]
 Ref: balancer.team_slot.team_id > balancer.team.id [delete: cascade]
+Ref: balancer.team_slot.dimension_id > catalog.role.dimension_id
+Ref: balancer.team_slot.role_id > catalog.role.id
 Ref: balancer.tournament_config.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: balancer.tournament_config.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.tournament_config.updated_by > auth.user.id [delete: set null]
@@ -3610,17 +3613,17 @@ Ref: roster.format_role_rule.team_format_id > roster.team_format_dimension.team_
 Ref: roster.format_role_rule.dimension_id > catalog.role.dimension_id
 Ref: roster.format_role_rule.dimension_id > roster.team_format_dimension.dimension_id [delete: cascade]
 Ref: roster.format_role_rule.role_id > catalog.role.id
-Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
-Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
+Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
 Ref: roster.team_format.discipline > catalog.discipline.code
 Ref: roster.team_format.discipline > balancer.custom_game.discipline [delete: cascade]
+Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
 Ref: roster.team_format.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: roster.team_format.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: roster.team_format_dimension.team_format_id > roster.team_format.id [delete: cascade]
-Ref: roster.team_format_dimension.discipline > roster.team_format.discipline [delete: cascade]
 Ref: roster.team_format_dimension.discipline > catalog.role_dimension.discipline
+Ref: roster.team_format_dimension.discipline > roster.team_format.discipline [delete: cascade]
 Ref: roster.team_format_dimension.dimension_id > catalog.role_dimension.id
 Ref: subscriptions.check_log.workspace_id > workspace.id [delete: set null]
 Ref: subscriptions.check_log.auth_user_id > auth.user.id [delete: set null]

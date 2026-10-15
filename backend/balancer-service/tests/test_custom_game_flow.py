@@ -30,6 +30,7 @@ from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.services import ontology  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
+from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
@@ -243,10 +244,17 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             ("get_effective_division_grid", object()),
             ("custom_game_slot_shape", RosterShape(entries=(("tank", 1), ("damage", 1)))),
             ("copy_for_custom_game", None),
+            ("custom_game_format", (OW_5V5, "custom_game")),
         ):
             patcher = patch(f"src.services.custom_game.{target}", new=AsyncMock(return_value=value))
             patcher.start()
             self.addCleanup(patcher.stop)
+        ontology_patch = patch(
+            "src.services.custom_game.CatalogRoleRepository.ontology",
+            new=AsyncMock(return_value=_module_ontology("overwatch")),
+        )
+        ontology_patch.start()
+        self.addCleanup(ontology_patch.stop)
 
         self.service = CustomGameService(
             games=self.games,

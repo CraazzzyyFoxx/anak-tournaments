@@ -32,7 +32,7 @@ for path in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
-from shared.core.enums import HeroClass  # noqa: E402
+from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
@@ -338,9 +338,8 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
         self.assertIsNone(team)
         self.assertEqual([], players)
 
-    async def test_a_withdrawn_member_releases_their_slot_from_the_export(self) -> None:
-        """The roster reader excludes withdrawn registrations, so a replaced player
-        must not be materialized alongside their replacement."""
+    async def test_a_withdrawn_starter_blocks_an_incomplete_export(self) -> None:
+        """A stale complete flag cannot bypass the format gate after a starter withdraws."""
         source = await self._complete_team()
         async with self.Session() as session:
             await session.execute(
@@ -354,8 +353,14 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             await session.commit()
 
         async with self.Session() as session:
-            await registered_teams_service.export_registered(session, self.tournament_id)
-
-        _team, players = await self._exported()
-        self.assertEqual(3, len(players))
-        self.assertNotIn(HeroClass.tank, [player.role for player in players])
+            with self.assertRaises(ApiHTTPException) as caught:
+                await registered_teams_service.export_registered(session, self.tournament_id)
+        assert caught.exception.status_code == 409
+        assert "team_format_violation" in str(caught.exception.detail)
+        assert "role_below_hard_min" in str(caught.exception.detail)
+        team, players = await self._exported()
+        assert team is None and players == []
+        async with self.Session() as session:
+            failed = await session.get(BalancerRegistrationTeam, source.id)
+            assert failed.export_status == "failed"
+            assert "team_format_violation" in failed.export_error

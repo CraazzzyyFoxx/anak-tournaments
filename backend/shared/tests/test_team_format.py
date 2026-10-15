@@ -15,6 +15,7 @@ from shared.domain.team_format import (
     TeamFormat,
     TeamFormatError,
     check_team_format,
+    export_violations,
     slot_shape,
     validate_roster,
 )
@@ -222,3 +223,22 @@ def test_every_module_preset_is_storable() -> None:
     for code, spec in DISCIPLINES.items():
         for preset in spec.team_format_presets:
             check_team_format(TeamFormat.from_preset(code, preset), _module_ontology(code))
+
+
+def test_an_exported_team_is_checked_on_every_assignment_of_its_starters() -> None:
+    ontology = _module_ontology("overwatch", sub_roles=(("damage", "hitscan"),))
+    one_hitscan = replace(OW_5V5, rules=(*OW_5V5.rules, FormatRule("player_role", "hitscan", hard_max=1)))
+    node = lambda code: ontology.node("player_role", code)  # noqa: E731
+    fine = [[node("tank")], [node("hitscan")], [node("damage")], [node("support")], [node("support")]]
+    assert export_violations(one_hitscan, ontology, fine) == ()
+    two = [[node("tank")], [node("hitscan")], [node("hitscan")], [node("support")], [node("support")]]
+    assert export_violations(one_hitscan, ontology, two) == ("role_above_hard_max",)
+    assert export_violations(OW_5V5, ontology, [[node("tank")], [], [], [], []]) == (
+        "role_below_hard_min",
+        "role_below_hard_min",
+    )
+    assert "assignments_out_of_range" in export_violations(
+        OW_5V5,
+        ontology,
+        [[node("tank"), node("support")], [node("damage")], [node("damage")], [node("support")], [node("support")]],
+    )

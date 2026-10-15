@@ -16,25 +16,17 @@ dicts, so mutating what you get back cannot corrupt the shape.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import Final
 
 __all__ = (
     "FLEX_SLOT_CODE",
     "MAX_TEAM_SIZE",
     "MIN_TEAM_SIZE",
-    "RegistrationRoleCode",
     "RosterShape",
     "RosterShapeError",
-    "RosterSlotCode",
 )
 
 FLEX_SLOT_CODE: Final[str] = "flex"
-RosterSlotCode = Literal["tank", "damage", "support", "flex"]
-#: ``RosterSlotCode`` minus ``flex`` -- for fields that can never be flex (a
-#: player's fixed registration/draft role; flex is a separate ``is_flex``
-#: boolean there). Also the single Pydantic-facing type for ``HeroClass``'s
-#: :attr:`~shared.core.enums.HeroClass.slot_code`.
-RegistrationRoleCode = Literal["tank", "damage", "support"]
 
 # A roster shape is a tournament's team format, not a draft setting: 1v1 is a
 # legal format. A draft refuses a shape it has nothing to pick for on its own

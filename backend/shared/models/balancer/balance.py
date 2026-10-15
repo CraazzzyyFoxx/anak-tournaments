@@ -4,11 +4,13 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -21,6 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 
 if TYPE_CHECKING:
+    from shared.models.catalog.role import CatalogRole
     from shared.models.identity.auth_user import AuthUser
     from shared.models.tenancy.workspace import Workspace
     from shared.models.tournament.tournament import Tournament
@@ -184,17 +187,32 @@ class BalancerTeamSlot(db.TimeStampIntegerMixin):
     """One player's slot in a balanced team (replaces roster_json)."""
 
     __tablename__ = "team_slot"
-    __table_args__ = ({"schema": "balancer"},)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_team_slot_role",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        {"schema": "balancer"},
+    )
 
     team_id: Mapped[int] = mapped_column(ForeignKey("balancer.team.id", ondelete="CASCADE"), index=True)
     # Durable identity link to the balanced player. Registrations are mutable and
     # tournament-scoped, so a saved historical balance keeps the normalized battle
     # tag rather than a hard FK; resolve to a registration at query time if needed.
     battle_tag_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    dimension_id: Mapped[int | None] = mapped_column(BigInteger)
+    role_id: Mapped[int | None] = mapped_column(BigInteger)
+    role_row: Mapped[CatalogRole | None] = relationship(lazy="joined", foreign_keys=[role_id])
     assigned_rank: Mapped[int] = mapped_column(Integer(), nullable=False)
     discomfort: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     is_captain: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 
     team: Mapped[BalancerTeam] = relationship(back_populates="slots")
+
+    @property
+    def role(self) -> str | None:
+        return self.role_row.code if self.role_row is not None else None

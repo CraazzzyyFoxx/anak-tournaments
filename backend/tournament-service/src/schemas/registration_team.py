@@ -15,7 +15,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from shared.domain.roster_shape import RosterSlotCode
 from shared.domain.team_roster import RosterOccupancy
 from shared.schemas.role import RoleRef
 from src import models
@@ -45,7 +44,7 @@ class RegistrationTeamCreateRequest(BaseModel):
     """
 
     name: str = Field(min_length=1, max_length=255)
-    slot_code: RosterSlotCode
+    slot_code: str
     registration: RegistrationSubmit
 
     @field_validator("name")
@@ -72,7 +71,7 @@ class RegistrationTeamInviteCreateRequest(BaseModel):
     resubmitted underneath it.
     """
 
-    slot_code: RosterSlotCode
+    slot_code: str
     is_substitute: bool = False
     target_registration_id: int | None = None
     #: ``None`` means "no expiry"; the service's default is applied when the field
@@ -125,7 +124,7 @@ class RegistrationTeamRenameRequest(BaseModel):
 
 
 class RegistrationTeamPlaceMemberRequest(BaseModel):
-    slot_code: RosterSlotCode
+    slot_code: str
     is_substitute: bool = False
     swap_with_registration_id: int | None = None
 
@@ -158,14 +157,14 @@ class RegistrationTeamNotesRequest(BaseModel):
 
 class RegistrationTeamPlaceAdminRequest(BaseModel):
     registration_id: int
-    slot_code: RosterSlotCode
+    slot_code: str
     is_substitute: bool = False
 
 
 class RegistrationTeamAttachAdminRequest(BaseModel):
     #: Matched against the primary game handle of the tournament's registrations.
     handle: str = Field(min_length=1, max_length=255)
-    slot_code: RosterSlotCode
+    slot_code: str
     is_substitute: bool = False
 
     @field_validator("handle")

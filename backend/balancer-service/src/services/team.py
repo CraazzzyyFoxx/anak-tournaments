@@ -20,6 +20,7 @@ from collections.abc import Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.services.team_export import (
     ExportOutcome,
     ExportPlan,
@@ -48,7 +49,8 @@ def to_materialization_teams(payload: Sequence[BalancerTeam]) -> list[Materializ
                 MaterializationMember(
                     name=member.name,
                     rank=member.rank,
-                    slot_code=member.role,
+                    slot_code=FLEX_SLOT_CODE if member.role is None else None,
+                    role_ref=member.role,
                     sub_role=member.sub_role,
                 )
                 for member in team.members

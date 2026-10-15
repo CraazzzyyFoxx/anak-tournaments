@@ -413,6 +413,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         "team member roles",
         "mix player roles",
         "draft roles",
+        "balancer slots",
     } <= set(statuses)
 
 
@@ -497,6 +498,17 @@ def _seed_team_formats(conn, ids: dict) -> None:
             draft_team_id=team,
             target_role=role,
         )
+    balance = _insert(conn, "balancer.balance", tournament_id=ids["t_a"], result_json=Json({}))
+    bteam = _insert(conn, "balancer.team", balance_id=balance, name="A", balancer_name="A", avg_sr=0, total_sr=0)
+    for key, role in (("slot_tank", "Tank"), ("slot_flex", "flex")):
+        ids[key] = _insert(conn, "balancer.team_slot", team_id=bteam, role=role, assigned_rank=2000)
+
+
+def test_balancer_slots_point_at_module_roles_and_flex_is_open(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    tank = _scalar(conn, "SELECT role_id FROM balancer.team_slot WHERE id = %s", (ids["slot_tank"],))
+    assert _scalar(conn, "SELECT code FROM catalog.role WHERE id = %s", (tank,)) == "tank"
+    assert _scalar(conn, "SELECT role_id FROM balancer.team_slot WHERE id = %s", (ids["slot_flex"],)) is None
 
 
 def test_draft_roles_point_at_module_roles_and_flex_is_an_open_slot(migrated) -> None:

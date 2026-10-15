@@ -4,7 +4,10 @@ import statistics
 import typing
 from collections import Counter
 
+from shared.domain.player_sub_roles import workspace_sub_role_code
+from shared.domain.roles import Ontology
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.domain.team_format import TeamFormat, export_advisories, export_violations
 from src.domain.balancer.backends.base import BalanceMetrics
 from src.domain.balancer.entities import Player, Team
 from src.domain.balancer.feasibility_analyzer import FeasibilityReport
@@ -16,6 +19,9 @@ def teams_to_json(
     teams: list[Team],
     mask: dict[str, int],
     benched_players: list[Player] | None = None,
+    *,
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
 ) -> dict[str, typing.Any]:
     """Convert teams to a JSON-serializable dictionary for API responses."""
     result = {"teams": [], "statistics": {}, "benched_players": []}
@@ -43,6 +49,8 @@ def teams_to_json(
             "total_discomfort": team.discomfort,
             "max_discomfort": team.max_pain,
             "roster": {},
+            "format_violations": [],
+            "format_advisories": [],
         }
 
         for role, players in team.roster.items():
@@ -61,6 +69,22 @@ def teams_to_json(
                 }
                 for player in players
             ]
+
+        if team_format is not None and ontology is not None:
+            starters = [
+                ()
+                if role == FLEX_SLOT_CODE
+                else (
+                    ontology.node(
+                        ontology.rated.code,
+                        workspace_sub_role_code(role, player.subclasses.get(role)) or role,
+                    ),
+                )
+                for role, players in team.roster.items()
+                for player in players
+            ]
+            team_data["format_violations"] = list(export_violations(team_format, ontology, starters))
+            team_data["format_advisories"] = list(export_advisories(team_format, ontology, starters))
 
         result["teams"].append(team_data)
 
@@ -154,6 +178,9 @@ def _build_response_payload(
     has_applied_overrides: bool,
     metrics: BalanceMetrics | None = None,
     feasibility: FeasibilityReport | None = None,
+    *,
+    team_format: TeamFormat | None = None,
+    ontology: Ontology | None = None,
 ) -> dict[str, typing.Any]:
     placed_uuids: set[str] = set()
     for team in result:
@@ -162,7 +189,7 @@ def _build_response_payload(
                 placed_uuids.add(player.uuid)
 
     benched = [player for player in valid_players if player.uuid not in placed_uuids]
-    response_payload = teams_to_json(result, mask, benched_players=benched)
+    response_payload = teams_to_json(result, mask, benched_players=benched, team_format=team_format, ontology=ontology)
     stats = response_payload.get("statistics") or {}
     if metrics is not None:
         stats.update({key: round(value, 4) for key, value in metrics.to_dict().items()})
@@ -241,6 +268,8 @@ def lobby_document(payloads: typing.Iterable[typing.Any]) -> dict[str, typing.An
                     "id": team.get("id"),
                     "average_mmr": team.get("average_mmr"),
                     "total_rating": team.get("total_rating"),
+                    "format_violations": list(team.get("format_violations") or []),
+                    "format_advisories": list(team.get("format_advisories") or []),
                     "roster": (
                         {role: seats(entries, role) for role, entries in roster.items()}
                         if isinstance(roster, typing.Mapping)

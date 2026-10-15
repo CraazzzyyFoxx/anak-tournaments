@@ -87,6 +87,8 @@ class TeamData(BaseModel):
     total_discomfort: int
     max_discomfort: int
     roster: dict[str, list[PlayerData]]
+    format_violations: list[str] = Field(default_factory=list)
+    format_advisories: list[str] = Field(default_factory=list)
 
 
 class RoleFeasibility(BaseModel):

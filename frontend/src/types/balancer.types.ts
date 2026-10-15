@@ -20,6 +20,8 @@ interface TeamData {
   total_discomfort: number;
   max_discomfort: number;
   roster: Record<string, PlayerData[]>;
+  format_violations?: string[];
+  format_advisories?: string[];
 }
 
 interface RoleFeasibility {

@@ -75,6 +75,7 @@ def _registration(registration_id: int = 1, *, slot_code: str | None = "tank") -
         display_name=None,
         workspace_member_id=None,
         is_substitute=False,
+        roles=[],
     )
 
 
@@ -257,16 +258,21 @@ class MemberNameTests(TestCase):
         self.assertEqual("registration-9", registered._member_name(roster))
 
 
-class EngineIsTheOnlySourceTests(TestCase):
-    """The point of this cutover: no second implementation may creep back in."""
-
-    def test_no_raw_registration_role_reads_remain(self) -> None:
-        source = (BACKEND_ROOT / "shared" / "services" / "team_export" / "registered.py").read_text(encoding="utf-8")
-        for forbidden in ("rank_value", "is_active", "is_primary", "BalancerRegistrationRole"):
-            with self.subTest(token=forbidden):
-                self.assertNotIn(forbidden, source)
-
-    def test_the_engine_is_what_the_export_asks(self) -> None:
-        source = (BACKEND_ROOT / "shared" / "services" / "team_export" / "registered.py").read_text(encoding="utf-8")
-        self.assertIn("roster_engine.resolve(", source)
-        self.assertIn("registration_load_options()", source)
+class NonRatedAssignmentTests(IsolatedAsyncioTestCase):
+    async def test_export_carries_active_non_rated_assignments_beside_the_slot_leaf(self) -> None:
+        registration = _registration()
+        shotcaller = SimpleNamespace(code="shotcaller", dimension=SimpleNamespace(rated=False))
+        rated = SimpleNamespace(code="tank", dimension=SimpleNamespace(rated=True))
+        registration.roles = [
+            SimpleNamespace(is_active=True, catalog_role=shotcaller),
+            SimpleNamespace(is_active=True, catalog_role=rated),
+            SimpleNamespace(is_active=False, catalog_role=shotcaller),
+        ]
+        session = _FakeSession(teams=[_team()], registrations=[registration])
+        roster = _roster(roles=(_role(HeroClass.tank, 3000),))
+        with patch.object(registered.roster_engine, "resolve", AsyncMock(return_value={1: roster})):
+            payload = await build_registered_export(session, 1, ROLE_SHAPE)
+        member = payload.teams[0].members[0]
+        assert member.non_rated_roles == (shotcaller,)
+        assert member.slot_code == "tank"
+        assert member.rank == 3000

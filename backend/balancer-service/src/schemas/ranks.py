@@ -78,7 +78,7 @@ class RankOverviewRow(BaseModel):
         default=None, description="auth.user id of the book's author, the mix's host, or null."
     )
     author_name: str | None = None
-    role: str | None = Field(default=None, description="tank/damage/support; casual rows may hold any HeroClass.")
+    role: str | None = Field(default=None, description="Role code; casual rows may also name an open slot.")
     rank_value: int
     division: int | None = Field(default=None, description="Resolved on the workspace's effective grid.")
     source: RankSource | None = Field(default=None, description="effective_* only: which layer won.")

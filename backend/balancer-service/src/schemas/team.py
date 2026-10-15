@@ -3,8 +3,8 @@ from uuid import uuid4
 
 from pydantic import UUID4, BaseModel, ConfigDict, Field
 
-from shared.core.enums import HeroClass
-from shared.domain.roster_shape import RosterSlotCode
+from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.schemas.role import RoleRef
 
 __all__ = (
     "BalancerTeamMember",
@@ -19,9 +19,7 @@ class BalancerTeamMember(BaseModel):
     uuid: str | UUID4
     name: str
     sub_role: str | None = None
-    # A roster slot code, not a game role: ``flex`` is what a role-less roster
-    # assigns, and the tournament player it creates carries HeroClass.flex.
-    role: RosterSlotCode | None
+    role: RoleRef | None
     rank: int
 
 
@@ -78,21 +76,16 @@ class InternalBalancerTeam(BaseModel):
     total_discomfort: int | None = None
     max_discomfort: int | None = None
     roster: dict[str, list[InternalBalancerPlayer]]
+    format_violations: list[str] = Field(default_factory=list)
+    format_advisories: list[str] = Field(default_factory=list)
 
-    @staticmethod
-    def _map_role(role_name: str) -> RosterSlotCode | None:
-        # ``tournament_balancer``/dual-write roster keys are the HeroClass display spelling
-        # ("Tank"/"Damage"/"Support"/"Flex") but tolerate any case; parse
-        # leniently and drop to the canonical draft/balancer wire code.
-        parsed = HeroClass.parse(role_name)
-        return parsed.slot_code if parsed else None
-
-    def to_balancer_team(self) -> BalancerTeam:
+    def to_balancer_team(self, dimension: str) -> BalancerTeam:
         members: list[BalancerTeamMember] = []
         total_sr = 0
 
         for roster_role, players in self.roster.items():
-            mapped_role = self._map_role(roster_role)
+            code = roster_role.strip().lower()
+            mapped_role = None if code == FLEX_SLOT_CODE else RoleRef(dimension=dimension, role=code)
             for player in players:
                 total_sr += player.assigned_rating
 

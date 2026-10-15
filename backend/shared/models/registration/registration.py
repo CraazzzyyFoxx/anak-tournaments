@@ -331,10 +331,8 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     registration_team_id: Mapped[int | None] = mapped_column(
         ForeignKey("balancer.registration_team.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # The captain-assigned roster slot. NOT derivable from ``roles``:
-    # ``REGISTRATION_ROLE_CODES`` is tank/damage/support only, while ``flex`` is a
-    # roster SLOT code, so a role-less roster's slot cannot be expressed as a
-    # role row. Values are ``shared.domain.roster_shape.RosterSlotCode``.
+    # Captain-assigned roster slot: a module role code or the open-slot key
+    # ``flex``, which never creates a role assignment.
     team_slot_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Bench member. Exported as ``Player.is_substitution=True`` with a NULL
     # ``related_player_id`` (nobody has been replaced yet); ``Team.avg_sr`` /
