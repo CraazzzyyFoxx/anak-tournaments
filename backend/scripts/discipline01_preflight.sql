@@ -92,19 +92,19 @@ SELECT r.dimension, count(*) AS row_count
 SELECT p.workspace_id, p.code, array_agg(p.parent ORDER BY p.parent) AS parents
           FROM (
     WITH catalog_rows AS (
-        SELECT s.workspace_id, lower(btrim(s.role)) AS parent, regexp_replace(lower(btrim(s.slug)), '\s+', '_', 'g') AS code, btrim(s.label) AS name,
+        SELECT s.workspace_id, lower(btrim(s.role)) AS parent, regexp_replace(lower(btrim(s.slug, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') AS code, btrim(s.label) AS name,
                s.description, s.sort_order, s.is_active AS active, true AS selectable
           FROM tournament.player_sub_role s
     ), used AS (
         SELECT t.workspace_id, p.role::text AS parent, btrim(p.sub_role) AS raw
           FROM tournament.player p JOIN tournament.tournament t ON t.id = p.tournament_id
-         WHERE p.role::text IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(p.sub_role)), '\s+', '_', 'g') <> ''
+         WHERE p.role::text IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(p.sub_role, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> ''
         UNION
         SELECT t.workspace_id, lower(btrim(r.role)), btrim(r.subrole)
           FROM balancer.registration_role r
           JOIN balancer.registration g ON g.id = r.registration_id
           JOIN tournament.tournament t ON t.id = g.tournament_id
-         WHERE lower(btrim(r.role)) IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(r.subrole)), '\s+', '_', 'g') <> ''
+         WHERE lower(btrim(r.role)) IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(r.subrole, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> ''
         UNION
         SELECT e.workspace_id, top.role, btrim(sub.role)
           FROM encounter.team_member_role top
@@ -115,12 +115,12 @@ SELECT p.workspace_id, p.code, array_agg(p.parent ORDER BY p.parent) AS parents
           JOIN encounter.encounter e ON e.id = tm.encounter_id
          WHERE top.dimension = 'player_role' AND top.role IN ('tank', 'damage', 'support')
     ), off_catalog AS (
-        SELECT u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw)), '\s+', '_', 'g') AS code, min(u.raw) AS name
+        SELECT u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') AS code, min(u.raw) AS name
           FROM used u
          WHERE NOT EXISTS (SELECT 1 FROM catalog_rows c
                             WHERE c.workspace_id = u.workspace_id AND c.parent = u.parent
-                              AND regexp_replace(lower(btrim(u.raw)), '\s+', '_', 'g') IN (c.code, regexp_replace(lower(btrim(c.name)), '\s+', '_', 'g')))
-         GROUP BY u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw)), '\s+', '_', 'g')
+                              AND regexp_replace(lower(btrim(u.raw, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') IN (c.code, regexp_replace(lower(btrim(c.name, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g')))
+         GROUP BY u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g')
     )
     SELECT workspace_id, parent, code, name, description, sort_order, active, selectable FROM catalog_rows
     UNION ALL
@@ -137,19 +137,19 @@ SELECT p.workspace_id, p.code, array_agg(p.parent ORDER BY p.parent) AS parents
 \echo 'count: off-catalog sub-role values kept as inactive sub-roles'
 SELECT count(*) AS off_catalog_sub_roles FROM (
     WITH catalog_rows AS (
-        SELECT s.workspace_id, lower(btrim(s.role)) AS parent, regexp_replace(lower(btrim(s.slug)), '\s+', '_', 'g') AS code, btrim(s.label) AS name,
+        SELECT s.workspace_id, lower(btrim(s.role)) AS parent, regexp_replace(lower(btrim(s.slug, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') AS code, btrim(s.label) AS name,
                s.description, s.sort_order, s.is_active AS active, true AS selectable
           FROM tournament.player_sub_role s
     ), used AS (
         SELECT t.workspace_id, p.role::text AS parent, btrim(p.sub_role) AS raw
           FROM tournament.player p JOIN tournament.tournament t ON t.id = p.tournament_id
-         WHERE p.role::text IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(p.sub_role)), '\s+', '_', 'g') <> ''
+         WHERE p.role::text IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(p.sub_role, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> ''
         UNION
         SELECT t.workspace_id, lower(btrim(r.role)), btrim(r.subrole)
           FROM balancer.registration_role r
           JOIN balancer.registration g ON g.id = r.registration_id
           JOIN tournament.tournament t ON t.id = g.tournament_id
-         WHERE lower(btrim(r.role)) IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(r.subrole)), '\s+', '_', 'g') <> ''
+         WHERE lower(btrim(r.role)) IN ('tank', 'damage', 'support') AND regexp_replace(lower(btrim(r.subrole, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> ''
         UNION
         SELECT e.workspace_id, top.role, btrim(sub.role)
           FROM encounter.team_member_role top
@@ -160,12 +160,12 @@ SELECT count(*) AS off_catalog_sub_roles FROM (
           JOIN encounter.encounter e ON e.id = tm.encounter_id
          WHERE top.dimension = 'player_role' AND top.role IN ('tank', 'damage', 'support')
     ), off_catalog AS (
-        SELECT u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw)), '\s+', '_', 'g') AS code, min(u.raw) AS name
+        SELECT u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') AS code, min(u.raw) AS name
           FROM used u
          WHERE NOT EXISTS (SELECT 1 FROM catalog_rows c
                             WHERE c.workspace_id = u.workspace_id AND c.parent = u.parent
-                              AND regexp_replace(lower(btrim(u.raw)), '\s+', '_', 'g') IN (c.code, regexp_replace(lower(btrim(c.name)), '\s+', '_', 'g')))
-         GROUP BY u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw)), '\s+', '_', 'g')
+                              AND regexp_replace(lower(btrim(u.raw, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') IN (c.code, regexp_replace(lower(btrim(c.name, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g')))
+         GROUP BY u.workspace_id, u.parent, regexp_replace(lower(btrim(u.raw, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g')
     )
     SELECT workspace_id, parent, code, name, description, sort_order, active, selectable FROM catalog_rows
     UNION ALL
@@ -178,4 +178,4 @@ SELECT count(*) AS off_catalog_sub_roles FROM (
 \echo 'count: flex rows whose sub-role is dropped'
 SELECT count(*) AS flex_rows_with_a_sub_role
   FROM tournament.player p
- WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role)), '\s+', '_', 'g') <> '';
+ WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> '';

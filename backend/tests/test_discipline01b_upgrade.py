@@ -19,6 +19,7 @@ import psycopg
 import pytest
 
 from shared.disciplines import DISCIPLINES
+from shared.domain.player_sub_roles import normalize_sub_role
 from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
@@ -123,6 +124,7 @@ def _seed(conn) -> dict:
         )
     for key, side, role, sub_role in (
         ("by_slug", "a", "damage", "hitscan"),
+        ("whitespace", "a", "damage", "\tHitscan\n"),
         ("by_label", "a", "support", "Main Heal"),
         ("off_catalog", "a", "support", "light heal"),
         ("plain", "a", "tank", None),
@@ -226,6 +228,36 @@ def test_catalog_sub_roles_become_workspace_roles_under_their_role(migrated) -> 
         (ids["ws_a"], "support", "main_heal", "Main Heal", "Primary healer", 2, True, True),
         (ids["ws_a"], "tank", "off_tank", "Off Tank", None, 0, False, True),
     ]
+
+
+def test_legacy_whitespace_matches_the_existing_catalog_leaf(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    with conn.transaction(force_rollback=True):
+        conn.execute(revision.LEAF_FUNCTION)
+        leaf_id = _scalar(
+            conn,
+            "SELECT id FROM catalog.role WHERE workspace_id = %s AND code = 'hitscan'",
+            (ids["ws_a"],),
+        )
+        assert (
+            _scalar(
+                conn,
+                "SELECT pg_temp.discipline01b_leaf(%s, 'damage', sub_role) FROM tournament.player WHERE id = %s",
+                (ids["ws_a"], ids["whitespace"]),
+            )
+            == leaf_id
+        )
+
+
+def test_sql_normalization_matches_python_whitespace(migrated) -> None:
+    # Python's whitespace set includes control separators and Unicode spaces that
+    # PostgreSQL's locale-dependent \s does not necessarily recognise.
+    whitespace = "\t\n\v\f\r\x1c\x1d\x1e\x1f \x85\xa0\u1680" + "".join(map(chr, range(0x2000, 0x200B)))
+    whitespace += "\u2028\u2029\u202f\u205f\u3000"
+    conn = migrated["conn"]
+    for char in whitespace:
+        for value in (f"{char}Hitscan{char}", f"Main{char}{char}Heal", char):
+            assert _scalar(conn, f"SELECT {revision._code('%s')}", (value,)) == (normalize_sub_role(value) or "")
 
 
 def test_values_outside_the_catalog_become_inactive_unselectable_sub_roles(migrated) -> None:

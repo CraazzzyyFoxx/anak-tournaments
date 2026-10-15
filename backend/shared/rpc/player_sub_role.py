@@ -83,6 +83,7 @@ def player_sub_role_entity() -> EntityConfig:
         serializer=_serialize,
         create_schema=PlayerSubRoleCreate,
         update_schema=PlayerSubRoleUpdate,
+        create_audit=_dump,
         resolve_ws_from_id=get_player_sub_role_workspace_id,
         resolve_ws_for_create=_ws_from_payload,
         resolve_ws_for_list=_ws_from_query,

@@ -147,6 +147,8 @@ class EntityConfig:
     not_found_detail: str = "Not found"
     actions: frozenset[str] = frozenset({"create", "get", "update", "delete"})
     update_actions: Callable[[frozenset[str]], Iterable[str]] | None = None
+    # Project a service-backed create's persisted row when wire names differ from model attributes.
+    create_audit: Callable[[Any], dict[str, Any]] | None = None
 
     @cached_property
     def repo(self) -> BaseRepository:
@@ -271,7 +273,7 @@ class CrudDispatcher:
                 data=data,
                 entity_id=getattr(obj, "id", None),
                 entity_label=_label(obj),
-                after=_field_values(obj, fields),
+                after=cfg.create_audit(obj) if cfg.create_audit else _field_values(obj, fields),
             )
             await session.commit()
             return rpc_ok(await cfg.serializer(session, obj))

@@ -41,6 +41,11 @@ def _code_or_raise(slug: str | None, label: str | None) -> str:
     normalized = normalize_sub_role(slug or label)
     if normalized is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sub-role slug or label is required.")
+    if len(normalized) > 64:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Sub-role code must be at most 64 characters after normalization.",
+        )
     return normalized
 
 

@@ -13,8 +13,8 @@ LANGUAGE sql STABLE AS $$
        JOIN catalog.role_dimension d ON d.id = m.dimension_id
       WHERE d.discipline = 'overwatch' AND d.code = 'player_role' AND m.workspace_id IS NULL
         AND m.code = lower(btrim(top)) AND r.workspace_id = ws
-        AND regexp_replace(lower(btrim(sub)), '\s+', '_', 'g') <> '' AND regexp_replace(lower(btrim(sub)), '\s+', '_', 'g') IN (r.code, regexp_replace(lower(btrim(r.name)), '\s+', '_', 'g'))
-      ORDER BY (r.code = regexp_replace(lower(btrim(sub)), '\s+', '_', 'g')) DESC, r.id
+        AND regexp_replace(lower(btrim(sub, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> '' AND regexp_replace(lower(btrim(sub, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') IN (r.code, regexp_replace(lower(btrim(r.name, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g'))
+      ORDER BY (r.code = regexp_replace(lower(btrim(sub, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g')) DESC, r.id
       LIMIT 1),
     (SELECT m.id
        FROM catalog.role m
@@ -54,7 +54,7 @@ SELECT 'sub-roles', s.id, s.workspace_id || ' ' || s.role || '/' || s.slug,
                  JOIN catalog.role_dimension d ON d.id = r.dimension_id
                 WHERE r.workspace_id = s.workspace_id AND m.workspace_id IS NULL
                   AND d.discipline = 'overwatch' AND d.code = 'player_role'
-                  AND m.code = lower(btrim(s.role)) AND r.code = regexp_replace(lower(btrim(s.slug)), '\s+', '_', 'g'))
+                  AND m.code = lower(btrim(s.role)) AND r.code = regexp_replace(lower(btrim(s.slug, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g'))
   FROM tournament.player_sub_role s
 UNION ALL
 -- Informational: values players and registrations used outside the catalog, kept as inactive sub-roles (Deviation 1).
@@ -63,12 +63,12 @@ SELECT 'off-catalog sub-roles (kept inactive)', r.id, r.workspace_id || ' ' || m
  WHERE r.workspace_id IS NOT NULL AND NOT r.selectable
    AND NOT EXISTS (SELECT 1 FROM tournament.player_sub_role s
                     WHERE s.workspace_id = r.workspace_id AND lower(btrim(s.role)) = m.code
-                      AND regexp_replace(lower(btrim(s.slug)), '\s+', '_', 'g') = r.code)
+                      AND regexp_replace(lower(btrim(s.slug, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') = r.code)
 UNION ALL
 -- Informational: flex is no role (D86), so a flex row's sub-role has nothing to hang on.
 SELECT 'flex sub-roles (dropped)', p.id, p.sub_role, true
   FROM tournament.player p
- WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role)), '\s+', '_', 'g') <> ''
+ WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> ''
 UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,

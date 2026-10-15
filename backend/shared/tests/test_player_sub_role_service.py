@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared import models
 from shared.core.errors import BaseAPIException
+from shared.rpc.crud import CrudDispatcher
 from shared.rpc.player_sub_role import player_sub_role_entity
+from shared.schemas.player_sub_role import PlayerSubRoleUpdate
 from shared.services.player_sub_role import PlayerSubRoleService
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
@@ -67,6 +69,81 @@ class PlayerSubRoleServiceTests(IsolatedAsyncioTestCase):
             self.workspace_id,
             True,
         )
+
+    async def test_create_rejects_codes_over_64_after_normalization(self) -> None:
+        for label, slug in (("Short", "x" * 65), ("x" * 65, None)):
+            async with self.Session() as s:
+                with self.assertRaises(BaseAPIException) as raised:
+                    await self.service.create_sub_role(s, _create(self.workspace_id, "damage", label, slug))
+                assert raised.exception.status_code == 422
+                assert (
+                    await s.scalar(
+                        sa.select(sa.func.count()).where(models.CatalogRole.workspace_id == self.workspace_id)
+                    )
+                    == 0
+                )
+
+    async def test_update_rejects_codes_over_64_without_changing_the_row(self) -> None:
+        async with self.Session() as s:
+            row = await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Hitscan"))
+            for payload in ({"slug": "x" * 65}, {"slug": None, "label": "x" * 65}):
+                with self.assertRaises(BaseAPIException) as raised:
+                    await self.service.update_sub_role(s, row.id, PlayerSubRoleUpdate(**payload))
+                assert raised.exception.status_code == 422
+                await s.refresh(row)
+                assert (row.code, row.name) == ("hitscan", "Hitscan")
+
+    async def test_code_limit_uses_normalized_length_on_create_and_update(self) -> None:
+        async with self.Session() as s:
+            row = await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Long", f"\t{'X' * 64}\n"))
+            assert row.code == "x" * 64
+            row = await self.service.update_sub_role(
+                s, row.id, PlayerSubRoleUpdate(slug=f"\t{'Y' * 31} \t {'Z' * 32}\n")
+            )
+            assert row.code == "y" * 31 + "_" + "z" * 32
+
+    async def test_rpc_create_audits_persisted_normalized_catalog_values(self) -> None:
+        cfg = player_sub_role_entity()
+        dispatcher = CrudDispatcher({cfg.entity: cfg}, self.Session)
+        result = await dispatcher.do_create(
+            {
+                "entity": cfg.entity,
+                "identity": {"user_id": 1, "username": "root", "is_superuser": True},
+                "payload": {
+                    "workspace_id": self.workspace_id,
+                    "discipline": "overwatch",
+                    "role": "Damage",
+                    "slug": "\tHit Scan\n",
+                    "label": " Hitscan ",
+                    "is_active": False,
+                },
+            }
+        )
+        assert result["ok"], result
+        async with self.Session() as s:
+            row = await s.scalar(
+                sa.select(models.CatalogRole).where(models.CatalogRole.workspace_id == self.workspace_id)
+            )
+            audit = await s.scalar(
+                sa.select(models.AuditLog).where(
+                    models.AuditLog.workspace_id == self.workspace_id,
+                    models.AuditLog.action == "player_sub_role.create",
+                )
+            )
+            assert audit.entity_id == row.id
+            assert audit.entity_label == row.name == "Hitscan"
+            assert audit.after_json == {
+                "id": row.id,
+                "workspace_id": self.workspace_id,
+                "discipline": "overwatch",
+                "dimension": "player_role",
+                "role": "damage",
+                "slug": "hit_scan",
+                "label": "Hitscan",
+                "description": None,
+                "sort_order": 0,
+                "is_active": False,
+            }
 
     async def test_the_catalog_groups_active_selectable_sub_roles_under_every_top_level_role(self) -> None:
         async with self.Session() as s:
