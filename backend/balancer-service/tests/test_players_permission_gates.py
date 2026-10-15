@@ -102,6 +102,7 @@ class _GateTests(IsolatedAsyncioTestCase):
         )
         with (
             patch.object(players, "_SF", _FakeSession),
+            patch.object(players, "workspace_discipline", AsyncMock(return_value="overwatch")),
             patch.object(players.workspace_roster, "ensure_member_for_battle_tag", self.ensure),
             patch.object(players.workspace_roster, "list_roster", AsyncMock(return_value={MEMBER_ID: row})),
             patch.object(players.member_rank_service, "list_layer", AsyncMock(return_value={})),

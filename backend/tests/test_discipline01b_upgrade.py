@@ -26,7 +26,7 @@ from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postg
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
 PRE_REVISION = "discipline01"
-TARGET = "discipline01b"
+TARGET = "discipline01c"
 TEMPLATE_DB = "discipline01b_legacy_tpl"
 MIGRATED_DB = "discipline01b_migrated"
 REJECTED_DB = "discipline01b_rejected"

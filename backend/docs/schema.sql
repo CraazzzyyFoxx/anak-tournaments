@@ -931,14 +931,18 @@ CREATE TABLE balancer.member_hidden_rating (
 	updated_at TIMESTAMP WITH TIME ZONE,
 	workspace_id BIGINT NOT NULL,
 	workspace_member_id BIGINT NOT NULL,
-	role VARCHAR(16) NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
 	mu FLOAT NOT NULL,
 	sigma FLOAT NOT NULL,
 	PRIMARY KEY (id),
-	CONSTRAINT uq_member_hidden_rating_member_role UNIQUE (workspace_member_id, role),
+	CONSTRAINT uq_member_hidden_rating_member_role_id UNIQUE (workspace_member_id, role_id),
+	CONSTRAINT fk_member_hidden_rating_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
 	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE CASCADE
 );
+
+CREATE INDEX ix_balancer_member_hidden_rating_role_id ON balancer.member_hidden_rating (role_id);
 
 CREATE INDEX ix_balancer_member_hidden_rating_workspace_id ON balancer.member_hidden_rating (workspace_id);
 
@@ -949,9 +953,11 @@ CREATE TABLE balancer.member_rank (
 	workspace_id BIGINT NOT NULL,
 	workspace_member_id BIGINT NOT NULL,
 	author_user_id BIGINT,
-	role VARCHAR(16) NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
 	rank_value INTEGER NOT NULL,
 	PRIMARY KEY (id),
+	CONSTRAINT fk_member_rank_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
 	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE CASCADE,
 	FOREIGN KEY(author_user_id) REFERENCES auth."user" (id) ON DELETE CASCADE
@@ -959,13 +965,15 @@ CREATE TABLE balancer.member_rank (
 
 CREATE INDEX ix_balancer_member_rank_author_user_id ON balancer.member_rank (author_user_id);
 
+CREATE INDEX ix_balancer_member_rank_role_id ON balancer.member_rank (role_id);
+
 CREATE INDEX ix_balancer_member_rank_workspace_id ON balancer.member_rank (workspace_id);
 
 CREATE INDEX ix_balancer_member_rank_workspace_member_id ON balancer.member_rank (workspace_member_id);
 
-CREATE UNIQUE INDEX uq_member_rank_author ON balancer.member_rank (workspace_id, author_user_id, workspace_member_id, role) WHERE author_user_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_member_rank_author_role ON balancer.member_rank (workspace_id, author_user_id, workspace_member_id, role_id) WHERE author_user_id IS NOT NULL;
 
-CREATE UNIQUE INDEX uq_member_rank_canon ON balancer.member_rank (workspace_id, workspace_member_id, role) WHERE author_user_id IS NULL;
+CREATE UNIQUE INDEX uq_member_rank_canon_role ON balancer.member_rank (workspace_id, workspace_member_id, role_id) WHERE author_user_id IS NULL;
 
 CREATE TABLE balancer.registration (
 	id BIGSERIAL NOT NULL,

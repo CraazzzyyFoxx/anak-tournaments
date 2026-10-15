@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank` and `ingestion/` to `log_pro
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`discipline01b`** (116 revisions in `backend/migrations/versions/`).
+Alembic head: **`discipline01c`** (117 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -517,7 +517,8 @@ erDiagram
         timestamptz updated_at "nullable"
         bigint workspace_id FK
         bigint workspace_member_id FK
-        varchar(16) role
+        bigint dimension_id FK
+        bigint role_id FK
         float mu
         float sigma
     }
@@ -528,11 +529,16 @@ erDiagram
         bigint workspace_id FK
         bigint workspace_member_id FK
         bigint author_user_id FK "nullable"
-        varchar(16) role
+        bigint dimension_id FK
+        bigint role_id FK
         int rank_value
     }
 
     AUTH_USER |o--o{ BALANCER_MEMBER_RANK : "author_user_id"
+    CATALOG_ROLE ||--o{ BALANCER_MEMBER_HIDDEN_RATING : "dimension_id"
+    CATALOG_ROLE ||--o{ BALANCER_MEMBER_HIDDEN_RATING : "role_id"
+    CATALOG_ROLE ||--o{ BALANCER_MEMBER_RANK : "dimension_id"
+    CATALOG_ROLE ||--o{ BALANCER_MEMBER_RANK : "role_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_MEMBER_HIDDEN_RATING : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_MEMBER_RANK : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_MEMBER_HIDDEN_RATING : "workspace_member_id"
@@ -541,7 +547,7 @@ erDiagram
 
 Composite unique keys:
 
-- `BALANCER_MEMBER_HIDDEN_RATING` unique on (`workspace_member_id`, `role`)
+- `BALANCER_MEMBER_HIDDEN_RATING` unique on (`workspace_member_id`, `role_id`)
 <!-- /ERD:auto -->
 
 ## catalog — `catalog`

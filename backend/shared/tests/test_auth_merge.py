@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared import models
 from shared.core.errors import BaseAPIException
+from shared.repository import CatalogRoleRepository
 from shared.schemas.user_merge_auth import AuthMergeMembershipAction, AuthMergeOAuthDestination, AuthMergePolicy
 from shared.services.auth_merge import apply_auth_merge, preview_auth_merge
 from shared.testing.db import create_test_async_engine
@@ -21,6 +22,7 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.engine = create_test_async_engine()
         self.session = async_sessionmaker(self.engine, expire_on_commit=False)()
+        self.roles = await CatalogRoleRepository().rated_rows(self.session, discipline="overwatch", workspace_id=None)
         tag = uuid4().hex
         self.donor = models.AuthUser(
             email=f"donor-{tag}@test.invalid", username=f"donor-{tag}", hashed_password="donor-secret"
@@ -84,14 +86,16 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
             workspace_id=self.workspace.id,
             workspace_member_id=member.id,
             author_user_id=self.donor.id,
-            role="damage",
+            catalog_role=self.roles["damage"],
+            dimension_id=self.roles["damage"].dimension_id,
             rank_value=2345,
         )
         canon = models.MemberRank(
             workspace_id=self.workspace.id,
             workspace_member_id=member.id,
             author_user_id=None,
-            role="support",
+            catalog_role=self.roles["support"],
+            dimension_id=self.roles["support"].dimension_id,
             rank_value=3456,
         )
         session_id = uuid4()
@@ -138,7 +142,9 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
             )
         )
         self.assertTrue(all(row["workspace_member_id"] == target_member.id for row in ranks))
-        self.assertEqual(self.survivor.id, next(row for row in ranks if row["role"] == "damage")["author_user_id"])
+        self.assertEqual(
+            self.survivor.id, next(row for row in ranks if row["role_id"] == self.roles["damage"].id)["author_user_id"]
+        )
         self.assertEqual(
             self.survivor.id,
             await self.session.scalar(
@@ -447,14 +453,16 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
                     workspace_id=self.workspace.id,
                     workspace_member_id=source_member.id,
                     author_user_id=None,
-                    role="damage",
+                    catalog_role=self.roles["damage"],
+                    dimension_id=self.roles["damage"].dimension_id,
                     rank_value=1234,
                 ),
                 models.MemberRank(
                     workspace_id=self.workspace.id,
                     workspace_member_id=target_member.id,
                     author_user_id=None,
-                    role="damage",
+                    catalog_role=self.roles["damage"],
+                    dimension_id=self.roles["damage"].dimension_id,
                     rank_value=4321,
                 ),
             ]
@@ -686,7 +694,8 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
                     workspace_id=self.workspace.id,
                     workspace_member_id=subject,
                     author_user_id=author,
-                    role="damage",
+                    catalog_role=self.roles["damage"],
+                    dimension_id=self.roles["damage"].dimension_id,
                     rank_value=rank,
                 )
             )
@@ -830,7 +839,8 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
             workspace_id=self.workspace.id,
             workspace_member_id=target_member.id,
             author_user_id=self.survivor.id,
-            role="damage",
+            catalog_role=self.roles["damage"],
+            dimension_id=self.roles["damage"].dimension_id,
             rank_value=1111,
         )
         self.session.add(incoming)
@@ -839,7 +849,8 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
             workspace_id=self.workspace.id,
             workspace_member_id=source_member.id,
             author_user_id=self.donor.id,
-            role="damage",
+            catalog_role=self.roles["damage"],
+            dimension_id=self.roles["damage"].dimension_id,
             rank_value=2222,
         )
         self.session.add(existing)

@@ -27,8 +27,8 @@ from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postg
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
 PRE_REVISION = "mixround01"
-# The reconcile file covers both revisions (P1 Deviation 2): the release runs them in one upgrade head.
-TARGET = "discipline01b"
+# The reconcile covers the whole release chain, run in one upgrade head.
+TARGET = "discipline01c"
 TEMPLATE_DB = "discipline01_legacy_tpl"
 MIGRATED_DB = "discipline01_migrated"
 REJECTED_DB = "discipline01_rejected"

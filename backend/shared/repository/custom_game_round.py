@@ -99,7 +99,7 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
 
     @staticmethod
     def seat_rows_select(workspace_id: int) -> sa.Select:
-        """The one seat join (unexecuted): a row per seat of this workspace's rounds, with its role, its frozen
+        """The one seat join (unexecuted): a row per seat of this workspace's rounds, with its rated leaf's code and id, its frozen
         rank delta and both sides' scores -- a round stores two scores and no winner flag. A mix seat has at most
         one rated-dimension leaf, so the outer join never fans out. ``seats()`` executes it; the rank overview
         composes it as a subquery."""
@@ -119,6 +119,7 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
                 side.slot,
                 seat.workspace_member_id,
                 role.role,
+                role.role_id,
                 seat.rank,
                 member.rank_delta_applied,
                 side.score.label("own_score"),

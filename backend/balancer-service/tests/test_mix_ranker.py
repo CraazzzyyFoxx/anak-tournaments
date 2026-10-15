@@ -132,6 +132,7 @@ class HistoryFoldTests(IsolatedAsyncioTestCase):
                         own_score=float(score),
                         workspace_member_id=member,
                         role=role,
+                        role_id={"tank": 1, "damage": 2, "support": 3}[role],
                         rank=rank,
                     )
                     for member, role, rank in seats
@@ -144,7 +145,7 @@ class HistoryFoldTests(IsolatedAsyncioTestCase):
         service = in_memory_ranker()
         for home, away, home_score, away_score in self._MATCHES:
             winner = winner_slot(1, home_score, away_score)
-            await service.rate_match(None, workspace_id=1, teams=[home, away], winner=winner)
+            await service.rate_match(None, workspace_id=1, discipline="overwatch", teams=[home, away], winner=winner)
         recorded = dict(service.hidden.book)
 
         service.mix_rounds.rows = self._history_rows()
@@ -159,16 +160,34 @@ class HistoryFoldTests(IsolatedAsyncioTestCase):
     async def test_a_seat_without_a_role_counts_for_its_team_but_is_not_stored(self) -> None:
         service = in_memory_ranker()
         service.mix_rounds.rows = [
-            SimpleNamespace(encounter_id=1, slot=1, own_score=1.0, workspace_member_id=9, role=None, rank=4000),
-            SimpleNamespace(encounter_id=1, slot=2, own_score=0.0, workspace_member_id=2, role="tank", rank=2400),
+            SimpleNamespace(
+                encounter_id=1, slot=1, own_score=1.0, workspace_member_id=9, role=None, role_id=None, rank=4000
+            ),
+            SimpleNamespace(
+                encounter_id=1, slot=2, own_score=0.0, workspace_member_id=2, role="tank", role_id=1, rank=2400
+            ),
             # A one-sided record is skipped rather than rated against nobody.
-            SimpleNamespace(encounter_id=2, slot=1, own_score=1.0, workspace_member_id=2, role="tank", rank=2400),
+            SimpleNamespace(
+                encounter_id=2, slot=1, own_score=1.0, workspace_member_id=2, role="tank", role_id=1, rank=2400
+            ),
         ]
         matches, ratings = await service.rebuild(None, 1)
 
         self.assertEqual((matches, ratings), (1, 1))
         # Losing to a 4000 costs little; it is the absent seat's strength that says so.
-        self.assertLess(service.hidden.book[(2, "tank")][0], 0.0)
+        self.assertLess(service.hidden.book[(2, 1)][0], 0.0)
+
+    async def test_an_open_slot_seat_is_rated_but_not_stored(self) -> None:
+        service = in_memory_ranker()
+        _ranker, rated = await service.rate_match(
+            None,
+            workspace_id=1,
+            discipline="overwatch",
+            teams=[[(1, "tank", 2500), (2, "flex", 2400)], [(3, "tank", 2500), (4, "support", 2400)]],
+            winner=1,
+        )
+        self.assertEqual(len(rated[0]), 2)
+        self.assertEqual(sorted(service.hidden.book), [(1, 1), (3, 1), (4, 3)])
 
     async def test_saving_knobs_rebuilds_only_when_the_hidden_scale_changes(self) -> None:
         service = in_memory_ranker()

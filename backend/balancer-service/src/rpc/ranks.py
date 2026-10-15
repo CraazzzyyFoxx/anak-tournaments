@@ -17,7 +17,8 @@ from faststream.rabbit import RabbitMessage
 from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.disciplines import rated_role_codes
+from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.rpc import _common as c
 from src.services.rank_overview import SORTS, RankOverviewFilters, parse_layers, rank_overview_page
@@ -68,7 +69,7 @@ def _bool(data: dict[str, Any], key: str) -> bool:
     return raw is not None and str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
-def _filters(data: dict[str, Any]) -> RankOverviewFilters:
+def _filters(data: dict[str, Any], discipline: str) -> RankOverviewFilters:
     page = _int(data, "page") or 1
     per_page = _int(data, "per_page") or 50
     sort = str(c.q1(data, "sort") or "display_name")
@@ -79,7 +80,7 @@ def _filters(data: dict[str, Any]) -> RankOverviewFilters:
         query=query or None,
         layers=parse_layers(c.q(data, "layer")),
         author_user_ids=_ints(data, "author_user_id"),
-        roles=tuple(role for role in (c.q(data, "role") or []) if role in REGISTRATION_ROLE_CODES),
+        roles=tuple(role for role in (c.q(data, "role") or []) if role in rated_role_codes(discipline)),
         rank_min=_int(data, "rank_min"),
         rank_max=_int(data, "rank_max"),
         differs_from_canon=_bool(data, "differs_from_canon"),
@@ -102,8 +103,13 @@ def register(broker: Any, logger: Any) -> None:
             # Same gate as writing the canon: this read puts every author's
             # private book on one screen, which only roster management sees.
             c.require_workspace_permission(data, user, workspace_id, "team", "update")
-            filters = _filters(data)
-            rows, total = await rank_overview_page(session, workspace_id=workspace_id, filters=filters)
+            discipline = await workspace_discipline(
+                session, workspace_id=workspace_id, requested=c.q1(data, "discipline")
+            )
+            filters = _filters(data, discipline)
+            rows, total = await rank_overview_page(
+                session, workspace_id=workspace_id, discipline=discipline, filters=filters
+            )
             return pagination.paginated_dict(
                 rows, total, pagination.PaginationParams(page=filters.page, per_page=filters.per_page)
             )

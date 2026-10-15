@@ -467,6 +467,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     layer_rows = await custom_game_service.ranks.list_layer_rows(
         session,
         workspace_id=game.workspace_id,
+        discipline=game.discipline,
         member_ids=member_ids,
         author_user_id=game.host_user_id,
     )

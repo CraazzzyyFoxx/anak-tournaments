@@ -1,6 +1,6 @@
 -- Run against production before the migration window. Every numbered query must return zero rows.
 -- The revision runs these same checks first; tests/test_discipline01_preflight_sql.py keeps them text for text.
--- discipline01b (P2) appends classes 3-6 and two counts.
+-- discipline01b (P2) appends classes 3-8 and two counts; discipline01c (P3) appends classes 9-10 and one count.
 
 \echo '1. maps whose names collide after slugify'
 SELECT s.slug, array_agg(s.id ORDER BY s.id) AS map_ids, array_agg(s.name ORDER BY s.id) AS names
@@ -207,3 +207,23 @@ SELECT count(*) AS flex_rows_with_a_sub_role
             OR (count(*) FILTER (WHERE r.role NOT IN ('tank', 'damage', 'support', 'flex')) = 1
                 AND count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support', 'flex')) = 0)
          ORDER BY r.team_member_id;
+
+\echo '9. member ranks that collide once their role is normalized'
+        SELECT m.workspace_id, m.author_user_id, m.workspace_member_id, lower(btrim(m.role)) AS role, count(*) AS row_count
+          FROM balancer.member_rank m
+         GROUP BY m.workspace_id, m.author_user_id, m.workspace_member_id, lower(btrim(m.role))
+        HAVING count(*) > 1
+         ORDER BY m.workspace_id, m.author_user_id, m.workspace_member_id, lower(btrim(m.role));
+
+\echo '10. hidden ratings that collide once their role is normalized'
+        SELECT h.workspace_member_id, lower(btrim(h.role)) AS role, count(*) AS row_count
+          FROM balancer.member_hidden_rating h
+         GROUP BY h.workspace_member_id, lower(btrim(h.role))
+        HAVING count(*) > 1
+         ORDER BY h.workspace_member_id, lower(btrim(h.role));
+
+\echo 'count: flex ranks and hidden ratings dropped (kept in balancer.discipline01c_dropped_ranks)'
+SELECT count(*) AS flex_ranks_dropped
+  FROM (SELECT 1 FROM balancer.member_rank m WHERE lower(btrim(m.role)) = 'flex'
+        UNION ALL
+        SELECT 1 FROM balancer.member_hidden_rating h WHERE lower(btrim(h.role)) = 'flex') f;

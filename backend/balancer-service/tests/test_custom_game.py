@@ -2504,7 +2504,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
 
         book = self.ranker.hidden.book
-        self.assertGreater(book[(7, "tank")][0], book[(9, "tank")][0])
+        self.assertGreater(book[(7, 1)][0], book[(9, 1)][0])
         self.assertTrue(all(s.rank_delta_applied is None for team in self._draft().seats for s in team))
 
     async def test_undo_gives_back_each_ranker_delta_and_rebuilds_the_hidden_book(self) -> None:
@@ -2516,7 +2516,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.mix_rounds.get_for_game.return_value = match
         self.mix_rounds.newest_id_for_lobby.return_value = 501
         self.ranks.list_layer = AsyncMock(return_value={(7, "tank"): 2431, (9, "tank"): 2372})
-        self.ranker.hidden.book = {(7, "tank"): (5.0, 24.0), (9, "tank"): (-5.0, 24.0)}
+        self.ranker.hidden.book = {(7, 1): (5.0, 24.0), (9, 1): (-5.0, 24.0)}
 
         await self.service.undo_last_match(
             self.session, workspace_id=1, custom_game_id=11, match_id=501, actor_user_id=9
@@ -2536,7 +2536,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.ranks.resolve.return_value = _ranks(7)
         self.host_prefs.get_by_user.return_value = _prefs(rating_mode="ranker")
         # A confident hidden tank rating far above the open 2500; nothing hidden for damage.
-        self.ranker.hidden.book = {(7, "tank"): (Ranker().initial(3500).mu, 3.0)}
+        self.ranker.hidden.book = {(7, 1): (Ranker().initial(3500).mu, 3.0)}
         self.run_balance.return_value = lobby_document(
             [
                 {

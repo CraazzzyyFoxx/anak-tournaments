@@ -36,14 +36,15 @@ from shared import models  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.models.tournament.player_role import assignment_of  # noqa: E402
-from shared.repository import CatalogRoleRepository  # noqa: E402
+from shared.repository import CatalogRoleRepository, MemberHiddenRatingRepository  # noqa: E402
 from shared.services.division_grid.access import get_effective_division_grid  # noqa: E402
 from shared.services.member_rank import MIX_ORDER, TOURNAMENT_ORDER, member_rank_service  # noqa: E402
-from shared.services.ontology import rated_leaf  # noqa: E402
+from shared.services.ontology import project_disciplines, rated_leaf  # noqa: E402
 from shared.testing import create_test_async_engine, division_grid  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
 from src.rpc import ranks as ranks_rpc  # noqa: E402
 from src.schemas.ranks import LAYERS  # noqa: E402
+from src.services.mix_ranker import mix_ranker_service  # noqa: E402
 from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
 from src.services.rank_overview import (  # noqa: E402
     RankOverviewFilters,
@@ -118,6 +119,7 @@ class RankOverviewPermissionTests(IsolatedAsyncioTestCase):
         with (
             patch.object(ranks_rpc, "_SF", _FakeSession),
             patch.object(ranks_rpc, "rank_overview_page", self.page),
+            patch.object(ranks_rpc, "workspace_discipline", AsyncMock(return_value="overwatch")),
         ):
             return await broker.handlers[SUBJECT]({"workspace_id": WORKSPACE_ID, "identity": identity}, None)
 
@@ -214,11 +216,16 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             member = models.WorkspaceMember(workspace_id=workspace.id, player_id=player.id, display_name="Parity")
             s.add(member)
             await s.flush()
+            roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
 
             # canon: tank only, so damage has to fall through to OW.
             s.add(
                 models.MemberRank(
-                    workspace_id=workspace.id, workspace_member_id=member.id, role="tank", rank_value=2500
+                    workspace_id=workspace.id,
+                    workspace_member_id=member.id,
+                    catalog_role=roles["tank"],
+                    dimension_id=roles["tank"].dimension_id,
+                    rank_value=2500,
                 )
             )
             # the author's own book: tank corrected upward, support invented.
@@ -228,21 +235,28 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                         workspace_id=workspace.id,
                         workspace_member_id=member.id,
                         author_user_id=author.id,
-                        role="tank",
+                        catalog_role=roles["tank"],
+                        dimension_id=roles["tank"].dimension_id,
                         rank_value=2700,
                     ),
                     models.MemberRank(
                         workspace_id=workspace.id,
                         workspace_member_id=member.id,
                         author_user_id=author.id,
-                        role="support",
+                        catalog_role=roles["support"],
+                        dimension_id=roles["support"].dimension_id,
                         rank_value=1800,
                     ),
                 ]
             )
             s.add(
                 models.MemberHiddenRating(
-                    workspace_id=workspace.id, workspace_member_id=member.id, role="tank", mu=150.0, sigma=20.0
+                    workspace_id=workspace.id,
+                    workspace_member_id=member.id,
+                    catalog_role=roles["tank"],
+                    dimension_id=roles["tank"].dimension_id,
+                    mu=150.0,
+                    sigma=20.0,
                 )
             )
 
@@ -410,7 +424,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         overrides.setdefault("per_page", 200)
         async with self.Session() as session:
             return await rank_overview_page(
-                session, workspace_id=self.workspace_id, filters=RankOverviewFilters(**overrides)
+                session,
+                workspace_id=self.workspace_id,
+                discipline="overwatch",
+                filters=RankOverviewFilters(**overrides),
             )
 
     async def test_every_layer_reaches_the_wire(self) -> None:
@@ -474,6 +491,100 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert casual["context"]["lobby_index"] == 1
         assert casual["author_user_id"] == self.auth_user_id
         assert casual["at"] is not None
+
+    async def test_overlapping_support_ranks_are_isolated_across_every_overview_layer(self) -> None:
+        async with self.Session() as session:
+            await project_disciplines(session)
+            for discipline, value in (("overwatch", 1600), ("lol", 3300)):
+                await member_rank_service.set_ranks(
+                    session,
+                    workspace_id=self.workspace_id,
+                    discipline=discipline,
+                    workspace_member_id=self.member_id,
+                    ranks={"support": value},
+                )
+            await member_rank_service.set_ranks(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="lol",
+                workspace_member_id=self.member_id,
+                ranks={"support": 3400},
+                author_user_id=self.auth_user_id,
+            )
+            support = (await CatalogRoleRepository().rated_rows(session, discipline="lol", workspace_id=None))[
+                "support"
+            ]
+            await MemberHiddenRatingRepository().upsert_many(
+                session,
+                workspace_id=self.workspace_id,
+                ratings={(self.member_id, support.id): (140.0, 20.0)},
+            )
+            rows, total = await rank_overview_page(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="lol",
+                filters=RankOverviewFilters(layers=LAYERS, per_page=200),
+            )
+            assert total == 5
+            assert {row["role"] for row in rows} == {"support"}
+            values = {row["layer"]: row["rank_value"] for row in rows}
+            assert values == {
+                "canon": 3300,
+                "author": 3400,
+                "hidden": round(Ranker().projection(HiddenRating(140.0, 20.0))),
+                "effective_tournament": 3300,
+                "effective_mix": 3400,
+            }
+            ow, _ = await rank_overview_page(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="overwatch",
+                filters=RankOverviewFilters(layers=("canon",), roles=("support",)),
+            )
+            assert [row["rank_value"] for row in ow] == [1600]
+            await session.rollback()
+
+    async def test_ranker_stores_and_reads_overlapping_roles_in_separate_disciplines(self) -> None:
+        async with self.Session() as session:
+            await project_disciplines(session)
+            hidden = MemberHiddenRatingRepository()
+            catalogs = {
+                code: await CatalogRoleRepository().rated_rows(session, discipline=code, workspace_id=None)
+                for code in ("overwatch", "lol")
+            }
+            ow_key = (self.member_id, catalogs["overwatch"]["support"].id)
+            lol_key = (self.member_id, catalogs["lol"]["support"].id)
+            await hidden.upsert_many(
+                session,
+                workspace_id=self.workspace_id,
+                ratings={ow_key: (Ranker().initial(1700).mu, 3.0), lol_key: (Ranker().initial(3500).mu, 3.0)},
+            )
+            open_ranks = {(self.member_id, "support"): 2500}
+            ow = await mix_ranker_service.effective_ratings(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="overwatch",
+                open_ranks=open_ranks,
+            )
+            lol = await mix_ranker_service.effective_ratings(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="lol",
+                open_ranks=open_ranks,
+            )
+            assert ow[(self.member_id, "support")] < 2500 < lol[(self.member_id, "support")]
+            before = await hidden.for_members(session, workspace_id=self.workspace_id, member_ids=[self.member_id])
+            await mix_ranker_service.rate_match(
+                session,
+                workspace_id=self.workspace_id,
+                discipline="lol",
+                teams=[[(self.member_id, "support", 2500)], [(None, "support", 2500)]],
+                winner=1,
+            )
+            after = await hidden.for_members(session, workspace_id=self.workspace_id, member_ids=[self.member_id])
+            assert after[ow_key] == before[ow_key]
+            assert after[lol_key] != before[lol_key]
+            await session.rollback()
 
     async def test_effective_tournament_matches_the_resolver(self) -> None:
         rows, _ = await self._page(layers=("effective_tournament",))

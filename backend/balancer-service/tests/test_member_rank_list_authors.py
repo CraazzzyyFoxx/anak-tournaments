@@ -33,6 +33,7 @@ from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.member_rank.member_rank import MemberRank  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
+from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.member_rank import member_rank_service  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 
@@ -76,6 +77,7 @@ class MemberRankListAuthorsTests(IsolatedAsyncioTestCase):
             unranked_member = WorkspaceMember(workspace_id=workspace.id, player_id=unranked.id)
             session.add_all([first_member, second_member, unranked_member])
             await session.flush()
+            roles = await CatalogRoleRepository().rated_rows(session, discipline="overwatch", workspace_id=None)
 
             session.add_all(
                 [
@@ -85,21 +87,24 @@ class MemberRankListAuthorsTests(IsolatedAsyncioTestCase):
                         workspace_id=workspace.id,
                         workspace_member_id=first_member.id,
                         author_user_id=busy_host.id,
-                        role="tank",
+                        catalog_role=roles["tank"],
+                        dimension_id=roles["tank"].dimension_id,
                         rank_value=2500,
                     ),
                     MemberRank(
                         workspace_id=workspace.id,
                         workspace_member_id=first_member.id,
                         author_user_id=busy_host.id,
-                        role="damage",
+                        catalog_role=roles["damage"],
+                        dimension_id=roles["damage"].dimension_id,
                         rank_value=2400,
                     ),
                     MemberRank(
                         workspace_id=workspace.id,
                         workspace_member_id=second_member.id,
                         author_user_id=busy_host.id,
-                        role="tank",
+                        catalog_role=roles["tank"],
+                        dimension_id=roles["tank"].dimension_id,
                         rank_value=2500,
                     ),
                     # quiet_host ranked exactly one member.
@@ -107,7 +112,8 @@ class MemberRankListAuthorsTests(IsolatedAsyncioTestCase):
                         workspace_id=workspace.id,
                         workspace_member_id=second_member.id,
                         author_user_id=quiet_host.id,
-                        role="support",
+                        catalog_role=roles["support"],
+                        dimension_id=roles["support"].dimension_id,
                         rank_value=2300,
                     ),
                     # The workspace canon (no author) must never appear as an author.
@@ -115,7 +121,8 @@ class MemberRankListAuthorsTests(IsolatedAsyncioTestCase):
                         workspace_id=workspace.id,
                         workspace_member_id=unranked_member.id,
                         author_user_id=None,
-                        role="tank",
+                        catalog_role=roles["tank"],
+                        dimension_id=roles["tank"].dimension_id,
                         rank_value=2500,
                     ),
                 ]

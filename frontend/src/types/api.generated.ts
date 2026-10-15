@@ -10517,7 +10517,7 @@ export interface paths {
         };
         /**
          * List workspace players
-         * @description Permission: workspace membership (any role); no resource grant is checked. Returns a page of the workspace roster carrying two rank dictionaries that are never merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, which is what lets a row say whether a number is its own or inherited. Another organiser's book is readable through `author_user_id`.
+         * @description Permission: workspace membership (any role); no resource grant is checked. Returns a page of the workspace roster carrying two rank dictionaries that are never merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, which is what lets a row say whether a number is its own or inherited. Another organiser's book is readable through `author_user_id`. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).
          *
          *     RPC subject: `rpc.balancer.players.list`
          */
@@ -10525,7 +10525,7 @@ export interface paths {
         put?: never;
         /**
          * Upsert workspace player
-         * @description Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row; 422 when battle_tag is missing or blank.
+         * @description Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row; 422 when battle_tag is missing or blank. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).
          *
          *     RPC subject: `rpc.balancer.players.upsert`
          */
@@ -10590,7 +10590,7 @@ export interface paths {
         get?: never;
         /**
          * Set workspace player ranks
-         * @description Permission: workspace membership (any role); no resource grant is checked. Writes one rank layer for a member and returns that layer. `scope: "workspace"` edits the shared canon every author inherits; `scope: "author"` edits the caller's own book and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes roles from the layer instead of zeroing them, so a cleared author rank falls back to canon, while an omitted role is left alone. 404 when the member belongs to another workspace.
+         * @description Permission: workspace membership (any role); no resource grant is checked. Writes one rank layer for a member and returns that layer. `scope: "workspace"` edits the shared canon every author inherits; `scope: "author"` edits the caller's own book and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes roles from the layer instead of zeroing them, so a cleared author rank falls back to canon, while an omitted role is left alone. 404 when the member belongs to another workspace. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another). A role code outside that discipline's rated module roles -- `flex` included -- is 422 `unknown_role`.
          *
          *     RPC subject: `rpc.balancer.players.set_ranks`
          */
@@ -10661,7 +10661,7 @@ export interface paths {
         };
         /**
          * List all rank values in the workspace
-         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database.
+         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid for every row. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks are held on; omitted, the workspace's first enabled discipline (422 `discipline_not_enabled` for another).
          *
          *     RPC subject: `rpc.balancer.ranks.list`
          */
@@ -69009,6 +69009,7 @@ export interface operations {
     get__api_v1_balancer_workspaces__workspace_id__players: {
         parameters: {
             query?: {
+                discipline?: string;
                 page?: number;
                 per_page?: number;
                 query?: string;
@@ -69654,6 +69655,7 @@ export interface operations {
     get__api_v1_balancer_workspaces__workspace_id__ranks: {
         parameters: {
             query?: {
+                discipline?: string;
                 page?: number;
                 per_page?: number;
                 player_id?: number;

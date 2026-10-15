@@ -15,7 +15,7 @@ from shared.disciplines import DISCIPLINES
 from shared.domain.player_sub_roles import normalize_role, workspace_sub_role_code
 from shared.domain.roles import UnknownRole
 from shared.domain.roster_shape import FLEX_SLOT_CODE
-from shared.repository import CatalogRoleRepository
+from shared.repository import CatalogRoleRepository, WorkspaceRepository
 from shared.schemas.role import RoleRef
 
 __all__ = (
@@ -25,6 +25,7 @@ __all__ = (
     "rated_leaf",
     "resolve_form_role",
     "resolve_role_ref",
+    "workspace_discipline",
 )
 
 _roles = CatalogRoleRepository()
@@ -43,6 +44,17 @@ def assert_discipline_enabled(workspace: Any, discipline: str) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"discipline_not_enabled: {discipline!r} is not enabled for this workspace",
         )
+
+
+async def workspace_discipline(session: AsyncSession, *, workspace_id: int, requested: str | None) -> str:
+    """Requested enabled discipline, or the workspace's first enabled discipline (D89)."""
+    workspace = await WorkspaceRepository().get(session, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    if requested is None:
+        return workspace.disciplines_enabled[0]
+    assert_discipline_enabled(workspace, requested)
+    return requested
 
 
 def normalize_disciplines_enabled(codes: Sequence[str]) -> list[str]:

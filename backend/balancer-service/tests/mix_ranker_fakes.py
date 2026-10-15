@@ -6,28 +6,29 @@ from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 from typing import Any
 
+from shared.testing.roles import rated_catalog
 from src.services.mix_ranker import MixRankerService
 
 
 class InMemoryHiddenRatings:
-    """``balancer.member_hidden_rating`` as a dict keyed by ``(member, role)``."""
+    """``balancer.member_hidden_rating`` as a dict keyed by ``(member, role_id)``."""
 
     def __init__(self) -> None:
-        self.book: dict[tuple[int, str], tuple[float, float]] = {}
+        self.book: dict[tuple[int, int], tuple[float, float]] = {}
 
     async def for_members(
         self, _session: Any, *, workspace_id: int, member_ids: Sequence[int], for_update: bool = False
-    ) -> dict[tuple[int, str], tuple[float, float]]:
+    ) -> dict[tuple[int, int], tuple[float, float]]:
         wanted = set(member_ids)
         return {key: value for key, value in self.book.items() if key[0] in wanted}
 
     async def upsert_many(
-        self, _session: Any, *, workspace_id: int, ratings: Mapping[tuple[int, str], tuple[float, float]]
+        self, _session: Any, *, workspace_id: int, ratings: Mapping[tuple[int, int], tuple[float, float]]
     ) -> None:
         self.book.update(ratings)
 
     async def replace_for_workspace(
-        self, _session: Any, *, workspace_id: int, ratings: Mapping[tuple[int, str], tuple[float, float]]
+        self, _session: Any, *, workspace_id: int, ratings: Mapping[tuple[int, int], tuple[float, float]]
     ) -> None:
         self.book = dict(ratings)
 
@@ -57,6 +58,13 @@ class _History:
         return list(self.rows)
 
 
+class _Roles:
+    async def rated_rows(self, _session: Any, *, discipline: str, workspace_id: int | None) -> dict[str, Any]:
+        return rated_catalog(discipline_code=discipline)
+
+
 def in_memory_ranker(ranker_json: Mapping[str, Any] | None = None) -> MixRankerService:
     """A real ``MixRankerService`` over dicts; reach the fakes via ``.hidden`` / ``.mix_rounds``."""
-    return MixRankerService(hidden=InMemoryHiddenRatings(), configs=_Configs(ranker_json), mix_rounds=_History())
+    return MixRankerService(
+        hidden=InMemoryHiddenRatings(), configs=_Configs(ranker_json), mix_rounds=_History(), roles=_Roles()
+    )

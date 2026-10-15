@@ -1,6 +1,6 @@
 {
   "_generated_by": "backend/scripts/export_erd.py -- do not edit by hand",
-  "alembic_head": "discipline01b",
+  "alembic_head": "discipline01c",
   "packages": [
     {
       "key": "achievements",
@@ -561,7 +561,7 @@
     },
     {
       "key": "member_rank",
-      "mermaid": "erDiagram\n    BALANCER_MEMBER_HIDDEN_RATING {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint workspace_id FK\n        bigint workspace_member_id FK\n        varchar(16) role\n        float mu\n        float sigma\n    }\n    BALANCER_MEMBER_RANK {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint workspace_id FK\n        bigint workspace_member_id FK\n        bigint author_user_id FK \"nullable\"\n        varchar(16) role\n        int rank_value\n    }\n\n    AUTH_USER |o--o{ BALANCER_MEMBER_RANK : \"author_user_id\"\n    PUBLIC_WORKSPACE ||--o{ BALANCER_MEMBER_HIDDEN_RATING : \"workspace_id\"\n    PUBLIC_WORKSPACE ||--o{ BALANCER_MEMBER_RANK : \"workspace_id\"\n    PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_MEMBER_HIDDEN_RATING : \"workspace_member_id\"\n    PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_MEMBER_RANK : \"workspace_member_id\"",
+      "mermaid": "erDiagram\n    BALANCER_MEMBER_HIDDEN_RATING {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint workspace_id FK\n        bigint workspace_member_id FK\n        bigint dimension_id FK\n        bigint role_id FK\n        float mu\n        float sigma\n    }\n    BALANCER_MEMBER_RANK {\n        bigint id PK\n        timestamptz created_at\n        timestamptz updated_at \"nullable\"\n        bigint workspace_id FK\n        bigint workspace_member_id FK\n        bigint author_user_id FK \"nullable\"\n        bigint dimension_id FK\n        bigint role_id FK\n        int rank_value\n    }\n\n    AUTH_USER |o--o{ BALANCER_MEMBER_RANK : \"author_user_id\"\n    CATALOG_ROLE ||--o{ BALANCER_MEMBER_HIDDEN_RATING : \"dimension_id\"\n    CATALOG_ROLE ||--o{ BALANCER_MEMBER_HIDDEN_RATING : \"role_id\"\n    CATALOG_ROLE ||--o{ BALANCER_MEMBER_RANK : \"dimension_id\"\n    CATALOG_ROLE ||--o{ BALANCER_MEMBER_RANK : \"role_id\"\n    PUBLIC_WORKSPACE ||--o{ BALANCER_MEMBER_HIDDEN_RATING : \"workspace_id\"\n    PUBLIC_WORKSPACE ||--o{ BALANCER_MEMBER_RANK : \"workspace_id\"\n    PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_MEMBER_HIDDEN_RATING : \"workspace_member_id\"\n    PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_MEMBER_RANK : \"workspace_member_id\"",
       "schemas": [
         "balancer"
       ],
@@ -573,7 +573,7 @@
         {
           "columns": [
             "workspace_member_id",
-            "role"
+            "role_id"
           ],
           "table": "BALANCER_MEMBER_HIDDEN_RATING"
         }

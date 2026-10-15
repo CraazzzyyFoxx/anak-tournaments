@@ -28,10 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.social import SocialProvider
+from shared.disciplines import discipline as discipline_spec
+from shared.disciplines import rated_role_codes
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.models.ranks.overwatch_rank import BattleTagRankState, UserRankSnapshot
-from shared.repository import CustomGameRoundRepository
+from shared.repository import CatalogRoleRepository, CustomGameRoundRepository
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.rank_snapshots import OW_RANK_MAX_AGE
 
@@ -237,6 +239,8 @@ def _ow_latest_cte(members: Any) -> Any:
 
 def _branches(
     workspace_id: int,
+    discipline: str,
+    dimension_id: int | None,
     filters: RankOverviewFilters,
     members: Any,
     ws_grid: DivisionGrid,
@@ -252,7 +256,12 @@ def _branches(
             _at(rank).label("at"),
             rank.id.label("row_id"),
         )
-        .where(rank.workspace_id == workspace_id, rank.author_user_id.is_(None))
+        .where(
+            rank.workspace_id == workspace_id,
+            rank.author_user_id.is_(None),
+            rank.dimension_id == dimension_id,
+            rank.catalog_role.has(models.CatalogRole.workspace_id.is_(None)),
+        )
         .cte("rank_canon")
     )
     book = (
@@ -264,12 +273,21 @@ def _branches(
             _at(rank).label("at"),
             rank.id.label("row_id"),
         )
-        .where(rank.workspace_id == workspace_id, rank.author_user_id.is_not(None))
+        .where(
+            rank.workspace_id == workspace_id,
+            rank.author_user_id.is_not(None),
+            rank.dimension_id == dimension_id,
+            rank.catalog_role.has(models.CatalogRole.workspace_id.is_(None)),
+        )
         .cte("rank_book")
     )
-    roles = sa.values(sa.column("role", sa.String), name="rank_roles").data([(r,) for r in REGISTRATION_ROLE_CODES])
+    roles = sa.values(sa.column("role", sa.String), name="rank_roles").data(
+        [(r,) for r in rated_role_codes(discipline)]
+    )
 
-    needs_ow = bool(wanted & {"ow", "effective_tournament", "effective_mix"})
+    # The OverFast snapshot SQL twin of OW's native layer; another native module needs its own twin.
+    native = discipline_spec(discipline).native_ranks is not None
+    needs_ow = native and bool(wanted & {"ow", "effective_tournament", "effective_mix"})
     ow_latest = _ow_latest_cte(members) if needs_ow else None
     ow_best = (
         sa.select(
@@ -317,7 +335,7 @@ def _branches(
             .outerjoin(canon, sa.and_(canon.c.member_id == members.c.member_id, canon.c.role == book.c.role))
         )
 
-    if "ow" in wanted and ow_latest is not None:
+    if native and "ow" in wanted and ow_latest is not None:
         out.append(
             sa.select(
                 *_row(
@@ -349,7 +367,12 @@ def _branches(
                     at=_at(hidden),
                     row_id=hidden.id,
                 )
-            ).join_from(members, hidden, hidden.workspace_member_id == members.c.member_id)
+            )
+            .join_from(members, hidden, hidden.workspace_member_id == members.c.member_id)
+            .where(
+                hidden.dimension_id == dimension_id,
+                hidden.catalog_role.has(models.CatalogRole.workspace_id.is_(None)),
+            )
         )
 
     if "effective_tournament" in wanted:
@@ -440,6 +463,7 @@ def _branches(
                 registration.deleted_at.is_(None),
                 role_row.rank_value.is_not(None),
                 tournament.workspace_id == workspace_id,
+                tournament.discipline == discipline,
             )
         )
 
@@ -465,7 +489,7 @@ def _branches(
             .join_from(members, player, player.workspace_member_id == members.c.member_id)
             .join(team, team.id == player.team_id)
             .join(tournament, tournament.id == player.tournament_id)
-            .where(tournament.workspace_id == workspace_id)
+            .where(tournament.workspace_id == workspace_id, tournament.discipline == discipline)
         )
 
     if "casual" in wanted:
@@ -477,7 +501,7 @@ def _branches(
                 *_row(
                     "casual",
                     members,
-                    role=seat_rows.c.role,
+                    role=sa.func.coalesce(seat_rows.c.role, ""),
                     rank_value=seat_rows.c.rank,
                     author_user_id=game.host_user_id,
                     delta=sa.func.coalesce(
@@ -498,6 +522,7 @@ def _branches(
             )
             .join_from(members, seat_rows, seat_rows.c.workspace_member_id == members.c.member_id)
             .join(game, game.id == seat_rows.c.custom_game_id)
+            .where(game.discipline == discipline)
         )
 
     return out
@@ -580,6 +605,7 @@ async def rank_overview_page(
     session: AsyncSession,
     *,
     workspace_id: int,
+    discipline: str,
     filters: RankOverviewFilters,
 ) -> tuple[list[dict[str, Any]], int]:
     """One page of the flat rank table, plus the exact total behind it."""
@@ -587,9 +613,16 @@ async def rank_overview_page(
         return [], 0
 
     ws_grid = await get_effective_division_grid(session, workspace_id)
+    dimension_id = await CatalogRoleRepository().rated_dimension_id(session, discipline=discipline)
     members = _members_cte(workspace_id, filters)
     branches = _branches(
-        workspace_id, filters, members, ws_grid, await mix_ranker_service.settings(session, workspace_id)
+        workspace_id,
+        discipline,
+        dimension_id,
+        filters,
+        members,
+        ws_grid,
+        await mix_ranker_service.settings(session, workspace_id),
     )
     if not branches:
         return [], 0

@@ -25,7 +25,7 @@ RESOURCES = {
     ),
     models.MemberRank.__table__: (
         "author_user_id",
-        ("workspace_id", "author_user_id", "workspace_member_id", "role"),
+        ("workspace_id", "author_user_id", "workspace_member_id", "role_id"),
         ("rank_value",),
     ),
     models.FavoritePlayer.__table__: ("auth_user_id", ("auth_user_id", "player_id"), ()),

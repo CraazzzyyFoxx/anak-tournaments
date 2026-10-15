@@ -21,6 +21,13 @@ assert _spec_b is not None and _spec_b.loader is not None
 mod_b = importlib.util.module_from_spec(_spec_b)
 _spec_b.loader.exec_module(mod_b)
 
+_spec_c = importlib.util.spec_from_file_location(
+    "discipline01c", _BACKEND / "migrations" / "versions" / "discipline01c_ranks.py"
+)
+assert _spec_c is not None and _spec_c.loader is not None
+mod_c = importlib.util.module_from_spec(_spec_c)
+_spec_c.loader.exec_module(mod_c)
+
 _SQL = (_BACKEND / "scripts" / "discipline01_preflight.sql").read_text(encoding="utf-8")
 _RECONCILE = (_BACKEND / "scripts" / "discipline01_reconcile.sql").read_text(encoding="utf-8")
 
@@ -38,7 +45,7 @@ def _blocks(prefix: str) -> list[tuple[str, str]]:
 
 def test_the_sql_file_runs_exactly_the_revisions_stop_checks() -> None:
     assert [(q, body) for q, body in _blocks(r"\d+\. ")] == [
-        (q, _squash(sql)) for q, sql in (*mod.PREFLIGHT, *mod_b.PREFLIGHT)
+        (q, _squash(sql)) for q, sql in (*mod.PREFLIGHT, *mod_b.PREFLIGHT, *mod_c.PREFLIGHT)
     ]
 
 
@@ -47,6 +54,7 @@ def test_the_sql_file_counts_the_pick_ban_ids_the_revision_cannot_map() -> None:
         _squash(mod.DANGLING_PICK_BAN_IDS),
         _squash(mod_b.OFF_CATALOG_SUB_ROLES),
         _squash(mod_b.FLEX_SUB_ROLES),
+        _squash(mod_c.FLEX_RANKS),
     ]
 
 

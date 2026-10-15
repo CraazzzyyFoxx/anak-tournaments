@@ -583,7 +583,10 @@ DOCS: dict[str, dict] = {
             "Returns a page of the workspace roster carrying two rank dictionaries that are never "
             "merged: `ranks` is the workspace canon and `author_ranks` is one author's own book, "
             "which is what lets a row say whether a number is its own or inherited. Another "
-            "organiser's book is readable through `author_user_id`."
+            "organiser's book is readable through `author_user_id`. "
+            "Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
+            "are held on; omitted, the workspace's first enabled discipline "
+            "(422 `discipline_not_enabled` for another)."
         ),
     },
     "rpc.balancer.players.summary": {
@@ -592,7 +595,14 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.players.upsert": {
         "summary": "Upsert workspace player",
-        "description": "Permission: workspace member holding team.create or custom_game.create (a mix host); setting display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns it shaped exactly like a roster row; 422 when battle_tag is missing or blank.",
+        "description": (
+            "Permission: workspace member holding team.create or custom_game.create (a mix host); setting "
+            "display_name requires team.create. Creates or reuses a workspace member for a BattleTag and returns "
+            "it shaped exactly like a roster row; 422 when battle_tag is missing or blank. "
+            "Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
+            "are held on; omitted, the workspace's first enabled discipline "
+            "(422 `discipline_not_enabled` for another)."
+        ),
     },
     "rpc.balancer.players.set_ranks": {
         "summary": "Set workspace player ranks",
@@ -603,7 +613,10 @@ DOCS: dict[str, dict] = {
             "and takes no author id, so nobody can rewrite another organiser's ranks. `clear` deletes "
             "roles from the layer instead of zeroing them, so a cleared author rank falls back to "
             "canon, while an omitted role is left alone. 404 when the member belongs to another "
-            "workspace."
+            "workspace. Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
+            "are held on; omitted, the workspace's first enabled discipline "
+            "(422 `discipline_not_enabled` for another). A role code outside that discipline's rated module roles "
+            "-- `flex` included -- is 422 `unknown_role`."
         ),
     },
     "rpc.balancer.players.authors": {
@@ -621,7 +634,10 @@ DOCS: dict[str, dict] = {
             "resolver the balancer runs on: effective_tournament is canon over OW on the workspace "
             "grid, effective_mix is the author's book over the canon over OW on the same workspace grid. "
             "`division` is resolved on the workspace's effective grid for every row. Filtering, "
-            "sorting, the exact total and the page all run in the database."
+            "sorting, the exact total and the page all run in the database. "
+            "Optional `discipline` (query on reads, body on writes) picks whose rated roles the ranks "
+            "are held on; omitted, the workspace's first enabled discipline "
+            "(422 `discipline_not_enabled` for another)."
         ),
     },
     "rpc.balancer.teams.export_registered": {

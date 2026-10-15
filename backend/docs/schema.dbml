@@ -975,11 +975,13 @@ Table balancer.member_hidden_rating {
   updated_at timestamptz
   workspace_id bigint [not null]
   workspace_member_id bigint [not null]
-  role VARCHAR(16) [not null]
+  dimension_id bigint [not null]
+  role_id bigint [not null]
   mu float [not null]
   sigma float [not null]
   indexes {
-    (workspace_member_id, role) [unique, name: "uq_member_hidden_rating_member_role"]
+    (workspace_member_id, role_id) [unique, name: "uq_member_hidden_rating_member_role_id"]
+    (role_id) [name: "ix_balancer_member_hidden_rating_role_id"]
     (workspace_id) [name: "ix_balancer_member_hidden_rating_workspace_id"]
   }
 }
@@ -991,14 +993,16 @@ Table balancer.member_rank {
   workspace_id bigint [not null]
   workspace_member_id bigint [not null]
   author_user_id bigint
-  role VARCHAR(16) [not null]
+  dimension_id bigint [not null]
+  role_id bigint [not null]
   rank_value int [not null]
   indexes {
     (author_user_id) [name: "ix_balancer_member_rank_author_user_id"]
+    (role_id) [name: "ix_balancer_member_rank_role_id"]
     (workspace_id) [name: "ix_balancer_member_rank_workspace_id"]
     (workspace_member_id) [name: "ix_balancer_member_rank_workspace_member_id"]
-    (workspace_id, author_user_id, workspace_member_id, role) [unique, name: "uq_member_rank_author"]
-    (workspace_id, workspace_member_id, role) [unique, name: "uq_member_rank_canon"]
+    (workspace_id, author_user_id, workspace_member_id, role_id) [unique, name: "uq_member_rank_author_role"]
+    (workspace_id, workspace_member_id, role_id) [unique, name: "uq_member_rank_canon_role"]
   }
 }
 
@@ -1435,10 +1439,10 @@ Table catalog.entity {
   active boolean [not null, default: true]
   indexes {
     (id, kind) [unique, name: "uq_entity_id_kind"]
-    (discipline, kind, name) [unique, name: "uq_entity_name"]
-    (id, discipline) [unique, name: "uq_entity_id_discipline"]
-    (id, discipline, kind) [unique, name: "uq_entity_key"]
     (discipline, kind, slug) [unique, name: "uq_entity_slug"]
+    (id, discipline) [unique, name: "uq_entity_id_discipline"]
+    (discipline, kind, name) [unique, name: "uq_entity_name"]
+    (id, discipline, kind) [unique, name: "uq_entity_key"]
   }
 }
 
@@ -1479,8 +1483,8 @@ Table catalog.role_dimension {
   active boolean [not null, default: true]
   sort_order int [not null, default: 0]
   indexes {
-    (id, discipline) [unique, name: "uq_role_dimension_key"]
     (discipline, code) [unique, name: "uq_role_dimension_code"]
+    (id, discipline) [unique, name: "uq_role_dimension_key"]
     (discipline) [unique, name: "uq_role_dimension_rated"]
   }
 }
@@ -1629,8 +1633,8 @@ Table encounter.pick_ban_session {
   current_step_started_at timestamptz
   paused_at timestamptz
   indexes {
-    (encounter_id, kind) [unique, name: "uq_pick_ban_session_encounter_kind"]
     (id, encounter_id) [unique, name: "uq_pick_ban_session_id_encounter"]
+    (encounter_id, kind) [unique, name: "uq_pick_ban_session_encounter_kind"]
     (encounter_id) [name: "ix_pick_ban_session_encounter_id"]
   }
 }
@@ -1785,8 +1789,8 @@ Table encounter.team_report {
   comment text
   custom_fields_json json [not null, default: `{}`]
   indexes {
-    (encounter_id, encounter_team_id) [unique, name: "uq_team_report_claimant"]
     (id, encounter_id) [unique, name: "uq_team_report_id_encounter"]
+    (encounter_id, encounter_team_id) [unique, name: "uq_team_report_claimant"]
   }
 }
 
@@ -2637,9 +2641,9 @@ Table roster.team_format {
   substitute_min int [not null, default: 0]
   substitute_max int [not null, default: 0]
   indexes {
-    (custom_game_id) [unique, name: "uq_team_format_custom_game"]
     (id, discipline) [unique, name: "uq_team_format_key"]
     (tournament_id) [unique, name: "uq_team_format_tournament"]
+    (custom_game_id) [unique, name: "uq_team_format_custom_game"]
     (workspace_id, discipline) [unique, name: "uq_team_format_workspace_default"]
   }
 }
@@ -3009,8 +3013,8 @@ Table tournament.scrim_room {
   created_by_auth_user_id bigint [not null]
   closed_at timestamptz
   indexes {
-    (encounter_id) [unique, name: "uq_scrim_room_encounter"]
     (token) [unique, name: "uq_scrim_room_token"]
+    (encounter_id) [unique, name: "uq_scrim_room_encounter"]
     (created_by_auth_user_id) [name: "ix_scrim_room_open_by_creator"]
     (created_by_auth_user_id) [name: "ix_tournament_scrim_room_created_by_auth_user_id"]
     (stage_id) [name: "ix_tournament_scrim_room_stage_id"]
@@ -3416,9 +3420,13 @@ Ref: balancer.draft_team.captain_auth_user_id > auth.user.id [delete: set null]
 Ref: balancer.draft_team.exported_team_id > tournament.team.id [delete: set null]
 Ref: balancer.member_hidden_rating.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.member_hidden_rating.workspace_member_id > workspace_member.id [delete: cascade]
+Ref: balancer.member_hidden_rating.dimension_id > catalog.role.dimension_id
+Ref: balancer.member_hidden_rating.role_id > catalog.role.id
 Ref: balancer.member_rank.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.member_rank.workspace_member_id > workspace_member.id [delete: cascade]
 Ref: balancer.member_rank.author_user_id > auth.user.id [delete: cascade]
+Ref: balancer.member_rank.dimension_id > catalog.role.dimension_id
+Ref: balancer.member_rank.role_id > catalog.role.id
 Ref: balancer.registration.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: balancer.registration.workspace_member_id > workspace_member.id [delete: set null]
 Ref: balancer.registration.form_version_id > balancer.registration_form_version.id [delete: set null]
@@ -3630,12 +3638,12 @@ Ref: roster.format_role_rule.team_format_id > roster.team_format_dimension.team_
 Ref: roster.format_role_rule.dimension_id > catalog.role.dimension_id
 Ref: roster.format_role_rule.dimension_id > roster.team_format_dimension.dimension_id [delete: cascade]
 Ref: roster.format_role_rule.role_id > catalog.role.id
-Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
-Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
-Ref: roster.team_format.discipline > catalog.discipline.code
+Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
+Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
 Ref: roster.team_format.discipline > balancer.custom_game.discipline [delete: cascade]
 Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
+Ref: roster.team_format.discipline > catalog.discipline.code
 Ref: roster.team_format.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: roster.team_format.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: roster.team_format_dimension.team_format_id > roster.team_format.id [delete: cascade]

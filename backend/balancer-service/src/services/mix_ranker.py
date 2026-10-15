@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.domain.custom_game_round import winner_slot
 from shared.models.balancer import WorkspaceBalancerConfig
 from shared.repository import (
+    CatalogRoleRepository,
     CustomGameRoundRepository,
     MemberHiddenRatingRepository,
     WorkspaceBalancerConfigRepository,
@@ -32,6 +33,7 @@ __all__ = ("MixRankerService", "RatedSeat", "Seat", "mix_ranker_service", "setti
 
 #: ``(workspace_member_id, role slot code, rank snapshot)``; the member is
 #: ``None`` for a seat whose player has since left the workspace.
+#: A slot outside the discipline's rated module roles (the open ``flex`` slot) is rated but not stored.
 Seat = tuple[int | None, str, int]
 #: One seat's hidden rating before and after the match.
 RatedSeat = tuple[HiddenRating, HiddenRating]
@@ -51,39 +53,50 @@ class MixRankerService:
         hidden: MemberHiddenRatingRepository = MemberHiddenRatingRepository(),
         configs: WorkspaceBalancerConfigRepository = WorkspaceBalancerConfigRepository(),
         mix_rounds: CustomGameRoundRepository = CustomGameRoundRepository(),
+        roles: CatalogRoleRepository = CatalogRoleRepository(),
     ) -> None:
         self.hidden = hidden
         self.configs = configs
         self.mix_rounds = mix_rounds
+        self.roles = roles
 
     async def settings(self, session: AsyncSession, workspace_id: int) -> RankerSettings:
         config = await self.configs.get_by_workspace(session, workspace_id)
         return settings_from_json(config.ranker_json if config is not None else None)
+
+    async def _role_ids(self, session: AsyncSession, discipline: str) -> dict[str, int]:
+        """Module roles of the discipline's rated dimension by code (D87)."""
+        rows = await self.roles.rated_rows(session, discipline=discipline, workspace_id=None)
+        return {code: row.id for code, row in rows.items()}
 
     async def effective_ratings(
         self,
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         open_ranks: Mapping[tuple[int, str], int],
     ) -> dict[tuple[int, str], int]:
         """The rating each ``(member, role)`` is balanced on; its open rank when it has no hidden one yet."""
         if not open_ranks:
             return {}
         ranker = Ranker(await self.settings(session, workspace_id))
+        role_ids = await self._role_ids(session, discipline)
         stored = await self.hidden.for_members(
             session, workspace_id=workspace_id, member_ids=sorted({member_id for member_id, _role in open_ranks})
         )
-        return {
-            key: round(ranker.effective(rank, HiddenRating(*stored[key]))) if key in stored else rank
-            for key, rank in open_ranks.items()
-        }
+        out: dict[tuple[int, str], int] = {}
+        for (member_id, role), rank in open_ranks.items():
+            hidden = stored.get((member_id, role_ids[role])) if role in role_ids else None
+            out[(member_id, role)] = rank if hidden is None else round(ranker.effective(rank, HiddenRating(*hidden)))
+        return out
 
     async def rate_match(
         self,
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         teams: Sequence[Sequence[Seat]],
         winner: int | None,
     ) -> tuple[Ranker, list[list[RatedSeat]]]:
@@ -93,28 +106,36 @@ class MixRankerService:
         the rating it was balanced on, which for a newcomer is its open rank.
         """
         ranker = Ranker(await self.settings(session, workspace_id))
-        member_ids = sorted({member_id for team in teams for member_id, _role, _rank in team if member_id is not None})
+        role_ids = await self._role_ids(session, discipline)
+        keys = [
+            [
+                (member_id, role_ids[role]) if member_id is not None and role in role_ids else None
+                for member_id, role, _rank in team
+            ]
+            for team in teams
+        ]
         stored = await self.hidden.for_members(
-            session, workspace_id=workspace_id, member_ids=member_ids, for_update=True
+            session,
+            workspace_id=workspace_id,
+            member_ids=sorted({key[0] for team in keys for key in team if key is not None}),
+            for_update=True,
         )
         before = [
             [
-                HiddenRating(*stored[(member_id, role)])
-                if member_id is not None and (member_id, role) in stored
-                else ranker.initial(rank)
-                for member_id, role, rank in team
+                HiddenRating(*stored[key]) if key is not None and key in stored else ranker.initial(rank)
+                for key, (_member, _role, rank) in zip(team_keys, team, strict=True)
             ]
-            for team in teams
+            for team_keys, team in zip(keys, teams, strict=True)
         ]
         after = ranker.rate(before, winner)
         await self.hidden.upsert_many(
             session,
             workspace_id=workspace_id,
             ratings={
-                (member_id, role): tuple(new)
-                for team, new_team in zip(teams, after, strict=True)
-                for (member_id, role, _rank), new in zip(team, new_team, strict=True)
-                if member_id is not None
+                key: tuple(new)
+                for team_keys, new_team in zip(keys, after, strict=True)
+                for key, new in zip(team_keys, new_team, strict=True)
+                if key is not None
             },
         )
         return ranker, [list(zip(old, new, strict=True)) for old, new in zip(before, after, strict=True)]
@@ -128,14 +149,19 @@ class MixRankerService:
         """
         ranker = Ranker(await self.settings(session, workspace_id))
         rows = await self.mix_rounds.seats(session, workspace_id=workspace_id)
-        book: dict[tuple[int, str], HiddenRating] = {}
+        book: dict[tuple[int, int], HiddenRating] = {}
         matches = 0
         for _encounter_id, round_seats in groupby(rows, key=lambda row: row.encounter_id):
-            sides: dict[int, tuple[float, list[Seat]]] = {}
+            sides: dict[int, tuple[float, list[tuple[tuple[int, int] | None, int]]]] = {}
             for row in round_seats:
                 sides.setdefault(row.slot, (row.own_score, []))[1].append(
                     # A seat with no role cannot be keyed; it still counts for its team, unstored.
-                    (row.workspace_member_id if row.role is not None else None, row.role or "", row.rank)
+                    (
+                        (row.workspace_member_id, row.role_id)
+                        if row.workspace_member_id is not None and row.role_id is not None
+                        else None,
+                        row.rank,
+                    )
                 )
             first, second = sides.get(1), sides.get(2)
             if first is None or second is None or not first[1] or not second[1]:
@@ -144,14 +170,14 @@ class MixRankerService:
             teams = (first[1], second[1])
             # A seat never seen before (or one that cannot be stored) enters at its snapshot.
             before = [
-                [book.get((member_id, role)) or ranker.initial(rank) for member_id, role, rank in team]
+                [(book.get(key) if key is not None else None) or ranker.initial(rank) for key, rank in team]
                 for team in teams
             ]
             after = ranker.rate(before, winner)
             for team, new_team in zip(teams, after, strict=True):
-                for (member_id, role, _rank), new in zip(team, new_team, strict=True):
-                    if member_id is not None:
-                        book[(member_id, role)] = new
+                for (key, _rank), new in zip(team, new_team, strict=True):
+                    if key is not None:
+                        book[key] = new
             matches += 1
         await self.hidden.replace_for_workspace(
             session, workspace_id=workspace_id, ratings={key: tuple(value) for key, value in book.items()}

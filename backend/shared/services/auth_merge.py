@@ -399,7 +399,7 @@ def _build_plan(
                                 existing[name],
                                 key=conflict_key,
                                 resource=table.fullname,
-                                label=f"Rank {desired['role']} in workspace {desired['workspace_id']}",
+                                label=f"Rank (role {desired['role_id']}) in workspace {desired['workspace_id']}",
                                 policy=policy,
                                 conflicts=conflicts,
                             )

@@ -19,7 +19,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import discipline as discipline_spec
 from shared.division_grid import DivisionGrid, normalize_native_ranks_to_grid
 from shared.domain.member_rank import RankScope, ResolvedRank, pick_rank
-from shared.repository import WorkspaceMemberRepository
+from shared.repository import CatalogRoleRepository, WorkspaceMemberRepository
 from shared.repository.member_rank import MemberRankRepository
 
 __all__ = ("MemberRankService", "member_rank_service")
@@ -40,9 +40,20 @@ class MemberRankService:
         *,
         ranks: MemberRankRepository = MemberRankRepository(),
         members: WorkspaceMemberRepository = WorkspaceMemberRepository(),
+        roles: CatalogRoleRepository = CatalogRoleRepository(),
     ) -> None:
         self.ranks = ranks
         self.members = members
+        self.roles = roles
+
+    async def _dimension_id(self, session: AsyncSession, discipline: str) -> int:
+        """The discipline's rated dimension: the axis every rank is held on (D32, D87)."""
+        dimension_id = await self.roles.rated_dimension_id(session, discipline=discipline)
+        if dimension_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"discipline_has_no_ranks: {discipline!r}"
+            )
+        return dimension_id
 
     async def member_in_workspace(
         self, session: AsyncSession, *, workspace_id: int, workspace_member_id: int
@@ -58,6 +69,7 @@ class MemberRankService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         workspace_member_id: int,
         ranks: Mapping[str, int],
         clear: Sequence[str] = (),
@@ -68,13 +80,22 @@ class MemberRankService:
         Deleting rather than zeroing is what keeps inheritance working: an absent
         row falls through to the next layer, a row holding ``0`` would not. An
         omitted role is left alone, so saving one role never disturbs the others.
+        A code outside the discipline's rated module roles -- ``flex`` included, D86 -- is refused.
         """
         await self.member_in_workspace(session, workspace_id=workspace_id, workspace_member_id=workspace_member_id)
+        catalog = await self.roles.rated_rows(session, discipline=discipline, workspace_id=None)
+        unknown = sorted({*ranks, *clear} - set(catalog))
+        if unknown or not catalog:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown_role: {unknown or discipline}"
+            )
+        dimension_id = next(iter(catalog.values())).dimension_id
         existing = {
             row.role: row
             for row in await self.ranks.list_layer(
                 session,
                 workspace_id=workspace_id,
+                dimension_id=dimension_id,
                 member_id=workspace_member_id,
                 author_user_id=author_user_id,
             )
@@ -92,7 +113,8 @@ class MemberRankService:
                 workspace_id=workspace_id,
                 workspace_member_id=workspace_member_id,
                 author_user_id=author_user_id,
-                role=role,
+                catalog_role=catalog[role],
+                dimension_id=dimension_id,
                 rank_value=value,
             )
             try:
@@ -106,6 +128,7 @@ class MemberRankService:
                     for other in await self.ranks.list_layer(
                         session,
                         workspace_id=workspace_id,
+                        dimension_id=dimension_id,
                         member_id=workspace_member_id,
                         author_user_id=author_user_id,
                     )
@@ -123,6 +146,7 @@ class MemberRankService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         member_ids: Sequence[int],
         author_user_id: int | None = None,
     ) -> dict[tuple[int, str], int]:
@@ -130,6 +154,7 @@ class MemberRankService:
         rows = await self.ranks.list_layers(
             session,
             workspace_id=workspace_id,
+            dimension_id=await self._dimension_id(session, discipline),
             member_ids=member_ids,
             author_user_id=author_user_id,
             include_canon=author_user_id is None,
@@ -141,6 +166,7 @@ class MemberRankService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         member_ids: Sequence[int],
         author_user_id: int | None = None,
     ) -> Sequence[models.MemberRank]:
@@ -156,6 +182,7 @@ class MemberRankService:
         return await self.ranks.list_layers(
             session,
             workspace_id=workspace_id,
+            dimension_id=await self._dimension_id(session, discipline),
             member_ids=member_ids,
             author_user_id=author_user_id,
             include_canon=True,
@@ -207,6 +234,7 @@ class MemberRankService:
                 else await self.ranks.list_layers(
                     session,
                     workspace_id=workspace_id,
+                    dimension_id=await self._dimension_id(session, discipline),
                     member_ids=list(members),
                     author_user_id=author_user_id if wants_author else None,
                     include_canon=wants_canon,

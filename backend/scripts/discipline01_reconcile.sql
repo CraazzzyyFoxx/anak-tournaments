@@ -1,4 +1,4 @@
--- Run after discipline01 and again before discipline02. Covers discipline01 and discipline01b. discipline02 refuses while result set 1
+-- Run after discipline01 and again before discipline02. Covers discipline01, discipline01b and discipline01c. discipline02 refuses while result set 1
 -- has a status other than ok or result set 2 has a row.
 -- Hard references have no class: an unrewritten id is below every new id and fails its FK.
 -- Catalog rows are compared by mapping, discipline and kind only: admins and sync may edit them after release.
@@ -180,6 +180,25 @@ SELECT 'ml artifacts', a.id, a.role,
                   AND d.discipline = 'overwatch' AND d.rated AND r.code = lower(btrim(a.role)))
   FROM analytics.ml_model_artifact a
  WHERE a.role IS NOT NULL
+UNION ALL
+-- discipline01c: every legacy rank holds Overwatch's module role of the same code; rows written later have no legacy role.
+SELECT 'member ranks', m.id, m.role,
+       EXISTS (SELECT 1 FROM catalog.role r JOIN catalog.role_dimension d ON d.id = r.dimension_id
+                WHERE r.id = m.role_id AND r.dimension_id = m.dimension_id AND r.workspace_id IS NULL
+                  AND d.discipline = 'overwatch' AND d.rated AND r.code = lower(btrim(m.role)))
+  FROM balancer.member_rank m
+ WHERE m.role IS NOT NULL
+UNION ALL
+SELECT 'hidden ratings', h.id, h.role,
+       EXISTS (SELECT 1 FROM catalog.role r JOIN catalog.role_dimension d ON d.id = r.dimension_id
+                WHERE r.id = h.role_id AND r.dimension_id = h.dimension_id AND r.workspace_id IS NULL
+                  AND d.discipline = 'overwatch' AND d.rated AND r.code = lower(btrim(h.role)))
+  FROM balancer.member_hidden_rating h
+ WHERE h.role IS NOT NULL
+UNION ALL
+-- Informational: flex is no role (D86); the revision kept every dropped row.
+SELECT 'flex ranks (dropped)', d.row_id, d.source, true
+  FROM balancer.discipline01c_dropped_ranks d
 UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,

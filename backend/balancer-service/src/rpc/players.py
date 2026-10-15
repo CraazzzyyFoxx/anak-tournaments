@@ -24,6 +24,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services import workspace_roster
 from shared.services.member_rank import member_rank_service
+from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.rpc import _common as c
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
@@ -167,12 +168,20 @@ def _by_member(layer: dict[tuple[int, str], int]) -> dict[int, dict[str, int]]:
     return out
 
 
+def _requested_discipline(data: dict[str, Any]) -> str | None:
+    """Body on writes or query on reads; omitted means the workspace's first enabled discipline."""
+    raw = c.payload(data).get("discipline") or c.q1(data, "discipline")
+    return str(raw) if raw else None
+
+
 async def _layers(
-    session: Any, workspace_id: int, member_ids: list[int], author_user_id: int
+    session: Any, workspace_id: int, member_ids: list[int], author_user_id: int, discipline: str
 ) -> tuple[dict[int, dict[str, int]], dict[int, dict[str, int]]]:
-    canon = await member_rank_service.list_layer(session, workspace_id=workspace_id, member_ids=member_ids)
+    canon = await member_rank_service.list_layer(
+        session, workspace_id=workspace_id, discipline=discipline, member_ids=member_ids
+    )
     author = await member_rank_service.list_layer(
-        session, workspace_id=workspace_id, member_ids=member_ids, author_user_id=author_user_id
+        session, workspace_id=workspace_id, discipline=discipline, member_ids=member_ids, author_user_id=author_user_id
     )
     return _by_member(canon), _by_member(author)
 
@@ -184,6 +193,9 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
+            discipline = await workspace_discipline(
+                session, workspace_id=workspace_id, requested=_requested_discipline(data)
+            )
             params = _list_params(data)
             author_user_id = _author_to_read(data, user.id)
             rows, total = await workspace_roster.roster_page(
@@ -195,7 +207,9 @@ def register(broker: Any, logger: Any) -> None:
                 author_user_id=author_user_id,
                 author_only=_author_only(data),
             )
-            canon, author = await _layers(session, workspace_id, [row.member_id for row in rows], author_user_id)
+            canon, author = await _layers(
+                session, workspace_id, [row.member_id for row in rows], author_user_id, discipline
+            )
             return pagination.paginated_dict(
                 [_dump(row, canon.get(row.member_id, {}), author.get(row.member_id, {})) for row in rows],
                 total,
@@ -223,6 +237,9 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
+            discipline = await workspace_discipline(
+                session, workspace_id=workspace_id, requested=_requested_discipline(data)
+            )
             # A mix host (``custom_game.create``) may add a BattleTag nobody
             # has registered yet: that is the add-players dialog's whole point.
             # Renaming a shared roster row is still roster management.
@@ -258,7 +275,7 @@ def register(broker: Any, logger: Any) -> None:
             row = roster.get(member.id)
             if row is None:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace member not found")
-            canon, author = await _layers(session, workspace_id, [member.id], user.id)
+            canon, author = await _layers(session, workspace_id, [member.id], user.id, discipline)
             return _dump(row, canon.get(member.id, {}), author.get(member.id, {}))
 
         return await c.envelope(logger, "players.upsert", op, session_factory=_SF)
@@ -269,6 +286,9 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = c.path_int(data, "workspace_id")
             c.require_member(user, workspace_id)
+            discipline = await workspace_discipline(
+                session, workspace_id=workspace_id, requested=_requested_discipline(data)
+            )
             # ``author`` is the caller's own layer, full stop: accepting an
             # author id here would let one member rewrite another's private book.
             # Membership alone is enough to write it -- it is self-service. The
@@ -284,6 +304,7 @@ def register(broker: Any, logger: Any) -> None:
             ranks = await member_rank_service.set_ranks(
                 session,
                 workspace_id=workspace_id,
+                discipline=discipline,
                 workspace_member_id=_member_id(data),
                 ranks=_ranks_payload(data),
                 clear=_clear_payload(data),

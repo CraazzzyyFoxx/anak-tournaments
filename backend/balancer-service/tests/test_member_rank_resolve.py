@@ -46,7 +46,9 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.ranks = MagicMock()
         self.ranks.list_layers = AsyncMock(return_value=[])
-        self.service = MemberRankService(ranks=self.ranks, members=MagicMock())
+        self.roles = MagicMock()
+        self.roles.rated_dimension_id = AsyncMock(return_value=7)
+        self.service = MemberRankService(ranks=self.ranks, members=MagicMock(), roles=self.roles)
         self.session = MagicMock()
 
     async def _mix(self, members, roles, *, author_user_id=_HOST, ow=None):

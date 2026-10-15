@@ -619,6 +619,7 @@ class CustomGameService:
             await self.ranks.set_ranks(
                 session,
                 workspace_id=game.workspace_id,
+                discipline=game.discipline,
                 workspace_member_id=member_id,
                 ranks=seed,
                 author_user_id=game.host_user_id,
@@ -1582,7 +1583,9 @@ class CustomGameService:
         }
         ranker = _uses_ranker(host_config)
         ranks = (
-            await self.ranker.effective_ratings(session, workspace_id=game.workspace_id, open_ranks=open_ranks)
+            await self.ranker.effective_ratings(
+                session, workspace_id=game.workspace_id, discipline=game.discipline, open_ranks=open_ranks
+            )
             if ranker
             else open_ranks
         )
@@ -2552,6 +2555,7 @@ class CustomGameService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         host_user_id: int,
         shifts: Sequence[tuple[int, str, int, int]],
     ) -> None:
@@ -2571,14 +2575,19 @@ class CustomGameService:
         current = await self.ranks.list_layer(
             session,
             workspace_id=workspace_id,
+            discipline=discipline,
             member_ids=[member_id for member_id, *_rest in shifts],
             author_user_id=host_user_id,
         )
+        rated = set(rated_role_codes(discipline))
         for member_id, role, fallback, delta in shifts:
+            if role not in rated:
+                continue  # An open slot is no role (D86): it moves no book.
             base = current.get((member_id, role), fallback)
             await self.ranks.set_ranks(
                 session,
                 workspace_id=workspace_id,
+                discipline=discipline,
                 workspace_member_id=member_id,
                 ranks={role: base + delta},
                 author_user_id=host_user_id,
@@ -2589,6 +2598,7 @@ class CustomGameService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         host_user_id: int,
         ranker: Ranker,
         winner: int | None,
@@ -2603,13 +2613,17 @@ class CustomGameService:
         current = await self.ranks.list_layer(
             session,
             workspace_id=workspace_id,
+            discipline=discipline,
             member_ids=[seat[0] for team in seats for seat in team],
             author_user_id=host_user_id,
         )
         deltas: dict[int, int] = {}
+        rated = set(rated_role_codes(discipline))
         for team_index, team in enumerate(seats):
             outcome = 0 if winner is None else 1 if winner == team_index + 1 else -1
             for member_id, role, open_rank, (old, new) in team:
+                if role not in rated:
+                    continue  # An open slot is no role (D86): it moves no book.
                 base = current.get((member_id, role), open_rank)
                 moved = round(base + ranker.open_delta(base, old, new, outcome))
                 deltas[member_id] = moved - base
@@ -2617,6 +2631,7 @@ class CustomGameService:
                     await self.ranks.set_ranks(
                         session,
                         workspace_id=workspace_id,
+                        discipline=discipline,
                         workspace_member_id=member_id,
                         ranks={role: moved},
                         author_user_id=host_user_id,
@@ -2726,13 +2741,14 @@ class CustomGameService:
                     row.participation = MixParticipation.POOL
 
         ranker, rated = await self.ranker.rate_match(
-            session, workspace_id=workspace_id, teams=team_players, winner=winner
+            session, workspace_id=workspace_id, discipline=game.discipline, teams=team_players, winner=winner
         )
         deltas: dict[int, int] = {}
         if game.host_user_id is not None and _uses_ranker(host_config):
             deltas = await self._move_by_ranker(
                 session,
                 workspace_id=workspace_id,
+                discipline=game.discipline,
                 host_user_id=game.host_user_id,
                 ranker=ranker,
                 winner=winner,
@@ -2751,6 +2767,7 @@ class CustomGameService:
             await self._shift_host_ranks(
                 session,
                 workspace_id=workspace_id,
+                discipline=game.discipline,
                 host_user_id=game.host_user_id,
                 shifts=[
                     (member_id, role, rating, points_per_win if index == winning_index else -points_per_win)
@@ -2852,7 +2869,11 @@ class CustomGameService:
         ]
         if game.host_user_id is not None:
             await self._shift_host_ranks(
-                session, workspace_id=workspace_id, host_user_id=game.host_user_id, shifts=shifts
+                session,
+                workspace_id=workspace_id,
+                discipline=game.discipline,
+                host_user_id=game.host_user_id,
+                shifts=shifts,
             )
         await self.mix_rounds.delete_round(session, round_.encounter_id)
         await session.flush()

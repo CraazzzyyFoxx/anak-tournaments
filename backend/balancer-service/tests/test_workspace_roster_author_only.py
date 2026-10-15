@@ -32,6 +32,7 @@ from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.member_rank.member_rank import MemberRank  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
+from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services import workspace_roster  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 
@@ -77,6 +78,7 @@ class RosterPageAuthorOnlyTests(IsolatedAsyncioTestCase):
             unranked_member = WorkspaceMember(workspace_id=workspace.id, player_id=unranked.id)
             session.add_all([mine_member, theirs_member, unranked_member])
             await session.flush()
+            roles = await CatalogRoleRepository().rated_rows(session, discipline="overwatch", workspace_id=None)
 
             session.add_all(
                 [
@@ -84,14 +86,16 @@ class RosterPageAuthorOnlyTests(IsolatedAsyncioTestCase):
                         workspace_id=workspace.id,
                         workspace_member_id=mine_member.id,
                         author_user_id=host.id,
-                        role="tank",
+                        catalog_role=roles["tank"],
+                        dimension_id=roles["tank"].dimension_id,
                         rank_value=2500,
                     ),
                     MemberRank(
                         workspace_id=workspace.id,
                         workspace_member_id=theirs_member.id,
                         author_user_id=other_host.id,
-                        role="tank",
+                        catalog_role=roles["tank"],
+                        dimension_id=roles["tank"].dimension_id,
                         rank_value=2500,
                     ),
                 ]
