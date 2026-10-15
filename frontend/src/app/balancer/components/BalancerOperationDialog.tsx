@@ -33,6 +33,7 @@ type BalancerOperationDialogProps = {
   steps: BalancerOperationStep[];
   isRunning: boolean;
   summary: string | null;
+  advisories?: string[];
   error: string | null;
   retryLabel?: string;
   onRetry?: () => void;
@@ -83,6 +84,7 @@ export function BalancerOperationDialog({
   steps,
   isRunning,
   summary,
+  advisories,
   error,
   retryLabel = "Retry",
   onRetry
@@ -143,6 +145,20 @@ export function BalancerOperationDialog({
               {summary}
             </div>
           ) : null}
+
+          <div role="status">
+            {advisories?.length ? (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
+                <div className="flex items-center gap-2 font-medium">
+                  <AlertTriangle className="h-4 w-4" aria-hidden />
+                  Export advisories
+                </div>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {advisories.map((advisory, index) => <li key={index}>{advisory}</li>)}
+                </ul>
+              </div>
+            ) : null}
+          </div>
 
           {error ? (
             <div className="rounded-lg border border-destructive/35 bg-destructive/5 p-3 text-sm text-destructive">

@@ -53,6 +53,10 @@ export interface DraftSession {
   created_at: string | null;
 }
 
+export interface DraftExportResponse extends DraftSession {
+  advisories: string[];
+}
+
 export interface DraftTeam {
   id: number;
   session_id: number;

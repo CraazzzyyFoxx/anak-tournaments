@@ -22,4 +22,23 @@ describe("slotsToTeamFormat", () => {
     const format = slotsToTeamFormat({ flex: 6, tank: 0 }, "player_role");
     expect([format.starter_max, format.dimensions[0].mode, format.rules]).toEqual([6, "off", []]);
   });
+
+  it("adds a missing rated dimension without dropping another dimension", () => {
+    const other = { dimension: "communication", mode: "informational" as const };
+    const format = slotsToTeamFormat({ tank: 1, flex: 4 }, "player_role", {
+      name: "No rated dimension",
+      preset_code: null,
+      starter_min: 5,
+      starter_max: 5,
+      dimensions: [other],
+      rules: []
+    });
+    expect(format.dimensions).toEqual([
+      other,
+      { dimension: "player_role", mode: "enforced" }
+    ]);
+    expect(format.rules).toEqual([
+      { role: { dimension: "player_role", role: "tank" }, hard_min: 1, hard_max: 1 }
+    ]);
+  });
 });

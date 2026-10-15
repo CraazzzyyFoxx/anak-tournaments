@@ -844,6 +844,7 @@ export function BalancerMainPageClient() {
         steps={tournamentExportSteps}
         isRunning={exportToTournamentMutation.isPending}
         summary={tournamentExportSummary}
+        advisories={exportToTournamentMutation.data?.exportResult.advisories}
         error={tournamentExportError}
         retryLabel="Retry export"
         onRetry={startTournamentExport}

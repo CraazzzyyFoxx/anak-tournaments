@@ -424,8 +424,11 @@ export function useBalancerMutations({
     },
     onSuccess: ({ savedBalance, exportResult }) => {
       applySavedBalanceVariant(savedBalance);
-      notify.success("Teams exported to tournament", {
-        description: `${exportResult.imported_teams} teams created.`
+      const showResult = exportResult.advisories.length ? notify.warning : notify.success;
+      showResult("Teams exported to tournament", {
+        description: [`${exportResult.imported_teams} teams created.`, ...exportResult.advisories].join("\n"),
+        duration: exportResult.advisories.length ? Infinity : undefined,
+        classNames: { description: "whitespace-pre-line" }
       });
     }
   });

@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/api/fetch";
 import type { RoleRef } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
+  DraftExportResponse,
   DraftFeasibility,
   DraftJournalResponse,
   DraftPickExtendRequest,
@@ -150,7 +151,7 @@ export default class draftService {
     tournamentId: number,
     sessionId: number,
     action: "start" | "pause" | "resume" | "cancel" | "export" | "rollback"
-  ): Promise<DraftSession> {
+  ): Promise<DraftSession | DraftExportResponse> {
     const res = await apiFetch(`/api/v1/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}/${action}`,
       { method: "POST" }
     );

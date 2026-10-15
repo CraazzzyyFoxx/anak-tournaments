@@ -133,6 +133,7 @@ export interface BalanceExportResponse {
   removed_teams: number;
   imported_teams: number;
   balance_id: number;
+  advisories: string[];
 }
 
 /** Rank-only re-export (balance or draft): nothing was created or removed. */

@@ -66,8 +66,14 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
 
   const exportMutation = useMutation({
     mutationFn: (sessionId: number) => draftService.lifecycle(tournamentId, sessionId, "export"),
-    onSuccess: async () => {
-      notify.success(t("lifecycleSuccess", { action: t("actions.export") }));
+    onSuccess: async (result) => {
+      const advisories = "advisories" in result ? result.advisories : [];
+      const showResult = advisories.length ? notify.warning : notify.success;
+      showResult(t("lifecycleSuccess", { action: t("actions.export") }), {
+        description: advisories.join("\n"),
+        duration: advisories.length ? Infinity : undefined,
+        classNames: { description: "whitespace-pre-line" }
+      });
       await invalidate();
     },
     onError: (error) => notify.apiError(error)

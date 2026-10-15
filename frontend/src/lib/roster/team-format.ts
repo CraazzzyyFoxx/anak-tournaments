@@ -61,6 +61,16 @@ export function slotsToTeamFormat(
     if (prior) Object.assign(prior, { hard_min: count, hard_max: count });
     else rules.push({ role: { dimension, role }, hard_min: count, hard_max: count });
   }
+  const dimensions: TeamFormatDimension[] = current
+    ? current.dimensions.map((entry) =>
+        entry.dimension === dimension && roleSlots.length > 0
+          ? { ...entry, mode: "enforced" }
+          : entry
+      )
+    : [{ dimension, mode: roleSlots.length > 0 ? "enforced" : "off" }];
+  if (roleSlots.length > 0 && !dimensions.some((entry) => entry.dimension === dimension)) {
+    dimensions.push({ dimension, mode: "enforced" });
+  }
   return {
     name: current?.name ?? "Custom roster",
     preset_code: current?.preset_code ?? null,
@@ -70,13 +80,7 @@ export function slotsToTeamFormat(
     }),
     starter_min: total,
     starter_max: total,
-    dimensions: current
-      ? current.dimensions.map((entry) =>
-          entry.dimension === dimension && roleSlots.length > 0
-            ? { ...entry, mode: "enforced" }
-            : entry
-        )
-      : [{ dimension, mode: roleSlots.length > 0 ? "enforced" : "off" }],
+    dimensions,
     rules
   };
 }

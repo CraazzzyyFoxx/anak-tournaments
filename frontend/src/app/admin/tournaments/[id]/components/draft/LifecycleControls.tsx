@@ -55,8 +55,14 @@ export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleCon
     mutations.lifecycle.mutate(
       { sessionId: session.id, action },
       {
-        onSuccess: () => {
-          notify.success(t(`actionSuccess.${action}`));
+        onSuccess: (result) => {
+          const advisories = "advisories" in result ? result.advisories : [];
+          const showResult = advisories.length ? notify.warning : notify.success;
+          showResult(t(`actionSuccess.${action}`), {
+            description: advisories.join("\n"),
+            duration: advisories.length ? Infinity : undefined,
+            classNames: { description: "whitespace-pre-line" }
+          });
           setConfirmedAction(null);
         },
         onError: (error) => notify.apiError(error)
