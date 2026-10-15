@@ -101,7 +101,7 @@ export function useDebouncedRank(committed: number | null, commit: (rank: number
   };
 }
 
-function gridBounds(grid: DivisionGrid): { min: number; max: number } {
+function gridBounds(grid: DivisionGrid): { min: number; max: number | undefined } {
   if (!grid.tiers.length) {
     return { min: 0, max: 5000 };
   }
@@ -111,7 +111,10 @@ function gridBounds(grid: DivisionGrid): { min: number; max: number } {
     .map((tier) => tier.rank_max)
     .filter((value): value is number => value !== null);
 
-  return { min: Math.min(...mins), max: Math.max(...maxes, ...mins) };
+  return {
+    min: Math.min(...mins),
+    max: grid.tiers.some((tier) => tier.rank_max === null) ? undefined : Math.max(...maxes, ...mins)
+  };
 }
 
 const LABEL_CLASS =
@@ -146,8 +149,8 @@ type RoleRankControlsProps = {
  * edit "what rank does this player have on this role", and two copies of that
  * had already produced two different ways to clear it.
  *
- * The grid defaults to the workspace's rather than being required of every
- * caller; only the mix surfaces, which live on the global OW grid, pass one.
+ * Known owners pass their resolved grid. Only generic workspace editors rely on
+ * the first-enabled workspace default.
  */
 export function RoleRankControls({
   rankValue,

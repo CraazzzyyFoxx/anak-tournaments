@@ -171,9 +171,8 @@ export function BalancerMainPageClient() {
     refetchOnWindowFocus: false
   });
 
-  // Only for the roster shape: the per-role weight table offers a row per role
-  // this tournament actually fields. Same query the public shell uses, so it is
-  // usually a cache hit rather than a read of its own.
+  // Owner metadata supplies both roster shape and the player editor's grid pin.
+  // Reuse the public shell's query and embedded version rather than refetching it.
   const tournamentQuery = useQuery({
     ...tournamentOverviewQueryOptions(tournamentId as number),
     enabled: tournamentId !== null
@@ -806,6 +805,8 @@ export function BalancerMainPageClient() {
           player={quickEditPlayer}
           registration={quickEditRegistration}
           discipline={tournamentQuery.data?.discipline}
+          divisionGridVersionId={tournamentQuery.data?.division_grid_version_id}
+          divisionGridVersion={tournamentQuery.data?.division_grid_version}
           statusOptions={playerStatusOptions}
           open={editingPlayerId !== null}
           onOpenChange={(open) => {

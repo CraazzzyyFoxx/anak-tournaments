@@ -9,11 +9,15 @@ import { RankAutofillPreviewTables } from "@/components/balancer/rank-autofill/_
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import messages from "@/i18n/messages/en.json";
 import adminService from "@/services/admin.service";
+import balancerAdminService from "@/services/balancer-admin.service";
+import userService from "@/services/user.service";
+import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
   BalancerPlayerRecord,
   RegistrationRankAutofillResponse
 } from "@/types/balancer-admin.types";
+import type { User, UserTournament } from "@/types/user.types";
 import type { DivisionGridVersion, Workspace } from "@/types/workspace.types";
 import { PlayerEditModal } from "./PlayerEditSheet";
 
@@ -116,11 +120,17 @@ async function render(children: ReactNode) {
     await promise;
   });
 }
-function sheet(discipline: string | undefined) {
+function sheet(
+  discipline: string | undefined,
+  divisionGridVersionId: number | null | undefined = null,
+  divisionGridVersion?: DivisionGridVersion
+) {
   return (
     <PlayerEditModal
       player={player}
       discipline={discipline}
+      divisionGridVersionId={divisionGridVersionId}
+      divisionGridVersion={divisionGridVersion}
       open
       onOpenChange={() => {}}
       onSave={onSave}
@@ -131,6 +141,13 @@ function crestNames() {
   return [...document.querySelectorAll("img")]
     .filter((image) => /^(LoL|OW) /.test(image.alt))
     .map((image) => image.alt);
+}
+async function clickButton(label: string) {
+  const button = [...document.querySelectorAll("button")].find(
+    (candidate) => candidate.textContent?.trim() === label
+  )!;
+  expect(button).toBeDefined();
+  await act(async () => button.click());
 }
 beforeEach(() => {
   const container = document.createElement("div");
@@ -204,6 +221,133 @@ describe("owner-grid receiving controls", () => {
     expect(document.querySelector('input[type="range"]')).toBeNull();
     expect(crestNames()).toEqual([]);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("loads and edits a tournament pin without a workspace LoL default", async () => {
+    const pinned = version(3, "LoL Pin", [200, 900]);
+    const pending = Promise.withResolvers<DivisionGridVersion>();
+    vi.spyOn(workspaceService, "getDivisionGridVersion").mockReturnValue(pending.promise);
+    useWorkspaceStore.setState({
+      workspaces: [
+        {
+          ...workspace,
+          default_division_grid_versions: { overwatch: ow.id },
+          effective_division_grid_versions: { overwatch: ow }
+        }
+      ]
+    });
+    await render(sheet(undefined, undefined));
+    expect(document.querySelector('input[type="range"]')).toBeNull();
+    await render(sheet("lol", pinned.id));
+    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(crestNames()).toEqual([]);
+    await act(async () => pending.resolve(pinned));
+    await render(sheet("lol", pinned.id));
+    expect(crestNames()).toContain("LoL Pin 1");
+    const slider = document.querySelector<HTMLInputElement>('input[type="range"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(slider, "1");
+      slider.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(crestNames()).toContain("LoL Pin 2");
+    await clickButton("Save");
+    expect(onSave.mock.calls[0][1].role_entries_json[0]).toMatchObject({
+      rank_value: 900,
+      division_number: 2
+    });
+  });
+
+  it("never substitutes the workspace grid while a different owner pin is pending or failed", async () => {
+    const pinned = version(3, "LoL Pin", [200, 900]);
+    const pending = Promise.withResolvers<DivisionGridVersion>();
+    vi.spyOn(workspaceService, "getDivisionGridVersion").mockReturnValue(pending.promise);
+    await render(sheet("lol", pinned.id, pinned));
+    expect(crestNames()).toContain("LoL Pin 1");
+    await render(sheet("lol", 4));
+    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(crestNames()).toEqual([]);
+    await act(async () => pending.reject(new Error("Pinned version unavailable")));
+    await render(sheet("lol", 4));
+    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(crestNames()).toEqual([]);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { max: null, expected: 1500 },
+    { max: 600, expected: 600 }
+  ])("commits numeric rank entry using the real upper bound ($max)", async ({ max, expected }) => {
+    const bounded = { ...lol, tiers: [lol.tiers[0], { ...lol.tiers[1], rank_max: max }] };
+    useWorkspaceStore.setState({
+      workspaces: [
+        { ...workspace, effective_division_grid_versions: { overwatch: ow, lol: bounded } }
+      ]
+    });
+    await render(sheet("lol"));
+    const input = document.querySelector<HTMLInputElement>('input[inputmode="numeric"]')!;
+    await act(async () => {
+      input.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+        input,
+        "1500"
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.blur());
+    expect(input.value).toBe(String(expected));
+    expect(crestNames()).toContain("LoL 2");
+    await clickButton("Save");
+    expect(onSave.mock.calls[0][1].role_entries_json[0]).toMatchObject({
+      rank_value: expected,
+      division_number: 2
+    });
+  });
+
+  it("keeps history normalized to the workspace while editing and applying into a different pin", async () => {
+    const pinned = version(3, "LoL Pin", [200, 900]);
+    vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 42 } as User);
+    vi.spyOn(balancerAdminService, "getUserBalancerRankHistory").mockResolvedValue([]);
+    vi.spyOn(userService, "getUserTournaments").mockResolvedValue([
+      {
+        id: 10,
+        name: "Past pinned tournament",
+        role: { dimension: "position", role: "support" },
+        division_grid_version: pinned,
+        players: [{ user_id: 42, rank: 250 }]
+      }
+    ] as UserTournament[]);
+    vi.spyOn(workspaceService, "getDivisionGridMapping").mockResolvedValue({
+      id: 9,
+      source_version_id: pinned.id,
+      target_version_id: lol.id,
+      name: "Pinned to workspace",
+      is_complete: true,
+      rules: [
+        {
+          source_tier_id: pinned.tiers[0].id!,
+          target_tier_id: lol.tiers[1].id!,
+          weight: 1,
+          is_primary: true
+        }
+      ]
+    });
+    await render(sheet("lol", pinned.id, pinned));
+    await clickButton("Load from history");
+    expect(document.body.textContent).toContain("Past pinned tournament");
+    expect(crestNames()).toContain("LoL Pin 1");
+    expect(crestNames()).toContain("LoL 2");
+    expect(crestNames()).not.toContain("LoL Pin 2");
+    expect(crestNames()).not.toContain("OW 2");
+    await clickButton("Apply history values");
+    expect(document.querySelector<HTMLInputElement>('input[inputmode="numeric"]')?.value).toBe(
+      "400"
+    );
+    expect(crestNames()).toContain("LoL Pin 1");
+    await clickButton("Save");
+    expect(onSave.mock.calls[0][1].role_entries_json[0]).toMatchObject({
+      rank_value: 400,
+      division_number: 1
+    });
   });
 });
 

@@ -30,6 +30,7 @@ import type {
   BalancerPlayerRecord,
   BalancerPlayerUpdateInput
 } from "@/types/balancer-admin.types";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 import { getRegistrationBattleTags } from "@/components/balancer/balancer-page-helpers";
 import { BattleTagCopyButton, SmurfTagStrip } from "./BattleTagCopyControls";
 import RankHistory from "@/components/RankHistory";
@@ -44,6 +45,8 @@ type PlayerEditModalProps = {
   player: BalancerPlayerRecord;
   registration?: AdminRegistration | null;
   discipline: string | undefined;
+  divisionGridVersionId: number | null | undefined;
+  divisionGridVersion?: DivisionGridVersion | null;
   statusOptions?: {
     registration: {
       system: Array<{ value: string; name: string }>;
@@ -65,6 +68,8 @@ export function PlayerEditModal({
   player,
   registration = null,
   discipline,
+  divisionGridVersionId,
+  divisionGridVersion,
   statusOptions,
   open,
   onOpenChange,
@@ -76,6 +81,8 @@ export function PlayerEditModal({
     player,
     registration,
     discipline,
+    divisionGridVersionId,
+    divisionGridVersion,
     open: open && discipline !== undefined,
     onSave
   });
@@ -207,6 +214,7 @@ export function PlayerEditModal({
               <PlayerEditHistoryPanel
                 history={history}
                 roleEntries={roleEntries}
+                workspaceGrid={form.workspaceGrid}
                 getDivisionName={form.getHistoryDivisionName}
                 getOriginalDivisionName={form.getOriginalDivisionName}
               />

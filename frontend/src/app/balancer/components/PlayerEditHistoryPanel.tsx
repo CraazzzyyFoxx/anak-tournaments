@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { PlayerRankHistoryPreviewEntry } from "@/components/balancer/workspace-helpers";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { BalancerPlayerRoleEntry } from "@/types/balancer-admin.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 import { ROLE_DISPLAY, buildHistoryChangeText } from "./playerEditSheet.model";
 import { ROLE_RANK_ACCENTS } from "./RoleRankControls";
@@ -26,6 +27,7 @@ import type { PlayerRankHistoryState } from "./usePlayerEditForm";
 type HistoryPreviewCardProps = {
   entry: PlayerRankHistoryPreviewEntry;
   currentEntry: BalancerPlayerRoleEntry | undefined;
+  workspaceGrid: DivisionGrid;
   getDivisionName: (divisionNumber: number | null) => string | null;
   getOriginalDivisionName: (
     divisionNumber: number | null,
@@ -36,6 +38,7 @@ type HistoryPreviewCardProps = {
 function HistoryPreviewCard({
   entry,
   currentEntry,
+  workspaceGrid,
   getDivisionName,
   getOriginalDivisionName
 }: Readonly<HistoryPreviewCardProps>) {
@@ -80,7 +83,7 @@ function HistoryPreviewCard({
                   division={entry.original_division_number}
                   width={16}
                   height={16}
-                  tournamentGrid={entry.tournament_grid_version}
+                  tournamentGrid={entry.tournament_grid_version ?? workspaceGrid}
                 />
               ) : null}
               <span className="text-label font-medium">{originalDivisionName}</span>
@@ -92,7 +95,12 @@ function HistoryPreviewCard({
               <ArrowRight className="size-4 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden />
               <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2 py-1 text-[color:var(--aqt-fg)]">
                 {entry.division_number != null ? (
-                  <DivisionIcon division={entry.division_number} width={16} height={16} />
+                  <DivisionIcon
+                    division={entry.division_number}
+                    tournamentGrid={workspaceGrid}
+                    width={16}
+                    height={16}
+                  />
                 ) : null}
                 <span className="text-label font-medium">{divisionName}</span>
               </div>
@@ -127,6 +135,7 @@ interface PlayerEditHistoryPanelProps {
   history: PlayerRankHistoryState;
   /** The roles being edited, so each preview card can say what it would change. */
   roleEntries: BalancerPlayerRoleEntry[];
+  workspaceGrid: DivisionGrid;
   getDivisionName: (divisionNumber: number | null) => string | null;
   getOriginalDivisionName: (
     divisionNumber: number | null,
@@ -139,6 +148,7 @@ interface PlayerEditHistoryPanelProps {
 export function PlayerEditHistoryPanel({
   history,
   roleEntries,
+  workspaceGrid,
   getDivisionName,
   getOriginalDivisionName
 }: Readonly<PlayerEditHistoryPanelProps>) {
@@ -199,6 +209,7 @@ export function PlayerEditHistoryPanel({
             key={`${entry.role}-${entry.tournament_id}`}
             entry={entry}
             currentEntry={roleEntries.find((roleEntry) => roleEntry.role === entry.role)}
+            workspaceGrid={workspaceGrid}
             getDivisionName={getDivisionName}
             getOriginalDivisionName={getOriginalDivisionName}
           />

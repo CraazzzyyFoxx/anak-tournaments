@@ -20,7 +20,9 @@ import {
   resolveDivisionFromRank as resolveDivisionFromRankInGrid,
   resolveRankFromDivision as resolveRankFromDivisionInGrid
 } from "@/lib/divisions/grid";
+import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
 import adminService from "@/services/admin.service";
+import workspaceService from "@/services/workspace.service";
 import type {
   AdminRegistration,
   BalancerPlayerRecord,
@@ -28,6 +30,7 @@ import type {
   BalancerPlayerUpdateInput,
   BalancerRoleCode
 } from "@/types/balancer-admin.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import {
   MULTIPLE_WORKSPACES_COOKIE,
@@ -55,7 +58,10 @@ export interface PlayerRankHistoryState {
 interface UsePlayerEditFormInput {
   player: BalancerPlayerRecord;
   registration: AdminRegistration | null;
-  discipline?: string;
+  discipline: string | undefined;
+  /** Undefined is unresolved owner metadata; null explicitly means no pin. */
+  divisionGridVersionId: number | null | undefined;
+  divisionGridVersion?: DivisionGridVersion | null;
   /** Sub-roles are only worth fetching while the sheet is on screen. */
   open: boolean;
   onSave: (playerId: number, payload: BalancerPlayerUpdateInput) => void;
@@ -69,11 +75,35 @@ export function usePlayerEditForm({
   player,
   registration,
   discipline,
+  divisionGridVersionId,
+  divisionGridVersion,
   open,
   onSave
 }: UsePlayerEditFormInput) {
-  const divisionGrid = useDivisionGrid(discipline);
-  const divisionGridVersion = useDivisionGridVersion(discipline);
+  const workspaceGrid = useDivisionGrid(discipline);
+  const workspaceGridVersion = useDivisionGridVersion(discipline);
+  const suppliedPin =
+    divisionGridVersionId != null && divisionGridVersion?.id === divisionGridVersionId
+      ? divisionGridVersion
+      : null;
+  const pinnedVersionQuery = useQuery({
+    queryKey: divisionGridQueryKeys.version(divisionGridVersionId ?? null),
+    queryFn: () => workspaceService.getDivisionGridVersion(divisionGridVersionId!),
+    enabled:
+      open && discipline !== undefined && divisionGridVersionId != null && suppliedPin === null
+  });
+  const divisionGrid = useMemo<DivisionGrid>(() => {
+    if (discipline === undefined || divisionGridVersionId === undefined) return { tiers: [] };
+    if (divisionGridVersionId === null) return workspaceGrid;
+    return suppliedPin ?? (pinnedVersionQuery.isSuccess ? pinnedVersionQuery.data : { tiers: [] });
+  }, [
+    discipline,
+    divisionGridVersionId,
+    workspaceGrid,
+    suppliedPin,
+    pinnedVersionQuery.isSuccess,
+    pinnedVersionQuery.data
+  ]);
   const workspaceId = useCurrentWorkspaceId();
 
   const { data: subRoles } = useQuery({
@@ -105,14 +135,14 @@ export function usePlayerEditForm({
 
   const resolveDivision = (rankValue: number | null) =>
     resolveDivisionFromRankInGrid(divisionGrid, rankValue);
-  const resolveRankFromDivision = (divisionNumber: number | null) =>
-    resolveRankFromDivisionInGrid(divisionGrid, divisionNumber);
+  const resolveWorkspaceRankFromDivision = (divisionNumber: number | null) =>
+    resolveRankFromDivisionInGrid(workspaceGrid, divisionNumber);
   const getDivisionName = (divisionNumber: number | null) =>
     getDivisionLabel(divisionGrid, divisionNumber);
 
   // Normalised division name: always look up in the workspace (target) grid.
   const getHistoryDivisionName = (divisionNumber: number | null) =>
-    getDivisionLabel(divisionGrid, divisionNumber);
+    getDivisionLabel(workspaceGrid, divisionNumber);
 
   // Original division name: look up in the source tournament's own grid first,
   // then fall back to the workspace grid.
@@ -125,7 +155,7 @@ export function usePlayerEditForm({
       const tierName = getDivisionLabel(entry.tournament_grid_version, divisionNumber);
       if (tierName) return tierName;
     }
-    return getDivisionLabel(divisionGrid, divisionNumber);
+    return getDivisionLabel(workspaceGrid, divisionNumber);
   };
 
   const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
@@ -173,8 +203,8 @@ export function usePlayerEditForm({
     try {
       const preview = await fetchPlayerRankHistoryPreview(
         player.battle_tag,
-        divisionGridVersion,
-        divisionGrid,
+        workspaceGridVersion,
+        workspaceGrid,
         getHistoryWorkspaceIdParam(workspaceValue),
         workspaceId
       );
@@ -215,7 +245,11 @@ export function usePlayerEditForm({
     dismiss: dismissHistoryPreview,
     apply: () => {
       setRoleEntries(
-        applyHistoryPreviewToRoleEntries(roleEntries, historyPreview, resolveRankFromDivision)
+        applyHistoryPreviewToRoleEntries(
+          roleEntries,
+          historyPreview,
+          resolveWorkspaceRankFromDivision
+        ).map((entry) => ({ ...entry, division_number: resolveDivision(entry.rank_value) }))
       );
       dismissHistoryPreview();
     }
@@ -313,6 +347,7 @@ export function usePlayerEditForm({
 
   return {
     divisionGrid,
+    workspaceGrid,
     roleEntries,
     isFlex,
     setIsFlex,
