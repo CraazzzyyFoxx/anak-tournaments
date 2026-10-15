@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
 for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
@@ -16,7 +18,9 @@ from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from shared.models.catalog import CatalogRole  # noqa: E402
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
+from shared.services.team_export.materialization import resolve_slot_role  # noqa: E402
 from src.services.draft.export import _draft_to_balancer_payload  # noqa: E402
+from src.services.team import to_materialization_teams  # noqa: E402
 from tests.factories import roster  # noqa: E402
 
 # The two shapes the payload behaves differently under: role slots keep rank
@@ -191,6 +195,33 @@ def test_flex_shape_exports_the_flex_slot_code_and_the_best_rank() -> None:
     assert member.rank == 4000
 
 
+@pytest.mark.parametrize("frozen_rank, expected_rank", [(2850, 2850), (None, 4000)])
+def test_migrated_null_role_pick_stays_open_through_materialization(frozen_rank, expected_rank) -> None:
+    # discipline01b turns legacy target_role='flex' into a null role/dimension pair.
+    shape = RosterShape(entries=(("support", 1), ("flex", 1)))
+    player = _player(
+        11,
+        bt="Mate#1",
+        role="support",
+        rank=2800,
+        sub="support_main_heal",
+        role_ranks={"damage": 4000},
+    )
+    payload = _payload(
+        [_team(1, 1, "T")],
+        {1: [player]},
+        shape,
+        {
+            11: _pick(11, 1, role=None, rank=frozen_rank),
+        },
+    )
+    member = to_materialization_teams(payload)[0].members[0]
+    assert member.slot_code == "flex"
+    assert member.sub_role is None
+    assert member.rank == expected_rank
+    assert resolve_slot_role(member.slot_code, discipline_code="overwatch", on_unresolved="error") is None
+
+
 def test_flex_shape_exports_the_best_rank_for_a_captain() -> None:
     teams = [_team(1, 1, "T")]
     cap = _player(10, captain=True, bt="Cap#1", role="tank", rank=3100, uid=10, role_ranks={"damage": 3700})
@@ -201,9 +232,8 @@ def test_flex_shape_exports_the_best_rank_for_a_captain() -> None:
     assert payload[0].total_sr == 3700
 
 
-def test_role_shape_still_exports_a_game_role_never_flex() -> None:
-    # The flex slot code is reachable only from a role-less shape: a roster with
-    # role slots assigns a real role to every pick, captains included.
+def test_role_pick_keeps_its_game_role() -> None:
+    # An explicit role remains distinct from an open-slot pick.
     teams = [_team(1, 1, "T")]
     roster_by_team = {
         1: [

@@ -203,10 +203,12 @@ export function allPlayerHeroes(player: DraftPlayer): { slug: string; imagePath:
   return [...seen].map(([slug, imagePath]) => ({ slug, imagePath }));
 }
 
-/** The role a rostered player fills: the pick's frozen role, else a captain's seat role, else the lead role. */
+/** A resolved pick's role (null = open slot), else the captain's seat or lead role. */
 export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): DraftRole | null {
-  const pick = picks.find((p) => p.picked_player_id === player.id && p.target_role != null);
-  return roleOf(pick?.target_role ?? player.captain_role ?? player.primary_role) as DraftRole | null;
+  const pick = picks.find((p) =>
+    p.picked_player_id === player.id && (p.status === "completed" || p.status === "autopicked")
+  );
+  return roleOf(pick ? pick.target_role : player.captain_role ?? player.primary_role) as DraftRole | null;
 }
 
 /**

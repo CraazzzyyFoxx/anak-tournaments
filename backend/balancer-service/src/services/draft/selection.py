@@ -242,7 +242,7 @@ class DraftSelectionService:
                 rank = pk.target_rank_value
             else:
                 roster = rosters.get(p.id)
-                role = (pk.target_role if pk else None) or domain_ranks.seat_role(roster, p.captain_role)
+                role = pk.target_role if pk is not None else domain_ranks.seat_role(roster, p.captain_role)
                 rank = domain_ranks.slot_rank(roster, role, shape) or 0
             tid = p.drafted_by_team_id
             sums[tid] = sums.get(tid, 0.0) + rank

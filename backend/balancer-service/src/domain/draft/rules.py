@@ -329,11 +329,7 @@ def team_slot_counts(
             continue
         taken += 1
         pk = pick_by_player_id.get(p.id)
-        if pk and pk.target_role:
-            code = pk.target_role
-        else:
-            role = seat_role(rosters.get(p.id), p.captain_role)
-            code = role if role is not None else None
+        code = pk.target_role if pk is not None else seat_role(rosters.get(p.id), p.captain_role)
         if code in role_slot_targets and counts[code] < role_slot_targets[code]:
             counts[code] += 1
     if FLEX_SLOT_CODE in counts:

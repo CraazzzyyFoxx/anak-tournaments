@@ -30,7 +30,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftPlayer  # noqa: E402
+from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from shared.models.catalog import CatalogRole  # noqa: E402
 from src.domain.draft import (
     feasibility,  # noqa: E402
@@ -255,7 +255,7 @@ def test_team_slot_counts_fill_role_slots_first_and_flex_with_the_remainder() ->
     picks = (
         # The frozen target_role wins over the roster's lead role.
         _pick(2, player_id=2, team_id=10, target_role="damage"),
-        _pick(3, player_id=3, team_id=10, target_role=None),
+        _pick(3, player_id=3, team_id=10, target_role="tank"),
         _pick(4, player_id=4, team_id=20, target_role="tank"),
     )
     players = (captain, off_role, tank, other_team, available)
@@ -288,6 +288,30 @@ def test_a_picked_seat_without_a_roster_still_occupies_a_flex_slot() -> None:
     )
 
     assert counts == {"tank": 0, "flex": 1}
+
+
+def test_null_role_pick_keeps_flex_capacity_consumed_even_with_a_ranked_lead_role() -> None:
+    shape = _shape({"tank": 1, "flex": 1})
+    picked = _player(1, "tank", status=DraftPlayerStatus.PICKED, team_id=10)
+    available = _player(2, "tank")
+    pick = _pick(1, player_id=1, team_id=10, target_role=None)
+    rosters = _rosters(picked, available)
+    assert rules.team_slot_counts((picked,), (pick,), 10, shape, rosters) == {"tank": 0, "flex": 1}
+    state = feasibility.build_feasibility_state(
+        shape=shape,
+        teams=(DraftTeam(id=10, draft_position=1),),
+        players=(picked, available),
+        picks=(pick,),
+        rosters=rosters,
+    )
+    assert state.assignments == (feasibility.DraftAssignment(player_id=1, team_id=10, slot_code="flex"),)
+    report = feasibility.analyze_draft_feasibility(
+        team_ids=state.team_ids,
+        slot_targets=state.slot_targets,
+        players=state.players,
+        assignments=state.assignments,
+    )
+    assert report.is_feasible
 
 
 def test_an_overfilled_role_spills_into_flex_instead_of_inflating_the_role_count() -> None:

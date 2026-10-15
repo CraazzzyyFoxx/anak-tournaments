@@ -150,7 +150,9 @@ export function applyDraftEvent(
         picked_player_id: data.picked_player_id ?? null,
         is_autopick: event.event_type === "draft.autopicked",
         target_role:
-          data.target_role ?? board.picks.find((pick) => pick.id === data.pick_id)?.target_role ?? null,
+          data.target_role !== undefined
+            ? data.target_role
+            : board.picks.find((pick) => pick.id === data.pick_id)?.target_role ?? null,
         target_rank_value:
           data.target_rank_value !== undefined
             ? data.target_rank_value

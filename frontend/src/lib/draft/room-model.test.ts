@@ -84,6 +84,20 @@ describe("buildTeamViews", () => {
     ]);
     expect(buildTeamViews(b).get(1)!.full).toBe(true);
   });
+  it("keeps a resolved null-role pick in flex instead of taking the lead-role slot", () => {
+    const b = board({
+      shape: shape({ damage: 1, flex: 1 }),
+      players: [player(2, { status: "picked", drafted_by_team_id: 1 })],
+      picks: [pick(1, { status: "completed", picked_player_id: 2, target_role: null })]
+    });
+    const view = buildTeamViews(b).get(1)!;
+    expect(view.cells.map((cell) => [cell.code, cell.player?.id ?? null, cell.role])).toEqual([
+      ["damage", null, null],
+      ["flex", 2, null]
+    ]);
+    expect(view.openRoles.get("damage")).toBe(1);
+    expect(view.openFlex).toBe(0);
+  });
 });
 
 describe("pool columns and seating", () => {

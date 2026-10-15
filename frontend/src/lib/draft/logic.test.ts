@@ -360,6 +360,15 @@ describe("draft safety state", () => {
     expect(resolved.version).toBe(4);
   });
 
+  it("an explicit open-slot event clears a previously cached role", () => {
+    const board = makeBoard();
+    board.picks[0].target_role = { dimension: "player_role", role: "support" };
+    const next = applyDraftEvent(board, ev("draft.pick_made", {
+      pick_id: board.picks[0].id, picked_player_id: 50, target_role: null
+    }));
+    expect(next.picks[0].target_role).toBeNull();
+  });
+
   it("pauses on blocked while keeping the current pick unresolved", () => {
     const next = applyDraftEvent(
       makeBoard(),

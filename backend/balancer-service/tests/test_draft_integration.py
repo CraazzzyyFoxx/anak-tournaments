@@ -1434,3 +1434,52 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                     self.assertFalse(result["ok"])
                     self.assertEqual(result["error"]["code"], "unprocessable")
                     self.assertIn(error, result["error"]["message"])
+
+    async def test_linked_captain_pin_seeds_in_preview_and_commit(self) -> None:
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            draft = await lifecycle.lifecycle_service.create_session(
+                s,
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                shape=_SHAPE,
+            )
+            captains = [seat for seat in await self._seats(s) if seat.draft_position is not None]
+            pool = await draft_rosters.pool(s, self.tournament_id)
+            self.assertTrue(all(pool[seat.registration_id].player_id is not None for seat in captains))
+            await s.commit()
+            payload = {
+                "expected_version": draft.version,
+                "pool_captains": [
+                    {"registration_id": captain.registration_id, "role": {"dimension": "player_role", "role": "tank"}}
+                    for captain in captains
+                ],
+            }
+        for preview in (True, False):
+            result = await broker.handlers["rpc.balancer.draft.seed"](
+                {
+                    "id": draft.id,
+                    "tournament_id": self.tournament_id,
+                    "identity": _identity(self.captain_auth_user_ids[0], self.workspace_id, ["create"]),
+                    "payload": {**payload, "preview_only": preview},
+                },
+                None,
+            )
+            self.assertTrue(result["ok"], result)
+            async with self.Session() as s:
+                seeded = (
+                    (
+                        await s.scalars(
+                            sa.select(models.DraftPlayer).where(
+                                models.DraftPlayer.session_id == draft.id,
+                                models.DraftPlayer.is_captain,
+                            )
+                        )
+                    )
+                    .unique()
+                    .all()
+                )
+                self.assertEqual(len(seeded), 0 if preview else 3)
+                self.assertTrue(all(player.captain_role == "tank" for player in seeded))
+                self.assertTrue(all(player.workspace_member_id is not None for player in seeded))

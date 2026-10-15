@@ -74,7 +74,7 @@ def build_feasibility_state(
 
     team_ids = tuple(team.id for team in sorted(teams, key=lambda team: (team.draft_position, team.id)))
     picked_role_by_player = {
-        pick.picked_player_id: role
+        pick.picked_player_id: pick.target_role or FLEX_SLOT_CODE
         for pick in picks
         if pick.picked_player_id is not None
         and pick.status
@@ -82,7 +82,6 @@ def build_feasibility_state(
             DraftPickStatus.COMPLETED.value,
             DraftPickStatus.AUTOPICKED.value,
         }
-        and (role := _as_role(pick.target_role)) is not None
     }
     eligible_players: list[EligiblePlayer] = []
     assignments: list[DraftAssignment] = []
@@ -110,8 +109,8 @@ def build_feasibility_state(
                 )
             )
             continue
-        # A pick's frozen role, else the seat's own: a captain's pinned role or
-        # the lead one (``ranks.seat_role``).
+        # A frozen null role stays flex; only a seat without a resolved pick
+        # falls back to its captain pin or lead role.
         assigned_role = picked_role_by_player.get(player.id) or seat_role(roster, player.captain_role)
         if assigned_role is not None:
             assignments.append(

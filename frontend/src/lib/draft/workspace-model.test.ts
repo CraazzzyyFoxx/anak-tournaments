@@ -152,7 +152,7 @@ const ALL_FLEX = { has_role_slots: false };
 describe("roster role/rank", () => {
   it("uses drafted target role over primary", () => {
     const player = mkPlayer({ id: 5, primary_role: { dimension: "player_role", role: "support" }, role_ranks: { damage: 3500, support: 3000 } });
-    const picks = [{ id: 9, picked_player_id: 5, target_role: { dimension: "player_role", role: "damage" } }] as DraftPick[];
+    const picks = [{ id: 9, status: "completed", picked_player_id: 5, target_role: { dimension: "player_role", role: "damage" } }] as DraftPick[];
     expect(rosterRoleForPlayer(player, picks)).toBe("damage");
     expect(slotRankForPlayer(player, "damage", ROLE_SLOTS)).toBe(3500);
   });

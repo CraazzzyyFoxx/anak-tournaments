@@ -240,7 +240,7 @@ class DraftLifecycleService:
             raise rules.unranked_pool_error(unranked)
         shape = await self.feasibility.resolve_shape(session, draft_session)
         rules.validate_captain_roles(captains, rosters, shape)
-        rows = await loaders.rated_rows(session, draft_session)
+        role_rows = await loaders.rated_rows(session, draft_session)
 
         # Re-seed: clear any prior teams/players/picks (cascade via relationships).
         await self.picks_repo.delete_by_session(session, draft_session.id)
@@ -310,8 +310,8 @@ class DraftLifecycleService:
                     is_captain=True,
                     status=DraftPlayerStatus.PICKED.value,
                     drafted_by_team_id=team_by_position[position].id,
-                    captain_role_row=rows[seat.captain_role] if seat.captain_role else None,
-                    dimension_id=rows[seat.captain_role].dimension_id if seat.captain_role else None,
+                    captain_role_row=role_rows[seat.captain_role] if seat.captain_role else None,
+                    dimension_id=role_rows[seat.captain_role].dimension_id if seat.captain_role else None,
                 )
             )
         for seat in seats:

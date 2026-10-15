@@ -68,8 +68,8 @@ def _draft_to_balancer_payload(
             player_roster = rosters.get(p.id)
             pk = pick_by_player_id.get(p.id)
             if shape.has_role_slots:
-                seat = ranks.seat_role(player_roster, p.captain_role)
-                role = (pk.target_role if (pk and pk.target_role) else None) or seat or FLEX_SLOT_CODE
+                # A resolved null role is an open slot, not a missing captain pin.
+                role = pk.target_role if pk is not None else ranks.seat_role(player_roster, p.captain_role)
                 rank = (
                     pk.target_rank_value
                     if (pk is not None and pk.target_rank_value is not None)
@@ -89,7 +89,7 @@ def _draft_to_balancer_payload(
                     sub_role=workspace_sub_role_slug(role, role_entry.subrole)
                     if role_entry and role_entry.subrole
                     else None,
-                    role=role,  # tank/damage/support/flex
+                    role=role or FLEX_SLOT_CODE,
                     rank=rank,
                 )
             )
