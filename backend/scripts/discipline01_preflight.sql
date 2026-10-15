@@ -130,7 +130,7 @@ SELECT p.workspace_id, p.code, array_agg(p.parent ORDER BY p.parent) AS parents
       FROM off_catalog
 ) p
          GROUP BY p.workspace_id, p.code
-        HAVING char_length(p.code) > 64
+        HAVING count(*) > 1 OR p.code IS NULL OR char_length(p.code) > 64
             OR bool_or(p.parent NOT IN ('tank', 'damage', 'support'))
          ORDER BY p.workspace_id, p.code;
 

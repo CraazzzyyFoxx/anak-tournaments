@@ -289,6 +289,21 @@ def test_a_flex_sub_role_creates_nothing(migrated) -> None:
             "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label) VALUES (%(ws)s, 'flex', 'anchor', 'Anchor')",
             "'code': 'flex_anchor', 'parents': ['flex']",
         ),
+        (
+            "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label)"
+            " VALUES (%(ws)s, 'support', 'Main', 'Main'), (%(ws)s, 'support', 'main', 'main')",
+            "'code': 'support_main', 'parents': ['support', 'support']",
+        ),
+        (
+            "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label)"
+            " VALUES (%(ws)s, 'support', '', 'Empty')",
+            "'code': None, 'parents': ['support']",
+        ),
+        (
+            "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label)"
+            " VALUES (%(ws)s, 'support', E' \\t\\n', 'Whitespace')",
+            "'code': None, 'parents': ['support']",
+        ),
     ],
 )
 def test_unusable_sub_role_codes_stop_the_revision(legacy_template, statement: str, listed: str) -> None:

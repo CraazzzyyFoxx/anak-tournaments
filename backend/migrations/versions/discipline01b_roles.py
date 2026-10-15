@@ -145,7 +145,7 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
         SELECT p.workspace_id, p.code, array_agg(p.parent ORDER BY p.parent) AS parents
           FROM ({SUB_ROLE_PLAN}) p
          GROUP BY p.workspace_id, p.code
-        HAVING char_length(p.code) > 64
+        HAVING count(*) > 1 OR p.code IS NULL OR char_length(p.code) > 64
             OR bool_or(p.parent NOT IN {MODULE_ROLES})
          ORDER BY p.workspace_id, p.code
         """,
