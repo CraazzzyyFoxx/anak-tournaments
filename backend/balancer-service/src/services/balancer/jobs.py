@@ -19,7 +19,7 @@ from shared.services.balancer_realtime import (
     BALANCER_JOB_SUCCEEDED,
 )
 from shared.services.roster import roster_engine
-from shared.services.team_format import tournament_slot_shape
+from shared.services.team_format import tournament_slot_shape, workspace_slot_shape
 from src.core import db
 from src.core.config import config
 from src.core.job_store import get_job_store
@@ -162,10 +162,12 @@ async def create_job(
     player_data = await _payload_parser.parse_player_data(uploaded_file)
     config_overrides = _payload_parser.parse_config_overrides(raw_config)
 
-    # Per-team slot counts are the tournament's, not the request's: resolved
-    # here so a broken roster shape fails the call instead of the job, and so
-    # the queued payload records the shape the run was accepted for.
-    roster_shape = await tournament_slot_shape(session, tournament_id)
+    # Freeze the owner's projection in the payload; standalone uploads still
+    # use the Overwatch vertical and its workspace default (or module preset).
+    if tournament_id is None:
+        roster_shape = await workspace_slot_shape(session, workspace_id=workspace_id, discipline="overwatch")
+    else:
+        roster_shape = await tournament_slot_shape(session, tournament_id)
 
     job_id = uuid.uuid4().hex
     # One accounting call for the whole request: the per-minute token, the daily

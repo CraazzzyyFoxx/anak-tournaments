@@ -332,7 +332,7 @@ export interface TournamentUpdateInput {
   loss_points?: number;
   division_grid_version_id?: number | null;
   /** Sent as the tournament's team format by adminService.updateTournament. */
-  roster_slots_json?: RosterSlotMap | null;
+  roster_slots_json?: RosterSlotMap;
   /** Draft format rule; `null` clears it back to snake. */
   draft_format_json?: DraftFormatSettings | null;
 }

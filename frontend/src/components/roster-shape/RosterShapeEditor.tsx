@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils";
 import { ROLE_ACCENT, getRoleIconName } from "@/lib/roster/roles";
 import {
   ROSTER_SLOT_CODES,
-  orderSlotCodes,
   isRoleSlotCode,
   slotsTotal,
   type RosterShape,
@@ -91,14 +90,8 @@ interface RosterShapeEditorProps {
   locked?: boolean;
   disabled?: boolean;
   /** Emits the slot-map draft which the service adapter turns into a team format. */
-  onChange: (next: RosterSlotMap | null) => void;
+  onChange: (next: RosterSlotMap) => void;
   className?: string;
-  /**
-   * Which entity owns the override, for the two sentences that name it by word
-   * rather than by shape ("this {entity} pins its own shape..."). Both entities
-   * inherit the same workspace default, so every other string stays as-is.
-   */
-  entity?: "tournament" | "mix" | "account";
 }
 
 export function RosterShapeEditor({
@@ -107,30 +100,21 @@ export function RosterShapeEditor({
   locked = false,
   disabled = false,
   onChange,
-  className,
-  entity = "tournament"
+  className
 }: Readonly<RosterShapeEditorProps>) {
   const t = useTranslations("rosterShape");
   const errorId = useId();
-  const inherited = effective?.slots ?? {};
+  const effectiveSlots = effective?.slots ?? {};
   const [selection, setSelection] = useState<RosterShapeSelection>(() =>
-    initialSelection(value, inherited)
+    initialSelection(value, effectiveSlots)
   );
-  // `value` is the payload, which cannot express the editor's whole state: it
-  // drops the counts kept under `inherit` and the mode behind an override that
-  // equals a preset. So it is re-seeded only when the prop actually diverges
-  // from what this editor last emitted -- a parent reset or a background
-  // refetch -- and never on the editor's own round trip through the parent.
-  //
-  // Adjusted during render rather than in an effect: React re-runs the component
-  // with the new state before committing, so the stale selection is never
-  // painted. An effect would paint it first, then correct it -- and would trip
-  // react-hooks/set-state-in-effect for exactly that reason.
+  // Preserve a custom selection that happens to match a preset through the
+  // parent's round trip; only reseed on a reset or background refetch.
   const [lastEmitted, setLastEmitted] = useState(() => JSON.stringify(value));
   const incoming = JSON.stringify(value);
   if (incoming !== lastEmitted) {
     setLastEmitted(incoming);
-    setSelection(initialSelection(value, inherited));
+    setSelection(initialSelection(value, effectiveSlots));
   }
 
   const apply = (next: RosterShapeSelection) => {
@@ -142,36 +126,9 @@ export function RosterShapeEditor({
 
   const error = payloadTotalError(slotsPayload(selection));
   const readOnly = locked || disabled;
-  const isInherit = selection.mode === "inherit";
-  // In inherit mode the resolved shape IS the outcome, so the totals line reads
-  // the server number; an override shows the live edit.
-  const shownTotal = isInherit && effective ? effective.team_size : slotsTotal(selection.slots);
-  const previewSlots = previewSlotRows(isInherit ? inherited : selection.slots);
-
-  // Where the shape comes from, keyed off the mode being EDITED rather than the
-  // saved resolution: while an override is in the form, saying "inherited from
-  // the workspace" describes a state the admin is in the middle of leaving.
-  const sourceNote = (() => {
-    if (!effective) return null;
-    // An account-scoped shape has no single workspace behind it: it applies to
-    // every mix its owner hosts, each in whatever workspace it runs in, so
-    // neither "inherited from THE workspace" nor a saved-source note fits.
-    if (entity === "account") return t(isInherit ? "willInheritAccount" : "overridingAccount");
-    if (!isInherit) return t(entity === "mix" ? "overridingMix" : "overriding");
-    if (effective.source === "tournament") {
-      return t(entity === "mix" ? "willInheritMix" : "willInherit");
-    }
-    return t("inherited", {
-      source: t(
-        effective.source === "workspace"
-          ? "inheritedSources.workspace"
-          : "inheritedSources.default"
-      ),
-      shape: orderSlotCodes(effective.slots)
-        .map((code) => `${effective.slots[code]} ${t(`slotCodes.${code}`)}`)
-        .join(" · ")
-    });
-  })();
+  const shownTotal = slotsTotal(selection.slots);
+  const previewSlots = previewSlotRows(selection.slots);
+  const sourceNote = effective ? t("overriding") : null;
 
   return (
     <Card className={cn("border-border/40 bg-card/50", className)}>
@@ -228,48 +185,46 @@ export function RosterShapeEditor({
             {sourceNote && <p className="mt-2 text-xs text-muted-foreground">{sourceNote}</p>}
           </div>
 
-          {!isInherit && (
-            <div>
-              <span className={EYEBROW_CLASS}>{t("slots")}</span>
-              {/* Counters labelled by the slot glyph rather than the word: the
-                  dot-plus-name pair spent most of each cell restating what the
-                  colour already said, and the glyph is what the draft room and
-                  the roster views show. Cells size to content and wrap, so the
-                  row no longer has to fit a fixed four-up grid. */}
-              <div className="mt-2 flex flex-wrap gap-2">
-                {ROSTER_SLOT_CODES.map((code) => {
-                  const label = t(`slotCodes.${code}`);
-                  return (
-                    <div
-                      key={code}
-                      className="flex items-center gap-2 rounded-xl border border-border/50 bg-muted/20 p-1.5"
+          <div>
+            <span className={EYEBROW_CLASS}>{t("slots")}</span>
+            {/* Counters labelled by the slot glyph rather than the word: the
+                dot-plus-name pair spent most of each cell restating what the
+                colour already said, and the glyph is what the draft room and
+                the roster views show. Cells size to content and wrap, so the
+                row no longer has to fit a fixed four-up grid. */}
+            <div className="mt-2 flex flex-wrap gap-2">
+              {ROSTER_SLOT_CODES.map((code) => {
+                const label = t(`slotCodes.${code}`);
+                return (
+                  <div
+                    key={code}
+                    className="flex items-center gap-2 rounded-xl border border-border/50 bg-muted/20 p-1.5"
+                  >
+                    <Label
+                      htmlFor={`settings-roster-slot-${code}`}
+                      title={label}
+                      className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
                     >
-                      <Label
-                        htmlFor={`settings-roster-slot-${code}`}
-                        title={label}
-                        className="flex size-8 shrink-0 items-center justify-center text-muted-foreground"
-                      >
-                        <SlotIcon code={code} />
-                        <span className="sr-only">{label}</span>
-                      </Label>
-                      <NumberInput
-                        id={`settings-roster-slot-${code}`}
-                        integer
-                        min={0}
-                        max={MAX_SLOT_COUNT}
-                        disabled={readOnly}
-                        aria-invalid={error !== null}
-                        aria-describedby={error ? errorId : undefined}
-                        value={selection.slots[code] ?? 0}
-                        onValueChange={(next) => apply(setSlotCount(selection, code, next ?? 0))}
-                        className="h-8 w-14 bg-background/50 px-2 text-center tabular-nums"
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+                      <SlotIcon code={code} />
+                      <span className="sr-only">{label}</span>
+                    </Label>
+                    <NumberInput
+                      id={`settings-roster-slot-${code}`}
+                      integer
+                      min={0}
+                      max={MAX_SLOT_COUNT}
+                      disabled={readOnly}
+                      aria-invalid={error !== null}
+                      aria-describedby={error ? errorId : undefined}
+                      value={selection.slots[code] ?? 0}
+                      onValueChange={(next) => apply(setSlotCount(selection, code, next ?? 0))}
+                      className="h-8 w-14 bg-background/50 px-2 text-center tabular-nums"
+                    />
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
         </div>
 
         {error && (

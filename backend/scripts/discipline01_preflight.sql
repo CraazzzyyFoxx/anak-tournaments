@@ -188,8 +188,8 @@ SELECT count(*) AS flex_rows_with_a_sub_role
                 SELECT 'tournament', t.id, t.roster_slots_json FROM tournament.tournament t WHERE t.roster_slots_json IS NOT NULL
                 UNION ALL
                 SELECT 'host', u.user_id, u.role_slots_json FROM balancer.user_config u WHERE u.role_slots_json IS NOT NULL) s
-         WHERE CASE WHEN jsonb_typeof(s.slots) <> 'object' THEN true
-                    WHEN s.slots = '{}'::jsonb THEN false
+         WHERE CASE WHEN s.slots = 'null'::jsonb OR s.slots = '{}'::jsonb THEN false
+                    WHEN jsonb_typeof(s.slots) <> 'object' THEN true
                     ELSE EXISTS (SELECT 1 FROM jsonb_each(s.slots) e
                                   WHERE e.key NOT IN ('tank', 'damage', 'support', 'flex')
                                      OR jsonb_typeof(e.value) <> 'number' OR e.value::text !~ '^[1-9][0-9]*$')

@@ -679,6 +679,11 @@ discipline's catalog ontology. A workspace may keep one default per discipline; 
 (or the module preset) into each tournament or mix, so later template edits do not change existing events.
 `flex` is only the projected open-slot key, never a catalog role or a quota rule.
 
+`roster.team_format_legacy` is a migration-only snapshot of the owners and effective slot maps
+carried by `discipline01b`. Reconciliation checks exact format semantics against this independent
+snapshot, so deleting destination formats cannot hide missing transfers. It has no runtime model
+or service use; `discipline02` (P9) drops it with the other legacy mapping tables.
+
 <!-- ERD:auto roster -->
 ```mermaid
 erDiagram

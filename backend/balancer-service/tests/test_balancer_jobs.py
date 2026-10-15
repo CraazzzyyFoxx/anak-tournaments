@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
+
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
@@ -16,9 +19,16 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 os.environ["DEBUG"] = "false"
 
+
+from shared import models  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.domain.team_format import FormatDimension, TeamFormat  # noqa: E402
 from shared.quota import QuotaLease  # noqa: E402
+from shared.services import team_format as formats  # noqa: E402
+from shared.services.ontology import project_disciplines  # noqa: E402
+from shared.testing import create_test_async_engine  # noqa: E402
+from shared.testing.db import ensure_test_postgres  # noqa: E402
 from src.services.balancer import jobs  # noqa: E402
 from src.services.balancer import solver as solver_module  # noqa: E402
 from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
@@ -135,7 +145,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._access_policy", access_policy),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.tournament_slot_shape", _shape_resolver()),
+            patch(f"{JOBS}.workspace_slot_shape", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),
@@ -255,7 +265,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}.quota", gate),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.tournament_slot_shape", _shape_resolver()),
+            patch(f"{JOBS}.workspace_slot_shape", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),
@@ -305,6 +315,57 @@ class CreateJobTests(IsolatedAsyncioTestCase):
         self.assertEqual(exc_info.exception.status_code, 403)
         self.assertEqual(exc_info.exception.detail, "API key scope required: team.create")
         gate.lease.assert_not_awaited()
+
+
+class CreateJobFormatIntegrationTests(IsolatedAsyncioTestCase):
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_job_uses_workspace_default_or_preset_without_a_tournament(self) -> None:
+        ensure_test_postgres()
+        engine = create_test_async_engine()
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                await project_disciplines(session)
+                workspace = models.Workspace(slug="job-format-test", name="Job format test")
+                session.add(workspace)
+                await session.flush()
+                store = SimpleNamespace(create_job=AsyncMock(return_value="format-job"))
+                parser = SimpleNamespace(
+                    parse_player_data=AsyncMock(return_value={"players": {}}),
+                    parse_config_overrides=lambda value: None,
+                )
+                with (
+                    patch(f"{JOBS}.get_job_store", return_value=store),
+                    patch(f"{JOBS}.quota", _noop_quota()),
+                    patch(f"{JOBS}._payload_parser", parser),
+                    patch(
+                        f"{JOBS}.BalancerJobPublisher", return_value=SimpleNamespace(publish_job_requested=AsyncMock())
+                    ),
+                ):
+                    for expected in ({"tank": 1, "damage": 2, "support": 2}, {"flex": 6}):
+                        response = await jobs.create_job(
+                            session=session,
+                            uploaded_file=SimpleNamespace(filename="players.json", size=10),
+                            raw_config=None,
+                            workspace_id=workspace.id,
+                            user=_api_key_user(scopes=["team.create"], workspace_id=workspace.id),
+                            broker=SimpleNamespace(),
+                        )
+                        assert response.job_id == "format-job"
+                        assert store.create_job.await_args.kwargs["role_mask"] == expected
+                        assert store.create_job.await_args.kwargs["tournament_id"] is None
+                        await formats.save_workspace_format(
+                            session,
+                            workspace_id=workspace.id,
+                            discipline="overwatch",
+                            team_format=TeamFormat(
+                                "overwatch", "Open six", 6, 6, dimensions=(FormatDimension("player_role", "off"),)
+                            ),
+                        )
+                await session.rollback()
+        finally:
+            await engine.dispose()
 
 
 def _make_fake_store(payload: dict, *, fail_marks: bool = False, optimizing_messages: list | None = None):

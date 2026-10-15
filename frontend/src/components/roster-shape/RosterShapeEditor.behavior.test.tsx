@@ -2,9 +2,8 @@
 //
 // The model tests cover the state machine; this covers what the model cannot see:
 // that every message key the editor asks for actually exists (next-intl renders
-// the raw key path otherwise, which reads as a broken page), and that the three
-// states an admin can land in — inheriting, overriding, locked — each render the
-// thing that state is supposed to tell them.
+// the raw key path otherwise, which reads as a broken page), and that editable
+// owned formats and locked formats render the controls they promise.
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -53,17 +52,14 @@ function previewRows(host: HTMLElement): string[] {
 }
 
 describe("RosterShapeEditor", () => {
-  it("names the inherited shape and its source instead of passing it off as its own", () => {
+  it("edits a copy of the effective shape instead of offering live inheritance", () => {
     const host = mount({ value: null, effective: shape() });
 
-    expect(host.textContent).toContain(
-      "Inherited from the workspace default: 1 Tank · 2 Damage · 2 Support"
-    );
-    // Totals come off the server shape.
+    expect(host.textContent).toContain("pins its own shape");
+    expect(host.textContent).not.toContain("Inherited from");
     expect(host.textContent).toContain("5 slots");
     expect(previewRows(host)).toEqual(["Tank", "Damage", "Damage", "Support", "Support"]);
-    // Nothing to edit while inheriting.
-    expect(host.querySelectorAll("input")).toHaveLength(0);
+    expect(host.querySelectorAll("input")).toHaveLength(4);
   });
 
   it("previews a role-free shape as one row per flex slot, which is the point of the preview", () => {

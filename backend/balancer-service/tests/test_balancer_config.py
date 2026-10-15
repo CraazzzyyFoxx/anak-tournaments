@@ -145,6 +145,12 @@ def test_normalize_tournament_config_payload_rejects_unknown_roles_and_open_slot
             normalize_tournament_config_payload({"role_settings": {code: {"impact": 2.0}}})
 
 
+@pytest.mark.parametrize("value", [7, [{"tank": {}}], "tank", True])
+def test_role_settings_rejects_non_object_containers_as_validation_errors(value) -> None:
+    with pytest.raises(ValidationError):
+        normalize_tournament_config_payload({"role_settings": value})
+
+
 def test_role_settings_overrides_merge_field_by_field() -> None:
     """An override names one weight of one role; everything else stays put.
 

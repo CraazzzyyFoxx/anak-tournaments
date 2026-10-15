@@ -44,6 +44,7 @@ __all__ = (
     "tournament_shape_reads",
     "tournament_slot_shape",
     "workspace_format",
+    "workspace_slot_shape",
 )
 
 FormatSource = Literal["tournament", "custom_game", "workspace", "preset"]
@@ -110,6 +111,11 @@ async def custom_game_format(session: AsyncSession, game: Any) -> tuple[TeamForm
 async def _shape(session: AsyncSession, team_format: TeamFormat, workspace_id: int) -> RosterShape:
     ontology = await _roles.ontology(session, discipline=team_format.discipline, workspace_id=workspace_id)
     return slot_shape(team_format, ontology)
+
+
+async def workspace_slot_shape(session: AsyncSession, *, workspace_id: int, discipline: str) -> RosterShape:
+    team_format, _ = await workspace_format(session, workspace_id=workspace_id, discipline=discipline)
+    return await _shape(session, team_format, workspace_id)
 
 
 async def tournament_slot_shape(session: AsyncSession, tournament_id: int) -> RosterShape:

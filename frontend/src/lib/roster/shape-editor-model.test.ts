@@ -4,6 +4,7 @@ import {
   MAX_ROSTER_TOTAL,
   MAX_SLOT_COUNT,
   MIN_ROSTER_TOTAL,
+  ROSTER_SHAPE_MODES,
   initialSelection,
   modeForOverride,
   normalizeSlots,
@@ -17,13 +18,11 @@ import {
 const OW5V5 = { tank: 1, damage: 2, support: 2 } as const;
 
 describe("modeForOverride", () => {
-  it("maps no override to inherit", () => {
-    expect(modeForOverride(null)).toBe("inherit");
+  it("offers only owned presets and custom shapes", () => {
+    expect(ROSTER_SHAPE_MODES).toEqual(["ow5v5", "flex6", "custom"]);
   });
 
-  it("keeps an override that equals the default distinguishable from inherit", () => {
-    // The whole point of the mode: same counts, different meaning -- one keeps
-    // following the workspace, the other pins the shape to this tournament.
+  it("names a copy matching the default preset", () => {
     expect(modeForOverride({ ...OW5V5 })).toBe("ow5v5");
   });
 
@@ -37,11 +36,9 @@ describe("modeForOverride", () => {
 });
 
 describe("initialSelection", () => {
-  it("seeds the steppers from the inherited shape while in inherit mode", () => {
-    // Switching to an override must start from the shape actually in force, not
-    // from an empty form.
+  it("seeds a concrete preset from the effective shape when no draft exists", () => {
     expect(initialSelection(null, { flex: 6 })).toEqual({
-      mode: "inherit",
+      mode: "flex6",
       slots: { flex: 6 }
     });
   });
@@ -61,7 +58,7 @@ describe("initialSelection", () => {
 
 describe("selectMode", () => {
   it("replaces the counts when a preset is picked", () => {
-    const next = selectMode({ mode: "inherit", slots: { tank: 3 } }, "flex6");
+    const next = selectMode({ mode: "custom", slots: { tank: 3 } }, "flex6");
     expect(next).toEqual({ mode: "flex6", slots: { flex: 6 } });
   });
 
@@ -70,10 +67,6 @@ describe("selectMode", () => {
     expect(next).toEqual({ mode: "custom", slots: { ...OW5V5 } });
   });
 
-  it("keeps the counts when switching back to inherit, so nothing typed is lost", () => {
-    const next = selectMode({ mode: "custom", slots: { tank: 1, flex: 5 } }, "inherit");
-    expect(next).toEqual({ mode: "inherit", slots: { tank: 1, flex: 5 } });
-  });
 });
 
 describe("setSlotCount", () => {
@@ -117,15 +110,11 @@ describe("payloadTotalError", () => {
     expect(payloadTotalError({ tank: 6, damage: 7 })).toBe("too_many");
   });
 
-  it("never blocks inherit, which sends no counts at all", () => {
-    expect(payloadTotalError(null)).toBeNull();
-  });
-
   it("agrees with what the editor would send, whatever the mode", () => {
     // The tab gates on the payload and the editor shows the message; both must
     // read the same verdict off the same function.
-    const selection = { mode: "inherit", slots: {} } as const;
-    expect(payloadTotalError(slotsPayload(selection))).toBeNull();
+    const selection = { mode: "custom", slots: {} } as const;
+    expect(payloadTotalError(slotsPayload(selection))).toBe("too_few");
   });
 });
 
@@ -151,13 +140,11 @@ describe("previewSlotRows", () => {
 });
 
 describe("slotsPayload", () => {
-  it("sends null for inherit, even with counts still on screen", () => {
-    expect(slotsPayload({ mode: "inherit", slots: { ...OW5V5 } })).toBeNull();
+  it("sends a concrete copy even when initialized from the effective shape", () => {
+    expect(slotsPayload(initialSelection(null, { ...OW5V5 }))).toEqual(OW5V5);
   });
 
-  it("sends the counts for an override that equals the inherited default", () => {
-    // Same numbers as inherit would resolve to, but pinned: the payload has to
-    // differ or the mode is a lie.
+  it("sends the counts for a preset", () => {
     expect(slotsPayload({ mode: "ow5v5", slots: { ...OW5V5 } })).toEqual(OW5V5);
   });
 

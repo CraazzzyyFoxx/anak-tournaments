@@ -52,3 +52,7 @@ def test_the_sql_file_counts_the_pick_ban_ids_the_revision_cannot_map() -> None:
 
 def test_the_reconcile_file_defines_the_revisions_leaf_function() -> None:
     assert _squash(mod_b.LEAF_FUNCTION) + ";" in _squash(_RECONCILE)
+
+
+def test_the_reconcile_file_uses_the_revisions_format_check() -> None:
+    assert _squash(mod_b.TEAM_FORMAT_RECONCILE) in _squash(_RECONCILE)

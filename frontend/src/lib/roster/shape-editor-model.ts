@@ -21,15 +21,10 @@ import {
   type RosterSlotMap
 } from "@/lib/roster/shape";
 
-/**
- * `inherit` is a first-class mode, NOT "custom that happens to match the
- * default": it stores `null` and keeps following the workspace, so it must stay
- * distinguishable from an override with identical counts.
- */
-export type RosterShapeMode = "inherit" | RosterPresetId | "custom";
+/** Every selection edits an owned copy; no mode follows workspace changes. */
+export type RosterShapeMode = RosterPresetId | "custom";
 
 export const ROSTER_SHAPE_MODES: readonly RosterShapeMode[] = [
-  "inherit",
   ...ROSTER_PRESETS.map(({ id }) => id),
   "custom"
 ];
@@ -48,11 +43,7 @@ export const MAX_SLOT_COUNT = MAX_ROSTER_TOTAL;
 
 export interface RosterShapeSelection {
   mode: RosterShapeMode;
-  /**
-   * The counts the steppers show. Kept populated even in `inherit` mode so
-   * switching to an override starts from the shape currently in force instead of
-   * an empty form.
-   */
+  /** The counts shown by the steppers and saved in the owner's format. */
   slots: RosterSlotMap;
 }
 
@@ -67,31 +58,24 @@ export function normalizeSlots(slots: RosterSlotMap): RosterSlotMap {
   return normalized;
 }
 
-/** Which mode a stored override represents. `null` (no override) is `inherit`. */
-export function modeForOverride(override: RosterSlotMap | null): RosterShapeMode {
-  return override === null ? "inherit" : presetForSlots(override);
+/** Which preset the owner's slot map matches, or custom. */
+export function modeForOverride(override: RosterSlotMap): RosterShapeMode {
+  return presetForSlots(override);
 }
 
-/**
- * Opening state: the stored override decides the mode, and the steppers are
- * seeded from the override when there is one, otherwise from the shape being
- * inherited.
- */
+/** Seed a concrete draft from the owner's map, or its effective projection. */
 export function initialSelection(
   override: RosterSlotMap | null,
-  inherited: RosterSlotMap
+  effective: RosterSlotMap
 ): RosterShapeSelection {
+  const slots = normalizeSlots(override ?? effective);
   return {
-    mode: modeForOverride(override),
-    slots: normalizeSlots(override ?? inherited)
+    mode: modeForOverride(slots),
+    slots
   };
 }
 
-/**
- * Mode switch. A preset replaces the counts; `custom` keeps whatever is there;
- * `inherit` keeps them too, so toggling back and forth does not lose the numbers
- * the admin just typed.
- */
+/** A preset replaces the counts; custom keeps the current counts. */
 export function selectMode(
   selection: RosterShapeSelection,
   mode: RosterShapeMode
@@ -123,9 +107,7 @@ export function setSlotCount(
  * the selection so the editor and the settings tab -- which holds only the
  * payload -- gate on the exact same check instead of two lookalikes.
  */
-export function payloadTotalError(payload: RosterSlotMap | null): RosterTotalError | null {
-  // Inherit sends no counts, so nothing can be out of range.
-  if (payload === null) return null;
+export function payloadTotalError(payload: RosterSlotMap): RosterTotalError | null {
   const total = slotsTotal(payload);
   if (total < MIN_ROSTER_TOTAL) return "too_few";
   if (total > MAX_ROSTER_TOTAL) return "too_many";
@@ -143,11 +125,7 @@ export function previewSlotRows(slots: RosterSlotMap): RosterSlotCode[] {
   );
 }
 
-/**
- * What goes into `TournamentUpdate.roster_slots_json`: `null` in `inherit` mode,
- * a normalized map otherwise. Normalizing here keeps the JSON key order stable,
- * which is what the tab's dirty check compares.
- */
-export function slotsPayload(selection: RosterShapeSelection): RosterSlotMap | null {
-  return selection.mode === "inherit" ? null : normalizeSlots(selection.slots);
+/** Stable normalized counts for the team-format transport and dirty check. */
+export function slotsPayload(selection: RosterShapeSelection): RosterSlotMap {
+  return normalizeSlots(selection.slots);
 }

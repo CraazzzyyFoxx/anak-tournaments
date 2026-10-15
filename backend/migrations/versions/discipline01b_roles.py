@@ -155,8 +155,8 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
                 SELECT 'tournament', t.id, t.roster_slots_json FROM tournament.tournament t WHERE t.roster_slots_json IS NOT NULL
                 UNION ALL
                 SELECT 'host', u.user_id, u.role_slots_json FROM balancer.user_config u WHERE u.role_slots_json IS NOT NULL) s
-         WHERE CASE WHEN jsonb_typeof(s.slots) <> 'object' THEN true
-                    WHEN s.slots = '{}'::jsonb THEN false
+         WHERE CASE WHEN s.slots = 'null'::jsonb OR s.slots = '{}'::jsonb THEN false
+                    WHEN jsonb_typeof(s.slots) <> 'object' THEN true
                     ELSE EXISTS (SELECT 1 FROM jsonb_each(s.slots) e
                                   WHERE e.key NOT IN ('tank', 'damage', 'support', 'flex')
                                      OR jsonb_typeof(e.value) <> 'number' OR e.value::text !~ '^[1-9][0-9]*$')
@@ -301,6 +301,39 @@ def downgrade() -> None:
     raise RuntimeError("discipline01b is forward-fix only; restore from a backup to go back")
 
 
+#: Exact carried semantics and an independent owner set, shared with the operator's reconciliation SQL.
+TEAM_FORMAT_RECONCILE = """
+SELECT 'team formats', coalesce(o.tournament_id, o.custom_game_id, o.workspace_id),
+       CASE WHEN o.tournament_id IS NOT NULL THEN 'tournament'
+            WHEN o.custom_game_id IS NOT NULL THEN 'mix' ELSE 'workspace' END,
+       EXISTS (SELECT 1 FROM roster.team_format f
+                WHERE f.workspace_id = o.workspace_id AND f.discipline = o.discipline
+                  AND f.tournament_id IS NOT DISTINCT FROM o.tournament_id
+                  AND f.custom_game_id IS NOT DISTINCT FROM o.custom_game_id
+                  AND f.starter_min = total.slots AND f.starter_max = total.slots
+                  AND f.substitute_min = 0 AND f.substitute_max = 0
+                  AND (SELECT coalesce(jsonb_agg(jsonb_build_array(d.code, fd.mode,
+                                      fd.player_min_assignments, fd.player_max_assignments) ORDER BY d.code), '[]'::jsonb)
+                         FROM roster.team_format_dimension fd JOIN catalog.role_dimension d ON d.id = fd.dimension_id
+                        WHERE fd.team_format_id = f.id)
+                      = jsonb_build_array(jsonb_build_array('player_role',
+                          CASE WHEN EXISTS (SELECT 1 FROM jsonb_object_keys(o.slots) k WHERE k <> 'flex')
+                               THEN 'enforced' ELSE 'off' END, NULL, NULL))
+                  AND (SELECT coalesce(jsonb_agg(jsonb_build_array(d.code, r.code, r.workspace_id,
+                                      rr.hard_min, rr.hard_max, rr.recommended_min, rr.recommended_max,
+                                      rr.include_descendants) ORDER BY d.code, r.code, r.workspace_id), '[]'::jsonb)
+                         FROM roster.format_role_rule rr
+                         JOIN catalog.role r ON r.id = rr.role_id
+                         JOIN catalog.role_dimension d ON d.id = rr.dimension_id
+                        WHERE rr.team_format_id = f.id)
+                      = (SELECT coalesce(jsonb_agg(jsonb_build_array('player_role', e.key, NULL,
+                                        e.value::int, e.value::int, NULL, NULL, true) ORDER BY e.key), '[]'::jsonb)
+                           FROM jsonb_each_text(o.slots) e WHERE e.key <> 'flex'))
+  FROM roster.team_format_legacy o
+ CROSS JOIN LATERAL (SELECT sum(e.value::int) AS slots FROM jsonb_each_text(o.slots) e) total
+"""
+
+
 #: §14.3 verbatim, with names for the constraints the spec leaves unnamed.
 _TEAM_FORMAT_SCHEMA = (
     "CREATE SCHEMA roster",
@@ -380,24 +413,37 @@ _ROLE_QUEUE = """'{"tank": 1, "damage": 2, "support": 2}'::jsonb"""
 _TEAM_FORMATS = (
     *_TEAM_FORMAT_SCHEMA,
     f"""
-    CREATE TEMP TABLE discipline01b_format ON COMMIT DROP AS
+    CREATE TABLE roster.team_format_legacy AS
     SELECT nextval(pg_get_serial_sequence('roster.team_format', 'id')) AS id, s.workspace_id, s.discipline,
            s.tournament_id, s.custom_game_id, s.slots
       FROM (SELECT w.id AS workspace_id, 'overwatch'::varchar AS discipline, NULL::bigint AS tournament_id,
                    NULL::bigint AS custom_game_id, w.default_roster_slots_json AS slots
               FROM workspace w
-             WHERE nullif(w.default_roster_slots_json, '{{}}'::jsonb) IS NOT NULL
+             WHERE nullif(nullif(w.default_roster_slots_json, '{{}}'::jsonb), 'null'::jsonb) IS NOT NULL
             UNION ALL
             SELECT t.workspace_id, t.discipline, t.id, NULL,
-                   coalesce(nullif(t.roster_slots_json, '{{}}'::jsonb), nullif(w.default_roster_slots_json, '{{}}'::jsonb), {_ROLE_QUEUE})
+                   coalesce(nullif(nullif(t.roster_slots_json, '{{}}'::jsonb), 'null'::jsonb),
+                            nullif(nullif(w.default_roster_slots_json, '{{}}'::jsonb), 'null'::jsonb), {_ROLE_QUEUE})
               FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id
             UNION ALL
             SELECT g.workspace_id, g.discipline, NULL, g.id,
-                   coalesce(nullif(u.role_slots_json, '{{}}'::jsonb), nullif(w.default_roster_slots_json, '{{}}'::jsonb), {_ROLE_QUEUE})
+                   coalesce(nullif(nullif(u.role_slots_json, '{{}}'::jsonb), 'null'::jsonb),
+                            nullif(nullif(w.default_roster_slots_json, '{{}}'::jsonb), 'null'::jsonb), {_ROLE_QUEUE})
               FROM balancer.custom_game g
               JOIN workspace w ON w.id = g.workspace_id
               LEFT JOIN balancer.user_config u ON u.user_id = g.host_user_id) s
     """,
+    """
+    ALTER TABLE roster.team_format_legacy
+      ADD CONSTRAINT pk_team_format_legacy PRIMARY KEY (id),
+      ADD CONSTRAINT fk_team_format_legacy_workspace FOREIGN KEY (workspace_id)
+        REFERENCES workspace (id) ON DELETE CASCADE,
+      ADD CONSTRAINT fk_team_format_legacy_tournament FOREIGN KEY (tournament_id, workspace_id, discipline)
+        REFERENCES tournament.tournament (id, workspace_id, discipline) ON DELETE CASCADE,
+      ADD CONSTRAINT fk_team_format_legacy_custom_game FOREIGN KEY (custom_game_id, workspace_id, discipline)
+        REFERENCES balancer.custom_game (id, workspace_id, discipline) ON DELETE CASCADE
+    """,
+    "COMMENT ON TABLE roster.team_format_legacy IS 'discipline01b owner snapshot for reconciliation; drop in discipline02'",
     f"""
     INSERT INTO roster.team_format (id, workspace_id, discipline, tournament_id, custom_game_id, preset_code, name,
                                     starter_min, starter_max)
@@ -405,7 +451,7 @@ _TEAM_FORMATS = (
            CASE WHEN f.slots = {_ROLE_QUEUE} THEN 'role_queue_5v5' END,
            CASE WHEN f.slots = {_ROLE_QUEUE} THEN '5v5 role queue' ELSE 'Custom roster' END,
            s.total, s.total
-      FROM discipline01b_format f
+      FROM roster.team_format_legacy f
      CROSS JOIN LATERAL (SELECT sum(e.value::int) AS total FROM jsonb_each_text(f.slots) e) s
     """,
     """
@@ -413,13 +459,13 @@ _TEAM_FORMATS = (
     SELECT f.id, f.discipline, d.id,
            CASE WHEN EXISTS (SELECT 1 FROM jsonb_object_keys(f.slots) k WHERE k IN ('tank', 'damage', 'support'))
                 THEN 'enforced' ELSE 'off' END
-      FROM discipline01b_format f
+      FROM roster.team_format_legacy f
       JOIN catalog.role_dimension d ON d.discipline = f.discipline AND d.rated
     """,
     """
     INSERT INTO roster.format_role_rule (team_format_id, dimension_id, role_id, hard_min, hard_max)
     SELECT f.id, r.dimension_id, r.id, e.value::int, e.value::int
-      FROM discipline01b_format f
+      FROM roster.team_format_legacy f
      CROSS JOIN LATERAL jsonb_each_text(f.slots) e
       JOIN catalog.role_dimension d ON d.discipline = f.discipline AND d.rated
       JOIN catalog.role r ON r.dimension_id = d.id AND r.workspace_id IS NULL AND r.code = e.key

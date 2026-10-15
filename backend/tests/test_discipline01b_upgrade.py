@@ -448,3 +448,131 @@ def test_a_slot_map_that_cannot_become_a_format_stops_the_revision(legacy_templa
     assert done.returncode != 0
     assert "roster slot maps that cannot become a team format" in done.stderr
     assert f"'source': 'tournament', 'owner_id': {tournament}" in done.stderr
+
+
+def test_json_null_slot_maps_are_absent_in_preflight_and_transfer(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        conn.execute("UPDATE workspace SET default_roster_slots_json = 'null'::jsonb WHERE id = %s", (ids["ws_b"],))
+        conn.execute("UPDATE tournament.tournament SET roster_slots_json = 'null'::jsonb WHERE id = %s", (ids["t_a"],))
+        conn.execute(
+            "UPDATE balancer.user_config SET role_slots_json = 'null'::jsonb WHERE user_id = %s", (ids["host"],)
+        )
+        assert _rows(conn, revision.PREFLIGHT[-1][1]) == []
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB, autocommit=False) as conn:
+        assert _rows(conn, _FORMAT.format(owner="f.tournament_id = %s"), (ids["t_a"],))[0][2:] == (
+            6,
+            6,
+            0,
+            0,
+            "enforced",
+            {"tank": 1},
+        )
+        assert _rows(conn, _FORMAT.format(owner="f.custom_game_id = %s"), (ids["mix_host"],))[0][2:] == (
+            6,
+            6,
+            0,
+            0,
+            "enforced",
+            {"tank": 1},
+        )
+        assert _rows(conn, _FORMAT.format(owner="f.tournament_id = %s"), (ids["t_c"],))[0][2:] == (
+            5,
+            5,
+            0,
+            0,
+            "enforced",
+            {"tank": 1, "damage": 2, "support": 2},
+        )
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        conn.execute(function)
+        conn.execute(create)
+        assert _rows(conn, skipped) == []
+        conn.rollback()
+
+
+def test_reconcile_lists_every_owner_even_when_all_destination_formats_are_missing(migrated) -> None:
+    ids = migrated["ids"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        tx.execute("DELETE FROM roster.team_format")
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        missing = {(row[1], row[2]) for row in _rows(tx, skipped) if row[0] == "team formats"}
+        tx.rollback()
+    assert missing == {
+        (ids["ws_a"], "workspace"),
+        (ids["t_a"], "tournament"),
+        (ids["t_b"], "tournament"),
+        (ids["t_c"], "tournament"),
+        (ids["mix_host"], "mix"),
+        (ids["mix_plain"], "mix"),
+    }
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "UPDATE roster.team_format_dimension SET mode = 'off' WHERE team_format_id = %s",
+        "UPDATE roster.format_role_rule SET hard_max = hard_min + 1 WHERE team_format_id = %s",
+        "UPDATE roster.team_format SET starter_min = starter_min - 1 WHERE id = %s",
+        "UPDATE roster.team_format SET starter_max = starter_max + 1 WHERE id = %s",
+        "UPDATE roster.team_format SET substitute_max = 1 WHERE id = %s",
+        "UPDATE roster.team_format SET substitute_min = 1, substitute_max = 1 WHERE id = %s",
+    ],
+)
+def test_reconcile_rejects_changed_format_semantics(migrated, change) -> None:
+    tournament_id = migrated["ids"]["t_a"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        format_id = _scalar(tx, "SELECT id FROM roster.team_format WHERE tournament_id = %s", (tournament_id,))
+        tx.execute(change, (format_id,))
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        assert ("team formats", tournament_id, "tournament") in _rows(tx, skipped)
+        tx.rollback()
+
+
+def test_reconcile_matches_workspace_defaults_by_discipline(migrated) -> None:
+    workspace_id = migrated["ids"]["ws_a"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        tx.execute("INSERT INTO catalog.discipline (code, name) VALUES ('other', 'Other')")
+        dimension = _insert(
+            tx,
+            "catalog.role_dimension",
+            discipline="other",
+            code="player_role",
+            name="Role",
+            selection_mode="single",
+            rated=True,
+        )
+        role = _insert(tx, "catalog.role", dimension_id=dimension, code="tank", name="Tank")
+        tx.execute(
+            "DELETE FROM roster.team_format WHERE workspace_id = %s AND tournament_id IS NULL AND custom_game_id IS NULL",
+            (workspace_id,),
+        )
+        format_id = _insert(
+            tx,
+            "roster.team_format",
+            workspace_id=workspace_id,
+            discipline="other",
+            name="Same counts, different discipline",
+            starter_min=6,
+            starter_max=6,
+        )
+        tx.execute(
+            "INSERT INTO roster.team_format_dimension (team_format_id, discipline, dimension_id, mode) VALUES (%s, 'other', %s, 'enforced')",
+            (format_id, dimension),
+        )
+        tx.execute(
+            "INSERT INTO roster.format_role_rule (team_format_id, dimension_id, role_id, hard_min, hard_max) VALUES (%s, %s, %s, 1, 1)",
+            (format_id, dimension, role),
+        )
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        assert ("team formats", workspace_id, "workspace") in _rows(tx, skipped)
+        tx.rollback()

@@ -95,8 +95,12 @@ DEFAULT_ROLE_SETTINGS: dict[str, RoleSettings] = {
 
 def validate_role_settings(value: typing.Any) -> typing.Any:
     """Weights belong to declared module roles, never the open-slot key."""
+    if value is None:
+        return value
+    if not isinstance(value, dict) or any(not isinstance(key, str) for key in value):
+        raise ValueError("role_settings must be an object with role-code keys")
     known = {role.code for spec in DISCIPLINES.values() for dimension in spec.dimensions for role in dimension.roles}
-    if value is not None and (unknown := set(value) - known):
+    if unknown := set(value) - known:
         raise ValueError(f"Unknown role settings codes: {', '.join(sorted(unknown))}")
     return value
 

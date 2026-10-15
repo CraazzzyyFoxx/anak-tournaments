@@ -30,7 +30,7 @@ function form(partial: Partial<TournamentFormState> = {}): TournamentFormState {
     phase_schedule: EMPTY_SCHEDULE,
     division_grid_version_id: null,
     team_formation: "balancer",
-    roster_slots_json: null,
+    roster_slots_json: {},
     ...partial
   };
 }

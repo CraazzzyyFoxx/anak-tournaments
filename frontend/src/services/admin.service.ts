@@ -329,7 +329,7 @@ class AdminService {
 
   async updateTournament(id: number, data: TournamentUpdateInput): Promise<Tournament> {
     const { roster_slots_json: slots, ...patch } = data;
-    if (slots) {
+    if (slots !== undefined) {
       await apiFetch(`/api/v1/admin/tournaments/${id}/team-format`, {
         method: "PUT",
         body: slotsToTeamFormat(slots, "player_role"),

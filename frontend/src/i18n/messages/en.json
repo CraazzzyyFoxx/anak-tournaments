@@ -7065,7 +7065,6 @@
     "description": "The team format: how many slots of each kind one team has. A single slot makes one-player teams.",
     "mode": "Shape",
     "modes": {
-      "inherit": "Inherit from the workspace",
       "ow5v5": "Overwatch 5v5 · 1/2/2",
       "flex6": "6 flex slots",
       "custom": "Custom shape"
@@ -7084,17 +7083,7 @@
     },
     "preview": "One team's slots",
     "previewEmpty": "Add at least one slot to see what a team looks like.",
-    "inherited": "Inherited from the {source}: {shape}.",
-    "inheritedSources": {
-      "workspace": "workspace default",
-      "default": "built-in Overwatch 5v5 default"
-    },
     "overriding": "This tournament pins its own shape instead of following the workspace.",
-    "overridingMix": "This mix pins its own shape instead of following the workspace.",
-    "willInherit": "Saving hands this tournament back to the workspace shape.",
-    "willInheritMix": "Saving hands this mix back to the workspace shape.",
-    "overridingAccount": "Every mix you host uses this shape instead of its workspace's.",
-    "willInheritAccount": "Your mixes follow the shape of the workspace they run in.",
     "locked": "A draft session has already been created, so the roster shape is locked. Complete or cancel it to change the shape."
   },
   "scrims": {

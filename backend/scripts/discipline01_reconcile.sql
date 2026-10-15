@@ -70,34 +70,35 @@ SELECT 'flex sub-roles (dropped)', p.id, p.sub_role, true
   FROM tournament.player p
  WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> ''
 UNION ALL
--- Every owner of a slot map (and every tournament and mix) has a format whose quotas are that map.
-SELECT 'team formats', o.owner_id, o.source,
+-- The retained migration owner snapshot is independent of surviving destination rows.
+SELECT 'team formats', coalesce(o.tournament_id, o.custom_game_id, o.workspace_id),
+       CASE WHEN o.tournament_id IS NOT NULL THEN 'tournament'
+            WHEN o.custom_game_id IS NOT NULL THEN 'mix' ELSE 'workspace' END,
        EXISTS (SELECT 1 FROM roster.team_format f
-                WHERE f.workspace_id = o.workspace_id
+                WHERE f.workspace_id = o.workspace_id AND f.discipline = o.discipline
                   AND f.tournament_id IS NOT DISTINCT FROM o.tournament_id
                   AND f.custom_game_id IS NOT DISTINCT FROM o.custom_game_id
-                  AND f.starter_max = (SELECT sum(e.value::int) FROM jsonb_each_text(o.slots) e)
-                  AND (SELECT coalesce(jsonb_object_agg(r.code, rr.hard_min), '{}'::jsonb)
-                         FROM roster.format_role_rule rr JOIN catalog.role r ON r.id = rr.role_id
+                  AND f.starter_min = total.slots AND f.starter_max = total.slots
+                  AND f.substitute_min = 0 AND f.substitute_max = 0
+                  AND (SELECT coalesce(jsonb_agg(jsonb_build_array(d.code, fd.mode,
+                                      fd.player_min_assignments, fd.player_max_assignments) ORDER BY d.code), '[]'::jsonb)
+                         FROM roster.team_format_dimension fd JOIN catalog.role_dimension d ON d.id = fd.dimension_id
+                        WHERE fd.team_format_id = f.id)
+                      = jsonb_build_array(jsonb_build_array('player_role',
+                          CASE WHEN EXISTS (SELECT 1 FROM jsonb_object_keys(o.slots) k WHERE k <> 'flex')
+                               THEN 'enforced' ELSE 'off' END, NULL, NULL))
+                  AND (SELECT coalesce(jsonb_agg(jsonb_build_array(d.code, r.code, r.workspace_id,
+                                      rr.hard_min, rr.hard_max, rr.recommended_min, rr.recommended_max,
+                                      rr.include_descendants) ORDER BY d.code, r.code, r.workspace_id), '[]'::jsonb)
+                         FROM roster.format_role_rule rr
+                         JOIN catalog.role r ON r.id = rr.role_id
+                         JOIN catalog.role_dimension d ON d.id = rr.dimension_id
                         WHERE rr.team_format_id = f.id)
-                      = (SELECT coalesce(jsonb_object_agg(e.key, e.value::int), '{}'::jsonb)
+                      = (SELECT coalesce(jsonb_agg(jsonb_build_array('player_role', e.key, NULL,
+                                        e.value::int, e.value::int, NULL, NULL, true) ORDER BY e.key), '[]'::jsonb)
                            FROM jsonb_each_text(o.slots) e WHERE e.key <> 'flex'))
-  FROM (SELECT 'workspace' AS source, w.id AS owner_id, w.id AS workspace_id, NULL::bigint AS tournament_id,
-               NULL::bigint AS custom_game_id, w.default_roster_slots_json AS slots
-          FROM workspace w WHERE nullif(w.default_roster_slots_json, '{}'::jsonb) IS NOT NULL
-        UNION ALL
-        SELECT 'tournament', t.id, t.workspace_id, t.id, NULL,
-               coalesce(nullif(t.roster_slots_json, '{}'::jsonb), nullif(w.default_roster_slots_json, '{}'::jsonb),
-                        '{"tank": 1, "damage": 2, "support": 2}'::jsonb)
-          FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id
-         WHERE t.created_at <= (SELECT min(f.created_at) FROM roster.team_format f)
-        UNION ALL
-        SELECT 'mix', g.id, g.workspace_id, NULL, g.id,
-               coalesce(nullif(u.role_slots_json, '{}'::jsonb), nullif(w.default_roster_slots_json, '{}'::jsonb),
-                        '{"tank": 1, "damage": 2, "support": 2}'::jsonb)
-          FROM balancer.custom_game g JOIN workspace w ON w.id = g.workspace_id
-          LEFT JOIN balancer.user_config u ON u.user_id = g.host_user_id
-         WHERE g.created_at <= (SELECT min(f.created_at) FROM roster.team_format f)) o
+  FROM roster.team_format_legacy o
+ CROSS JOIN LATERAL (SELECT sum(e.value::int) AS slots FROM jsonb_each_text(o.slots) e) total
 UNION ALL
 SELECT 'balancer configs', c.id, c.source, NOT (c.config ? 'role_settings' AND c.config -> 'role_settings' ? 'flex')
   FROM (SELECT 'user_config' AS source, u.id, u.config_json AS config FROM balancer.user_config u
