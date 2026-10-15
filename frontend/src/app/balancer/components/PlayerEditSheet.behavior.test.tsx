@@ -275,9 +275,11 @@ describe("owner-grid receiving controls", () => {
 
   it.each([
     { max: null, expected: 1500 },
+    { max: undefined, expected: 1500 },
     { max: 600, expected: 600 }
   ])("commits numeric rank entry using the real upper bound ($max)", async ({ max, expected }) => {
-    const bounded = { ...lol, tiers: [lol.tiers[0], { ...lol.tiers[1], rank_max: max }] };
+    // Embedded tournament responses omit null maxima; tier order is not rank order.
+    const bounded = { ...lol, tiers: [{ ...lol.tiers[1], rank_max: max }, lol.tiers[0]] };
     useWorkspaceStore.setState({
       workspaces: [
         { ...workspace, effective_division_grid_versions: { overwatch: ow, lol: bounded } }

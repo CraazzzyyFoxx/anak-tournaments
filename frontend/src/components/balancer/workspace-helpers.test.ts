@@ -590,6 +590,37 @@ describe("registration rank pin save", () => {
     },
   ];
 
+  it("edits a LoL registration without converting its position into an OW role", () => {
+    const registration = createRegistration({
+      roles: [
+        {
+          role: { dimension: "position", role: "support" },
+          is_primary: true,
+          priority: 0,
+          rank_value: 100,
+          is_active: true,
+          is_declared_active: true,
+          ow_rank_value: null
+        }
+      ]
+    });
+    const player = createSyntheticPlayerFromRegistration(registration);
+    const patch = buildRegistrationUpdateFromPlayerPayload(
+      {
+        role_entries_json: player.role_entries_json.map((entry) => ({
+          ...entry,
+          rank_value: 1500
+        })),
+        is_flex: player.is_flex
+      },
+      registration.roles
+    );
+    expect(patch.roles?.[0]).toMatchObject({
+      role: { dimension: "position", role: "support" },
+      rank_value: 1500
+    });
+  });
+
   it("does not send pin:true when the editor pin is off", () => {
     const patch = buildRegistrationUpdateFromPlayerPayload({
       role_entries_json: roleEntries,

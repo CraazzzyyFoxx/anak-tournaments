@@ -17,6 +17,8 @@ export function buildRegistrationUpdateFromPlayerPayload(
   const registrationPatch: AdminRegistrationUpdateInput = {};
 
   if (payload.role_entries_json !== undefined) {
+    // Registration preferences share the owner's rated role dimension.
+    const roleDimension = existingRoles?.[0]?.role.dimension ?? "player_role";
     const existingRolesMap = new Map(
       existingRoles?.map((role) => [roleOf(role.role), role.top_heroes ?? []]) ?? []
     );
@@ -26,7 +28,11 @@ export function buildRegistrationUpdateFromPlayerPayload(
     registrationPatch.roles = sortedEntries.map((entry, index) => {
       const topHeroes = existingRolesMap.get(entry.role) ?? [];
       return {
-        role: toRoleRef(entry.role, entry.subtype ? `${entry.role}_${entry.subtype}` : null, "player_role"),
+        role: toRoleRef(
+          entry.role,
+          entry.subtype ? `${entry.role}_${entry.subtype}` : null,
+          roleDimension
+        ),
         priority: entry.priority,
         is_primary: payload.is_flex ? true : index === 0,
         rank_value: entry.rank_value,

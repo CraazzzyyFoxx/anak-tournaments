@@ -380,6 +380,8 @@ Legacy public player/hero statistics and workspace-wide achievements still query
 
 The player editor resolves an explicit tournament grid pin before opening, even without a workspace default for that game. It reuses the overview's embedded version, or the existing version read/cache key when only the pin ID is available; pending or failed pins never fall through to another grid. History previews retain their workspace-normalized target and original source-tournament labels/crests. Applying history converts the normalized rank through that workspace scale, then resolves the edited division in the owner's grid. Numeric entry keeps open-ended tiers unbounded on blur; wholly finite grids retain their real maximum.
 
+A missing `rank_max` in an embedded tournament response means the same open-ended bound as explicit `null`. Rank saves retain the registration's rated role dimension instead of reconstructing every preference as an Overwatch `player_role`.
+
 Portable exports use `division-grid/v2` with `discipline`. User-held `division-grid/v1` files still import as Overwatch, translating `ow_rank_min/max` to `native_rank_min/max`; malformed shapes and conflicting old/new bounds are rejected. Marketplace and portable imports require the target workspace to enable the grid's discipline.
 
 ---

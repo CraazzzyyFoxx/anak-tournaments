@@ -82,7 +82,7 @@ export function getTierForRank(
   }
 
   for (const tier of grid.tiers) {
-    if (tier.rank_max === null) {
+    if (tier.rank_max == null) {
       if (rank >= tier.rank_min) {
         return tier;
       }

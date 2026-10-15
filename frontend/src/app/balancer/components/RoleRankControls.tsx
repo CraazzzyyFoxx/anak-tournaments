@@ -109,11 +109,11 @@ function gridBounds(grid: DivisionGrid): { min: number; max: number | undefined 
   const mins = grid.tiers.map((tier) => tier.rank_min);
   const maxes = grid.tiers
     .map((tier) => tier.rank_max)
-    .filter((value): value is number => value !== null);
+    .filter((value): value is number => value != null);
 
   return {
     min: Math.min(...mins),
-    max: grid.tiers.some((tier) => tier.rank_max === null) ? undefined : Math.max(...maxes, ...mins)
+    max: grid.tiers.some((tier) => tier.rank_max == null) ? undefined : Math.max(...maxes, ...mins)
   };
 }
 

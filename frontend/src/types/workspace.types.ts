@@ -4,7 +4,7 @@ export interface DivisionTier {
   number: number;
   name: string;
   rank_min: number;
-  rank_max: number | null;
+  rank_max?: number | null;
   sort_order?: number;
   icon_url: string;
   native_rank_min?: number | null;
