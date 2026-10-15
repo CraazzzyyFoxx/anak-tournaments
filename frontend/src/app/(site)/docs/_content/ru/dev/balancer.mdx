@@ -77,7 +77,7 @@ Host: owt.craazzzyyfoxx.me
 Authorization: Bearer <токен сессии>
 Content-Type: application/json
 
-{ "player_id": 314, "expected_version": 17, "target_role": "damage" }
+{ "player_id": 314, "expected_version": 17, "target_role": { "dimension": "player_role", "role": "damage" } }
 ```
 
 Тот же `expected_version` требует и автопик. Отдельно от него `draft_session_stale` (409) сторожит настройку сессии: если сид пересобрали, предпросмотр подтвердить нельзя.

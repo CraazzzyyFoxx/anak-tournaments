@@ -77,7 +77,7 @@ Host: owt.craazzzyyfoxx.me
 Authorization: Bearer <session token>
 Content-Type: application/json
 
-{ "player_id": 314, "expected_version": 17, "target_role": "damage" }
+{ "player_id": 314, "expected_version": 17, "target_role": { "dimension": "player_role", "role": "damage" } }
 ```
 
 Autopick takes the same `expected_version`. Separately, `draft_session_stale` (409) guards session setup: once the seed has been rebuilt, a stale preview cannot be committed.

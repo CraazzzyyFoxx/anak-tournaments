@@ -57,11 +57,16 @@ backup and matching old application images, not `alembic downgrade`.
 4. **Balancer settings and results change.** `role_settings.flex` becomes `open_slot_settings`,
    including in mix preferences. `role_settings` keys are module-declared role codes, not the
    old `tank|damage|support|flex` enum. Result teams expose `format_violations` and
-   `format_advisories`; export rejects hard violations with 409 `team_format_violation`.
-   Every active dimension is validated for starters; benches are excluded. Only the tournament
-   **MOO** solver has the existing sub-role collision term, gated by active sub-role rules with
-   `recommended_max <= 1`. Other recommendations and **all mix recommendations** are post-solve
-   advisories and equal-objective tie-breakers; P2 adds no native solver objective.
+   `format_advisories`. Strict exports (`on_unresolved="error"`, including registered teams)
+   reject hard violations with 409 `team_format_violation`. Skip-mode balance/draft exports and
+   team imports return `advisories` with format violations and the names of skipped unresolved
+   or duplicate members, allowing incomplete teams to be exported. Every active dimension is
+   validated for starters; benches are excluded. Only the tournament **MOO** solver has the
+   existing sub-role collision term. With no sub-role recommendation rules, its configured
+   weight still applies to all sub-roles. When such rules exist, only active rated sub-role rules
+   with `recommended_max <= 1` qualify; if none qualifies the weight is zero. Other recommendations
+   and **all mix recommendations** are post-solve advisories and equal-objective tie-breakers;
+   P2 adds no native solver objective.
 5. **Discipline is explicit and immutable.** Tournament creation takes `discipline` (default
    `overwatch`); mix creation takes `discipline` and optional `team_format_preset`. The effective
    discipline, including a clone's, must be enabled in its workspace. Tournament reads expose
@@ -91,6 +96,16 @@ migration-only owner/slot-map snapshot used to prove transfer completeness, not 
 P2 drops no legacy table, column or type. Legacy role columns and the three slot-map columns remain
 unmapped and unused at runtime until the separately gated `discipline02` (P9).
 
+Every P2 assignment/quota table has a leading role-id index, including draft captain/target
+roles. Before restoring deferred checking, the migration refuses any `DEFERRABLE INITIALLY
+IMMEDIATE` constraint rather than silently changing its default behaviour.
+
+The balancer-config `role_settings.flex` → `open_slot_settings` rewrite is in place: the same
+UPDATE moves the value and removes the old key, without retaining a before-image. The reconcile's
+balancer-config class proves only that the old key is gone; it **cannot prove post-hoc that the
+weight survived**. The migration fixture tests cover the transfer; keep the pre-cutover backup
+for comparison if a weight is questioned.
+
 Ranks remain code-keyed until P3. Migrated/preset formats set substitute bounds to zero;
 registration benches still use `registration_form.max_substitutes`. Public ontology-driven UI,
 role icons/colours and the fuller team-format editor are deferred to P7. The existing
@@ -103,6 +118,8 @@ role icons/colours and the fuller team-format editor are deferred to P7. The exi
    Follow the [P1 runbook](./multi-game-p1-catalog-release.md) too when P1 has not yet landed,
    including its catalog checks, lock-window measurement and hero-stats view population.
    Fixture tests do not certify production-scale migration duration.
+   On the production-size restore, P9 rehearsal must capture EXPLAIN ANALYZE timings for the
+   correlated `Player.role` / `Player.sub_role` queries used by stats and achievements.
 2. Run the combined preflight from the repository root, then repeat it after writers are quiet:
 
    ```sh
@@ -167,7 +184,8 @@ role icons/colours and the fuller team-format editor are deferred to P7. The exi
    complete the ontology projection before admitting readers. Smoke user role reads/null filters,
    tournament/workspace format GET/PUT, registration leaf refs/form answers, mix creation/cloning,
    a recorded encounter roster, draft/export and sub-role admin (including fixed-parent rejection).
-   Confirm a format-breaking export returns 409. Resume traffic/producers only after these gates pass.
+   Confirm a strict format-breaking export returns 409 and skip mode returns named advisories.
+   Resume traffic/producers only after these gates pass.
 4. Keep the backup and preflight/reconcile outputs. Inactive transferred sub-roles can be cleaned up
    deliberately through the admin API after release. Before `discipline02`, repeat reconciliation;
    legacy/new-value comparisons can report legitimate post-release edits, so P9 must adjudicate
