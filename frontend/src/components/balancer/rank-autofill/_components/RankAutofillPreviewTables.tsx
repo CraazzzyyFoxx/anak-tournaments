@@ -198,14 +198,19 @@ function RankAutofillRolePill({
           {showsTransition && (
             <>
               {currentDivision != null && (
-                <DivisionIcon division={currentDivision} width={16} height={16} />
+                <DivisionIcon
+                  division={currentDivision}
+                  tournamentGrid={grid}
+                  width={16}
+                  height={16}
+                />
               )}
               <span className="tabular-nums opacity-50">{role.current_rank_value}</span>
               <ArrowRight className="size-4 shrink-0 opacity-40" aria-hidden />
             </>
           )}
           {primaryDivision != null && (
-            <DivisionIcon division={primaryDivision} width={16} height={16} />
+            <DivisionIcon division={primaryDivision} tournamentGrid={grid} width={16} height={16} />
           )}
           <span className="tabular-nums">
             {isPeak && primaryRank != null && (

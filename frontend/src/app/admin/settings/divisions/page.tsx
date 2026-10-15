@@ -135,6 +135,7 @@ export default function DivisionsSettingsPage() {
     scopedGrids[0] ??
     null;
   const selectedDiscipline = selectedGrid?.discipline ?? defaultDiscipline;
+  const hasNativeLadder = selectedDiscipline === "overwatch";
   const activeVersionId = selectedDiscipline
     ? (workspace?.default_division_grid_versions[selectedDiscipline] ?? null)
     : null;
@@ -313,14 +314,16 @@ export default function DivisionsSettingsPage() {
         header: t("table.division"),
         cell: ({ row }) => (
           <span className="flex min-w-0 items-center gap-2">
-            <Image
-              src={bandIconUrl(row.original)}
-              alt=""
-              width={20}
-              height={20}
-              unoptimized
-              className="size-5 shrink-0"
-            />
+            {row.original.icon_url || hasNativeLadder ? (
+              <Image
+                src={bandIconUrl(row.original)}
+                alt=""
+                width={20}
+                height={20}
+                unoptimized
+                className="size-5 shrink-0"
+              />
+            ) : null}
             <span className="truncate font-medium">{row.original.name}</span>
           </span>
         )
@@ -343,7 +346,7 @@ export default function DivisionsSettingsPage() {
         )
       }
     ],
-    [t]
+    [t, hasNativeLadder]
   );
 
   if (workspaceId === null) {
@@ -440,13 +443,13 @@ export default function DivisionsSettingsPage() {
             >
               {activeVersion
                 ? activeVersion.label
-                : t(selectedDiscipline === "overwatch" ? "builtInLadder" : "gridRequired")}
+                : t(hasNativeLadder ? "builtInLadder" : "gridRequired")}
             </h2>
             <p className={cn(MONO_CAPTION, "mt-1.5")}>
               {activeVersion
                 ? [
                     `${activeBands.length} divisions`,
-                    `${RANK_COUNT} ranks`,
+                    hasNativeLadder ? `${RANK_COUNT} ranks` : null,
                     activeVersion.published_at
                       ? `published ${format.dateTime(new Date(activeVersion.published_at), {
                           dateStyle: "medium"
@@ -457,7 +460,9 @@ export default function DivisionsSettingsPage() {
                   ]
                     .filter(Boolean)
                     .join(" · ")
-                : `${RANK_COUNT} ranks · nothing activated`}
+                : hasNativeLadder
+                  ? `${RANK_COUNT} ranks · nothing activated`
+                  : t("noActiveVersion")}
             </p>
           </div>
           {nextAction ? (
@@ -468,19 +473,21 @@ export default function DivisionsSettingsPage() {
           ) : null}
         </div>
 
-        <LadderBar
-          bands={activeVersion ? activeBands : BUILT_IN_BANDS}
-          size="lg"
-          tone={activeVersion ? "accent" : "neutral"}
-          className="mt-4"
-        />
+        {hasNativeLadder ? (
+          <LadderBar
+            bands={activeVersion ? activeBands : BUILT_IN_BANDS}
+            size="lg"
+            tone={activeVersion ? "accent" : "neutral"}
+            className="mt-4"
+          />
+        ) : null}
 
         <p className="mt-3 max-w-prose text-xs text-muted-foreground">
           {activeVersion
             ? activeIsShared
               ? t("activeShared")
               : t("activeDescription", { version: activeVersion.version })
-            : t("inactiveDescription")}
+            : t(hasNativeLadder ? "inactiveDescription" : "organizerGridRequired")}
         </p>
       </section>
 
@@ -552,6 +559,7 @@ export default function DivisionsSettingsPage() {
             <VersionHistory
               versions={versions}
               activeVersionId={activeVersionId}
+              hasNativeLadder={hasNativeLadder}
               tournamentCounts={tournamentCounts}
               activatable={activatable}
               onActivate={setActivating}
@@ -637,13 +645,15 @@ export default function DivisionsSettingsPage() {
         {activeVersion ? (
           <DataTable<Band>
             rows={activeBands}
-            columns={columns}
+            columns={hasNativeLadder ? columns : columns.filter((column) => column.id !== "ow")}
             getRowId={(row) => row.slug}
             initialPageSize={50}
             emptyMessage={t("table.empty")}
           />
         ) : (
-          <EmptyNote size="sm">{t("playersUntilActivated")}</EmptyNote>
+          <EmptyNote size="sm">
+            {t(hasNativeLadder ? "playersUntilActivated" : "organizerGridRequired")}
+          </EmptyNote>
         )}
       </section>
 

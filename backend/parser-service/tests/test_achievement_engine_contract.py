@@ -195,7 +195,7 @@ class RunnerSliceAndStatusTests(_EngineTestCase):
         sentinel = object()
         seen: dict[str, object] = {}
 
-        async def build_normalizer(session, workspace_id):  # noqa: ANN001
+        async def build_normalizer(session, workspace_id, *, discipline):  # noqa: ANN001
             seen["workspace_id"] = workspace_id
             return sentinel
 
@@ -231,7 +231,7 @@ class RunnerSliceAndStatusTests(_EngineTestCase):
         self.db.session.commit()
         attempts = 0
 
-        async def build_normalizer(session, workspace_id):  # noqa: ANN001
+        async def build_normalizer(session, workspace_id, *, discipline):  # noqa: ANN001
             nonlocal attempts
             attempts += 1
             raise DivisionGridNormalizationError("Missing division grid mappings to normalized base version 19: [20]")

@@ -17,6 +17,7 @@ import { VERSION_STATE_TONE, versionState } from "./versionStatus";
 export interface VersionHistoryProps {
   versions: DivisionGridVersion[];
   activeVersionId: number | null;
+  hasNativeLadder: boolean;
   /**
    * Tournaments pinned to each version, from the active version's readiness
    * payload. `null` while that is unknown (nothing active, or still loading):
@@ -44,6 +45,7 @@ export interface VersionHistoryProps {
 export function VersionHistory({
   versions,
   activeVersionId,
+  hasNativeLadder,
   tournamentCounts,
   activatable,
   onActivate,
@@ -98,9 +100,13 @@ export function VersionHistory({
                 </span>
                 <StatusPill tone={VERSION_STATE_TONE[state]}>{state}</StatusPill>
               </div>
-              <LadderBar bands={bands} tone={state === "active" ? "accent" : "neutral"} />
+              {hasNativeLadder ? (
+                <LadderBar bands={bands} tone={state === "active" ? "accent" : "neutral"} />
+              ) : null}
               <p className="font-mono text-label uppercase tracking-wider text-muted-foreground">
-                {[t("divisionCount", { count: bands.length }), usage, when].filter(Boolean).join(" · ")}
+                {[t("divisionCount", { count: bands.length }), usage, when]
+                  .filter(Boolean)
+                  .join(" · ")}
               </p>
             </div>
 
@@ -110,11 +116,7 @@ export function VersionHistory({
                   size="sm"
                   variant="outline"
                   disabled={ready !== true}
-                  title={
-                    ready === false
-                      ? t("editorDetails.mappingBlocked")
-                      : undefined
-                  }
+                  title={ready === false ? t("editorDetails.mappingBlocked") : undefined}
                   onClick={() => onActivate(version)}
                 >
                   <Star aria-hidden className="size-3.5" />

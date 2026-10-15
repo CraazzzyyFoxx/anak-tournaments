@@ -10748,8 +10748,8 @@
       "exportJson": "Export JSON",
       "importWorkspace": "Import from workspace…",
       "readersTitle": "Who reads which version",
-      "readersDescription": "Once a version is in force, this lists the older versions tournaments still read and whether their divisions map onto it.",
-      "nothingToMap": "Every tournament in this workspace reads v{version}. Nothing to map.",
+      "readersDescription": "Once a version is in force, this lists the older versions this game's tournaments still read and whether their divisions map onto it.",
+      "nothingToMap": "Every tournament for this game in this workspace reads v{version}. Nothing to map.",
       "divisionsInForce": "Divisions in force",
       "tournamentCount": "{count, plural, one {# tournament} other {# tournaments}}",
       "more": "+{count} more",
@@ -10945,17 +10945,19 @@
       "inForceVersion": "In force · v{version}",
       "builtInLadder": "Built-in Overwatch ladder",
       "gridRequired": "Create a division grid for this game",
+      "noActiveVersion": "No version activated",
+      "organizerGridRequired": "Publish and activate a division grid for this game. It has no built-in rank ladder.",
       "systemFallback": "system fallback · nothing activated",
       "nextStep": "Next step",
       "activeShared": "This version belongs to a grid shared with other workspaces, so it cannot be edited here. Load a ladder or create a draft in this workspace's own grid, then activate it to take over.",
       "activeDescription": "Ranks for this game in this workspace resolve through v{version} until another version is published and activated.",
       "inactiveDescription": "No organizer version is active. A native ladder is used only for games that provide one. Publish and activate a version to use your own divisions.",
       "versionHistory": "Version history",
-      "versionHistoryDescription": "A division is a band of the Overwatch ladder. Published versions are immutable — every tournament keeps the version it was played on, and a mapping translates its divisions into the version in force.",
+      "versionHistoryDescription": "A division is a range on this game's rank scale. Published versions are immutable — tournaments pinned to them keep their version, and mappings translate between versions of this game's grid.",
       "grid": "Grid",
       "chooseGrid": "Choose a grid",
       "noVersions": "No versions yet",
-      "noVersionsDescription": "Load the standard Overwatch ladder to start, or import a grid from another workspace.",
+      "noVersionsDescription": "Import a grid for this game, or create a version in this workspace's own grid.",
       "playersUntilActivated": "Players are sorted by their Overwatch rank directly until a version is activated.",
       "unavailable": {
         "title": "Divisions are not available to you",
@@ -10967,7 +10969,7 @@
       },
       "confirm": {
         "activateTitle": "Activate v{version}?",
-        "activateDescription": "Every rank in this workspace will resolve through v{version} from now on. Tournaments keep the version they were played on."
+        "activateDescription": "Ranks for this game in this workspace will resolve through v{version} from now on. Tournaments pinned to a version keep it. Other games' defaults do not change."
       },
       "noWorkspace": {
         "title": "No workspace selected",

@@ -83,7 +83,7 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.overview")
     async def _overview(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data))
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
             qp = build_query_model(schemas.UserOverviewQueryParams, data.get("query"))
             return await user_service.get_overview(
                 session,
@@ -98,7 +98,7 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.overview_stats")
     async def _overview_stats(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data))
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
             # Route passes the QueryParams model straight to the flow (no from_query_params).
             params = build_query_model(schemas.UserOverviewStatsQueryParams, data.get("query"))
             return await user_service.get_overview_stats(session, params, grid=ws.grid, workspace_id=ws.id)
@@ -108,7 +108,7 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.overview_catalog")
     async def _overview_catalog(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data))
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
             qp = build_query_model(schemas.UserCatalogQueryParams, data.get("query"))
             return await user_service.get_catalog(
                 session,
@@ -124,7 +124,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _compare(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, _compare_scope(data))
+            ws = await resolve_workspace_context(session, _compare_scope(data), discipline="overwatch")
             qp = build_query_model(schemas.UserCompareQueryParams, data.get("query"))
             return await user_service.get_compare_cached(
                 session,
@@ -140,7 +140,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _compare_heroes(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, _compare_scope(data))
+            ws = await resolve_workspace_context(session, _compare_scope(data), discipline="overwatch")
             qp = build_query_model(schemas.UserHeroCompareQueryParams, data.get("query"))
             return await user_service.get_hero_compare_cached(
                 session,
@@ -166,7 +166,7 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.get_profile")
     async def _get_profile(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data))
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
             return await user_service.get_profile(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.get_profile", op, session_factory=_SF)
@@ -186,7 +186,7 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.tournaments")
     async def _tournaments(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data))
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
             return await user_service.get_tournaments(session, c.require_id(data), workspace_id=ws.id, grid=ws.grid)
 
         return await c.envelope(logger, "users.tournaments", op, session_factory=_SF)

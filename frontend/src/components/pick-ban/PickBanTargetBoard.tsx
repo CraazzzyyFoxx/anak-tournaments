@@ -113,7 +113,12 @@ export function PickBanTargetBoard({
                     className="shrink-0"
                     title={getDivisionLabel(divisionGrid, target.division) ?? undefined}
                   >
-                    <DivisionIcon division={target.division} width={30} height={30} />
+                    <DivisionIcon
+                      division={target.division}
+                      tournamentGrid={divisionGrid}
+                      width={30}
+                      height={30}
+                    />
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-sm font-semibold">{target.name}</span>

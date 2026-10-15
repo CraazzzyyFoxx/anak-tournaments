@@ -43,7 +43,7 @@ import { usePlayerEditForm } from "./usePlayerEditForm";
 type PlayerEditModalProps = {
   player: BalancerPlayerRecord;
   registration?: AdminRegistration | null;
-  discipline?: string;
+  discipline: string | undefined;
   statusOptions?: {
     registration: {
       system: Array<{ value: string; name: string }>;
@@ -72,7 +72,13 @@ export function PlayerEditModal({
   onRemove,
   saving = false
 }: Readonly<PlayerEditModalProps>) {
-  const form = usePlayerEditForm({ player, registration, discipline, open, onSave });
+  const form = usePlayerEditForm({
+    player,
+    registration,
+    discipline,
+    open: open && discipline !== undefined,
+    onSave
+  });
   const { roleEntries, history } = form;
 
   const battleTags = getRegistrationBattleTags(registration, player.battle_tag);
@@ -82,7 +88,10 @@ export function PlayerEditModal({
   const hasOverride = roleEntries.some((entry) => entry.rank_source === "registration");
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open && discipline !== undefined && form.divisionGrid.tiers.length > 0}
+      onOpenChange={onOpenChange}
+    >
       <SheetContent
         side="right"
         className="flex w-full flex-col overflow-hidden border-border bg-popover/95 p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/50 backdrop-blur-xl sm:max-w-[640px] [&>button:last-child]:right-4 [&>button:last-child]:top-4 [&>button:last-child]:z-20 [&>button:last-child]:flex [&>button:last-child]:h-8 [&>button:last-child]:w-8 [&>button:last-child]:items-center [&>button:last-child]:justify-center [&>button:last-child]:rounded-lg [&>button:last-child]:border [&>button:last-child]:border-[color:var(--aqt-border-2)] [&>button:last-child]:bg-[color:var(--aqt-bg-2)] [&>button:last-child]:p-0 [&>button:last-child]:text-[color:var(--aqt-fg-muted)] [&>button:last-child]:backdrop-blur-sm [&>button:last-child]:hover:bg-[color:var(--aqt-overlay-3)] [&>button:last-child]:hover:text-[color:var(--aqt-fg)] [&>button:last-child]:data-[state=open]:bg-[color:var(--aqt-bg-2)] [&>button:last-child]:data-[state=open]:text-[color:var(--aqt-fg-muted)]"
@@ -244,6 +253,7 @@ export function PlayerEditModal({
                   id={`${entry.role}-${index}`}
                   entry={entry}
                   index={index}
+                  grid={form.divisionGrid}
                   resolveDivision={form.resolveDivision}
                   getDivisionName={form.getDivisionName}
                   onUpdate={form.updateEntry}

@@ -21,6 +21,7 @@ import type {
   BalancerRoleCode,
   BalancerRoleSubtype
 } from "@/types/balancer-admin.types";
+import type { DivisionGrid } from "@/types/workspace.types";
 
 import { ROLE_DISPLAY } from "./playerEditSheet.model";
 import { ROLE_RANK_ACCENTS, RoleRankControls } from "./RoleRankControls";
@@ -29,6 +30,7 @@ type SortableRoleEntryProps = {
   id: string;
   entry: BalancerPlayerRoleEntry;
   index: number;
+  grid: DivisionGrid;
   resolveDivision: (rankValue: number | null) => number | null;
   getDivisionName: (divisionNumber: number | null) => string | null;
   onUpdate: (index: number, next: BalancerPlayerRoleEntry) => void;
@@ -40,6 +42,7 @@ export function SortableRoleEntry({
   id,
   entry,
   index,
+  grid,
   resolveDivision,
   getDivisionName,
   onUpdate,
@@ -65,7 +68,8 @@ export function SortableRoleEntry({
   // Always shown for the role; actionable when an OW rank is available.
   const owRankValue = entry.ow_rank_value ?? null;
   const owSuggestionDivision = owRankValue != null ? resolveDivision(owRankValue) : null;
-  const owSuggestionName = owSuggestionDivision != null ? getDivisionName(owSuggestionDivision) : null;
+  const owSuggestionName =
+    owSuggestionDivision != null ? getDivisionName(owSuggestionDivision) : null;
   const owMatchesCurrent = owRankValue != null && owRankValue === entry.rank_value;
   const owActionLabel = entry.rank_value == null ? "Use" : owMatchesCurrent ? "Matches" : "Apply";
 
@@ -81,11 +85,10 @@ export function SortableRoleEntry({
       )}
     >
       <div className="flex items-center justify-between md:flex-col md:items-center md:justify-center md:gap-1">
-        <SortableGrip
-          handleProps={handleProps}
-          label={`Reorder ${ROLE_DISPLAY[entry.role]}`}
-        />
-        <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">#{index + 1}</span>
+        <SortableGrip handleProps={handleProps} label={`Reorder ${ROLE_DISPLAY[entry.role]}`} />
+        <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">
+          #{index + 1}
+        </span>
       </div>
 
       <div className="space-y-2">
@@ -162,19 +165,20 @@ export function SortableRoleEntry({
               >
                 <SelectValue placeholder="Sub-role" />
               </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No sub-role</SelectItem>
-              {roleSubtypeOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
+              <SelectContent>
+                <SelectItem value="none">No sub-role</SelectItem>
+                {roleSubtypeOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
             </Select>
           </div>
 
           <RoleRankControls
             rankValue={entry.rank_value}
+            grid={grid}
             sourceLabel={
               entry.rank_source && entry.rank_source !== "none" ? entry.rank_source : null
             }
@@ -205,14 +209,23 @@ export function SortableRoleEntry({
             className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left transition hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]"
           >
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
-            <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">OW</span>
+            <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              OW
+            </span>
             {owSuggestionDivision != null ? (
-              <DivisionIcon division={owSuggestionDivision} width={16} height={16} />
+              <DivisionIcon
+                division={owSuggestionDivision}
+                tournamentGrid={grid}
+                width={16}
+                height={16}
+              />
             ) : null}
             <span className="truncate text-label font-medium text-[color:var(--aqt-fg-muted)]">
               {owSuggestionName ?? `Division ${owSuggestionDivision}`}
             </span>
-            <span className="text-label tabular-nums text-[color:var(--aqt-fg-dim)]">({owRankValue})</span>
+            <span className="text-label tabular-nums text-[color:var(--aqt-fg-dim)]">
+              ({owRankValue})
+            </span>
             <span
               className={cn(
                 "ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-label font-semibold",
@@ -225,7 +238,9 @@ export function SortableRoleEntry({
         ) : (
           <div className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left">
             <Sparkles className="h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)]" />
-            <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">OW</span>
+            <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              OW
+            </span>
             <span className="text-label text-[color:var(--aqt-fg-dim)]">No live OW rank</span>
           </div>
         )}

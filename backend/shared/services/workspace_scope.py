@@ -120,6 +120,7 @@ async def resolve_workspace_context(
     workspace_id: int | _AllWorkspaces | None,
     *,
     tournament_id: int | None = None,
+    discipline: str | None = None,
 ) -> WorkspaceContext:
     """Build a `WorkspaceContext` from a plain `workspace_id` (no FastAPI DI).
 
@@ -129,7 +130,7 @@ async def resolve_workspace_context(
     scope (``None``) raises ``400`` instead of silently spanning every workspace.
     """
     resolved_id = require_workspace_scope(workspace_id)
-    grid = await get_effective_division_grid(session, resolved_id, tournament_id=tournament_id)
+    grid = await get_effective_division_grid(session, resolved_id, tournament_id=tournament_id, discipline=discipline)
     normalizer: DivisionGridNormalizer | None = None
     if resolved_id is not None:
         try:
@@ -137,6 +138,7 @@ async def resolve_workspace_context(
                 session,
                 resolved_id,
                 require_complete=False,
+                discipline=discipline,
             )
         except DivisionGridNormalizationError:
             normalizer = None

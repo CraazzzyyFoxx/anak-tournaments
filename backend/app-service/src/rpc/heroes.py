@@ -45,7 +45,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _leaderboard(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data))
+            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline="overwatch")
             qp = build_query_model(schemas.HeroLeaderboardQueryParams, data.get("query"))
             return await hero_service.get_hero_leaderboard(
                 session,

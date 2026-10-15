@@ -376,6 +376,8 @@ Workspace defaults are independently persisted per `(workspace_id, discipline)`:
 
 LoL has no native ladder: new LoL grids start empty, and a LoL tournament or mix (including a clone) requires a tiered LoL grid before creation. Missing or empty LoL runtime grids return 422 `division_grid_required`, never an Overwatch fallback. Overwatch retains its native-ladder fallback.
 
+Legacy public player/hero statistics and workspace-wide achievements still query Overwatch data, so their grid and normalization target remain explicitly Overwatch even in a LoL-first workspace. Generic workspace rank entrypoints continue to use the first enabled discipline. Tournament player sheets, autofill previews, and pick/ban crests carry the owner's resolved grid through nested controls; the player sheet exposes no rank controls until that owner scope is available. Grid administration renders native ladder bars, native-rank columns, and native crest fallbacks only for Overwatch, never for a LoL grid with or without an activated version. Activation and version-mapping explanations apply to the selected game.
+
 Portable exports use `division-grid/v2` with `discipline`. User-held `division-grid/v1` files still import as Overwatch, translating `ow_rank_min/max` to `native_rank_min/max`; malformed shapes and conflicting old/new bounds are rejected. Marketplace and portable imports require the target workspace to enable the grid's discipline.
 
 ---

@@ -428,6 +428,75 @@ describe("Settings › Divisions", () => {
     expect(container.textContent).toContain("system fallback · nothing activated");
   });
 
+  it.each([false, true])(
+    "never renders OW native data for a LoL grid (active=%s)",
+    async (active) => {
+      const lol: DivisionGridVersion = {
+        ...version(90, 1, "published"),
+        grid_id: 8,
+        label: "LoL organizer scale",
+        tiers: [
+          {
+            ...tier(1),
+            name: "LoL High",
+            rank_min: 200,
+            rank_max: null,
+            native_rank_min: null,
+            native_rank_max: null,
+            icon_url: "https://cdn/lol-high.png"
+          },
+          {
+            ...tier(2),
+            name: "LoL Low",
+            rank_min: 0,
+            rank_max: 199,
+            native_rank_min: null,
+            native_rank_max: null,
+            icon_url: ""
+          }
+        ]
+      };
+      getDivisionGrids.mockResolvedValue([
+        grid(7, "OW"),
+        { ...grid(8, "LoL"), discipline: "lol", versions: [lol] }
+      ]);
+      getDivisionGridVersions.mockResolvedValue([lol]);
+      getDivisionGridVersionReadiness.mockResolvedValue({
+        target_version_id: 90,
+        is_ready: true,
+        used_source_version_ids: [],
+        missing_mapping_version_ids: [],
+        incomplete_mapping_version_ids: [],
+        sources: []
+      });
+      currentWorkspace = {
+        id: 1,
+        disciplines_enabled: ["overwatch", "lol"],
+        default_division_grid_versions: active ? { overwatch: 22, lol: 90 } : { overwatch: 22 },
+        effective_division_grid_versions: active
+          ? { overwatch: VERSIONS[2], lol }
+          : { overwatch: VERSIONS[2] }
+      };
+      window.history.replaceState(null, "", "/admin/settings/divisions?grid=8");
+      const container = await mount();
+      expect(container.querySelector("ol[aria-label]")).toBeNull();
+      expect(container.textContent).not.toMatch(/Champion|Bronze|45 ranks|Overwatch rank/);
+      expect([...container.querySelectorAll("th")].map((cell) => cell.textContent)).not.toContain(
+        "OW ranks"
+      );
+      expect(
+        [...container.querySelectorAll("img")].map((image) => image.getAttribute("src"))
+      ).toEqual(active ? ["https://cdn/lol-high.png"] : []);
+      if (active) {
+        expect(container.textContent).toContain("LoL High");
+        expect(container.textContent).toContain("LoL Low");
+        expect(container.textContent).toContain("200");
+      } else {
+        expect(container.querySelector("table")).toBeNull();
+      }
+    }
+  );
+
   it("offers the grid selector only when there is more than one grid, and writes ?grid=", async () => {
     const single = await mount();
     expect(single.querySelector("#division-grid-select")).toBeNull();

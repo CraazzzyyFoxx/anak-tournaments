@@ -277,7 +277,9 @@ class AchievementEvaluationRunnerService:
                 if rule_needs_normalized_divisions and normalizer is None:
                     if normalizer_error is None:
                         try:
-                            normalizer = await build_workspace_division_grid_normalizer(session, workspace_id)
+                            normalizer = await build_workspace_division_grid_normalizer(
+                                session, workspace_id, discipline="overwatch"
+                            )
                         except DivisionGridNormalizationError as exc:
                             normalizer_error = exc
                     if normalizer is None:
@@ -447,6 +449,7 @@ async def _resolve_grid(
         session,
         workspace_id,
         tournament_id=tournament.id if tournament is not None else None,
+        discipline="overwatch" if tournament is None else tournament.discipline,
     )
 
 

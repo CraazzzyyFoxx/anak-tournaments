@@ -9,7 +9,7 @@ import {
   getDivisionLabel,
   resolveDivisionFromRank,
   resolveRankFromDivision,
-  sortTiersAscending,
+  sortTiersAscending
 } from "@/lib/divisions/grid";
 import { cn } from "@/lib/utils";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -33,20 +33,20 @@ export const ROLE_RANK_ACCENTS: Record<string, RoleRankAccent> = {
     row: "border-sky-400/40 bg-sky-500/[0.07] shadow-[0_0_0_1px_rgba(56,189,248,0.08)]",
     text: "text-sky-200",
     chip: "border-sky-300/30 bg-sky-500/12 text-sky-200",
-    sliderColor: "var(--aqt-tank)",
+    sliderColor: "var(--aqt-tank)"
   },
   damage: {
     row: "border-orange-400/40 bg-orange-500/[0.07] shadow-[0_0_0_1px_rgba(251,146,60,0.08)]",
     text: "text-orange-200",
     chip: "border-orange-300/30 bg-orange-500/12 text-orange-200",
-    sliderColor: "var(--aqt-damage)",
+    sliderColor: "var(--aqt-damage)"
   },
   support: {
     row: "border-emerald-400/40 bg-emerald-500/[0.07] shadow-[0_0_0_1px_rgba(52,211,153,0.08)]",
     text: "text-emerald-200",
     chip: "border-emerald-300/30 bg-emerald-500/12 text-emerald-200",
-    sliderColor: "var(--aqt-support)",
-  },
+    sliderColor: "var(--aqt-support)"
+  }
 };
 
 /** For a rank that belongs to no single role — a whole-player override, say. */
@@ -54,7 +54,7 @@ export const NEUTRAL_RANK_ACCENT: RoleRankAccent = {
   row: "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]",
   text: "text-[color:var(--aqt-fg-muted)]",
   chip: "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]",
-  sliderColor: "var(--aqt-teal)",
+  sliderColor: "var(--aqt-teal)"
 };
 
 /** Long enough that a slider drag or a four-digit number is one write, not twenty. */
@@ -97,7 +97,7 @@ export function useDebouncedRank(committed: number | null, commit: (rank: number
       clearTimeout(timer.current);
       setDraft(rank);
       commit(rank);
-    },
+    }
   };
 }
 
@@ -130,12 +130,8 @@ type RoleRankControlsProps = {
   onClear?: (() => void) | null;
   onChange: (rankValue: number | null, divisionNumber: number | null) => void;
   /**
-   * The grid these controls label and slide against. Omitted = the workspace
-   * grid, which is right for the tournament and workspace sheets.
-   *
-   * A mix MUST pass `OW_REFERENCE_GRID`: balancer-service resolves a mix's
-   * ranks against the global, OW-synced grid (`workspace_id=None`), so reading
-   * them through a workspace's tiers renames the same number.
+   * The grid these controls label and slide against. Owner-scoped sheets pass
+   * their resolved grid; omission is only for an unscoped workspace editor.
    */
   grid?: DivisionGrid;
 };
@@ -161,7 +157,7 @@ export function RoleRankControls({
   disabled = false,
   onClear,
   onChange,
-  grid: gridOverride,
+  grid: gridOverride
 }: Readonly<RoleRankControlsProps>) {
   const workspaceGrid = useDivisionGrid();
   const grid = gridOverride ?? workspaceGrid;
@@ -172,7 +168,7 @@ export function RoleRankControls({
   const divisionName = getDivisionLabel(grid, divisionNumber);
   const sliderIndex = Math.max(
     tiers.findIndex((tier) => tier.number === divisionNumber),
-    0,
+    0
   );
   const fillPercent = tiers.length <= 1 ? 100 : (sliderIndex / (tiers.length - 1)) * 100;
 
@@ -188,7 +184,7 @@ export function RoleRankControls({
               <span
                 className={cn(
                   "flex items-center gap-1 text-label font-semibold",
-                  active ? accent.text : "text-[color:var(--aqt-fg-dim)]",
+                  active ? accent.text : "text-[color:var(--aqt-fg-dim)]"
                 )}
               >
                 {rankValue}
@@ -196,7 +192,7 @@ export function RoleRankControls({
                   <span
                     className={cn(
                       "inline-flex h-4 items-center rounded-md border px-1.5 text-label uppercase",
-                      accent.chip,
+                      accent.chip
                     )}
                   >
                     {sourceLabel}
@@ -227,7 +223,7 @@ export function RoleRankControls({
           disabled={disabled}
           className={cn(
             "h-7 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-xs text-[color:var(--aqt-fg)] shadow-none focus-visible:ring-1 focus-visible:ring-primary/40",
-            !active && "text-[color:var(--aqt-fg-dim)]",
+            !active && "text-[color:var(--aqt-fg-dim)]"
           )}
           value={rankValue}
           onValueChange={(next) => onChange(next, resolveDivisionFromRank(grid, next))}
@@ -245,11 +241,11 @@ export function RoleRankControls({
           }}
           className={cn(
             "h-1 w-full cursor-pointer appearance-none rounded-full bg-[color:var(--aqt-overlay-3)]",
-            (disabled || !active) && "cursor-not-allowed opacity-50",
+            (disabled || !active) && "cursor-not-allowed opacity-50"
           )}
           style={{
             accentColor: accent.sliderColor,
-            background: `linear-gradient(90deg, ${accent.sliderColor} 0%, ${accent.sliderColor} ${fillPercent}%, rgba(255,255,255,0.08) ${fillPercent}%, rgba(255,255,255,0.08) 100%)`,
+            background: `linear-gradient(90deg, ${accent.sliderColor} 0%, ${accent.sliderColor} ${fillPercent}%, rgba(255,255,255,0.08) ${fillPercent}%, rgba(255,255,255,0.08) 100%)`
           }}
         />
       </div>
@@ -259,13 +255,18 @@ export function RoleRankControls({
         <div
           className={cn(
             "flex min-h-[36px] items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1",
-            !active && "text-[color:var(--aqt-fg-dim)]",
+            !active && "text-[color:var(--aqt-fg-dim)]"
           )}
           title={divisionName ?? undefined}
         >
           {divisionNumber != null ? (
             <>
-              <DivisionIcon division={divisionNumber} tournamentGrid={grid} width={20} height={20} />
+              <DivisionIcon
+                division={divisionNumber}
+                tournamentGrid={grid}
+                width={20}
+                height={20}
+              />
               <div className="min-w-0">
                 <div className="truncate text-label font-medium text-[color:var(--aqt-fg-muted)]">
                   {divisionName ?? `Division ${divisionNumber}`}

@@ -312,6 +312,7 @@ export function usePlayerEditForm({
   };
 
   return {
+    divisionGrid,
     roleEntries,
     isFlex,
     setIsFlex,
