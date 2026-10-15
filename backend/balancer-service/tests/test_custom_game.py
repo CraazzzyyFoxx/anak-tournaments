@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
@@ -30,7 +30,9 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.schemas.events import PickupMixChangedEvent  # noqa: E402
+from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 from shared.services import discord_messages  # noqa: E402
 from shared.services.member_rank import MIX_ORDER  # noqa: E402
 from shared.services.subscriptions.providers.discord_role import DiscordUnavailable  # noqa: E402
@@ -39,6 +41,7 @@ from shared.testing import install_postgres_type_shims  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
 from src.domain.mix_ranker import Ranker  # noqa: E402
 from src.domain.mix_self_service import MAX_ROSTER  # noqa: E402
+from src.services import custom_game as custom_game_module
 from src.services import mix_discord_projector  # noqa: E402
 from src.services.custom_game import _MAX_CO_HOSTS, CustomGameService  # noqa: E402
 from src.services.mix_rounds import MixRoundDraft  # noqa: E402
@@ -210,13 +213,8 @@ def _seated(*teams: list[tuple[int, str]]) -> dict[str, object]:
 
 
 def _prefs(**overrides) -> SimpleNamespace:
-    """One ``balancer.user_config`` row: everything the HOST configures.
-
-    The roster shape, the points knob and the rating mode are columns beside
-    ``config_json``, not keys inside it -- that blob is the solver's override
-    input and none of them is an override.
-    """
-    fields = {"config_json": {}, "role_slots_json": None, "points_per_win": None, "rating_mode": "points"}
+    """The host's solver and rating knobs, never the mix's team format."""
+    fields = {"config_json": {}, "points_per_win": None, "rating_mode": "points"}
     fields.update(overrides)
     return _row(**fields)
 
@@ -378,7 +376,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.host_prefs.get_by_user = AsyncMock(return_value=None)
         # The map catalogue: every id resolves unless a test says otherwise.
         self.maps = MagicMock()
-        self.maps.get = AsyncMock(return_value=None)
+        self.maps.exists = AsyncMock(return_value=True)
         self.roster.list_for_game = AsyncMock(return_value=[])
         self.roster.delete_for_game = AsyncMock()
         self.roster.get_by = AsyncMock(return_value=None)
@@ -437,16 +435,22 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self._images_patch = patch("src.services.custom_game.load_images", new=self.load_images)
         self._images_patch.start()
         self.addCleanup(self._images_patch.stop)
-        # No workspace-level roster default unless a test says otherwise --
-        # `roster_shape`/`balance` then fall back to the built-in Overwatch 5v5
-        # shape, matching every existing assertion below.
-        self.workspace_roster_slots = AsyncMock(return_value=None)
-        self._workspace_slots_patch = patch(
-            "src.services.custom_game.get_workspace_roster_slots",
-            new=self.workspace_roster_slots,
+        self.slot_shape = AsyncMock(return_value=RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2))))
+        self.format_lookup = AsyncMock(return_value=(object(), "custom_game"))
+        self.format_read = AsyncMock(
+            return_value=SimpleNamespace(
+                roster_shape=RosterShapeRead.from_shape(self.slot_shape.return_value, source="custom_game")
+            )
         )
-        self._workspace_slots_patch.start()
-        self.addCleanup(self._workspace_slots_patch.stop)
+        for target, mock in (
+            ("custom_game_slot_shape", self.slot_shape),
+            ("custom_game_format", self.format_lookup),
+            ("team_format_read", self.format_read),
+            ("copy_for_custom_game", AsyncMock()),
+        ):
+            patcher = patch(f"src.services.custom_game.{target}", new=mock)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         # The real ranker over dicts: the hidden book advances on every recorded
         # match and is empty unless a test seeds ``self.ranker.hidden.book``.
         self.ranker = in_memory_ranker()
@@ -456,6 +460,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.scoring_rules.delete = AsyncMock()
         self.service = CustomGameService(
             games=self.games,
+            workspaces=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(disciplines_enabled=["overwatch"]))),
             roster=self.roster,
             co_hosts=self.co_hosts,
             lobbies=self.lobbies,
@@ -1834,7 +1839,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_balance_of_both_lobbies_fills_each_with_its_own_half(self) -> None:
         """«Перемешать оба»: один прогон движка на лобби, ровно на своих игроках."""
-        self.workspace_roster_slots.return_value = {"tank": 1}
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1),))
         game = _game(lobby_count=2)
         self.games.get.return_value = game
         self.roster.list_for_game.return_value = [
@@ -1873,7 +1878,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.run_balance.assert_not_called()
 
     async def test_balance_of_both_lobbies_refuses_a_pool_that_fills_only_one(self) -> None:
-        self.workspace_roster_slots.return_value = {"tank": 1}
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1),))
         self.games.get.return_value = _game(lobby_count=2)
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0),
@@ -2114,7 +2119,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         }
         self.games.get.return_value = _game(status="balanced")
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(result["variants"]))
-        self.maps.get = AsyncMock(return_value=_row(id=42, name="King's Row"))
 
         await self.service.record_outcome(
             self.session,
@@ -2170,7 +2174,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         game = _game(status="balanced")
         lobby = self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(result["variants"]), next_map_id=42)
         self.games.get.return_value = game
-        self.maps.get = AsyncMock(return_value=_row(id=5, name="Busan"))
 
         await self.service.record_outcome(
             self.session,
@@ -2189,13 +2192,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get.return_value = _row(
             id=11,
             workspace_id=1,
+            discipline="overwatch",
             host_user_id=9,
             name="Scrim",
             status="balanced",
             lobby_count=1,
         )
         self.lobby_rows[0] = _lobby(0, balance_result_json={"variants": [{"teams": []}]})
-        self.maps.get = AsyncMock(return_value=None)
+        self.maps.exists.return_value = False
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.record_outcome(
@@ -2635,7 +2639,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_set_next_map_stores_a_catalogue_map(self) -> None:
         self.games.get.return_value = _game()
-        self.maps.get = AsyncMock(return_value=_row(id=42, name="King's Row"))
 
         await self.service.set_next_map(self.session, workspace_id=1, custom_game_id=11, map_id=42, actor_user_id=9)
 
@@ -2643,7 +2646,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_set_next_map_unknown_map_404(self) -> None:
         self.games.get.return_value = _game()
-        self.maps.get = AsyncMock(return_value=None)
+        self.maps.exists.return_value = False
 
         with self.assertRaises(HTTPException) as ctx:
             await self.service.set_next_map(
@@ -3583,44 +3586,30 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             )
         self.assertEqual(ctx.exception.status_code, 403)
 
-    async def test_roster_shape_prefers_the_hosts_own_mask(self) -> None:
-        """The shape is the host's, so it wins over the workspace default -- and
-        the source says which stored level it came from."""
-        self.host_prefs.get_by_user.return_value = _prefs(role_slots_json={"flex": 6})
-        self.workspace_roster_slots.return_value = {"tank": 1, "damage": 2, "support": 2}
+    async def test_roster_shape_reads_the_mixs_frozen_format(self) -> None:
+        game = _game()
+        shape = await self.service.roster_shape(self.session, game)
+        self.format_lookup.assert_awaited_once_with(self.session, game)
+        self.assertIs(shape, self.format_read.return_value.roster_shape)
 
-        shape = await self.service.roster_shape(self.session, workspace_id=1, host_user_id=9)
+    async def test_roster_shape_passes_the_workspace_to_role_resolution(self) -> None:
+        game = _game(workspace_id=42)
+        await self.service.roster_shape(self.session, game)
+        self.format_read.assert_awaited_once_with(
+            self.session, self.format_lookup.return_value[0], source="custom_game", workspace_id=42
+        )
 
-        self.host_prefs.get_by_user.assert_awaited_once_with(self.session, 9)
-        self.assertEqual(shape.slots, {"flex": 6})
-        self.assertEqual(shape.source, "host")
+    async def test_roster_shape_preserves_the_resolved_source(self) -> None:
+        self.format_lookup.return_value = (object(), "preset")
+        await self.service.roster_shape(self.session, _game())
+        self.assertEqual(self.format_read.await_args.kwargs["source"], "preset")
 
-    async def test_roster_shape_falls_back_to_the_workspace_default(self) -> None:
-        self.workspace_roster_slots.return_value = {"tank": 1, "flex": 5}
-
-        shape = await self.service.roster_shape(self.session, workspace_id=1, host_user_id=9)
-
-        self.assertEqual(shape.slots, {"tank": 1, "flex": 5})
-        self.assertEqual(shape.source, "workspace")
-
-    async def test_roster_shape_falls_back_to_the_builtin_default(self) -> None:
-        shape = await self.service.roster_shape(self.session, workspace_id=1, host_user_id=9)
-
-        self.assertEqual(shape.slots, {"tank": 1, "damage": 2, "support": 2})
-        self.assertEqual(shape.source, "default")
-
-    async def test_roster_shape_of_a_hostless_mix_inherits(self) -> None:
-        """A mix whose host deleted their account has nobody to read a shape
-        from; it must inherit rather than fail the board."""
-        self.workspace_roster_slots.return_value = {"tank": 1, "flex": 5}
-
-        shape = await self.service.roster_shape(self.session, workspace_id=1, host_user_id=None)
-
+    async def test_roster_shape_of_a_hostless_mix_never_reads_host_preferences(self) -> None:
+        await self.service.roster_shape(self.session, _game(host_user_id=None))
         self.host_prefs.get_by_user.assert_not_awaited()
-        self.assertEqual(shape.source, "workspace")
 
-    async def test_balance_uses_the_workspace_default_when_the_host_has_no_shape(self) -> None:
-        self.workspace_roster_slots.return_value = {"flex": 6}
+    async def test_balance_uses_the_mixs_open_slot_projection(self) -> None:
+        self.slot_shape.return_value = RosterShape(entries=(("flex", 6),))
         self.games.get.return_value = _game()
         self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
         self.ranks.resolve.return_value = _ranks(7)
@@ -3631,10 +3620,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         role_mask = self.run_balance.await_args.args[3]
         self.assertEqual(role_mask, {"flex": 6})
 
-    async def test_balance_host_shape_wins_over_the_workspace_default(self) -> None:
-        self.workspace_roster_slots.return_value = {"flex": 6}
+    async def test_balance_uses_the_mixs_role_and_open_slot_projection(self) -> None:
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1), ("flex", 4)))
         self.games.get.return_value = _game()
-        self.host_prefs.get_by_user.return_value = _prefs(role_slots_json={"tank": 1, "flex": 4})
         self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
         self.ranks.resolve.return_value = _ranks(7)
         self.run_balance.return_value = {"teams": []}
@@ -3907,7 +3895,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         # players_per_team=2, pool of 3 -> exactly one seat short next map.
         self.games.get.return_value = _game()
-        self.host_prefs.get_by_user.return_value = _prefs(role_slots_json={"tank": 1, "damage": 1})
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1), ("damage", 1)))
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, created_at=0),
             _roster_row(2, 8, 1, created_at=0),
@@ -3936,7 +3924,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         # players_per_team=2, pool of 3 -> one seat short.
         self.games.get.return_value = _game()
-        self.host_prefs.get_by_user.return_value = _prefs(role_slots_json={"tank": 1, "damage": 1})
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1), ("damage", 1)))
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, created_at=0),
             _roster_row(2, 8, 1, created_at=0),
@@ -3963,7 +3951,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # players_per_team=2, pool of 3 -> one seat short. Two maps were played
         # in lobby A; 9 spent the first of them on the floor of lobby B.
         self.games.get.return_value = _game()
-        self.host_prefs.get_by_user.return_value = _prefs(role_slots_json={"tank": 1, "damage": 1})
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1), ("damage", 1)))
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, created_at=0),
             _roster_row(2, 8, 1, created_at=0),
@@ -3991,7 +3979,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         from src.domain.mix_rotation import RotationStatus
 
         self.games.get.return_value = _game()
-        self.host_prefs.get_by_user.return_value = _prefs(role_slots_json={"tank": 1, "damage": 1})
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1), ("damage", 1)))
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, created_at=0),
             _roster_row(2, 8, 1, created_at=0),
@@ -4020,7 +4008,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get.return_value = _game(status="balanced", lobby_count=2)
         self.lobby_rows[0] = _lobby(0, next_map_id=42, balance_result_json=lobby_document([{"teams": []}]))
         self.lobby_rows[1] = _lobby(1, balance_result_json=lobby_document([{"teams": []}, {"teams": []}]))
-        self.maps.get = AsyncMock(return_value=_row(id=5, name="Busan"))
 
         await self.service.set_next_map(
             self.session, workspace_id=1, custom_game_id=11, lobby_index=1, map_id=5, actor_user_id=9
@@ -4221,7 +4208,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.games.get.return_value = _game(lobby_count=2)
         self.lobby_rows[0] = _lobby(0, balance_result_json=lobby_document(seated))
         self.lobby_rows[1] = _lobby(1)
-        self.host_prefs.get_by_user.return_value = _prefs(role_slots_json={"tank": 1, "damage": 1})
+        self.slot_shape.return_value = RosterShape(entries=(("tank", 1), ("damage", 1)))
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, created_at=0),
             _roster_row(2, 8, 1, created_at=0),
@@ -4340,3 +4327,32 @@ class HostedActiveMixesTests(IsolatedAsyncioTestCase):
         mixes = await self.service.hosted_active(self.session, workspace_id=1, auth_user=auth_user)
 
         self.assertEqual([row["id"] for row in mixes], [11])
+
+
+class MixMapDisciplineTests(IsolatedAsyncioTestCase):
+    async def test_a_map_of_another_discipline_is_not_found(self) -> None:
+        maps = SimpleNamespace(exists=AsyncMock(return_value=False))
+        service = CustomGameService(maps=maps)
+        service._writable = AsyncMock(return_value=SimpleNamespace(discipline="lol"))
+        with self.assertRaises(custom_game_module.HTTPException) as raised:
+            await service.set_next_map(object(), workspace_id=1, custom_game_id=2, map_id=99, actor_user_id=3)
+        assert raised.exception.status_code == 404
+        maps.exists.assert_awaited_once_with(ANY, id=99, discipline="lol")
+
+
+class MixCloneDisciplineTests(IsolatedAsyncioTestCase):
+    async def test_a_clone_is_gated_on_its_source_s_discipline_not_the_request_default(self) -> None:
+        # Scan F03: D89 checks the discipline the new mix actually gets.
+        service = CustomGameService(
+            games=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(id=7, workspace_id=1, discipline="lol")))
+        )
+        service.workspaces = SimpleNamespace(
+            get=AsyncMock(return_value=SimpleNamespace(disciplines_enabled=["overwatch"]))
+        )
+        service.members = AsyncMock(return_value=[])
+        with self.assertRaises(custom_game_module.HTTPException) as raised:
+            await service.create(
+                object(), workspace_id=1, host_user_id=3, name="x", actor_user_id=3, clone_from_game_id=7
+            )
+        assert raised.exception.status_code == 422
+        assert "discipline_not_enabled" in str(raised.exception.detail)

@@ -11,7 +11,9 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+
+DEFAULT_ROSTER_SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
 from src.domain.balancer.entities import Team  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document, seat_rating, teams_to_json  # noqa: E402
 from tests.factories import DEFAULT_MASK as MASK  # noqa: E402

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
+from shared.schemas.team_format import TeamFormatRead, TeamFormatWrite
 from shared.services.bracket.template import BracketTemplate
 from shared.services.chat import (
     HISTORY_DEFAULT,
@@ -142,6 +143,8 @@ OPERATIONS: dict[str, Op] = {
     # ── bespoke: tournament cover/logo (binary upload + delete) ────────────
     "rpc.tournament.tournaments.image_upload": Op(response=schemas.TournamentRead),
     "rpc.tournament.tournaments.image_delete": Op(response=schemas.TournamentRead),
+    "rpc.tournament.team_format.get": Op(response=TeamFormatRead),
+    "rpc.tournament.team_format.put": Op(request=TeamFormatWrite, response=TeamFormatRead),
     # ── bespoke: registered-team image (binary upload + delete) ────────────
     "rpc.tournament.regteam_image_upload": Op(response=reg_team_schemas.RegistrationTeamRead),
     "rpc.tournament.regteam_image_delete": Op(response=reg_team_schemas.RegistrationTeamRead),

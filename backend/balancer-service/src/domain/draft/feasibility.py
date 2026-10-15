@@ -19,7 +19,7 @@ from typing import Any
 
 from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass
 from shared.domain.roster import PlayerRoster
-from shared.domain.roster_shape import FLEX_SLOT_CODE, ROSTER_SLOT_CODES, RosterShape
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
 from src.domain.draft.entities import (
     DraftAssignment,
@@ -132,7 +132,7 @@ def build_feasibility_state(
 
 
 def _ordered_slot_codes(slot_targets: Mapping[str, int]) -> tuple[str, ...]:
-    return tuple(code for code in ROSTER_SLOT_CODES if slot_targets.get(code, 0) > 0)
+    return tuple(code for code, count in slot_targets.items() if count > 0)
 
 
 def _slot_fits(player: EligiblePlayer, slot_code: str) -> bool:

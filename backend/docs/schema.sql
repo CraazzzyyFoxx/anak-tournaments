@@ -1,6 +1,6 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 155
+-- Tables: 158
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -15,6 +15,7 @@ CREATE SCHEMA IF NOT EXISTS overwatch_rank;
 CREATE SCHEMA IF NOT EXISTS players;
 CREATE SCHEMA IF NOT EXISTS quota;
 CREATE SCHEMA IF NOT EXISTS realtime;
+CREATE SCHEMA IF NOT EXISTS roster;
 CREATE SCHEMA IF NOT EXISTS subscriptions;
 CREATE SCHEMA IF NOT EXISTS tournament;
 
@@ -1354,7 +1355,6 @@ CREATE TABLE balancer.user_config (
 	updated_at TIMESTAMP WITH TIME ZONE,
 	user_id BIGINT NOT NULL,
 	config_json JSONB DEFAULT '{}' NOT NULL,
-	role_slots_json JSONB,
 	points_per_win INTEGER,
 	rating_mode VARCHAR(16) DEFAULT 'points' NOT NULL,
 	PRIMARY KEY (id),
@@ -2610,7 +2610,6 @@ CREATE TABLE workspace (
 	verification_status VARCHAR(16) DEFAULT 'unverified' NOT NULL,
 	default_division_grid_version_id BIGINT,
 	quota_plan_id BIGINT,
-	default_roster_slots_json JSONB,
 	disciplines_enabled VARCHAR(32)[] DEFAULT '{overwatch}' NOT NULL,
 	newcomer_scope VARCHAR(16) DEFAULT 'global' NOT NULL,
 	PRIMARY KEY (id),
@@ -2744,6 +2743,65 @@ CREATE INDEX ix_realtime_workspace_event_topic_id ON realtime.workspace_event (t
 CREATE INDEX ix_realtime_workspace_event_tournament_id ON realtime.workspace_event (tournament_id);
 
 CREATE INDEX ix_realtime_workspace_event_workspace_id ON realtime.workspace_event (workspace_id);
+
+CREATE TABLE roster.format_role_rule (
+	team_format_id BIGINT NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
+	hard_min INTEGER,
+	hard_max INTEGER,
+	recommended_min INTEGER,
+	recommended_max INTEGER,
+	include_descendants BOOLEAN DEFAULT true NOT NULL,
+	PRIMARY KEY (team_format_id, role_id),
+	CONSTRAINT fk_frr_dimension FOREIGN KEY(team_format_id, dimension_id) REFERENCES roster.team_format_dimension (team_format_id, dimension_id) ON DELETE CASCADE,
+	CONSTRAINT fk_frr_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+	CONSTRAINT ck_frr_nonnegative CHECK (hard_min >= 0 AND hard_max >= 0 AND recommended_min >= 0 AND recommended_max >= 0),
+	CONSTRAINT ck_frr_hard CHECK (hard_min IS NULL OR hard_max IS NULL OR hard_min <= hard_max),
+	CONSTRAINT ck_frr_recommended CHECK (recommended_min IS NULL OR recommended_max IS NULL OR recommended_min <= recommended_max)
+);
+
+CREATE TABLE roster.team_format (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	workspace_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	tournament_id BIGINT,
+	custom_game_id BIGINT,
+	preset_code VARCHAR(64),
+	name VARCHAR(128) NOT NULL,
+	starter_min INTEGER NOT NULL,
+	starter_max INTEGER NOT NULL,
+	substitute_min INTEGER DEFAULT 0 NOT NULL,
+	substitute_max INTEGER DEFAULT 0 NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_team_format_owner CHECK (num_nonnulls(tournament_id, custom_game_id) <= 1),
+	CONSTRAINT ck_team_format_sizes CHECK (1 <= starter_min AND starter_min <= starter_max AND 0 <= substitute_min AND substitute_min <= substitute_max),
+	CONSTRAINT uq_team_format_key UNIQUE (id, discipline),
+	CONSTRAINT uq_team_format_tournament UNIQUE (tournament_id),
+	CONSTRAINT uq_team_format_custom_game UNIQUE (custom_game_id),
+	CONSTRAINT fk_team_format_tournament FOREIGN KEY(tournament_id, workspace_id, discipline) REFERENCES tournament.tournament (id, workspace_id, discipline) ON DELETE CASCADE,
+	CONSTRAINT fk_team_format_custom_game FOREIGN KEY(custom_game_id, workspace_id, discipline) REFERENCES balancer.custom_game (id, workspace_id, discipline) ON DELETE CASCADE,
+	CONSTRAINT fk_team_format_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	CONSTRAINT fk_team_format_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
+);
+
+CREATE UNIQUE INDEX uq_team_format_workspace_default ON roster.team_format (workspace_id, discipline) WHERE tournament_id IS NULL AND custom_game_id IS NULL;
+
+CREATE TABLE roster.team_format_dimension (
+	team_format_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	mode VARCHAR(16) NOT NULL,
+	player_min_assignments INTEGER,
+	player_max_assignments INTEGER,
+	PRIMARY KEY (team_format_id, dimension_id),
+	CONSTRAINT ck_tfd_mode CHECK (mode IN ('off', 'informational', 'preference', 'enforced')),
+	CONSTRAINT ck_tfd_assignments CHECK (player_min_assignments IS NULL OR player_max_assignments IS NULL OR player_min_assignments <= player_max_assignments),
+	CONSTRAINT fk_tfd_format FOREIGN KEY(team_format_id, discipline) REFERENCES roster.team_format (id, discipline) ON DELETE CASCADE,
+	CONSTRAINT fk_tfd_dimension FOREIGN KEY(dimension_id, discipline) REFERENCES catalog.role_dimension (id, discipline)
+);
 
 CREATE TABLE subscriptions.check_log (
 	id BIGSERIAL NOT NULL,
@@ -3410,7 +3468,6 @@ CREATE TABLE tournament.tournament (
 	draw_points FLOAT DEFAULT '0.5' NOT NULL,
 	loss_points FLOAT DEFAULT '0.0' NOT NULL,
 	division_grid_version_id BIGINT,
-	roster_slots_json JSONB,
 	draft_format_json JSONB,
 	cover_image_url VARCHAR,
 	logo_url VARCHAR,

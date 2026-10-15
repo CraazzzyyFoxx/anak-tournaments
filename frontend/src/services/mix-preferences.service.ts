@@ -1,5 +1,4 @@
 import { apiFetch } from "@/lib/api/fetch";
-import type { RosterShape, RosterSlotMap } from "@/lib/roster/shape";
 
 /**
  * The mix engine's knobs, held per account rather than per mix.
@@ -25,11 +24,8 @@ export type MixBalancerPreferences = {
   role_settings: Record<string, { mix_weight: number }> | null;
   /** How many balance options one run hands back for the pager to walk. */
   max_result_variants: number | null;
-  /**
-   * How many slots of each kind one team gets, or `null` to follow the
-   * workspace each mix runs in. Same shape a tournament pins, one level up.
-   */
-  role_mask: RosterSlotMap | null;
+  /** Weights for open slots, separate from role weights. */
+  open_slot_settings: { mix_weight: number } | null;
   /** Rank points a recorded win moves, in the host's own book; `null`/`0` = off. */
   points_per_win: number | null;
   /**
@@ -43,15 +39,7 @@ export type MixBalancerPreferences = {
 /** The two ways a host's rank book reacts to a recorded match. */
 export type MixRatingMode = "points" | "ranker";
 
-/**
- * What a read adds on top: the stored shape already resolved, so the editor can
- * render team size and draft rounds without reimplementing the server's
- * resolution. `source` is `"user"` when a shape is stored, `"default"` when the
- * account follows whatever workspace a mix runs in.
- */
-export type MixBalancerPreferencesRead = MixBalancerPreferences & {
-  roster_shape: RosterShape;
-};
+export type MixBalancerPreferencesRead = MixBalancerPreferences;
 
 export const mixPreferencesKeys = {
   /** One row per account; the caller is always its own subject. */

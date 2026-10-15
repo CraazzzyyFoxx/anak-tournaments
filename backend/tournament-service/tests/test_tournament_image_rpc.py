@@ -90,6 +90,7 @@ def _tournament_read(*, cover_image_url: str | None, logo_url: str | None) -> ob
     return schemas.TournamentRead(
         id=TOURNAMENT_ID,
         workspace_id=WORKSPACE_ID,
+        discipline="overwatch",
         name="Anak Cup",
         slug="anak-cup",
         description=None,

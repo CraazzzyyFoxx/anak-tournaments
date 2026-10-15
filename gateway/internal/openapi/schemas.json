@@ -3859,6 +3859,26 @@
       },
       "summary": "List workspace staff"
     },
+    "rpc.app.workspaces.team_format_get": {
+      "description": "Permission: workspace `workspace.update`. Returns the discipline's workspace default or module preset with its slot projection.",
+      "response": {
+        "array": false,
+        "ref": "app.TeamFormatRead"
+      },
+      "summary": "Get a workspace's default team format"
+    },
+    "rpc.app.workspaces.team_format_put": {
+      "description": "Permission: workspace `workspace.update`. Sets the template for future tournaments and mixes; existing copies never change. Invalid formats return 422.",
+      "request": {
+        "array": false,
+        "ref": "app.TeamFormatWrite"
+      },
+      "response": {
+        "array": false,
+        "ref": "app.TeamFormatRead"
+      },
+      "summary": "Replace a workspace's default team format"
+    },
     "rpc.app.workspaces.verification_set": {
       "description": "Permission: superuser only (a workspace owner may not self-certify). Moves a workspace between the `unverified`/`verified`/`trusted` trust tiers \u2014 the only way a self-service workspace is unblocked for GPU compute, inline achievement recompute and the public directory; audited on every call including a no-op set, 404 if workspace missing, 422 on an unknown status.",
       "request": {
@@ -10450,6 +10470,26 @@
       },
       "summary": "Set workspace subscription requirement"
     },
+    "rpc.tournament.team_format.get": {
+      "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection (D33, D35).",
+      "response": {
+        "array": false,
+        "ref": "tournament.TeamFormatRead"
+      },
+      "summary": "Get a tournament's team format"
+    },
+    "rpc.tournament.team_format.put": {
+      "description": "Permission: workspace `tournament.update`. Replaces the tournament's team format; 409 while a draft is unfinished or teams hold slots; 422 with the `team_format_*` code when the format cannot be stored.",
+      "request": {
+        "array": false,
+        "ref": "tournament.TeamFormatWrite"
+      },
+      "response": {
+        "array": false,
+        "ref": "tournament.TeamFormatRead"
+      },
+      "summary": "Replace a tournament's team format"
+    },
     "rpc.tournament.teams.image_delete": {
       "description": "Permission: workspace `team.update` on the workspace resolved from the team's tournament. Removes a team's image from S3 and clears its URL.",
       "response": {
@@ -14478,6 +14518,125 @@
       "title": "EncounterReadWithUserStats",
       "type": "object"
     },
+    "app.FormatDimensionWire": {
+      "properties": {
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "off",
+            "informational",
+            "preference",
+            "enforced"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "player_max_assignments": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Player Max Assignments"
+        },
+        "player_min_assignments": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Player Min Assignments"
+        }
+      },
+      "required": [
+        "dimension",
+        "mode"
+      ],
+      "title": "FormatDimensionWire",
+      "type": "object"
+    },
+    "app.FormatRuleWire": {
+      "properties": {
+        "hard_max": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hard Max"
+        },
+        "hard_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hard Min"
+        },
+        "include_descendants": {
+          "default": true,
+          "title": "Include Descendants",
+          "type": "boolean"
+        },
+        "recommended_max": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Max"
+        },
+        "recommended_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Min"
+        },
+        "role": {
+          "$ref": "#/components/schemas/app.RoleRef"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "FormatRuleWire",
+      "type": "object"
+    },
     "app.GamemodeRead": {
       "properties": {
         "aliases": {
@@ -17413,6 +17572,108 @@
       "title": "QuotaUsageRead",
       "type": "object"
     },
+    "app.RoleRef": {
+      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "properties": {
+        "dimension": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Dimension",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "role": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimension",
+        "role"
+      ],
+      "title": "RoleRef",
+      "type": "object"
+    },
+    "app.RosterShapeRead": {
+      "description": "A team format's slots (D33). The frontend never recomputes them.",
+      "properties": {
+        "dimension": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dimension"
+        },
+        "draft_rounds": {
+          "title": "Draft Rounds",
+          "type": "integer"
+        },
+        "flex_slots": {
+          "title": "Flex Slots",
+          "type": "integer"
+        },
+        "has_role_slots": {
+          "title": "Has Role Slots",
+          "type": "boolean"
+        },
+        "slots": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Slots",
+          "type": "object"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "enum": [
+                "tournament",
+                "custom_game",
+                "workspace",
+                "preset"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "team_size": {
+          "title": "Team Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "slots",
+        "team_size",
+        "flex_slots",
+        "has_role_slots",
+        "draft_rounds"
+      ],
+      "title": "RosterShapeRead",
+      "type": "object"
+    },
     "app.Score": {
       "properties": {
         "away": {
@@ -17600,6 +17861,158 @@
         "visible"
       ],
       "title": "StreamVisibilityUpdate",
+      "type": "object"
+    },
+    "app.TeamFormatRead": {
+      "properties": {
+        "dimensions": {
+          "items": {
+            "$ref": "#/components/schemas/app.FormatDimensionWire"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "preset_code": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset Code"
+        },
+        "roster_shape": {
+          "$ref": "#/components/schemas/app.RosterShapeRead"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/app.FormatRuleWire"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "tournament",
+            "custom_game",
+            "workspace",
+            "preset"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "starter_max": {
+          "minimum": 1,
+          "title": "Starter Max",
+          "type": "integer"
+        },
+        "starter_min": {
+          "minimum": 1,
+          "title": "Starter Min",
+          "type": "integer"
+        },
+        "substitute_max": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Max",
+          "type": "integer"
+        },
+        "substitute_min": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Min",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "starter_min",
+        "starter_max",
+        "discipline",
+        "source",
+        "roster_shape"
+      ],
+      "title": "TeamFormatRead",
+      "type": "object"
+    },
+    "app.TeamFormatWrite": {
+      "properties": {
+        "dimensions": {
+          "items": {
+            "$ref": "#/components/schemas/app.FormatDimensionWire"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "preset_code": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset Code"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/app.FormatRuleWire"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "starter_max": {
+          "minimum": 1,
+          "title": "Starter Max",
+          "type": "integer"
+        },
+        "starter_min": {
+          "minimum": 1,
+          "title": "Starter Min",
+          "type": "integer"
+        },
+        "substitute_max": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Max",
+          "type": "integer"
+        },
+        "substitute_min": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Min",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "starter_min",
+        "starter_max"
+      ],
+      "title": "TeamFormatWrite",
       "type": "object"
     },
     "app.TournamentReadiness": {
@@ -21220,21 +21633,6 @@
           "default": null,
           "title": "Default Division Grid Version Id"
         },
-        "default_roster_slots_json": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Default Roster Slots Json"
-        },
         "description": {
           "anyOf": [
             {
@@ -21930,21 +22328,6 @@
           ],
           "title": "Default Division Grid Version Id"
         },
-        "default_roster_slots_json": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Default Roster Slots Json"
-        },
         "description": {
           "anyOf": [
             {
@@ -21955,6 +22338,16 @@
             }
           ],
           "title": "Description"
+        },
+        "disciplines_enabled": {
+          "default": [
+            "overwatch"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "title": "Disciplines Enabled",
+          "type": "array"
         },
         "discord_guild_id": {
           "anyOf": [
@@ -22323,21 +22716,6 @@
           "default": null,
           "title": "Default Division Grid Version Id"
         },
-        "default_roster_slots_json": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Default Roster Slots Json"
-        },
         "description": {
           "anyOf": [
             {
@@ -22349,6 +22727,21 @@
           ],
           "default": null,
           "title": "Description"
+        },
+        "disciplines_enabled": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Disciplines Enabled"
         },
         "discord_url": {
           "anyOf": [
@@ -23440,6 +23833,18 @@
           "description": "Number of swap/change operations attempted during a mutation.",
           "title": "Mutation Strength"
         },
+        "open_slot_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.RoleSettingsOverride"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Weights of open slots without a role constraint (D86)."
+        },
         "polish_max_passes": {
           "anyOf": [
             {
@@ -23520,14 +23925,6 @@
             {
               "additionalProperties": {
                 "$ref": "#/components/schemas/balancer.RoleSettingsOverride"
-              },
-              "propertyNames": {
-                "enum": [
-                  "tank",
-                  "damage",
-                  "support",
-                  "flex"
-                ]
               },
               "type": "object"
             },
@@ -23723,6 +24120,11 @@
           "default": null,
           "title": "Clone From Game Id"
         },
+        "discipline": {
+          "default": "overwatch",
+          "title": "Discipline",
+          "type": "string"
+        },
         "member_ids": {
           "items": {
             "type": "integer"
@@ -23736,6 +24138,19 @@
           "minLength": 1,
           "title": "Name",
           "type": "string"
+        },
+        "team_format_preset": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Format Preset"
         }
       },
       "required": [
@@ -26754,8 +27169,20 @@
       "type": "object"
     },
     "balancer.RosterShapeRead": {
-      "description": "A resolved roster shape. The frontend never recomputes the fallback chain.",
+      "description": "A team format's slots (D33). The frontend never recomputes them.",
       "properties": {
+        "dimension": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dimension"
+        },
         "draft_rounds": {
           "title": "Draft Rounds",
           "type": "integer"
@@ -26780,10 +27207,9 @@
             {
               "enum": [
                 "tournament",
-                "host",
-                "user",
+                "custom_game",
                 "workspace",
-                "default"
+                "preset"
               ],
               "type": "string"
             },
@@ -27112,7 +27538,7 @@
       "type": "object"
     },
     "balancer.UserMixPreferencesRead": {
-      "description": "What is stored, plus the shape it resolves to.\n\nAll six stored fields are null (``rating_mode``: ``points``) for an\naccount that never saved any; ``roster_shape`` is always present, since a\nmix always has *some* shape.",
+      "description": "Stored preferences; unset knobs use the engine defaults.",
       "properties": {
         "max_result_variants": {
           "anyOf": [
@@ -27143,6 +27569,17 @@
           "default": null,
           "description": "Trade-off between rank balance (0) and role comfort (1); null leaves the mix engine's own 0.5 weighting in place.",
           "title": "Mix Comfort Tilt"
+        },
+        "open_slot_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.MixRoleSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "points_per_win": {
           "anyOf": [
@@ -27169,36 +27606,12 @@
           "title": "Rating Mode",
           "type": "string"
         },
-        "role_mask": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "How many seats of each role a team gets in this account's mixes, keyed by roster slot code; null inherits the workspace default and then the built-in Overwatch 5v5 shape.",
-          "title": "Role Mask"
-        },
         "role_settings": {
           "anyOf": [
             {
               "additionalProperties": {
                 "$ref": "#/components/schemas/balancer.MixRoleSettings"
               },
-              "propertyNames": {
-                "enum": [
-                  "tank",
-                  "damage",
-                  "support",
-                  "flex"
-                ]
-              },
               "type": "object"
             },
             {
@@ -27206,23 +27619,16 @@
             }
           ],
           "default": null,
-          "description": "Per-role mix weights, keyed by roster slot code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.",
+          "description": "Per-role mix weights, keyed by declared role code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.",
           "title": "Role Settings"
-        },
-        "roster_shape": {
-          "$ref": "#/components/schemas/balancer.RosterShapeRead",
-          "description": "Read-only: role_mask resolved through the fallback chain, so the client never recomputes it. source is 'user' when this account stored a mask and 'default' when it did not."
         }
       },
-      "required": [
-        "roster_shape"
-      ],
       "title": "UserMixPreferencesRead",
       "type": "object"
     },
     "balancer.UserMixPreferencesUpsert": {
       "additionalProperties": false,
-      "description": "A full replacement: all six keys required, the five knobs nullable to unset one.",
+      "description": "A full replacement; nullable knobs unset the corresponding override.",
       "properties": {
         "max_result_variants": {
           "anyOf": [
@@ -27252,6 +27658,16 @@
           "description": "Trade-off between rank balance (0) and role comfort (1); null leaves the mix engine's own 0.5 weighting in place.",
           "title": "Mix Comfort Tilt"
         },
+        "open_slot_settings": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/balancer.MixRoleSettings"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "points_per_win": {
           "anyOf": [
             {
@@ -27275,42 +27691,19 @@
           "title": "Rating Mode",
           "type": "string"
         },
-        "role_mask": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "How many seats of each role a team gets in this account's mixes, keyed by roster slot code; null inherits the workspace default and then the built-in Overwatch 5v5 shape.",
-          "title": "Role Mask"
-        },
         "role_settings": {
           "anyOf": [
             {
               "additionalProperties": {
                 "$ref": "#/components/schemas/balancer.MixRoleSettings"
               },
-              "propertyNames": {
-                "enum": [
-                  "tank",
-                  "damage",
-                  "support",
-                  "flex"
-                ]
-              },
               "type": "object"
             },
             {
               "type": "null"
             }
           ],
-          "description": "Per-role mix weights, keyed by roster slot code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.",
+          "description": "Per-role mix weights, keyed by declared role code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.",
           "title": "Role Settings"
         }
       },
@@ -27318,7 +27711,7 @@
         "mix_comfort_tilt",
         "role_settings",
         "max_result_variants",
-        "role_mask",
+        "open_slot_settings",
         "points_per_win",
         "rating_mode"
       ],
@@ -41994,6 +42387,125 @@
       "title": "FormSection",
       "type": "object"
     },
+    "tournament.FormatDimensionWire": {
+      "properties": {
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "off",
+            "informational",
+            "preference",
+            "enforced"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "player_max_assignments": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Player Max Assignments"
+        },
+        "player_min_assignments": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Player Min Assignments"
+        }
+      },
+      "required": [
+        "dimension",
+        "mode"
+      ],
+      "title": "FormatDimensionWire",
+      "type": "object"
+    },
+    "tournament.FormatRuleWire": {
+      "properties": {
+        "hard_max": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hard Max"
+        },
+        "hard_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hard Min"
+        },
+        "include_descendants": {
+          "default": true,
+          "title": "Include Descendants",
+          "type": "boolean"
+        },
+        "recommended_max": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Max"
+        },
+        "recommended_min": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Min"
+        },
+        "role": {
+          "$ref": "#/components/schemas/tournament.RoleRef"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "title": "FormatRuleWire",
+      "type": "object"
+    },
     "tournament.GameClaimIn": {
       "description": "One captain's independent claim of a single played GAME's result \u2014\nsubmitted immediately after that position, not at series end (contrast\n``TeamReportIn``). The position, not the map, identifies what is being\nclaimed: a series may play the same map twice. See\n``services.encounter.map_report``.",
       "properties": {
@@ -47157,6 +47669,41 @@
       "title": "RequirementVerdictRead",
       "type": "object"
     },
+    "tournament.RoleRef": {
+      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "properties": {
+        "dimension": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Dimension",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "role": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimension",
+        "role"
+      ],
+      "title": "RoleRef",
+      "type": "object"
+    },
     "tournament.RoleTierRead": {
       "properties": {
         "role_id": {
@@ -47210,8 +47757,20 @@
       "type": "object"
     },
     "tournament.RosterShapeRead": {
-      "description": "A resolved roster shape. The frontend never recomputes the fallback chain.",
+      "description": "A team format's slots (D33). The frontend never recomputes them.",
       "properties": {
+        "dimension": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dimension"
+        },
         "draft_rounds": {
           "title": "Draft Rounds",
           "type": "integer"
@@ -47236,10 +47795,9 @@
             {
               "enum": [
                 "tournament",
-                "host",
-                "user",
+                "custom_game",
                 "workspace",
-                "default"
+                "preset"
               ],
               "type": "string"
             },
@@ -50147,6 +50705,158 @@
       "title": "TeamFilterQueryParams",
       "type": "object"
     },
+    "tournament.TeamFormatRead": {
+      "properties": {
+        "dimensions": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.FormatDimensionWire"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "preset_code": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset Code"
+        },
+        "roster_shape": {
+          "$ref": "#/components/schemas/tournament.RosterShapeRead"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.FormatRuleWire"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "tournament",
+            "custom_game",
+            "workspace",
+            "preset"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "starter_max": {
+          "minimum": 1,
+          "title": "Starter Max",
+          "type": "integer"
+        },
+        "starter_min": {
+          "minimum": 1,
+          "title": "Starter Min",
+          "type": "integer"
+        },
+        "substitute_max": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Max",
+          "type": "integer"
+        },
+        "substitute_min": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Min",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "starter_min",
+        "starter_max",
+        "discipline",
+        "source",
+        "roster_shape"
+      ],
+      "title": "TeamFormatRead",
+      "type": "object"
+    },
+    "tournament.TeamFormatWrite": {
+      "properties": {
+        "dimensions": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.FormatDimensionWire"
+          },
+          "title": "Dimensions",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "preset_code": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preset Code"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.FormatRuleWire"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "starter_max": {
+          "minimum": 1,
+          "title": "Starter Max",
+          "type": "integer"
+        },
+        "starter_min": {
+          "minimum": 1,
+          "title": "Starter Min",
+          "type": "integer"
+        },
+        "substitute_max": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Max",
+          "type": "integer"
+        },
+        "substitute_min": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Substitute Min",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "starter_min",
+        "starter_max"
+      ],
+      "title": "TeamFormatWrite",
+      "type": "object"
+    },
     "tournament.TeamGroupRead": {
       "description": "The group a team played in: a ``StageItem`` of type GROUP, name only.",
       "properties": {
@@ -50992,6 +51702,11 @@
           "default": null,
           "title": "Description"
         },
+        "discipline": {
+          "default": "overwatch",
+          "title": "Discipline",
+          "type": "string"
+        },
         "division_grid_version_id": {
           "anyOf": [
             {
@@ -51045,21 +51760,6 @@
         "name": {
           "title": "Name",
           "type": "string"
-        },
-        "roster_slots_json": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Roster Slots Json"
         },
         "slug": {
           "anyOf": [
@@ -51566,6 +52266,10 @@
           ],
           "title": "Description"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "discord_broadcasts_enabled": {
           "default": true,
           "title": "Discord Broadcasts Enabled",
@@ -51733,21 +52437,6 @@
           ],
           "default": null
         },
-        "roster_slots_json": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Roster Slots Json"
-        },
         "rules": {
           "anyOf": [
             {
@@ -51810,6 +52499,7 @@
       "required": [
         "id",
         "workspace_id",
+        "discipline",
         "name",
         "slug",
         "description",
@@ -52131,21 +52821,6 @@
           ],
           "default": null,
           "title": "Name"
-        },
-        "roster_slots_json": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "type": "integer"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Roster Slots Json"
         },
         "rules": {
           "anyOf": [

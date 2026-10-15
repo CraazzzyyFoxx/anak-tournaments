@@ -1,6 +1,6 @@
 // Anak Tournaments — PostgreSQL schema dumped from SQLAlchemy metadata.
 // Open in VS Code (DBML extension) or paste into https://dbdiagram.io
-// Tables: 155
+// Tables: 158
 
 Project anak_tournaments {
   database_type: "PostgreSQL"
@@ -1146,8 +1146,8 @@ Table balancer.registration_identity {
   handle VARCHAR(255) [not null]
   handle_normalized VARCHAR(255) [not null]
   indexes {
-    (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
     (registration_id, provider, position) [unique, name: "uq_balancer_registration_identity_position"]
+    (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
     (provider, handle_normalized) [name: "ix_balancer_registration_identity_handle"]
     (registration_id) [name: "ix_balancer_registration_identity_registration_id"]
   }
@@ -1179,8 +1179,8 @@ Table balancer.registration_role_entity {
   entity_kind VARCHAR(16) [not null, default: `character`]
   priority int [not null]
   indexes {
-    (role_id, priority) [unique, name: "uq_reg_role_entity_role_priority"]
     (role_id, entity_id) [unique, name: "uq_reg_role_entity_role_entity"]
+    (role_id, priority) [unique, name: "uq_reg_role_entity_role_priority"]
     (role_id) [name: "ix_balancer_registration_role_entity_role_id"]
   }
 }
@@ -1328,7 +1328,6 @@ Table balancer.user_config {
   updated_at timestamptz
   user_id bigint [not null]
   config_json jsonb [not null, default: `{}`]
-  role_slots_json jsonb
   points_per_win int
   rating_mode VARCHAR(16) [not null, default: `points`]
   indexes {
@@ -2313,8 +2312,8 @@ Table division_grid_tier {
   ow_rank_min bigint
   ow_rank_max bigint
   indexes {
-    (version_id, sort_order) [unique]
     (version_id, slug) [unique]
+    (version_id, sort_order) [unique]
     (version_id) [name: "ix_division_grid_tier_version_id"]
   }
 }
@@ -2449,7 +2448,6 @@ Table workspace {
   verification_status VARCHAR(16) [not null, default: `unverified`]
   default_division_grid_version_id bigint
   quota_plan_id bigint
-  default_roster_slots_json jsonb
   disciplines_enabled VARCHAR(32)[] [not null, default: `'{overwatch}'`]
   newcomer_scope VARCHAR(16) [not null, default: `global`]
   indexes {
@@ -2593,6 +2591,56 @@ Table realtime.workspace_event {
 
 TableGroup realtime {
   realtime.workspace_event
+}
+
+// ----- roster -----
+
+Table roster.format_role_rule {
+  team_format_id bigint [pk]
+  dimension_id bigint [not null]
+  role_id bigint [pk]
+  hard_min int
+  hard_max int
+  recommended_min int
+  recommended_max int
+  include_descendants boolean [not null, default: true]
+}
+
+Table roster.team_format {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  discipline VARCHAR(32) [not null]
+  tournament_id bigint
+  custom_game_id bigint
+  preset_code VARCHAR(64)
+  name VARCHAR(128) [not null]
+  starter_min int [not null]
+  starter_max int [not null]
+  substitute_min int [not null, default: 0]
+  substitute_max int [not null, default: 0]
+  indexes {
+    (id, discipline) [unique, name: "uq_team_format_key"]
+    (tournament_id) [unique, name: "uq_team_format_tournament"]
+    (custom_game_id) [unique, name: "uq_team_format_custom_game"]
+    (workspace_id, discipline) [unique, name: "uq_team_format_workspace_default"]
+  }
+}
+
+Table roster.team_format_dimension {
+  team_format_id bigint [pk]
+  discipline VARCHAR(32) [not null]
+  dimension_id bigint [pk]
+  mode VARCHAR(16) [not null]
+  player_min_assignments int
+  player_max_assignments int
+}
+
+TableGroup roster {
+  roster.format_role_rule
+  roster.team_format
+  roster.team_format_dimension
 }
 
 // ----- subscriptions -----
@@ -3148,7 +3196,6 @@ Table tournament.tournament {
   draw_points float [not null, default: 0.5]
   loss_points float [not null, default: 0.0]
   division_grid_version_id bigint
-  roster_slots_json jsonb
   draft_format_json jsonb
   cover_image_url VARCHAR
   logo_url VARCHAR
@@ -3255,8 +3302,8 @@ Ref: achievements.override.tournament_id > tournament.tournament.id [delete: cas
 Ref: achievements.override.match_id > matches.match.id [delete: cascade]
 Ref: achievements.override.granted_by > auth.user.id [delete: set null]
 Ref: achievements.rule.workspace_id > workspace.id [delete: cascade]
-Ref: achievements.rule.discipline > catalog.entity.discipline [delete: set null (entity_id)]
 Ref: achievements.rule.discipline > catalog.discipline.code
+Ref: achievements.rule.discipline > catalog.entity.discipline [delete: set null (entity_id)]
 Ref: achievements.rule.entity_id > catalog.entity.id [delete: set null (entity_id)]
 Ref: achievements.rule.entity_kind > catalog.entity.kind [delete: set null (entity_id)]
 Ref: analytics.anomaly_feedback.tournament_id > tournament.tournament.id [delete: cascade]
@@ -3542,6 +3589,22 @@ Ref: quota.api_key_limit.updated_by > auth.user.id [delete: set null]
 Ref: quota.plan_limit.plan_id > quota.plan.id [delete: cascade]
 Ref: quota.workspace_limit.workspace_id > workspace.id [delete: cascade]
 Ref: quota.workspace_limit.updated_by > auth.user.id [delete: set null]
+Ref: roster.format_role_rule.team_format_id > roster.team_format_dimension.team_format_id [delete: cascade]
+Ref: roster.format_role_rule.dimension_id > catalog.role.dimension_id
+Ref: roster.format_role_rule.dimension_id > roster.team_format_dimension.dimension_id [delete: cascade]
+Ref: roster.format_role_rule.role_id > catalog.role.id
+Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
+Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
+Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
+Ref: roster.team_format.discipline > catalog.discipline.code
+Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
+Ref: roster.team_format.discipline > balancer.custom_game.discipline [delete: cascade]
+Ref: roster.team_format.tournament_id > tournament.tournament.id [delete: cascade]
+Ref: roster.team_format.custom_game_id > balancer.custom_game.id [delete: cascade]
+Ref: roster.team_format_dimension.team_format_id > roster.team_format.id [delete: cascade]
+Ref: roster.team_format_dimension.discipline > catalog.role_dimension.discipline
+Ref: roster.team_format_dimension.discipline > roster.team_format.discipline [delete: cascade]
+Ref: roster.team_format_dimension.dimension_id > catalog.role_dimension.id
 Ref: subscriptions.check_log.workspace_id > workspace.id [delete: set null]
 Ref: subscriptions.check_log.auth_user_id > auth.user.id [delete: set null]
 Ref: subscriptions.entitlement.workspace_id > workspace.id [delete: cascade]

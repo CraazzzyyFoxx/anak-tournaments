@@ -14,16 +14,14 @@ import type { PlayerRoleSlotCode } from "@/lib/roster/player-role";
 export type RosterSlotCode = PlayerRoleSlotCode;
 
 /**
- * Canonical order, matching `shared.domain.roster_shape.ROSTER_SLOT_CODES`.
- * The server normalizes stored slot maps into this order; the frontend uses it
- * to render counters in a stable sequence regardless of JSON key order.
+ * The current Overwatch editor's display order. The server's projection follows
+ * the discipline's format and is not restricted to this vocabulary.
  */
 export const ROSTER_SLOT_CODES: readonly RosterSlotCode[] = ["tank", "damage", "support", "flex"];
 
 /**
- * A slot map. The server rejects any key outside `ROSTER_SLOT_CODES` and never
- * stores a zero count, so a map that came off the wire has only present codes
- * with counts >= 1. An in-progress editor map may hold zeros.
+ * The current editor's slot map. Projected counts are positive; an in-progress
+ * editor map may hold zeros.
  */
 export type RosterSlotMap = Partial<Record<RosterSlotCode, number>>;
 
@@ -33,6 +31,7 @@ export type RosterSlotMap = Partial<Record<RosterSlotCode, number>>;
  * `draft_rounds` and `has_role_slots` from here, never recompute them.
  */
 export interface RosterShape {
+  dimension: string | null;
   /** Normalized: no zero counts, canonical order. */
   slots: RosterSlotMap;
   team_size: number;
@@ -40,13 +39,8 @@ export interface RosterShape {
   /** `false` only when every slot is flex, i.e. no slot asks for a role. */
   has_role_slots: boolean;
   draft_rounds: number;
-  /**
-   * Which level the shape came from. `host`/`user` are the pickup-mix levels:
-   * the account hosting the mix pins one (`user` when the account itself is
-   * being read, `host` when a mix is). `null` from readers that resolve only
-   * the effective shape, not its level.
-   */
-  source: "tournament" | "host" | "user" | "workspace" | "default" | null;
+  /** The owner copy, workspace template, or module preset. */
+  source: "tournament" | "custom_game" | "workspace" | "preset" | null;
 }
 
 export type RosterPresetId = "ow5v5" | "flex6";

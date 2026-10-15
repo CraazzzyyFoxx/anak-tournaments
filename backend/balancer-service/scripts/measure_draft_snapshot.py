@@ -69,7 +69,7 @@ from sqlalchemy import event  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E402
 
 from shared.core.enums import DraftPickStatus  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftSession, DraftTeam  # noqa: E402
 from shared.models.catalog.entity import CatalogEntity  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
@@ -84,6 +84,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
+from shared.services.team_format import copy_for_tournament  # noqa: E402
 from shared.testing import configure_test_cache, create_test_async_engine  # noqa: E402
 from src import schemas  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
@@ -95,7 +96,7 @@ from src.services.draft.feasibility import feasibility_service  # noqa: E402
 # The incident's draft: tournament 117, session 28.
 TEAMS = 26
 POOL_PLAYERS = 104
-SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
 ROLES = ("tank", "damage", "support")
 HERO_SLUGS = ("reinhardt", "winston", "tracer", "sojourn", "ana", "kiriko")
 DEFAULT_PICK_STATES = (0, 52, 100)
@@ -286,9 +287,9 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
         s.add(ws)
         await s.flush()
         tourn = Tournament(workspace_id=ws.id, name=f"T {suffix}", slug=f"t-{suffix}", status="draft")
-        tourn.roster_slots_json = {"tank": 1, "damage": 2, "support": 2}
         s.add(tourn)
         await s.flush()
+        await copy_for_tournament(s, tourn)
 
         form = BalancerRegistrationForm(tournament_id=tourn.id, workspace_id=ws.id)
         s.add(form)

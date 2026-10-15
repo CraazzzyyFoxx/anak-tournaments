@@ -28,14 +28,14 @@ os.environ.setdefault("DEBUG", "false")
 from shared.core.enums import HeroClass  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from src.rpc import _helpers as helpers  # noqa: E402
 from src.rpc import integrations  # noqa: E402
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity  # noqa: E402
 
 SUBJECT = "rpc.tournament.sheet_players_export"
 TOURNAMENT_ID = 84
-SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
 GRID = DivisionGrid(version_id=7, tiers=())
 
 
@@ -91,7 +91,7 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
             self.assertEqual(TOURNAMENT_ID, tournament_id)
             return {1: _roster()}
 
-        async def fake_shape(_session, **_kwargs):
+        async def fake_shape(_session, _tournament_id):
             return SHAPE
 
         async def fake_grid(*_args, **_kwargs):
@@ -109,7 +109,7 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
             patch.object(helpers.db, "async_session_maker", FakeSessionMaker(session)),
             patch.object(integrations.auth, "require_tournament_id_permission", fake_permission),
             patch.object(integrations.roster_engine, "for_tournament", fake_for_tournament),
-            patch.object(integrations, "get_effective_roster_shape", fake_shape),
+            patch.object(integrations, "tournament_slot_shape", fake_shape),
             patch.object(integrations, "get_effective_division_grid", fake_grid),
             patch.object(integrations.auth, "get_tournament_workspace_id", fake_ws_id),
             patch.object(integrations, "quota", SimpleNamespace(charge=AsyncMock())),

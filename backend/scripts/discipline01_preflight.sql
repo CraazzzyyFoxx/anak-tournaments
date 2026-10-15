@@ -179,3 +179,20 @@ SELECT count(*) AS off_catalog_sub_roles FROM (
 SELECT count(*) AS flex_rows_with_a_sub_role
   FROM tournament.player p
  WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> '';
+
+\echo '7. roster slot maps that cannot become a team format'
+        SELECT s.source, s.owner_id, s.slots
+          FROM (SELECT 'workspace' AS source, w.id AS owner_id, w.default_roster_slots_json AS slots
+                  FROM workspace w WHERE w.default_roster_slots_json IS NOT NULL
+                UNION ALL
+                SELECT 'tournament', t.id, t.roster_slots_json FROM tournament.tournament t WHERE t.roster_slots_json IS NOT NULL
+                UNION ALL
+                SELECT 'host', u.user_id, u.role_slots_json FROM balancer.user_config u WHERE u.role_slots_json IS NOT NULL) s
+         WHERE CASE WHEN jsonb_typeof(s.slots) <> 'object' THEN true
+                    WHEN s.slots = '{}'::jsonb THEN false
+                    ELSE EXISTS (SELECT 1 FROM jsonb_each(s.slots) e
+                                  WHERE e.key NOT IN ('tank', 'damage', 'support', 'flex')
+                                     OR jsonb_typeof(e.value) <> 'number' OR e.value::text !~ '^[1-9][0-9]*$')
+                      OR (SELECT sum(e.value::text::int) FROM jsonb_each(s.slots) e) NOT BETWEEN 1 AND 12
+               END
+         ORDER BY s.source, s.owner_id;

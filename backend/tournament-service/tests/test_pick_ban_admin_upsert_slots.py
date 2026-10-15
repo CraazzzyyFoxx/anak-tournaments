@@ -1116,6 +1116,16 @@ ROSTER_SLOTS = {"tank": 1, "damage": 2, "support": 2, "flex": 0}
 
 
 class RulesPreviewOp(_SubjectCase):
+    def setUp(self) -> None:
+        super().setUp()
+        from shared.domain.roster_shape import RosterShape
+
+        async def shape(session, _tournament_id):
+            slots = session._roster_slots or ROSTER_SLOTS
+            return RosterShape(entries=tuple((role, count) for role, count in slots.items() if count))
+
+        self.enterContext(patch.object(pick_ban_config, "tournament_slot_shape", shape))
+
     async def _preview(self, session: _FakeSession, **payload) -> dict:
         body = {
             "kind": "hero",
@@ -1158,9 +1168,7 @@ class RulesPreviewOp(_SubjectCase):
             data["maps"][2]["worst_case_remaining"],
         )
 
-    async def test_without_a_roster_shape_the_preview_assumes_the_worst(self) -> None:
-        # The refusal to guess: an organizer who never set a roster shape is
-        # shown the bleakest board the rules permit, not a flattering one.
+    async def test_without_an_own_format_the_preview_uses_the_preset(self) -> None:
         unbounded = await self._preview(
             _FakeSession(hero_types=HERO_TYPES), item_ids=list(range(1, sum(HERO_POOL.values()) + 1))
         )
@@ -1169,10 +1177,7 @@ class RulesPreviewOp(_SubjectCase):
             item_ids=list(range(1, sum(HERO_POOL.values()) + 1)),
         )
 
-        self.assertLess(
-            unbounded["maps"][2]["worst_case_remaining"]["support"],
-            bounded["maps"][2]["worst_case_remaining"]["support"],
-        )
+        self.assertEqual(unbounded["maps"], bounded["maps"])
 
     async def test_a_flex_player_raises_every_roles_ban_ceiling(self) -> None:
         # A role-less player matches EVERY hero under ``target_role_match``, so

@@ -38,7 +38,7 @@ from sqlalchemy.orm import selectinload
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.social import GAME_PROVIDERS
 from shared.domain.invite_token import generate_invite_token, hash_invite_token
-from shared.domain.roster_shape import RosterShape, RosterShapeError, resolve_roster_shape
+from shared.domain.roster_shape import RosterShape, RosterShapeError
 from shared.domain.team_roster import RosterMember, RosterOccupancy
 from shared.repository import (
     BalancerRegistrationRepository,
@@ -48,7 +48,7 @@ from shared.repository import (
 )
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit
-from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
+from shared.services.team_format import tournament_slot_shape
 from src import models
 from src.schemas.registration import RegistrationRead, RegistrationSubmit
 from src.schemas.registration_team import (
@@ -291,12 +291,8 @@ class RegistrationTeamService:
         return tournament
 
     async def _resolve_shape(self, session: AsyncSession, tournament: models.Tournament) -> RosterShape:
-        """The tournament's roster shape, through the same cache-backed getters the
-        admin read path uses — so the roster a captain fills is the roster the export
-        will check."""
-        tournament_slots = await get_tournament_roster_slots(session, tournament.id)
-        workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
-        return resolve_roster_shape(tournament_slots, workspace_slots)
+        """The slots projected from the tournament's own team format."""
+        return await tournament_slot_shape(session, tournament.id)
 
     async def _max_substitutes(self, session: AsyncSession, tournament_id: int) -> int:
         # Single-column scalar projection off the form, not a row fetch.

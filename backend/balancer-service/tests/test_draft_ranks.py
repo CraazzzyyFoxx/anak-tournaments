@@ -21,12 +21,12 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from shared.core.enums import HeroClass  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from src.domain.draft import ranks  # noqa: E402
 from tests.factories import roster  # noqa: E402
 
-ROLE_SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
-FLEX_SHAPE = parse_roster_slots({"flex": 5})
+ROLE_SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
+FLEX_SHAPE = RosterShape(entries=tuple({"flex": 5}.items()))
 
 
 def test_a_role_is_worth_its_own_rank_not_the_lead_role_s() -> None:

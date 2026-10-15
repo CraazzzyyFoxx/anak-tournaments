@@ -121,7 +121,7 @@ function tournament(id: number, over: Partial<Tournament> = {}): Tournament {
     teams_count: 6,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: null,
     roster_locked_by_draft: null,
     cover_image_url: null,

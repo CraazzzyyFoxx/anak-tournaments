@@ -33,6 +33,7 @@ import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
 from shared.core.enums import HeroClass  # noqa: E402
+from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
     BalancerRegistration,
@@ -43,6 +44,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
+from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from src import models  # noqa: E402
 from src.services.registered_teams import registered_teams_service  # noqa: E402
@@ -74,9 +76,20 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             # ``slug`` is NOT NULL and globally unique (migration tslug0001).
             tournament = Tournament(workspace_id=workspace.id, name=f"T {self.suffix}", slug=f"t-{self.suffix}")
             tournament.status = "registration"
-            tournament.roster_slots_json = dict(_SHAPE)
             session.add(tournament)
             await session.flush()
+            await save_tournament_format(
+                session,
+                tournament,
+                TeamFormat(
+                    discipline="overwatch",
+                    name="Export seats",
+                    starter_min=sum(_SHAPE.values()),
+                    starter_max=sum(_SHAPE.values()),
+                    dimensions=(FormatDimension("player_role", "enforced"),),
+                    rules=tuple(FormatRule("player_role", role, count, count) for role, count in _SHAPE.items()),
+                ),
+            )
 
             session.add(
                 BalancerRegistrationForm(

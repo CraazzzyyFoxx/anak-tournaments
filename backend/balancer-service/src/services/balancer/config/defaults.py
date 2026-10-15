@@ -23,14 +23,14 @@ import typing
 from collections.abc import Mapping
 
 import annotated_types
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, RosterSlotCode
+from shared.disciplines import DISCIPLINES
 
 ConfigGroup = typing.Literal["Algorithm", "Quality weights", "Strategy", "Solver output"]
-ConfigControl = typing.Literal["integer", "float", "boolean", "slider", "roles"]
+ConfigControl = typing.Literal["integer", "float", "boolean", "slider", "roles", "open_slot"]
 
 # Upper bound the UI has always advertised for a cost-function weight. It used
 # to live only in ``CONFIG_LIMITS``, so the slider stopped at 10000 while the
@@ -83,15 +83,23 @@ class RoleSettings(BaseModel):
     )
 
 
-#: Per-role weights, keyed by roster slot code
-#: (``shared.domain.roster_shape.ROSTER_SLOT_CODES``). ``flex`` is a seat with no
-#: role, so it carries the neutral set.
+NEUTRAL_ROLE_SETTINGS = RoleSettings(impact=1.0, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.0)
+
+#: Weights keyed by role code; a role without an entry weighs NEUTRAL_ROLE_SETTINGS.
 DEFAULT_ROLE_SETTINGS: dict[str, RoleSettings] = {
     "tank": RoleSettings(impact=1.4, line_gap_weight=0.8, line_std_weight=1.5, mix_weight=1.0),
     "damage": RoleSettings(impact=1.0, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.0),
     "support": RoleSettings(impact=1.1, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.0),
-    "flex": RoleSettings(impact=1.0, line_gap_weight=0.0, line_std_weight=0.0, mix_weight=1.0),
 }
+
+
+def validate_role_settings(value: typing.Any) -> typing.Any:
+    """Weights belong to declared module roles, never the open-slot key."""
+    known = {role.code for spec in DISCIPLINES.values() for dimension in spec.dimensions for role in dimension.roles}
+    if value is not None and (unknown := set(value) - known):
+        raise ValueError(f"Unknown role settings codes: {', '.join(sorted(unknown))}")
+    return value
+
 
 #: Read by the mix engine only, so the tournament drawer neither renders nor
 #: stores it — the same split every other ``mix_*`` knob gets.
@@ -164,7 +172,9 @@ class AlgorithmConfig(BaseSettings):
     # the tournament's resolved roster shape (see ``algorithm/runtime.py``).
     # This default is only the fallback for a run with no shape behind it.
     role_mask: dict[str, int] = Field(
-        default_factory=lambda: dict(DEFAULT_ROSTER_SLOTS),
+        default_factory=lambda: {
+            rule.role: rule.hard_min for rule in DISCIPLINES["overwatch"].preset().rules if rule.hard_min
+        },
         description="Per-team slot counts the solver fills; a projection of the tournament roster shape",
     )
 
@@ -328,13 +338,20 @@ class AlgorithmConfig(BaseSettings):
     )
 
     # Rust MOO advanced objective shaping
-    role_settings: dict[RosterSlotCode, RoleSettings] = Field(
+    role_settings: dict[str, RoleSettings] = Field(
         default_factory=lambda: dict(DEFAULT_ROLE_SETTINGS),
         description=(
             "Per-role weights keyed by roster slot code: how much a role counts "
             "towards a team's effective total, and how hard uneven lines of it are penalized."
         ),
         json_schema_extra=knob("Role weights", "Quality weights", control="roles"),
+    )
+    _role_codes = field_validator("role_settings", mode="before")(validate_role_settings)
+
+    open_slot_settings: RoleSettings = Field(
+        default=NEUTRAL_ROLE_SETTINGS,
+        description="Weights of open slots without a role constraint (D86).",
+        json_schema_extra=knob("Open slot weights", "Quality weights", control="open_slot"),
     )
     effective_total_std_weight: float = Field(
         default=1.2,
@@ -475,8 +492,10 @@ def apply_config_overrides(config: AlgorithmConfig, overrides: Mapping[str, typi
         if key == "role_settings":
             merged = dict(config.role_settings)
             for code, partial in value.items():
-                merged[code] = merged.get(code, DEFAULT_ROLE_SETTINGS[code]).model_copy(update=partial)
+                merged[code] = merged.get(code, NEUTRAL_ROLE_SETTINGS).model_copy(update=partial)
             config.role_settings = merged
+        elif key == "open_slot_settings":
+            config.open_slot_settings = config.open_slot_settings.model_copy(update=value)
         else:
             setattr(config, key, value)
     return config

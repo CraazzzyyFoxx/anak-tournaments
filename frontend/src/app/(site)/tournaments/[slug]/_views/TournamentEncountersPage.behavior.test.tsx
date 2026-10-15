@@ -150,7 +150,7 @@ const TOURNAMENT: Tournament = {
   teams_count: 4,
   division_grid_version_id: null,
   division_grid_version: null,
-  roster_slots_json: null,
+  discipline: "overwatch",
   roster_shape: null,
   roster_locked_by_draft: null
 };

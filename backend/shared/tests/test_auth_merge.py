@@ -635,22 +635,24 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
         self.assertEqual(self.donor.id, self.connection.auth_user_id)
         self.assertEqual(self.donor.id, self.source.auth_user_id)
 
-    async def test_roster_shape_collision_selects_a_real_document_not_a_synthetic_union(self):
+    async def test_solver_weight_collision_selects_the_requested_value(self):
         self.session.add_all(
             [
                 models.UserBalancerConfig(
-                    user_id=self.donor.id, role_slots_json={"tank": 1, "damage": 2}, config_json={"incoming_setting": 1}
+                    user_id=self.donor.id,
+                    config_json={"open_slot_settings": {"mix_weight": 0.5}, "incoming_setting": 1},
                 ),
                 models.UserBalancerConfig(
-                    user_id=self.survivor.id, role_slots_json={"support": 2}, config_json={"existing_setting": 2}
+                    user_id=self.survivor.id,
+                    config_json={"open_slot_settings": {"mix_weight": 2}, "existing_setting": 2},
                 ),
             ]
         )
         await self.session.flush()
         preview = await self.preview()
-        conflict = next(row for row in preview.data_conflicts if row.key.endswith("/role_slots_json"))
-        self.assertEqual({"tank": 1, "damage": 2}, conflict.source_value)
-        self.assertEqual({"support": 2}, conflict.target_value)
+        conflict = next(row for row in preview.data_conflicts if row.key.endswith("/open_slot_settings/mix_weight"))
+        self.assertEqual(0.5, conflict.source_value)
+        self.assertEqual(2, conflict.target_value)
         await self.apply(await self.preview(self.policy(conflict_choices={conflict.key: "source"})))
         row = (
             (
@@ -663,8 +665,10 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
             .mappings()
             .one()
         )
-        self.assertEqual({"tank": 1, "damage": 2}, row["role_slots_json"])
-        self.assertEqual({"incoming_setting": 1, "existing_setting": 2}, row["config_json"])
+        self.assertEqual(
+            {"open_slot_settings": {"mix_weight": 0.5}, "incoming_setting": 1, "existing_setting": 2},
+            row["config_json"],
+        )
 
     async def test_multi_row_rank_collision_ids_do_not_change_with_resolution(self):
         source_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id)

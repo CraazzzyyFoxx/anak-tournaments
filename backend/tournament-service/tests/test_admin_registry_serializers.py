@@ -39,6 +39,8 @@ tournament_flows = importlib.import_module("src.services.tournament.flows")
 from sqlalchemy.orm import make_transient_to_detached  # noqa: E402
 
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 from src import models  # noqa: E402
 from src.core import enums  # noqa: E402
 
@@ -123,7 +125,7 @@ def _tournament(tournament_id: int = 91_001) -> models.Tournament:
         division_grid_version_id=5,
         # Plain columns the serializer reads: unset on a detached instance means
         # a refresh attempt, not NULL.
-        roster_slots_json=None,
+        discipline="overwatch",
         draft_format_json=None,
         rules=None,
         cover_image_url=None,
@@ -143,6 +145,16 @@ class _NullSession:
 
 
 class SerTournamentChallongeTests(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        shape = RosterShapeRead.from_shape(RosterShape(entries=(("flex", 5),)), source="preset")
+        self.enterContext(
+            patch.object(
+                tournament_flows,
+                "tournament_shape_reads",
+                AsyncMock(side_effect=lambda _session, rows: {row.id: shape for row in rows}),
+            )
+        )
+
     async def test_ser_tournament_emits_the_derived_challonge_link(self) -> None:
         tournament = _tournament()
         resolve = AsyncMock(return_value={tournament.id: (12345, "owt-64")})

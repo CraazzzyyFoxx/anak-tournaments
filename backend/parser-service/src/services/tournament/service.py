@@ -4,7 +4,10 @@ from datetime import date, datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.repository import TournamentRepository
+from shared.core.errors import BaseAPIException
+from shared.repository import TournamentRepository, WorkspaceRepository
+from shared.services.ontology import assert_discipline_enabled
+from shared.services.team_format import copy_for_tournament
 from shared.services.tournament.slug import generate_unique_tournament_slug
 from src import models
 from src.core import utils
@@ -28,8 +31,10 @@ class TournamentService:
         self,
         *,
         tournament_repo: TournamentRepository = TournamentRepository(),
+        workspace_repo: WorkspaceRepository = WorkspaceRepository(),
     ) -> None:
         self.tournament_repo = tournament_repo
+        self.workspace_repo = workspace_repo
 
     async def get(self, session: AsyncSession, id: int, entities: list[str]) -> models.Tournament | None:
         return await self.tournament_repo.get(session, id, options=tournament_entities(entities))
@@ -73,11 +78,16 @@ class TournamentService:
         end_date: datetime | date | None = None,
         division_grid_version_id: int | None = None,
     ) -> models.Tournament:
+        workspace = await self.workspace_repo.get(session, workspace_id)
+        if workspace is None:
+            raise BaseAPIException(status_code=404, detail="Workspace not found")
+        assert_discipline_enabled(workspace, "overwatch")
         # The deprecated tournament.challonge_id/slug columns are no longer written:
         # the tournament↔Challonge link lives in the normalized challonge_source
         # (source_type='tournament') created by the caller (admin link / import).
         tournament = models.Tournament(
             workspace_id=workspace_id,
+            discipline="overwatch",
             is_league=is_league,
             name=name,
             slug=await generate_unique_tournament_slug(session, name, tournament_repo=self.tournament_repo),
@@ -87,6 +97,7 @@ class TournamentService:
             division_grid_version_id=division_grid_version_id,
         )
         await self.tournament_repo.create(session, tournament)
+        await copy_for_tournament(session, tournament)
         await session.commit()
         return tournament
 

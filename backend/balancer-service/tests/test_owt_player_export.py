@@ -38,7 +38,7 @@ os.environ["DEBUG"] = "false"
 from shared.core.enums import HeroClass  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from shared.domain.roster import HeroRef, PlayerRoster, RosterRole  # noqa: E402
-from shared.domain.roster_shape import FLEX_SLOT_CODE, parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
 from shared.services.roster import RosterEngine  # noqa: E402
 from src.domain.balancer.player_loader import load_players_from_dict  # noqa: E402
 
@@ -122,7 +122,7 @@ def _export(**overrides):
     engine = RosterEngine()
     return engine.full_export(
         _pool(),
-        shape=overrides.pop("shape", parse_roster_slots(ROLE_MASK)),
+        shape=overrides.pop("shape", RosterShape(entries=tuple(ROLE_MASK.items()))),
         flex_role_mode=overrides.pop("flex_role_mode", "optional"),
         grid=overrides.pop("grid", GRID),
         source=overrides.pop("source", {"tournament_id": 84, "scope": "pool"}),
@@ -150,7 +150,7 @@ def test_owt_export_loads_exactly_like_the_xv1_export() -> None:
 
 def test_owt_export_loads_exactly_like_the_xv1_export_under_a_flex_mask() -> None:
     engine = RosterEngine()
-    owt = _export(shape=parse_roster_slots(FLEX_MASK))
+    owt = _export(shape=RosterShape(entries=tuple(FLEX_MASK.items())))
 
     loaded = _loaded(owt, FLEX_MASK)
     assert loaded == _loaded(engine.balancer_input(_pool()), FLEX_MASK)
@@ -186,7 +186,7 @@ def test_undraftable_registration_is_exported_and_still_not_loaded() -> None:
 
 
 def test_roster_shape_and_flex_mode_travel_with_the_export() -> None:
-    payload = _export(shape=parse_roster_slots(FLEX_MASK), flex_role_mode="forced")
+    payload = _export(shape=RosterShape(entries=tuple(FLEX_MASK.items())), flex_role_mode="forced")
 
     assert payload["format"] == "owt-1"
     assert payload["roster"] == {
@@ -217,7 +217,7 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
 
     owt = engine.full_export(
         [roster],
-        shape=parse_roster_slots(ROLE_MASK),
+        shape=RosterShape(entries=tuple(ROLE_MASK.items())),
         flex_role_mode="optional",
         grid=GRID,
     )["players"]["9"]["owt"]
@@ -255,7 +255,7 @@ def test_workflow_fields_ride_along() -> None:
 
     owt = engine.full_export(
         [roster],
-        shape=parse_roster_slots(ROLE_MASK),
+        shape=RosterShape(entries=tuple(ROLE_MASK.items())),
         flex_role_mode="optional",
     )["players"]["4"]["owt"]
 
@@ -279,7 +279,7 @@ def test_private_answers_are_withheld_unless_asked_for() -> None:
         identities={"discord": "player#0001"},
         smurf_tags=("alt#1111",),
     )
-    kwargs = {"shape": parse_roster_slots(ROLE_MASK), "flex_role_mode": "optional"}
+    kwargs = {"shape": RosterShape(entries=tuple(ROLE_MASK.items())), "flex_role_mode": "optional"}
 
     public = engine.full_export([roster], **kwargs)["players"]["5"]["owt"]
     private = engine.full_export([roster], include_private=True, **kwargs)["players"]["5"]["owt"]

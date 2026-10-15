@@ -139,10 +139,10 @@ def test_normalize_tournament_config_payload_keeps_role_settings_partial_without
     assert normalized == {"role_settings": {"tank": {"impact": 2.0}, "support": {"line_std_weight": 0.5}}}
 
 
-def test_normalize_tournament_config_payload_rejects_an_unknown_role_code() -> None:
-    """A slot code the roster vocabulary does not know would weigh nothing, silently."""
-    with pytest.raises(ValidationError):
-        normalize_tournament_config_payload({"role_settings": {"jungle": {"impact": 2.0}}})
+def test_normalize_tournament_config_payload_rejects_unknown_roles_and_open_slots() -> None:
+    for code in ("healer", "flex"):
+        with pytest.raises(ValidationError):
+            normalize_tournament_config_payload({"role_settings": {code: {"impact": 2.0}}})
 
 
 def test_role_settings_overrides_merge_field_by_field() -> None:

@@ -8088,6 +8088,34 @@ export interface paths {
         patch: operations["patch__api_v1_admin_tournaments__tournament_id__status"];
         trace?: never;
     };
+    "/api/v1/admin/tournaments/{tournament_id}/team-format": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a tournament's team format
+         * @description Permission: workspace `tournament.read`. The tournament's own team format with its slot projection (D33, D35).
+         *
+         *     RPC subject: `rpc.tournament.team_format.get`
+         */
+        get: operations["get__api_v1_admin_tournaments__tournament_id__team_format"];
+        /**
+         * Replace a tournament's team format
+         * @description Permission: workspace `tournament.update`. Replaces the tournament's team format; 409 while a draft is unfinished or teams hold slots; 422 with the `team_format_*` code when the format cannot be stored.
+         *
+         *     RPC subject: `rpc.tournament.team_format.put`
+         */
+        put: operations["put__api_v1_admin_tournaments__tournament_id__team_format"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -13898,15 +13926,15 @@ export interface components {
             default_division_grid_version: components["schemas"]["app.DivisionGridVersionRead"] | null;
             /** Default Division Grid Version Id */
             default_division_grid_version_id: number | null;
-            /**
-             * Default Roster Slots Json
-             * @default null
-             */
-            default_roster_slots_json: {
-                [key: string]: number;
-            } | null;
             /** Description */
             description: string | null;
+            /**
+             * Disciplines Enabled
+             * @default [
+             *       "overwatch"
+             *     ]
+             */
+            disciplines_enabled: string[];
             /**
              * Discord Guild Id
              * @default null
@@ -14293,6 +14321,11 @@ export interface components {
              * @default null
              */
             mutation_strength: number | null;
+            /**
+             * @description Weights of open slots without a role constraint (D86).
+             * @default null
+             */
+            open_slot_settings: components["schemas"]["balancer.RoleSettingsOverride"] | null;
             /**
              * Polish Max Passes
              * @description Maximum local-improvement passes applied to each archive solution after the main search.
@@ -15264,9 +15297,14 @@ export interface components {
         };
         /**
          * RosterShapeRead
-         * @description A resolved roster shape. The frontend never recomputes the fallback chain.
+         * @description A team format's slots (D33). The frontend never recomputes them.
          */
         "balancer.RosterShapeRead": {
+            /**
+             * Dimension
+             * @default null
+             */
+            dimension: string | null;
             /** Draft Rounds */
             draft_rounds: number;
             /** Flex Slots */
@@ -18294,9 +18332,14 @@ export interface components {
         };
         /**
          * RosterShapeRead
-         * @description A resolved roster shape. The frontend never recomputes the fallback chain.
+         * @description A team format's slots (D33). The frontend never recomputes them.
          */
         "tournament.RosterShapeRead": {
+            /**
+             * Dimension
+             * @default null
+             */
+            dimension: string | null;
             /** Draft Rounds */
             draft_rounds: number;
             /** Flex Slots */
@@ -19233,6 +19276,8 @@ export interface components {
             cover_image_url: string | null;
             /** Description */
             description: string | null;
+            /** Discipline */
+            discipline: string;
             /**
              * Discord Broadcasts Enabled
              * @default true
@@ -19316,13 +19361,6 @@ export interface components {
             roster_locked_by_teams: boolean | null;
             /** @default null */
             roster_shape: components["schemas"]["tournament.RosterShapeRead"] | null;
-            /**
-             * Roster Slots Json
-             * @default null
-             */
-            roster_slots_json: {
-                [key: string]: number;
-            } | null;
             /**
              * Rules
              * @default null
@@ -20593,10 +20631,20 @@ export interface components {
              * @default null
              */
             clone_from_game_id: number | null;
+            /**
+             * Discipline
+             * @default overwatch
+             */
+            discipline: string;
             /** Member Ids */
             member_ids?: number[];
             /** Name */
             name: string;
+            /**
+             * Team Format Preset
+             * @default null
+             */
+            team_format_preset: string | null;
         };
         /** CustomGameHostTransfer */
         "balancer.CustomGameHostTransfer": {
@@ -21000,11 +21048,7 @@ export interface components {
         };
         /**
          * UserMixPreferencesRead
-         * @description What is stored, plus the shape it resolves to.
-         *
-         *     All six stored fields are null (``rating_mode``: ``points``) for an
-         *     account that never saved any; ``roster_shape`` is always present, since a
-         *     mix always has *some* shape.
+         * @description Stored preferences; unset knobs use the engine defaults.
          */
         "balancer.UserMixPreferencesRead": {
             /**
@@ -21019,6 +21063,8 @@ export interface components {
              * @default null
              */
             mix_comfort_tilt: number | null;
+            /** @default null */
+            open_slot_settings: components["schemas"]["balancer.MixRoleSettings"] | null;
             /**
              * Points Per Win
              * @description How far a decided match moves both teams' ranks in this account's own rank book. 0 and null both mean recording a match adjusts nothing.
@@ -21033,27 +21079,17 @@ export interface components {
              */
             rating_mode: BalancerUserMixPreferencesReadRating_mode;
             /**
-             * Role Mask
-             * @description How many seats of each role a team gets in this account's mixes, keyed by roster slot code; null inherits the workspace default and then the built-in Overwatch 5v5 shape.
-             * @default null
-             */
-            role_mask: {
-                [key: string]: number;
-            } | null;
-            /**
              * Role Settings
-             * @description Per-role mix weights, keyed by roster slot code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.
+             * @description Per-role mix weights, keyed by declared role code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.
              * @default null
              */
             role_settings: {
                 [key: string]: components["schemas"]["balancer.MixRoleSettings"];
             } | null;
-            /** @description Read-only: role_mask resolved through the fallback chain, so the client never recomputes it. source is 'user' when this account stored a mask and 'default' when it did not. */
-            roster_shape: components["schemas"]["balancer.RosterShapeRead"];
         };
         /**
          * UserMixPreferencesUpsert
-         * @description A full replacement: all six keys required, the five knobs nullable to unset one.
+         * @description A full replacement; nullable knobs unset the corresponding override.
          */
         "balancer.UserMixPreferencesUpsert": {
             /**
@@ -21066,6 +21102,7 @@ export interface components {
              * @description Trade-off between rank balance (0) and role comfort (1); null leaves the mix engine's own 0.5 weighting in place.
              */
             mix_comfort_tilt: number | null;
+            open_slot_settings: components["schemas"]["balancer.MixRoleSettings"] | null;
             /**
              * Points Per Win
              * @description How far a decided match moves both teams' ranks in this account's own rank book. 0 and null both mean recording a match adjusts nothing.
@@ -21078,15 +21115,8 @@ export interface components {
              */
             rating_mode: BalancerUserMixPreferencesUpsertRating_mode;
             /**
-             * Role Mask
-             * @description How many seats of each role a team gets in this account's mixes, keyed by roster slot code; null inherits the workspace default and then the built-in Overwatch 5v5 shape.
-             */
-            role_mask: {
-                [key: string]: number;
-            } | null;
-            /**
              * Role Settings
-             * @description Per-role mix weights, keyed by roster slot code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.
+             * @description Per-role mix weights, keyed by declared role code: how much this role's gap counts towards role fairness. An omitted role weighs 1.0; null means no per-role opinion at all.
              */
             role_settings: {
                 [key: string]: components["schemas"]["balancer.MixRoleSettings"];
@@ -25341,6 +25371,55 @@ export interface components {
              */
             title: string | null;
         };
+        /** FormatDimensionWire */
+        "tournament.FormatDimensionWire": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: TournamentFormatDimensionWireMode;
+            /**
+             * Player Max Assignments
+             * @default null
+             */
+            player_max_assignments: number | null;
+            /**
+             * Player Min Assignments
+             * @default null
+             */
+            player_min_assignments: number | null;
+        };
+        /** FormatRuleWire */
+        "tournament.FormatRuleWire": {
+            /**
+             * Hard Max
+             * @default null
+             */
+            hard_max: number | null;
+            /**
+             * Hard Min
+             * @default null
+             */
+            hard_min: number | null;
+            /**
+             * Include Descendants
+             * @default true
+             */
+            include_descendants: boolean;
+            /**
+             * Recommended Max
+             * @default null
+             */
+            recommended_max: number | null;
+            /**
+             * Recommended Min
+             * @default null
+             */
+            recommended_min: number | null;
+            role: components["schemas"]["tournament.RoleRef"];
+        };
         /**
          * LastResolutionRead
          * @description The newest audit row for the encounter, flattened for the list row.
@@ -26512,6 +26591,21 @@ export interface components {
              */
             type: "text";
         };
+        /**
+         * RoleRef
+         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         */
+        "tournament.RoleRef": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Parent
+             * @default null
+             */
+            parent: string | null;
+            /** Role */
+            role: string;
+        };
         /** RoleTierRead */
         "tournament.RoleTierRead": {
             /** Role Id */
@@ -27113,6 +27207,70 @@ export interface components {
             /** Tournament Id */
             tournament_id: number;
         };
+        /** TeamFormatRead */
+        "tournament.TeamFormatRead": {
+            /** Dimensions */
+            dimensions?: components["schemas"]["tournament.FormatDimensionWire"][];
+            /** Discipline */
+            discipline: string;
+            /** Name */
+            name: string;
+            /**
+             * Preset Code
+             * @default null
+             */
+            preset_code: string | null;
+            roster_shape: components["schemas"]["tournament.RosterShapeRead"];
+            /** Rules */
+            rules?: components["schemas"]["tournament.FormatRuleWire"][];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: TournamentTeamFormatReadSource;
+            /** Starter Max */
+            starter_max: number;
+            /** Starter Min */
+            starter_min: number;
+            /**
+             * Substitute Max
+             * @default 0
+             */
+            substitute_max: number;
+            /**
+             * Substitute Min
+             * @default 0
+             */
+            substitute_min: number;
+        };
+        /** TeamFormatWrite */
+        "tournament.TeamFormatWrite": {
+            /** Dimensions */
+            dimensions?: components["schemas"]["tournament.FormatDimensionWire"][];
+            /** Name */
+            name: string;
+            /**
+             * Preset Code
+             * @default null
+             */
+            preset_code: string | null;
+            /** Rules */
+            rules?: components["schemas"]["tournament.FormatRuleWire"][];
+            /** Starter Max */
+            starter_max: number;
+            /** Starter Min */
+            starter_min: number;
+            /**
+             * Substitute Max
+             * @default 0
+             */
+            substitute_max: number;
+            /**
+             * Substitute Min
+             * @default 0
+             */
+            substitute_min: number;
+        };
         /**
          * TeamReportRead
          * @description One participation's independent report of an encounter's result.
@@ -27294,6 +27452,11 @@ export interface components {
              */
             description: string | null;
             /**
+             * Discipline
+             * @default overwatch
+             */
+            discipline: string;
+            /**
              * Division Grid Version Id
              * @default null
              */
@@ -27332,13 +27495,6 @@ export interface components {
             loss_points: number;
             /** Name */
             name: string;
-            /**
-             * Roster Slots Json
-             * @default null
-             */
-            roster_slots_json: {
-                [key: string]: number;
-            } | null;
             /**
              * Slug
              * @default null
@@ -27541,13 +27697,6 @@ export interface components {
              * @default null
              */
             name: string | null;
-            /**
-             * Roster Slots Json
-             * @default null
-             */
-            roster_slots_json: {
-                [key: string]: number;
-            } | null;
             /**
              * Rules
              * @default null
@@ -58509,6 +58658,166 @@ export interface operations {
             };
         };
     };
+    get__api_v1_admin_tournaments__tournament_id__team_format: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["tournament.TeamFormatRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_admin_tournaments__tournament_id__team_format: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["tournament.TeamFormatWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["tournament.TeamFormatRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_admin_users: {
         parameters: {
             query?: never;
@@ -73214,10 +73523,9 @@ export enum BalancerJobStatusResponseStatus {
 }
 export enum BalancerRosterShapeReadSourceAnyOf0 {
     tournament = "tournament",
-    host = "host",
-    user = "user",
+    custom_game = "custom_game",
     workspace = "workspace",
-    default = "default"
+    preset = "preset"
 }
 export enum IdentityOAuthProvider {
     discord = "discord",
@@ -73392,10 +73700,9 @@ export enum TournamentRequirementVerdictReadState {
 }
 export enum TournamentRosterShapeReadSourceAnyOf0 {
     tournament = "tournament",
-    host = "host",
-    user = "user",
+    custom_game = "custom_game",
     workspace = "workspace",
-    default = "default"
+    preset = "preset"
 }
 export enum TournamentScoringColumnSettingsBetter {
     higher = "higher",
@@ -73729,6 +74036,12 @@ export enum TournamentFormFieldVisibility {
     public = "public",
     organizers = "organizers"
 }
+export enum TournamentFormatDimensionWireMode {
+    off = "off",
+    informational = "informational",
+    preference = "preference",
+    enforced = "enforced"
+}
 export enum TournamentLogProcessingSource {
     upload = "upload",
     discord = "discord",
@@ -73851,6 +74164,12 @@ export enum TournamentStatusMetaReadScope {
 export enum TournamentSubscriptionEnforcementStage {
     registration = "registration",
     check_in = "check_in"
+}
+export enum TournamentTeamFormatReadSource {
+    tournament = "tournament",
+    custom_game = "custom_game",
+    workspace = "workspace",
+    preset = "preset"
 }
 export enum TournamentTournamentComputationJobReadKind {
     bracket = "bracket",

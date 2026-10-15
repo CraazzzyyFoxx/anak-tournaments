@@ -6,7 +6,7 @@ assertion for the write path.
 
 Why the roster shape needs this at all: every registered team's members carry a
 ``team_slot_code`` assigned from the shape that was in force when they accepted.
-Changing ``roster_slots_json`` afterwards silently invalidates those rosters — a
+Changing the tournament's team format afterwards silently invalidates those rosters — a
 5-slot team becomes over- or under-full against a shape nobody agreed to, and the
 completeness check that gates materialization starts answering a different
 question. A draft in flight is protected the same way (``roster_locked_by_draft``);

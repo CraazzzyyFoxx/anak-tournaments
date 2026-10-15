@@ -82,10 +82,9 @@ export type CustomGameCoHost = {
  * type -- there is no config blob to parse, and no key that can silently mean
  * two things.
  *
- * Everything that describes how a host RUNS a mix -- roster shape, solver
- * knobs, the rank points a win is worth -- lives on their account instead
- * (`/api/v1/balancer/me/mix-preferences`), and the Discord target is the
- * workspace's. What is left here is the mix's own state.
+ * Solver knobs and the rank points a win is worth live on the host's account
+ * (`/api/v1/balancer/me/mix-preferences`); the team format is frozen on the mix
+ * and the Discord target belongs to its workspace.
  */
 export type CustomGameSettings = {
   /**

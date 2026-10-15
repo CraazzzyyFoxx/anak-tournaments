@@ -21,13 +21,13 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from shared.core.enums import HeroClass  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.services.team_export import registered  # noqa: E402
 from shared.services.team_export.registered import build_registered_export  # noqa: E402
 
-ROLE_SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
-FLEX_SHAPE = parse_roster_slots({"flex": 6})
-MIXED_SHAPE = parse_roster_slots({"tank": 1, "flex": 4})
+ROLE_SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
+FLEX_SHAPE = RosterShape(entries=tuple({"flex": 6}.items()))
+MIXED_SHAPE = RosterShape(entries=tuple({"tank": 1, "flex": 4}.items()))
 
 
 def _role(

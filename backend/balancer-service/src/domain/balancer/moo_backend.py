@@ -32,6 +32,7 @@ def _serialize_native_request(
         native.build_roles(
             config.role_mask,
             config.role_settings,
+            config.open_slot_settings,
             lambda settings: {
                 "impact": settings.impact,
                 "line_gap_weight": settings.line_gap_weight,

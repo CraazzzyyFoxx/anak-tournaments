@@ -30,7 +30,6 @@ from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
-from shared.domain.roster_shape import resolve_roster_shape
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
     CatalogEntityRepository,
@@ -45,6 +44,7 @@ from shared.repository import (
     UserBalancerConfigRepository,
     UserRepository,
     WorkspaceMemberRepository,
+    WorkspaceRepository,
 )
 from shared.repository.discord_message import LIVE_STATUSES
 from shared.repository.workspace import get_or_create_workspace_member
@@ -55,8 +55,14 @@ from shared.services.account_links import missing_account_links
 from shared.services.discord_client import DiscordClient
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
-from shared.services.roster_shape_access import get_workspace_roster_slots
+from shared.services.ontology import assert_discipline_enabled
 from shared.services.subscriptions.providers.discord_role import DiscordError
+from shared.services.team_format import (
+    copy_for_custom_game,
+    custom_game_format,
+    custom_game_slot_shape,
+    team_format_read,
+)
 from shared.services.workspace_roster import (
     RosterMember,
     hosts_by_user_id,
@@ -423,6 +429,7 @@ class CustomGameService:
         run_balance=_run_balance,
         players: UserRepository = UserRepository(),
         workspace_members: WorkspaceMemberRepository = WorkspaceMemberRepository(),
+        workspaces: WorkspaceRepository = WorkspaceRepository(),
         load_missing_links=missing_account_links,
         enroll_member=get_or_create_workspace_member,
         grant_player_role=assign_workspace_system_role,
@@ -446,6 +453,7 @@ class CustomGameService:
         self.run_balance = run_balance
         self.players = players
         self.workspace_members = workspace_members
+        self.workspaces = workspaces
         self.load_missing_links = load_missing_links
         self.enroll_member = enroll_member
         self.grant_player_role = grant_player_role
@@ -642,6 +650,8 @@ class CustomGameService:
         actor_user_id: int,
         member_ids: Sequence[int] = (),
         clone_from_game_id: int | None = None,
+        discipline: str = "overwatch",
+        team_format_preset: str | None = None,
     ) -> models.CustomGame:
         """Open a mix, optionally starting from a previous one's setup.
 
@@ -651,9 +661,9 @@ class CustomGameService:
         balance result, no rolled map, no match history, and every seat back in
         the pool rather than carrying last week's pins and benchings. Roster
         members who have since left the workspace are dropped rather than failing
-        the clone. The roster shape, the points knob and the Discord target are
-        not copied because they are not the mix's: they belong to the host's
-        account and the workspace, and the new mix already inherits both.
+        the clone. The points knob and Discord target belong to the host and workspace.
+        The team format is frozen per mix (D88): a clone keeps its source's,
+        otherwise the host's preset or the workspace default.
         """
         _require_host(actor_user_id, host_user_id)
         trimmed = name.strip() if isinstance(name, str) else ""
@@ -668,6 +678,14 @@ class CustomGameService:
             source = await self.games.get(session, clone_from_game_id)
             if source is None or source.workspace_id != workspace_id:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mix not found")
+
+        effective = source.discipline if source is not None else discipline
+        workspace = await self.workspaces.get(session, workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        assert_discipline_enabled(workspace, effective)
+
+        if source is not None:
             candidates = list(await self.roster.list_for_game(session, source.id))
             # Lenient on purpose, unlike ``members`` above: a departed member is
             # dropped from the copy, not a 404 that makes the old mix
@@ -690,6 +708,7 @@ class CustomGameService:
         game = models.CustomGame(
             scoring_rule_id=rule.id,
             workspace_id=workspace_id,
+            discipline=effective,
             host_user_id=host_user_id,
             name=trimmed,
             status=MixStatus.DRAFT,
@@ -702,6 +721,9 @@ class CustomGameService:
             lobby_count=source.lobby_count if source is not None else 1,
         )
         await self.games.create(session, game)
+        await copy_for_custom_game(
+            session, game, preset_code=team_format_preset, source_game_id=None if source is None else source.id
+        )
         # The invariant every per-match read relies on: a mix always has its
         # lobbies. A clone copies the pool and the setup, never a played
         # session, so the fresh lobbies start empty.
@@ -1490,30 +1512,12 @@ class CustomGameService:
             return None
         return await self.host_prefs.get_by_user(session, host_user_id)
 
-    async def _shape_for(self, session: AsyncSession, workspace_id: int, host_config: Any) -> RosterShapeRead:
-        """Host's own shape -> workspace default -> built-in Overwatch 5v5."""
-        host_slots = host_config.role_slots_json if host_config is not None else None
-        workspace_slots = await get_workspace_roster_slots(session, workspace_id)
-        shape = resolve_roster_shape(host_slots or None, workspace_slots)
-        source = "host" if host_slots else "workspace" if workspace_slots else "default"
-        return RosterShapeRead.from_shape(shape, source=source)
-
-    async def roster_shape(
-        self,
-        session: AsyncSession,
-        *,
-        workspace_id: int,
-        host_user_id: int | None,
-    ) -> RosterShapeRead:
-        """The shape this mix fields, resolved from its HOST's saved preferences.
-
-        Keyed by the host rather than by the mix: the shape describes how this
-        person runs their pickup sessions (5v5, 6v6, all-flex), not what happened
-        in one lobby, so it lives in ``balancer.user_config`` alongside their
-        solver knobs. A co-host pressing Balance still gets the host's shape --
-        same reason the ranks resolve against the host's book.
-        """
-        return await self._shape_for(session, workspace_id, await self._host_config(session, host_user_id))
+    async def roster_shape(self, session: AsyncSession, game: models.CustomGame) -> RosterShapeRead:
+        """The slots of this mix's frozen team format."""
+        team_format, source = await custom_game_format(session, game)
+        return (
+            await team_format_read(session, team_format, source=source, workspace_id=game.workspace_id)
+        ).roster_shape
 
     async def host_points_per_win(self, session: AsyncSession, host_user_id: int | None) -> int:
         """How far a decided match moves this host's rank book; 0 means "not at all" (or the ranker moves it)."""
@@ -1642,7 +1646,7 @@ class CustomGameService:
         player_nodes, _candidates, opens = await self._lineup_nodes(
             session, game=game, lineup=lineup, host_config=host_config
         )
-        role_mask = (await self._shape_for(session, game.workspace_id, host_config)).slots
+        role_mask = (await custom_game_slot_shape(session, game)).slots
         try:
             result = await self.run_balance(
                 {"players": player_nodes},
@@ -1734,7 +1738,7 @@ class CustomGameService:
         _player_nodes, candidates, _opens = await self._lineup_nodes(
             session, game=game, lineup=lineup, host_config=host_config
         )
-        role_mask = (await self._shape_for(session, game.workspace_id, host_config)).slots
+        role_mask = (await custom_game_slot_shape(session, game)).slots
         try:
             split = split_into_lobbies(candidates, mask=role_mask, lobby_count=game.lobby_count)
         except LobbySplitError as exc:
@@ -1808,7 +1812,7 @@ class CustomGameService:
             actor_user_id=actor_user_id,
             actor_is_superuser=actor_is_superuser,
         )
-        if map_id is not None and await self.maps.get(session, map_id) is None:
+        if map_id is not None and not await self.maps.exists(session, id=map_id, discipline=game.discipline):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
         lobby = await self._lobby(session, game, lobby_index)
         lobby.next_map_id = map_id
@@ -2245,7 +2249,11 @@ class CustomGameService:
             row = await session.scalar(
                 sa.select(models.CatalogEntity)
                 .options(selectinload(models.CatalogEntity.parent))
-                .where(models.CatalogEntity.id == lobby.next_map_id)
+                .where(
+                    models.CatalogEntity.id == lobby.next_map_id,
+                    models.CatalogEntity.discipline == game.discipline,
+                    models.CatalogEntity.kind == "map",
+                )
             )
             if row is not None:
                 next_map = (row.name, row.parent.name if row.parent is not None else None)
@@ -2646,7 +2654,7 @@ class CustomGameService:
         lobby = await self._lobby(session, game, lobby_index)
         if map_id is None:
             map_id = lobby.next_map_id
-        elif await self.maps.get(session, map_id) is None:
+        if map_id is not None and not await self.maps.exists(session, id=map_id, discipline=game.discipline):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
 
         result = as_lobby_document(lobby.balance_result_json) or {}
@@ -2963,7 +2971,7 @@ class CustomGameService:
 
         histories = await self._rotation_histories(session, game, candidates)
 
-        role_mask = (await self.roster_shape(session, workspace_id=workspace_id, host_user_id=game.host_user_id)).slots
+        role_mask = (await custom_game_slot_shape(session, game)).slots
         players_per_team = sum(role_mask.values())
         if players_per_team <= 0:
             usable_count = len(candidates)

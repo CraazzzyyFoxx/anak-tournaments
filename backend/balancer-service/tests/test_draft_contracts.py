@@ -25,7 +25,9 @@ from shared.core.enums import (  # noqa: E402
     HeroClass,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
-from shared.domain.roster_shape import DEFAULT_ROSTER_SHAPE, parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+
+DEFAULT_ROSTER_SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam  # noqa: E402
 from src import (  # noqa: E402
     openapi_docs,
@@ -261,7 +263,7 @@ def test_a_captain_is_worth_the_rank_of_the_role_they_are_seated_on() -> None:
     assert ranks.seat_role(tank_lead, "support") is HeroClass.tank
     assert ranks.captain_rank(tank_lead, "support", DEFAULT_ROSTER_SHAPE) == 2600
     # A role-less roster seats nobody on a role: the best rank, pinned or not.
-    all_flex = parse_roster_slots({"flex": 5})
+    all_flex = RosterShape(entries=tuple({"flex": 5}.items()))
     assert ranks.captain_rank(tank_lead, None, all_flex) == 3900
     assert ranks.captain_rank(None, None, DEFAULT_ROSTER_SHAPE) == -1
 
@@ -293,7 +295,7 @@ def test_a_seed_refuses_a_captain_role_the_captain_or_the_roster_cannot_take() -
     for pin, shape in (
         ("damage", DEFAULT_ROSTER_SHAPE),  # declared, but unranked
         ("support", DEFAULT_ROSTER_SHAPE),  # not declared at all
-        ("tank", parse_roster_slots({"damage": 2, "support": 2})),  # no tank slot
+        ("tank", RosterShape(entries=tuple({"damage": 2, "support": 2}.items()))),  # no tank slot
     ):
         with pytest.raises(ApiHTTPException) as ctx:
             rules.validate_captain_roles([PoolSeat(120, draft_position=1, captain_role=pin)], rosters, shape)
@@ -748,7 +750,7 @@ def test_board_ranks_a_player_on_their_own_role_under_role_slots(monkeypatch) ->
     assert role_slots.players[0].role_ranks == {"support": 2800, "damage": 4000}
 
     async def _flex_shape(*_args, **_kwargs):
-        return parse_roster_slots({"flex": 5})
+        return RosterShape(entries=tuple({"flex": 5}.items()))
 
     # A role-less roster assigns nobody a role, so the best playable rank stands
     # in — the existing flex rule, unchanged.

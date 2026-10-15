@@ -23,7 +23,7 @@ from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPick, DraftSession
 from shared.repository.balance import BalancerTournamentConfigRepository
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
-from shared.services.roster_shape_access import get_effective_roster_shape
+from shared.services.team_format import tournament_slot_shape
 from src.domain.draft import fit as sug
 from src.domain.draft import rules
 from src.domain.draft.entities import (
@@ -124,11 +124,7 @@ class DraftFeasibilityService:
         callers never re-derive the tournament/workspace precedence. Both levels are
         cache-backed, so calling this per request step is cheap.
         """
-        return await get_effective_roster_shape(
-            session,
-            tournament_id=draft_session.tournament_id,
-            workspace_id=draft_session.workspace_id,
-        )
+        return await tournament_slot_shape(session, draft_session.tournament_id)
 
     async def resolve_role_impact(
         self,

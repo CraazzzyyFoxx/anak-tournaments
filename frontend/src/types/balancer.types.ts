@@ -93,7 +93,7 @@ export type BalancerConfigValue =
   | undefined;
 
 /** Widget the drawer renders for a knob; mirrors the backend's `ConfigControl`. */
-type BalancerConfigFieldType = "boolean" | "float" | "integer" | "slider" | "roles";
+type BalancerConfigFieldType = "boolean" | "float" | "integer" | "slider" | "roles" | "open_slot";
 
 /** One numeric column of a `roles` table; its limits are the cell's limits. */
 export interface BalancerConfigColumn {

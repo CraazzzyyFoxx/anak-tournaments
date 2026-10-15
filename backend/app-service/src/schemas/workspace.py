@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from shared.schemas.quota import QuotaLimitsPayload, QuotaScope
-from shared.schemas.roster_slots import RosterSlotsField
+from shared.services.ontology import normalize_disciplines_enabled
 from shared.tenancy.hostnames import validate_subdomain_label
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -111,7 +111,7 @@ class WorkspaceRead(BaseRead):
     verification_status: str = "unverified"
     default_division_grid_version_id: int | None
     default_division_grid_version: DivisionGridVersionRead | None = None
-    default_roster_slots_json: dict[str, int] | None = None
+    disciplines_enabled: list[str] = ["overwatch"]
     # See ``shared.models.tenancy.workspace.Workspace.newcomer_scope``.
     newcomer_scope: Literal["global", "workspace"] = "global"
 
@@ -122,7 +122,6 @@ class WorkspaceCreate(BaseModel):
     description: str | None = None
     icon_url: str | None = None
     default_division_grid_version_id: int | None = None
-    default_roster_slots_json: RosterSlotsField = None
 
 
 class WorkspaceUpdate(BaseModel):
@@ -154,10 +153,15 @@ class WorkspaceUpdate(BaseModel):
     seo_title: str | None = None
     seo_description: str | None = None
     default_division_grid_version_id: int | None = None
-    # Edited in place, unlike `default_division_grid_version_id` above: a roster
-    # shape has no activation semantics, so it needs no dedicated endpoint.
-    default_roster_slots_json: RosterSlotsField = None
+    disciplines_enabled: list[str] | None = None
     newcomer_scope: Literal["global", "workspace"] | None = None
+
+    @field_validator("disciplines_enabled")
+    @classmethod
+    def _disciplines_enabled(cls, value: list[str] | None) -> list[str]:
+        if value is None:
+            raise ValueError("disciplines_enabled must be a list")
+        return normalize_disciplines_enabled(value)
 
     @field_validator(
         "brand_primary",

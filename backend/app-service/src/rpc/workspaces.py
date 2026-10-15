@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import Paginated
+from shared.disciplines import DISCIPLINES
 from shared.models import QuotaWorkspaceLimit
 from shared.quota import admin as quota_admin
 from shared.rbac import RBAC_USER_KEY_PREFIX
@@ -41,9 +42,11 @@ from shared.repository import AuthUserRepository
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.rpc.query import parse_id_list
 from shared.schemas.quota import QuotaPlanLimitRead
+from shared.schemas.team_format import TeamFormatWrite
 from shared.services.audit import record_admin_audit
 from shared.services.discord_client import DiscordClient
 from shared.services.subscriptions.providers.discord_role import DiscordError
+from shared.services.team_format import save_workspace_format, team_format_read, workspace_format
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
 from src import models, schemas
 from src.core import config, db
@@ -186,6 +189,13 @@ async def _gate_workspace(session: AsyncSession, data: dict[str, Any]) -> models
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
     return workspace
+
+
+def _discipline(data: dict[str, Any]) -> str:
+    code = str(data.get("discipline") or "")
+    if code not in DISCIPLINES:
+        raise HTTPException(status_code=404, detail="Discipline not found")
+    return code
 
 
 def _discord_client(broker: Any) -> DiscordClient:
@@ -886,3 +896,30 @@ def register(broker: Any, logger: Any) -> None:
             )
 
         return await c.envelope(logger, "workspaces.notification_config_update", op, session_factory=_SF)
+
+    # --- team format default per discipline (D35, D88) ----------------------
+    @broker.subscriber("rpc.app.workspaces.team_format_get")
+    async def _team_format_get(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace = await _gate_workspace(session, data)
+            team_format, source = await workspace_format(
+                session, workspace_id=workspace.id, discipline=_discipline(data)
+            )
+            return await team_format_read(session, team_format, source=source, workspace_id=workspace.id)
+
+        return await c.envelope(logger, "workspaces.team_format_get", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.team_format_put")
+    async def _team_format_put(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            workspace = await _gate_workspace(session, data)
+            discipline = _discipline(data)
+            body = TeamFormatWrite.model_validate(c.payload(data))
+            await save_workspace_format(
+                session, workspace_id=workspace.id, discipline=discipline, team_format=body.to_domain(discipline)
+            )
+            await session.commit()
+            team_format, source = await workspace_format(session, workspace_id=workspace.id, discipline=discipline)
+            return await team_format_read(session, team_format, source=source, workspace_id=workspace.id)
+
+        return await c.envelope(logger, "workspaces.team_format_put", op, session_factory=_SF)

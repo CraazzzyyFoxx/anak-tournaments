@@ -64,15 +64,14 @@ class TestCustomGameModel:
         assert "benched" in checks["ck_custom_game_self_signup"]
 
     def test_what_the_host_configures_is_not_on_the_mix(self):
-        # The solver knobs, the roster shape and the points knob describe how a
-        # person runs their mixes, so they live on `balancer.user_config`; the
-        # Discord target is the workspace's. None of them is a fact about one
-        # lobby, and a mix that stored its own diverged from all three editors.
+        # Solver and points knobs belong to the host; the mix's format is its own
+        # roster.team_format row and its Discord target belongs to the workspace.
         columns = models.CustomGame.__table__.columns
         assert "points_per_win" not in columns
         assert "discord_channel_id" not in columns
         user_columns = models.UserBalancerConfig.__table__.columns
-        assert "role_slots_json" in user_columns
+        assert "role_slots_json" not in user_columns
+        assert "custom_game_id" in models.RosterTeamFormat.__table__.columns
         assert "points_per_win" in user_columns
 
     def test_lineup_state_is_one_enum_like_column(self):

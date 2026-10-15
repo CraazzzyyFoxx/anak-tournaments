@@ -6,6 +6,14 @@ merged into the gateway's OpenAPI by the export script. Keyed by RPC subject
 from __future__ import annotations
 
 DOCS: dict[str, dict] = {
+    "rpc.app.workspaces.team_format_get": {
+        "summary": "Get a workspace's default team format",
+        "description": "Permission: workspace `workspace.update`. Returns the discipline's workspace default or module preset with its slot projection.",
+    },
+    "rpc.app.workspaces.team_format_put": {
+        "summary": "Replace a workspace's default team format",
+        "description": "Permission: workspace `workspace.update`. Sets the template for future tournaments and mixes; existing copies never change. Invalid formats return 422.",
+    },
     # ── generic CRUD read engine (rpc.app.read.{get,list}#<entity>) ────────────
     "rpc.app.read.get#hero": {
         "summary": "Get hero",

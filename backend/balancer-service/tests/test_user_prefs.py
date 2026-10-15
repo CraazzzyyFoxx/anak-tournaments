@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,8 +15,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from pydantic import ValidationError  # noqa: E402
 
-from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from src.rpc import prefs  # noqa: E402
 from src.schemas.user_prefs import UserMixPreferencesUpsert  # noqa: E402
 from src.services.user_prefs import UserMixPrefsService  # noqa: E402
 
@@ -43,7 +40,7 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             mix_comfort_tilt=0.75,
             role_settings=None,
             max_result_variants=None,
-            role_mask=None,
+            open_slot_settings=None,
             points_per_win=None,
             rating_mode="points",
         )
@@ -59,7 +56,7 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             mix_comfort_tilt=None,
             role_settings={"tank": {"mix_weight": 2.5}},
             max_result_variants=None,
-            role_mask=None,
+            open_slot_settings=None,
             points_per_win=None,
             rating_mode="points",
         )
@@ -73,32 +70,26 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             mix_comfort_tilt=None,
             role_settings=None,
             max_result_variants=None,
-            role_mask=None,
+            open_slot_settings=None,
             points_per_win=None,
             rating_mode="points",
         )
 
         self.assertEqual(config.config_json, {})
-        self.assertIsNone(config.role_slots_json)
         self.assertIsNone(config.points_per_win)
 
-    async def test_the_shape_and_the_points_are_columns_not_solver_overrides(self) -> None:
-        """They must never reach the solver's override blob: the engine would
-        either reject the key or, worse, silently weigh it."""
+    async def test_the_open_slot_weight_stores_as_open_slot_settings(self) -> None:
         config = await self.service.upsert(
             self.session,
             user_id=9,
             mix_comfort_tilt=None,
             role_settings=None,
+            open_slot_settings={"mix_weight": 0.5},
             max_result_variants=None,
-            role_mask={"tank": 1, "flex": 4},
-            points_per_win=50,
+            points_per_win=None,
             rating_mode="points",
         )
-
-        self.assertEqual(config.role_slots_json, {"tank": 1, "flex": 4})
-        self.assertEqual(config.points_per_win, 50)
-        self.assertEqual(config.config_json, {})
+        self.assertEqual(config.config_json, {"open_slot_settings": {"mix_weight": 0.5}})
 
     async def test_zero_points_stores_as_unset(self) -> None:
         """ "Off" has one spelling in the column, whichever of null/0 was sent."""
@@ -108,29 +99,12 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             mix_comfort_tilt=None,
             role_settings=None,
             max_result_variants=None,
-            role_mask=None,
+            open_slot_settings=None,
             points_per_win=0,
             rating_mode="points",
         )
 
         self.assertIsNone(config.points_per_win)
-
-    async def test_an_impossible_roster_shape_is_rejected_with_its_code(self) -> None:
-        with self.assertRaises(HTTPException) as ctx:
-            await self.service.upsert(
-                self.session,
-                user_id=9,
-                mix_comfort_tilt=None,
-                role_settings=None,
-                max_result_variants=None,
-                role_mask={"healer": 2},
-                points_per_win=None,
-                rating_mode="points",
-            )
-
-        self.assertEqual(ctx.exception.status_code, 422)
-        self.assertIn("roster_slots_unknown_code", str(ctx.exception.detail))
-        self.configs.create.assert_not_awaited()
 
 
 class UserMixPreferencesBoundsTests(TestCase):
@@ -141,7 +115,7 @@ class UserMixPreferencesBoundsTests(TestCase):
         "mix_comfort_tilt": None,
         "role_settings": None,
         "max_result_variants": None,
-        "role_mask": None,
+        "open_slot_settings": None,
         "points_per_win": None,
         "rating_mode": "points",
     }
@@ -170,17 +144,10 @@ class UserMixPreferencesBoundsTests(TestCase):
         with self.assertRaises(ValidationError):
             self._validate(mix_comfort_tilt=1.5)
 
-    def test_a_weight_on_an_unknown_role_is_rejected(self) -> None:
-        """It would weigh nothing in the engine, silently -- the host would set a
-        preference and watch it do absolutely nothing."""
-        with self.assertRaises(ValidationError):
-            self._validate(role_settings={"jungle": {"mix_weight": 2.0}})
-
-    def test_the_four_roster_slots_are_accepted(self) -> None:
-        settings = {code: {"mix_weight": 1.0} for code in ("tank", "damage", "support", "flex")}
-        body = self._validate(role_settings=settings)
-
-        self.assertEqual(set(body.role_settings or {}), {"tank", "damage", "support", "flex"})
+    def test_unknown_roles_and_open_slots_are_not_role_settings(self) -> None:
+        for code in ("healer", "flex"):
+            with self.subTest(code=code), self.assertRaises(ValidationError):
+                self._validate(role_settings={code: {"mix_weight": 2.0}})
 
     def test_a_tournament_only_role_weight_is_rejected(self) -> None:
         """A host sets the mix weight; ``impact`` and the line weights are the
@@ -201,30 +168,3 @@ class UserMixPreferencesBoundsTests(TestCase):
     def test_an_unknown_rating_mode_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             self._validate(rating_mode="elo")
-
-
-class UserMixPreferencesReadTests(TestCase):
-    """``roster_shape`` is derived on the way out: the settings screen previews
-    the shape it is about to balance into without re-implementing the chain."""
-
-    def test_a_stored_mask_resolves_and_is_reported_as_the_users_own(self) -> None:
-        read = prefs._to_read(
-            SimpleNamespace(
-                config_json={}, role_slots_json={"tank": 1, "flex": 4}, points_per_win=50, rating_mode="ranker"
-            )
-        )
-
-        self.assertEqual(read.role_mask, {"tank": 1, "flex": 4})
-        self.assertEqual(read.points_per_win, 50)
-        self.assertEqual(read.rating_mode, "ranker")
-        self.assertEqual(read.roster_shape.slots, {"tank": 1, "flex": 4})
-        self.assertEqual(read.roster_shape.team_size, 5)
-        self.assertEqual(read.roster_shape.source, "user")
-
-    def test_no_stored_mask_previews_the_builtin_shape(self) -> None:
-        read = prefs._to_read(None)
-
-        self.assertIsNone(read.role_mask)
-        self.assertIsNone(read.points_per_win)
-        self.assertEqual(read.roster_shape.slots, {"tank": 1, "damage": 2, "support": 2})
-        self.assertEqual(read.roster_shape.source, "default")

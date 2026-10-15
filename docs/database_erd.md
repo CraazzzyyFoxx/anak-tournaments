@@ -57,6 +57,7 @@ Alembic head: **`discipline01b`** (116 revisions in `backend/migrations/versions
 | `casual` | Legacy mix history (matches, teams, players). Read by nothing since V2 and mapped by no model; dropped by the gated `mixround02` | — (no service) |
 | `overwatch` | Legacy catalog, read and written by no service and mapped by no model; retained until the gated `discipline02` | — (no service) |
 | `catalog` | Disciplines (`overwatch`, `lol`), entities, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin), parser-service (sync/misses); disciplines and legacy ids seeded by migration |
+| `roster` | Workspace team-format templates and frozen tournament/mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
 | `matches` | Parsed match logs and derived statistics | parser-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
@@ -395,7 +396,7 @@ Composite unique keys:
 ## tenancy — `public`
 
 The tenant root and its membership anchor, plus workspace-level settings: branding, subdomain
-and custom domain, Discord guild binding, default roster shape and division grid.
+and custom domain, Discord guild binding, enabled disciplines and the default division grid.
 
 `workspace` is the tenant and carries the white-label surface: `timezone` (IANA), the
 `brand_*` palette behind `branding_enabled`, `subdomain` and `custom_domain` (both UNIQUE, the
@@ -465,7 +466,6 @@ erDiagram
         varchar(16) verification_status
         bigint default_division_grid_version_id FK "nullable"
         bigint quota_plan_id FK "nullable"
-        jsonb default_roster_slots_json "nullable"
         varchar(32)[] disciplines_enabled
         varchar(16) newcomer_scope
     }
@@ -670,6 +670,73 @@ Composite unique keys:
 - `CATALOG_ROLE` unique on (`id`, `dimension_id`)
 - `CATALOG_ROLE_DIMENSION` unique on (`discipline`, `code`)
 - `CATALOG_ROLE_DIMENSION` unique on (`id`, `discipline`)
+<!-- /ERD:auto -->
+
+## roster — `roster`
+
+Team formats describe starter and substitute bounds, dimension modes and role quotas against the
+discipline's catalog ontology. A workspace may keep one default per discipline; creation copies it
+(or the module preset) into each tournament or mix, so later template edits do not change existing events.
+`flex` is only the projected open-slot key, never a catalog role or a quota rule.
+
+<!-- ERD:auto roster -->
+```mermaid
+erDiagram
+    ROSTER_FORMAT_ROLE_RULE {
+        bigint team_format_id PK,FK
+        bigint dimension_id FK
+        bigint role_id PK,FK
+        int hard_min "nullable"
+        int hard_max "nullable"
+        int recommended_min "nullable"
+        int recommended_max "nullable"
+        boolean include_descendants
+    }
+    ROSTER_TEAM_FORMAT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(32) discipline FK
+        bigint tournament_id FK,UK "nullable"
+        bigint custom_game_id FK,UK "nullable"
+        varchar(64) preset_code "nullable"
+        varchar(128) name
+        int starter_min
+        int starter_max
+        int substitute_min
+        int substitute_max
+    }
+    ROSTER_TEAM_FORMAT_DIMENSION {
+        bigint team_format_id PK,FK
+        varchar(32) discipline FK
+        bigint dimension_id PK,FK
+        varchar(16) mode
+        int player_min_assignments "nullable"
+        int player_max_assignments "nullable"
+    }
+
+    BALANCER_CUSTOM_GAME |o--o| ROSTER_TEAM_FORMAT : "custom_game_id"
+    BALANCER_CUSTOM_GAME ||--o{ ROSTER_TEAM_FORMAT : "discipline"
+    BALANCER_CUSTOM_GAME ||--o{ ROSTER_TEAM_FORMAT : "workspace_id"
+    CATALOG_DISCIPLINE ||--o{ ROSTER_TEAM_FORMAT : "discipline"
+    CATALOG_ROLE ||--o{ ROSTER_FORMAT_ROLE_RULE : "dimension_id"
+    CATALOG_ROLE ||--o| ROSTER_FORMAT_ROLE_RULE : "role_id"
+    CATALOG_ROLE_DIMENSION ||--o{ ROSTER_TEAM_FORMAT_DIMENSION : "discipline"
+    CATALOG_ROLE_DIMENSION ||--o| ROSTER_TEAM_FORMAT_DIMENSION : "dimension_id"
+    PUBLIC_WORKSPACE ||--o{ ROSTER_TEAM_FORMAT : "workspace_id"
+    ROSTER_TEAM_FORMAT ||--o{ ROSTER_TEAM_FORMAT_DIMENSION : "discipline"
+    ROSTER_TEAM_FORMAT ||--o| ROSTER_TEAM_FORMAT_DIMENSION : "team_format_id"
+    ROSTER_TEAM_FORMAT_DIMENSION ||--o{ ROSTER_FORMAT_ROLE_RULE : "dimension_id"
+    ROSTER_TEAM_FORMAT_DIMENSION ||--o| ROSTER_FORMAT_ROLE_RULE : "team_format_id"
+    TOURNAMENT_TOURNAMENT |o--o| ROSTER_TEAM_FORMAT : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ ROSTER_TEAM_FORMAT : "discipline"
+    TOURNAMENT_TOURNAMENT ||--o{ ROSTER_TEAM_FORMAT : "workspace_id"
+```
+
+Composite unique keys:
+
+- `ROSTER_TEAM_FORMAT` unique on (`id`, `discipline`)
 <!-- /ERD:auto -->
 
 ## division_grid — `public`
@@ -1221,7 +1288,6 @@ erDiagram
         float draw_points
         float loss_points
         bigint division_grid_version_id FK "nullable"
-        jsonb roster_slots_json "nullable"
         jsonb draft_format_json "nullable"
         varchar cover_image_url "nullable"
         varchar logo_url "nullable"
@@ -2168,7 +2234,6 @@ erDiagram
         timestamptz updated_at "nullable"
         bigint user_id FK,UK
         jsonb config_json
-        jsonb role_slots_json "nullable"
         int points_per_win "nullable"
         varchar(16) rating_mode
     }
@@ -2227,15 +2292,14 @@ Composite unique keys:
 ## custom_game — `balancer`
 
 Workspace custom games ("mixes"): the game, its host and co-hosts, the lineup, per-player role
-and must-play constraints, and the role slots that shape a team.
+and must-play constraints. Each mix owns a frozen team format in `roster.team_format`.
 
 Host and co-hosts are accounts (`auth.user`), while the lineup is workspace members: hosting is
 an act, playing is a membership. `participation` separates a player who must be in the game from
-the pool that fills the remaining slots and from the benched, and `role_slot` fixes the shape of
-a team per role. The balancer input and its output are kept as versioned JSON on the game row
-(`balancer_config_json` / `balance_result_json` with their `*_version` counters), so a re-balance
-is a new version rather than an in-place overwrite. The child tables use composite primary keys
-rather than surrogate ids — the pair *is* the fact.
+the pool that fills the remaining slots and from the benched. Team slots are projected from the mix's
+format; solver weights and rating knobs belong to the host's `balancer.user_config`. Per-lobby balance
+results remain versioned JSON on `custom_game_lobby`, so a re-balance is a new version rather than an
+in-place overwrite. The child tables use composite primary keys rather than surrogate ids.
 
 Recorded rounds of a mix are not stored here: each is an `encounter.encounter` owned by the game
 (`custom_game_id`), and `custom_game_round` / `custom_game_round_member` hold only the balancer's own facts about

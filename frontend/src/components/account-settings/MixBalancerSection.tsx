@@ -18,7 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RosterShapeEditor } from "@/components/roster-shape/RosterShapeEditor";
 import { ROSTER_SLOT_CODES } from "@/lib/roster/shape";
 import { notify } from "@/lib/notify";
 import {
@@ -124,15 +123,6 @@ export default function MixBalancerSection() {
 
   return (
     <div className="space-y-4">
-      <RosterShapeEditor
-        entity="account"
-        value={draft.roleMask}
-        effective={stored?.roster_shape ?? null}
-        onChange={(roleMask) => setDraft((current) => ({ ...current, roleMask }))}
-      />
-
-      {/* Same card as the roster editor above, so the two halves of one
-          autosaving form read as siblings rather than two different widgets. */}
       <Card className="border-border/40 bg-card/50">
         <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-4">
           <div className="flex items-center gap-2">

@@ -26,11 +26,10 @@ from datetime import UTC, datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import ApiExc, ApiHTTPException
-from shared.domain.roster_shape import resolve_roster_shape
 from shared.repository import BalancerRegistrationTeamRepository, TournamentRepository
-from shared.services.roster_shape_access import get_tournament_roster_slots, get_workspace_roster_slots
 from shared.services.team_export import ExportPlan, team_materialization
 from shared.services.team_export.registered import build_registered_export
+from shared.services.team_format import tournament_slot_shape
 from src import models
 from src.domain.registered_teams import RegisteredExportResult
 
@@ -71,9 +70,7 @@ class RegisteredTeamsService:
         if tournament is None:
             raise _err("not_found", f"Tournament {tournament_id} not found", status_code=404)
 
-        tournament_slots = await get_tournament_roster_slots(session, tournament_id)
-        workspace_slots = await get_workspace_roster_slots(session, tournament.workspace_id)
-        shape = resolve_roster_shape(tournament_slots, workspace_slots)
+        shape = await tournament_slot_shape(session, tournament_id)
 
         payload = await build_registered_export(session, tournament_id, shape, team_ids=team_ids)
         if not payload.teams:

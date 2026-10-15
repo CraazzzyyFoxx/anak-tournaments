@@ -75,6 +75,7 @@ class MixBalancerBackend:
             native.build_roles(
                 config.role_mask,
                 config.role_settings,
+                config.open_slot_settings,
                 lambda settings: {"weight": settings.mix_weight},
             ),
             {

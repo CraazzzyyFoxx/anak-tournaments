@@ -7,6 +7,14 @@ openapi_schemas.py. The gateway appends the RPC subject footer itself.
 from __future__ import annotations
 
 DOCS: dict[str, dict] = {
+    "rpc.tournament.team_format.get": {
+        "summary": "Get a tournament's team format",
+        "description": "Permission: workspace `tournament.read`. The tournament's own team format with its slot projection (D33, D35).",
+    },
+    "rpc.tournament.team_format.put": {
+        "summary": "Replace a tournament's team format",
+        "description": "Permission: workspace `tournament.update`. Replaces the tournament's team format; 409 while a draft is unfinished or teams hold slots; 422 with the `team_format_*` code when the format cannot be stored.",
+    },
     # ── public reads (single object) ───────────────────────────────────────
     "rpc.tournament.get_tournament": {
         "summary": "Get tournament",

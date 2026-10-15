@@ -46,9 +46,9 @@ from shared.models.tournament.pick_ban import (
     PickBanConfigSlot,
     PickBanConfigSlotItem,
 )
-from shared.models.tournament.tournament import Tournament
 from shared.repository import PickBanConfigRepository, StageRepository
 from shared.repository.pick_ban import CONFIG_POOL_LOAD
+from shared.services.team_format import tournament_slot_shape
 from src.services.encounter.veto_session import SLOT_CANDIDATE_FLOOR
 
 #: ``detail["code"]`` of the 422 a ruleset with validation errors raises. The
@@ -138,10 +138,8 @@ async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[
     of such a step lands on one role and reports a far bleaker map 5 than the
     rules can actually produce.
 
-    Read straight off the tournament rather than through
-    ``resolve_roster_shape``: what matters here is what the ORGANIZER set for
-    THIS tournament, and a workspace default the editor never showed them would
-    silently change the numbers under the preview.
+    The tournament owns its frozen format; its projection is also what the
+    organizer's editor displays.
 
     Handed to the engine RAW. It matches keys case-insensitively, drops
     non-positive counts and ignores keys that are not pool groups -- and
@@ -149,8 +147,7 @@ async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[
     ``target_role_match``, so their bans raise every role's ceiling. Filtering
     flex out here would make the preview optimistic and swallow a real warning.
     """
-    raw = await session.scalar(select(Tournament.roster_slots_json).where(Tournament.id == tournament_id))
-    return raw or None
+    return (await tournament_slot_shape(session, tournament_id)).slots
 
 
 # ── upsert validation ────────────────────────────────────────────────────────

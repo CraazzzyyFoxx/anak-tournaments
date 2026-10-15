@@ -15,7 +15,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from shared.domain.roster_shape import ROSTER_SLOT_CODES, RosterSlotCode
+from shared.domain.roster_shape import RosterSlotCode
 from shared.domain.team_roster import RosterOccupancy
 from src import models
 from src.schemas.registration import RegistrationSubmit
@@ -253,14 +253,6 @@ class RegistrationTeamRead(BaseModel):
     checked_in_count: int = 0
     check_in_total: int = 0
     eligibility_issues: list[TeamEligibilityIssueRead] = Field(default_factory=list)
-
-    @field_validator("open_slots")
-    @classmethod
-    def _known_codes(cls, slots: dict[str, int]) -> dict[str, int]:
-        unknown = set(slots) - set(ROSTER_SLOT_CODES)
-        if unknown:
-            raise ValueError(f"Unknown roster slot codes: {', '.join(sorted(unknown))}")
-        return slots
 
 
 class RegistrationTeamListResponse(BaseModel):

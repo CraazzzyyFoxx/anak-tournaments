@@ -111,8 +111,16 @@ function tournament(slots: RosterSlotMap): Tournament {
         ends_at: new Date(now + 86_400_000).toISOString()
       }
     ],
-    roster_slots_json: slots,
-    roster_shape: null
+    discipline: "overwatch",
+    roster_shape: {
+      dimension: "player_role",
+      slots,
+      team_size: Object.values(slots).reduce((sum, count) => sum + (count ?? 0), 0),
+      flex_slots: slots.flex ?? 0,
+      has_role_slots: Object.keys(slots).some((code) => code !== "flex"),
+      draft_rounds: 0,
+      source: "tournament",
+    }
   } as unknown as Tournament;
 }
 

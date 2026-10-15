@@ -47,9 +47,10 @@ _MixName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 
 class CustomGameCreate(_Request):
     name: _MixName
+    discipline: str = "overwatch"
+    team_format_preset: str | None = Field(default=None, max_length=64)
     member_ids: list[int] = Field(default_factory=list, max_length=100)
-    #: Start from a previous mix of this workspace: its pool, role setup, role
-    #: shape, points knob, team names and co-hosts, but none of its played state.
+    #: Clone the pool, role setup, frozen team format, team names and co-hosts, not played state.
     clone_from_game_id: int | None = None
 
 

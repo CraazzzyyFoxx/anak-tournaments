@@ -4,12 +4,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, BeforeValidator
 
+from shared.schemas.roster_slots import RosterShapeRead
 from shared.services.workspace_scope import ALL_WORKSPACES
 from src.core import enums, pagination
 from src.schemas.admin.tournament_link import TournamentLinkRead
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead
-from src.schemas.roster_shape import RosterShapeRead
 from src.schemas.stage import StageSummaryRead
 
 __all__ = (
@@ -42,6 +42,7 @@ class TournamentPhaseScheduleRead(BaseModel):
 
 class TournamentRead(BaseRead):
     workspace_id: int
+    discipline: str
     name: str
     # Public-URL identity (`/tournaments/{slug}`); see Tournament.slug.
     slug: str
@@ -82,9 +83,8 @@ class TournamentRead(BaseRead):
     teams_count: int | None = None
     division_grid_version_id: int | None
     division_grid_version: DivisionGridVersionRead | None = None
-    roster_slots_json: dict[str, int] | None = None
     # The tournament's draft format rule; None = the snake default. Always
-    # exposed, like `roster_slots_json`: it costs no query.
+    # exposed: it costs no query.
     draft_format_json: dict[str, typing.Any] | None = None
     # Opt-in entities (D16): TournamentRead is nested in six other schemas that
     # are built from ORM rows without a session, so neither of these can be

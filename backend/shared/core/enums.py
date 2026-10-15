@@ -36,7 +36,7 @@ class HeroClass(StrEnum):
 
         Identical to the member name -- kept as a named boundary because it is
         the wire/storage contract (``BalancerRegistrationRole.role``,
-        ``Tournament.roster_slots_json`` keys, the Rust ``tournament_balancer``
+        roster-slot projection keys, the Rust ``tournament_balancer``
         payload), not merely a Python detail. It used to diverge for ``damage``
         -> ``dps``; migration ``roledps01`` retired that spelling.
         """

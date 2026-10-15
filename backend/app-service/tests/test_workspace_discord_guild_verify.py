@@ -348,7 +348,7 @@ class DiscordGuildVerifyRPCTests(IsolatedAsyncioTestCase):
             discord_guild_verified_at=datetime.now(UTC),
             default_division_grid_version_id=None,
             default_division_grid_version=None,
-            default_roster_slots_json=None,
+            disciplines_enabled=["overwatch"],
             newcomer_scope="global",
         )
         with patch("src.rpc.workspaces.ensure_workspace_permission", MagicMock()):
@@ -423,7 +423,7 @@ class DiscordGuildClearRPCTests(IsolatedAsyncioTestCase):
             discord_guild_verified_at=None,
             default_division_grid_version_id=None,
             default_division_grid_version=None,
-            default_roster_slots_json=None,
+            disciplines_enabled=["overwatch"],
             newcomer_scope="global",
         )
         with patch("src.rpc.workspaces.ensure_workspace_permission", MagicMock()):

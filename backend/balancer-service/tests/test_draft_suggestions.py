@@ -12,7 +12,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from shared.core.enums import DraftAutopickStrategy, HeroClass  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from src.domain.draft import fit as sug  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
 from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS  # noqa: E402
@@ -99,7 +99,7 @@ def test_role_need_fills_most_needed_role_first() -> None:
 
 
 def test_best_fit_prefers_the_role_a_support_captain_team_still_lacks() -> None:
-    shape = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+    shape = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
     supp = fp(1, 3600, {SUP}, prefs=(SUP,))  # 3600*1.1*0.75 = 2970 (support half-filled)
     dps = fp(2, 3200, {D}, prefs=(D,))  # 3200*1.0*1.0 = 3200
     counts = {"tank": 0, "damage": 0, "support": 1}  # only the support captain seated

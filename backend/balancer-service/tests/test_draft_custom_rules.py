@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.core.errors import ApiHTTPException
-from shared.domain.roster_shape import parse_roster_slots
+from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPick
 from shared.models.registration.registration import (
     BalancerRegistration,
@@ -37,7 +37,7 @@ from src.services.draft import lifecycle, selection
 # The 5-slot roster these tests draft for, replacing `rounds=4, team_size=5`:
 # `role_targets_for_team_size(5)` resolved to 1 tank / 2 damage / 2 support, and
 # `draft_rounds` derives the same 4 rounds.
-_SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+_SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
 
 
 _UNIQUE = 0

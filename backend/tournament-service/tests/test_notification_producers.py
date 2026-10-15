@@ -53,7 +53,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 from shared.core import enums  # noqa: E402
 from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.encounter.encounter import Encounter  # noqa: E402
 from shared.models.encounter.game import EncounterGame  # noqa: E402
 from shared.models.encounter.team import EncounterTeam  # noqa: E402
@@ -120,7 +120,7 @@ ORGANIZER_AUTH = 504
 DENIED_AUTH = 505
 SPECTATOR_AUTH = 506
 
-FIVE_STACK = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+FIVE_STACK = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
 
 
 class _AsyncSessionShim:
@@ -963,7 +963,7 @@ class TargetedInviteAvailabilityTests(_ProducerTestCase):
         shape = patch.object(
             teams_module.RegistrationTeamService,
             "_resolve_shape",
-            AsyncMock(return_value=parse_roster_slots({"tank": 1, "damage": 1})),
+            AsyncMock(return_value=RosterShape(entries=tuple({"tank": 1, "damage": 1}.items()))),
         )
         shape.start()
         self.addCleanup(shape.stop)

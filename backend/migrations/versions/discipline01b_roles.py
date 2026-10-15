@@ -145,6 +145,26 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
          ORDER BY p.workspace_id, p.code
         """,
     ),
+    (
+        "roster slot maps that cannot become a team format",
+        """
+        SELECT s.source, s.owner_id, s.slots
+          FROM (SELECT 'workspace' AS source, w.id AS owner_id, w.default_roster_slots_json AS slots
+                  FROM workspace w WHERE w.default_roster_slots_json IS NOT NULL
+                UNION ALL
+                SELECT 'tournament', t.id, t.roster_slots_json FROM tournament.tournament t WHERE t.roster_slots_json IS NOT NULL
+                UNION ALL
+                SELECT 'host', u.user_id, u.role_slots_json FROM balancer.user_config u WHERE u.role_slots_json IS NOT NULL) s
+         WHERE CASE WHEN jsonb_typeof(s.slots) <> 'object' THEN true
+                    WHEN s.slots = '{}'::jsonb THEN false
+                    ELSE EXISTS (SELECT 1 FROM jsonb_each(s.slots) e
+                                  WHERE e.key NOT IN ('tank', 'damage', 'support', 'flex')
+                                     OR jsonb_typeof(e.value) <> 'number' OR e.value::text !~ '^[1-9][0-9]*$')
+                      OR (SELECT sum(e.value::text::int) FROM jsonb_each(s.slots) e) NOT BETWEEN 1 AND 12
+               END
+         ORDER BY s.source, s.owner_id
+        """,
+    ),
 )
 PREFLIGHT_SAMPLE = 20
 
@@ -272,10 +292,153 @@ def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
     op.execute("SET CONSTRAINTS ALL IMMEDIATE")
     _preflight()
-    for statement in (*_SCHEMA, *_ONTOLOGY, *_SUB_ROLES):
+    for statement in (*_SCHEMA, *_ONTOLOGY, *_SUB_ROLES, *_TEAM_FORMATS, *_CONFIG_JSON):
         op.execute(statement)
     op.execute("SET CONSTRAINTS ALL DEFERRED")
 
 
 def downgrade() -> None:
     raise RuntimeError("discipline01b is forward-fix only; restore from a backup to go back")
+
+
+#: §14.3 verbatim, with names for the constraints the spec leaves unnamed.
+_TEAM_FORMAT_SCHEMA = (
+    "CREATE SCHEMA roster",
+    """
+    CREATE TABLE roster.team_format (
+      id             BIGSERIAL PRIMARY KEY,
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at     TIMESTAMPTZ,
+      workspace_id   BIGINT NOT NULL CONSTRAINT fk_team_format_workspace REFERENCES workspace (id) ON DELETE CASCADE,
+      discipline     VARCHAR(32) NOT NULL CONSTRAINT fk_team_format_discipline REFERENCES catalog.discipline (code),
+      tournament_id  BIGINT,
+      custom_game_id BIGINT,
+      preset_code    VARCHAR(64),
+      name           VARCHAR(128) NOT NULL,
+      starter_min    INTEGER NOT NULL,
+      starter_max    INTEGER NOT NULL,
+      substitute_min INTEGER NOT NULL DEFAULT 0,
+      substitute_max INTEGER NOT NULL DEFAULT 0,
+      CONSTRAINT ck_team_format_owner CHECK (num_nonnulls(tournament_id, custom_game_id) <= 1),
+      CONSTRAINT ck_team_format_sizes CHECK (1 <= starter_min AND starter_min <= starter_max
+                                             AND 0 <= substitute_min AND substitute_min <= substitute_max),
+      CONSTRAINT uq_team_format_key UNIQUE (id, discipline),
+      CONSTRAINT uq_team_format_tournament UNIQUE (tournament_id),
+      CONSTRAINT uq_team_format_custom_game UNIQUE (custom_game_id),
+      CONSTRAINT fk_team_format_tournament FOREIGN KEY (tournament_id, workspace_id, discipline)
+        REFERENCES tournament.tournament (id, workspace_id, discipline) ON DELETE CASCADE,
+      CONSTRAINT fk_team_format_custom_game FOREIGN KEY (custom_game_id, workspace_id, discipline)
+        REFERENCES balancer.custom_game (id, workspace_id, discipline) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE UNIQUE INDEX uq_team_format_workspace_default ON roster.team_format (workspace_id, discipline)
+      WHERE tournament_id IS NULL AND custom_game_id IS NULL
+    """,
+    """
+    CREATE TABLE roster.team_format_dimension (
+      team_format_id          BIGINT NOT NULL,
+      discipline              VARCHAR(32) NOT NULL,
+      dimension_id            BIGINT NOT NULL,
+      mode                    VARCHAR(16) NOT NULL CONSTRAINT ck_tfd_mode CHECK (mode IN ('off', 'informational', 'preference', 'enforced')),
+      player_min_assignments  INTEGER,
+      player_max_assignments  INTEGER,
+      PRIMARY KEY (team_format_id, dimension_id),
+      CONSTRAINT fk_tfd_format FOREIGN KEY (team_format_id, discipline)
+        REFERENCES roster.team_format (id, discipline) ON DELETE CASCADE,
+      CONSTRAINT fk_tfd_dimension FOREIGN KEY (dimension_id, discipline) REFERENCES catalog.role_dimension (id, discipline),
+      CONSTRAINT ck_tfd_assignments CHECK (player_min_assignments IS NULL OR player_max_assignments IS NULL
+                                           OR player_min_assignments <= player_max_assignments)
+    )
+    """,
+    """
+    CREATE TABLE roster.format_role_rule (
+      team_format_id      BIGINT NOT NULL,
+      dimension_id        BIGINT NOT NULL,
+      role_id             BIGINT NOT NULL,
+      hard_min            INTEGER,
+      hard_max            INTEGER,
+      recommended_min     INTEGER,
+      recommended_max     INTEGER,
+      include_descendants BOOLEAN NOT NULL DEFAULT true,
+      PRIMARY KEY (team_format_id, role_id),
+      CONSTRAINT fk_frr_dimension FOREIGN KEY (team_format_id, dimension_id)
+        REFERENCES roster.team_format_dimension (team_format_id, dimension_id) ON DELETE CASCADE,
+      CONSTRAINT fk_frr_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+      CONSTRAINT ck_frr_nonnegative CHECK (hard_min >= 0 AND hard_max >= 0 AND recommended_min >= 0 AND recommended_max >= 0),
+      CONSTRAINT ck_frr_hard CHECK (hard_min IS NULL OR hard_max IS NULL OR hard_min <= hard_max),
+      CONSTRAINT ck_frr_recommended CHECK (recommended_min IS NULL OR recommended_max IS NULL OR recommended_min <= recommended_max)
+    )
+    """,
+)
+
+#: Today's built-in shape (ex ``DEFAULT_ROSTER_SLOTS``) and Overwatch's preset; a map equal to it becomes the preset.
+_ROLE_QUEUE = """'{"tank": 1, "damage": 2, "support": 2}'::jsonb"""
+
+#: §14.6: a slot count -> ``hard n..n`` on an ENFORCED ``player_role``; ``flex`` -> the rest of the starters; a
+#: tournament without its own map gets a copy of the workspace's; an existing mix a copy of its host's at migration.
+_TEAM_FORMATS = (
+    *_TEAM_FORMAT_SCHEMA,
+    f"""
+    CREATE TEMP TABLE discipline01b_format ON COMMIT DROP AS
+    SELECT nextval(pg_get_serial_sequence('roster.team_format', 'id')) AS id, s.workspace_id, s.discipline,
+           s.tournament_id, s.custom_game_id, s.slots
+      FROM (SELECT w.id AS workspace_id, 'overwatch'::varchar AS discipline, NULL::bigint AS tournament_id,
+                   NULL::bigint AS custom_game_id, w.default_roster_slots_json AS slots
+              FROM workspace w
+             WHERE nullif(w.default_roster_slots_json, '{{}}'::jsonb) IS NOT NULL
+            UNION ALL
+            SELECT t.workspace_id, t.discipline, t.id, NULL,
+                   coalesce(nullif(t.roster_slots_json, '{{}}'::jsonb), nullif(w.default_roster_slots_json, '{{}}'::jsonb), {_ROLE_QUEUE})
+              FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id
+            UNION ALL
+            SELECT g.workspace_id, g.discipline, NULL, g.id,
+                   coalesce(nullif(u.role_slots_json, '{{}}'::jsonb), nullif(w.default_roster_slots_json, '{{}}'::jsonb), {_ROLE_QUEUE})
+              FROM balancer.custom_game g
+              JOIN workspace w ON w.id = g.workspace_id
+              LEFT JOIN balancer.user_config u ON u.user_id = g.host_user_id) s
+    """,
+    f"""
+    INSERT INTO roster.team_format (id, workspace_id, discipline, tournament_id, custom_game_id, preset_code, name,
+                                    starter_min, starter_max)
+    SELECT f.id, f.workspace_id, f.discipline, f.tournament_id, f.custom_game_id,
+           CASE WHEN f.slots = {_ROLE_QUEUE} THEN 'role_queue_5v5' END,
+           CASE WHEN f.slots = {_ROLE_QUEUE} THEN '5v5 role queue' ELSE 'Custom roster' END,
+           s.total, s.total
+      FROM discipline01b_format f
+     CROSS JOIN LATERAL (SELECT sum(e.value::int) AS total FROM jsonb_each_text(f.slots) e) s
+    """,
+    """
+    INSERT INTO roster.team_format_dimension (team_format_id, discipline, dimension_id, mode)
+    SELECT f.id, f.discipline, d.id,
+           CASE WHEN EXISTS (SELECT 1 FROM jsonb_object_keys(f.slots) k WHERE k IN ('tank', 'damage', 'support'))
+                THEN 'enforced' ELSE 'off' END
+      FROM discipline01b_format f
+      JOIN catalog.role_dimension d ON d.discipline = f.discipline AND d.rated
+    """,
+    """
+    INSERT INTO roster.format_role_rule (team_format_id, dimension_id, role_id, hard_min, hard_max)
+    SELECT f.id, r.dimension_id, r.id, e.value::int, e.value::int
+      FROM discipline01b_format f
+     CROSS JOIN LATERAL jsonb_each_text(f.slots) e
+      JOIN catalog.role_dimension d ON d.discipline = f.discipline AND d.rated
+      JOIN catalog.role r ON r.dimension_id = d.id AND r.workspace_id IS NULL AND r.code = e.key
+    """,
+)
+
+#: §14.3: "ключ ``flex`` весов переходит в настройки слота без ограничения" -- ``role_settings.flex`` becomes the
+#: top-level ``open_slot_settings`` in every stored balancer config.
+_CONFIG_JSON = tuple(
+    f"""
+    UPDATE {table}
+       SET config_json = (({column} #- '{{role_settings,flex}}')
+                          || jsonb_build_object('open_slot_settings', {column} #> '{{role_settings,flex}}')){cast}
+     WHERE {column} #> '{{role_settings,flex}}' IS NOT NULL
+    """
+    for table, column, cast in (
+        ("balancer.user_config", "config_json", ""),
+        ("balancer.tournament_config", "config_json::jsonb", "::json"),
+        ("balancer.workspace_config", "config_json::jsonb", "::json"),
+        ("balancer.balance", "config_json::jsonb", "::json"),
+    )
+)

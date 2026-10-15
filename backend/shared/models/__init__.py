@@ -23,6 +23,7 @@ from .preferences import *
 from .quota import *
 from .ranks import *
 from .registration import *
+from .roster import *
 from .subscriptions import *
 from .tenancy import *
 from .tournament import *

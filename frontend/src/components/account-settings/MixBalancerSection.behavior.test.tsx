@@ -51,17 +51,9 @@ const UNSET: MixBalancerPreferencesRead = {
   mix_comfort_tilt: null,
   role_settings: null,
   max_result_variants: null,
-  role_mask: null,
+  open_slot_settings: null,
   points_per_win: null,
   rating_mode: "points",
-  roster_shape: {
-    slots: { tank: 1, damage: 2, support: 2 },
-    team_size: 5,
-    flex_slots: 0,
-    has_role_slots: true,
-    draft_rounds: 5,
-    source: "default",
-  },
 };
 
 /** Longer than the panel's own debounce, so a settled write has fired. */
@@ -117,7 +109,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
   getPreferences.mockReset().mockResolvedValue(UNSET);
   updatePreferences.mockReset().mockImplementation((preferences) =>
-    Promise.resolve({ ...preferences, roster_shape: UNSET.roster_shape }),
+    Promise.resolve(preferences),
   );
 });
 
@@ -133,17 +125,18 @@ describe("MixBalancerSection", () => {
     const scope = await mount();
 
     await typeInto(field(scope, "mix-role-weight-tank"), "2.5");
+    await typeInto(field(scope, "mix-role-weight-flex"), "0.5");
     await typeInto(field(scope, "mix-result-variants"), "40");
     await typeInto(field(scope, "mix-points-per-win"), "50");
     await settle();
 
     expect(updatePreferences).toHaveBeenCalledTimes(1);
     expect(updatePreferences).toHaveBeenCalledWith({
-      // Untouched slider and shape: nothing stored, the defaults apply.
+      // Untouched knobs use the engine defaults.
       mix_comfort_tilt: null,
       role_settings: { tank: { mix_weight: 2.5 } },
       max_result_variants: 40,
-      role_mask: null,
+      open_slot_settings: { mix_weight: 0.5 },
       points_per_win: 50,
       rating_mode: "points",
     });
@@ -168,7 +161,7 @@ describe("MixBalancerSection", () => {
       mix_comfort_tilt: null,
       role_settings: null,
       max_result_variants: null,
-      role_mask: null,
+      open_slot_settings: null,
       points_per_win: null,
       rating_mode: "points",
     });

@@ -27,6 +27,7 @@ from shared.schemas.quota import (
     QuotaPlanWrite,
     QuotaUsageRead,
 )
+from shared.schemas.team_format import TeamFormatRead, TeamFormatWrite
 from src import schemas
 
 # Sort-field whitelists mirror the read handlers' Literal constraints (used to
@@ -47,6 +48,8 @@ _WS = QueryParam("workspace_id", "integer")
 _TID = QueryParam("tournament_id", "integer")
 
 OPERATIONS: dict[str, Op] = {
+    "rpc.app.workspaces.team_format_get": Op(response=TeamFormatRead),
+    "rpc.app.workspaces.team_format_put": Op(request=TeamFormatWrite, response=TeamFormatRead),
     # ── generic CRUD read engine (rpc.app.read.{get,list}#<entity>) ────────
     "rpc.app.read.get#hero": Op(response=schemas.HeroRead),
     "rpc.app.read.list#hero": Op(

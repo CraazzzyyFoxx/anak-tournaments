@@ -16,7 +16,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { normalizePlayerRole } from "@/lib/roster/player-role";
-import { ROSTER_SLOT_CODES, isRosterSlotCode } from "@/lib/roster/shape";
+import { isRosterSlotCode } from "@/lib/roster/shape";
 import type {
   BalancerConfig,
   BalancerConfigField,
@@ -66,13 +66,7 @@ function formatValue(value: unknown): string {
  * out still keeps whatever this tournament stored for it -- the table only
  * stops showing it, it never rewrites it. */
 function roleRowOrder(defaults: BalancerRoleSettings, roleCodes?: string[] | null): string[] {
-  const codes = Object.keys(defaults).filter(
-    (code) => roleCodes == null || roleCodes.includes(code)
-  );
-  return [
-    ...ROSTER_SLOT_CODES.filter((code) => codes.includes(code)),
-    ...codes.filter((code) => !isRosterSlotCode(code)),
-  ];
+  return Object.keys(defaults).filter((code) => roleCodes == null || roleCodes.includes(code));
 }
 
 /** Only the cells moved off their default travel. The server merges a stored
@@ -184,8 +178,19 @@ function ConfigFieldControl({
     );
   }
 
+  if (field.type === "open_slot") {
+    return (
+      <ConfigRolesTable
+        field={{ ...field, default: { flex: field.default as Record<string, number> } }}
+        value={value == null ? null : ({ flex: value } as BalancerConfigValue)}
+        roleCodes={null}
+        onChange={(next) => onChange((next as BalancerRoleSettings | undefined)?.flex ?? null)}
+      />
+    );
+  }
+
   // No `select`/`role_mask` branches: the backend emits only
-  // boolean/integer/float/slider/roles rows. `algorithm` died with the
+  // boolean/integer/float/slider/roles/open_slot rows. `algorithm` died with the
   // pure-Python solver, and the per-team slot counts come from the tournament
   // roster shape rather than from this drawer.
   if (field.type === "slider") {
@@ -278,14 +283,14 @@ export function BalancerConfigDrawer({
                           className={
                             // The table is as wide as it has columns; a knob
                             // with one input keeps the narrow control column.
-                            field.type === "roles"
+                            field.type === "roles" || field.type === "open_slot"
                               ? "grid gap-3"
                               : "grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]"
                           }
                         >
                           <div>
                             <Label
-                              htmlFor={field.type === "roles" ? undefined : `config-${field.key}`}
+                              htmlFor={field.type === "roles" || field.type === "open_slot" ? undefined : `config-${field.key}`}
                               className="text-sm text-[color:var(--aqt-fg)]"
                             >
                               {field.label}
@@ -296,7 +301,7 @@ export function BalancerConfigDrawer({
                             <div className="mt-2 flex flex-wrap gap-2 text-label text-[color:var(--aqt-fg-dim)]">
                               {/* A roles table shows its own defaults in the
                                   cells; dumping the whole dict here is noise. */}
-                              {field.type === "roles" ? null : (
+                              {field.type === "roles" || field.type === "open_slot" ? null : (
                                 <span>Default: {formatValue(field.default)}</span>
                               )}
                               {field.limits ? (

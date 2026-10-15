@@ -91,19 +91,6 @@ class UserBalancerConfig(db.TimeStampIntegerMixin):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), index=True)
     config_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}", default=dict)
-    # Columns of their own, deliberately NOT keys inside ``config_json``: that
-    # blob is handed to the solver verbatim as overrides, and neither of these
-    # is one. The roster shape is the shape of the thing being built -- the
-    # runtime applies it *after* the overrides so a saved config can never
-    # contradict it (``_prepare_balance_context``) -- and the points knob never
-    # reaches the solver at all: it moves the host's rank book once a match is
-    # recorded. Folding either into the blob would smuggle a non-override key
-    # into the engine's input.
-    #
-    # Normalized on write (``normalize_roster_slots``), so the stored map can
-    # never hold a zero count; NULL means "no shape of my own", which falls
-    # through to the workspace default and then the built-in Overwatch 5v5.
-    role_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
     # How far a decided match moves both teams' ranks in this host's own book.
     # NULL (the wire's ``0`` or ``null``) means recording a match touches no
     # ranks at all.

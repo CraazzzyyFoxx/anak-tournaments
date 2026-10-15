@@ -61,9 +61,12 @@ from shared.repository import (
     TeamRepository,
     TournamentRepository,
     UserRepository,
+    WorkspaceRepository,
 )
 from shared.services.encounter.participants import place_team, vacate_slot
+from shared.services.ontology import assert_discipline_enabled
 from shared.services.settings_provider import settings_provider
+from shared.services.team_format import copy_for_tournament
 from shared.services.tournament.visibility import ensure_tournament_viewable
 from src import models
 
@@ -301,6 +304,7 @@ class ScrimService:
         *,
         room_repo: ScrimRoomRepository = ScrimRoomRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
+        workspace_repo: WorkspaceRepository = WorkspaceRepository(),
         stage_repo: StageRepository = StageRepository(),
         team_repo: TeamRepository = TeamRepository(),
         encounter_repo: EncounterRepository = EncounterRepository(),
@@ -308,6 +312,7 @@ class ScrimService:
     ) -> None:
         self.room_repo = room_repo
         self.tournament_repo = tournament_repo
+        self.workspace_repo = workspace_repo
         self.stage_repo = stage_repo
         self.team_repo = team_repo
         self.encounter_repo = encounter_repo
@@ -363,9 +368,14 @@ class ScrimService:
         )
         if container is not None:
             return container
+        workspace = await self.workspace_repo.get(session, workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        assert_discipline_enabled(workspace, "overwatch")
         now = datetime.now(UTC)
         container = models.Tournament(
             workspace_id=workspace_id,
+            discipline="overwatch",
             name=CONTAINER_NAME,
             # Deterministic, not generated: one container per workspace (see the
             # lookup above), so workspace_id alone already guarantees uniqueness
@@ -391,7 +401,9 @@ class ScrimService:
             # not have.
             auto_transitions_enabled=False,
         )
-        return await self.tournament_repo.create(session, container)
+        container = await self.tournament_repo.create(session, container)
+        await copy_for_tournament(session, container)
+        return container
 
     # ── pool ────────────────────────────────────────────────────────────────
 

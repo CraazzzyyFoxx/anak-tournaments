@@ -2,7 +2,6 @@
   "root": [
     "accountSettings",
     "admin",
-    "admission",
     "analytics",
     "auth",
     "bracket",
@@ -19,7 +18,6 @@
     "notFound",
     "notifications",
     "registration",
-    "rosterShape",
     "standings",
     "stream",
     "users",
@@ -164,7 +162,6 @@
     "rankHistory",
     "registration",
     "registrationTeams",
-    "rosterShape",
     "standings",
     "statistics",
     "stream",

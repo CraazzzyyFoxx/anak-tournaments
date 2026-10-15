@@ -26,11 +26,14 @@ for path in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
         sys.path.insert(0, path)
 
 
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.services.team_export import ExportOutcome, ExportPlan  # noqa: E402
 from shared.services.team_export.materialization import MaterializationTeam  # noqa: E402
 from shared.services.team_export.registered import RegisteredExportPayload, SkippedTeam  # noqa: E402
 from src import models  # noqa: E402
 from src.services import registered_teams  # noqa: E402
+
+SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
 
 
 class _Result:
@@ -88,8 +91,7 @@ class PlanWiringTests(IsolatedAsyncioTestCase):
 
         with (
             mock.patch.object(registered_teams, "build_registered_export", return_value=payload),
-            mock.patch.object(registered_teams, "get_tournament_roster_slots", return_value=None),
-            mock.patch.object(registered_teams, "get_workspace_roster_slots", return_value=None),
+            mock.patch.object(registered_teams, "tournament_slot_shape", return_value=SHAPE),
             mock.patch.object(registered_teams.team_materialization, "run", side_effect=_run),
         ):
             await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
@@ -131,8 +133,7 @@ class NoOpExportTests(IsolatedAsyncioTestCase):
 
         with (
             mock.patch.object(registered_teams, "build_registered_export", return_value=payload),
-            mock.patch.object(registered_teams, "get_tournament_roster_slots", return_value=None),
-            mock.patch.object(registered_teams, "get_workspace_roster_slots", return_value=None),
+            mock.patch.object(registered_teams, "tournament_slot_shape", return_value=SHAPE),
             mock.patch.object(registered_teams.team_materialization, "run", runner),
         ):
             result = await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]
@@ -152,8 +153,7 @@ class NoOpExportTests(IsolatedAsyncioTestCase):
 
         with (
             mock.patch.object(registered_teams, "build_registered_export", return_value=payload),
-            mock.patch.object(registered_teams, "get_tournament_roster_slots", return_value=None),
-            mock.patch.object(registered_teams, "get_workspace_roster_slots", return_value=None),
+            mock.patch.object(registered_teams, "tournament_slot_shape", return_value=SHAPE),
             mock.patch.object(registered_teams.team_materialization, "run", side_effect=_run),
         ):
             result = await registered_teams.registered_teams_service.export_registered(_Session(_tournament()), 7)  # type: ignore[arg-type]

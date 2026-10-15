@@ -17,14 +17,14 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 os.environ["DEBUG"] = "false"
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.quota import QuotaLease  # noqa: E402
 from src.services.balancer import jobs  # noqa: E402
 from src.services.balancer import solver as solver_module  # noqa: E402
 from src.services.balancer.config.provider import get_balancer_config_payload  # noqa: E402
 
 JOBS = "src.services.balancer.jobs"
-FLEX_SHAPE = parse_roster_slots({"tank": 1, "flex": 4})
+FLEX_SHAPE = RosterShape(entries=tuple({"tank": 1, "flex": 4}.items()))
 
 
 def _shape_resolver(shape=FLEX_SHAPE) -> AsyncMock:
@@ -135,7 +135,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._access_policy", access_policy),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
+            patch(f"{JOBS}.tournament_slot_shape", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),
@@ -190,7 +190,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
             patch(f"{JOBS}._emit_job", emit),
-            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
+            patch(f"{JOBS}.tournament_slot_shape", _shape_resolver()),
         ):
             await jobs.create_job(
                 session=SimpleNamespace(),
@@ -255,7 +255,7 @@ class CreateJobTests(IsolatedAsyncioTestCase):
             patch(f"{JOBS}.quota", gate),
             patch(f"{JOBS}._payload_parser", FakeParser()),
             patch(f"{JOBS}.BalancerJobPublisher", FakePublisher),
-            patch(f"{JOBS}.get_effective_roster_shape", _shape_resolver()),
+            patch(f"{JOBS}.tournament_slot_shape", _shape_resolver()),
         ):
             response = await jobs.create_job(
                 session=SimpleNamespace(),

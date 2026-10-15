@@ -427,7 +427,7 @@ def _build_plan(
                             label=f"{table.name}: {name}",
                             policy=policy,
                             conflicts=conflicts,
-                            atomic=table is models.UserBalancerConfig.__table__ and name == "role_slots_json",
+                            atomic=False,
                         )
                 plan.deletes.append((table, incoming))
             if len(selected_rank_values) > 1:

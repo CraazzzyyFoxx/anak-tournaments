@@ -92,6 +92,7 @@ def _workspace(**overrides) -> models.Workspace:
         "icon_url": None,
         "is_active": True,
         "is_hidden": False,
+        "disciplines_enabled": ["overwatch"],
         "timezone": "Europe/Moscow",
         "branding_enabled": False,
         "newcomer_scope": "global",

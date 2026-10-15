@@ -17,6 +17,7 @@ import sys
 
 import psycopg
 import pytest
+from psycopg.types.json import Json, Jsonb
 
 from shared.disciplines import DISCIPLINES
 from shared.domain.player_sub_roles import normalize_sub_role
@@ -149,6 +150,7 @@ def _seed(conn) -> dict:
         ids[f"{key}_role"] = _insert(
             conn, "balancer.registration_role", registration_id=ids[key], role=role, subrole=subrole, priority=1
         )
+    _seed_team_formats(conn, ids)
     return ids
 
 
@@ -329,10 +331,120 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         tx.rollback()
     assert listed == []
     assert set(statuses.values()) == {"ok"}
-    assert {"sub-roles", "off-catalog sub-roles (kept inactive)", "flex sub-roles (dropped)"} <= set(statuses)
+    assert {
+        "sub-roles",
+        "off-catalog sub-roles (kept inactive)",
+        "flex sub-roles (dropped)",
+        "team formats",
+        "balancer configs",
+    } <= set(statuses)
 
 
 def test_the_chain_ends_at_discipline01b_with_every_constraint_validated(migrated) -> None:
     conn = migrated["conn"]
     assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == TARGET
     assert _rows(conn, "SELECT conrelid::regclass::text, conname FROM pg_constraint WHERE NOT convalidated") == []
+
+
+def _seed_team_formats(conn, ids: dict) -> None:
+    """A workspace default, tournament override, inheriting tournament, two mixes and two configs."""
+    conn.execute(
+        "UPDATE workspace SET default_roster_slots_json = %s WHERE id = %s",
+        (Jsonb({"tank": 1, "flex": 5}), ids["ws_a"]),
+    )
+    conn.execute(
+        "UPDATE tournament.tournament SET roster_slots_json = %s WHERE id = %s", (Jsonb({"flex": 6}), ids["t_b"])
+    )
+    ids["t_c"] = _insert(
+        conn, "tournament.tournament", workspace_id=ids["ws_b"], name="c", slug="d1b-t-c", status="live"
+    )
+    ids["host"] = _insert(
+        conn, "auth.user", email="d1b-host@x", username="d1b-host", is_active=True, is_superuser=False, is_verified=True
+    )
+    conn.execute(
+        "INSERT INTO balancer.user_config (user_id, config_json, role_slots_json) VALUES (%s, %s, %s)",
+        (
+            ids["host"],
+            Jsonb({"role_settings": {"tank": {"mix_weight": 2.0}, "flex": {"mix_weight": 0.5}}}),
+            Jsonb({"damage": 3, "support": 3}),
+        ),
+    )
+    ids["rule_a"] = _insert(
+        conn, "encounter.scoring_rule", workspace_id=ids["ws_a"], preset="wins", game_formula="1", end_formula="1"
+    )
+    ids["mix_host"] = _insert(
+        conn,
+        "balancer.custom_game",
+        workspace_id=ids["ws_a"],
+        name="host",
+        scoring_rule_id=ids["rule_a"],
+        host_user_id=ids["host"],
+    )
+    ids["mix_plain"] = _insert(
+        conn, "balancer.custom_game", workspace_id=ids["ws_a"], name="plain", scoring_rule_id=ids["rule_a"]
+    )
+    ids["tconfig"] = _insert(
+        conn,
+        "balancer.tournament_config",
+        tournament_id=ids["t_a"],
+        workspace_id=ids["ws_a"],
+        config_json=Json({"role_settings": {"flex": {"impact": 1.3}}}),
+    )
+
+
+_FORMAT = """
+    SELECT f.preset_code, f.name, f.starter_min, f.starter_max, f.substitute_min, f.substitute_max, d.mode,
+           coalesce((SELECT jsonb_object_agg(r.code, rr.hard_min ORDER BY r.code)
+                       FROM roster.format_role_rule rr JOIN catalog.role r ON r.id = rr.role_id
+                      WHERE rr.team_format_id = f.id AND rr.hard_min = rr.hard_max), '{{}}'::jsonb)
+      FROM roster.team_format f JOIN roster.team_format_dimension d ON d.team_format_id = f.id
+     WHERE {owner}
+"""
+
+
+def test_every_tournament_owns_a_copy_of_its_effective_slot_map(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    query = _FORMAT.format(owner="f.tournament_id = %s")
+    assert _rows(conn, query, (ids["t_a"],)) == [(None, "Custom roster", 6, 6, 0, 0, "enforced", {"tank": 1})]
+    assert _rows(conn, query, (ids["t_b"],)) == [(None, "Custom roster", 6, 6, 0, 0, "off", {})]
+    assert _rows(conn, query, (ids["t_c"],)) == [
+        ("role_queue_5v5", "5v5 role queue", 5, 5, 0, 0, "enforced", {"damage": 2, "support": 2, "tank": 1})
+    ]
+
+
+def test_a_workspace_default_becomes_that_workspace_s_overwatch_format(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    query = _FORMAT.format(owner="f.workspace_id = %s AND f.tournament_id IS NULL AND f.custom_game_id IS NULL")
+    assert _rows(conn, query, (ids["ws_a"],)) == [(None, "Custom roster", 6, 6, 0, 0, "enforced", {"tank": 1})]
+    assert _rows(conn, query, (ids["ws_b"],)) == []
+
+
+def test_every_mix_freezes_its_host_s_shape_or_the_workspace_default(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    query = _FORMAT.format(owner="f.custom_game_id = %s")
+    assert _rows(conn, query, (ids["mix_host"],)) == [
+        (None, "Custom roster", 6, 6, 0, 0, "enforced", {"damage": 3, "support": 3})
+    ]
+    assert _rows(conn, query, (ids["mix_plain"],)) == [(None, "Custom roster", 6, 6, 0, 0, "enforced", {"tank": 1})]
+
+
+def test_flex_weights_move_to_the_open_slot_settings(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    assert _scalar(conn, "SELECT config_json FROM balancer.user_config WHERE user_id = %s", (ids["host"],)) == {
+        "role_settings": {"tank": {"mix_weight": 2.0}},
+        "open_slot_settings": {"mix_weight": 0.5},
+    }
+    assert _scalar(conn, "SELECT config_json FROM balancer.tournament_config WHERE id = %s", (ids["tconfig"],)) == {
+        "role_settings": {},
+        "open_slot_settings": {"impact": 1.3},
+    }
+
+
+def test_a_slot_map_that_cannot_become_a_format_stops_the_revision(legacy_template) -> None:
+    tournament = legacy_template["ids"]["t_b"]
+    done = _rejected(
+        "UPDATE tournament.tournament SET roster_slots_json = %s WHERE id = %s", (Jsonb({"healer": 2}), tournament)
+    )
+    assert done.returncode != 0
+    assert "roster slot maps that cannot become a team format" in done.stderr
+    assert f"'source': 'tournament', 'owner_id': {tournament}" in done.stderr

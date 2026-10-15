@@ -12,7 +12,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from shared.core.enums import DraftPickStatus, HeroClass  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
 from src.services.draft.export import _draft_to_balancer_payload  # noqa: E402
@@ -20,8 +20,8 @@ from tests.factories import roster  # noqa: E402
 
 # The two shapes the payload behaves differently under: role slots keep rank
 # role-specific, an all-flex roster has no role to key rank on.
-ROLE_SHAPE = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
-FLEX_SHAPE = parse_roster_slots({"flex": 5})
+ROLE_SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
+FLEX_SHAPE = RosterShape(entries=tuple({"flex": 5}.items()))
 
 
 def _team(tid: int, pos: int, name: str) -> DraftTeam:

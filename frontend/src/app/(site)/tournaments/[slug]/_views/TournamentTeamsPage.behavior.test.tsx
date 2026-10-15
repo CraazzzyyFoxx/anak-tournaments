@@ -117,7 +117,7 @@ function makeTournament(status: TournamentStatus): Tournament {
     teams_count: 3,
     division_grid_version_id: null,
     division_grid_version: null,
-    roster_slots_json: null,
+    discipline: "overwatch",
     roster_shape: SHAPE,
     roster_locked_by_draft: null
   };

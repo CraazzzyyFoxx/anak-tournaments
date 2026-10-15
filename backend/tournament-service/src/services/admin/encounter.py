@@ -614,7 +614,7 @@ class AdminEncounterService:
                 label="Away team",
             )
         if "map_id" in update_data and update_data["map_id"] is not None:
-            if await self.map_repo.get(session, update_data["map_id"]) is None:
+            if not await self.map_repo.exists(session, id=update_data["map_id"], discipline=match.encounter.discipline):
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
 
         for field, value in update_data.items():

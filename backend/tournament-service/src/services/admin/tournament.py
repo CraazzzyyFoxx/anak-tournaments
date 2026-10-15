@@ -18,13 +18,16 @@ from shared.repository import (
     RegistrationFormRepository,
     StandingRepository,
     TournamentRepository,
+    WorkspaceRepository,
 )
+from shared.schemas.team_format import TeamFormatWrite
 from shared.services.division_grid import cache as division_grid_cache
 from shared.services.division_grid.access import get_workspace_division_grid_version_id
 from shared.services.draft_guards import assert_no_active_draft_session
+from shared.services.ontology import assert_discipline_enabled
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.registration_team_guards import assert_no_registered_teams
-from shared.services.roster_shape_access import invalidate_roster_shape_cache
+from shared.services.team_format import copy_for_tournament, save_tournament_format
 from shared.services.tournament.computation import request_bracket_job
 from shared.services.tournament.slug import generate_unique_tournament_slug
 from src import models, schemas
@@ -251,6 +254,11 @@ class AdminTournamentService:
                 detail="Tournament with this name already exists in this workspace",
             )
 
+        workspace = await WorkspaceRepository().get(session, data.workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+        assert_discipline_enabled(workspace, data.discipline)
+
         payload = data.model_dump()
         if data.slug:
             requested_slug = slugify(data.slug)
@@ -275,11 +283,26 @@ class AdminTournamentService:
         )
 
         tournament = await self.tournament_repo.create(session, models.Tournament(**payload))
+        await copy_for_tournament(session, tournament)
         await publish_tournament_invalidation(session, tournament.id, STRUCTURE_RESOURCES)
         await session.commit()
         await division_grid_cache.invalidate_tournament(tournament.id)
         await division_grid_cache.invalidate_workspace(tournament.workspace_id)
         return await self.get_tournament(session, tournament.id)
+
+    async def replace_team_format(
+        self, session: AsyncSession, tournament_id: int, body: TeamFormatWrite
+    ) -> models.Tournament:
+        """Replace the tournament copy only before drafts or registered teams hold slots."""
+        tournament = await self.tournament_repo.get(session, tournament_id)
+        if tournament is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+        await assert_no_active_draft_session(session, tournament_id, change="the team format")
+        await assert_no_registered_teams(session, tournament_id, change="the team format")
+        await save_tournament_format(session, tournament, body.to_domain(tournament.discipline))
+        await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
+        await session.commit()
+        return tournament
 
     async def update_tournament(
         self, session: AsyncSession, tournament_id: int, data: schemas.TournamentUpdate
@@ -302,20 +325,6 @@ class AdminTournamentService:
         update_data = data.model_dump(exclude_unset=True)
         if "team_formation" in update_data and update_data["team_formation"] != tournament.team_formation:
             await assert_no_active_draft_session(session, tournament_id)
-
-        # Both maps are normalized (RosterSlotsField on the way in, this same path on
-        # the way out), and dict equality ignores key order -- so a Settings-tab save
-        # that resends the current shape is not a change and must not block an
-        # unrelated rename mid-draft.
-        roster_slots_changed = "roster_slots_json" in update_data and (
-            update_data["roster_slots_json"] != tournament.roster_slots_json
-        )
-        if roster_slots_changed:
-            await assert_no_active_draft_session(session, tournament_id, change="roster shape")
-            # Registered teams hold slots assigned from the shape in force when their
-            # members accepted; changing it afterwards silently invalidates every one
-            # of those rosters. Same protection a live draft already gets.
-            await assert_no_registered_teams(session, tournament_id, change="the roster shape")
 
         # Same lock, one level down: the session snapshots the format at create
         # time, so an edit mid-draft would promise a change the running board
@@ -372,8 +381,6 @@ class AdminTournamentService:
         if should_invalidate_grid:
             await division_grid_cache.invalidate_tournament(tournament_id)
             await division_grid_cache.invalidate_workspace(tournament.workspace_id)
-        if roster_slots_changed:
-            await invalidate_roster_shape_cache(tournament_id=tournament_id)
         return await self.get_tournament(session, tournament_id)
 
     async def create_tournament_from_challonge(

@@ -21,7 +21,7 @@ from shared.core.enums import (  # noqa: E402
     DraftPlayerStatus,
     HeroClass,
 )
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
 from tests.factories import roster  # noqa: E402
@@ -45,7 +45,7 @@ def _assignment(feasibility, player_id: int, team_id: int, slot_code: str):
 
 
 def _shape(slots: dict[str, int]):
-    return parse_roster_slots(slots)
+    return RosterShape(entries=tuple(slots.items()))
 
 
 def _error_code(exc: Exception) -> str:

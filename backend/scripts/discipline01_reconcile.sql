@@ -70,6 +70,41 @@ SELECT 'flex sub-roles (dropped)', p.id, p.sub_role, true
   FROM tournament.player p
  WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role, U&'\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000')), U&'[\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000]+', '_', 'g') <> ''
 UNION ALL
+-- Every owner of a slot map (and every tournament and mix) has a format whose quotas are that map.
+SELECT 'team formats', o.owner_id, o.source,
+       EXISTS (SELECT 1 FROM roster.team_format f
+                WHERE f.workspace_id = o.workspace_id
+                  AND f.tournament_id IS NOT DISTINCT FROM o.tournament_id
+                  AND f.custom_game_id IS NOT DISTINCT FROM o.custom_game_id
+                  AND f.starter_max = (SELECT sum(e.value::int) FROM jsonb_each_text(o.slots) e)
+                  AND (SELECT coalesce(jsonb_object_agg(r.code, rr.hard_min), '{}'::jsonb)
+                         FROM roster.format_role_rule rr JOIN catalog.role r ON r.id = rr.role_id
+                        WHERE rr.team_format_id = f.id)
+                      = (SELECT coalesce(jsonb_object_agg(e.key, e.value::int), '{}'::jsonb)
+                           FROM jsonb_each_text(o.slots) e WHERE e.key <> 'flex'))
+  FROM (SELECT 'workspace' AS source, w.id AS owner_id, w.id AS workspace_id, NULL::bigint AS tournament_id,
+               NULL::bigint AS custom_game_id, w.default_roster_slots_json AS slots
+          FROM workspace w WHERE nullif(w.default_roster_slots_json, '{}'::jsonb) IS NOT NULL
+        UNION ALL
+        SELECT 'tournament', t.id, t.workspace_id, t.id, NULL,
+               coalesce(nullif(t.roster_slots_json, '{}'::jsonb), nullif(w.default_roster_slots_json, '{}'::jsonb),
+                        '{"tank": 1, "damage": 2, "support": 2}'::jsonb)
+          FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id
+         WHERE t.created_at <= (SELECT min(f.created_at) FROM roster.team_format f)
+        UNION ALL
+        SELECT 'mix', g.id, g.workspace_id, NULL, g.id,
+               coalesce(nullif(u.role_slots_json, '{}'::jsonb), nullif(w.default_roster_slots_json, '{}'::jsonb),
+                        '{"tank": 1, "damage": 2, "support": 2}'::jsonb)
+          FROM balancer.custom_game g JOIN workspace w ON w.id = g.workspace_id
+          LEFT JOIN balancer.user_config u ON u.user_id = g.host_user_id
+         WHERE g.created_at <= (SELECT min(f.created_at) FROM roster.team_format f)) o
+UNION ALL
+SELECT 'balancer configs', c.id, c.source, NOT (c.config ? 'role_settings' AND c.config -> 'role_settings' ? 'flex')
+  FROM (SELECT 'user_config' AS source, u.id, u.config_json AS config FROM balancer.user_config u
+        UNION ALL SELECT 'tournament_config', t.id, t.config_json::jsonb FROM balancer.tournament_config t
+        UNION ALL SELECT 'workspace_config', w.id, w.config_json::jsonb FROM balancer.workspace_config w
+        UNION ALL SELECT 'balance', b.id, b.config_json::jsonb FROM balancer.balance b WHERE b.config_json IS NOT NULL) c
+UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        NOT EXISTS (SELECT 1 FROM catalog.entity_legacy l WHERE l.legacy_kind = soft.kind AND l.legacy_id = soft.item_id)

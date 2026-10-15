@@ -27,6 +27,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from shared.core.enums import MixParticipation, MixRoleSelectionMode  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
@@ -126,11 +127,7 @@ class _Lobbies:
 
 
 class _HostPrefs:
-    """``balancer.user_config`` as a dict: everything the HOST configures.
-
-    The roster shape and the points knob are the account's, not the mix's, so
-    the flow arranges them up front instead of setting them per session.
-    """
+    """The host's solver and rating knobs."""
 
     def __init__(self) -> None:
         self.rows: dict[int, Any] = {}
@@ -139,7 +136,6 @@ class _HostPrefs:
         self.rows[user_id] = SimpleNamespace(
             user_id=user_id,
             config_json=fields.get("config_json", {}),
-            role_slots_json=fields.get("role_slots_json"),
             points_per_win=fields.get("points_per_win"),
             rating_mode=fields.get("rating_mode", "points"),
         )
@@ -244,7 +240,8 @@ class MixFlowTests(IsolatedAsyncioTestCase):
 
         for target, value in (
             ("get_effective_division_grid", object()),
-            ("get_workspace_roster_slots", None),
+            ("custom_game_slot_shape", RosterShape(entries=(("tank", 1), ("damage", 1)))),
+            ("copy_for_custom_game", None),
         ):
             patcher = patch(f"src.services.custom_game.{target}", new=AsyncMock(return_value=value))
             patcher.start()
@@ -252,12 +249,13 @@ class MixFlowTests(IsolatedAsyncioTestCase):
 
         self.service = CustomGameService(
             games=self.games,
+            workspaces=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(disciplines_enabled=["overwatch"]))),
             roster=self.roster,
             co_hosts=self.co_hosts,
             lobbies=self.lobbies,
             player_roles=self.player_roles,
             team_names=self.team_names,
-            # The host's own row: solver knobs, roster shape, points per win.
+            # The host's solver and points knobs, not the mix's format.
             host_prefs=self.host_prefs,
             mix_rounds=SimpleNamespace(list_for_custom_game=self.store.list_for_custom_game),
             write_round=self.store.record,
@@ -283,9 +281,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         )
 
     async def test_a_whole_mix_from_create_to_close(self) -> None:
-        # Everything the host configures is on their account before the mix
-        # exists: two teams of two, and 25 rank points riding on the result.
-        self.host_prefs.save(9, role_slots_json={"tank": 1, "damage": 1}, points_per_win=25)
+        self.host_prefs.save(9, points_per_win=25)
 
         game = await self.service.create(
             self.session,

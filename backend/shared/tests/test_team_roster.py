@@ -16,11 +16,11 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from shared.domain.roster_shape import RosterShapeError, parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape, RosterShapeError  # noqa: E402
 from shared.domain.team_roster import RosterMember, RosterOccupancy  # noqa: E402
 
-FIVE_STACK = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
-FLEX_SIX = parse_roster_slots({"flex": 6})
+FIVE_STACK = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
+FLEX_SIX = RosterShape(entries=tuple({"flex": 6}.items()))
 
 
 def _starters(*codes: str) -> tuple[RosterMember, ...]:
@@ -144,8 +144,8 @@ class RoleLessRosterTests(TestCase):
             occupancy.can_offer("flex")
         self.assertEqual("slot_not_in_shape", caught.exception.code)
 
-    def test_an_unknown_code_is_rejected_before_the_shape_lookup(self) -> None:
+    def test_a_role_not_in_this_shape_is_rejected(self) -> None:
         occupancy = RosterOccupancy(shape=FIVE_STACK)
         with self.assertRaises(RosterShapeError) as caught:
             occupancy.can_accept("healer")
-        self.assertEqual("roster_slots_unknown_code", caught.exception.code)
+        self.assertEqual("slot_not_in_shape", caught.exception.code)

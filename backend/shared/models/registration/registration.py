@@ -81,7 +81,7 @@ class BalancerRegistrationForm(db.TimeStampIntegerMixin):
     #: Bench size for team registration (decision 4): the roster ``RosterShape`` is
     #: strict, but an organizer may allow this many extra ``is_substitute`` members
     #: per team. Zero disables the bench entirely. Deliberately here and not on
-    #: ``Tournament.roster_slots_json``: a substitute holds no starter slot, so the
+    #: the starter-slot projection: a substitute holds no starter slot, so the
     #: shape -- and the lock guarding it -- stay untouched.
     max_substitutes: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     # Subscription admission gate. ``require_subscription`` is the per-tournament

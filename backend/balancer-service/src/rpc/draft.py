@@ -42,7 +42,7 @@ from shared.services.chat import (
     ChatSettingsInput,
 )
 from shared.services.realtime import Scope, emit, enqueue_invalidation_outbox
-from shared.services.roster_shape_access import get_effective_roster_shape
+from shared.services.team_format import tournament_slot_shape
 from src import schemas
 from src.core import db
 from src.core.auth import (
@@ -546,7 +546,7 @@ def register(broker: Any, logger: Any) -> None:
             # cannot be created at a size the tournament does not run. The format
             # is the tournament's for the same reason -- it is a rule organizers
             # announce, edited in the tournament's settings, not here.
-            shape = await get_effective_roster_shape(session, tournament_id=tournament_id, workspace_id=workspace_id)
+            shape = await tournament_slot_shape(session, tournament_id)
             fmt, format_settings = await lifecycle_service.tournament_draft_format(
                 session, tournament_id, rounds=shape.draft_rounds
             )

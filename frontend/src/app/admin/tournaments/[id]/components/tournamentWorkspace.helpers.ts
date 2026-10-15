@@ -42,8 +42,8 @@ export type TournamentFormState = {
   division_grid_version_id: number | null;
   team_formation: string;
   /**
-   * Roster shape override; `null` = inherit. Normalized on the way in so the
-   * tab's `JSON.stringify` dirty check does not trip over key order.
+   * The tournament's own slot map (its team format's projection).
+   * Normalized so the tab's dirty check does not trip over key order.
    */
   roster_slots_json: RosterSlotMap | null;
   /** Draft format rule; `null` = snake. The server normalizes the shape. */
@@ -134,9 +134,7 @@ export function getTournamentForm(tournament: Tournament, timezone: string): Tou
     phase_schedule: getPhaseScheduleForm(tournament, timezone),
     division_grid_version_id: tournament.division_grid_version_id ?? null,
     team_formation: tournament.team_formation ?? "balancer",
-    roster_slots_json: tournament.roster_slots_json
-      ? normalizeSlots(tournament.roster_slots_json)
-      : null,
+    roster_slots_json: tournament.roster_shape ? normalizeSlots(tournament.roster_shape.slots) : null,
     draft_format_json: tournament.draft_format_json ?? null
   };
 }

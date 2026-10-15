@@ -49,7 +49,7 @@ def _tournament() -> models.Tournament:
         division_grid_version_id=5,
         # Serialized as plain columns: an unset attribute on a detached
         # instance would trigger a refresh instead of reading NULL.
-        roster_slots_json=None,
+        discipline="overwatch",
         draft_format_json=None,
         rules=None,
         cover_image_url=None,

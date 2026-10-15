@@ -37,7 +37,7 @@ RESOURCES = {
     models.UserBalancerConfig.__table__: (
         "user_id",
         ("user_id",),
-        ("config_json", "role_slots_json", "points_per_win"),
+        ("config_json", "points_per_win"),
     ),
     models.NotificationPreference.__table__: ("auth_user_id", ("auth_user_id",), ("discord_dm",)),
     models.UserPermissionDeny.__table__: ("user_id", ("user_id", "permission_id", "workspace_id"), ("reason",)),

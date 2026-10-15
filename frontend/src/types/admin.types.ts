@@ -331,7 +331,7 @@ export interface TournamentUpdateInput {
   draw_points?: number;
   loss_points?: number;
   division_grid_version_id?: number | null;
-  /** Roster shape override; `null` clears it back to the workspace default. */
+  /** Sent as the tournament's team format by adminService.updateTournament. */
   roster_slots_json?: RosterSlotMap | null;
   /** Draft format rule; `null` clears it back to snake. */
   draft_format_json?: DraftFormatSettings | null;

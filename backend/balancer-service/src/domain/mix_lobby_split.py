@@ -84,7 +84,7 @@ def _eligible(candidate: SplitCandidate, slot: _Slot, lobby: int | None) -> bool
     """Может ли игрок занять слот: своё лобби (или ещё никакое) плюс роль.
 
     Флекс-слот берёт любого играбельного: ранга с именем ``flex`` не бывает,
-    а ``resolve_roster_shape`` такую форму отдать может.
+    а проекция формата команды может содержать такие открытые слоты.
     """
     if lobby is not None and lobby != slot[0]:
         return False

@@ -16,11 +16,10 @@ import types
 import typing
 from collections.abc import Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, create_model
 from pydantic.fields import FieldInfo
 
-from shared.domain.roster_shape import RosterSlotCode
-from src.services.balancer.config.defaults import AlgorithmConfig, RoleSettings
+from src.services.balancer.config.defaults import AlgorithmConfig, RoleSettings, validate_role_settings
 
 # Not the operator's to set, so absent from the write allowlist:
 #   * ``role_mask`` is a projection of the tournament roster shape, resolved per
@@ -97,13 +96,17 @@ ConfigOverrides: type[BaseModel] = create_model(
     __module__=__name__,
     __config__=ConfigDict(extra="forbid"),
     role_settings=(
-        dict[RosterSlotCode, RoleSettingsOverride] | None,
+        typing.Annotated[dict[str, RoleSettingsOverride], BeforeValidator(validate_role_settings)] | None,
         Field(None, description=AlgorithmConfig.model_fields["role_settings"].description),
+    ),
+    open_slot_settings=(
+        RoleSettingsOverride | None,
+        Field(None, description=AlgorithmConfig.model_fields["open_slot_settings"].description),
     ),
     **{
         name: _as_optional(field)
         for name, field in AlgorithmConfig.model_fields.items()
-        if name in PUBLIC_CONFIG_KEYS and name != "role_settings"
+        if name in PUBLIC_CONFIG_KEYS and name not in {"role_settings", "open_slot_settings"}
     },
 )
 

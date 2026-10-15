@@ -36,7 +36,8 @@ from shared.core.enums import (  # noqa: E402
     TournamentStatus,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.balancer.draft import DraftPick  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
@@ -47,6 +48,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
+from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from src import models  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
@@ -103,7 +105,7 @@ def _identity(user_id: int, workspace_id: int, team_actions: list[str]) -> dict:
 # `rounds=2, team_size=3` pair: `role_targets_for_team_size(3)` resolved to
 # 1 tank / 2 damage / 0 support, which is exactly this shape, and `draft_rounds`
 # derives the same 2 rounds the calls used to pass explicitly.
-_SHAPE = parse_roster_slots({"tank": 1, "damage": 2})
+_SHAPE = RosterShape(entries=tuple({"tank": 1, "damage": 2}.items()))
 
 
 _UNIQUE = 0
@@ -144,12 +146,20 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
             # Tournament.status is TournamentStatus; reuse "draft" value via enum string.
             tourn.status = "draft"
-            # The draft resolves its shape from the tournament/workspace override,
-            # not from the shape stored on the session, so the override has to
-            # match `_SHAPE` or every start preflight sees the default 5-stack.
-            tourn.roster_slots_json = {"tank": 1, "damage": 2}
             s.add(tourn)
             await s.flush()
+            await save_tournament_format(
+                s,
+                tourn,
+                TeamFormat(
+                    discipline="overwatch",
+                    name="Three seats",
+                    starter_min=3,
+                    starter_max=3,
+                    dimensions=(FormatDimension("player_role", "enforced"),),
+                    rules=(FormatRule("player_role", "tank", 1, 1), FormatRule("player_role", "damage", 2, 2)),
+                ),
+            )
             users = []
             for i in range(3):
                 u = User(name=f"cap-{self._suffix}-{i}")

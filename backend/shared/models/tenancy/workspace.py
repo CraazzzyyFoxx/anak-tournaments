@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -130,11 +130,6 @@ class Workspace(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
-    # Workspace-wide default per-team roster shape, e.g.
-    # ``{"tank": 1, "damage": 2, "support": 2}``. NULL means "inherit the built-in
-    # 5v5 default", NOT "an empty roster" — the resolution chain lives in
-    # ``shared.domain.roster_shape.resolve_roster_shape``.
-    default_roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
     #: Which disciplines this workspace may create tournaments and mixes in (D89). Codes are checked in code against
     #: ``shared.disciplines``; a superuser enables LoL. The column goes when LoL becomes an ordinary discipline.
     disciplines_enabled: Mapped[list[str]] = mapped_column(

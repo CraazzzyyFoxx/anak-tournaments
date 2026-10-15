@@ -29,7 +29,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from shared.core.enums import HERO_TYPE_CLASSES, DraftPickStatus, DraftPlayerStatus, HeroClass  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer  # noqa: E402
 from src.domain.draft import (
     feasibility,  # noqa: E402
@@ -39,7 +39,7 @@ from tests.factories import roster  # noqa: E402
 
 
 def _shape(slots: dict[str, int]):
-    return parse_roster_slots(slots)
+    return RosterShape(entries=tuple(slots.items()))
 
 
 def _code(exc: Exception) -> str:

@@ -12,8 +12,6 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared.domain.roster_shape import resolve_roster_shape
-from shared.schemas.roster_slots import RosterShapeRead
 from src import models, schemas
 from src.core import db
 from src.rpc import _common as c
@@ -27,26 +25,15 @@ def _to_read(cfg: models.UserBalancerConfig | None) -> schemas.UserMixPreference
 
     ``config_json`` holds only the keys the user actually set, so an absent one
     reads back as ``null`` -- the wire's word for "use the engine default".
-
-    ``roster_shape`` is derived, never stored: the same resolved object a mix
-    hands its board, so the settings screen previews the exact shape it is about
-    to balance into without re-implementing the fallback chain. No workspace is
-    in scope here (these preferences are not workspace-bound), so the chain is
-    only "this account's mask, else the built-in Overwatch 5v5".
     """
     payload = (cfg.config_json or {}) if cfg is not None else {}
-    role_mask = cfg.role_slots_json if cfg is not None else None
     return schemas.UserMixPreferencesRead(
         mix_comfort_tilt=payload.get("mix_comfort_tilt"),
         role_settings=payload.get("role_settings"),
         max_result_variants=payload.get("max_result_variants"),
-        role_mask=role_mask or None,
+        open_slot_settings=payload.get("open_slot_settings"),
         points_per_win=cfg.points_per_win if cfg is not None else None,
         rating_mode=cfg.rating_mode if cfg is not None else "points",
-        roster_shape=RosterShapeRead.from_shape(
-            resolve_roster_shape(role_mask or None, None),
-            source="user" if role_mask else "default",
-        ),
     )
 
 
@@ -71,7 +58,7 @@ def register(broker: Any, logger: Any) -> None:
                 role_settings={code: settings.model_dump() for code, settings in (body.role_settings or {}).items()}
                 or None,
                 max_result_variants=body.max_result_variants,
-                role_mask=body.role_mask,
+                open_slot_settings=body.open_slot_settings.model_dump() if body.open_slot_settings else None,
                 points_per_win=body.points_per_win,
                 rating_mode=body.rating_mode,
             )

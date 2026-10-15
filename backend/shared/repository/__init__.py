@@ -97,6 +97,7 @@ from .registration import (
     RegistrationStatusRepository,
 )
 from .roles import CatalogRoleRepository
+from .team_format import TeamFormatRepository
 from .scrim import ScrimRoomRepository
 from .settings import SettingsRepository
 from .stream import (
@@ -178,6 +179,7 @@ from .quota import (
 
 __all__ = (
     "TOURNAMENT_SOURCE_TYPE",
+    "TeamFormatRepository",
     "AchievementOverrideRepository",
     "AchievementRuleRepository",
     "AnalyticsAlgorithmRepository",

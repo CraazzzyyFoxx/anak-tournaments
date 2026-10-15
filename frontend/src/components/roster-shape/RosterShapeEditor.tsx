@@ -76,8 +76,7 @@ function SlotIcon({ code, size = 18 }: Readonly<{ code: RosterSlotCode; size?: n
 }
 
 interface RosterShapeEditorProps {
-  /** Stored override, straight off `Tournament.roster_slots_json` or a pickup
-   * mix's `config_json.role_mask` -- whichever entity `entity` names. */
+  /** The owner's team-format slot projection, held as a draft by the editor. */
   value: RosterSlotMap | null;
   /**
    * Server-resolved shape (`Tournament.roster_shape` / `CustomGame.roster_shape`).
@@ -91,8 +90,7 @@ interface RosterShapeEditorProps {
    */
   locked?: boolean;
   disabled?: boolean;
-  /** Emits the value for `TournamentUpdate.roster_slots_json` (or a mix's
-   * `role_mask`); `null` = inherit. */
+  /** Emits the slot-map draft which the service adapter turns into a team format. */
   onChange: (next: RosterSlotMap | null) => void;
   className?: string;
   /**

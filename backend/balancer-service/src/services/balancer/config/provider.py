@@ -85,6 +85,10 @@ def normalize_tournament_config_payload(config_payload: dict[str, typing.Any] | 
             for code, settings in role_settings.items()
             if (kept := {key: value for key, value in settings.items() if key not in MIX_ONLY_ROLE_FIELDS})
         }
+    if settings := config.get("open_slot_settings"):
+        config["open_slot_settings"] = {
+            key: value for key, value in settings.items() if key not in MIX_ONLY_ROLE_FIELDS
+        }
     return config
 
 
@@ -109,7 +113,7 @@ def build_config_fields(defaults: dict[str, typing.Any]) -> list[dict[str, typin
             "default": defaults.get(name),
             "limits": CONFIG_LIMITS.get(name),
         }
-        if control == "roles":
+        if control in {"roles", "open_slot"}:
             row["columns"] = ROLE_SETTING_COLUMNS
         rows.append(row)
     return rows
@@ -119,7 +123,10 @@ def get_balancer_config_payload() -> dict[str, typing.Any]:
     config = AlgorithmConfig()
     # The drawer edits the tournament projection, so the defaults it draws must be
     # that same projection -- not the mix engine's copy of the per-role weights.
-    defaults = serialize_algorithm_config(config) | {"role_settings": tournament_role_settings(config.role_settings)}
+    defaults = serialize_algorithm_config(config) | {
+        "role_settings": tournament_role_settings(config.role_settings),
+        "open_slot_settings": config.open_slot_settings.model_dump(exclude=MIX_ONLY_ROLE_FIELDS),
+    }
     return {
         "defaults": defaults,
         "limits": CONFIG_LIMITS,

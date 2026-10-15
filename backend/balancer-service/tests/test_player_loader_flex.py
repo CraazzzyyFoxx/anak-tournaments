@@ -36,7 +36,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 os.environ["DEBUG"] = "false"
 
-from shared.domain.roster_shape import DEFAULT_ROSTER_SLOTS, FLEX_SLOT_CODE, parse_roster_slots  # noqa: E402
+from shared.disciplines import DISCIPLINES  # noqa: E402
+from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
 from src.domain.balancer.entities import Team  # noqa: E402
 from src.domain.balancer.moo_backend import _serialize_native_request  # noqa: E402
 from src.domain.balancer.player_loader import (  # noqa: E402
@@ -281,8 +282,9 @@ def test_role_mask_is_not_an_editable_or_public_config_field() -> None:
 
 
 def test_default_role_mask_is_the_canonical_roster_shape() -> None:
-    assert AlgorithmConfig().role_mask == DEFAULT_ROSTER_SLOTS
-    assert ConfigPresets.DEFAULT["role_mask"] == DEFAULT_ROSTER_SLOTS
+    slots = {rule.role: rule.hard_min for rule in DISCIPLINES["overwatch"].preset().rules}
+    assert AlgorithmConfig().role_mask == slots
+    assert ConfigPresets.DEFAULT["role_mask"] == slots
 
 
 # ---------------------------------------------------------------------------
@@ -307,32 +309,30 @@ def test_legacy_capitalized_mask_still_resolves_player_roles() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 13. parse_roster_slots validates and canonicalizes through the roster canon
+# 13. RosterShape validates the resolved slot projection
 # ---------------------------------------------------------------------------
 
 
-def test_parse_roster_slots_normalizes_the_mask_through_the_roster_canon() -> None:
-    slots = parse_roster_slots({FLEX_SLOT_CODE: 5, "tank": 1}).slots
-
-    # Canonical order comes from ROSTER_SLOT_CODES, not from the caller.
+def test_roster_shape_preserves_the_module_role_order() -> None:
+    slots = RosterShape(entries=(("tank", 1), (FLEX_SLOT_CODE, 5))).slots
     assert list(slots.items()) == [("tank", 1), (FLEX_SLOT_CODE, 5)]
 
 
 @pytest.mark.parametrize(
     "garbage",
     [
-        {},
-        {"tank": 0},
-        {"Tank": 1, "Damage": 2, "Support": 2},
-        {"tank": "1"},
-        {"tank": 1, "healer": 2},
-        {"tank": 99},
-        [("tank", 1)],
+        (),
+        (("tank", 0),),
+        (("tank", -1),),
+        (("tank", "1"),),
+        (("tank", True),),
+        (("", 1),),
+        (("tank", 1), ("tank", 2)),
     ],
 )
-def test_parse_roster_slots_rejects_a_mask_the_canon_rejects(garbage: Any) -> None:
+def test_roster_shape_rejects_invalid_projection_entries(garbage: Any) -> None:
     with pytest.raises(ValueError):
-        parse_roster_slots(garbage)
+        RosterShape(entries=garbage)
 
 
 # ---------------------------------------------------------------------------

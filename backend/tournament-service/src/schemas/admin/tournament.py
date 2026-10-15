@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field, model_validator
 from shared.core import tournament_state
 from shared.core.enums import TournamentStatus
 from shared.schemas.draft_format import DraftFormatField
-from shared.schemas.roster_slots import RosterSlotsField
 
 __all__ = (
     "TournamentCreate",
@@ -27,6 +26,7 @@ class TournamentCreate(BaseModel):
     """Schema for creating a tournament"""
 
     workspace_id: int
+    discipline: str = "overwatch"
     name: str
     # Public-URL slug. Slugified and uniqueness-checked server-side; left
     # blank, one is generated from `name` (see shared.services.tournament.slug).
@@ -44,9 +44,6 @@ class TournamentCreate(BaseModel):
     draw_points: float = 0.5
     loss_points: float = 0.0
     division_grid_version_id: int | None = None
-    # None = inherit (workspace default -> built-in 5v5). Normalized by
-    # RosterSlotsField, so the column never stores a zero count.
-    roster_slots_json: RosterSlotsField = None
     # None = the snake default. Normalized by DraftFormatField, so the column
     # never stores round rules a non-custom format would ignore.
     draft_format_json: DraftFormatField = None
@@ -76,7 +73,6 @@ class TournamentUpdate(BaseModel):
     draw_points: float | None = None
     loss_points: float | None = None
     division_grid_version_id: int | None = None
-    roster_slots_json: RosterSlotsField = None
     draft_format_json: DraftFormatField = None
 
 

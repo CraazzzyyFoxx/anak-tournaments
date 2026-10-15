@@ -13,6 +13,8 @@ var WorkspaceWriteRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/workspaces", Queue: "rpc.app.workspaces.create", Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "PATCH", Pattern: "/api/v1/workspaces/{id}", Queue: "rpc.app.admin.update", Entity: "workspace", Action: "update", IDParam: "id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/workspaces/{id}", Queue: "rpc.app.admin.delete", Entity: "workspace", Action: "delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
+	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/team-formats/{discipline}", Queue: "rpc.app.workspaces.team_format_get", Path: []string{"workspace_id", "discipline"}, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/workspaces/{workspace_id}/team-formats/{discipline}", Queue: "rpc.app.workspaces.team_format_put", Path: []string{"workspace_id", "discipline"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/members", Queue: "rpc.app.workspaces.members_list", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/members/autofill-roles", Queue: "rpc.app.workspaces.members_autofill_roles", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/workspaces/{workspace_id}/members", Queue: "rpc.app.workspaces.member_add", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},

@@ -420,9 +420,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         channel_id,
         await custom_game_service.host_points_per_win(session, game.host_user_id),
     )
-    roster_shape = (
-        await custom_game_service.roster_shape(session, workspace_id=game.workspace_id, host_user_id=game.host_user_id)
-    ).model_dump()
+    roster_shape = (await custom_game_service.roster_shape(session, game)).model_dump()
     roster = list(await custom_game_service.roster.list_for_game(session, game.id))
     # One name lookup for every identity on the write side: the host and each
     # co-host are all ``auth.user.id``s, and the lookup is left-joined, so an
@@ -592,6 +590,8 @@ def register(broker: Any, logger: Any) -> None:
                 # roster sheet afterwards. There is no pool to default to.
                 member_ids=body.member_ids,
                 clone_from_game_id=body.clone_from_game_id,
+                discipline=body.discipline,
+                team_format_preset=body.team_format_preset,
             )
             await emit_pickup_mix_changed(
                 session, workspace_id, custom_game_id=game.id, change="create", actor_user_id=user.id

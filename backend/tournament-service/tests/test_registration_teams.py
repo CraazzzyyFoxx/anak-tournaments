@@ -40,7 +40,7 @@ from sqlalchemy.dialects import postgresql  # noqa: E402
 
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.invite_token import hash_invite_token  # noqa: E402
-from shared.domain.roster_shape import parse_roster_slots  # noqa: E402
+from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.domain.team_roster import RosterMember, RosterOccupancy  # noqa: E402
 from src import models  # noqa: E402
 from src.schemas.registration_team import (  # noqa: E402
@@ -53,7 +53,7 @@ from src.schemas.registration_team import (  # noqa: E402
 )
 from src.services.registration import teams  # noqa: E402
 
-FIVE_STACK = parse_roster_slots({"tank": 1, "damage": 2, "support": 2})
+FIVE_STACK = RosterShape(entries=tuple({"tank": 1, "damage": 2, "support": 2}.items()))
 
 
 def _code_of(fn: Any) -> str:
@@ -216,7 +216,7 @@ class SlotRejectionCodeTests(TestCase):
     def test_a_slot_the_tournament_does_not_have_is_a_400(self) -> None:
         """Not a 409: no future team state makes "tank" valid on a role-less
         tournament, so retrying is pointless."""
-        occupancy = RosterOccupancy(shape=parse_roster_slots({"flex": 6}))
+        occupancy = RosterOccupancy(shape=RosterShape(entries=tuple({"flex": 6}.items())))
         with self.assertRaises(ApiHTTPException) as caught:
             teams._check_slot(occupancy, "tank", is_substitute=False, offering=False)
         self.assertEqual(400, caught.exception.status_code)

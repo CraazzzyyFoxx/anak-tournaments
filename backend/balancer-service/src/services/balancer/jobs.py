@@ -19,7 +19,7 @@ from shared.services.balancer_realtime import (
     BALANCER_JOB_SUCCEEDED,
 )
 from shared.services.roster import roster_engine
-from shared.services.roster_shape_access import get_effective_roster_shape
+from shared.services.team_format import tournament_slot_shape
 from src.core import db
 from src.core.config import config
 from src.core.job_store import get_job_store
@@ -165,11 +165,7 @@ async def create_job(
     # Per-team slot counts are the tournament's, not the request's: resolved
     # here so a broken roster shape fails the call instead of the job, and so
     # the queued payload records the shape the run was accepted for.
-    roster_shape = await get_effective_roster_shape(
-        session,
-        tournament_id=tournament_id,
-        workspace_id=workspace_id,
-    )
+    roster_shape = await tournament_slot_shape(session, tournament_id)
 
     job_id = uuid.uuid4().hex
     # One accounting call for the whole request: the per-minute token, the daily
@@ -261,11 +257,7 @@ async def create_tournament_job(
         )
     config_overrides = _payload_parser.parse_config_overrides(raw_config)
 
-    roster_shape = await get_effective_roster_shape(
-        session,
-        tournament_id=tournament_id,
-        workspace_id=workspace_id,
-    )
+    roster_shape = await tournament_slot_shape(session, tournament_id)
 
     job_id = uuid.uuid4().hex
     lease = await quota.lease(

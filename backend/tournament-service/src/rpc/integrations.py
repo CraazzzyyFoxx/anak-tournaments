@@ -52,7 +52,7 @@ from shared.services.division_grid.access import (
     require_marketplace_source_access,
 )
 from shared.services.roster import roster_engine
-from shared.services.roster_shape_access import get_effective_roster_shape
+from shared.services.team_format import tournament_slot_shape
 from src import models, schemas
 from src.clients.challonge import challonge_client
 from src.core import auth
@@ -141,7 +141,7 @@ async def _owt_player_export(
     if tournament is None:
         raise HTTPException(status_code=404, detail="Tournament not found")
     workspace_id = tournament.workspace_id
-    shape = await get_effective_roster_shape(session, tournament_id=tournament_id, workspace_id=workspace_id)
+    shape = await tournament_slot_shape(session, tournament_id)
     form = await session.scalar(
         sa.select(models.BalancerRegistrationForm)
         # ``flex_role_mode`` reads the schema off the current version, which is
