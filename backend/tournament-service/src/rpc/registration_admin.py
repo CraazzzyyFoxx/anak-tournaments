@@ -52,16 +52,10 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.social import SocialProvider
 from shared.rpc.identity import ensure_workspace_permission
-from shared.services.rank_snapshots import (
-    fetch_latest_ow_ranks_by_account,
-    normalize_ow_ranks_to_grid,
-)
 from shared.services.roster import roster_engine
 from src import models, schemas
 from src.core import auth
-from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
 from src.schemas.registration import (
     SubscriptionProviderConfigUpsert,
@@ -95,6 +89,7 @@ from src.services.registration import (
 from src.services.registration import service as reg_svc
 from src.services.registration import teams as team_service
 from src.services.registration.form_service import form_service, parse_form_schema
+from src.services.registration.rank_sources import native_ranks_by_registration
 from src.services.registration.realtime import emit_balancer_registrations_changed
 from src.services.registration.serializers import (
     serialize_registration,
@@ -819,22 +814,11 @@ def register(broker: Any, logger: Any) -> None:
                 include_deleted=include_deleted,
             )
             status_meta_map = await get_status_metas_map(session, workspace_id=ctx.ws_id) if registrations else None
-            # Registrations are anchored on workspace_member (eager-loaded by
-            # list_registrations); the player id is the member's player_id.
-            user_ids = [r.workspace_member.player_id for r in registrations if r.workspace_member is not None]
+            tournament = await reg_common._common_service.ensure_tournament_exists(session, ctx.id)
             grid = await reg_common._common_service.get_tournament_grid(session, ctx.id)
-            accounts_by_user = await fetch_latest_ow_ranks_by_account(session, user_ids)
-            # Per registration, prefer the player's main (non-smurf) accounts and take the max rank.
-            raw_ow_ranks_by_registration = {
-                registration.id: select_main_account_ow_ranks(
-                    accounts_by_user.get(registration.workspace_member.player_id, {}),
-                    # Extras of the battlenet identity ARE the declared smurfs.
-                    registration.handles(SocialProvider.BATTLENET)[1:],
-                )
-                for registration in registrations
-                if registration.workspace_member is not None
-            }
-            ow_ranks = normalize_ow_ranks_to_grid(raw_ow_ranks_by_registration, grid)
+            ow_ranks = await native_ranks_by_registration(
+                session, registrations, discipline_code=tournament.discipline, grid=grid
+            )
             # The form and the grid are already in hand, so the engine reuses them
             # instead of re-reading either; this is the same roster the balancer
             # payload and the draft pool are built from.

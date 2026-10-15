@@ -112,7 +112,7 @@ export type RankOverviewRow = {
   /** Resolved on the WORKSPACE effective grid, server-side, for every layer. */
   division: number | null;
   /** `effective_*` only: which layer the number was taken from. */
-  source: "author" | "workspace" | "ow" | null;
+  source: "author" | "workspace" | "native" | null;
   /** `hidden` only. */
   sigma: number | null;
   /** `casual` only: what the seat's result moved the rating by. */

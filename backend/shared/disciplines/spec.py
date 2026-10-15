@@ -8,7 +8,7 @@ IO to answer "does this game have sides". The role ontology and the team-format 
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
@@ -20,6 +20,10 @@ if TYPE_CHECKING:
 #: Pull the module's catalog source into ``catalog.entity`` (commits itself).
 CatalogSync = Callable[["AsyncSession", "CatalogImageMirror"], Awaitable[None]]
 
+#: A game's native rank layer (D87): ``players.user`` ids -> ``{user_id: {role code: rank}}``, the best rank a player
+#: holds per role of the rated dimension on the game's own ladder; the core places it on a division grid. Reads only.
+NativeRanks = Callable[["AsyncSession", Sequence[int]], Awaitable[dict[int, dict[str, int]]]]
+
 __all__ = (
     "CATALOG_KINDS",
     "CatalogSync",
@@ -27,6 +31,7 @@ __all__ = (
     "DisciplineSpec",
     "FormatDimensionSpec",
     "FormatRuleSpec",
+    "NativeRanks",
     "RoleSpec",
     "TeamFormatPreset",
 )
@@ -106,6 +111,9 @@ class DisciplineSpec:
     #: Allowed ``attrs.class`` values of a ``character``; ``()`` leaves the class unchecked.
     character_classes: tuple[str, ...] = ()
     catalog_sync: CatalogSync | None = field(default=None, compare=False)
+    #: Where a player's rank on the game's own ladder comes from (D87); ``None`` when the game has none (LoL: ranks are
+    #: entered by the organiser).
+    native_ranks: NativeRanks | None = field(default=None, compare=False)
     #: The role ontology (D31); exactly one dimension is ``rated`` (D32).
     dimensions: tuple[DimensionSpec, ...] = ()
     #: Team-format presets; the first is what an owner without a format of its own gets (D35).

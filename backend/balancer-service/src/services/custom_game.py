@@ -24,12 +24,11 @@ from shared.core.enums import (
 )
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
-from shared.disciplines import DISCIPLINES
+from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.division_grid import DEFAULT_GRID
 from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.mix_lobby import LOBBY_LETTERS
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
     CatalogEntityRepository,
@@ -601,15 +600,16 @@ class CustomGameService:
         resolved = await self.ranks.resolve(
             session,
             workspace_id=game.workspace_id,
+            discipline=game.discipline,
             members={member_id: member.player_id for member_id, member in members.items()},
-            roles=list(REGISTRATION_ROLE_CODES),
+            roles=list(rated_role_codes(game.discipline)),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
             grid=await get_effective_division_grid(session, game.workspace_id),
         )
         for member_id in members:
             seed: dict[str, int] = {}
-            for role in REGISTRATION_ROLE_CODES:
+            for role in rated_role_codes(game.discipline):
                 rank = resolved.get((member_id, role))
                 if rank is None or rank.value is None or rank.source == "author":
                     continue
@@ -1062,20 +1062,21 @@ class CustomGameService:
             resolved = await self.ranks.resolve(
                 session,
                 workspace_id=ctx.game.workspace_id,
+                discipline=ctx.game.discipline,
                 members={ctx.row.workspace_member_id: ctx.player.id if ctx.player is not None else None},
-                roles=list(REGISTRATION_ROLE_CODES),
+                roles=list(rated_role_codes(ctx.game.discipline)),
                 order=MIX_ORDER,
                 author_user_id=ctx.game.host_user_id,
                 grid=grid,
             )
             ranks: dict[str, int | None] = {}
             divisions: dict[str, dict[str, str | None] | None] = {}
-            for role in REGISTRATION_ROLE_CODES:
+            for role in rated_role_codes(ctx.game.discipline):
                 rank = resolved.get((ctx.row.workspace_member_id, role))
                 ranks[role] = rank.value if rank is not None else None
                 tier = None if ranks[role] is None else DEFAULT_GRID.resolve_division(ranks[role])
                 divisions[role] = None if tier is None else {"name": tier.name, "slug": tier.slug}
-            considered = list(stored) if explicit else list(REGISTRATION_ROLE_CODES)
+            considered = list(stored) if explicit else list(rated_role_codes(ctx.game.discipline))
             unranked = [role for role in considered if ranks.get(role) is None]
             seat = {
                 "participation": ctx.row.participation,
@@ -1369,8 +1370,9 @@ class CustomGameService:
         resolved = await self.ranks.resolve(
             session,
             workspace_id=game.workspace_id,
+            discipline=game.discipline,
             members={member.member_id: member.player_id for member in members.values()},
-            roles=list(REGISTRATION_ROLE_CODES),
+            roles=list(rated_role_codes(game.discipline)),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
             grid=await get_effective_division_grid(session, game.workspace_id),
@@ -1383,7 +1385,7 @@ class CustomGameService:
             roles = stored.get(row.id, []) if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT else None
             ranks = {
                 role: found.value
-                for role in REGISTRATION_ROLE_CODES
+                for role in rated_role_codes(game.discipline)
                 if (found := resolved.get((member_id, role))) is not None and found.value is not None
             }
             # The role they come for: the first they named or -- playing
@@ -1566,8 +1568,9 @@ class CustomGameService:
         resolved = await self.ranks.resolve(
             session,
             workspace_id=game.workspace_id,
+            discipline=game.discipline,
             members={member_id: member.player_id for member_id, member in members.items()},
-            roles=list(REGISTRATION_ROLE_CODES),
+            roles=list(rated_role_codes(game.discipline)),
             # ``MIX_ORDER`` puts the host's own book above the workspace canon: a
             # mix balances on this host's read of these players, not the official one.
             order=MIX_ORDER,
@@ -1593,7 +1596,7 @@ class CustomGameService:
             member = members[row.workspace_member_id]
             classes: dict[str, Any] = {}
             explicit = row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
-            role_order = explicit_roles.get(row.id, []) if explicit else REGISTRATION_ROLE_CODES
+            role_order = explicit_roles.get(row.id, []) if explicit else rated_role_codes(game.discipline)
             # An explicit empty list means no playable role; it never falls back.
             for priority, role in enumerate(role_order, start=1):
                 rank = ranks.get((member.member_id, role))

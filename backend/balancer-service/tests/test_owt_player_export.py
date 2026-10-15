@@ -224,7 +224,7 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
                 3100,
                 is_primary=True,
                 subrole="tank_main_tank",
-                source="ow",
+                source="native",
                 top_heroes=(HeroRef(id=3, slug="dva", image_path="/dva.png"),),
             ),
         ),
@@ -242,7 +242,7 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
         {
             "role": {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"},
             "rank": 3100,
-            "source": "ow",
+            "source": "native",
             "is_primary": True,
             "priority": 0,
             "playable": True,

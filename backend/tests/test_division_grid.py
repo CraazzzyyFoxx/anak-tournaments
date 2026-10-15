@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from shared.division_grid import DivisionGrid, DivisionTier
-from shared.services.rank_snapshots import normalize_ow_ranks_to_grid
+from shared.division_grid import DivisionGrid, DivisionTier, normalize_native_ranks_to_grid
 
 
 def _tier(number: int, name: str, rank_min: int, ow_lo: int, ow_hi: int) -> DivisionTier:
@@ -64,7 +63,7 @@ def test_inverted_top_division_produces_ow_rank_value_for_delta() -> None:
     # End-to-end: a Champion player normalises to the top division's rank_min (2000),
     # so the rank-delta against a 700 registration is computed instead of dropped.
     grid = _grid_with_inverted_top()
-    mapped = normalize_ow_ranks_to_grid({42: {"support": 4900}}, grid)
+    mapped = normalize_native_ranks_to_grid({42: {"support": 4900}}, grid)
     assert mapped == {42: {"support": 2000}}
 
 
@@ -103,5 +102,5 @@ def test_unconfigured_default_scale_maps_ow_ranks() -> None:
     # End-to-end with the shared normalizer: an unconfigured grid no longer
     # drops every OW rank (the regression behind the empty rank-autofill).
     grid = _grid_without_ow_mapping()
-    mapped = normalize_ow_ranks_to_grid({42: {"support": 3050}}, grid)
+    mapped = normalize_native_ranks_to_grid({42: {"support": 3050}}, grid)
     assert mapped == {42: {"support": 3000}}

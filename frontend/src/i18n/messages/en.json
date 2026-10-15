@@ -1296,7 +1296,7 @@
       "sources": {
         "author": "Author",
         "workspace": "Workspace",
-        "ow": "Overwatch"
+        "native": "Overwatch"
       },
       "filters": {
         "layer": "Layer",
@@ -6013,13 +6013,13 @@
     "rankSource": {
       "registration": "Declared on registration",
       "workspace": "Workspace rank",
-      "ow": "Overwatch rank",
+      "native": "Overwatch rank",
       "none": "No rank source"
     },
     "rankSourceShort": {
       "registration": "REG",
       "workspace": "WS",
-      "ow": "OW",
+      "native": "OW",
       "none": "?"
     },
     "rank": "Rank",

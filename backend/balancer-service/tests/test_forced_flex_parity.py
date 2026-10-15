@@ -95,6 +95,7 @@ def _resolve(case: dict[str, Any], mode: str) -> PlayerRoster:
             form=_flex_form(mode),
             grid=DEFAULT_GRID,
             role_codes=("tank", "damage", "support"),
+            discipline="overwatch",
         )
     )
     return rosters[1]

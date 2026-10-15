@@ -15,6 +15,7 @@ from shared.disciplines.spec import (
     DisciplineSpec,
     FormatDimensionSpec,
     FormatRuleSpec,
+    NativeRanks,
     RoleSpec,
     TeamFormatPreset,
 )
@@ -26,9 +27,11 @@ __all__ = (
     "DisciplineSpec",
     "FormatDimensionSpec",
     "FormatRuleSpec",
+    "NativeRanks",
     "RoleSpec",
     "TeamFormatPreset",
     "discipline",
+    "rated_role_codes",
 )
 
 DISCIPLINES: dict[str, DisciplineSpec] = {spec.code: spec for spec in (_OVERWATCH, _LOL)}
@@ -40,3 +43,8 @@ def discipline(code: str) -> DisciplineSpec:
     Unknown is not an error: ``catalog.discipline`` is the authority on which codes exist, and refusing here would take
     down every encounter of it."""
     return DISCIPLINES.get(code) or DisciplineSpec(code, code, ())
+
+
+def rated_role_codes(code: str) -> tuple[str, ...]:
+    """The module roles of ``code``'s rated dimension in declaration order: what ranks are kept on (D32, D87)."""
+    return tuple(role.code for role in discipline(code).rated_dimension.roles)

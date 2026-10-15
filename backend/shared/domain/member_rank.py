@@ -1,7 +1,7 @@
 """Rank layering: which of a member's several rank sources wins.
 
 Replaces the four-argument ``pick_rank`` that hard-coded one precedence
-(``override > host > canon > ow``) for one caller. Callers now pass the layers
+(``override > host > canon > native``) for one caller. Callers now pass the layers
 in their own order, because the two contexts genuinely disagree: a mix trusts
 the host's private book above the workspace canon, a tournament trusts the
 number the organiser put on the registration.
@@ -24,8 +24,8 @@ __all__ = ("RankScope", "RankSource", "ResolvedRank", "pick_rank")
 #: ``author``       -- one account's private book (its own mixes only)
 #: ``registration`` -- the number on the tournament registration
 #: ``workspace``    -- the workspace canon, visible to everyone
-#: ``ow``           -- latest Overwatch snapshot, normalised to the division grid
-RankScope = Literal["author", "registration", "workspace", "ow"]
+#: ``native``       -- the game's own ladder (the module's ``native_ranks``), normalised to the division grid
+RankScope = Literal["author", "registration", "workspace", "native"]
 
 RankSource = RankScope | Literal["none"]
 

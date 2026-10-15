@@ -140,6 +140,7 @@ async def _resolve(
         form=form,
         grid=_GRID,
         role_codes=("tank", "damage", "support"),
+        discipline="overwatch",
     )
     return rosters[registration.id]
 

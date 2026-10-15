@@ -482,6 +482,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             resolved = await member_rank_service.resolve(
                 session,
                 workspace_id=self.workspace_id,
+                discipline="overwatch",
                 members={self.member_id: self.player_id},
                 roles=ROLES,
                 order=TOURNAMENT_ORDER,
@@ -497,6 +498,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             resolved = await member_rank_service.resolve(
                 session,
                 workspace_id=self.workspace_id,
+                discipline="overwatch",
                 members={self.member_id: self.player_id},
                 roles=ROLES,
                 order=MIX_ORDER,

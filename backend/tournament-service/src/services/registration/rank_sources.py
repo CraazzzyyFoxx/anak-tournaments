@@ -22,13 +22,14 @@ from sqlalchemy.orm import aliased, selectinload
 from shared.core import enums
 from shared.core.social import SocialProvider
 from shared.disciplines import discipline
-from shared.division_grid import DivisionGrid
+from shared.division_grid import DivisionGrid, normalize_native_ranks_to_grid
 from shared.repository import (
     BalancerRegistrationRepository,
     SocialAccountRepository,
     TournamentRepository,
 )
 from shared.schemas.role import RoleRef
+from shared.services import rank_snapshots
 from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
@@ -36,8 +37,40 @@ from shared.services.division_grid.normalization import (
 )
 from shared.services.roster import registration_load_options
 from src import models
+from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
 
-__all__ = ("primary_battlenet_key", "rank_sources_service")
+__all__ = ("native_ranks_by_registration", "primary_battlenet_key", "rank_sources_service")
+
+
+async def native_ranks_by_registration(
+    session: AsyncSession,
+    registrations: Sequence[Any],
+    *,
+    discipline_code: str,
+    grid: DivisionGrid,
+) -> dict[int, dict[str, int]]:
+    """Each registration's OverFast ranks -- main accounts preferred, the best per role -- placed on ``grid``.
+
+    The OverFast twin of Overwatch's native layer (Deviation 5): a discipline whose module declares no native layer gets
+    nothing, so a LoL registrant's linked BattleTag never reads as a LoL rank (D87; scan F4).
+    """
+    if discipline(discipline_code).native_ranks is None:
+        return {}
+    members = [registration for registration in registrations if registration.workspace_member is not None]
+    accounts_by_user = await rank_snapshots.fetch_latest_ow_ranks_by_account(
+        session, [registration.workspace_member.player_id for registration in members]
+    )
+    return normalize_native_ranks_to_grid(
+        {
+            registration.id: select_main_account_ow_ranks(
+                accounts_by_user.get(registration.workspace_member.player_id, {}),
+                # Extras of the battlenet identity ARE the declared smurfs.
+                registration.handles(SocialProvider.BATTLENET)[1:],
+            )
+            for registration in members
+        },
+        grid,
+    )
 
 
 def primary_battlenet_key(registration: models.BalancerRegistration) -> str | None:

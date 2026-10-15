@@ -251,7 +251,7 @@ class BalancerRegistrationRoleRead(BaseModel):
     priority: int = 0
     is_primary: bool = False
     rank_value: int | None = None
-    rank_source: Literal["registration", "workspace", "ow", "none"] = "none"
+    rank_source: Literal["registration", "workspace", "native", "none"] = "none"
     #: Playability, not the checkbox: the role is active AND the rank resolver
     #: found a number for it. This is exactly what the balancer and the draft
     #: act on -- the one predicate, reported once.

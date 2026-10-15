@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.core.social import SocialProvider
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
 from shared.domain.roster import PlayerRoster
 from shared.services.roster import roster_engine
@@ -54,6 +55,14 @@ class _ResolvedAutofillStage:
     lookback_tournaments: int | None = None
     lookback_days: int | None = None
     ow_value: str = "composite"
+
+
+def autofill_sources(enabled: set[str], discipline_code: str | None) -> set[str]:
+    """The enabled stages a tournament of ``discipline_code`` can draw on: the OverFast ``ow`` stage reads Overwatch's
+    native layer (D87), so a game whose module declares none never gets an OW candidate (scan F4)."""
+    if discipline_code is None or discipline(discipline_code).native_ranks is None:
+        return enabled - {"ow"}
+    return enabled
 
 
 def _rank_snapshot_payload(snapshot: models.UserRankSnapshot | _RankData | Any | None) -> dict[str, Any]:
@@ -360,6 +369,7 @@ class RankAutofillService:
 
         now = datetime.now(UTC)
         tournament = await self.rank_sources._load_tournament_for_autofill(session, tournament_id)
+        enabled_sources = autofill_sources(enabled_sources, getattr(tournament, "discipline", None))
         grid = DivisionGrid.from_version(tournament.division_grid_version if tournament else None)
         # Loop-invariant: one autofill run is scoped to one tournament, and every
         # inherited rank layer below is read through its workspace.

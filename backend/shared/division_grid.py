@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -256,3 +257,20 @@ def division_filter_predicates(
     if rank_max is not None:
         preds.append(rank_column <= rank_max)
     return preds
+
+
+def normalize_native_ranks_to_grid(
+    raw_by_user: Mapping[int, Mapping[str, int]],
+    grid: DivisionGrid,
+) -> dict[int, dict[str, int]]:
+    """Place native ranks on ``grid``: each becomes the ``rank_min`` of the tier whose native range holds it.
+
+    A value outside every configured tier is dropped, so callers leave it ``None`` and compute no spurious delta.
+    """
+    out: dict[int, dict[str, int]] = {}
+    for user_id, by_role in raw_by_user.items():
+        for role, native_rank in by_role.items():
+            tier = grid.resolve_division_from_ow_rank(native_rank)
+            if tier is not None:
+                out.setdefault(user_id, {})[role] = tier.rank_min
+    return out

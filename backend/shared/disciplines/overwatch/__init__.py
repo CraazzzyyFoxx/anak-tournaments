@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from shared.disciplines.spec import (
@@ -27,6 +28,13 @@ async def _catalog_sync(session: AsyncSession, images: CatalogImageMirror) -> No
     from shared.disciplines.overwatch.catalog_sync import sync_catalog
 
     await sync_catalog(session, images)
+
+
+async def _native_ranks(session: AsyncSession, user_ids: Sequence[int]) -> dict[int, dict[str, int]]:
+    # Imported on call, like the catalog sync: the snapshot read loads models the pure domain must not.
+    from shared.disciplines.overwatch.ranks import native_ranks
+
+    return await native_ranks(session, user_ids)
 
 
 PLAYER_ROLE = DimensionSpec(
@@ -61,6 +69,7 @@ SPEC = DisciplineSpec(
     # Never "flex": flex is a slot without a constraint (D86), not a hero's class.
     character_classes=("tank", "damage", "support"),
     catalog_sync=_catalog_sync,
+    native_ranks=_native_ranks,
     dimensions=(PLAYER_ROLE,),
     team_format_presets=(ROLE_QUEUE_5V5,),
 )

@@ -50,7 +50,7 @@ RankLayer = Literal[
 #: Where an effective value actually came from -- the resolver's own vocabulary
 #: (``shared.domain.member_rank.RankScope``), minus the layers the two effective
 #: orders never consult.
-RankSource = Literal["author", "workspace", "ow"]
+RankSource = Literal["author", "workspace", "native"]
 
 
 class RankContext(BaseModel):

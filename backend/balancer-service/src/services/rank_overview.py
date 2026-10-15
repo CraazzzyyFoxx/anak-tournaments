@@ -9,9 +9,9 @@ assemble in Python and then slice.
 The two *effective* layers are computed here in SQL rather than read from a
 table, and they must agree with :meth:`MemberRankService.resolve` -- the resolver
 the balancer actually runs on. ``effective_tournament`` is
-``TOURNAMENT_ORDER`` without the registration layer (workspace canon, then OW
+``TOURNAMENT_ORDER`` without the registration layer (workspace canon, then the native layer
 normalised to the **workspace** grid); ``effective_mix`` is ``MIX_ORDER`` (the
-author's book, then the canon, then OW normalised to the same workspace grid).
+author's book, then the canon, then the native layer normalised to the same workspace grid).
 ``tests/test_rank_overview.py`` pins that parity.
 """
 
@@ -364,7 +364,7 @@ def _branches(
                     rank_value=value,
                     source=sa.case(
                         (canon.c.rank_value.is_not(None), sa.literal("workspace")),
-                        (ow_ws.is_not(None), sa.literal("ow")),
+                        (ow_ws.is_not(None), sa.literal("native")),
                     ),
                 )
             )
@@ -393,7 +393,7 @@ def _branches(
                     source=sa.case(
                         (mix_book.c.rank_value.is_not(None), sa.literal("author")),
                         (canon.c.rank_value.is_not(None), sa.literal("workspace")),
-                        (ow_mix.is_not(None), sa.literal("ow")),
+                        (ow_mix.is_not(None), sa.literal("native")),
                     ),
                 )
             )

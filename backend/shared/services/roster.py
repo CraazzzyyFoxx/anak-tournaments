@@ -34,7 +34,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core.social import SocialProvider
-from shared.disciplines import DISCIPLINES
+from shared.disciplines import rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.domain.member_rank import RankScope, ResolvedRank
 from shared.domain.player_sub_roles import workspace_sub_role_slug
@@ -167,7 +167,8 @@ class RosterEngine:
             registrations,
             workspace_id=tournament.workspace_id,
             tournament_id=tournament_id,
-            role_codes=tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles),
+            discipline=tournament.discipline,
+            role_codes=rated_role_codes(tournament.discipline),
         )
 
     async def pool_ids(self, session: AsyncSession, tournament_id: int, registration_ids: Sequence[int]) -> set[int]:
@@ -200,6 +201,7 @@ class RosterEngine:
         order: Sequence[RankScope] = TOURNAMENT_ORDER,
         author_user_id: int | None = None,
         role_codes: Sequence[str] | None = None,
+        discipline: str | None = None,
     ) -> dict[int, PlayerRoster]:
         """Resolve already-loaded registrations. Rows must carry
         :func:`registration_load_options`.
@@ -211,9 +213,10 @@ class RosterEngine:
             return {}
         if tournament_id is None:
             tournament_id = next((reg.tournament_id for reg in registrations), None)
-        if role_codes is None:
+        if role_codes is None or discipline is None:
             tournament = await self.tournaments.get(session, tournament_id)
-            role_codes = tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles)
+            discipline = discipline or tournament.discipline
+            role_codes = role_codes or rated_role_codes(discipline)
         if form is None and tournament_id is not None:
             form = await session.scalar(
                 sa.select(BalancerRegistrationForm)
@@ -232,6 +235,7 @@ class RosterEngine:
             registrations,
             declared=declared,
             workspace_id=workspace_id,
+            discipline=discipline,
             grid=grid,
             order=order,
             author_user_id=author_user_id,
@@ -280,6 +284,7 @@ class RosterEngine:
         *,
         declared: Mapping[int, tuple[BalancerRegistrationRole | str, ...]],
         workspace_id: int | None,
+        discipline: str,
         grid: DivisionGrid | None,
         order: Sequence[RankScope],
         author_user_id: int | None,
@@ -287,8 +292,8 @@ class RosterEngine:
         """``{registration_id: {role: ResolvedRank}}`` under ``order``.
 
         The registration's own number is one layer among several: an empty
-        ``rank_value`` *inherits* the workspace canon and then the latest
-        Overwatch snapshot rather than reading as "unranked". Without a workspace
+        ``rank_value`` *inherits* the workspace canon and then the discipline's native ladder
+        rather than reading as "unranked". Without a workspace
         (no tournament in hand) or without a member (no identity to inherit
         through) only that own layer exists.
         """
@@ -318,6 +323,7 @@ class RosterEngine:
         resolved = await self.ranks.resolve(
             session,
             workspace_id=workspace_id,
+            discipline=discipline,
             members=await self._players_by_member(
                 session, workspace_id=workspace_id, member_ids=list(member_of.values())
             ),

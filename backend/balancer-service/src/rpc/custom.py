@@ -53,9 +53,8 @@ from shared import models
 from shared.core import http_status as status
 from shared.core.enums import MixRoleSelectionMode
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.disciplines import DISCIPLINES
+from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.domain.custom_game_round import winner_slot
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.schemas.role import RoleRef
 from shared.services import discord_messages
 from shared.services.discord_client import DiscordClient
@@ -194,7 +193,7 @@ def _dump_row(
 ) -> dict[str, Any]:
     effective = {
         role: resolved[(row.workspace_member_id, role)]
-        for role in REGISTRATION_ROLE_CODES
+        for role in rated_role_codes(discipline)
         if resolved.get((row.workspace_member_id, role)) is not None
         and resolved[(row.workspace_member_id, role)].value is not None
     }
@@ -220,7 +219,7 @@ def _dump_row(
         ]
         if roles is not None
         else None,
-        # The ranks balance would actually use: host book > workspace canon > OW.
+        # The ranks balance would actually use: host book > workspace canon > native.
         "ranks": {role: rank.value for role, rank in effective.items()},
         # Which of those three a value came from, so the sheet can say whether it
         # is showing this host's own number or the workspace's.
@@ -229,7 +228,7 @@ def _dump_row(
         # without it "my rank" would be indistinguishable from an inherited one.
         "author_ranks": {
             role: author_ranks[(row.workspace_member_id, role)]
-            for role in REGISTRATION_ROLE_CODES
+            for role in rated_role_codes(discipline)
             if (row.workspace_member_id, role) in author_ranks
         },
     }
@@ -416,7 +415,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     Without the name a client only has member ids and has to guess from a
     separately paginated roster query. Without the source and the host's own
     layer, "2600" could equally be this host's number, the workspace canon or
-    an Overwatch snapshot, and the sheet could not say which it is about to
+    the game's native ladder, and the sheet could not say which it is about to
     overwrite.
     """
     # One read for both halves of the workspace's Discord binding: the channel
@@ -474,8 +473,9 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     resolved = await custom_game_service.ranks.resolve(
         session,
         workspace_id=game.workspace_id,
+        discipline=game.discipline,
         members={member_id: member.player_id for member_id, member in members.items()},
-        roles=list(REGISTRATION_ROLE_CODES),
+        roles=list(rated_role_codes(game.discipline)),
         order=MIX_ORDER,
         author_user_id=game.host_user_id,
         grid=await get_effective_division_grid(session, game.workspace_id),

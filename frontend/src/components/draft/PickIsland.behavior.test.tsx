@@ -443,10 +443,10 @@ describe("role tiles", () => {
   });
 
   it("labels a rank the registration did not declare with its source", async () => {
-    const { body } = await open({ subject: player({ role_ranks: { support: 2814 }, role_sources: { support: "ow" } }) });
+    const { body } = await open({ subject: player({ role_ranks: { support: 2814 }, role_sources: { support: "native" } }) });
 
-    expect(body.innerHTML).toContain("rankSourceShort.ow");
-    expect(body.innerHTML).toContain("rankSource.ow");
+    expect(body.innerHTML).toContain("rankSourceShort.native");
+    expect(body.innerHTML).toContain("rankSource.native");
   });
 
   it("explains a player left without any role", async () => {

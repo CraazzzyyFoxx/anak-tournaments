@@ -18,7 +18,7 @@ export type BalancerRoleCode = Exclude<PlayerRoleSlotCode, "flex">;
 export type BalancerRosterKey = PlayerRoleOption;
 export type BalancerRoleSubtype = string;
 /** Layers a registration role's rank can resolve from, strongest first. */
-export type RegistrationRankSource = "registration" | "workspace" | "ow" | "none";
+export type RegistrationRankSource = "registration" | "workspace" | "native" | "none";
 
 
 export interface BalancerPlayerRecord {

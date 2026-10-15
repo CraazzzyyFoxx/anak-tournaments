@@ -73,7 +73,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     participation: "pool",
     roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
     ranks: { tank: 3300, damage: 2700, support: 2900 },
-    rank_sources: { tank: "author", damage: "workspace", support: "ow" },
+    rank_sources: { tank: "author", damage: "workspace", support: "native" },
     author_ranks: { tank: 3300 },
     ...overrides,
   };

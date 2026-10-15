@@ -99,6 +99,7 @@ def _resolve(roles: list[BalancerRegistrationRole], *, mode: str | None = None) 
             form=_form(None if mode is None else {"flex_mode": mode}),
             grid=DEFAULT_GRID,
             role_codes=("tank", "damage", "support"),
+            discipline="overwatch",
         )
     )
     return rosters[1]

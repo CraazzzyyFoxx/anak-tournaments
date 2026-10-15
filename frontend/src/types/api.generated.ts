@@ -73712,7 +73712,7 @@ export enum BalancerRankOverviewRowLayer {
 export enum BalancerRankOverviewRowSourceAnyOf0 {
     author = "author",
     workspace = "workspace",
-    ow = "ow"
+    native = "native"
 }
 export enum BalancerUserMixPreferencesReadRating_mode {
     points = "points",
@@ -73803,7 +73803,7 @@ export enum TournamentBalancerRegistrationReadSource {
 export enum TournamentBalancerRegistrationRoleReadRank_source {
     registration = "registration",
     workspace = "workspace",
-    ow = "ow",
+    native = "native",
     none = "none"
 }
 export enum TournamentBalancerRegistrationStatusCreateScope {

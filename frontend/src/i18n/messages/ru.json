@@ -1296,7 +1296,7 @@
       "sources": {
         "author": "Автор",
         "workspace": "Воркспейс",
-        "ow": "Overwatch"
+        "native": "Overwatch"
       },
       "filters": {
         "layer": "Слой",
@@ -6013,13 +6013,13 @@
     "rankSource": {
       "registration": "Указан в заявке",
       "workspace": "Ранг из воркспейса",
-      "ow": "Ранг из Overwatch",
+      "native": "Ранг из Overwatch",
       "none": "Источник ранга неизвестен"
     },
     "rankSourceShort": {
       "registration": "ЗАЯВ",
       "workspace": "ВРКС",
-      "ow": "OW",
+      "native": "OW",
       "none": "?"
     },
     "rank": "Рейтинг",

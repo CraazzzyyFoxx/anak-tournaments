@@ -27140,7 +27140,7 @@
               "enum": [
                 "author",
                 "workspace",
-                "ow"
+                "native"
               ],
               "type": "string"
             },
@@ -36380,7 +36380,7 @@
           "enum": [
             "registration",
             "workspace",
-            "ow",
+            "native",
             "none"
           ],
           "title": "Rank Source",

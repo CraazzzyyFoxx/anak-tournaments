@@ -4,12 +4,12 @@ import type { RoleRef } from "@/lib/roster/team-format";
 import type { DiscordVoicePermission } from "@/types/discord.types";
 
 /** Where an effective rank came from, strongest first. */
-export type RankSource = "author" | "workspace" | "ow";
+export type RankSource = "author" | "workspace" | "native";
 
 export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
   author: "Mine",
   workspace: "Workspace",
-  ow: "Overwatch",
+  native: "Overwatch",
 };
 
 /**
