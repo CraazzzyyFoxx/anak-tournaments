@@ -34,6 +34,7 @@ import asyncio
 from datetime import timedelta
 from typing import Any
 
+import sqlalchemy as sa
 from cashews import cache
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
@@ -618,7 +619,10 @@ def register(broker: Any, logger: Any) -> None:
             form = await reg_common._common_service.get_registration_form(session, tournament_id)
             if form is None:
                 return None
-            subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id)
+            discipline = await session.scalar(
+                sa.select(models.Tournament.discipline).where(models.Tournament.id == form.tournament_id)
+            )
+            subrole_catalog = await resolve_subrole_catalog(session, form.workspace_id, discipline=discipline)
             # The rule is the workspace's now; fetched once here so the sync serializer
             # below stays free of round trips.
             requirement = await subscription_config.subscription_config_service.load_workspace_requirement_blob(
@@ -749,6 +753,7 @@ def register(broker: Any, logger: Any) -> None:
                 # registration's only identity anchor since dbarch02).
                 player_id=reg.workspace_member.player_id if reg.workspace_member is not None else None,
                 workspace_id=form.workspace_id,
+                discipline=reg.tournament.discipline,
                 hero_catalog=hero_catalog,
             )
 

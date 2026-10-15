@@ -119,6 +119,7 @@ def _validate(
                 enforce_required=enforce_required,
                 player_id=player_id,
                 workspace_id=1,
+                discipline="overwatch",
                 hero_catalog=None,
             )
         )

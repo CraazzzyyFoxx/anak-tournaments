@@ -12,7 +12,7 @@ schema name — `ranks/` writes to `overwatch_rank` and `ingestion/` to `log_pro
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`discipline01`** (115 revisions in `backend/migrations/versions/`).
+Alembic head: **`discipline01b`** (116 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -466,6 +466,7 @@ erDiagram
         bigint default_division_grid_version_id FK "nullable"
         bigint quota_plan_id FK "nullable"
         jsonb default_roster_slots_json "nullable"
+        varchar(32)[] disciplines_enabled
         varchar(16) newcomer_scope
     }
     PUBLIC_WORKSPACE_MEMBER {
@@ -620,12 +621,42 @@ erDiagram
         bigint legacy_id PK
         bigint entity_id FK
     }
+    CATALOG_ROLE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint dimension_id FK
+        bigint workspace_id FK "nullable"
+        bigint parent_role_id FK "nullable"
+        varchar(64) code
+        varchar(128) name
+        text description "nullable"
+        boolean selectable
+        boolean active
+        int sort_order
+        jsonb attrs
+    }
+    CATALOG_ROLE_DIMENSION {
+        bigint id PK
+        varchar(32) discipline FK
+        varchar(32) code
+        varchar(64) name
+        varchar(8) selection_mode
+        boolean rated
+        boolean active
+        int sort_order
+    }
 
     CATALOG_DISCIPLINE ||--o{ CATALOG_ALIAS_MISS : "discipline"
     CATALOG_DISCIPLINE ||--o{ CATALOG_ENTITY : "discipline"
+    CATALOG_DISCIPLINE ||--o{ CATALOG_ROLE_DIMENSION : "discipline"
     CATALOG_ENTITY |o--o{ CATALOG_ENTITY : "parent_id"
     CATALOG_ENTITY ||--o{ CATALOG_ENTITY : "discipline"
     CATALOG_ENTITY ||--o{ CATALOG_ENTITY_LEGACY : "entity_id"
+    CATALOG_ROLE |o--o{ CATALOG_ROLE : "parent_role_id"
+    CATALOG_ROLE ||--o{ CATALOG_ROLE : "dimension_id"
+    CATALOG_ROLE_DIMENSION ||--o{ CATALOG_ROLE : "dimension_id"
+    PUBLIC_WORKSPACE |o--o{ CATALOG_ROLE : "workspace_id"
 ```
 
 Composite unique keys:
@@ -636,6 +667,9 @@ Composite unique keys:
 - `CATALOG_ENTITY` unique on (`id`, `discipline`, `kind`)
 - `CATALOG_ENTITY` unique on (`discipline`, `kind`, `name`)
 - `CATALOG_ENTITY` unique on (`discipline`, `kind`, `slug`)
+- `CATALOG_ROLE` unique on (`id`, `dimension_id`)
+- `CATALOG_ROLE_DIMENSION` unique on (`discipline`, `code`)
+- `CATALOG_ROLE_DIMENSION` unique on (`id`, `discipline`)
 <!-- /ERD:auto -->
 
 ## division_grid — `public`
@@ -1021,18 +1055,6 @@ erDiagram
         bigint workspace_member_id FK
         bigint team_id FK
     }
-    TOURNAMENT_PLAYER_SUB_ROLE {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint workspace_id FK
-        varchar(64) role
-        varchar(128) slug
-        varchar(128) label
-        text description "nullable"
-        int sort_order
-        boolean is_active
-    }
     TOURNAMENT_RECALCULATION_STATE {
         bigint tournament_id PK,FK
         bigint requested_generation
@@ -1246,7 +1268,6 @@ erDiagram
     ENCOUNTER_SCORING_RULE ||--o{ TOURNAMENT_STAGE : "scoring_rule_id"
     PLAYERS_USER |o--o{ TOURNAMENT_TEAM : "captain_id"
     PUBLIC_DIVISION_GRID_VERSION |o--o{ TOURNAMENT_TOURNAMENT : "division_grid_version_id"
-    PUBLIC_WORKSPACE ||--o{ TOURNAMENT_PLAYER_SUB_ROLE : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ TOURNAMENT_SCRIM_ROOM : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ TOURNAMENT_TOURNAMENT : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ TOURNAMENT_PLAYER : "workspace_member_id"
@@ -1314,7 +1335,6 @@ Composite unique keys:
 - `TOURNAMENT_PICK_BAN_CONFIG_ITEM` unique on (`pick_ban_config_id`, `item_id`)
 - `TOURNAMENT_PICK_BAN_CONFIG_SLOT` unique on (`pick_ban_config_id`, `position`)
 - `TOURNAMENT_PICK_BAN_CONFIG_SLOT_ITEM` unique on (`pick_ban_config_slot_id`, `item_id`)
-- `TOURNAMENT_PLAYER_SUB_ROLE` unique on (`workspace_id`, `role`, `slug`)
 - `TOURNAMENT_STAGE` unique on (`id`, `tournament_id`)
 - `TOURNAMENT_STAGE_ITEM` unique on (`id`, `stage_id`)
 - `TOURNAMENT_STAGE_ITEM_INPUT` unique on (`stage_item_id`, `slot`)

@@ -6878,6 +6878,14 @@
           }
         },
         {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "Discipline code; defaults to overwatch.",
+            "type": "string"
+          }
+        },
+        {
           "name": "role",
           "required": false,
           "schema": {
@@ -44229,6 +44237,11 @@
           "default": null,
           "title": "Description"
         },
+        "discipline": {
+          "default": "overwatch",
+          "title": "Discipline",
+          "type": "string"
+        },
         "is_active": {
           "default": true,
           "title": "Is Active",
@@ -44285,6 +44298,14 @@
           ],
           "title": "Description"
         },
+        "dimension": {
+          "title": "Dimension",
+          "type": "string"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -44317,6 +44338,8 @@
       "required": [
         "id",
         "workspace_id",
+        "discipline",
+        "dimension",
         "role",
         "slug",
         "label",

@@ -95,7 +95,7 @@ class SheetSyncIdentityWiringTests(IsolatedAsyncioTestCase):
             last_sync_status=None,
             last_error=None,
         )
-        tournament = SimpleNamespace(id=77, workspace_id=1)
+        tournament = SimpleNamespace(id=77, workspace_id=1, discipline="overwatch")
         rows = [["BattleTag"], ["Existing#1111"]]
         parsed = SimpleNamespace(
             fields={
@@ -121,6 +121,7 @@ class SheetSyncIdentityWiringTests(IsolatedAsyncioTestCase):
             patch.multiple(
                 reg_admin,
                 fetch_google_sheet_rows=AsyncMock(return_value=rows),
+                resolve_subrole_catalog=AsyncMock(return_value={}),
                 parse_sheet_row_detailed=Mock(return_value=parsed),
                 build_registration_role_payloads=Mock(return_value=[]),
                 replace_registration_roles=Mock(),

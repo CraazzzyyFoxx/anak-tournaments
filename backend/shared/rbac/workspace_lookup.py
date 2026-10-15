@@ -126,7 +126,9 @@ async def get_player_workspace_id(session: AsyncSession, player_id: int) -> int:
 
 async def get_player_sub_role_workspace_id(session: AsyncSession, sub_role_id: int) -> int:
     workspace_id = await session.scalar(
-        sa.select(models.PlayerSubRole.workspace_id).where(models.PlayerSubRole.id == sub_role_id)
+        sa.select(models.CatalogRole.workspace_id).where(
+            models.CatalogRole.id == sub_role_id, models.CatalogRole.workspace_id.is_not(None)
+        )
     )
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player sub-role not found")

@@ -121,7 +121,12 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.admin.list#player_sub_role": Op(
         response=schemas.PlayerSubRoleRead,
         response_array=True,
-        query_params=(_WS, QueryParam("role"), QueryParam("include_inactive", "boolean")),
+        query_params=(
+            _WS,
+            QueryParam("discipline", description="Discipline code; defaults to overwatch."),
+            QueryParam("role"),
+            QueryParam("include_inactive", "boolean"),
+        ),
     ),
     "rpc.tournament.admin.list#tournament_link": Op(
         response=schemas.TournamentLinkRead,

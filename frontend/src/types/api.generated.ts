@@ -25812,6 +25812,11 @@ export interface components {
              */
             description: string | null;
             /**
+             * Discipline
+             * @default overwatch
+             */
+            discipline: string;
+            /**
              * Is Active
              * @default true
              */
@@ -25837,6 +25842,10 @@ export interface components {
         "tournament.PlayerSubRoleRead": {
             /** Description */
             description: string | null;
+            /** Dimension */
+            dimension: string;
+            /** Discipline */
+            discipline: string;
             /** Id */
             id: number;
             /** Is Active */
@@ -51679,6 +51688,7 @@ export interface operations {
         parameters: {
             query?: {
                 workspace_id?: number;
+                discipline?: string;
                 role?: string;
                 include_inactive?: boolean;
             };

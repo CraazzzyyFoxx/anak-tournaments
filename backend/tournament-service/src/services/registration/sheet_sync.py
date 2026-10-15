@@ -282,7 +282,7 @@ class SheetSyncService:
         value_mapping_json: dict[str, Any] | None = None,
     ) -> None:
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
-        catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
+        catalog = await resolve_subrole_catalog(session, tournament.workspace_id, discipline=tournament.discipline)
         schema = await self._registration_schema(session, tournament_id)
         target_specs = target_spec_map(schema)
         header_keys = await _resolve_header_keys(source_url, existing_feed)
@@ -400,7 +400,9 @@ class SheetSyncService:
             schema,
             value_mapping=feed.value_mapping_json if feed else None,
             header_keys=header_keys,
-            subrole_catalog=await resolve_subrole_catalog(session, tournament.workspace_id),
+            subrole_catalog=await resolve_subrole_catalog(
+                session, tournament.workspace_id, discipline=tournament.discipline
+            ),
         )
 
     async def preview_google_sheet_mapping(
@@ -428,7 +430,9 @@ class SheetSyncService:
         effective_mapping = mapping_config_json or (feed.mapping_config_json if feed else None)
         effective_value_mapping = value_mapping_json or (feed.value_mapping_json if feed else None)
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
-        subrole_catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
+        subrole_catalog = await resolve_subrole_catalog(
+            session, tournament.workspace_id, discipline=tournament.discipline
+        )
 
         known_source_keys, known_handle_keys = await self._existing_match_keys(session, tournament_id, feed)
 
@@ -530,6 +534,7 @@ class SheetSyncService:
         *,
         schema: FormSchema,
         workspace_id: int,
+        discipline: str,
     ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
         """One row's answers validated against the form, or ``None`` + its errors.
 
@@ -557,6 +562,7 @@ class SheetSyncService:
                 enforce_required=False,
                 player_id=None,
                 workspace_id=workspace_id,
+                discipline=discipline,
                 hero_catalog=None,
             )
         except ApiHTTPException as exc:
@@ -598,7 +604,9 @@ class SheetSyncService:
             headers = rows[0]
             mapping_config = feed.mapping_config_json or suggest_mapping_from_headers(headers, schema=schema)
             value_mapping = feed.value_mapping_json or build_default_value_mapping()
-            subrole_catalog = await resolve_subrole_catalog(session, tournament.workspace_id)
+            subrole_catalog = await resolve_subrole_catalog(
+                session, tournament.workspace_id, discipline=tournament.discipline
+            )
 
             parsed_rows: dict[str, tuple[int, dict[str, str], dict[str, Any]]] = {}
             skipped = 0
@@ -706,6 +714,7 @@ class SheetSyncService:
                     parsed_fields,
                     schema=schema,
                     workspace_id=tournament.workspace_id,
+                    discipline=tournament.discipline,
                 )
                 if values is None:
                     for entry in answer_errors:

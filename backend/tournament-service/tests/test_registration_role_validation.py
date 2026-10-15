@@ -33,6 +33,7 @@ from shared.domain.player_sub_roles import (  # noqa: E402
     build_subrole_catalog,
     canonical_to_registration_role,
 )
+from shared.domain.roles import DimensionNode, Ontology, RoleNode  # noqa: E402
 from shared.hero_catalog import HeroCatalogEntry  # noqa: E402
 
 
@@ -354,17 +355,33 @@ class SharedCatalogMappingTests(TestCase):
         assert canonical_to_registration_role("nonsense") is None
 
     def test_build_catalog_keys_by_registration_role_code(self) -> None:
-        rows = [
-            SimpleNamespace(role="damage", slug="hitscan", label="Hitscan"),
-            SimpleNamespace(role="support", slug="main_heal", label="Main Heal"),
-            SimpleNamespace(role="tank", slug="main_tank", label="Main Tank"),
-        ]
-        catalog = build_subrole_catalog(rows)
+        ontology = Ontology(
+            "overwatch",
+            [DimensionNode(1, "player_role", "Role", "single", True)],
+            [
+                RoleNode(10, 1, "player_role", "tank", "Tank", sort_order=0),
+                RoleNode(11, 1, "player_role", "damage", "Damage", sort_order=1),
+                RoleNode(12, 1, "player_role", "support", "Support", sort_order=2),
+                RoleNode(20, 1, "player_role", "hitscan", "Hitscan", parent_id=11, workspace_id=7),
+                RoleNode(21, 1, "player_role", "main_heal", "Main Heal", parent_id=12, workspace_id=7),
+                RoleNode(22, 1, "player_role", "main_tank", "Main Tank", parent_id=10, workspace_id=7),
+                RoleNode(23, 1, "player_role", "other_ws", "Other", parent_id=10, workspace_id=8),
+            ],
+        )
+        catalog = build_subrole_catalog(ontology, 7)
         assert catalog["damage"] == [{"slug": "hitscan", "label": "Hitscan"}]
         assert catalog["support"] == [{"slug": "main_heal", "label": "Main Heal"}]
         assert catalog["tank"] == [{"slug": "main_tank", "label": "Main Tank"}]
 
     def test_build_catalog_always_returns_all_codes(self) -> None:
-        catalog = build_subrole_catalog([])
+        ontology = Ontology(
+            "overwatch",
+            [DimensionNode(1, "player_role", "Role", "single", True)],
+            [
+                RoleNode(10 + i, 1, "player_role", code, code, sort_order=i)
+                for i, code in enumerate(("tank", "damage", "support"))
+            ],
+        )
+        catalog = build_subrole_catalog(ontology, 7)
         assert set(catalog.keys()) == {"tank", "damage", "support"}
         assert all(value == [] for value in catalog.values())

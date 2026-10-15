@@ -33,11 +33,22 @@ def _int_or_400(value: Any, field: str) -> int:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"invalid {field}") from exc
 
 
-def _dump(row: models.PlayerSubRole) -> dict[str, Any]:
-    return PlayerSubRoleRead.model_validate(row, from_attributes=True).model_dump(mode="json")
+def _dump(row: models.CatalogRole) -> dict[str, Any]:
+    return PlayerSubRoleRead(
+        id=row.id,
+        workspace_id=row.workspace_id,
+        discipline=row.dimension.discipline,
+        dimension=row.dimension.code,
+        role=row.parent.code,
+        slug=row.code,
+        label=row.name,
+        description=row.description,
+        sort_order=row.sort_order,
+        is_active=row.active,
+    ).model_dump(mode="json")
 
 
-async def _serialize(_session: AsyncSession, row: models.PlayerSubRole) -> dict[str, Any]:
+async def _serialize(_session: AsyncSession, row: models.CatalogRole) -> dict[str, Any]:
     return _dump(row)
 
 
@@ -56,6 +67,7 @@ async def _list_rpc(session: AsyncSession, data: dict[str, Any]) -> list[dict[st
     rows = await player_sub_role_service.list_sub_roles(
         session,
         workspace_id=_int_or_400(query.get("workspace_id"), "workspace_id"),
+        discipline=_first(query.get("discipline")) or "overwatch",
         role=_first(query.get("role")) or None,
         include_inactive=include_inactive,
     )

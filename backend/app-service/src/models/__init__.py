@@ -4,6 +4,7 @@ from shared.models.analytics.analytics import *
 from shared.models.balancer.balance import *
 from shared.models.catalog.alias_miss import *
 from shared.models.catalog.entity import *
+from shared.models.catalog.role import *
 from shared.models.division_grid.division_grid import *
 from shared.models.encounter import *
 from shared.models.identity.api_key import *

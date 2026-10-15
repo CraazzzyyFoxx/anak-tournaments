@@ -209,6 +209,7 @@ class RegistrationLifecycleService:
         form: models.BalancerRegistrationForm | None,
         answers: Mapping[str, Any],
         workspace_id: int,
+        discipline: str,
     ) -> tuple[FormSchema, dict[str, Any], HeroCatalog | None, int | None]:
         """Validate an ORGANIZER's answers: partial, and requirements off.
 
@@ -237,6 +238,7 @@ class RegistrationLifecycleService:
             enforce_required=False,
             player_id=None,
             workspace_id=workspace_id,
+            discipline=discipline,
             hero_catalog=hero_catalog,
         )
         return schema, values, hero_catalog, max_heroes
@@ -262,7 +264,8 @@ class RegistrationLifecycleService:
         (admin rows, with ranks) wins over ``answers["roles"]`` when both arrive.
         """
         answers = answers or {}
-        workspace_id = await self.tournament_repo.get_workspace_id(session, tournament_id)
+        tournament = await self.common.ensure_tournament_exists(session, tournament_id)
+        workspace_id = tournament.workspace_id
         resolved_status = status_value or "approved"
         if status_value is not None:
             await self.validate_registration_status_value(
@@ -275,7 +278,7 @@ class RegistrationLifecycleService:
 
         form = await self.common.get_registration_form(session, tournament_id)
         schema, values, hero_catalog, max_heroes = await self._validated_answers(
-            session, form=form, answers=answers, workspace_id=workspace_id
+            session, form=form, answers=answers, workspace_id=workspace_id, discipline=tournament.discipline
         )
         if roles:
             # The admin rows carry ranks an answer document cannot express, so
@@ -362,6 +365,7 @@ class RegistrationLifecycleService:
             form=form,
             answers=answers,
             workspace_id=registration.tournament.workspace_id,
+            discipline=registration.tournament.discipline,
         )
         if roles is not None:
             values.pop("roles", None)

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from typing import Any, Protocol
+from typing import Any
 
 from shared.core.enums import HeroClass
+from shared.domain.roles import Ontology
 
-# Registration, the PlayerSubRole catalog and the roster shape all speak one
+# Registration, the sub-role catalog and the roster shape all speak one
 # vocabulary: tank/damage/support (``HeroClass.slot_code`` == ``HeroClass.name``).
 # Registration used to spell damage as ``dps``; migration ``roledps01`` retired
 # that. ``REGISTRATION_TO_CANONICAL`` is therefore an identity map now, kept
@@ -80,31 +81,17 @@ def canonical_to_registration_role(role: Any) -> str | None:
     return canonical if canonical in REGISTRATION_ROLE_CODES else None
 
 
-class SubRoleRow(Protocol):
-    """Duck-typed PlayerSubRole row used to build the catalog."""
+def build_subrole_catalog(ontology: Ontology, workspace_id: int | None) -> dict[str, list[dict[str, str]]]:
+    """``{top-level role code: [{"slug": code, "label": name}]}`` of the workspace's active, selectable sub-roles.
 
-    role: str
-    slug: str
-    label: str
-
-
-def build_subrole_catalog(
-    rows: Iterable[SubRoleRow],
-) -> dict[str, list[dict[str, str]]]:
-    """Group catalog rows by registration role code, preserving input order.
-
-    Returns ``{reg_code: [{"slug": ..., "label": ...}]}`` for every registration
-    role code, so the frontend always receives a stable shape. Callers should
-    pass rows already sorted (role, sort_order, label).
+    Every top-level role of the rated dimension gets a key, so the frontend always receives a stable shape.
     """
-    catalog: dict[str, list[dict[str, str]]] = {code: [] for code in REGISTRATION_ROLE_CODES}
-    for row in rows:
-        reg_code = canonical_to_registration_role(getattr(row, "role", None))
-        if reg_code is None or reg_code not in catalog:
-            continue
-        slug = normalize_sub_role(getattr(row, "slug", None))
-        if slug is None:
-            continue
-        label = getattr(row, "label", None) or slug
-        catalog[reg_code].append({"slug": slug, "label": str(label)})
-    return catalog
+    rated = ontology.rated.code
+    return {
+        root.code: [
+            {"slug": child.code, "label": child.name}
+            for child in ontology.roles(rated)
+            if child.parent_id == root.id and child.workspace_id == workspace_id and child.active and child.selectable
+        ]
+        for root in ontology.roots(rated)
+    }

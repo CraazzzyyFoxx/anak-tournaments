@@ -372,6 +372,11 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
             ),
             mock.patch.object(
                 reg_lifecycle.lifecycle_service.common,
+                "ensure_tournament_exists",
+                mock.AsyncMock(return_value=models.Tournament(id=7, workspace_id=1, discipline="overwatch")),
+            ),
+            mock.patch.object(
+                reg_lifecycle.lifecycle_service.common,
                 "get_registration_form",
                 mock.AsyncMock(return_value=_FormStub() if form is _DEFAULT_FORM else form),
             ),

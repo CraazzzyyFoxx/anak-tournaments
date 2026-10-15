@@ -8,7 +8,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    Text,
     UniqueConstraint,
     and_,
     cast,
@@ -26,7 +25,7 @@ if typing.TYPE_CHECKING:
     from shared.models.tenancy.workspace import WorkspaceMember
     from shared.models.tournament.standings import Standing
 
-__all__ = ("Team", "Player", "PlayerSubRole")
+__all__ = ("Team", "Player")
 
 
 class Team(db.TimeStampIntegerMixin):
@@ -124,31 +123,3 @@ Team.avg_sr = column_property(
 Team.total_sr = column_property(
     select(func.coalesce(func.sum(Player.rank), 0)).where(_active_roster).correlate_except(Player).scalar_subquery()
 )
-
-
-class PlayerSubRole(db.TimeStampIntegerMixin):
-    __tablename__ = "player_sub_role"
-    __table_args__ = (
-        UniqueConstraint(
-            "workspace_id",
-            "role",
-            "slug",
-            name="uq_player_sub_role_workspace_role_slug",
-        ),
-        Index(
-            "ix_player_sub_role_workspace_role_active",
-            "workspace_id",
-            "role",
-            "is_active",
-        ),
-        Index("ix_player_sub_role_workspace_id", "workspace_id"),
-        {"schema": "tournament"},
-    )
-
-    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"))
-    role: Mapped[str] = mapped_column(String(64))
-    slug: Mapped[str] = mapped_column(String(128))
-    label: Mapped[str] = mapped_column(String(128))
-    description: Mapped[str | None] = mapped_column(Text(), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer(), server_default="0", default=0)
-    is_active: Mapped[bool] = mapped_column(Boolean(), server_default="true", default=True)

@@ -20,6 +20,8 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.sqlite import dialect as SQLiteDialect
+from sqlalchemy.dialects.sqlite.base import JSON as SQLiteJSON
 from sqlalchemy.ext.compiler import compiles
 
 _installed = False
@@ -35,6 +37,9 @@ def install_postgres_type_shims() -> None:
     if _installed:
         return
     _installed = True
+    # ARRAY's DDL shim is not enough once a Python list default is inserted.
+    # Use SQLite's JSON processors for binding and reading those test values too.
+    SQLiteDialect.colspecs = {**SQLiteDialect.colspecs, ARRAY: SQLiteJSON}
 
     @compiles(JSONB, "sqlite")
     def _compile_jsonb_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN202

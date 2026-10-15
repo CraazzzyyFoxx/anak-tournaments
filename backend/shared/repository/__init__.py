@@ -96,6 +96,7 @@ from .registration import (
     RegistrationFormVersionRepository,
     RegistrationStatusRepository,
 )
+from .roles import CatalogRoleRepository
 from .scrim import ScrimRoomRepository
 from .settings import SettingsRepository
 from .stream import (
@@ -136,7 +137,6 @@ from .tournament import (
     EncounterRepository,
     MatchRepository,
     PlayerRepository,
-    PlayerSubRoleRepository,
     StageItemInputRepository,
     StageItemRepository,
     StageRepository,
@@ -206,6 +206,7 @@ __all__ = (
     "BracketEncounterRepository",
     "CatalogAliasMissRepository",
     "CatalogEntityRepository",
+    "CatalogRoleRepository",
     "ChallongeMappingRepository",
     "ChallongeMatchMappingRepository",
     "ChallongeParticipantMappingRepository",
@@ -261,7 +262,6 @@ __all__ = (
     "PickBanSessionRepository",
     "PickBanSubmissionRepository",
     "PlayerRepository",
-    "PlayerSubRoleRepository",
     "QuotaApiKeyLimitRepository",
     "QuotaOperationRepository",
     "QuotaPlanLimitRepository",

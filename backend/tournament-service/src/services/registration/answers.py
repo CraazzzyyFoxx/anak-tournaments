@@ -149,6 +149,7 @@ class RegistrationAnswerService:
         enforce_required: bool,
         player_id: int | None,
         workspace_id: int,
+        discipline: str,
         hero_catalog: HeroCatalog | None,
     ) -> dict[str, Any]:
         """The typed values ``answers`` reduces to, or ``422`` with every error.
@@ -173,7 +174,7 @@ class RegistrationAnswerService:
                 validate_roles(
                     roles_field,
                     values["roles"],
-                    subrole_catalog=await resolve_subrole_catalog(session, workspace_id),
+                    subrole_catalog=await resolve_subrole_catalog(session, workspace_id, discipline=discipline),
                     hero_catalog=hero_catalog,
                 )
             )

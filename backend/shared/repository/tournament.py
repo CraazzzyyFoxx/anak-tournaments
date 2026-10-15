@@ -780,42 +780,6 @@ class StageItemInputRepository(BaseRepository[models.StageItemInput]):
         super().__init__(models.StageItemInput)
 
 
-class PlayerSubRoleRepository(BaseRepository[models.PlayerSubRole]):
-    """``player_sub_role`` — per-workspace sub-role vocabulary (role → slug → label)."""
-
-    def __init__(self) -> None:
-        super().__init__(models.PlayerSubRole)
-
-    async def list_for_workspace(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-        *,
-        role: str | None = None,
-        only_active: bool = False,
-    ) -> Sequence[models.PlayerSubRole]:
-        filters: list[sa.ColumnElement[bool]] = [models.PlayerSubRole.workspace_id == workspace_id]
-        if role is not None:
-            filters.append(models.PlayerSubRole.role == role)
-        if only_active:
-            filters.append(models.PlayerSubRole.is_active.is_(True))
-        result = await session.execute(
-            self.select()
-            .where(*filters)
-            .order_by(
-                models.PlayerSubRole.role,
-                models.PlayerSubRole.sort_order,
-                models.PlayerSubRole.label,
-            )
-        )
-        return result.scalars().all()
-
-    async def get_by_slug(
-        self, session: AsyncSession, *, workspace_id: int, role: str, slug: str
-    ) -> models.PlayerSubRole | None:
-        return await self.get_by(session, workspace_id=workspace_id, role=role, slug=slug)
-
-
 class TournamentPreviewAccessRepository(BaseRepository[models.TournamentPreviewAccess]):
     """``tournament_preview_access`` — who may see an unpublished tournament."""
 

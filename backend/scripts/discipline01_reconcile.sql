@@ -1,7 +1,27 @@
--- Run after discipline01 and again before discipline02. discipline02 refuses while result set 1
+-- Run after discipline01 and again before discipline02. Covers discipline01 and discipline01b. discipline02 refuses while result set 1
 -- has a status other than ok or result set 2 has a row.
 -- Hard references have no class: an unrewritten id is below every new id and fails its FK.
 -- Catalog rows are compared by mapping, discipline and kind only: admins and sync may edit them after release.
+
+-- discipline01b: the leaf a legacy (role, sub_role) names; the revision's LEAF_FUNCTION, verbatim.
+CREATE FUNCTION pg_temp.discipline01b_leaf(ws BIGINT, top TEXT, sub TEXT) RETURNS BIGINT
+LANGUAGE sql STABLE AS $$
+  SELECT coalesce(
+    (SELECT r.id
+       FROM catalog.role r
+       JOIN catalog.role m ON m.id = r.parent_role_id
+       JOIN catalog.role_dimension d ON d.id = m.dimension_id
+      WHERE d.discipline = 'overwatch' AND d.code = 'player_role' AND m.workspace_id IS NULL
+        AND m.code = lower(btrim(top)) AND r.workspace_id = ws
+        AND regexp_replace(lower(btrim(sub)), '\s+', '_', 'g') <> '' AND regexp_replace(lower(btrim(sub)), '\s+', '_', 'g') IN (r.code, regexp_replace(lower(btrim(r.name)), '\s+', '_', 'g'))
+      ORDER BY (r.code = regexp_replace(lower(btrim(sub)), '\s+', '_', 'g')) DESC, r.id
+      LIMIT 1),
+    (SELECT m.id
+       FROM catalog.role m
+       JOIN catalog.role_dimension d ON d.id = m.dimension_id
+      WHERE d.discipline = 'overwatch' AND d.code = 'player_role' AND m.workspace_id IS NULL
+        AND m.code = lower(btrim(top))))
+$$;
 
 CREATE TEMP VIEW discipline01_reconcile AS
 SELECT 'heroes' AS class, h.id AS legacy_id, h.name::text AS detail,
@@ -28,6 +48,27 @@ SELECT 'alias misses', a.id, a.entity_type::text || ' ' || a.raw_name,
                   AND n.kind = CASE a.entity_type::text WHEN 'hero' THEN 'character'
                                                         WHEN 'gamemode' THEN 'mode' ELSE 'map' END)
   FROM overwatch.catalog_alias_miss a
+UNION ALL
+SELECT 'sub-roles', s.id, s.workspace_id || ' ' || s.role || '/' || s.slug,
+       EXISTS (SELECT 1 FROM catalog.role r JOIN catalog.role m ON m.id = r.parent_role_id
+                 JOIN catalog.role_dimension d ON d.id = r.dimension_id
+                WHERE r.workspace_id = s.workspace_id AND m.workspace_id IS NULL
+                  AND d.discipline = 'overwatch' AND d.code = 'player_role'
+                  AND m.code = lower(btrim(s.role)) AND r.code = regexp_replace(lower(btrim(s.slug)), '\s+', '_', 'g'))
+  FROM tournament.player_sub_role s
+UNION ALL
+-- Informational: values players and registrations used outside the catalog, kept as inactive sub-roles (Deviation 1).
+SELECT 'off-catalog sub-roles (kept inactive)', r.id, r.workspace_id || ' ' || m.code || '/' || r.code, true
+  FROM catalog.role r JOIN catalog.role m ON m.id = r.parent_role_id
+ WHERE r.workspace_id IS NOT NULL AND NOT r.selectable
+   AND NOT EXISTS (SELECT 1 FROM tournament.player_sub_role s
+                    WHERE s.workspace_id = r.workspace_id AND lower(btrim(s.role)) = m.code
+                      AND regexp_replace(lower(btrim(s.slug)), '\s+', '_', 'g') = r.code)
+UNION ALL
+-- Informational: flex is no role (D86), so a flex row's sub-role has nothing to hang on.
+SELECT 'flex sub-roles (dropped)', p.id, p.sub_role, true
+  FROM tournament.player p
+ WHERE p.role::text = 'flex' AND regexp_replace(lower(btrim(p.sub_role)), '\s+', '_', 'g') <> ''
 UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,

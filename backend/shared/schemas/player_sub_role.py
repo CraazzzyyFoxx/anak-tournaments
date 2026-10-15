@@ -13,6 +13,8 @@ __all__ = (
 
 class PlayerSubRoleRead(BaseRead):
     workspace_id: int
+    discipline: str
+    dimension: str
     role: str
     slug: str
     label: str
@@ -23,6 +25,7 @@ class PlayerSubRoleRead(BaseRead):
 
 class PlayerSubRoleCreate(BaseModel):
     workspace_id: int
+    discipline: str = "overwatch"
     role: str
     label: str
     slug: str | None = None

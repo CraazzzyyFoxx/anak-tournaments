@@ -4,3 +4,4 @@
 from .alias_miss import *
 from .discipline import *
 from .entity import *
+from .role import *

@@ -29,6 +29,7 @@ from shared.observability import (
 from shared.quota import close as close_quota
 from shared.quota import configure as configure_quota
 from shared.schemas.events import CacheInvalidatedEvent
+from shared.services.ontology import project_disciplines
 from shared.services.realtime import Resource, configure_realtime
 from shared.services.realtime.consumer import register_invalidation_consumer
 from src.core import clients, config, db
@@ -198,6 +199,10 @@ async def start_worker() -> None:
     # Drop stale cache on (re)deploy, mirroring the HTTP service lifespan.
     await cache.delete_match("fastapi:*")
     await cache.delete_match("backend:*")
+    # D31: the modules' role ontologies are projected before the first message is served.
+    async with db.async_session_maker() as session:
+        await project_disciplines(session)
+        await session.commit()
     # Kick off the initial build of the hero global-stats materialized view as a
     # debounced background task — never blocks startup or the event consumer.
     hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)

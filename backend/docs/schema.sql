@@ -1,6 +1,6 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 154
+-- Tables: 155
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -1441,6 +1441,51 @@ CREATE TABLE catalog.entity_legacy (
 	CONSTRAINT fk_entity_legacy_entity FOREIGN KEY(entity_id) REFERENCES catalog.entity (id)
 );
 
+CREATE TABLE catalog.role (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	dimension_id BIGINT NOT NULL,
+	workspace_id BIGINT,
+	parent_role_id BIGINT,
+	code VARCHAR(64) NOT NULL,
+	name VARCHAR(128) NOT NULL,
+	description TEXT,
+	selectable BOOLEAN DEFAULT true NOT NULL,
+	active BOOLEAN DEFAULT true NOT NULL,
+	sort_order INTEGER DEFAULT 0 NOT NULL,
+	attrs JSONB DEFAULT '{}'::jsonb NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_role_key UNIQUE (id, dimension_id),
+	CONSTRAINT fk_role_parent FOREIGN KEY(parent_role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+	CONSTRAINT ck_role_workspace_is_child CHECK (workspace_id IS NULL OR parent_role_id IS NOT NULL),
+	CONSTRAINT ck_role_attrs CHECK (jsonb_typeof(attrs) = 'object'),
+	CONSTRAINT fk_role_dimension FOREIGN KEY(dimension_id) REFERENCES catalog.role_dimension (id),
+	CONSTRAINT fk_role_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX uq_role_module_code ON catalog.role (dimension_id, code) WHERE workspace_id IS NULL;
+
+CREATE UNIQUE INDEX uq_role_workspace_code ON catalog.role (dimension_id, workspace_id, code) WHERE workspace_id IS NOT NULL;
+
+CREATE TABLE catalog.role_dimension (
+	id BIGSERIAL NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	code VARCHAR(32) NOT NULL,
+	name VARCHAR(64) NOT NULL,
+	selection_mode VARCHAR(8) NOT NULL,
+	rated BOOLEAN DEFAULT false NOT NULL,
+	active BOOLEAN DEFAULT true NOT NULL,
+	sort_order INTEGER DEFAULT 0 NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_role_dimension_selection_mode CHECK (selection_mode IN ('single', 'multi')),
+	CONSTRAINT uq_role_dimension_code UNIQUE (discipline, code),
+	CONSTRAINT uq_role_dimension_key UNIQUE (id, discipline),
+	CONSTRAINT fk_role_dimension_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
+);
+
+CREATE UNIQUE INDEX uq_role_dimension_rated ON catalog.role_dimension (discipline) WHERE rated;
+
 CREATE TABLE encounter.encounter (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -2566,6 +2611,7 @@ CREATE TABLE workspace (
 	default_division_grid_version_id BIGINT,
 	quota_plan_id BIGINT,
 	default_roster_slots_json JSONB,
+	disciplines_enabled VARCHAR(32)[] DEFAULT '{overwatch}' NOT NULL,
 	newcomer_scope VARCHAR(16) DEFAULT 'global' NOT NULL,
 	PRIMARY KEY (id),
 	UNIQUE (discord_guild_id),
@@ -3078,26 +3124,6 @@ CREATE INDEX ix_player_tournament_role_sub_role ON tournament.player (tournament
 CREATE INDEX ix_player_workspace_member_tournament ON tournament.player (workspace_member_id, tournament_id);
 
 CREATE INDEX ix_tournament_player_tournament_id ON tournament.player (tournament_id);
-
-CREATE TABLE tournament.player_sub_role (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	workspace_id BIGINT NOT NULL,
-	role VARCHAR(64) NOT NULL,
-	slug VARCHAR(128) NOT NULL,
-	label VARCHAR(128) NOT NULL,
-	description TEXT,
-	sort_order INTEGER DEFAULT '0' NOT NULL,
-	is_active BOOLEAN DEFAULT 'true' NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_player_sub_role_workspace_role_slug UNIQUE (workspace_id, role, slug),
-	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_player_sub_role_workspace_id ON tournament.player_sub_role (workspace_id);
-
-CREATE INDEX ix_player_sub_role_workspace_role_active ON tournament.player_sub_role (workspace_id, role, is_active);
 
 CREATE TABLE tournament.recalculation_state (
 	tournament_id BIGINT NOT NULL,

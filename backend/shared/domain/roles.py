@@ -1,7 +1,7 @@
 """A discipline's role ontology as one workspace sees it (D31, D34, D86; spec §8.3).
 
 Built from ``catalog.role_dimension`` and ``catalog.role`` rows -- the module's roles plus one workspace's own sub-roles
--- by ``shared.repository.roles.RoleRepository.ontology``. Pure: team-format checks, the slot projection and every
+-- by ``shared.repository.roles.CatalogRoleRepository.ontology``. Pure: team-format checks, the slot projection and every
 code <-> id translation run on it without IO. Trees are tens of nodes, so descendants are walked here (D34).
 """
 

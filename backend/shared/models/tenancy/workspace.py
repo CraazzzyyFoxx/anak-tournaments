@@ -1,8 +1,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
@@ -135,6 +135,11 @@ class Workspace(db.TimeStampIntegerMixin):
     # 5v5 default", NOT "an empty roster" — the resolution chain lives in
     # ``shared.domain.roster_shape.resolve_roster_shape``.
     default_roster_slots_json: Mapped[dict[str, int] | None] = mapped_column(JSONB, nullable=True)
+    #: Which disciplines this workspace may create tournaments and mixes in (D89). Codes are checked in code against
+    #: ``shared.disciplines``; a superuser enables LoL. The column goes when LoL becomes an ordinary discipline.
+    disciplines_enabled: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), nullable=False, default=lambda: ["overwatch"], server_default=text("'{overwatch}'")
+    )
     # Scope used to decide "has this identity played before" when a new
     # ``Player`` row is created: ``"global"`` counts any workspace's
     # tournaments, ``"workspace"`` counts only this workspace's. Plain string,

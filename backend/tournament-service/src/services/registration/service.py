@@ -926,6 +926,7 @@ class RegistrationService:
             enforce_required=True,
             player_id=user_player_id,
             workspace_id=workspace_id,
+            discipline=tournament.discipline,
             hero_catalog=hero_catalog,
         )
 

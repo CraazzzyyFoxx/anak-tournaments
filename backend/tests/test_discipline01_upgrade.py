@@ -27,7 +27,8 @@ from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postg
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
 PRE_REVISION = "mixround01"
-TARGET = "discipline01"
+# The reconcile file covers both revisions (P1 Deviation 2): the release runs them in one upgrade head.
+TARGET = "discipline01b"
 TEMPLATE_DB = "discipline01_legacy_tpl"
 MIGRATED_DB = "discipline01_migrated"
 REJECTED_DB = "discipline01_rejected"
@@ -506,7 +507,8 @@ def test_league_of_legends_is_a_known_discipline(migrated) -> None:
 
 def test_the_reconcile_report_is_clean(migrated) -> None:
     with _connect(MIGRATED_DB, autocommit=False) as tx:
-        create, summary, skipped = _statements(RECONCILE_SQL)
+        function, create, summary, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
         tx.execute(create)
         statuses = {row[0]: row[3] for row in _rows(tx, summary)}
         listed = _rows(tx, skipped)
@@ -740,7 +742,8 @@ def test_the_reconcile_lists_a_soft_id_left_in_legacy_space(migrated) -> None:
         tx.execute(
             "UPDATE tournament.pick_ban_config_item SET item_id = %s WHERE id = %s", (ids["ilios"], ids["config_item"])
         )
-        create, summary, skipped = _statements(RECONCILE_SQL)
+        function, create, summary, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
         tx.execute(create)
         statuses = {row[0]: row[3] for row in _rows(tx, summary)}
         listed = _rows(tx, skipped)
