@@ -11,7 +11,7 @@ export const parseOptionalInt = (value: string | null): number | undefined => {
 };
 
 export const parseRole = (value: string | null): UserRoleType | undefined => {
-  if (value === "Tank" || value === "Damage" || value === "Support" || value === "Flex") return value;
+  if (value === "Tank" || value === "Damage" || value === "Support") return value;
   return undefined;
 };
 

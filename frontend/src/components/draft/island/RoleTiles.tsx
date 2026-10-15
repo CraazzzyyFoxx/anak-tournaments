@@ -3,7 +3,7 @@
 import type { CSSProperties } from "react";
 import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { roleOf } from "@/lib/roster/role-ref";
+import { aggregateRoleStats } from "@/lib/roster/role-ref";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -59,6 +59,7 @@ export function RoleTiles({
   // Stats lines render whenever a card exists or is coming, so arriving data fills them in place.
   const withStats = card != null || cardPending;
   const heroRecords = new Map(card?.heroes.map((entry) => [entry.hero.slug, entry]) ?? []);
+  const roleTotals = aggregateRoleStats(card?.roles ?? []);
 
   if (roles.length === 0) {
     return (
@@ -89,7 +90,7 @@ export function RoleTiles({
         const usable = team != null && canSeat(team, role);
         const on = selection?.playerId === player.id && selection.role === role;
         const priority = PRIORITY_KEYS[index];
-        const roleStats = card?.roles.find((entry) => roleOf(entry.role) === role) ?? null;
+        const roleStats = roleTotals.find((entry) => entry.role?.dimension === "player_role" && entry.role.role === role) ?? null;
         const share = roleStats && roleStats.maps > 0 ? roleStats.maps_won / roleStats.maps : 0;
         const lowMaps = (roleStats?.maps ?? 0) < MIN_WINRATE_MAPS;
 

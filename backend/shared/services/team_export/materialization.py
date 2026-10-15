@@ -357,7 +357,7 @@ async def materialize_teams(
                     is_substitution=member.is_substitute,
                     related_player_id=None,
                     is_newcomer=history.is_newcomer(player_id),
-                    is_newcomer_role=history.is_newcomer_role(player_id, role),
+                    is_newcomer_role=history.is_newcomer_role(player_id, role, discipline=tournament.discipline),
                     workspace_member_id=member_id,
                 )
             )

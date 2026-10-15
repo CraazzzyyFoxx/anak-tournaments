@@ -272,7 +272,11 @@ function card(overrides: Partial<UserDraftCard> = {}): UserDraftCard {
     mvp_maps: 4,
     best_placement: 1,
     avg_placement: 4.4,
-    roles: [{ role: { dimension: "player_role", role: "support" }, maps: 40, maps_won: 26 }],
+    roles: [
+      { role: { dimension: "position", role: "support" }, maps: 9, maps_won: 9 },
+      { role: { dimension: "player_role", role: "support_main", parent: "support" }, maps: 20, maps_won: 10 },
+      { role: { dimension: "player_role", role: "support_flex", parent: "support" }, maps: 20, maps_won: 16 }
+    ],
     heroes: [
       { hero: { id: 1, slug: "ana", name: "Ana", image_path: null } as never, role: "support", maps: 30, maps_won: 20 }
     ],

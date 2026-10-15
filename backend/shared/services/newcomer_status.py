@@ -40,17 +40,16 @@ _FAR_FUTURE = datetime(9999, 12, 31, 23, 59, 59, 999999, tzinfo=UTC)
 
 @dataclass(frozen=True)
 class PriorParticipation:
-    """Identities (and identity+role pairs) with an earlier ``Player`` row than
-    the tournament this was resolved for."""
+    """Identities and discipline-qualified role experience before the target tournament."""
 
     experienced_user_ids: frozenset[int]
-    experienced_user_roles: frozenset[tuple[int, str | None]]
+    experienced_user_roles: frozenset[tuple[int, str, str | None]]
 
     def is_newcomer(self, user_id: int) -> bool:
         return user_id not in self.experienced_user_ids
 
-    def is_newcomer_role(self, user_id: int, role: str | None) -> bool:
-        return (user_id, role) not in self.experienced_user_roles
+    def is_newcomer_role(self, user_id: int, role: str | None, *, discipline: str) -> bool:
+        return (user_id, discipline, role) not in self.experienced_user_roles
 
 
 async def load_prior_participation(
@@ -75,7 +74,7 @@ async def load_prior_participation(
 
     cur_start = tournament.start_date or _FAR_FUTURE
     query = (
-        sa.select(WorkspaceMember.player_id, Player.role)
+        sa.select(WorkspaceMember.player_id, Tournament.discipline, Player.role)
         .select_from(Player)
         .join(WorkspaceMember, WorkspaceMember.id == Player.workspace_member_id)
         .join(Tournament, Tournament.id == Player.tournament_id)
@@ -88,6 +87,6 @@ async def load_prior_participation(
         query = query.where(Tournament.workspace_id == tournament.workspace_id)
 
     rows = (await session.execute(query)).all()
-    experienced_user_ids = frozenset(user_id for user_id, _ in rows)
-    experienced_user_roles = frozenset((user_id, role) for user_id, role in rows)
+    experienced_user_ids = frozenset(user_id for user_id, _, _ in rows)
+    experienced_user_roles = frozenset((user_id, discipline, role) for user_id, discipline, role in rows)
     return PriorParticipation(experienced_user_ids, experienced_user_roles)

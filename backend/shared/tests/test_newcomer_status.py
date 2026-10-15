@@ -285,8 +285,19 @@ class RoleScopeTests(_DatabaseTestCase):
         history = await load_prior_participation(self.db.shim, tournament=current, user_ids=[42])
 
         self.assertFalse(history.is_newcomer(42))
-        self.assertFalse(history.is_newcomer_role(42, "tank"))
-        self.assertTrue(history.is_newcomer_role(42, "support"))
+        self.assertFalse(history.is_newcomer_role(42, "tank", discipline="overwatch"))
+        self.assertTrue(history.is_newcomer_role(42, "support", discipline="overwatch"))
+
+    async def test_role_experience_is_discipline_specific_but_overall_experience_is_not(self) -> None:
+        self.db.workspace(1)
+        self.db.tournament(10, workspace_id=1, start_date=datetime(2025, 1, 1, tzinfo=UTC))
+        self.db.player(10, user_id=42, workspace_id=1, role="support")
+        current = _current(20, workspace_id=1, start_date=datetime(2026, 1, 1, tzinfo=UTC))
+        history = await load_prior_participation(self.db.shim, tournament=current, user_ids=[42])
+
+        self.assertFalse(history.is_newcomer(42))
+        self.assertFalse(history.is_newcomer_role(42, "support", discipline="overwatch"))
+        self.assertTrue(history.is_newcomer_role(42, "support", discipline="lol"))
 
 
 class SubstitutionCountsAsExperienceTests(_DatabaseTestCase):

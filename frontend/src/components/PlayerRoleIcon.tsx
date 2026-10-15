@@ -3,7 +3,7 @@ import TankIcon from "@/components/icons/TankIcon";
 import DamageIcon from "@/components/icons/DamageIcon";
 import SupportIcon from "@/components/icons/SupportIcon";
 import FlexIcon from "@/components/icons/FlexIcon";
-import { PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
+import { normalizePlayerRole, normalizeRoleTint, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
 
 /** Canonical English player role names, the only values that map to a glyph. */
 const ROLE_ICON = {
@@ -13,14 +13,11 @@ const ROLE_ICON = {
   Flex: FlexIcon
 } as const;
 
-type RoleName = keyof typeof ROLE_ICON;
-
 /**
  * Player role glyph — tank, damage, support or flex.
  *
- * Renders nothing at all for an unrecognised or absent role — the wrapper used
- * to be emitted unconditionally, so an unknown role left an invisible element
- * that still claimed a slot in the surrounding flex/grid row.
+ * Ontology codes and display names share the same glyph. An unassigned role
+ * uses the Flex presentation; an unknown code renders nothing.
  *
  * The glyph is announced as the localized role name by default. Pass
  * `decorative` (or `aria-hidden`) wherever the call site already renders the
@@ -45,11 +42,10 @@ const PlayerRoleIcon = ({
 }) => {
   const t = useTranslations();
 
-  if (!role || !(role in ROLE_ICON)) {
-    return null;
-  }
+  const tint = normalizeRoleTint(role ?? "flex");
+  if (!tint) return null;
 
-  const roleName = role as RoleName;
+  const roleName = normalizePlayerRole(tint);
   const Icon = ROLE_ICON[roleName];
   const hidden = decorative === true || ariaHidden === true || ariaHidden === "true";
   const accessibleName = label ?? t(PLAYER_ROLE_LABEL_KEY[roleName] as Parameters<typeof t>[0]);

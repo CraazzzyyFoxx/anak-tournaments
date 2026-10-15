@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { roleOf } from "@/lib/roster/role-ref";
+import { aggregateRoleStats, roleOf } from "@/lib/roster/role-ref";
 import { UserProfile, UserRole, UserMapRead } from "@/types/user.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
@@ -43,13 +43,13 @@ const ROLE_COLOR: Record<PlayerRoleTint, string> = {
   flex: "var(--aqt-flex)"
 };
 
-// Flex is a real roster role, so it gets its own bucket — without one its maps
-// vanish from the split while shares stay divided by `profile.maps_total`.
+// Unassigned participation is the Flex presentation bucket, not an ontology role.
 const ROLE_ORDER: PlayerRoleTint[] = ["tank", "damage", "support", "flex"];
 
 const formatPercent = (value: number, digits = 1) => `${(value * 100).toFixed(digits)}%`;
 
 interface Bucket {
+  id: string;
   key: PlayerRoleTint;
   role: UserRole;
   maps: number;
@@ -83,10 +83,11 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
 
   const t = await getTranslations();
   const totalMaps = profile.maps_total;
-  const buckets = ROLE_ORDER.map<Bucket | null>((roleKey) => {
-    const role = profile.roles.find((r) => playerRoleTint(roleOf(r.role)) === roleKey);
-    if (!role) return null;
+  const buckets = aggregateRoleStats(profile.roles).map<Bucket | null>((role) => {
+    const roleKey = role.role === null ? "flex" : playerRoleTint(roleOf(role.role));
+    if (!roleKey) return null;
     return {
+      id: role.role ? `${role.role.dimension}:${role.role.role}` : "unassigned",
       key: roleKey,
       role,
       maps: role.maps,
@@ -95,7 +96,8 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
       winrate: role.maps > 0 ? role.maps_won / role.maps : 0,
       share: totalMaps > 0 ? role.maps / totalMaps : 0
     };
-  }).filter((b): b is Bucket => b !== null);
+  }).filter((b): b is Bucket => b !== null)
+    .sort((a, b) => ROLE_ORDER.indexOf(a.key) - ROLE_ORDER.indexOf(b.key));
 
   const primary: Bucket | undefined = buckets.reduce<Bucket | undefined>(
     (best, current) => (best === undefined || current.role.tournaments > best.role.tournaments ? current : best),
@@ -112,7 +114,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
   }
   const signatures: Signature[] = [];
   for (const key of ROLE_ORDER) {
-    if (!buckets.some((b) => b.key === key)) continue;
+    if (!buckets.some((b) => b.key === key && b.role.role?.dimension === "player_role")) continue;
     // Signatures come from a hero's CLASS, which is never "flex" — filtering by
     // it would silently list the player's damage heroes under the flex bucket.
     if (key === "flex") continue;
@@ -149,7 +151,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
             {buckets.map((b) =>
               b.share > 0 ? (
                 <div
-                  key={b.key}
+                  key={b.id}
                   style={{ width: `${b.share * 100}%`, background: ROLE_COLOR[b.key] }}
                   title={`${t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])} · ${Math.round(b.share * 100)}%`}
                 />
@@ -158,7 +160,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
           </div>
           <div className="flex flex-wrap gap-x-3.5 gap-y-1">
             {buckets.map((b) => (
-              <span key={b.key} className="inline-flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-muted)]">
+              <span key={b.id} className="inline-flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-muted)]">
                 <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: ROLE_COLOR[b.key] }} aria-hidden />
                 {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
                 <span className="aqt-tnum font-bold text-[color:var(--aqt-fg)]">{b.maps}</span>
@@ -169,7 +171,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
         </div>
         <div className="flex flex-col divide-y divide-[color:var(--aqt-border)]">
           {buckets.map((b) => (
-            <div key={b.key} className="grid grid-cols-[44px_1fr_auto] items-center gap-3 py-3 first:pt-0 last:pb-0">
+            <div key={b.id} className="grid grid-cols-[44px_1fr_auto] items-center gap-3 py-3 first:pt-0 last:pb-0">
               <DivisionIcon
                 division={b.role.division}
                 tournamentGrid={b.role.division_grid_version}
@@ -180,7 +182,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
                 <div className="flex items-center gap-1.5 font-onest text-base font-bold leading-none text-[color:var(--aqt-fg)]">
                   <PlayerRoleIcon role={ROLE_ICON[b.key]} size={14} color={ROLE_COLOR[b.key]} decorative />
                   {t(ROLE_LABEL_KEY[b.key] as Parameters<typeof t>[0])}
-                  {primary && b.key === primary.key ? (
+                  {primary && b.id === primary.id ? (
                     <span className="ml-1 text-label font-semibold text-[color:var(--aqt-fg-muted)]">
                       · {t("users.overview.roleSplit.main")}
                     </span>

@@ -1,11 +1,9 @@
 import type { PlayerSubRole } from "@/types/admin.types";
 
 /**
- * Canonical roster role names — the only values `PlayerRoleIcon` maps to a glyph.
- *
- * `Flex` is a first-class player role (the backend serializes `HeroClass.flex`
- * as `"Flex"`), not a "declared more than one role" shorthand. It never applies
- * to a hero's class, which stays tank/damage/support.
+ * OW-shaped roster presentation names. Ontology codes are normalized at the
+ * shared icon boundary. `Flex` displays an unassigned roster role, not an
+ * ontology node, and never applies to a hero's tank/damage/support class.
  */
 export type PlayerRoleOption = "Tank" | "Damage" | "Support" | "Flex";
 
