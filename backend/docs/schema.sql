@@ -1,6 +1,6 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 159
+-- Tables: 160
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -2642,7 +2642,6 @@ CREATE TABLE workspace (
 	discord_guild_verified_by_auth_user_id BIGINT,
 	owner_id BIGINT,
 	verification_status VARCHAR(16) DEFAULT 'unverified' NOT NULL,
-	default_division_grid_version_id BIGINT,
 	quota_plan_id BIGINT,
 	disciplines_enabled VARCHAR(32)[] DEFAULT '{overwatch}' NOT NULL,
 	newcomer_scope VARCHAR(16) DEFAULT 'global' NOT NULL,
@@ -2650,13 +2649,10 @@ CREATE TABLE workspace (
 	UNIQUE (discord_guild_id),
 	FOREIGN KEY(discord_guild_verified_by_auth_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
 	FOREIGN KEY(owner_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(default_division_grid_version_id) REFERENCES division_grid_version (id) ON DELETE SET NULL,
 	FOREIGN KEY(quota_plan_id) REFERENCES quota.plan (id) ON DELETE SET NULL
 );
 
 CREATE UNIQUE INDEX ix_workspace_custom_domain ON workspace (custom_domain);
-
-CREATE INDEX ix_workspace_default_division_grid_version_id ON workspace (default_division_grid_version_id);
 
 CREATE INDEX ix_workspace_owner_id ON workspace (owner_id);
 
@@ -2665,6 +2661,18 @@ CREATE INDEX ix_workspace_quota_plan_id ON workspace (quota_plan_id);
 CREATE UNIQUE INDEX ix_workspace_slug ON workspace (slug);
 
 CREATE UNIQUE INDEX ix_workspace_subdomain ON workspace (subdomain);
+
+CREATE TABLE workspace_division_grid_default (
+	workspace_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	version_id BIGINT NOT NULL,
+	PRIMARY KEY (workspace_id, discipline),
+	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
+	FOREIGN KEY(version_id) REFERENCES division_grid_version (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_workspace_division_grid_default_version_id ON workspace_division_grid_default (version_id);
 
 CREATE TABLE workspace_member (
 	id BIGSERIAL NOT NULL,

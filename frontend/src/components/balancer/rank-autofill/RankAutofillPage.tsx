@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronUp, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
+import adminService from "@/services/admin.service";
 
 import {
   defaultRankAutofillStages,
@@ -42,9 +44,16 @@ function useDebouncedValue<T>(value: T, delay: number): T {
 
 // D25: rendered by both the hub sub-route (tournament from the path) and the
 // legacy balancer route (tournament from the ?tournament query) until T14.
-export default function RankAutofillPage({ tournamentId }: Readonly<{ tournamentId: number | null }>) {
+export default function RankAutofillPage({
+  tournamentId
+}: Readonly<{ tournamentId: number | null }>) {
   const t = useTranslations();
   const queryClient = useQueryClient();
+  const tournamentQuery = useQuery({
+    queryKey: adminQueryKeys.tournament(tournamentId),
+    queryFn: () => adminService.getTournament(tournamentId!),
+    enabled: tournamentId !== null
+  });
 
   const [stages, setStages] = useState(() => defaultRankAutofillStages());
   const [overwriteExisting, setOverwriteExisting] = useState(false);
@@ -340,8 +349,9 @@ export default function RankAutofillPage({ tournamentId }: Readonly<{ tournament
               </Alert>
             ) : (
               <RankAutofillPreviewTables
-                preview={previewQuery.data}
-                loading={previewQuery.isFetching}
+                discipline={tournamentQuery.data?.discipline}
+                preview={tournamentQuery.data ? previewQuery.data : undefined}
+                loading={previewQuery.isFetching || tournamentQuery.isPending}
                 search={search}
                 mismatchOnly={mismatchOnly}
                 selectedIds={selectedIds}

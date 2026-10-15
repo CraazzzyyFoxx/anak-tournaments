@@ -131,12 +131,12 @@ def register(broker: Any, logger: Any) -> None:
     async def _statistics_division(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id = _q1(data, "workspace_id", int)
-            fallback_grid = await get_division_grid(session, workspace_id)
+            fallback_grid = await get_division_grid(session, workspace_id, discipline="overwatch")
             normalizer = None
             if workspace_id is not None:
                 try:
                     normalizer = await build_workspace_division_grid_normalizer(
-                        session, workspace_id, require_complete=False
+                        session, workspace_id, require_complete=False, discipline="overwatch"
                     )
                 except DivisionGridNormalizationError:
                     pass  # fall back to the global grid for all tournaments

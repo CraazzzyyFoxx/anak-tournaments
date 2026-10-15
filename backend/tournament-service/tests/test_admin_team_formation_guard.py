@@ -39,7 +39,6 @@ from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.balancer.draft import DraftSession  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
-from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402
 from src import schemas  # noqa: E402
 from src.services.admin import tournament as admin_tournament  # noqa: E402
@@ -48,13 +47,9 @@ from src.services.admin import tournament as admin_tournament  # noqa: E402
 async def _seed(session, *, draft_status: str | None) -> tuple[int, int]:
     """Create workspace + draft-formation tournament (+ optional draft session)."""
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     ws = Workspace(
         slug=f"tf-guard-{suffix}",
         name=f"Team Formation Guard Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(ws)
     await session.flush()

@@ -50,19 +50,30 @@ function formatBlendBreakdown(
     role.used_source === source && (ow === undefined || ow === owValue) ? t("used") : "";
   const lines: string[] = [];
   if (role.ow_rank_value != null) {
-    lines.push(t("owFormula", { value: String(role.ow_rank_value), marker: mark("ow", "composite") }));
+    lines.push(
+      t("owFormula", { value: String(role.ow_rank_value), marker: mark("ow", "composite") })
+    );
   }
   if (role.ow_current_rank_value != null) {
-    lines.push(t("owCurrent", { value: String(role.ow_current_rank_value), marker: mark("ow", "current") }));
+    lines.push(
+      t("owCurrent", { value: String(role.ow_current_rank_value), marker: mark("ow", "current") })
+    );
   }
   if (role.ow_peak_rank_value != null) {
     lines.push(t("owPeak", { value: String(role.ow_peak_rank_value), marker: mark("ow", "peak") }));
   }
   if (role.division_history_rank_value != null) {
-    lines.push(t("balancer", { value: String(role.division_history_rank_value), marker: mark("division_history") }));
+    lines.push(
+      t("balancer", {
+        value: String(role.division_history_rank_value),
+        marker: mark("division_history")
+      })
+    );
   }
   if (role.analytics_rank_value != null) {
-    lines.push(t("analytics", { value: String(role.analytics_rank_value), marker: mark("analytics") }));
+    lines.push(
+      t("analytics", { value: String(role.analytics_rank_value), marker: mark("analytics") })
+    );
   }
   return lines;
 }
@@ -116,13 +127,18 @@ function playerLabel(player: RegistrationRankAutofillPlayer): string {
 
 function RankAutofillRolePill({
   role,
+  discipline,
   owValue
-}: Readonly<{ role: RegistrationRankAutofillRole; owValue: RankAutofillOwValue | null }>) {
+}: Readonly<{
+  role: RegistrationRankAutofillRole;
+  discipline?: string;
+  owValue: RankAutofillOwValue | null;
+}>) {
   const t = useTranslations();
   const tBreakdown = useTranslations("rankAutofill.breakdown");
   const tRoles = useTranslations("common.roles");
   const format = useFormatter();
-  const grid = useDivisionGrid();
+  const grid = useDivisionGrid(discipline);
   const roleCode = roleOf(role.role) as Parameters<typeof tRoles>[0];
   const roleLabel = tRoles.has(roleCode) ? tRoles(roleCode) : roleCode;
   const source = formatRankSource(format, role);
@@ -171,12 +187,7 @@ function RankAutofillRolePill({
         .join("\n")}
     >
       <span className="shrink-0">
-        <PlayerRoleIcon
-          role={roleOf(role.role)}
-          size={14}
-          color="currentColor"
-          decorative
-        />
+        <PlayerRoleIcon role={roleOf(role.role)} size={14} color="currentColor" decorative />
       </span>
       <span className="sr-only">{roleLabel}</span>
 
@@ -215,6 +226,7 @@ function RankAutofillRolePill({
 
 interface RankAutofillPreviewTablesProps {
   preview: RegistrationRankAutofillResponse | undefined;
+  discipline?: string;
   loading: boolean;
   search: string;
   mismatchOnly: boolean;
@@ -225,6 +237,7 @@ interface RankAutofillPreviewTablesProps {
 
 export function RankAutofillPreviewTables({
   preview,
+  discipline,
   loading,
   search,
   mismatchOnly,
@@ -330,7 +343,12 @@ export function RankAutofillPreviewTables({
                   {player.roles
                     .filter((role) => role.action === "set" || role.action === "overwrite")
                     .map((role) => (
-                      <RankAutofillRolePill key={`${role.role.dimension}:${role.role.role}`} role={role} owValue={preview.ow_value} />
+                      <RankAutofillRolePill
+                        key={`${role.role.dimension}:${role.role.role}`}
+                        discipline={discipline}
+                        role={role}
+                        owValue={preview.ow_value}
+                      />
                     ))}
                 </div>
               </label>
@@ -366,7 +384,12 @@ export function RankAutofillPreviewTables({
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {player.roles.map((role) => (
-                    <RankAutofillRolePill key={`${role.role.dimension}:${role.role.role}`} role={role} owValue={preview.ow_value} />
+                    <RankAutofillRolePill
+                      key={`${role.role.dimension}:${role.role.role}`}
+                      discipline={discipline}
+                      role={role}
+                      owValue={preview.ow_value}
+                    />
                   ))}
                 </div>
               </div>
@@ -415,7 +438,12 @@ export function RankAutofillPreviewTables({
                   {auditRoles.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {auditRoles.map((role) => (
-                        <RankAutofillRolePill key={`${role.role.dimension}:${role.role.role}`} role={role} owValue={preview.ow_value} />
+                        <RankAutofillRolePill
+                          key={`${role.role.dimension}:${role.role.role}`}
+                          discipline={discipline}
+                          role={role}
+                          owValue={preview.ow_value}
+                        />
                       ))}
                     </div>
                   )}

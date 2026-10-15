@@ -129,7 +129,7 @@ export function DraftSetupWizard({
   // already mounts this query under the same key, so this is a cache read.
   const tournament = useHubTournamentQuery(tournamentId).data;
   const tournamentGridVersion = tournament?.division_grid_version ?? null;
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid(tournament?.discipline);
   const divisionGrid: DivisionGrid = useMemo(
     () => (tournamentGridVersion?.tiers ? { tiers: tournamentGridVersion.tiers } : workspaceGrid),
     [tournamentGridVersion, workspaceGrid]
@@ -172,7 +172,9 @@ export function DraftSetupWizard({
         // keeps following their registration's lead role.
         roles: Object.fromEntries(
           board.players.flatMap((player) =>
-            player.is_captain && player.captain_role && roleOf(player.captain_role) !== roleOf(player.primary_role)
+            player.is_captain &&
+            player.captain_role &&
+            roleOf(player.captain_role) !== roleOf(player.primary_role)
               ? [[player.registration_id, roleOf(player.captain_role) as DraftRole]]
               : []
           )
@@ -366,13 +368,25 @@ export function DraftSetupWizard({
               {preview && (
                 <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-muted/50 p-3 text-center text-sm tabular-nums">
                   <div>
-                    {tAdmin("diff", { label: t("teams"), before: preview.diff.teams_before, after: preview.diff.teams_after })}
+                    {tAdmin("diff", {
+                      label: t("teams"),
+                      before: preview.diff.teams_before,
+                      after: preview.diff.teams_after
+                    })}
                   </div>
                   <div>
-                    {tAdmin("diff", { label: t("players"), before: preview.diff.players_before, after: preview.diff.players_after })}
+                    {tAdmin("diff", {
+                      label: t("players"),
+                      before: preview.diff.players_before,
+                      after: preview.diff.players_after
+                    })}
                   </div>
                   <div>
-                    {tAdmin("diff", { label: t("picks"), before: preview.diff.picks_before, after: preview.diff.picks_after })}
+                    {tAdmin("diff", {
+                      label: t("picks"),
+                      before: preview.diff.picks_before,
+                      after: preview.diff.picks_after
+                    })}
                   </div>
                 </div>
               )}

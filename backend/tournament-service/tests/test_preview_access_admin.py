@@ -14,7 +14,6 @@ import sys
 import uuid
 from pathlib import Path
 
-import pytest
 import sqlalchemy as sa
 
 if sys.platform == "win32":
@@ -39,20 +38,15 @@ from shared.core import enums  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
-from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402
 from src.services.admin import preview_access as preview_access_service  # noqa: E402
 
 
 async def _seed(session):
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     ws = Workspace(
         slug=f"pa-test-{suffix}",
         name=f"Preview Access Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(ws)
     await session.flush()

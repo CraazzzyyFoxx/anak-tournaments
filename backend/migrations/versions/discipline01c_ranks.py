@@ -94,6 +94,18 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
          ORDER BY h.workspace_member_id, lower(btrim(h.role))
         """,
     ),
+    (
+        "workspace grid defaults with a missing or foreign version",
+        """
+        SELECT w.id, w.default_division_grid_version_id, g.workspace_id AS grid_workspace_id
+          FROM workspace w
+          LEFT JOIN division_grid_version v ON v.id = w.default_division_grid_version_id
+          LEFT JOIN division_grid g ON g.id = v.grid_id
+         WHERE w.default_division_grid_version_id IS NOT NULL
+           AND (v.id IS NULL OR g.id IS NULL OR (g.workspace_id IS NOT NULL AND g.workspace_id <> w.id))
+         ORDER BY w.id
+        """,
+    ),
 )
 PREFLIGHT_SAMPLE = 20
 
@@ -196,6 +208,22 @@ _DIVISION_GRIDS = (
     ALTER TABLE division_grid
       ADD COLUMN discipline VARCHAR(32) NOT NULL DEFAULT 'overwatch'
       CONSTRAINT fk_division_grid_discipline REFERENCES catalog.discipline (code)
+    """,
+    """
+    CREATE TABLE workspace_division_grid_default (
+      workspace_id BIGINT NOT NULL REFERENCES workspace (id) ON DELETE CASCADE,
+      discipline VARCHAR(32) NOT NULL REFERENCES catalog.discipline (code),
+      version_id BIGINT NOT NULL REFERENCES division_grid_version (id) ON DELETE CASCADE,
+      PRIMARY KEY (workspace_id, discipline)
+    )
+    """,
+    "CREATE INDEX ix_workspace_division_grid_default_version_id ON workspace_division_grid_default (version_id)",
+    """
+    INSERT INTO workspace_division_grid_default (workspace_id, discipline, version_id)
+    SELECT w.id, g.discipline, v.id
+      FROM workspace w
+      JOIN division_grid_version v ON v.id = w.default_division_grid_version_id
+      JOIN division_grid g ON g.id = v.grid_id
     """,
 )
 

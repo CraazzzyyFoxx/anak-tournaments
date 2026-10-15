@@ -11,7 +11,12 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import discipline as discipline_spec
 from shared.division_grid import DEFAULT_GRID, DivisionGrid, ladder_grid
 from shared.models.division_grid import DivisionGrid as DivisionGridModel
-from shared.models.division_grid import DivisionGridMapping, DivisionGridTier, DivisionGridVersion
+from shared.models.division_grid import (
+    DivisionGridMapping,
+    DivisionGridTier,
+    DivisionGridVersion,
+    WorkspaceDivisionGridDefault,
+)
 from shared.models.identity.auth_user import AuthUser
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
@@ -40,7 +45,7 @@ def _system_default_version_id_expr(discipline: sa.ColumnElement[str] | None = N
 def tournament_effective_version_id_expr(tournament_id: sa.ColumnElement[int]) -> sa.ScalarSelect[int]:
     """Tournament pin → workspace default → system default, always of the owner's discipline."""
     tournament = aliased(Tournament)
-    workspace = aliased(Workspace)
+    default = aliased(WorkspaceDivisionGridDefault)
 
     def scoped_version(version_id: sa.ColumnElement[int]) -> sa.ScalarSelect[int]:
         version = aliased(DivisionGridVersion)
@@ -61,14 +66,20 @@ def tournament_effective_version_id_expr(tournament_id: sa.ColumnElement[int]) -
         sa.select(
             sa.func.coalesce(
                 scoped_version(tournament.division_grid_version_id),
-                scoped_version(workspace.default_division_grid_version_id),
+                scoped_version(default.version_id),
                 _system_default_version_id_expr(tournament.discipline),
             )
         )
         .select_from(tournament)
-        .outerjoin(workspace, workspace.id == tournament.workspace_id)
+        .outerjoin(
+            default,
+            sa.and_(
+                default.workspace_id == tournament.workspace_id,
+                default.discipline == tournament.discipline,
+            ),
+        )
         .where(tournament.id == tournament_id)
-        .correlate_except(tournament, workspace)
+        .correlate_except(tournament, default)
         .scalar_subquery()
     )
 
@@ -217,6 +228,13 @@ async def get_effective_division_grid_version(
     return await load_division_grid_version(session, version_id)
 
 
+async def _workspace_grid_scope(session: AsyncSession, workspace_id: int, discipline: str | None) -> str | None:
+    if discipline is not None:
+        return discipline
+    enabled = await session.scalar(sa.select(Workspace.disciplines_enabled).where(Workspace.id == workspace_id))
+    return enabled[0] if enabled else None
+
+
 async def get_effective_division_grid(
     session: AsyncSession,
     workspace_id: int | None,
@@ -226,6 +244,8 @@ async def get_effective_division_grid(
 ) -> DivisionGrid:
     if tournament_id is not None:
         discipline = await session.scalar(sa.select(Tournament.discipline).where(Tournament.id == tournament_id))
+    elif workspace_id is not None:
+        discipline = await _workspace_grid_scope(session, workspace_id, discipline)
     snapshot = await get_effective_division_grid_snapshot(
         session, workspace_id, tournament_id=tournament_id, discipline=discipline
     )
@@ -241,22 +261,33 @@ async def get_workspace_division_grid_version_id(
 ) -> int | None:
     if workspace_id is None:
         return await get_default_division_grid_version_id(session, discipline)
+    discipline = await _workspace_grid_scope(session, workspace_id, discipline)
+    if discipline is None:
+        return None
     cached = await division_grid_cache.get_workspace_default_version_id(workspace_id, discipline)
     if cached is not None:
         return cached
-    query = (
-        sa.select(DivisionGridVersion.id)
-        .join(DivisionGridModel, DivisionGridModel.id == DivisionGridVersion.grid_id)
-        .join(Workspace, Workspace.default_division_grid_version_id == DivisionGridVersion.id)
-        .where(
-            Workspace.id == workspace_id,
-            sa.or_(DivisionGridModel.workspace_id.is_(None), DivisionGridModel.workspace_id == workspace_id),
+    assignment = (
+        await session.execute(
+            sa.select(
+                WorkspaceDivisionGridDefault.version_id,
+                DivisionGridModel.discipline,
+                DivisionGridModel.workspace_id,
+            )
+            .select_from(WorkspaceDivisionGridDefault)
+            .outerjoin(DivisionGridVersion, DivisionGridVersion.id == WorkspaceDivisionGridDefault.version_id)
+            .outerjoin(DivisionGridModel, DivisionGridModel.id == DivisionGridVersion.grid_id)
+            .where(
+                WorkspaceDivisionGridDefault.workspace_id == workspace_id,
+                WorkspaceDivisionGridDefault.discipline == discipline,
+            )
         )
-    )
-    if discipline is not None:
-        query = query.where(DivisionGridModel.discipline == discipline)
-    version_id = await session.scalar(query)
-    if version_id is None:
+    ).one_or_none()
+    if assignment is not None:
+        version_id, grid_discipline, grid_workspace_id = assignment
+        if grid_discipline != discipline or grid_workspace_id not in (None, workspace_id):
+            raise HTTPException(status_code=422, detail="division_grid_discipline_mismatch: invalid workspace default")
+    else:
         version_id = await get_default_division_grid_version_id(session, discipline)
     await division_grid_cache.set_workspace_default_version_id(workspace_id, version_id, discipline)
     return version_id
@@ -577,6 +608,9 @@ async def get_workspace_source_version_ids(
     workspace_id: int,
     discipline: str | None = None,
 ) -> set[int]:
+    discipline = await _workspace_grid_scope(session, workspace_id, discipline)
+    if discipline is None:
+        return set()
     cached = await division_grid_cache.get_workspace_source_version_ids(workspace_id, discipline)
     if cached is not None:
         return cached
@@ -611,6 +645,13 @@ async def build_workspace_division_grid_normalizer(
     target_discipline = await grid_version_discipline(session, resolved_target_version_id)
     if discipline is not None and target_discipline != discipline:
         raise DivisionGridNormalizationError("Target grid belongs to another discipline")
+    target_owner = await session.scalar(
+        sa.select(sa.func.coalesce(DivisionGridModel.workspace_id, -1))
+        .join(DivisionGridVersion, DivisionGridVersion.grid_id == DivisionGridModel.id)
+        .where(DivisionGridVersion.id == resolved_target_version_id)
+    )
+    if target_owner not in (-1, workspace_id):
+        raise DivisionGridNormalizationError("Target grid does not belong to the workspace")
 
     target_snapshot = await load_division_grid_snapshot(session, resolved_target_version_id)
     if target_snapshot is None:
@@ -628,6 +669,13 @@ async def build_workspace_division_grid_normalizer(
     for source_version_id in resolved_source_version_ids:
         if await grid_version_discipline(session, source_version_id) != target_discipline:
             raise DivisionGridNormalizationError("Cannot normalize division grids of different disciplines")
+        source_owner = await session.scalar(
+            sa.select(sa.func.coalesce(DivisionGridModel.workspace_id, -1))
+            .join(DivisionGridVersion, DivisionGridVersion.grid_id == DivisionGridModel.id)
+            .where(DivisionGridVersion.id == source_version_id)
+        )
+        if source_owner not in (-1, workspace_id):
+            raise DivisionGridNormalizationError("Source grid does not belong to the workspace")
         snapshot = await load_division_grid_snapshot(session, source_version_id)
         if snapshot is None:
             raise DivisionGridNormalizationError(f"Division grid versions are missing: {[source_version_id]}")

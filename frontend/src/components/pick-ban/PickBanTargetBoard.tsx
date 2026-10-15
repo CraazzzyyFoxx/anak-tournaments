@@ -40,6 +40,7 @@ export function PickBanTargetBoard({
   itemsById,
   onSelect,
   teamName,
+  discipline,
   disabled = false
 }: Readonly<{
   targets: PickBanTarget[];
@@ -51,12 +52,13 @@ export function PickBanTargetBoard({
   onSelect: (playerId: number) => void;
   /** The opponent's team name — whose roster this is. */
   teamName: string;
+  discipline: string;
   /** True once the draft is locked: the rows stay readable, they stop moving. */
   disabled?: boolean;
 }>) {
   const t = useTranslations("pickBan.room");
   const tRoot = useTranslations();
-  const divisionGrid = useDivisionGrid();
+  const divisionGrid = useDivisionGrid(discipline);
 
   return (
     <Card data-pick-ban-targets>
@@ -164,10 +166,7 @@ export function PickBanTargetBoard({
                     />
                   )}
                 </button>
-                <PickBanPlayerHeroes
-                  playerId={target.player_id}
-                  matchId={previousMatchId}
-                />
+                <PickBanPlayerHeroes playerId={target.player_id} matchId={previousMatchId} />
               </li>
             );
           })}

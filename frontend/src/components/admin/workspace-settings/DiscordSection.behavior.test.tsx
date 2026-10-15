@@ -184,7 +184,6 @@ const CHANNELS: DiscordChannelsResponse = {
   ]
 };
 
-
 const WORKSPACE: Workspace = {
   id: 7,
   slug: "owt",
@@ -214,8 +213,9 @@ const WORKSPACE: Workspace = {
   discord_guild_id: null,
   discord_guild_verified_at: null,
   verification_status: "unverified",
-  default_division_grid_version_id: null,
-  default_division_grid_version: null,
+  disciplines_enabled: ["overwatch"],
+  default_division_grid_versions: {},
+  effective_division_grid_versions: {},
   newcomer_scope: "global"
 };
 
@@ -373,9 +373,11 @@ beforeEach(() => {
   getDiscordChannels.mockReset().mockResolvedValue(CHANNELS);
   upsertWorkspaceBalancerConfig.mockReset().mockResolvedValue({});
   workspaceConfig.mockReset().mockResolvedValue(NOTIFICATION_CONFIG);
-  updateWorkspaceConfig.mockReset().mockImplementation((_id: number, body: unknown) =>
-    Promise.resolve({ ...NOTIFICATION_CONFIG, ...(body as object) })
-  );
+  updateWorkspaceConfig
+    .mockReset()
+    .mockImplementation((_id: number, body: unknown) =>
+      Promise.resolve({ ...NOTIFICATION_CONFIG, ...(body as object) })
+    );
 });
 
 afterEach(async () => {

@@ -222,6 +222,15 @@ SELECT count(*) AS flex_rows_with_a_sub_role
         HAVING count(*) > 1
          ORDER BY h.workspace_member_id, lower(btrim(h.role));
 
+\echo '11. workspace grid defaults with a missing or foreign version'
+        SELECT w.id, w.default_division_grid_version_id, g.workspace_id AS grid_workspace_id
+          FROM workspace w
+          LEFT JOIN division_grid_version v ON v.id = w.default_division_grid_version_id
+          LEFT JOIN division_grid g ON g.id = v.grid_id
+         WHERE w.default_division_grid_version_id IS NOT NULL
+           AND (v.id IS NULL OR g.id IS NULL OR (g.workspace_id IS NOT NULL AND g.workspace_id <> w.id))
+         ORDER BY w.id;
+
 \echo 'count: flex ranks and hidden ratings dropped (kept in balancer.discipline01c_dropped_ranks)'
 SELECT count(*) AS flex_ranks_dropped
   FROM (SELECT 1 FROM balancer.member_rank m WHERE lower(btrim(m.role)) = 'flex'

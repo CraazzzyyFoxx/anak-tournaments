@@ -169,11 +169,11 @@ def _version_read_key(version_id: int) -> str:
 
 
 def _workspace_default_key(workspace_id: int, discipline: str | None = None) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:{discipline or '*'}"
+    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:v3:{discipline or '*'}"
 
 
 def _tournament_effective_key(tournament_id: int) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:tournament:{tournament_id}:effective_version:v2"
+    return f"{CACHE_KEY_PREFIX}division_grid:tournament:{tournament_id}:effective_version:v3"
 
 
 def _mapping_key(source_version_id: int, target_version_id: int) -> str:
@@ -382,7 +382,7 @@ async def invalidate_workspace(workspace_id: int) -> None:
     try:
         await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:*")
         await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:source_versions:*")
-        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:tournament:*:effective_version:v2")
+        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:tournament:*:effective_version:v3")
     except Exception as exc:
         logger.debug("Division grid cache invalidation failed for workspace %s: %s", workspace_id, exc)
 

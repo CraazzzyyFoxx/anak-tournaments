@@ -21,7 +21,6 @@ from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.rbac import user_has_any_workspace_role
 from shared.repository import get_or_create_workspace_member
-from shared.services.division_grid.access import get_default_division_grid_version_id
 from src.services.workspace.service import workspaces as workspace_service
 
 _loop: asyncio.AbstractEventLoop
@@ -104,13 +103,9 @@ async def _make_auth_user(session) -> AuthUser:
 
 async def _make_workspace(session) -> Workspace:
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     workspace = Workspace(
         slug=f"wsmember-test-{suffix}",
         name=f"WS Member Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(workspace)
     await session.flush()

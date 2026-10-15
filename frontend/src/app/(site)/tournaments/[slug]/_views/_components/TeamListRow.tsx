@@ -138,6 +138,7 @@ export const TeamListRow = ({
       <TournamentTeamTable
         players={roster}
         tournamentGrid={tournament.division_grid_version}
+        discipline={tournament.discipline}
         captainUserId={team.captain_id}
       />
       <div className="tc-divider" />

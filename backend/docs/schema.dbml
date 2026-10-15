@@ -1,6 +1,6 @@
 // Anak Tournaments — PostgreSQL schema dumped from SQLAlchemy metadata.
 // Open in VS Code (DBML extension) or paste into https://dbdiagram.io
-// Tables: 159
+// Tables: 160
 
 Project anak_tournaments {
   database_type: "PostgreSQL"
@@ -1119,8 +1119,8 @@ Table balancer.registration_google_sheet_binding {
   row_hash VARCHAR(128)
   last_seen_at timestamptz
   indexes {
-    (feed_id, source_record_key) [unique, name: "uq_balancer_registration_google_sheet_binding_key"]
     (registration_id) [unique, name: "uq_balancer_registration_google_sheet_binding_registration"]
+    (feed_id, source_record_key) [unique, name: "uq_balancer_registration_google_sheet_binding_key"]
     (feed_id) [name: "ix_balancer_registration_google_sheet_binding_feed_id"]
   }
 }
@@ -1191,8 +1191,8 @@ Table balancer.registration_role_entity {
   entity_kind VARCHAR(16) [not null, default: `character`]
   priority int [not null]
   indexes {
-    (role_id, priority) [unique, name: "uq_reg_role_entity_role_priority"]
     (role_id, entity_id) [unique, name: "uq_reg_role_entity_role_entity"]
+    (role_id, priority) [unique, name: "uq_reg_role_entity_role_priority"]
     (role_id) [name: "ix_balancer_registration_role_entity_role_id"]
   }
 }
@@ -2330,8 +2330,8 @@ Table division_grid_tier {
   native_rank_min bigint
   native_rank_max bigint
   indexes {
-    (version_id, sort_order) [unique]
     (version_id, slug) [unique]
+    (version_id, sort_order) [unique]
     (version_id) [name: "ix_division_grid_tier_version_id"]
   }
 }
@@ -2464,17 +2464,24 @@ Table workspace {
   discord_guild_verified_by_auth_user_id bigint
   owner_id bigint
   verification_status VARCHAR(16) [not null, default: `unverified`]
-  default_division_grid_version_id bigint
   quota_plan_id bigint
   disciplines_enabled VARCHAR(32)[] [not null, default: `'{overwatch}'`]
   newcomer_scope VARCHAR(16) [not null, default: `global`]
   indexes {
     (custom_domain) [unique, name: "ix_workspace_custom_domain"]
-    (default_division_grid_version_id) [name: "ix_workspace_default_division_grid_version_id"]
     (owner_id) [name: "ix_workspace_owner_id"]
     (quota_plan_id) [name: "ix_workspace_quota_plan_id"]
     (slug) [unique, name: "ix_workspace_slug"]
     (subdomain) [unique, name: "ix_workspace_subdomain"]
+  }
+}
+
+Table workspace_division_grid_default {
+  workspace_id bigint [pk]
+  discipline VARCHAR(32) [pk]
+  version_id bigint [not null]
+  indexes {
+    (version_id) [name: "ix_workspace_division_grid_default_version_id"]
   }
 }
 
@@ -2513,6 +2520,7 @@ TableGroup public {
   notification_workspace_config
   settings
   workspace
+  workspace_division_grid_default
   workspace_member
 }
 
@@ -3014,8 +3022,8 @@ Table tournament.scrim_room {
   created_by_auth_user_id bigint [not null]
   closed_at timestamptz
   indexes {
-    (token) [unique, name: "uq_scrim_room_token"]
     (encounter_id) [unique, name: "uq_scrim_room_encounter"]
+    (token) [unique, name: "uq_scrim_room_token"]
     (created_by_auth_user_id) [name: "ix_scrim_room_open_by_creator"]
     (created_by_auth_user_id) [name: "ix_tournament_scrim_room_created_by_auth_user_id"]
     (stage_id) [name: "ix_tournament_scrim_room_stage_id"]
@@ -3330,8 +3338,8 @@ Ref: achievements.override.tournament_id > tournament.tournament.id [delete: cas
 Ref: achievements.override.match_id > matches.match.id [delete: cascade]
 Ref: achievements.override.granted_by > auth.user.id [delete: set null]
 Ref: achievements.rule.workspace_id > workspace.id [delete: cascade]
-Ref: achievements.rule.discipline > catalog.entity.discipline [delete: set null (entity_id)]
 Ref: achievements.rule.discipline > catalog.discipline.code
+Ref: achievements.rule.discipline > catalog.entity.discipline [delete: set null (entity_id)]
 Ref: achievements.rule.entity_id > catalog.entity.id [delete: set null (entity_id)]
 Ref: achievements.rule.entity_kind > catalog.entity.kind [delete: set null (entity_id)]
 Ref: analytics.anomaly_feedback.tournament_id > tournament.tournament.id [delete: cascade]
@@ -3627,8 +3635,10 @@ Ref: notification_workspace_config.workspace_id > workspace.id [delete: cascade]
 Ref: settings.updated_by > auth.user.id [delete: set null]
 Ref: workspace.discord_guild_verified_by_auth_user_id > auth.user.id [delete: set null]
 Ref: workspace.owner_id > auth.user.id [delete: set null]
-Ref: workspace.default_division_grid_version_id > division_grid_version.id [delete: set null]
 Ref: workspace.quota_plan_id > quota.plan.id [delete: set null]
+Ref: workspace_division_grid_default.workspace_id > workspace.id [delete: cascade]
+Ref: workspace_division_grid_default.discipline > catalog.discipline.code
+Ref: workspace_division_grid_default.version_id > division_grid_version.id [delete: cascade]
 Ref: workspace_member.workspace_id > workspace.id [delete: cascade]
 Ref: workspace_member.player_id > players.user.id [delete: cascade]
 Ref: quota.api_key_limit.api_key_id > auth.api_key.id [delete: cascade]
@@ -3640,12 +3650,12 @@ Ref: roster.format_role_rule.team_format_id > roster.team_format_dimension.team_
 Ref: roster.format_role_rule.dimension_id > catalog.role.dimension_id
 Ref: roster.format_role_rule.dimension_id > roster.team_format_dimension.dimension_id [delete: cascade]
 Ref: roster.format_role_rule.role_id > catalog.role.id
-Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
+Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
-Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
 Ref: roster.team_format.discipline > catalog.discipline.code
 Ref: roster.team_format.discipline > balancer.custom_game.discipline [delete: cascade]
+Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
 Ref: roster.team_format.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: roster.team_format.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: roster.team_format_dimension.team_format_id > roster.team_format.id [delete: cascade]

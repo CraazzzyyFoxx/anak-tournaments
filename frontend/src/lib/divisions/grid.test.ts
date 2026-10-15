@@ -5,7 +5,7 @@ import { DEFAULT_DIVISION_GRID, getDivisionIconSrc } from "@/lib/divisions/grid"
 describe("getDivisionIconSrc", () => {
   it("uses the site-relative OW2 crest for the fallback ladder", () => {
     expect(getDivisionIconSrc(DEFAULT_DIVISION_GRID, 1)).toBe("/divisions/champion-1.png");
-    expect(getDivisionIconSrc({ tiers: [] }, 45)).toBe("/divisions/bronze-5.png");
+    expect(getDivisionIconSrc({ tiers: [] }, 45)).toBeNull();
   });
 
   it("prefers the grid's own icon_url when the division is on it", () => {

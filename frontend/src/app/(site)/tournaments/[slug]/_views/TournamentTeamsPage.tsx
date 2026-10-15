@@ -223,7 +223,12 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
                         ))}
                       </p>
                     ) : null}
-                    <TournamentTeamCard team={team} medal={medal} showGroup={showGroup} />
+                    <TournamentTeamCard
+                      team={team}
+                      medal={medal}
+                      showGroup={showGroup}
+                      discipline={tournament.discipline}
+                    />
                   </div>
                 );
               })}

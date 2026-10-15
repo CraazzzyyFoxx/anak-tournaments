@@ -37,6 +37,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const getDivisionGridVersion = vi.fn();
+const getDivisionGrids = vi.fn();
 const getDivisionGridVersionReadiness = vi.fn();
 const getDivisionGridMapping = vi.fn();
 const updateDivisionGridVersion = vi.fn();
@@ -45,7 +46,6 @@ const putDivisionGridMapping = vi.fn();
 
 let canRead = true;
 let canUpdate = true;
-
 
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({
@@ -59,20 +59,23 @@ vi.mock("@/hooks/usePermissions", () => ({
 
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (
-    selector: (state: {
-      currentWorkspaceId: number;
-      getCurrentWorkspace: () => unknown;
-    }) => unknown
+    selector: (state: { currentWorkspaceId: number; getCurrentWorkspace: () => unknown }) => unknown
   ) =>
     selector({
       currentWorkspaceId: 1,
-      getCurrentWorkspace: () => ({ id: 1, default_division_grid_version_id: 22 })
+      getCurrentWorkspace: () => ({
+        id: 1,
+        disciplines_enabled: ["overwatch", "lol"],
+        default_division_grid_versions: { overwatch: 22, lol: 99 },
+        effective_division_grid_versions: {}
+      })
     })
 }));
 
 vi.mock("@/services/workspace.service", () => ({
   default: {
     getDivisionGridVersion: (...args: unknown[]) => getDivisionGridVersion(...args),
+    getDivisionGrids: (...args: unknown[]) => getDivisionGrids(...args),
     getDivisionGridVersionReadiness: (...args: unknown[]) =>
       getDivisionGridVersionReadiness(...args),
     getDivisionGridMapping: (...args: unknown[]) => getDivisionGridMapping(...args),
@@ -265,10 +268,14 @@ beforeEach(() => {
   canUpdate = true;
   mockViewport(true);
   replace.mockClear();
+  getDivisionGrids.mockReset().mockResolvedValue([{ id: 7, discipline: "overwatch" }]);
   getDivisionGridVersion.mockReset().mockImplementation(async (id: number) => {
     if (id === 23) return version(23, 4, "draft");
     if (id === 22) return version(22, 3, "published");
-    return version(21, 2, "published", [tier(401, 1, "Old top", 4000, null), tier(402, 2, "Old rest", 0, 3999)]);
+    return version(21, 2, "published", [
+      tier(401, 1, "Old top", 4000, null),
+      tier(402, 2, "Old rest", 0, 3999)
+    ]);
   });
   getDivisionGridVersionReadiness.mockReset().mockResolvedValue(readiness());
   getDivisionGridMapping.mockReset().mockResolvedValue({
@@ -437,7 +444,9 @@ describe("Divisions › draft editor", () => {
     expect(container.querySelector('[aria-label="Unsaved changes"]')).toBeNull();
 
     await click(document.querySelector('[aria-label^="Target divisions for Old rest:"]'));
-    const picker = document.querySelector('[role="dialog"][aria-label="Target divisions for Old rest"]')!;
+    const picker = document.querySelector(
+      '[role="dialog"][aria-label="Target divisions for Old rest"]'
+    )!;
     const row = (name: string) =>
       [...picker.querySelectorAll("li > button:first-child")].find((element) =>
         element.textContent?.includes(name)

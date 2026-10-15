@@ -66,9 +66,8 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
   );
   // Tournament grid first — a draft is seeded, balanced and displayed on the
   // grid its OWN tournament is configured with. The workspace default is the
-  // next-best guess when the tournament pins no version of its own; only with
-  // neither does this reach the hardcoded OW ladder inside `useDivisionGrid`.
-  const workspaceGrid = useDivisionGrid();
+  // fallback when the tournament pins no version, scoped to the same game.
+  const workspaceGrid = useDivisionGrid(tournament.discipline);
   const divisionGrid: DivisionGrid = useMemo(
     () =>
       tournament.division_grid_version?.tiers
@@ -129,7 +128,8 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
   const onlineCaptainIds = new Set(
     board.teams
       .filter(
-        (team) => team.captain_auth_user_id != null && presence.users[team.captain_auth_user_id] != null
+        (team) =>
+          team.captain_auth_user_id != null && presence.users[team.captain_auth_user_id] != null
       )
       .map((team) => team.captain_auth_user_id as number)
   );
@@ -189,7 +189,9 @@ export function DraftStateFrame({
       <HeroFrame>
         <div className="flex min-h-64 flex-col items-start justify-center gap-3 px-6 py-12 md:px-10">
           {icon}
-          <h1 className="font-onest text-title font-semibold text-[color:var(--aqt-fg)]">{title}</h1>
+          <h1 className="font-onest text-title font-semibold text-[color:var(--aqt-fg)]">
+            {title}
+          </h1>
           <p className="max-w-xl text-body text-[color:var(--aqt-fg-muted)]">{hint}</p>
           {action || back ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">

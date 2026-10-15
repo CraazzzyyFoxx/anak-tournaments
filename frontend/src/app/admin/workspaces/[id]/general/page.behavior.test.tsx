@@ -92,8 +92,9 @@ const OTHER_WORKSPACE: Workspace = {
   discord_guild_id: null,
   discord_guild_verified_at: null,
   verification_status: "unverified",
-  default_division_grid_version_id: null,
-  default_division_grid_version: null,
+  disciplines_enabled: ["overwatch"],
+  default_division_grid_versions: {},
+  effective_division_grid_versions: {},
   newcomer_scope: "workspace"
 };
 
@@ -154,9 +155,7 @@ describe("Workspaces › [id] › General", () => {
     await render();
 
     expect(getById).toHaveBeenCalledWith(8);
-    expect(container.querySelector<HTMLInputElement>("#workspace-name")?.value).toBe(
-      "Rivals Cup"
-    );
+    expect(container.querySelector<HTMLInputElement>("#workspace-name")?.value).toBe("Rivals Cup");
   });
 
   // The owner is the one field on this screen the public workspace payload

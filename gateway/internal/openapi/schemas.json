@@ -21658,19 +21658,8 @@
       "type": "object"
     },
     "app.WorkspaceCreate": {
+      "additionalProperties": false,
       "properties": {
-        "default_division_grid_version_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Default Division Grid Version Id"
-        },
         "description": {
           "anyOf": [
             {
@@ -22344,27 +22333,12 @@
           "default": null,
           "title": "Custom Domain Verified At"
         },
-        "default_division_grid_version": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/app.DivisionGridVersionRead"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "default_division_grid_version_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Default Division Grid Version Id"
+        "default_division_grid_versions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Default Division Grid Versions",
+          "type": "object"
         },
         "description": {
           "anyOf": [
@@ -22423,6 +22397,13 @@
           ],
           "default": null,
           "title": "Discord Url"
+        },
+        "effective_division_grid_versions": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/app.DivisionGridVersionRead"
+          },
+          "title": "Effective Division Grid Versions",
+          "type": "object"
         },
         "icon_url": {
           "anyOf": [
@@ -22542,8 +22523,7 @@
         "name",
         "description",
         "icon_url",
-        "is_active",
-        "default_division_grid_version_id"
+        "is_active"
       ],
       "title": "WorkspaceRead",
       "type": "object"
@@ -22573,6 +22553,7 @@
       "type": "object"
     },
     "app.WorkspaceUpdate": {
+      "additionalProperties": false,
       "properties": {
         "about": {
           "anyOf": [
@@ -22741,18 +22722,6 @@
           ],
           "default": null,
           "title": "Branding Enabled"
-        },
-        "default_division_grid_version_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Default Division Grid Version Id"
         },
         "description": {
           "anyOf": [

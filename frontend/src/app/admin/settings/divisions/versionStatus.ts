@@ -5,8 +5,8 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
  * What a version is, as the user sees it.
  *
  * The backend stores three statuses — `draft`, `published`, `archived` — and
- * "active" is not one of them: it is the workspace pointing
- * `default_division_grid_version_id` at a published version. The strip has to
+ * "active" is not one of them: it is the workspace's explicit selection for the
+ * grid's discipline in `default_division_grid_versions`. The strip has to
  * show four states, so the fourth is derived here, once, instead of at each
  * call site.
  */

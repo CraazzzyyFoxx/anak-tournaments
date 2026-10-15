@@ -264,11 +264,14 @@ async def get_division_grid(
     session: AsyncSession,
     workspace_id: int | None,
     tournament_id: int | None = None,
+    *,
+    discipline: str | None = None,
 ) -> DivisionGrid:
     return await get_effective_division_grid(
         session,
         workspace_id,
         tournament_id=tournament_id,
+        discipline=discipline,
     )
 
 
@@ -276,9 +279,12 @@ async def get_division_grid_version(
     session: AsyncSession,
     workspace_id: int | None,
     tournament_id: int | None = None,
+    *,
+    discipline: str | None = None,
 ) -> DivisionGridVersion | None:
     return await get_effective_division_grid_version(
         session,
         workspace_id,
         tournament_id=tournament_id,
+        discipline=discipline,
     )

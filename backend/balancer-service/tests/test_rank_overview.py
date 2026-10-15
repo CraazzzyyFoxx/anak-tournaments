@@ -516,7 +516,36 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             session.add(version)
             await session.flush()
             workspace = await session.get(models.Workspace, self.workspace_id)
-            workspace.default_division_grid_version_id = version.id
+            session.add(
+                models.WorkspaceDivisionGridDefault(workspace_id=workspace.id, discipline="lol", version_id=version.id)
+            )
+            ow_grid = models.DivisionGrid(
+                workspace_id=self.workspace_id, slug="ow-custom", name="Custom OW", discipline="overwatch"
+            )
+            ow_version = models.DivisionGridVersion(
+                grid=ow_grid,
+                version=1,
+                label="Custom OW",
+                status="published",
+                tiers=[
+                    models.DivisionGridTier(
+                        slug="ow-custom",
+                        number=4,
+                        name="OW custom",
+                        sort_order=0,
+                        rank_min=0,
+                        rank_max=None,
+                        icon_url="/ow.png",
+                    )
+                ],
+            )
+            session.add(ow_version)
+            await session.flush()
+            session.add(
+                models.WorkspaceDivisionGridDefault(
+                    workspace_id=workspace.id, discipline="overwatch", version_id=ow_version.id
+                )
+            )
             await session.flush()
             for discipline, value in (("overwatch", 1600), ("lol", 3300)):
                 await member_rank_service.set_ranks(
@@ -566,6 +595,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                 filters=RankOverviewFilters(layers=("canon",), roles=("support",)),
             )
             assert [row["rank_value"] for row in ow] == [1600]
+            assert [row["division"] for row in ow] == [4]
             await session.rollback()
 
     async def test_ranker_stores_and_reads_overlapping_roles_in_separate_disciplines(self) -> None:

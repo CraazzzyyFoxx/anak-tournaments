@@ -9,6 +9,7 @@ import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types"
 interface DivisionIconProps {
   division: number;
   tournamentGrid?: DivisionGridVersion | DivisionGrid | null;
+  discipline?: string;
   width?: number;
   height?: number;
   className?: string;
@@ -21,11 +22,12 @@ interface DivisionIconProps {
 const DivisionIcon = ({
   division,
   tournamentGrid,
+  discipline,
   width = 36,
   height = 36,
   className
 }: DivisionIconProps) => {
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid(discipline);
   const preferredGrid = tournamentGrid ?? workspaceGrid;
   const src = getDivisionIconSrc(preferredGrid, division);
   const name = getDivisionLabel(preferredGrid, division);

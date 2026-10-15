@@ -346,8 +346,7 @@ class DiscordGuildVerifyRPCTests(IsolatedAsyncioTestCase):
             custom_domain_verification_token=None,
             discord_guild_id=_GUILD_ID,
             discord_guild_verified_at=datetime.now(UTC),
-            default_division_grid_version_id=None,
-            default_division_grid_version=None,
+            default_division_grid_versions={},
             disciplines_enabled=["overwatch"],
             newcomer_scope="global",
         )
@@ -421,8 +420,7 @@ class DiscordGuildClearRPCTests(IsolatedAsyncioTestCase):
             custom_domain_verification_token=None,
             discord_guild_id=None,
             discord_guild_verified_at=None,
-            default_division_grid_version_id=None,
-            default_division_grid_version=None,
+            default_division_grid_versions={},
             disciplines_enabled=["overwatch"],
             newcomer_scope="global",
         )

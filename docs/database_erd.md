@@ -464,7 +464,6 @@ erDiagram
         bigint discord_guild_verified_by_auth_user_id FK "nullable"
         bigint owner_id FK "nullable"
         varchar(16) verification_status
-        bigint default_division_grid_version_id FK "nullable"
         bigint quota_plan_id FK "nullable"
         varchar(32)[] disciplines_enabled
         varchar(16) newcomer_scope
@@ -483,7 +482,6 @@ erDiagram
     AUTH_USER |o--o{ PUBLIC_WORKSPACE : "discord_guild_verified_by_auth_user_id"
     AUTH_USER |o--o{ PUBLIC_WORKSPACE : "owner_id"
     PLAYERS_USER ||--o{ PUBLIC_WORKSPACE_MEMBER : "player_id"
-    PUBLIC_DIVISION_GRID_VERSION |o--o{ PUBLIC_WORKSPACE : "default_division_grid_version_id"
     PUBLIC_WORKSPACE ||--o{ PUBLIC_WORKSPACE_MEMBER : "workspace_id"
     QUOTA_PLAN |o--o{ PUBLIC_WORKSPACE : "quota_plan_id"
 ```
@@ -782,11 +780,13 @@ are what keeps ranks comparable after a season change or an Overwatch rebinding.
 immutable once published — a new one is forked through `created_from_version_id` — and a grid
 with `workspace_id = NULL` is global.
 
-There are two independent selectors: `workspace.default_division_grid_version_id` and
-`tournament.division_grid_version_id`. A tournament may pin its own version instead of
-inheriting the workspace default, which is what lets a finished tournament keep showing the
-ranks it was actually played at. `division_grid_import_job` covers copying a grid from another
-workspace; it is idempotent per `(workspace_id, idempotency_key)`.
+`workspace_division_grid_default` independently selects a version for each
+`(workspace_id, discipline)`. `tournament.division_grid_version_id` can pin a
+same-discipline version instead of inheriting that discipline's workspace default,
+so a finished tournament keeps showing the ranks it was actually played at.
+The legacy unmapped workspace column is retained only through migration reconciliation
+until P9. `division_grid_import_job` covers copying a grid from another workspace;
+it is idempotent per `(workspace_id, idempotency_key)`.
 
 <!-- ERD:auto division_grid -->
 ```mermaid
@@ -868,9 +868,15 @@ erDiagram
         bigint created_from_version_id FK "nullable"
         timestamptz published_at "nullable"
     }
+    PUBLIC_WORKSPACE_DIVISION_GRID_DEFAULT {
+        bigint workspace_id PK,FK
+        varchar(32) discipline PK,FK
+        bigint version_id FK
+    }
 
     AUTH_USER |o--o{ PUBLIC_DIVISION_GRID_IMPORT_JOB : "requested_by_user_id"
     CATALOG_DISCIPLINE ||--o{ PUBLIC_DIVISION_GRID : "discipline"
+    CATALOG_DISCIPLINE ||--o| PUBLIC_WORKSPACE_DIVISION_GRID_DEFAULT : "discipline"
     PUBLIC_DIVISION_GRID |o--o{ PUBLIC_DIVISION_GRID : "source_grid_id"
     PUBLIC_DIVISION_GRID ||--o{ PUBLIC_DIVISION_GRID_VERSION : "grid_id"
     PUBLIC_DIVISION_GRID_MAPPING ||--o{ PUBLIC_DIVISION_GRID_MAPPING_RULE : "mapping_id"
@@ -880,10 +886,12 @@ erDiagram
     PUBLIC_DIVISION_GRID_VERSION ||--o{ PUBLIC_DIVISION_GRID_MAPPING : "source_version_id"
     PUBLIC_DIVISION_GRID_VERSION ||--o{ PUBLIC_DIVISION_GRID_MAPPING : "target_version_id"
     PUBLIC_DIVISION_GRID_VERSION ||--o{ PUBLIC_DIVISION_GRID_TIER : "version_id"
+    PUBLIC_DIVISION_GRID_VERSION ||--o{ PUBLIC_WORKSPACE_DIVISION_GRID_DEFAULT : "version_id"
     PUBLIC_WORKSPACE |o--o{ PUBLIC_DIVISION_GRID : "source_workspace_id"
     PUBLIC_WORKSPACE |o--o{ PUBLIC_DIVISION_GRID : "workspace_id"
     PUBLIC_WORKSPACE |o--o{ PUBLIC_DIVISION_GRID_IMPORT_JOB : "source_workspace_id"
     PUBLIC_WORKSPACE ||--o{ PUBLIC_DIVISION_GRID_IMPORT_JOB : "workspace_id"
+    PUBLIC_WORKSPACE ||--o| PUBLIC_WORKSPACE_DIVISION_GRID_DEFAULT : "workspace_id"
 ```
 
 Composite unique keys:

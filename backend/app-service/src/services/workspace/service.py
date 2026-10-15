@@ -29,7 +29,6 @@ from shared.repository import (
     get_or_create_workspace_member,
 )
 from shared.services.audit import record_audit
-from shared.services.division_grid.access import get_default_division_grid_version_id
 from shared.services.settings_provider import settings_provider
 from shared.tenancy.hostnames import RESERVED_SUBDOMAINS, normalize_custom_domain
 from src import models
@@ -274,66 +273,16 @@ class WorkspaceService:
 
     # --- writes -------------------------------------------------------------
 
-    async def validate_default_division_grid_version(
-        self,
-        session: AsyncSession,
-        *,
-        workspace_id: int | None,
-        version_id: int,
-    ) -> None:
-        owner_id = await session.scalar(
-            sa.select(sa.func.coalesce(models.DivisionGrid.workspace_id, -1))
-            .join(
-                models.DivisionGridVersion,
-                models.DivisionGridVersion.grid_id == models.DivisionGrid.id,
-            )
-            .where(models.DivisionGridVersion.id == version_id)
-        )
-        if owner_id is None:
-            raise HTTPException(status_code=404, detail="Division grid version not found")
-        if owner_id != -1 and owner_id != workspace_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Default division grid version must belong to the workspace or be global",
-            )
-
-    async def _resolve_default_division_grid_version_id(
-        self,
-        session: AsyncSession,
-        version_id: int | None,
-        *,
-        workspace_id: int | None = None,
-    ) -> int:
-        if version_id is not None:
-            await self.validate_default_division_grid_version(
-                session,
-                workspace_id=workspace_id,
-                version_id=version_id,
-            )
-            return version_id
-
-        resolved_version_id = await get_default_division_grid_version_id(session)
-        if resolved_version_id is None:
-            raise RuntimeError("System default division grid version is not configured")
-        return resolved_version_id
-
     async def create(self, session: AsyncSession, **kwargs) -> models.Workspace:
-        payload = dict(kwargs)
-        payload["default_division_grid_version_id"] = await self._resolve_default_division_grid_version_id(
-            session,
-            payload.get("default_division_grid_version_id"),
-        )
-
-        workspace = models.Workspace(**payload)
-        return await self.workspace_repo.create(session, workspace)
+        workspace = models.Workspace(division_grid_defaults=[], **kwargs)
+        await self.workspace_repo.create(session, workspace)
+        await self.workspace_repo.load_effective_grid_versions(session, [workspace])
+        return workspace
 
     async def update(self, session: AsyncSession, workspace: models.Workspace, data: dict) -> models.Workspace:
-        if "default_division_grid_version_id" in data:
-            raise HTTPException(
-                status_code=400,
-                detail="Activate division grid versions through the division-grid activation endpoint",
-            )
         await self.workspace_repo.update_fields(session, workspace, dict(data))
+        if "disciplines_enabled" in data:
+            await self.workspace_repo.load_effective_grid_versions(session, [workspace])
         return workspace
 
     async def delete(self, session: AsyncSession, workspace: models.Workspace) -> None:
@@ -616,13 +565,7 @@ class WorkspaceService:
             session, user_id=owner_auth_user_id, workspace_id=workspace.id, role_name="owner"
         )
         await session.commit()
-        # The workspace was built in Python and only flushed, so its
-        # ``default_division_grid_version`` was never loaded -- ``selectin`` is
-        # a query-time strategy and does not run for an instance that never
-        # went through a SELECT. Reading it below would then lazy-load from
-        # sync Pydantic code (MissingGreenlet) whenever the create body named
-        # a version. Awaited here, it is ordinary IO.
-        await session.refresh(workspace, ["default_division_grid_version"])
+        await session.refresh(workspace, ["division_grid_defaults"])
         return workspace
 
     async def backfill_member_roles(self, session: AsyncSession, workspace_id: int) -> int:

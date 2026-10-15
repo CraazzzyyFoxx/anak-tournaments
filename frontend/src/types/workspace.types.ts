@@ -242,6 +242,7 @@ export interface Workspace {
   slug: string;
   name: string;
   description: string | null;
+  disciplines_enabled: string[];
   /** One-line motto under the community name on its page. */
   tagline: string | null;
   /** Organizer-written "About the community", Markdown. */
@@ -285,8 +286,10 @@ export interface Workspace {
   /** Self-service trust tier: `unverified` workspaces are absent from the
    * public directory (`scope=public`) for every caller, superusers included. */
   verification_status: WorkspaceVerificationStatus;
-  default_division_grid_version_id: number | null;
-  default_division_grid_version: DivisionGridVersion | null;
+  /** Explicit active selections; missing keys use the discipline's fallback. */
+  default_division_grid_versions: Record<string, number>;
+  /** Real resolved versions, including same-discipline system defaults. */
+  effective_division_grid_versions: Record<string, DivisionGridVersion>;
   /** How "is this player new" is decided when a roster is created: `"global"`
    * counts any workspace's tournaments, `"workspace"` counts only this
    * workspace's. */

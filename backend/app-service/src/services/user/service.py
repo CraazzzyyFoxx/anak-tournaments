@@ -1123,11 +1123,12 @@ class UserService:
                     session,
                     workspace_id,
                     require_complete=False,
+                    discipline="overwatch",
                 )
             except DivisionGridNormalizationError:
                 normalizer = None
 
-        current_grid_version_model = await get_division_grid_version(session, workspace_id)
+        current_grid_version_model = await get_division_grid_version(session, workspace_id, discipline="overwatch")
         current_grid_version = (
             schemas.DivisionGridVersionRead.model_validate(current_grid_version_model, from_attributes=True)
             if current_grid_version_model is not None

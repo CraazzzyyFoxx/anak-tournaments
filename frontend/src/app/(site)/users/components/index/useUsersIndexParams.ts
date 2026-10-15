@@ -71,7 +71,7 @@ export interface UsersIndexParamControls {
  */
 export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls {
   const { searchParams, setParams } = useQueryParams();
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid("overwatch");
   // All-workspaces divisions span every grid, so the filter is plain tier
   // numbers from the reference grid rather than this workspace's own.
   const divisionGrid = scope === "all" ? getDefaultDivisionGrid() : workspaceGrid;
@@ -127,7 +127,9 @@ export function useUsersIndexParams(scope: StatsScope): UsersIndexParamControls 
     setSearchInput,
     setRole: (value) => setParams({ role: value === "all" ? undefined : value }),
     setDivisions: (value) =>
-      setParams({ div: value.length === 0 ? undefined : [...value].sort((a, b) => a - b).join(",") }),
+      setParams({
+        div: value.length === 0 ? undefined : [...value].sort((a, b) => a - b).join(",")
+      }),
     setHasLogs: (value) => setParams({ logs: value ? "1" : undefined }),
     // The default is implied, never written: a shared link should not carry a
     // param the user never touched.

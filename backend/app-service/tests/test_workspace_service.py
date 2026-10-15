@@ -1,62 +1,34 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
+import sys
+import uuid
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, patch
+
+import sqlalchemy as sa
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared import models
+from shared.repository.workspace import WorkspaceRepository
+from shared.testing import create_test_async_engine
+from src.schemas.workspace import WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
 
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces
 
 
 class WorkspaceServiceTests(IsolatedAsyncioTestCase):
-    async def test_create_uses_system_default_division_grid_version_when_none_is_provided(self) -> None:
-        session = SimpleNamespace(add=Mock(), flush=AsyncMock())
-
-        with patch.object(
-            workspace_service,
-            "get_default_division_grid_version_id",
-            AsyncMock(return_value=77),
-        ) as get_default_version_id:
-            workspace = await workspaces.create(
-                session,
-                slug="homies-family",
-                name="Homies Family",
-                description=None,
-                icon_url=None,
-                default_division_grid_version_id=None,
-            )
-
-        self.assertEqual(77, workspace.default_division_grid_version_id)
-        get_default_version_id.assert_awaited_once_with(session)
-        session.add.assert_called_once_with(workspace)
-        session.flush.assert_awaited_once()
-
-    async def test_update_rejects_default_version_changes_outside_activation_flow(self) -> None:
-        session = SimpleNamespace(flush=AsyncMock())
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=12)
-
-        with self.assertRaises(Exception) as caught:
-            await workspaces.update(
-                session,
-                workspace,
-                {"default_division_grid_version_id": 77},
-            )
-
-        self.assertEqual(400, getattr(caught.exception, "status_code", None))
-        session.flush.assert_not_awaited()
-
-    async def test_update_rejects_default_version_owned_by_another_workspace(self) -> None:
-        session = SimpleNamespace(scalar=AsyncMock(return_value=9))
-
-        with self.assertRaises(Exception) as caught:
-            await workspaces.validate_default_division_grid_version(
-                session,
-                workspace_id=4,
-                version_id=55,
-            )
-
-        self.assertEqual(400, getattr(caught.exception, "status_code", None))
+    def test_workspace_write_contract_refuses_grid_assignment_fields(self) -> None:
+        for field in ("default_division_grid_version_id", "default_division_grid_versions"):
+            with self.subTest(field=field):
+                with self.assertRaises(ValidationError):
+                    WorkspaceCreate.model_validate({"slug": "acme", "name": "Acme", field: 77})
+                with self.assertRaises(ValidationError):
+                    WorkspaceUpdate.model_validate({field: {"lol": 77}})
 
     async def test_update_member_roles_refreshes_member_after_flush(self) -> None:
         # Regression: ``updated_at`` (onupdate=func.now()) is server-computed and
@@ -318,3 +290,103 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
 
     async def test_admin_scope_is_empty_for_an_anonymous_caller(self) -> None:
         self.assertEqual([], await self._get_all(None, "admin"))
+
+
+class WorkspacePublicGridTests(IsolatedAsyncioTestCase):
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_service_read_serializes_two_explicit_defaults_and_batched_system_fallbacks(self):
+        engine = create_test_async_engine()
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            tag = uuid.uuid4().hex
+            try:
+                system = models.DivisionGridVersion(
+                    grid=models.DivisionGrid(slug=tag + "-system", name="System OW", discipline="overwatch"),
+                    version=1,
+                    label="System OW",
+                    status="published",
+                    tiers=[
+                        models.DivisionGridTier(
+                            slug="system",
+                            number=45,
+                            name="System tier",
+                            sort_order=0,
+                            rank_min=0,
+                            rank_max=None,
+                            icon_url="/system.png",
+                        )
+                    ],
+                )
+                session.add(system)
+                await session.flush()
+                workspace = await workspaces.create(
+                    session, slug=tag, name=tag, disciplines_enabled=["overwatch", "lol"]
+                )
+                self.assertEqual(workspace.default_division_grid_versions, {})
+                initial = WorkspaceRead.model_validate(workspace, from_attributes=True).model_dump()
+                self.assertNotIn("default_division_grid_version_id", initial)
+                self.assertNotIn("default_division_grid_version", initial)
+                self.assertNotIn("lol", initial["effective_division_grid_versions"])
+                self.assertIn("overwatch", initial["effective_division_grid_versions"])
+                expected = {}
+                for code, number in (("overwatch", 4), ("lol", 9)):
+                    grid = models.DivisionGrid(workspace_id=workspace.id, slug=code, name=code, discipline=code)
+                    version = models.DivisionGridVersion(
+                        grid=grid,
+                        version=1,
+                        label=code,
+                        status="published",
+                        tiers=[
+                            models.DivisionGridTier(
+                                slug=code,
+                                number=number,
+                                name=code,
+                                sort_order=0,
+                                rank_min=0,
+                                rank_max=None,
+                                icon_url="/tier.png",
+                            )
+                        ],
+                    )
+                    session.add(version)
+                    await session.flush()
+                    await WorkspaceRepository().set_default_grid_version(
+                        session, workspace, discipline=code, version_id=version.id
+                    )
+                    expected[code] = version.id
+                loaded = await workspaces.get_by_id(session, workspace.id)
+                payload = WorkspaceRead.model_validate(loaded, from_attributes=True).model_dump()
+                self.assertEqual(payload["default_division_grid_versions"], expected)
+                self.assertEqual(
+                    {
+                        code: data["tiers"][0]["number"]
+                        for code, data in payload["effective_division_grid_versions"].items()
+                    },
+                    {"overwatch": 4, "lol": 9},
+                )
+                counts = []
+                for index in range(2):
+                    session.add(models.Workspace(slug=f"{tag}-{index}", name="Public", verification_status="trusted"))
+                    await session.flush()
+                    session.expunge_all()
+                    statements = []
+
+                    def count_sql(*args, statements=statements):
+                        statements.append(args[2])
+
+                    sa.event.listen(engine.sync_engine, "before_cursor_execute", count_sql)
+                    try:
+                        public = await workspaces.get_all(session)
+                        serialized = [WorkspaceRead.model_validate(row, from_attributes=True) for row in public]
+                    finally:
+                        sa.event.remove(engine.sync_engine, "before_cursor_execute", count_sql)
+                    counts.append(len(statements))
+                    self.assertTrue(any(item.slug == f"{tag}-{index}" for item in serialized))
+                self.assertEqual(counts[0], counts[1])
+                print(
+                    f"WorkspaceRead: explicit OW+LoL, scoped effective payloads, no legacy fields; list queries {counts}"
+                )
+            finally:
+                await session.rollback()
+        await engine.dispose()

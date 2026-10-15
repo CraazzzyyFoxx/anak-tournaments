@@ -19,11 +19,7 @@ import {
 } from "@/components/balancer/registrations/_components/registrationGrouping";
 import { useRegistrationFilters } from "@/components/balancer/registrations/_hooks/useRegistrationFilters";
 import { useRegistrationMutations } from "@/components/balancer/registrations/_hooks/useRegistrationMutations";
-import {
-  DataTable,
-  type DataTableGroup,
-  createKebabColumn
-} from "@/components/data-table";
+import { DataTable, type DataTableGroup, createKebabColumn } from "@/components/data-table";
 import { useAuditTrail } from "@/components/kit/AuditTrailSheet";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { Inspector } from "@/components/kit/Inspector";
@@ -48,6 +44,8 @@ import { cn } from "@/lib/utils";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
+import adminService from "@/services/admin.service";
 
 import { ADMIN_ROLE_FORM, ADMISSION_LABELS } from "./registrationsTable.model";
 
@@ -68,6 +66,11 @@ export default function RegistrationsTable({
   const { open: openAuditTrail } = useAuditTrail();
   // Catalogs follow the opened tournament, not the public viewing filter.
   const workspaceId = useCurrentWorkspaceId();
+  const tournamentQuery = useQuery({
+    queryKey: adminQueryKeys.tournament(tournamentId),
+    queryFn: () => adminService.getTournament(tournamentId!),
+    enabled: tournamentId !== null
+  });
 
   const [groupBy, setGroupBy] = useState<RegistrationGroupingMode>(
     normalizeRegistrationGroupingMode(searchParams?.get("group") ?? null)
@@ -146,8 +149,13 @@ export default function RegistrationsTable({
 
   const registrations = useMemo(() => registrationsQuery.data ?? [], [registrationsQuery.data]);
 
-  const { defs: filterDefs, filters, tableFilters, onTableFiltersChange, visibleRegistrations } =
-    useRegistrationFilters({ registrations, requireSubscription, statusFilterOptions });
+  const {
+    defs: filterDefs,
+    filters,
+    tableFilters,
+    onTableFiltersChange,
+    visibleRegistrations
+  } = useRegistrationFilters({ registrations, requireSubscription, statusFilterOptions });
 
   const {
     patchRegistrationInCache,
@@ -212,18 +220,22 @@ export default function RegistrationsTable({
       ),
       createKebabColumn<AdminRegistration>(
         (registration) =>
-          buildRegistrationRowActions(registration, {
-            canAccessPermission,
-            openAuditTrail,
-            approve,
-            reject,
-            withdraw,
-            restore,
-            setBalancerInclusion,
-            setCheckIn,
-            onEdit: setEditingRegistration,
-            onDelete: setPendingDelete
-          }, tRegistrations),
+          buildRegistrationRowActions(
+            registration,
+            {
+              canAccessPermission,
+              openAuditTrail,
+              approve,
+              reject,
+              withdraw,
+              restore,
+              setBalancerInclusion,
+              setCheckIn,
+              onEdit: setEditingRegistration,
+              onDelete: setPendingDelete
+            },
+            tRegistrations
+          ),
         {
           rowLabel: (registration) =>
             registration.primary_handle ??
@@ -332,7 +344,9 @@ export default function RegistrationsTable({
             <>
               <span
                 className="shrink-0 text-xs tabular-nums text-muted-foreground"
-                title={t("registrationsAdmin.table.registrationCount", { count: registrations.length })}
+                title={t("registrationsAdmin.table.registrationCount", {
+                  count: registrations.length
+                })}
               >
                 {registrations.length}
               </span>
@@ -357,14 +371,23 @@ export default function RegistrationsTable({
                 value={groupBy}
                 onValueChange={(value) => setGroupBy(value as RegistrationGroupingMode)}
               >
-                <SelectTrigger className="h-8 w-[160px]" aria-label={t("registrationsAdmin.table.groupAria")}>
+                <SelectTrigger
+                  className="h-8 w-[160px]"
+                  aria-label={t("registrationsAdmin.table.groupAria")}
+                >
                   <SelectValue placeholder={t("registrationsAdmin.table.groupBy")} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">{t("registrationsAdmin.table.noGrouping")}</SelectItem>
-                  <SelectItem value="check_in">{t("registrationsAdmin.table.groupCheckIn")}</SelectItem>
-                  <SelectItem value="balancer_status">{t("registrationsAdmin.table.groupBalancer")}</SelectItem>
-                  <SelectItem value="admission">{t("registrationsAdmin.table.groupAdmission")}</SelectItem>
+                  <SelectItem value="check_in">
+                    {t("registrationsAdmin.table.groupCheckIn")}
+                  </SelectItem>
+                  <SelectItem value="balancer_status">
+                    {t("registrationsAdmin.table.groupBalancer")}
+                  </SelectItem>
+                  <SelectItem value="admission">
+                    {t("registrationsAdmin.table.groupAdmission")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
               {canAccessPermission("registration.create", workspaceId) && (
@@ -381,16 +404,21 @@ export default function RegistrationsTable({
       <Inspector
         openId={inspected ? openId : null}
         onClose={() => setParams({ id: null })}
-        title={inspected?.primary_handle ?? inspected?.display_name ?? t("registrationsAdmin.table.registration")}
+        title={
+          inspected?.primary_handle ??
+          inspected?.display_name ??
+          t("registrationsAdmin.table.registration")
+        }
         subtitle={
           inspected
             ? `${inspected.status} · ${ADMISSION_LABELS[inspected.admission.decision]}`
             : undefined
         }
       >
-        {inspected ? (
+        {inspected && tournamentQuery.data ? (
           <RegistrationInspectorBody
             registration={inspected}
+            discipline={tournamentQuery.data.discipline}
             catalog={subroleCatalog}
             schemaFields={schemaFields}
             schemaKnown={schemaLoaded}

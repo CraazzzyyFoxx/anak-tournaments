@@ -8,11 +8,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { Crown, Shuffle, Sprout } from "lucide-react";
-import {
-  sortTeamPlayers,
-  type SortableRosterPlayer,
-  type TeamRosterPlayer
-} from "@/lib/player";
+import { sortTeamPlayers, type SortableRosterPlayer, type TeamRosterPlayer } from "@/lib/player";
 import PlayerName from "@/components/PlayerName";
 import { Team } from "@/types/team.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -97,7 +93,9 @@ export function RosterRole({
     const original = position.slot.find((member) => member.id === related);
     return (
       <>
-        {lineBelow ? <span className={cn(BRANCH_LINE, "-bottom-px left-[21px] top-0 border-l-[1.5px]")} /> : null}
+        {lineBelow ? (
+          <span className={cn(BRANCH_LINE, "-bottom-px left-[21px] top-0 border-l-[1.5px]")} />
+        ) : null}
         <IconTooltip
           label={t("teams.roster.substitution")}
           hint={
@@ -116,11 +114,16 @@ export function RosterRole({
     );
   }
 
-  const roleKey = PLAYER_ROLE_LABEL_KEY[(role ? normalizePlayerRole(roleOf(role)) : "Flex")];
+  const roleKey = PLAYER_ROLE_LABEL_KEY[role ? normalizePlayerRole(roleOf(role)) : "Flex"];
   return (
     <>
       {lineBelow ? (
-        <span className={cn(BRANCH_LINE, "-bottom-px left-[21px] top-[calc(50%+14px)] border-l-[1.5px]")} />
+        <span
+          className={cn(
+            BRANCH_LINE,
+            "-bottom-px left-[21px] top-[calc(50%+14px)] border-l-[1.5px]"
+          )}
+        />
       ) : null}
       <IconTooltip
         label={t(roleKey)}
@@ -197,22 +200,31 @@ export function RosterRank({
   division,
   rank,
   tournamentGrid,
+  discipline,
   dimmed,
   className
 }: Readonly<{
   division: number;
   rank: number;
   tournamentGrid?: DivisionGridVersion | null;
+  discipline?: string;
   dimmed?: boolean;
   className?: string;
 }>) {
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid(discipline);
   const format = useFormatter();
-  const label = getDivisionLabel(tournamentGrid ?? workspaceGrid, division) ?? `Division ${division}`;
+  const label =
+    getDivisionLabel(tournamentGrid ?? workspaceGrid, division) ?? `Division ${division}`;
   return (
     <div className={cn("flex items-center gap-2", dimmed && "opacity-50", className)}>
       <IconTooltip label={label} className="shrink-0">
-        <DivisionIcon division={division} width={26} height={26} tournamentGrid={tournamentGrid} />
+        <DivisionIcon
+          division={division}
+          width={26}
+          height={26}
+          tournamentGrid={tournamentGrid}
+          discipline={discipline}
+        />
       </IconTooltip>
       <span className="aqt-tnum text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
         {format.number(rank, { maximumFractionDigits: 0 })}
@@ -231,11 +243,13 @@ function avgMvpColor(value: number): string {
 export const TournamentTeamTable = ({
   players,
   tournamentGrid,
+  discipline,
   highlightUserId,
   captainUserId
 }: {
   players: TeamRosterPlayer[];
   tournamentGrid?: DivisionGridVersion | null;
+  discipline?: string;
   /** When a roster row belongs to this user id, it gets a "you" tag. */
   highlightUserId?: number;
   /** When a roster row belongs to this user id, it gets a captain crown. */
@@ -298,6 +312,7 @@ export const TournamentTeamTable = ({
                       division={player.division}
                       rank={player.rank}
                       tournamentGrid={tournamentGrid}
+                      discipline={discipline}
                       dimmed={dimmed}
                     />
                   </td>
@@ -307,9 +322,7 @@ export const TournamentTeamTable = ({
                       style={{
                         textAlign: "right",
                         color:
-                          player.avg_mvp != null
-                            ? avgMvpColor(player.avg_mvp)
-                            : "var(--aqt-fg-dim)"
+                          player.avg_mvp != null ? avgMvpColor(player.avg_mvp) : "var(--aqt-fg-dim)"
                       }}
                     >
                       {player.avg_mvp != null ? player.avg_mvp.toFixed(1) : "—"}
@@ -417,11 +430,13 @@ export const TournamentTeamCardFrame = ({
 export const TournamentTeamCard = ({
   team,
   medal,
-  showGroup
+  showGroup,
+  discipline
 }: {
   team: Team;
   medal: boolean;
   showGroup: boolean;
+  discipline: string;
 }) => {
   const t = useTranslations();
   const format = useFormatter();
@@ -441,9 +456,7 @@ export const TournamentTeamCard = ({
         ) : undefined
       }
       positionTag={
-        team.placement != null ? (
-          <TeamPlacement placement={team.placement} medal={medal} />
-        ) : null
+        team.placement != null ? <TeamPlacement placement={team.placement} medal={medal} /> : null
       }
       metricLabel={t("teams.roster.avgSr")}
       metricValue={
@@ -455,6 +468,7 @@ export const TournamentTeamCard = ({
       <TournamentTeamTable
         players={team.players}
         tournamentGrid={team.tournament?.division_grid_version}
+        discipline={discipline}
         captainUserId={team.captain_id}
       />
     </TournamentTeamCardFrame>

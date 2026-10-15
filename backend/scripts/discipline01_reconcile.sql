@@ -196,6 +196,16 @@ SELECT 'hidden ratings', h.id, h.role,
   FROM balancer.member_hidden_rating h
  WHERE h.role IS NOT NULL
 UNION ALL
+-- Initial rehearsal proof; the retained legacy pointer is never dual-written after cutover.
+SELECT 'workspace grid defaults', w.id, w.default_division_grid_version_id::text,
+       EXISTS (SELECT 1 FROM workspace_division_grid_default a
+                 JOIN division_grid_version v ON v.id = a.version_id
+                 JOIN division_grid g ON g.id = v.grid_id
+                WHERE a.workspace_id = w.id AND a.version_id = w.default_division_grid_version_id
+                  AND a.discipline = g.discipline AND (g.workspace_id IS NULL OR g.workspace_id = w.id))
+  FROM workspace w
+ WHERE w.default_division_grid_version_id IS NOT NULL
+UNION ALL
 -- Informational: flex is no role (D86); the revision kept every dropped row.
 SELECT 'flex ranks (dropped)', d.row_id, d.source, true
   FROM balancer.discipline01c_dropped_ranks d

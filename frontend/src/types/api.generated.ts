@@ -13914,10 +13914,10 @@ export interface components {
              * @default null
              */
             custom_domain_verified_at: string | null;
-            /** @default null */
-            default_division_grid_version: components["schemas"]["app.DivisionGridVersionRead"] | null;
-            /** Default Division Grid Version Id */
-            default_division_grid_version_id: number | null;
+            /** Default Division Grid Versions */
+            default_division_grid_versions?: {
+                [key: string]: number;
+            };
             /** Description */
             description: string | null;
             /**
@@ -13942,6 +13942,10 @@ export interface components {
              * @default null
              */
             discord_url: string | null;
+            /** Effective Division Grid Versions */
+            effective_division_grid_versions?: {
+                [key: string]: components["schemas"]["app.DivisionGridVersionRead"];
+            };
             /** Icon Url */
             icon_url: string | null;
             /** Id */

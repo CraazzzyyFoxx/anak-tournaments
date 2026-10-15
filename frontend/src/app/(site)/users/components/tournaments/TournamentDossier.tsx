@@ -80,7 +80,10 @@ const summaryCells = (
         <>
           {args.placement && args.placement > 0 ? args.placement : "—"}
           {args.countTeams ? (
-            <span className="text-label font-normal text-[color:var(--aqt-fg-faint)]"> / {args.countTeams}</span>
+            <span className="text-label font-normal text-[color:var(--aqt-fg-faint)]">
+              {" "}
+              / {args.countTeams}
+            </span>
           ) : null}
         </>
       )
@@ -141,6 +144,7 @@ const EventBody = ({
         <TournamentTeamTable
           players={t.players ?? []}
           tournamentGrid={t.division_grid_version}
+          discipline="overwatch"
           highlightUserId={selfUserId}
         />
       </div>
@@ -151,7 +155,10 @@ const EventBody = ({
           // avoids a misleading "no run recorded" flash on every selection.
           <div className="flex flex-col gap-1.5">
             {Array.from({ length: 4 }).map((_, i) => (
-              <span key={i} className="h-9 w-full animate-pulse rounded bg-[color:var(--aqt-card-2)]" />
+              <span
+                key={i}
+                className="h-9 w-full animate-pulse rounded bg-[color:var(--aqt-card-2)]"
+              />
             ))}
           </div>
         ) : hasEncounters ? (
@@ -162,7 +169,12 @@ const EventBody = ({
                   <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
                     {stage.name}
                   </span>
-                  <WdlText won={stage.won} lost={stage.lost} draw={stage.drawn} className="text-label" />
+                  <WdlText
+                    won={stage.won}
+                    lost={stage.lost}
+                    draw={stage.drawn}
+                    className="text-label"
+                  />
                 </div>
                 {stage.encounters.map((enc) => (
                   <EncounterRow key={enc.id} enc={enc} selfUserId={selfUserId} teamId={t.team_id} />
@@ -216,14 +228,27 @@ const SingleDossier = ({
               >
                 {t.name}
               </HoverPrefetchLink>
-              {t.is_league ? <LeagueBadge>{tr("users.tournaments.leagueBadge")}</LeagueBadge> : null}
+              {t.is_league ? (
+                <LeagueBadge>{tr("users.tournaments.leagueBadge")}</LeagueBadge>
+              ) : null}
             </div>
             <div className="mt-1.5 flex items-center gap-2 text-caption text-[color:var(--aqt-fg-muted)]">
               <span className="inline-flex" title={roleOf(t.role) ?? undefined}>
-                <PlayerRoleIcon role={roleOf(t.role)} size={15} color={roleColorVar(roleOf(t.role))} />
+                <PlayerRoleIcon
+                  role={roleOf(t.role)}
+                  size={15}
+                  color={roleColorVar(roleOf(t.role))}
+                />
               </span>
-              <span className="aqt-tnum truncate">{tr("users.tournaments.teamName", { name: String(t.team) })}</span>
-              <DivisionIcon division={t.division} tournamentGrid={t.division_grid_version} width={20} height={20} />
+              <span className="aqt-tnum truncate">
+                {tr("users.tournaments.teamName", { name: String(t.team) })}
+              </span>
+              <DivisionIcon
+                division={t.division}
+                tournamentGrid={t.division_grid_version}
+                width={20}
+                height={20}
+              />
             </div>
           </div>
         </div>
@@ -240,7 +265,12 @@ const DivisionHeader = ({ t }: { t: UserTournament }) => {
   const agg = groupAggregate(t);
   return (
     <div className="flex items-center gap-3 py-2.5">
-      <DivisionIcon division={t.division} tournamentGrid={t.division_grid_version} width={28} height={28} />
+      <DivisionIcon
+        division={t.division}
+        tournamentGrid={t.division_grid_version}
+        width={28}
+        height={28}
+      />
       <HoverPrefetchLink
         href={tournamentHref(t.id)}
         className="min-w-0 flex-1 truncate text-body font-semibold text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
@@ -278,7 +308,9 @@ const LeagueDossier = ({
   );
   const best = groupBestPlacement(entries);
   const bestEntry = entries.find((t) => t.placement === best) ?? entries[0];
-  const closenessValues = entries.map((t) => t.closeness).filter((c): c is number => typeof c === "number");
+  const closenessValues = entries
+    .map((t) => t.closeness)
+    .filter((c): c is number => typeof c === "number");
   const avgCloseness = closenessValues.length
     ? closenessValues.reduce((sum, c) => sum + c, 0) / closenessValues.length
     : null;
@@ -334,13 +366,19 @@ const TournamentDossier = ({ group, selfUserId, loadingEncounters }: Props) => {
     return (
       <div className="aqt-card-surface flex flex-col items-center justify-center gap-3 px-4 py-16 text-center">
         <Trophy size={26} className="text-[color:var(--aqt-fg-faint)]" aria-hidden="true" />
-        <span className="text-caption text-[color:var(--aqt-fg-muted)]">{t("users.tournaments.dossier.empty")}</span>
+        <span className="text-caption text-[color:var(--aqt-fg-muted)]">
+          {t("users.tournaments.dossier.empty")}
+        </span>
       </div>
     );
   }
   if (isLeagueGroup(group)) {
     return (
-      <LeagueDossier entries={groupEntries(group)} selfUserId={selfUserId} loadingEncounters={loadingEncounters} />
+      <LeagueDossier
+        entries={groupEntries(group)}
+        selfUserId={selfUserId}
+        loadingEncounters={loadingEncounters}
+      />
     );
   }
   return <SingleDossier t={group} selfUserId={selfUserId} loadingEncounters={loadingEncounters} />;

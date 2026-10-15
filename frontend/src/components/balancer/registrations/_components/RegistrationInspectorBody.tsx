@@ -20,19 +20,18 @@ import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { FormField } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
 
-import {
-  SUBSCRIPTION_LABELS,
-  formatSubmittedAt
-} from "../registrationsTable.model";
+import { SUBSCRIPTION_LABELS, formatSubmittedAt } from "../registrationsTable.model";
 
 function RolesCell({
   roles,
+  discipline,
   catalog
 }: Readonly<{
   roles: AdminRegistration["roles"];
+  discipline: string;
   catalog?: SubroleCatalog;
 }>) {
-  const grid = useDivisionGrid();
+  const grid = useDivisionGrid(discipline);
   // Declared, not playable: a rankless role must stay visible (see `RolesCell`
   // in registrationColumnCells.tsx).
   const active = roles.filter((role) => role.is_declared_active);
@@ -49,7 +48,9 @@ function RolesCell({
         .map((role) => ({
           role: roleOf(role.role),
           rank: role.rank_value,
-          subrole: subRoleSlugOf(role.role) ? getSubroleLabel(catalog, roleOf(role.role), subRoleSlugOf(role.role)!) : null,
+          subrole: subRoleSlugOf(role.role)
+            ? getSubroleLabel(catalog, roleOf(role.role), subRoleSlugOf(role.role)!)
+            : null,
           dimmed: !role.is_active
         }))}
     />
@@ -59,12 +60,14 @@ function RolesCell({
 /** Everything about one row that the table has no column for. */
 export default function RegistrationInspectorBody({
   registration,
+  discipline,
   catalog,
   schemaFields,
   schemaKnown,
   t
 }: Readonly<{
   registration: AdminRegistration;
+  discipline: string;
   catalog?: SubroleCatalog;
   schemaFields: FormField[];
   /** Whether the tournament's schema has actually been read. While it has not,
@@ -80,8 +83,7 @@ export default function RegistrationInspectorBody({
   // filed against an older version, and the table has no column for a question
   // that version asked and this one does not.
   const asked = schemaFields.filter(
-    (field) =>
-      field.key !== "roles" && (registration.answers?.[field.key] ?? null) !== null
+    (field) => field.key !== "roles" && (registration.answers?.[field.key] ?? null) !== null
   );
   const askedKeys: Record<string, true> = Object.fromEntries(
     schemaFields.map((field) => [field.key, true] as const)
@@ -89,15 +91,15 @@ export default function RegistrationInspectorBody({
   const orphaned = Object.entries(registration.answers ?? {}).filter(
     ([key, value]) => askedKeys[key] !== true && key !== "roles" && (value ?? null) !== null
   );
-  const blockers = registration.admission.blockers.flatMap(
-    (requirement) => requirement.reasons
-  );
+  const blockers = registration.admission.blockers.flatMap((requirement) => requirement.reasons);
 
   return (
     <div className="space-y-5 text-sm">
       <section className="space-y-1.5">
         <h3 className={EYEBROW_CLASS}>{i18n("inspector.admission")}</h3>
-        <p className="text-foreground">{admissionDecisionLabel(registration.admission.decision, i18n)}</p>
+        <p className="text-foreground">
+          {admissionDecisionLabel(registration.admission.decision, i18n)}
+        </p>
         {blockers.length > 0 ? (
           <ul className="space-y-1 text-xs text-muted-foreground">
             {blockers.map((reason) => (
@@ -107,14 +109,15 @@ export default function RegistrationInspectorBody({
         ) : null}
         {registration.subscription_outcome ? (
           <p className="text-xs text-muted-foreground">
-            {i18n("inspector.subscription")}: {SUBSCRIPTION_LABELS[registration.subscription_outcome]}
+            {i18n("inspector.subscription")}:{" "}
+            {SUBSCRIPTION_LABELS[registration.subscription_outcome]}
           </p>
         ) : null}
       </section>
 
       <section className="space-y-1.5">
         <h3 className={EYEBROW_CLASS}>{i18n("inspector.declaredRoles")}</h3>
-        <RolesCell roles={registration.roles} catalog={catalog} />
+        <RolesCell roles={registration.roles} catalog={catalog} discipline={discipline} />
       </section>
 
       {asked.length > 0 || orphaned.length > 0 ? (
@@ -136,7 +139,9 @@ export default function RegistrationInspectorBody({
                 <dt className="text-muted-foreground">
                   {builtinAnswerLabel(key, i18n) || key}
                   {schemaKnown ? (
-                    <span className="ml-1 text-[color:var(--aqt-fg-dim)]">· {i18n("inspector.noLongerAsked")}</span>
+                    <span className="ml-1 text-[color:var(--aqt-fg-dim)]">
+                      · {i18n("inspector.noLongerAsked")}
+                    </span>
                   ) : null}
                 </dt>
                 <dd className="mt-0.5 text-foreground">
@@ -146,9 +151,7 @@ export default function RegistrationInspectorBody({
             ))}
           </dl>
           {registration.form_version_stale ? (
-            <p className="text-xs text-muted-foreground">
-              {i18n("inspector.olderForm")}
-            </p>
+            <p className="text-xs text-muted-foreground">{i18n("inspector.olderForm")}</p>
           ) : null}
         </section>
       ) : null}

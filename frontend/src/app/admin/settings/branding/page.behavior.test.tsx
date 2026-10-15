@@ -86,8 +86,9 @@ const WORKSPACE: Workspace = {
   custom_domain_verified_at: null,
   custom_domain_verification_token: null,
   discord_guild_id: "123456789012345678",
-  default_division_grid_version_id: null,
-  default_division_grid_version: null,
+  disciplines_enabled: ["overwatch"],
+  default_division_grid_versions: {},
+  effective_division_grid_versions: {},
   newcomer_scope: "global"
 };
 

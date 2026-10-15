@@ -1,9 +1,5 @@
-import { DIVISION_ICON_BASE, LADDER_TIERS } from "@/lib/divisions/ow-ladder";
-import type {
-  DivisionGrid,
-  DivisionGridVersion,
-  DivisionTier,
-} from "@/types/workspace.types";
+import { LADDER_TIERS } from "@/lib/divisions/ow-ladder";
+import type { DivisionGrid, DivisionGridVersion, DivisionTier } from "@/types/workspace.types";
 
 export type DivisionGridLike = Pick<DivisionGrid, "tiers"> | Pick<DivisionGridVersion, "tiers">;
 
@@ -22,7 +18,7 @@ const OW_LADDER_TIERS: DivisionTier[] = LADDER_TIERS.map((tier, index) => ({
   sort_order: index,
   rank_min: tier.rank_min,
   rank_max: tier.rank_max,
-  icon_url: tier.icon_url,
+  icon_url: tier.icon_url
 }));
 
 /**
@@ -41,7 +37,7 @@ const OW_LADDER_TIERS: DivisionTier[] = LADDER_TIERS.map((tier, index) => ({
  * silently corrupting OW-scale values.
  */
 export const OW_REFERENCE_GRID: DivisionGrid = {
-  tiers: OW_LADDER_TIERS,
+  tiers: OW_LADDER_TIERS
 };
 
 /**
@@ -68,7 +64,7 @@ export function sortTiersDescending(grid: DivisionGridLike): DivisionTier[] {
 
 function getTierByDivision(
   grid: DivisionGridLike,
-  division: number | null | undefined,
+  division: number | null | undefined
 ): DivisionTier | null {
   if (division == null) {
     return null;
@@ -79,7 +75,7 @@ function getTierByDivision(
 
 export function getTierForRank(
   grid: DivisionGridLike,
-  rank: number | null | undefined,
+  rank: number | null | undefined
 ): DivisionTier | null {
   if (rank == null) {
     return null;
@@ -103,7 +99,7 @@ export function getTierForRank(
 
 export function resolveDivisionFromRank(
   grid: DivisionGridLike,
-  rank: number | null | undefined,
+  rank: number | null | undefined
 ): number | null {
   return getTierForRank(grid, rank)?.number ?? null;
 }
@@ -116,18 +112,20 @@ export function resolveDivisionFromRank(
  */
 export function resolveRankFromDivision(
   grid: DivisionGridLike,
-  division: number | null | undefined,
+  division: number | null | undefined
 ): number | null {
   return getTierByDivision(grid, division)?.rank_min ?? null;
 }
 
 export function getDivisionOptions(grid: DivisionGridLike): number[] {
-  return [...grid.tiers].sort((left, right) => left.number - right.number).map((tier) => tier.number);
+  return [...grid.tiers]
+    .sort((left, right) => left.number - right.number)
+    .map((tier) => tier.number);
 }
 
 export function clampDivisionToGrid(
   grid: DivisionGridLike,
-  division: number | null | undefined,
+  division: number | null | undefined
 ): number | undefined {
   if (division == null) {
     return undefined;
@@ -145,7 +143,7 @@ export function clampDivisionToGrid(
 
 export function getDivisionLabel(
   grid: DivisionGridLike,
-  division: number | null | undefined,
+  division: number | null | undefined
 ): string | null {
   if (division == null) {
     return null;
@@ -156,7 +154,7 @@ export function getDivisionLabel(
 
 export function getDivisionIconSrc(
   grid: DivisionGridLike,
-  division: number | null | undefined,
+  division: number | null | undefined
 ): string | null {
   if (division == null) {
     return null;
@@ -167,11 +165,5 @@ export function getDivisionIconSrc(
     return tier.icon_url;
   }
 
-  // Fallback to default grid lookup
-  const defaultTier = getTierByDivision(DEFAULT_DIVISION_GRID, division);
-  if (defaultTier) {
-    return defaultTier.icon_url;
-  }
-
-  return `${DIVISION_ICON_BASE}/bronze-5.png`;
+  return null;
 }

@@ -4454,8 +4454,10 @@ def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write()
 
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from shared.repository.workspace import WorkspaceRepository
     from shared.services.division_grid import cache as grid_cache
     from shared.services.division_grid.access import get_effective_division_grid
+    from shared.services.member_rank import MemberRankService
     from shared.testing import create_test_async_engine
     from shared.testing.cache import configure_test_cache
 
@@ -4465,7 +4467,9 @@ def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write()
         db_session = AsyncSession(engine, expire_on_commit=False)
         await ontology.project_disciplines(db_session)
         tag = uuid.uuid4().hex
-        workspace = models.Workspace(slug=tag, name=tag, disciplines_enabled=["overwatch", "lol"])
+        workspace = models.Workspace(
+            slug=tag, name=tag, disciplines_enabled=["overwatch", "lol"], division_grid_defaults=[]
+        )
         host = models.AuthUser(email=f"{tag}@example.test", username=tag)
         db_session.add_all([workspace, host])
         await db_session.flush()
@@ -4481,8 +4485,9 @@ def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write()
                     )
                     db_session.add(version)
                     await db_session.flush()
-                    workspace.default_division_grid_version_id = version.id
-                    await db_session.flush()
+                    await WorkspaceRepository().set_default_grid_version(
+                        db_session, workspace, discipline="lol", version_id=version.id
+                    )
                     await grid_cache.invalidate_workspace(workspace.id)
                 with pytest.raises(HTTPException) as caught:
                     await service.create(db_session, **args, discipline="lol")
@@ -4508,13 +4513,63 @@ def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write()
             )
             await db_session.flush()
             created = await service.create(db_session, **args, discipline="lol")
+            player = models.User(name="LoL player", auth_user_id=host.id)
+            db_session.add(player)
+            await db_session.flush()
+            member = models.WorkspaceMember(workspace_id=workspace.id, player_id=player.id)
+            db_session.add(member)
+            await db_session.flush()
+            db_session.add(models.CustomGamePlayer(custom_game_id=created.id, workspace_member_id=member.id))
+            await MemberRankService().set_ranks(
+                db_session,
+                workspace_id=workspace.id,
+                discipline="lol",
+                workspace_member_id=member.id,
+                ranks={"support": 200},
+            )
+            await db_session.flush()
+            before_state = await service.self_state(db_session, custom_game_id=created.id, auth_user=host)
+            assert before_state["seat"]["ranks"]["support"] == 200
+            assert before_state["seat"]["divisions"]["support"] == {"name": "Organiser", "slug": "organiser"}
+            ow = models.DivisionGrid(workspace_id=workspace.id, slug="ow", name="OW", discipline="overwatch")
+            ow_version = models.DivisionGridVersion(
+                grid=ow,
+                version=1,
+                label="OW",
+                status="published",
+                tiers=[
+                    models.DivisionGridTier(
+                        slug="ow",
+                        number=4,
+                        name="OW",
+                        sort_order=0,
+                        rank_min=0,
+                        rank_max=None,
+                        icon_url="/ow.png",
+                    )
+                ],
+            )
+            db_session.add(ow_version)
+            await db_session.flush()
+            await get_effective_division_grid(db_session, workspace.id, discipline="overwatch")
+            await get_effective_division_grid(db_session, workspace.id, discipline="lol")
+            await WorkspaceRepository().set_default_grid_version(
+                db_session, workspace, discipline="overwatch", version_id=ow_version.id
+            )
+            await grid_cache.invalidate_workspace(workspace.id)
+            after_state = await service.self_state(db_session, custom_game_id=created.id, auth_user=host)
+            assert after_state["seat"] == before_state["seat"]
             cloned = await service.create(db_session, **args, clone_from_game_id=created.id)
             assert (created.discipline, cloned.discipline) == ("lol", "lol")
             assert (
                 await get_effective_division_grid(db_session, workspace.id, discipline=cloned.discipline)
             ).resolve_division(200).number == 9
-            workspace.default_division_grid_version_id = None
-            await db_session.flush()
+            cloned_state = await service.self_state(db_session, custom_game_id=cloned.id, auth_user=host)
+            assert cloned_state["seat"]["ranks"]["support"] == 200
+            assert cloned_state["seat"]["divisions"]["support"] == before_state["seat"]["divisions"]["support"]
+            await WorkspaceRepository().clear_default_grid_version(
+                db_session, workspace_id=workspace.id, version_ids=[version.id]
+            )
             await grid_cache.invalidate_workspace(workspace.id)
             before = await db_session.scalar(
                 sa.select(sa.func.count())
@@ -4541,7 +4596,7 @@ def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write()
                 == 2
             )
             print(
-                "PostgreSQL LoL mix create/clone: absent and empty grids refused before scoring/owner writes; tiered grid accepted; clone keeps LoL and resolves division9"
+                "PostgreSQL LoL mix create/self-state/clone after OW activation: support200 and Organiser badge unchanged; missing/empty defaults refused before writes"
             )
         finally:
             await grid_cache.invalidate_workspace(workspace_id)

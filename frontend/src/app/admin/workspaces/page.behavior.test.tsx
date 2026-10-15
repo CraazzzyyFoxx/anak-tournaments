@@ -108,8 +108,9 @@ function workspace(overrides: Partial<Workspace> = {}): Workspace {
     discord_guild_id: null,
     discord_guild_verified_at: null,
     verification_status: "unverified",
-    default_division_grid_version_id: null,
-    default_division_grid_version: null,
+    disciplines_enabled: ["overwatch"],
+    default_division_grid_versions: {},
+    effective_division_grid_versions: {},
     newcomer_scope: "workspace",
     ...overrides
   };
@@ -170,10 +171,7 @@ async function click(element: Element | null | undefined) {
 async function type(input: HTMLInputElement, value: string) {
   // React tracks the DOM value on the node, so a plain assignment is swallowed
   // as "no change"; the native setter is what makes `onChange` fire.
-  const setter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype,
-    "value"
-  )?.set;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
   await act(async () => {
     setter?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));

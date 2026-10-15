@@ -9,7 +9,11 @@ import {
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
 } from "@/components/balancer/workspace-helpers";
-import { useCurrentWorkspaceId, useDivisionGrid, useDivisionGridVersion } from "@/hooks/useCurrentWorkspace";
+import {
+  useCurrentWorkspaceId,
+  useDivisionGrid,
+  useDivisionGridVersion
+} from "@/hooks/useCurrentWorkspace";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import {
   getDivisionLabel,
@@ -51,6 +55,7 @@ export interface PlayerRankHistoryState {
 interface UsePlayerEditFormInput {
   player: BalancerPlayerRecord;
   registration: AdminRegistration | null;
+  discipline?: string;
   /** Sub-roles are only worth fetching while the sheet is on screen. */
   open: boolean;
   onSave: (playerId: number, payload: BalancerPlayerUpdateInput) => void;
@@ -63,11 +68,12 @@ interface UsePlayerEditFormInput {
 export function usePlayerEditForm({
   player,
   registration,
+  discipline,
   open,
   onSave
 }: UsePlayerEditFormInput) {
-  const divisionGrid = useDivisionGrid();
-  const divisionGridVersion = useDivisionGridVersion();
+  const divisionGrid = useDivisionGrid(discipline);
+  const divisionGridVersion = useDivisionGridVersion(discipline);
   const workspaceId = useCurrentWorkspaceId();
 
   const { data: subRoles } = useQuery({

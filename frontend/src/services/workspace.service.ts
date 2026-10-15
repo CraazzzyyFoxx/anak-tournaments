@@ -138,7 +138,6 @@ export default class workspaceService {
       seo_title?: string | null;
       seo_description?: string | null;
       newcomer_scope?: "global" | "workspace";
-      default_division_grid_version_id?: number | null;
     }
   ): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${id}`, {

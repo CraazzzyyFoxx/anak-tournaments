@@ -42,13 +42,11 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-import pytest  # noqa: E402
 import sqlalchemy as sa  # noqa: E402
 
 from shared.core import enums  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
-from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402
 from src.services.admin import tournament as admin_tournament_service  # noqa: E402
 from src.services.tournament import auto_transitions  # noqa: E402
@@ -213,13 +211,9 @@ def test_run_due_transitions_opens_registration_once_the_form_exists() -> None:
 
 async def _make_workspace(session) -> Workspace:
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     workspace = Workspace(
         slug=f"autotrans-test-{suffix}",
         name=f"Auto-Transitions Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(workspace)
     await session.flush()

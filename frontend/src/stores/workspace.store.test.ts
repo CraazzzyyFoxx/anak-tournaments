@@ -5,7 +5,7 @@ import type { AuthProfile } from "@/stores/auth-profile.store";
 import {
   filterAccessibleWorkspaces,
   resolveCurrentWorkspaceId,
-  useWorkspaceStore,
+  useWorkspaceStore
 } from "@/stores/workspace.store";
 import type { Workspace } from "@/types/workspace.types";
 
@@ -17,8 +17,9 @@ function createWorkspace(id: number, name = `Workspace ${id}`): Workspace {
     description: null,
     icon_url: null,
     is_active: true,
-    default_division_grid_version_id: null,
-    default_division_grid_version: null,
+    disciplines_enabled: ["overwatch"],
+    default_division_grid_versions: {},
+    effective_division_grid_versions: {}
   };
 }
 
@@ -34,15 +35,19 @@ function createProfile(workspaceIds: number[]): AuthProfile {
       workspace_id: workspaceId,
       slug: `workspace-${workspaceId}`,
       roles: [],
-      permissions: [],
-    })),
+      permissions: []
+    }))
   };
 }
 
 describe("workspace store helpers", () => {
   it("filters workspaces to memberships for authenticated non-superusers", () => {
     const allWorkspaces = [createWorkspace(1), createWorkspace(2), createWorkspace(3)];
-    const filtered = filterAccessibleWorkspaces(allWorkspaces, "authenticated", createProfile([1, 3]));
+    const filtered = filterAccessibleWorkspaces(
+      allWorkspaces,
+      "authenticated",
+      createProfile([1, 3])
+    );
 
     expect(filtered.map((workspace) => workspace.id)).toEqual([1, 3]);
   });

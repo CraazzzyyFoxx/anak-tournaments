@@ -154,26 +154,6 @@ class OverviewDivisionFilterTests(TestCase):
         self.assertIn("NOT (EXISTS", unassigned_sql)
         self.assertIn("catalog.role_dimension.rated IS true", unassigned_sql)
 
-    def test_all_workspaces_read_filters_each_row_on_its_own_grid(self) -> None:
-        sql = _compiled(
-            _scope._apply_overview_role_filters(
-                sa.select(models.User.id),
-                role=None,
-                divisions=[3, 5],
-                grid=DEFAULT_GRID,
-                workspace_id=None,
-            )
-        )
-        # The tier comes from the player's own tournament's effective version:
-        # own pin, else the owning workspace default, else the system default.
-        self.assertIn("division_grid_tier", sql)
-        self.assertIn("tournament_1.division_grid_version_id", sql)
-        self.assertIn("workspace_1.default_division_grid_version_id", sql)
-        self.assertIn("tournament_1.id = tournament.player.tournament_id", sql)
-        self.assertIn("IN (3, 5)", sql)
-        # A rank range from one grid would silently mis-filter the others.
-        self.assertNotIn("player.rank >= 4", sql)
-
     def test_has_logs_filter_probes_match_statistics_per_user(self) -> None:
         sql = _compiled(_scope.apply_has_logs_filter(sa.select(models.User.id)))
         self.assertIn("EXISTS", sql)

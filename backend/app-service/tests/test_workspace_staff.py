@@ -17,7 +17,6 @@ from shared.models.identity.auth_user import AuthUser
 from shared.models.identity.rbac import Role, user_roles
 from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace
-from shared.services.division_grid.access import get_default_division_grid_version_id
 from src.services.workspace.service import workspaces as workspace_service
 
 _loop: asyncio.AbstractEventLoop
@@ -78,13 +77,9 @@ def db_session():
 
 async def _make_workspace(session) -> Workspace:
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     workspace = Workspace(
         slug=f"wsstaff-test-{suffix}",
         name=f"WS Staff Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(workspace)
     await session.flush()

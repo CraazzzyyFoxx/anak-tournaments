@@ -123,9 +123,10 @@ export function PickBanPanel({
    * without ever showing one step's draft on another.
    */
   const stepKey = `${state.current_step_index ?? -1}:${submission?.attempt ?? 0}`;
-  const [localDraft, setLocalDraft] = useState<{ key: string; items: PickBanSubmissionItem[] } | null>(
-    null
-  );
+  const [localDraft, setLocalDraft] = useState<{
+    key: string;
+    items: PickBanSubmissionItem[];
+  } | null>(null);
   const draftItems = localDraft?.key === stepKey ? localDraft.items : serverDraft;
   // The Lock trusts `draft_issues`, and those judge the SAVED draft — so it
   // waits until the local edits are that draft.
@@ -152,8 +153,7 @@ export function PickBanPanel({
   });
 
   const submitMutation = useMutation({
-    mutationFn: (input: PickBanSubmitInput) =>
-      pickBanService.submitDraft(kind, encounterId, input),
+    mutationFn: (input: PickBanSubmitInput) => pickBanService.submitDraft(kind, encounterId, input),
     onSuccess: (next) => queryClient.setQueryData(queryKey, next),
     onError: (error) => {
       // The optimistic tray is wrong now; the server's answer is the truth.
@@ -188,7 +188,8 @@ export function PickBanPanel({
   const teamName = (teamId: number) => seatName(seats, teamId);
 
   const targets = state.targets;
-  const targetRoster = targets != null && opponentTeamId != null ? (targets[opponentTeamId] ?? []) : [];
+  const targetRoster =
+    targets != null && opponentTeamId != null ? (targets[opponentTeamId] ?? []) : [];
   const targetName = (playerId: number) =>
     Object.values(targets ?? {})
       .flat()
@@ -315,18 +316,22 @@ export function PickBanPanel({
               <div className="lg:sticky lg:top-[var(--aqt-sticky-top)]">
                 <PickBanTargetBoard
                   targets={targetRoster}
+                  discipline={encounter.tournament.discipline}
                   previousMatchId={
                     encounter.games?.length
-                      ? buildSeriesSlots({
+                      ? (buildSeriesSlots({
                           ...encounter,
-                          matches: (encounter.matches ?? []).filter((match) => match.source === "log_parser")
-                        }).find((slot) => slot.index === (state.current_round ?? step?.round ?? 1) - 1)
-                          ?.match?.id ?? null
-                      : (encounter.matches ?? []).find(
+                          matches: (encounter.matches ?? []).filter(
+                            (match) => match.source === "log_parser"
+                          )
+                        }).find(
+                          (slot) => slot.index === (state.current_round ?? step?.round ?? 1) - 1
+                        )?.match?.id ?? null)
+                      : ((encounter.matches ?? []).find(
                           (match) =>
                             match.source === "log_parser" &&
                             match.map_index === (state.current_round ?? step?.round ?? 1) - 1
-                        )?.id ?? null
+                        )?.id ?? null)
                   }
                   selectedPlayerId={selectedTargetId}
                   assignedByPlayer={assignedByPlayer}
@@ -345,7 +350,10 @@ export function PickBanPanel({
                 data-pick-ban-no-roster
                 className="flex items-start gap-2 rounded-xl border border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-3 text-sm"
               >
-                <UserX className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--aqt-amber)]" aria-hidden />
+                <UserX
+                  className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--aqt-amber)]"
+                  aria-hidden
+                />
                 <p className="text-[color:var(--aqt-fg-muted)]">
                   {t("target.noRoster", { team: teamName(opponentTeamId) })}
                 </p>

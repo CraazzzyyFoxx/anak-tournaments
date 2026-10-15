@@ -28,7 +28,7 @@ export const DivisionHex = ({
   size?: number;
 }>) => {
   const t = useTranslations();
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid("overwatch");
   const title = t("users.list.division.badgeTitle", {
     role: t(ROLE_LABEL_KEY[role]),
     tier:
@@ -45,6 +45,7 @@ export const DivisionHex = ({
       <DivisionIcon
         division={division}
         tournamentGrid={roleGrid}
+        discipline="overwatch"
         width={size}
         height={size}
         className="h-full w-full"

@@ -7,7 +7,13 @@ import { useFormatter } from "@/lib/datetime/client";
 
 import { cn } from "@/lib/utils";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { RosterPlayer, RosterRank, RosterRole, isReplaced, rosterSlots } from "@/components/TournamentTeamCard";
+import {
+  RosterPlayer,
+  RosterRank,
+  RosterRole,
+  isReplaced,
+  rosterSlots
+} from "@/components/TournamentTeamCard";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
 import TeamName from "@/components/TeamName";
 import { HeroStrip } from "@/components/hero/HeroImage";
@@ -85,10 +91,7 @@ export default function EncounterSeriesStats({
   // Folded on every render rather than memoized: `useQueries` hands back a new
   // array each time, so a manual `useMemo` could not be keyed on it without
   // defeating the React Compiler — and the fold is a few thousand additions.
-  const aggregate =
-    loaded.length > 0
-      ? aggregateSeriesStats(loaded, { teams })
-      : null;
+  const aggregate = loaded.length > 0 ? aggregateSeriesStats(loaded, { teams }) : null;
 
   if (failedAll) {
     return (
@@ -266,6 +269,7 @@ function SeriesPlayerRow({
           division={player.division}
           rank={player.rank}
           tournamentGrid={tournamentGrid}
+          discipline="overwatch"
           dimmed={dimmed}
           className="justify-end"
         />
@@ -294,7 +298,11 @@ function SeriesPlayerRow({
 }
 
 /** Value plus the same 3px magnitude bar the per-map tables draw. */
-function SeriesStatCell({ name, value, max }: Readonly<{ name: LogStatsName; value: number; max: number }>) {
+function SeriesStatCell({
+  name,
+  value,
+  max
+}: Readonly<{ name: LogStatsName; value: number; max: number }>) {
   const format = useFormatter();
   const meta = STAT_META[name];
   const showBar = meta?.bar && max > 0;

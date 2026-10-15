@@ -103,7 +103,10 @@ export default function DivisionsSettingsPage() {
   const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
-  const activeVersionId = workspace?.default_division_grid_version_id ?? null;
+  const defaultDiscipline = workspace?.disciplines_enabled[0];
+  const preferredActiveVersionId = defaultDiscipline
+    ? (workspace?.default_division_grid_versions[defaultDiscipline] ?? null)
+    : null;
   const portableInputRef = useRef<HTMLInputElement>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [activating, setActivating] = useState<DivisionGridVersion | null>(null);
@@ -122,12 +125,19 @@ export default function DivisionsSettingsPage() {
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
   const gridParam = Number(searchParams?.get("grid"));
+  const scopedGrids = grids.filter((grid) => grid.discipline === defaultDiscipline);
   const selectedGrid =
     grids.find((grid) => grid.id === gridParam) ??
-    grids.find((grid) => grid.versions.some((version) => version.id === activeVersionId)) ??
-    grids.find((grid) => grid.archived_at === null) ??
-    grids[0] ??
+    scopedGrids.find((grid) =>
+      grid.versions.some((version) => version.id === preferredActiveVersionId)
+    ) ??
+    scopedGrids.find((grid) => grid.archived_at === null) ??
+    scopedGrids[0] ??
     null;
+  const selectedDiscipline = selectedGrid?.discipline ?? defaultDiscipline;
+  const activeVersionId = selectedDiscipline
+    ? (workspace?.default_division_grid_versions[selectedDiscipline] ?? null)
+    : null;
 
   const versionsQuery = useQuery({
     queryKey: divisionGridQueryKeys.versions(workspaceId, selectedGrid?.id ?? null),
@@ -143,7 +153,7 @@ export default function DivisionsSettingsPage() {
       .sort((left, right) => right.version - left.version)[0] ?? null;
   const activeVersion =
     versions.find((version) => version.id === activeVersionId) ??
-    workspace?.default_division_grid_version ??
+    (selectedDiscipline ? workspace?.effective_division_grid_versions[selectedDiscipline] : null) ??
     null;
   const activeIsShared =
     activeVersion !== null && !grids.some((grid) => grid.id === activeVersion.grid_id);
@@ -395,7 +405,7 @@ export default function DivisionsSettingsPage() {
     <Button size="sm" onClick={() => cloneMutation.mutate()} disabled={cloneMutation.isPending}>
       {t("newDraft", { version: latestVersion.version })}
     </Button>
-  ) : canCreate && selectedGrid ? (
+  ) : canCreate && selectedGrid && selectedDiscipline === "overwatch" ? (
     <Button
       size="sm"
       onClick={() => standardMutation.mutate()}
@@ -428,7 +438,9 @@ export default function DivisionsSettingsPage() {
               id="divisions-in-force"
               className="mt-1 font-display text-2xl font-semibold leading-tight tracking-tight"
             >
-              {activeVersion ? activeVersion.label : t("builtInLadder")}
+              {activeVersion
+                ? activeVersion.label
+                : t(selectedDiscipline === "overwatch" ? "builtInLadder" : "gridRequired")}
             </h2>
             <p className={cn(MONO_CAPTION, "mt-1.5")}>
               {activeVersion
@@ -440,7 +452,8 @@ export default function DivisionsSettingsPage() {
                           dateStyle: "medium"
                         })}`
                       : null,
-                    activeIsShared ? "shared grid" : null
+                    activeIsShared ? "shared grid" : null,
+                    activeVersionId === null ? t("systemFallback") : null
                   ]
                     .filter(Boolean)
                     .join(" · ")
@@ -494,15 +507,17 @@ export default function DivisionsSettingsPage() {
                     + {t("newDraft", { version: latestVersion.version })}
                   </Button>
                 ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => standardMutation.mutate()}
-                  disabled={standardMutation.isPending || selectedGrid === null}
-                >
-                  <Wand2 aria-hidden className="size-3.5" />
-                  {t("loadStandard")}
-                </Button>
+                {selectedDiscipline === "overwatch" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => standardMutation.mutate()}
+                    disabled={standardMutation.isPending || selectedGrid === null}
+                  >
+                    <Wand2 aria-hidden className="size-3.5" />
+                    {t("loadStandard")}
+                  </Button>
+                ) : null}
               </div>
             ) : null}
           </div>

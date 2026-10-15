@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from shared.core import db
 
 if TYPE_CHECKING:
-    from shared.models.division_grid.division_grid import DivisionGridVersion
+    from shared.models.division_grid.division_grid import DivisionGridVersion, WorkspaceDivisionGridDefault
     from shared.models.identity.user import User
 
 __all__ = (
@@ -114,11 +114,6 @@ class Workspace(db.TimeStampIntegerMixin):
     # superuser moves a workspace between tiers
     # (``rpc.app.workspaces.verification_set``) -- there is no automatic path.
     verification_status: Mapped[str] = mapped_column(String(16), server_default="unverified", nullable=False)
-    default_division_grid_version_id: Mapped[int | None] = mapped_column(
-        ForeignKey("division_grid_version.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     # Explicit plan assignment, overriding the tier axis above. NULL means
     # "use the plan whose slug is ``verification_status``", which is how every
     # workspace runs by default; a non-NULL value is how one tenant gets a
@@ -144,10 +139,19 @@ class Workspace(db.TimeStampIntegerMixin):
     # ``branding_enabled``.
     newcomer_scope: Mapped[str] = mapped_column(String(16), server_default="global", nullable=False)
     members: Mapped[list[WorkspaceMember]] = relationship(back_populates="workspace", passive_deletes=True)
-    default_division_grid_version: Mapped[DivisionGridVersion | None] = relationship(
-        foreign_keys=[default_division_grid_version_id],
-        lazy="selectin",
+    division_grid_defaults: Mapped[list[WorkspaceDivisionGridDefault]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True, lazy="selectin"
     )
+
+    @property
+    def default_division_grid_versions(self) -> dict[str, int]:
+        """Explicit assignments only; effective native/system fallbacks are not persisted choices."""
+        return {default.discipline: default.version_id for default in self.division_grid_defaults}
+
+    @property
+    def effective_division_grid_versions(self) -> dict[str, DivisionGridVersion]:
+        """Public version payloads loaded in a batch by WorkspaceRepository, never lazy IO."""
+        return self.__dict__.get("_effective_grid_versions", {})
 
 
 class WorkspaceMember(db.TimeStampIntegerMixin):

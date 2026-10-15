@@ -36,6 +36,7 @@ const getDivisionGridVersionReadiness = vi.fn();
 const createDivisionGridVersion = vi.fn();
 const cloneDivisionGridVersion = vi.fn();
 const activateDivisionGridVersion = vi.fn();
+const fetchWorkspaces = vi.fn();
 
 let permitted = true;
 
@@ -52,7 +53,7 @@ vi.mock("@/hooks/usePermissions", () => ({
   })
 }));
 
-let currentWorkspace: Record<string, unknown> = { id: 1, default_division_grid_version_id: 22 };
+let currentWorkspace: Record<string, unknown>;
 
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (
@@ -65,7 +66,7 @@ vi.mock("@/stores/workspace.store", () => ({
     selector({
       currentWorkspaceId: 1,
       getCurrentWorkspace: () => currentWorkspace,
-      fetchWorkspaces: async () => undefined
+      fetchWorkspaces
     })
 }));
 
@@ -216,8 +217,14 @@ function button(text: string) {
 
 beforeEach(() => {
   permitted = true;
-  currentWorkspace = { id: 1, default_division_grid_version_id: 22 };
+  currentWorkspace = {
+    id: 1,
+    disciplines_enabled: ["overwatch", "lol"],
+    default_division_grid_versions: { overwatch: 22 },
+    effective_division_grid_versions: {}
+  };
   activateDivisionGridVersion.mockReset();
+  fetchWorkspaces.mockReset().mockResolvedValue(undefined);
   replace.mockClear();
   getDivisionGrids.mockReset().mockResolvedValue([grid(7, "Anak Division Grid")]);
   getDivisionGridVersions.mockReset().mockResolvedValue(VERSIONS);
@@ -323,8 +330,9 @@ describe("Settings › Divisions", () => {
     };
     currentWorkspace = {
       id: 1,
-      default_division_grid_version_id: 90,
-      default_division_grid_version: shared
+      disciplines_enabled: ["overwatch"],
+      default_division_grid_versions: { overwatch: 90 },
+      effective_division_grid_versions: { overwatch: shared }
     };
     const container = await mount();
     expect(container.textContent).toContain("In force · v2");
@@ -358,6 +366,66 @@ describe("Settings › Divisions", () => {
     await click(confirm);
 
     expect(activateDivisionGridVersion).toHaveBeenCalledWith(1, 21);
+    expect(fetchWorkspaces).toHaveBeenCalled();
+  });
+
+  it("uses the selected grid's discipline and refreshes its active key without changing the other game", async () => {
+    const lol = { ...version(90, 8, "published"), grid_id: 8, label: "LoL organizer scale" };
+    const next = { ...version(91, 9, "published"), grid_id: 8, label: "New LoL scale" };
+    const lolGrid = { ...grid(8, "LoL"), discipline: "lol", versions: [lol, next] };
+    getDivisionGrids.mockResolvedValue([grid(7, "OW"), lolGrid]);
+    getDivisionGridVersions.mockImplementation(async (_ws: number, id: number) =>
+      id === 8 ? [lol, next] : VERSIONS
+    );
+    currentWorkspace = {
+      id: 1,
+      disciplines_enabled: ["overwatch", "lol"],
+      default_division_grid_versions: { overwatch: 22, lol: 90 },
+      effective_division_grid_versions: { overwatch: VERSIONS[2], lol }
+    };
+    activateDivisionGridVersion.mockResolvedValue(next);
+    fetchWorkspaces.mockImplementation(async () => {
+      currentWorkspace = {
+        ...currentWorkspace,
+        default_division_grid_versions: { overwatch: 22, lol: 91 },
+        effective_division_grid_versions: { overwatch: VERSIONS[2], lol: next }
+      };
+      rerender?.();
+    });
+    const container = await mount();
+    expect(container.querySelector("#divisions-in-force")?.textContent).not.toContain("LoL");
+    await act(async () => {
+      replace("/admin/settings/divisions?grid=8");
+    });
+    await settle();
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe("LoL organizer scale");
+    expect(button("Load standard OW ladder")).toBeUndefined();
+    const activate = button("Activate v9");
+    await click(activate);
+    const confirm = Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(
+      (element) => element.textContent?.trim() === "Activate v9"
+    );
+    await click(confirm);
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe("New LoL scale");
+    await act(async () => {
+      replace("/admin/settings/divisions?grid=7");
+    });
+    await settle();
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
+  });
+
+  it("labels a resolved system grid as fallback without calling it an explicit active selection", async () => {
+    currentWorkspace = {
+      id: 1,
+      disciplines_enabled: ["overwatch"],
+      default_division_grid_versions: {},
+      effective_division_grid_versions: {
+        overwatch: { ...VERSIONS[2], grid_id: 1, label: "System OW" }
+      }
+    };
+    const container = await mount();
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe("System OW");
+    expect(container.textContent).toContain("system fallback · nothing activated");
   });
 
   it("offers the grid selector only when there is more than one grid, and writes ?grid=", async () => {

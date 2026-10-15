@@ -54,9 +54,7 @@ export async function generateMetadata(props: {
   const first = seatOne?.name ?? t("common.tbd");
   const second = seatTwo?.name ?? t("common.tbd");
   const lobby = isLobby(encounter);
-  const metaTitle = lobby
-    ? encounter.name
-    : t("encounters.detail.metaTitle", { first, second });
+  const metaTitle = lobby ? encounter.name : t("encounters.detail.metaTitle", { first, second });
   const title = `${metaTitle} | ${SITE_NAME}`;
   const description = lobby
     ? t("ffa.metaDescription", { lobby: encounter.name, siteName: SITE_NAME })
@@ -182,8 +180,7 @@ const EncounterPage = async (props: {
   };
   const tabs = TABS.filter((tab) => visible[tab]);
   const requested = Array.isArray(searchParams.tab) ? searchParams.tab[0] : searchParams.tab;
-  const active: EncounterTab | undefined =
-    tabs.find((tab) => tab === requested) ?? tabs[0];
+  const active: EncounterTab | undefined = tabs.find((tab) => tab === requested) ?? tabs[0];
   const tabHref = (tab: EncounterTab) =>
     tab === tabs[0] ? `/encounters/${encounter.id}` : `/encounters/${encounter.id}?tab=${tab}`;
 
@@ -248,7 +245,10 @@ const EncounterPage = async (props: {
           encounter={encounter}
           crumbs={
             <>
-              <Link href="/encounters" className={cn(styles.crumbLink, "inline-flex items-center gap-1.5")}>
+              <Link
+                href="/encounters"
+                className={cn(styles.crumbLink, "inline-flex items-center gap-1.5")}
+              >
                 <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
                 {t("encounters.detail.back")}
               </Link>
@@ -387,8 +387,18 @@ const EncounterPage = async (props: {
           ) : (
             <section aria-label={t("encounters.detail.rosters")}>
               <div className={styles.rosterGrid}>
-                <EncounterRosterPanel team={seatOne?.team ?? null} slot={1} tournamentGrid={tournamentGrid} />
-                <EncounterRosterPanel team={seatTwo?.team ?? null} slot={2} tournamentGrid={tournamentGrid} />
+                <EncounterRosterPanel
+                  team={seatOne?.team ?? null}
+                  slot={1}
+                  discipline={encounter.tournament.discipline}
+                  tournamentGrid={tournamentGrid}
+                />
+                <EncounterRosterPanel
+                  team={seatTwo?.team ?? null}
+                  slot={2}
+                  discipline={encounter.tournament.discipline}
+                  tournamentGrid={tournamentGrid}
+                />
               </div>
             </section>
           )

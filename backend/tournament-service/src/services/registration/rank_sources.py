@@ -30,10 +30,10 @@ from shared.repository import (
 )
 from shared.schemas.role import RoleRef
 from shared.services import rank_snapshots
+from shared.services.division_grid.access import build_workspace_division_grid_normalizer
 from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
-    build_division_grid_normalizer,
 )
 from shared.services.roster import registration_load_options
 from src import models
@@ -396,11 +396,12 @@ class RankSourcesService:
         if target_version_id is None:
             return None
         try:
-            return await build_division_grid_normalizer(
+            return await build_workspace_division_grid_normalizer(
                 session,
                 tournament.workspace_id,
                 target_version_id=target_version_id,
                 require_complete=False,
+                discipline=tournament.discipline,
             )
         except DivisionGridNormalizationError:
             return None

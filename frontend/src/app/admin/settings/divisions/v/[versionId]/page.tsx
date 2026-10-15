@@ -36,7 +36,7 @@ export default function DivisionDraftEditorPage() {
   const { isSuperuser, canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
-  const activeVersionId = getCurrentWorkspace()?.default_division_grid_version_id ?? null;
+  const workspace = getCurrentWorkspace();
 
   const canRead =
     workspaceId !== null && (isSuperuser || canAccessPermission("division_grid.read", workspaceId));
@@ -53,6 +53,20 @@ export default function DivisionDraftEditorPage() {
     enabled: canRead && Number.isFinite(versionId)
   });
   const version = versionQuery.data ?? null;
+  const gridsQuery = useQuery({
+    queryKey: divisionGridQueryKeys.grids(workspaceId),
+    queryFn: () => workspaceService.getDivisionGrids(workspaceId!),
+    enabled: canRead
+  });
+  const grid = gridsQuery.data?.find((candidate) => candidate.id === version?.grid_id);
+  const discipline =
+    grid?.discipline ??
+    Object.entries(workspace?.effective_division_grid_versions ?? {}).find(
+      ([, effective]) => effective.grid_id === version?.grid_id
+    )?.[0];
+  const activeVersionId = discipline
+    ? (workspace?.default_division_grid_versions[discipline] ?? null)
+    : null;
 
   const parentQuery = useQuery({
     queryKey: divisionGridQueryKeys.version(version?.created_from_version_id ?? null),
@@ -103,7 +117,7 @@ export default function DivisionDraftEditorPage() {
   // would leave the Changes view comparing the draft against nothing.
   const awaitingParent =
     version?.created_from_version_id !== null && version !== null && parentQuery.isPending;
-  if (versionQuery.isLoading || !version || awaitingParent) {
+  if (versionQuery.isLoading || gridsQuery.isLoading || !version || awaitingParent) {
     return <Skeleton className="h-[32rem] w-full rounded-xl" />;
   }
 

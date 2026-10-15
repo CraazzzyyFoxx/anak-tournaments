@@ -148,6 +148,17 @@ def _seed(conn) -> dict:
 def _seed_division_grid(conn, ids: dict) -> None:
     ids["grid"] = _insert(conn, "division_grid", workspace_id=ids["ws"], slug="d1c-grid", name="d1c grid")
     ids["grid_version"] = _insert(conn, "division_grid_version", grid_id=ids["grid"], version=1, label="v1")
+    conn.execute(
+        "UPDATE workspace SET default_division_grid_version_id = %s WHERE id = %s", (ids["grid_version"], ids["ws"])
+    )
+    ids["null_ws"] = _insert(conn, "workspace", slug="d1c-null", name="No explicit default")
+    ids["system_ws"] = _insert(conn, "workspace", slug="d1c-system", name="System default")
+    system_grid = _insert(conn, "division_grid", slug="d1c-system-grid", name="System")
+    ids["system_version"] = _insert(conn, "division_grid_version", grid_id=system_grid, version=1, label="System")
+    conn.execute(
+        "UPDATE workspace SET default_division_grid_version_id = %s WHERE id = %s",
+        (ids["system_version"], ids["system_ws"]),
+    )
     ids["tiers"] = [
         _insert(
             conn,
@@ -278,6 +289,44 @@ def test_existing_grids_are_overwatch_grids(migrated) -> None:
     ) == [("overwatch",)]
 
 
+def test_workspace_defaults_carry_own_system_and_null_choices(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    assert _rows(
+        conn,
+        """
+        SELECT workspace_id, discipline, version_id FROM workspace_division_grid_default
+         WHERE workspace_id IN (%s, %s, %s) ORDER BY workspace_id
+    """,
+        (ids["ws"], ids["null_ws"], ids["system_ws"]),
+    ) == [
+        (ids["ws"], "overwatch", ids["grid_version"]),
+        (ids["system_ws"], "overwatch", ids["system_version"]),
+    ]
+
+
+def test_foreign_workspace_default_refuses_the_revision(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    done = _rejected(
+        "UPDATE workspace SET default_division_grid_version_id = %s WHERE id = %s",
+        (ids["grid_version"], ids["system_ws"]),
+    )
+    assert done.returncode != 0
+    assert "workspace grid defaults with a missing or foreign version" in done.stderr
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT version_num FROM alembic_version") == PRE_REVISION
+
+
+def test_default_reconcile_detects_a_lost_assignment(migrated) -> None:
+    ids = migrated["ids"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        tx.execute("DELETE FROM workspace_division_grid_default WHERE workspace_id = %s", (ids["ws"],))
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        assert ("workspace grid defaults", ids["ws"], str(ids["grid_version"])) in _rows(tx, skipped)
+        tx.rollback()
+
+
 def test_a_grid_names_a_known_discipline(migrated) -> None:
     with _connect(MIGRATED_DB, autocommit=False) as tx:
         with pytest.raises(psycopg.errors.ForeignKeyViolation):
@@ -356,7 +405,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         tx.rollback()
     assert listed == []
     assert set(statuses.values()) == {"ok"}
-    assert {"member ranks", "hidden ratings", "flex ranks (dropped)"} <= set(statuses)
+    assert {"member ranks", "hidden ratings", "flex ranks (dropped)", "workspace grid defaults"} <= set(statuses)
 
 
 @pytest.mark.parametrize(

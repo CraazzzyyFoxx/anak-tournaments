@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Search, EyeOff, LayoutGrid, Table2 } from "lucide-react";
@@ -188,7 +181,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     setIsCheckInDialogOpen(true);
   }, [canCheckIn, tournament.id]);
 
-  const divisionGrid = useDivisionGrid();
+  const divisionGrid = useDivisionGrid(tournament.discipline);
   const [needsHeroes, setNeedsHeroes] = useState(false);
   const heroesMap = useHeroesMap({ enabled: needsHeroes });
 

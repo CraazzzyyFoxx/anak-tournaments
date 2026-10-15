@@ -13,10 +13,12 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 export default function EncounterRosterPanel({
   team,
   slot,
+  discipline,
   tournamentGrid
 }: Readonly<{
   team: Team | null;
   slot: 1 | 2;
+  discipline: string;
   tournamentGrid?: DivisionGridVersion | null;
 }>) {
   const t = useTranslations();
@@ -26,12 +28,15 @@ export default function EncounterRosterPanel({
       slot={slot}
       name={<TeamName team={team} fallback={t("common.tbd")} size="md" />}
       metricLabel={team ? t("teams.roster.avgSr") : undefined}
-      metricValue={team ? <span className="tabular-nums">{team.avg_sr.toFixed(0)}</span> : undefined}
+      metricValue={
+        team ? <span className="tabular-nums">{team.avg_sr.toFixed(0)}</span> : undefined
+      }
     >
       {team && team.players.length > 0 ? (
         <TournamentTeamTable
           players={team.players}
           tournamentGrid={tournamentGrid}
+          discipline={discipline}
           captainUserId={team.captain_id}
         />
       ) : (

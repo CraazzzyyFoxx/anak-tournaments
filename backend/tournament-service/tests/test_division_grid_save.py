@@ -99,7 +99,7 @@ def _grid_with_active():
         status="published",
         tiers=[_active_tier(1, "bronze", 1000, 1099)],
     )
-    grid = SimpleNamespace(id=1, name="Ladder", versions=[active])
+    grid = SimpleNamespace(id=1, name="Ladder", discipline="overwatch", versions=[active])
     return grid, active
 
 
@@ -115,7 +115,9 @@ def _readiness(is_ready):
 def test_save_cosmetic_updates_in_place_without_new_version() -> None:
     async def run():
         grid, active = _grid_with_active()
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=100)
+        workspace = SimpleNamespace(
+            id=4, default_division_grid_versions={"overwatch": 100}, disciplines_enabled=["overwatch"]
+        )
         session = SimpleNamespace(flush=AsyncMock())
         data = schemas.DivisionGridSaveRequest(
             name="Ladder", tiers=[_write_tier(1, "bronze", 1000, 1099, name="Bronze!")]
@@ -141,7 +143,9 @@ def test_save_structural_clean_creates_version_and_activates() -> None:
         grid, active = _grid_with_active()
         new_version = SimpleNamespace(id=200, version=2, label="v2", tiers=[_active_tier(11, "bronze", 1000, 1099)])
         source_version = SimpleNamespace(id=100, label="v1", tiers=active.tiers)
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=100)
+        workspace = SimpleNamespace(
+            id=4, default_division_grid_versions={"overwatch": 100}, disciplines_enabled=["overwatch"]
+        )
         session = SimpleNamespace(flush=AsyncMock())
         gen = SimpleNamespace(rules=[], conflicts=[], is_complete=True)
         data = schemas.DivisionGridSaveRequest(
@@ -173,7 +177,9 @@ def test_save_structural_with_conflicts_stays_pending() -> None:
         grid, active = _grid_with_active()
         new_version = SimpleNamespace(id=200, version=2, label="v2", tiers=[_active_tier(11, "bronze", 1000, 1099)])
         source_version = SimpleNamespace(id=100, label="v1", tiers=active.tiers)
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=100)
+        workspace = SimpleNamespace(
+            id=4, default_division_grid_versions={"overwatch": 100}, disciplines_enabled=["overwatch"]
+        )
         session = SimpleNamespace(flush=AsyncMock())
         gen = SimpleNamespace(rules=[], conflicts=[SimpleNamespace(source_tier_id=1)], is_complete=False)
         data = schemas.DivisionGridSaveRequest(tiers=[_write_tier(None, "silver", 5000, 5099)])
@@ -201,7 +207,7 @@ def test_save_structural_with_conflicts_stays_pending() -> None:
 
 def _grid_for_delete(workspace_id=4, version_ids=(100,)):
     versions = [SimpleNamespace(id=vid) for vid in version_ids]
-    return SimpleNamespace(id=7, workspace_id=workspace_id, versions=versions)
+    return SimpleNamespace(id=7, workspace_id=workspace_id, discipline="overwatch", versions=versions)
 
 
 def test_delete_grid_removes_unused_grid() -> None:
@@ -327,8 +333,10 @@ def test_save_uses_explicit_grid_id_over_workspace_resolution() -> None:
             status="published",
             tiers=[_active_tier(1, "bronze", 1000, 1099)],
         )
-        grid = SimpleNamespace(id=7, name="Imported", workspace_id=4, versions=[active])
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=100)
+        grid = SimpleNamespace(id=7, name="Imported", workspace_id=4, discipline="overwatch", versions=[active])
+        workspace = SimpleNamespace(
+            id=4, default_division_grid_versions={"overwatch": 100}, disciplines_enabled=["overwatch"]
+        )
         session = SimpleNamespace(flush=AsyncMock())
         data = schemas.DivisionGridSaveRequest(
             grid_id=7, name="Imported", tiers=[_write_tier(1, "bronze", 1000, 1099, name="B!")]

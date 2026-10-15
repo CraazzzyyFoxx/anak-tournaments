@@ -20,7 +20,7 @@ import { useBalancerJob } from "@/app/balancer/components/useBalancerJob";
 import { useBalancerMutations } from "@/app/balancer/components/useBalancerMutations";
 import {
   balancerRealtimeTopic,
-  useBalancerRealtime,
+  useBalancerRealtime
 } from "@/app/balancer/components/useBalancerRealtime";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -87,8 +87,9 @@ import {
 
 export function BalancerMainPageClient() {
   const tournamentId = useBalancerTournamentId();
-  const divisionGrid = useDivisionGrid();
-  const workspaceId = useWorkspaceStore((state) => state.entityWorkspaceId ?? state.currentWorkspaceId);
+  const workspaceId = useWorkspaceStore(
+    (state) => state.entityWorkspaceId ?? state.currentWorkspaceId
+  );
   const { canAccessPermission } = usePermissions();
   const currentUserId = useAuthProfileStore((state) => state.user?.id ?? null);
   const queryClient = useQueryClient();
@@ -177,6 +178,7 @@ export function BalancerMainPageClient() {
     ...tournamentOverviewQueryOptions(tournamentId as number),
     enabled: tournamentId !== null
   });
+  const divisionGrid = useDivisionGrid(tournamentQuery.data?.discipline);
   const roleCodes = tournamentQuery.data?.roster_shape
     ? orderSlotCodes(tournamentQuery.data.roster_shape.slots)
     : null;
@@ -557,7 +559,9 @@ export function BalancerMainPageClient() {
       await navigator.clipboard.writeText(buildTeamNamesText(activeVariant?.payload ?? null));
       notify.success("Team names copied");
     } catch {
-      notify.error("Unable to copy the team names. Your browser blocked clipboard access — copy them from the balance instead.");
+      notify.error(
+        "Unable to copy the team names. Your browser blocked clipboard access — copy them from the balance instead."
+      );
     }
   }, [activeVariant]);
 
@@ -801,6 +805,7 @@ export function BalancerMainPageClient() {
         <PlayerEditModal
           player={quickEditPlayer}
           registration={quickEditRegistration}
+          discipline={tournamentQuery.data?.discipline}
           statusOptions={playerStatusOptions}
           open={editingPlayerId !== null}
           onOpenChange={(open) => {
@@ -889,7 +894,11 @@ export function BalancerMainPageClient() {
               {sidebarElement}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel id="balancer-pool-content-panel" minSize={40} className="grid min-h-0 pl-3">
+            <ResizablePanel
+              id="balancer-pool-content-panel"
+              minSize={40}
+              className="grid min-h-0 pl-3"
+            >
               {balancerContentElement}
             </ResizablePanel>
             {playersElement ? (

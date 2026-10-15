@@ -155,7 +155,7 @@ class SaveOutcome:
 
 
 def _pick_active_version(grid: models.DivisionGrid, workspace: models.Workspace) -> models.DivisionGridVersion | None:
-    default_id = workspace.default_division_grid_version_id
+    default_id = workspace.default_division_grid_versions.get(grid.discipline)
     versions = list(grid.versions)
     for version in versions:
         if version.id == default_id:
@@ -281,8 +281,9 @@ class DivisionGridService:
         archived = changes.pop("archived", None)
         if archived is True:
             active_version_id = await session.scalar(
-                sa.select(models.Workspace.default_division_grid_version_id).where(
-                    models.Workspace.id == grid.workspace_id
+                sa.select(models.WorkspaceDivisionGridDefault.version_id).where(
+                    models.WorkspaceDivisionGridDefault.workspace_id == grid.workspace_id,
+                    models.WorkspaceDivisionGridDefault.discipline == grid.discipline,
                 )
             )
             if active_version_id in {version.id for version in grid.versions}:
@@ -312,8 +313,9 @@ class DivisionGridService:
         version_ids = [version.id for version in grid.versions]
         if version_ids and not force:
             default_version_id = await session.scalar(
-                sa.select(models.Workspace.default_division_grid_version_id).where(
-                    models.Workspace.id == grid.workspace_id
+                sa.select(models.WorkspaceDivisionGridDefault.version_id).where(
+                    models.WorkspaceDivisionGridDefault.workspace_id == grid.workspace_id,
+                    models.WorkspaceDivisionGridDefault.discipline == grid.discipline,
                 )
             )
             if default_version_id in version_ids:
@@ -414,9 +416,10 @@ class DivisionGridService:
     async def delete_version(self, session: AsyncSession, version_id: int) -> None:
         version = await self.get_version(session, version_id)
 
-        workspace_uses = await self.workspace_repo.count(
-            session,
-            filters=[models.Workspace.default_division_grid_version_id == version_id],
+        workspace_uses = await session.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.WorkspaceDivisionGridDefault)
+            .where(models.WorkspaceDivisionGridDefault.version_id == version_id)
         )
         if workspace_uses:
             raise HTTPException(
@@ -687,10 +690,8 @@ class DivisionGridService:
                 detail=f"Division grid mappings are not ready for source versions: {blocked}",
             )
 
-        await self.workspace_repo.update_fields(
-            session,
-            workspace,
-            {"default_division_grid_version_id": version_id},
+        await self.workspace_repo.set_default_grid_version(
+            session, workspace, discipline=version.grid.discipline, version_id=version_id
         )
         await division_grid_cache.invalidate_workspace(workspace.id)
         return version
@@ -778,10 +779,12 @@ class DivisionGridService:
         session: AsyncSession,
         workspace: models.Workspace,
     ) -> models.DivisionGrid:
-        """The single managed grid for a workspace: the one holding the active
-        version, else the newest non-archived, else a freshly seeded grid."""
-        grids = await self.get_workspace_grids(session, workspace.id)
-        default_id = workspace.default_division_grid_version_id
+        """Resolve the existing first-enabled discipline's managed grid until the picker is introduced."""
+        discipline = workspace.disciplines_enabled[0]
+        grids = [
+            grid for grid in await self.get_workspace_grids(session, workspace.id) if grid.discipline == discipline
+        ]
+        default_id = workspace.default_division_grid_versions.get(discipline)
         if default_id is not None:
             for grid in grids:
                 if any(version.id == default_id for version in grid.versions):
@@ -794,7 +797,7 @@ class DivisionGridService:
         return await self.create_grid(
             session,
             workspace.id,
-            schemas.DivisionGridCreate(slug="default", name="Division Grid"),
+            schemas.DivisionGridCreate(slug=f"{discipline}-default", name="Division Grid", discipline=discipline),
         )
 
     async def _apply_cosmetic(
@@ -839,6 +842,7 @@ class DivisionGridService:
                 raise HTTPException(status_code=400, detail="Division grid does not belong to the workspace")
         else:
             grid = await self._resolve_workspace_grid(session, workspace)
+        assert_discipline_enabled(workspace, grid.discipline)
         active = _pick_active_version(grid, workspace)
         change = "structural" if active is None else _classify_tier_change(active.tiers, data.tiers)
 
@@ -856,7 +860,7 @@ class DivisionGridService:
             )
             await self.publish_version(session, new_version.id)
 
-            source_ids = await get_workspace_source_version_ids(session, workspace.id)
+            source_ids = await get_workspace_source_version_ids(session, workspace.id, discipline=grid.discipline)
             if active is not None:
                 source_ids.add(active.id)
             source_ids.discard(new_version.id)
@@ -897,7 +901,7 @@ class DivisionGridService:
         return SaveOutcome(
             mode=mode,
             grid=grid,
-            active_version_id=workspace.default_division_grid_version_id,
+            active_version_id=workspace.default_division_grid_versions.get(grid.discipline),
             saved_version_id=saved_version_id,
             readiness=readiness,
         )

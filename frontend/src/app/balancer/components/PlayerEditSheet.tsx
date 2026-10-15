@@ -43,6 +43,7 @@ import { usePlayerEditForm } from "./usePlayerEditForm";
 type PlayerEditModalProps = {
   player: BalancerPlayerRecord;
   registration?: AdminRegistration | null;
+  discipline?: string;
   statusOptions?: {
     registration: {
       system: Array<{ value: string; name: string }>;
@@ -63,6 +64,7 @@ type PlayerEditModalProps = {
 export function PlayerEditModal({
   player,
   registration = null,
+  discipline,
   statusOptions,
   open,
   onOpenChange,
@@ -70,7 +72,7 @@ export function PlayerEditModal({
   onRemove,
   saving = false
 }: Readonly<PlayerEditModalProps>) {
-  const form = usePlayerEditForm({ player, registration, open, onSave });
+  const form = usePlayerEditForm({ player, registration, discipline, open, onSave });
   const { roleEntries, history } = form;
 
   const battleTags = getRegistrationBattleTags(registration, player.battle_tag);
@@ -112,9 +114,14 @@ export function PlayerEditModal({
           <div className="grid gap-2.5 lg:grid-cols-2">
             <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Balancer status</span>
+                <span className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                  Balancer status
+                </span>
                 {registration ? (
-                  <StatusMetaBadge meta={registration.balancer_status_meta} className="h-5 text-label" />
+                  <StatusMetaBadge
+                    meta={registration.balancer_status_meta}
+                    className="h-5 text-label"
+                  />
                 ) : (
                   <Badge
                     className={cn(
@@ -138,7 +145,10 @@ export function PlayerEditModal({
               )}
             >
               <div className="flex items-center justify-between gap-3">
-                <Label htmlFor="is-flex" className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]">
+                <Label
+                  htmlFor="is-flex"
+                  className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
+                >
                   Flex player
                 </Label>
                 <Switch
@@ -194,7 +204,10 @@ export function PlayerEditModal({
             ) : null}
 
             <div className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 py-2">
-              <Label htmlFor="pin-tournament" className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]">
+              <Label
+                htmlFor="pin-tournament"
+                className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
+              >
                 Only this tournament
               </Label>
               <div className="flex items-center gap-2">
@@ -242,7 +255,9 @@ export function PlayerEditModal({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Live rank (OverFast)</Label>
+            <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+              Live rank (OverFast)
+            </Label>
             <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
               {player.user_id != null ? (
                 <RankHistory userId={player.user_id} />
@@ -264,7 +279,9 @@ export function PlayerEditModal({
           {registration && statusOptions ? (
             <div className="grid gap-2 md:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Registration status</Label>
+                <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                  Registration status
+                </Label>
                 <Select value={form.registrationStatus} onValueChange={form.setRegistrationStatus}>
                   <SelectTrigger className="h-8 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-xs text-[color:var(--aqt-fg)]">
                     <SelectValue placeholder="Select registration status" />
@@ -284,7 +301,9 @@ export function PlayerEditModal({
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Balancer status</Label>
+                <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                  Balancer status
+                </Label>
                 <Select
                   value={form.registrationBalancerStatus}
                   onValueChange={form.setRegistrationBalancerStatus}
@@ -296,7 +315,8 @@ export function PlayerEditModal({
                     {form.registrationBalancerStatus === "ready" ||
                     form.registrationBalancerStatus === "incomplete" ? (
                       <SelectItem value={form.registrationBalancerStatus} disabled>
-                        {form.registrationBalancerStatus === "ready" ? "Ready" : "Incomplete"} · Computed
+                        {form.registrationBalancerStatus === "ready" ? "Ready" : "Incomplete"} ·
+                        Computed
                       </SelectItem>
                     ) : null}
                     {statusOptions.balancer.system
@@ -315,7 +335,8 @@ export function PlayerEditModal({
                 </Select>
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-label text-[color:var(--aqt-fg-dim)]">
-                    Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.
+                    Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player
+                    from the pool.
                   </p>
                   {form.registrationBalancerStatus !== "ready" ? (
                     <Button

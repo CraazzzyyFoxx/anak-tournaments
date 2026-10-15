@@ -21,12 +21,10 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import pytest  # noqa: E402
 import sqlalchemy as sa  # noqa: E402
 
 from shared.rbac import assign_workspace_system_role, ensure_workspace_system_roles  # noqa: E402
 from shared.repository import get_or_create_workspace_member  # noqa: E402
-from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from src import models, schemas  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.token_payload import TokenPayloadBuilder, token_payloads  # noqa: E402
@@ -45,7 +43,7 @@ def test_token_payload_includes_workspace_membership_with_rbac_roles(db_session)
         payload = schemas.UserRegister(
             email=f"tokenws-{suffix}@example.com",
             username=f"tokenws_{suffix}",
-            password="correct-horse-battery",
+            password="Correct-horse-battery1!",
         )
         auth_user = await auth.register(db_session, payload)
 
@@ -54,13 +52,9 @@ def test_token_payload_includes_workspace_membership_with_rbac_roles(db_session)
         ).scalar_one()
 
         # 2. Create a workspace and anchor a workspace_member row on player_id.
-        grid_version_id = await get_default_division_grid_version_id(db_session)
-        if grid_version_id is None:
-            pytest.skip("no default division grid version configured in dev DB")
         workspace = models.Workspace(
             slug=f"tokenws-test-{suffix}",
             name=f"Token WS Test {suffix}",
-            default_division_grid_version_id=grid_version_id,
         )
         db_session.add(workspace)
         await db_session.flush()
@@ -79,6 +73,8 @@ def test_token_payload_includes_workspace_membership_with_rbac_roles(db_session)
         #    build the token payload.
         current_user = await db_session.get(models.AuthUser, auth_user.id)
         token_payload = await token_payloads.build(db_session, current_user)
+        # Release the read transaction before asyncio.run closes its owning loop.
+        await db_session.close()
         return workspace.id, token_payload
 
     workspace_id, token_payload = asyncio.run(_run())

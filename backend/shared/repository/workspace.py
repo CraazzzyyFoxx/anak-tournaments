@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
+from shared.core.errors import BaseAPIException
 from shared.core.pagination import PaginationSortParams
 from shared.models.identity.rbac import role_permissions, user_lacks_roles, user_roles
 from shared.rbac.catalog import WORKSPACE_SYSTEM_ROLE_NAMES
@@ -28,7 +29,9 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         super().__init__(models.Workspace)
 
     async def get_by_slug(self, session: AsyncSession, slug: str) -> models.Workspace | None:
-        return await self.get_by(session, options=self.default_grid_options(), slug=slug)
+        workspace = await self.get_by(session, options=self.default_grid_options(), slug=slug)
+        await self.load_effective_grid_versions(session, [workspace] if workspace is not None else [])
+        return workspace
 
     async def get_by_subdomain(self, session: AsyncSession, subdomain: str) -> models.Workspace | None:
         """Resolve a platform-zone subdomain label to its workspace (Phase 1).
@@ -74,7 +77,9 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         return result.scalar_one_or_none()
 
     async def get_with_default_grid(self, session: AsyncSession, workspace_id: int) -> models.Workspace | None:
-        return await self.get(session, workspace_id, options=self.default_grid_options())
+        workspace = await self.get(session, workspace_id, options=self.default_grid_options())
+        await self.load_effective_grid_versions(session, [workspace] if workspace is not None else [])
+        return workspace
 
     async def lock_by_id(self, session: AsyncSession, workspace_id: int) -> int | None:
         """``SELECT id ... FOR UPDATE`` — serialize concurrent writers on one workspace.
@@ -87,6 +92,21 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
             sa.select(models.Workspace.id).where(models.Workspace.id == workspace_id).with_for_update()
         )
 
+    async def set_default_grid_version(
+        self, session: AsyncSession, workspace: models.Workspace, *, discipline: str, version_id: int
+    ) -> None:
+        """Atomic per-game upsert: another discipline's activation cannot be overwritten."""
+        assignment = models.WorkspaceDivisionGridDefault
+        stmt = pg_insert(assignment).values(workspace_id=workspace.id, discipline=discipline, version_id=version_id)
+        await session.execute(
+            stmt.on_conflict_do_update(
+                index_elements=[assignment.workspace_id, assignment.discipline],
+                set_={"version_id": stmt.excluded.version_id},
+            )
+        )
+        await session.refresh(workspace, ["division_grid_defaults"])
+        await self.load_effective_grid_versions(session, [workspace])
+
     async def clear_default_grid_version(
         self,
         session: AsyncSession,
@@ -94,27 +114,23 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         workspace_id: int,
         version_ids: Sequence[int],
     ) -> None:
-        """Detach the workspace default when the version it points at is being deleted.
-
-        One statement over the whole set of doomed versions rather than a load-then-check
-        per version.
-        """
+        """Remove only assignments pointing at the versions being deleted."""
         if not version_ids:
             return
         await session.execute(
-            sa.update(models.Workspace)
-            .where(
-                models.Workspace.id == workspace_id,
-                models.Workspace.default_division_grid_version_id.in_(tuple(version_ids)),
+            sa.delete(models.WorkspaceDivisionGridDefault).where(
+                models.WorkspaceDivisionGridDefault.workspace_id == workspace_id,
+                models.WorkspaceDivisionGridDefault.version_id.in_(tuple(version_ids)),
             )
-            .values(default_division_grid_version_id=None)
         )
 
     async def list_ordered(self, session: AsyncSession) -> Sequence[models.Workspace]:
         result = await session.execute(
             sa.select(models.Workspace).options(*self.default_grid_options()).order_by(models.Workspace.id.asc())
         )
-        return result.scalars().all()
+        workspaces = result.scalars().all()
+        await self.load_effective_grid_versions(session, workspaces)
+        return workspaces
 
     async def count_by_owner(self, session: AsyncSession, *, owner_id: int) -> int:
         """How many workspaces this account is the create-time accountable party for.
@@ -143,11 +159,66 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         )
         return result.scalars().all()
 
+    async def load_effective_grid_versions(self, session: AsyncSession, workspaces: Sequence[models.Workspace]) -> None:
+        """Resolve public payloads in three batched queries, deduplicating shared versions.
+
+        Explicit selections remain separate from same-game system fallbacks. No
+        synthetic version represents a native ladder, and no async lazy read is
+        deferred into synchronous WorkspaceRead serialization.
+        """
+        if not workspaces:
+            return
+        disciplines = {
+            code
+            for workspace in workspaces
+            for code in (*workspace.disciplines_enabled, *workspace.default_division_grid_versions)
+        }
+        system = dict(
+            (
+                await session.execute(
+                    sa.select(models.DivisionGrid.discipline, sa.func.min(models.DivisionGridVersion.id))
+                    .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
+                    .where(models.DivisionGrid.workspace_id.is_(None), models.DivisionGrid.discipline.in_(disciplines))
+                    .group_by(models.DivisionGrid.discipline)
+                )
+            ).all()
+        )
+        version_ids = set(system.values())
+        for workspace in workspaces:
+            version_ids.update(workspace.default_division_grid_versions.values())
+        rows = (
+            (
+                await session.execute(
+                    sa.select(
+                        models.DivisionGridVersion, models.DivisionGrid.discipline, models.DivisionGrid.workspace_id
+                    )
+                    .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
+                    .options(selectinload(models.DivisionGridVersion.tiers))
+                    .where(models.DivisionGridVersion.id.in_(version_ids))
+                )
+            ).all()
+            if version_ids
+            else []
+        )
+        versions = {version.id: (version, discipline, owner) for version, discipline, owner in rows}
+        for workspace in workspaces:
+            explicit = workspace.default_division_grid_versions
+            effective = {}
+            for code in set(workspace.disciplines_enabled) | explicit.keys():
+                version_id = explicit.get(code, system.get(code))
+                if version_id is None:
+                    continue
+                row = versions.get(version_id)
+                if row is None or row[1] != code or row[2] not in (None, workspace.id):
+                    raise BaseAPIException(
+                        status_code=422, detail="division_grid_discipline_mismatch: invalid workspace default"
+                    )
+                effective[code] = row[0]
+            workspace._effective_grid_versions = effective
+
     @staticmethod
     def default_grid_options() -> list[object]:
-        return [
-            selectinload(models.Workspace.default_division_grid_version).selectinload(models.DivisionGridVersion.tiers)
-        ]
+        return [selectinload(models.Workspace.division_grid_defaults)]
 
 
 class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):

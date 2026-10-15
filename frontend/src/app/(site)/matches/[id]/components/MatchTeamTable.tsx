@@ -31,15 +31,7 @@ interface MatchTeamTableProps {
   tournamentGrid?: DivisionGridVersion | null;
 }
 
-const StatCell = ({
-  name,
-  value,
-  max
-}: {
-  name: LogStatsName;
-  value: number;
-  max: number;
-}) => {
+const StatCell = ({ name, value, max }: { name: LogStatsName; value: number; max: number }) => {
   const format = useFormatter();
   const meta = STAT_META[name];
   const showBar = Boolean(meta?.bar) && max > 0;
@@ -48,7 +40,9 @@ const StatCell = ({
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <span className="aqt-tnum text-caption text-[color:var(--aqt-fg)]">{formatStat(name, value, format)}</span>
+      <span className="aqt-tnum text-caption text-[color:var(--aqt-fg)]">
+        {formatStat(name, value, format)}
+      </span>
       {showBar ? (
         <div className="h-[3px] w-full max-w-[64px] overflow-hidden rounded-full bg-[color:var(--aqt-overlay-2)]">
           <div
@@ -144,6 +138,7 @@ const MatchTeamTable = ({
                 division={player.division}
                 rank={player.rank}
                 tournamentGrid={tournamentGrid}
+                discipline="overwatch"
                 className="justify-center"
               />
             </TableCell>
@@ -155,7 +150,11 @@ const MatchTeamTable = ({
             <TableCell className="text-center">
               <div className="flex flex-col items-center gap-1">
                 <span className="aqt-tnum text-ui font-bold leading-none text-[color:var(--aqt-teal)]">
-                  {formatStat(LogStatsName.ImpactPoints, player.stats[matchRound]?.impact_points, format)}
+                  {formatStat(
+                    LogStatsName.ImpactPoints,
+                    player.stats[matchRound]?.impact_points,
+                    format
+                  )}
                 </span>
                 <PerformanceBadge performance={resolveMatchMvpPlacement(player, matchRound)} />
               </div>

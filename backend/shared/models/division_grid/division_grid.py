@@ -25,6 +25,7 @@ __all__ = (
     "DivisionGridMapping",
     "DivisionGridMappingRule",
     "DivisionGridImportJob",
+    "WorkspaceDivisionGridDefault",
 )
 
 
@@ -68,6 +69,20 @@ class DivisionGrid(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="DivisionGridVersion.version",
         lazy="selectin",
+    )
+
+
+class WorkspaceDivisionGridDefault(db.Base):
+    """One explicit active grid per workspace and discipline."""
+
+    __tablename__ = "workspace_division_grid_default"
+
+    workspace_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("workspace.id", ondelete="CASCADE"), primary_key=True
+    )
+    discipline: Mapped[str] = mapped_column(String(32), ForeignKey("catalog.discipline.code"), primary_key=True)
+    version_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("division_grid_version.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
 

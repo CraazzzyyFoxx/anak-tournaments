@@ -343,7 +343,9 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
             missing_mapping_version_ids=[10],
             incomplete_mapping_version_ids=[],
         )
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=12, disciplines_enabled=["overwatch"])
+        workspace = SimpleNamespace(
+            id=4, default_division_grid_versions={"overwatch": 12}, disciplines_enabled=["overwatch"]
+        )
         with (
             patch.object(grid_service, "get_version", AsyncMock(return_value=target)),
             patch.object(
@@ -360,7 +362,7 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
             )
 
         assert getattr(caught.value, "status_code", None) == 409
-        assert workspace.default_division_grid_version_id == 12
+        assert workspace.default_division_grid_versions == {"overwatch": 12}
 
     asyncio.run(run())
 
@@ -974,6 +976,7 @@ def test_archiving_workspace_default_grid_is_rejected() -> None:
         grid = SimpleNamespace(
             id=4,
             workspace_id=9,
+            discipline="overwatch",
             archived_at=None,
             versions=[SimpleNamespace(id=11), SimpleNamespace(id=12)],
         )

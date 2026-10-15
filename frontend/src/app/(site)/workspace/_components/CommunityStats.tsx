@@ -9,10 +9,7 @@ import { getFormatter } from "@/lib/datetime/server";
 import heroService from "@/services/hero.service";
 import statisticsService from "@/services/statistics.service";
 import type { HeroPlaytime } from "@/types/hero.types";
-import type {
-  TournamentDivisionStatistics,
-  TournamentStatistics
-} from "@/types/statistics.types";
+import type { TournamentDivisionStatistics, TournamentStatistics } from "@/types/statistics.types";
 import type { Workspace } from "@/types/workspace.types";
 
 import { ScopedMoreLink } from "./WorkspaceScopeLink";
@@ -61,9 +58,7 @@ function StatsGrid({ children }: Readonly<{ children: React.ReactNode }>) {
   );
 }
 
-export async function CommunityStatsSkeleton({
-  workspace
-}: Readonly<{ workspace: Workspace }>) {
+export async function CommunityStatsSkeleton({ workspace }: Readonly<{ workspace: Workspace }>) {
   return (
     <Shell workspace={workspace}>
       <StatsGrid>
@@ -100,9 +95,7 @@ export async function CommunityStats({ workspace }: Readonly<{ workspace: Worksp
   const [history, division, heroes] = await Promise.all([
     statisticsService.getTournaments({ workspaceId }).catch(() => null),
     statisticsService.getTournamentsDivision({ workspaceId }).catch(() => null),
-    heroService
-      .getHeroPlaytime(1, TOP_HEROES, "all", null, { workspaceId })
-      .catch(() => null)
+    heroService.getHeroPlaytime(1, TOP_HEROES, "all", null, { workspaceId }).catch(() => null)
   ]);
 
   if (history === null && division === null && heroes === null) {
@@ -125,9 +118,7 @@ export async function CommunityStats({ workspace }: Readonly<{ workspace: Worksp
 }
 
 /** Turnout per tournament, newest on the right and highlighted. */
-async function ActivityColumn({
-  history
-}: Readonly<{ history: TournamentStatistics[] | null }>) {
+async function ActivityColumn({ history }: Readonly<{ history: TournamentStatistics[] | null }>) {
   const [t, format] = await Promise.all([getTranslations("workspace"), getFormatter()]);
   const rows = (history ?? []).slice(-ACTIVITY_SPAN);
 
@@ -246,7 +237,8 @@ async function DivisionColumn({
             ) : (
               <DivisionIcon
                 division={Math.round(role.value)}
-                tournamentGrid={workspace.default_division_grid_version}
+                tournamentGrid={workspace.effective_division_grid_versions.overwatch}
+                discipline="overwatch"
                 width={32}
                 height={32}
                 className="size-8 object-contain"
@@ -293,8 +285,7 @@ async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null
       <ol className="mt-4 grid gap-2.5">
         {top.map((row) => {
           const role = row.hero.type ?? row.hero.role;
-          const color =
-            ROLES.find((entry) => entry.key === role)?.color ?? "var(--aqt-fg-muted)";
+          const color = ROLES.find((entry) => entry.key === role)?.color ?? "var(--aqt-fg-muted)";
           const share = format.number(row.playtime, {
             style: "percent",
             minimumFractionDigits: 1,
@@ -319,18 +310,25 @@ async function HeroesColumn({ heroes }: Readonly<{ heroes: HeroPlaytime[] | null
                 aria-label={t("stats.heroAlt", {
                   name: row.hero.name,
                   share,
-                  role: role ? t(`roles.${role as "Tank" | "Damage" | "Support"}`).toLowerCase() : ""
+                  role: role
+                    ? t(`roles.${role as "Tank" | "Damage" | "Support"}`).toLowerCase()
+                    : ""
                 })}
                 className="h-2 overflow-hidden rounded-[4px] bg-[color:var(--aqt-overlay-3)]"
               >
                 <i
                   className="block h-full rounded-[inherit] bg-[color:var(--hero-c)]"
                   style={
-                    { width: `${(row.playtime / leader) * 100}%`, "--hero-c": color } as CSSProperties
+                    {
+                      width: `${(row.playtime / leader) * 100}%`,
+                      "--hero-c": color
+                    } as CSSProperties
                   }
                 />
               </span>
-              <span className="text-right tabular-nums text-[color:var(--aqt-fg-dim)]">{share}</span>
+              <span className="text-right tabular-nums text-[color:var(--aqt-fg-dim)]">
+                {share}
+              </span>
             </li>
           );
         })}

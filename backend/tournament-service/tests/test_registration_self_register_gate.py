@@ -29,7 +29,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
 import sqlalchemy as sa
 
 if sys.platform == "win32":
@@ -57,7 +56,6 @@ from shared.models.identity.rbac import user_roles  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
 from shared.rbac import get_workspace_system_role  # noqa: E402
-from shared.services.division_grid.access import get_default_division_grid_version_id  # noqa: E402
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration import windows  # noqa: E402
@@ -72,13 +70,9 @@ _SCHEMA = FormSchema(
 
 async def _make_workspace(session) -> Workspace:
     suffix = uuid.uuid4().hex[:12]
-    grid_version_id = await get_default_division_grid_version_id(session)
-    if grid_version_id is None:
-        pytest.skip("no default division grid version configured in dev DB")
     workspace = Workspace(
         slug=f"selfreg-test-{suffix}",
         name=f"Self-Register Gate Test {suffix}",
-        default_division_grid_version_id=grid_version_id,
     )
     session.add(workspace)
     await session.flush()

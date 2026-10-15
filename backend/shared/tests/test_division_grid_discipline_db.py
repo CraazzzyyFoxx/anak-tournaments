@@ -12,8 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.errors import BaseAPIException
+from shared.repository.workspace import WorkspaceRepository
 from shared.services.division_grid import cache
 from shared.services.division_grid.access import (
+    build_workspace_division_grid_normalizer,
     get_effective_division_grid,
     get_effective_division_grid_version,
     get_effective_division_grid_version_ids,
@@ -21,6 +23,7 @@ from shared.services.division_grid.access import (
     require_event_grid,
     tournament_effective_version_id_expr,
 )
+from shared.services.division_grid.normalization import DivisionGridNormalizationError
 from shared.testing import create_test_async_engine
 from shared.testing.cache import configure_test_cache
 from shared.testing.db import ensure_test_postgres
@@ -38,11 +41,15 @@ class GridDisciplineTests(IsolatedAsyncioTestCase):
         self.transaction = await self.connection.begin()
         self.session = AsyncSession(bind=self.connection, expire_on_commit=False)
         self.tag = uuid.uuid4().hex
-        self.workspace = models.Workspace(slug=self.tag, name=self.tag, disciplines_enabled=["overwatch", "lol"])
+        self.workspace = models.Workspace(
+            slug=self.tag, name=self.tag, disciplines_enabled=["overwatch", "lol"], division_grid_defaults=[]
+        )
         self.session.add(self.workspace)
         await self.session.flush()
         self.ow = await self.grid("overwatch", number=4)
-        self.workspace.default_division_grid_version_id = self.ow.id
+        await WorkspaceRepository().set_default_grid_version(
+            self.session, self.workspace, discipline="overwatch", version_id=self.ow.id
+        )
         self.ow_event = models.Tournament(workspace_id=self.workspace.id, name="OW", slug=self.tag + "-ow")
         self.lol_event = models.Tournament(
             workspace_id=self.workspace.id, name="LoL", slug=self.tag + "-lol", discipline="lol"
@@ -84,7 +91,10 @@ class GridDisciplineTests(IsolatedAsyncioTestCase):
         return version
 
     async def test_workspace_cache_keeps_both_disciplines_separate(self):
-        lol = await self.grid("lol", number=9, system=True)
+        lol = await self.grid("lol", number=9)
+        await WorkspaceRepository().set_default_grid_version(
+            self.session, self.workspace, discipline="lol", version_id=lol.id
+        )
         for discipline, expected in [("overwatch", self.ow.id), ("lol", lol.id)] * 2:
             self.assertEqual(
                 await get_workspace_division_grid_version_id(self.session, self.workspace.id, discipline), expected
@@ -93,7 +103,10 @@ class GridDisciplineTests(IsolatedAsyncioTestCase):
             self.assertEqual(grid.resolve_division(200).number, 4 if discipline == "overwatch" else 9)
 
     async def test_batch_sql_and_full_models_agree_on_each_owners_scope(self):
-        lol = await self.grid("lol", number=9, system=True)
+        lol = await self.grid("lol", number=9)
+        await WorkspaceRepository().set_default_grid_version(
+            self.session, self.workspace, discipline="lol", version_id=lol.id
+        )
         expected = {self.ow_event.id: self.ow.id, self.lol_event.id: lol.id}
         for _ in range(2):
             self.assertEqual(await get_effective_division_grid_version_ids(self.session, expected), expected)
@@ -115,6 +128,10 @@ class GridDisciplineTests(IsolatedAsyncioTestCase):
                 )
 
     async def test_missing_or_empty_lol_grid_never_becomes_an_overwatch_grid(self):
+        self.workspace.disciplines_enabled = ["lol", "overwatch"]
+        await self.session.flush()
+        with self.assertRaises(BaseAPIException):
+            await get_effective_division_grid(self.session, self.workspace.id)
         for _ in range(2):
             for scope in ({"discipline": "lol"}, {"tournament_id": self.lol_event.id}):
                 with self.assertRaises(BaseAPIException) as caught:
@@ -122,8 +139,9 @@ class GridDisciplineTests(IsolatedAsyncioTestCase):
                 self.assertEqual(caught.exception.status_code, 422)
                 self.assertIn("division_grid_required", str(caught.exception.detail))
         empty = await self.grid("lol")
-        self.workspace.default_division_grid_version_id = empty.id
-        await self.session.flush()
+        await WorkspaceRepository().set_default_grid_version(
+            self.session, self.workspace, discipline="lol", version_id=empty.id
+        )
         await cache.invalidate_workspace(self.workspace.id)
         with self.assertRaises(BaseAPIException):
             await get_effective_division_grid(self.session, self.workspace.id, discipline="lol")
@@ -149,10 +167,91 @@ class GridDisciplineTests(IsolatedAsyncioTestCase):
     async def test_workspace_invalidation_clears_each_disciplines_warmed_default(self):
         lol = await self.grid("lol", number=9)
         await get_workspace_division_grid_version_id(self.session, self.workspace.id, "overwatch")
-        self.workspace.default_division_grid_version_id = lol.id
-        await self.session.flush()
+        await WorkspaceRepository().set_default_grid_version(
+            self.session, self.workspace, discipline="lol", version_id=lol.id
+        )
         await cache.invalidate_workspace(self.workspace.id)
         self.assertEqual(await get_workspace_division_grid_version_id(self.session, self.workspace.id, "lol"), lol.id)
-        self.assertNotEqual(
-            await get_workspace_division_grid_version_id(self.session, self.workspace.id, "overwatch"), lol.id
+        self.assertEqual(
+            await get_workspace_division_grid_version_id(self.session, self.workspace.id, "overwatch"), self.ow.id
         )
+
+    async def test_corrupt_default_and_foreign_normalization_never_return_another_owners_grid(self):
+        lol = await self.grid("lol", number=9)
+        self.session.add(
+            models.WorkspaceDivisionGridDefault(workspace_id=self.workspace.id, discipline="lol", version_id=self.ow.id)
+        )
+        await self.session.flush()
+        with self.assertRaises(BaseAPIException):
+            await get_workspace_division_grid_version_id(self.session, self.workspace.id, "lol")
+        sql_version = await self.session.scalar(
+            sa.select(tournament_effective_version_id_expr(sa.literal(self.lol_event.id)))
+        )
+        self.assertNotEqual(sql_version, self.ow.id)
+        with self.assertRaises(DivisionGridNormalizationError):
+            await build_workspace_division_grid_normalizer(
+                self.session, self.workspace.id, target_version_id=lol.id, source_version_ids=[self.ow.id]
+            )
+        other = models.Workspace(slug=self.tag + "-other", name="Other")
+        self.session.add(other)
+        await self.session.flush()
+        lol.grid.workspace_id = other.id
+        await self.session.execute(
+            sa.update(models.WorkspaceDivisionGridDefault)
+            .where(
+                models.WorkspaceDivisionGridDefault.workspace_id == self.workspace.id,
+                models.WorkspaceDivisionGridDefault.discipline == "lol",
+            )
+            .values(version_id=lol.id)
+        )
+        await self.session.flush()
+        with self.assertRaises(BaseAPIException):
+            await get_workspace_division_grid_version_id(self.session, self.workspace.id, "lol")
+        with self.assertRaises(DivisionGridNormalizationError):
+            await build_workspace_division_grid_normalizer(self.session, self.workspace.id, target_version_id=lol.id)
+
+    async def test_independent_concurrent_upserts_preserve_both_defaults(self):
+        # Separate committed fixture: two transactions must see the same owner,
+        # unlike the rollback-only per-test transaction used by the other cases.
+        repo = WorkspaceRepository()
+        async with AsyncSession(self.engine, expire_on_commit=False) as setup:
+            workspace = models.Workspace(
+                slug=self.tag + "-concurrent",
+                name="Concurrent",
+                disciplines_enabled=["overwatch", "lol"],
+                division_grid_defaults=[],
+            )
+            setup.add(workspace)
+            await setup.flush()
+            workspace_id = workspace.id
+            versions = {}
+            for code in ("overwatch", "lol"):
+                grid = models.DivisionGrid(workspace_id=workspace_id, slug=code, name=code, discipline=code)
+                version = models.DivisionGridVersion(grid=grid, version=1, label=code, status="published")
+                setup.add(version)
+                await setup.flush()
+                versions[code] = version.id
+            await setup.commit()
+        ready = asyncio.Event()
+        arrived = 0
+
+        async def activate(code):
+            nonlocal arrived
+            async with AsyncSession(self.engine, expire_on_commit=False) as session:
+                owner = await repo.get(session, workspace_id)
+                arrived += 1
+                if arrived == 2:
+                    ready.set()
+                await ready.wait()
+                await repo.set_default_grid_version(session, owner, discipline=code, version_id=versions[code])
+                await session.commit()
+
+        try:
+            await asyncio.gather(activate("overwatch"), activate("lol"))
+            async with AsyncSession(self.engine) as session:
+                owner = await repo.get_with_default_grid(session, workspace_id)
+                self.assertEqual(owner.default_division_grid_versions, versions)
+        finally:
+            async with AsyncSession(self.engine) as session:
+                await session.execute(sa.delete(models.Workspace).where(models.Workspace.id == workspace_id))
+                await session.commit()

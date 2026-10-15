@@ -59,7 +59,7 @@ export const useUserCompareData = ({
   // division grid and the population from it, so the picker's tiers must come
   // from the same place. All communities read the reference grid.
   const currentWorkspaceId = useCurrentWorkspaceId();
-  const workspaceGrid = useDivisionGrid();
+  const workspaceGrid = useDivisionGrid("overwatch");
   const workspaceId = scope === "all" ? "all" : (currentWorkspaceId ?? undefined);
   const divisionGrid = scope === "all" ? getDefaultDivisionGrid() : workspaceGrid;
 
