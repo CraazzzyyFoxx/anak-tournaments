@@ -19323,6 +19323,11 @@ export interface components {
             end_date: string;
             /** Id */
             id: number;
+            /**
+             * Identity Provider
+             * @description The discipline's player identity provider (D90).
+             */
+            readonly identity_provider: string;
             /** Is Finished */
             is_finished: boolean;
             /**

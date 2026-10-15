@@ -72,6 +72,7 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`encounter-layer-v1-release.md`](./encounter-layer-v1-release.md) | Shipping the encounter layer V1: breaking API changes, the preflight → upgrade → recompute → reconcile cutover, what is unmeasured |
 | [`multi-game-p1-catalog-release.md`](./multi-game-p1-catalog-release.md) | Shipping the multi-game P1 catalog: wire breaks, preflight/reconcile, cache and queue drain, hero-stats view population, dev/staging resets |
 | [`multi-game-p2-roles-release.md`](./multi-game-p2-roles-release.md) | Shipping the P2 role ontology and team formats: RoleRef wire breaks, preflight classes 2–8, reconciliation, dev/staging resets |
+| [`multi-game-p3-ranks-release.md`](./multi-game-p3-ranks-release.md) | Shipping P3 ranks and identity: native modules, role-ID storage, independent grid defaults, Riot/provider wire contracts, retained migration evidence and phase verification limits |
 
 ## Designs, plans and reviews
 

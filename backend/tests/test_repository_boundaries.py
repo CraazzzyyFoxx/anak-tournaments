@@ -54,7 +54,6 @@ APPROVED_DIRECT_WRITE_FILES = {
     "shared/rbac/bootstrap.py",
     "shared/services/bracket/advancement.py",
     "shared/services/bracket/usability.py",
-    "shared/services/division_grid/access.py",
     # Append-only event journal, not CRUD: the realtime rail writes one
     # WorkspaceEvent row per staged event from the session's own before_commit
     # hook, which is where the row has to be created for it to ride the

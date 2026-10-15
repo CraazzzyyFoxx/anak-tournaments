@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 import sqlalchemy as sa
 
@@ -47,6 +48,7 @@ from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from src import models  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
+from src.services.registration import teams as teams_module  # noqa: E402
 from src.services.registration.teams import TEAM_COMPLETE, TEAM_FORMING, teams_service  # noqa: E402
 
 #: Three places, none of them a role: the squad shape this file exists for.
@@ -191,7 +193,12 @@ def test_a_three_flex_roster_is_founded_and_filled_by_two_invites(db_session) ->
         finally:
             await _drop(db_session, seeded)
 
-    create_status, create_slots, final_status, final_slots = asyncio.run(_run())
+    # This is a roster/DB check; Redis limiter behavior has its own fail-closed tests.
+    with (
+        patch.object(teams_module, "assert_invite_attempt_allowed", AsyncMock()),
+        patch.object(teams_module, "assert_accept_attempt_allowed", AsyncMock()),
+    ):
+        create_status, create_slots, final_status, final_slots = asyncio.run(_run())
 
     # One of three places taken: the shape is not satisfied yet.
     assert (create_status, create_slots) == (TEAM_FORMING, ["flex"])

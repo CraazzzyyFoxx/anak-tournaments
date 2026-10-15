@@ -27,7 +27,7 @@ import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import type { FormField, FormSchema } from "@/types/forms.types";
 
-import RegistrationFormSubRoutePage from "@/app/admin/tournaments/[id]/registration/form/page";
+import RegistrationFormSubRoutePage from "./page";
 import { validateAnswer } from "@/lib/forms/validate";
 
 declare global {
@@ -38,7 +38,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // Keep the actual route, queries and builder; only replace Next's bundler
 // loader, which does not settle its render-time import in Vitest.
 vi.mock("next/dynamic", async () => {
-  const builder = await import("./RegistrationFormBuilder");
+  const builder = await import("@/components/balancer/form/RegistrationFormBuilder");
   return { default: () => builder.default };
 });
 

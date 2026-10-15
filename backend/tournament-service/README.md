@@ -270,6 +270,43 @@ The `owt-1` player-pool export uses leaf refs in `owt.primary_role` and `owt.rol
 its frozen solver `stats.classes` remains unchanged.
 See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for errors and cutover steps.
 
+## Discipline grids and identity providers
+
+Every grid has `discipline`; its tiers use `native_rank_min/max` for optional native-ladder
+bounds and `rank_min/max` for organizer ranks. Grid creation takes an enabled discipline
+(omission selects the workspace's first enabled one). Overwatch can seed its module's 45 tiers;
+LoL starts empty and needs organizer-entered tiers. Creating a LoL tournament without a usable
+LoL version fails with 422 `division_grid_required` before persistence. A same-discipline event
+pin is sufficient without activating a workspace default.
+
+`workspace_division_grid_default` assigns versions independently by `(workspace_id, discipline)`.
+Activation/deletion affects only the matching assignment, never another game or a valid event pin.
+Workspace reads distinguish `default_division_grid_versions` (explicit IDs) from
+`effective_division_grid_versions` (persisted version/tier payloads, including same-game system
+fallback). Missing versions are omitted. Old scalar fields and writable-map workspace payloads
+are rejected; use grid activation. The old physical pointer is retained only for migration proof
+until P9, not read or dual-written by the service.
+
+Portable imports read `division-grid/v1` as Overwatch, translating `ow_rank_min/max` to native
+bounds; a v1 document declaring a discipline is invalid. Exports write `division-grid/v2` with
+`discipline` only. Historical marketplace fingerprint keys/digests remain unchanged; this is not
+an old-wire alias.
+
+`TournamentRead.identity_provider` is computed from its module: `battlenet` for OW, `riot` for
+LoL. Backend `default_schema(provider)` requires the provider. The default form identity,
+roster/chat display handle and parser matching follow it; Riot IDs preserve inner name spaces,
+normalize spacing around `#`, and match case-insensitively. Names are 3–16 non-`#` characters,
+tags 3–5 alphanumeric characters. A known-owner form cannot generate/save a Battle.net default
+while owner metadata is pending or failed; a loaded existing form remains intact.
+
+OverFast registration enrichment columns and autofill's `ow` stage run only for disciplines
+declaring a native layer; profile visibility remains OW-specific. Optional manual registration
+identities remain optional. Fresh writers initialize identity collections before flush; persisted
+readers retain eager loading. P7 owns primary-identity reconciliation, provider-explicit workspace
+upsert and generic identity wire/UI renaming (including retained `battle_tag`/`smurf_tags`);
+P8 consumes them. See the [P3 release guide](../../docs/multi-game-p3-ranks-release.md) for storage,
+cutover and known limitations.
+
 ## Data owned
 
 One PostgreSQL database, one SQLAlchemy metadata in [`../shared/`](../shared/README.md). Domain

@@ -243,11 +243,25 @@ layer is always the caller's own — a foreign book is readable by every workspa
 by nobody else. Deleting a role from a layer is how inheritance is restored. Reads return both
 dictionaries side by side so a client can tell an inherited number from an overridden one.
 
-Those two layers are what a *balance* consults. A member's rank value nonetheless exists in nine
-places — the two layers, the mix ranker's hidden rating, the latest Overwatch snapshot, the two
-effective values the resolver computes, and the three historical records (registration, tournament
-roster seat, recorded mix seat). `ranks.list` (`src/services/rank_overview.py`) puts all nine on one
-screen as a long-format table: one row per rank value, no grouping, a single `UNION ALL` so the
+Both stored layers and `member_hidden_rating` use catalog `role_id` of the discipline's rated
+dimension, with composite `(role_id, dimension_id)` foreign keys. Domain dictionaries still use
+role codes within that discipline; OW and LoL `support` never share a row. Workspace roster/rank
+RPCs accept `discipline`; omission selects the workspace's first enabled discipline. Known mix
+and tournament consumers pass the owner's discipline.
+
+Resolution uses the caller's registration/author override, then workspace canon, then
+`discipline(code).native_ranks`; the effective source is `native`, not `ow`. Overwatch's reader
+reduces its latest account snapshots by role and normalizes onto the owner's grid. LoL has no
+native reader or ladder: a LoL mix, including a clone, requires a tiered LoL grid before any owner
+or scoring rows are written (422 `division_grid_required` otherwise). No other game's default
+can satisfy it. Workspace grid defaults are independent per discipline; tournament pins are
+preserved and do not require workspace activation.
+
+For Overwatch, a member's rank value can exist in nine places — the two stored layers, the mix
+ranker's hidden rating, the native snapshot, the two effective values the resolver computes, and
+the three historical records (registration, tournament roster seat, recorded mix seat).
+`ranks.list` (`src/services/rank_overview.py`) puts these on one screen as a long-format table,
+scoped to the discipline: one row per rank value, no grouping, a single `UNION ALL` so the
 filters, the sort, the exact total and the page all run in Postgres. The two effective layers are
 computed in SQL rather than read from a table, which is why `tests/test_rank_overview.py` pins them
 against `MemberRankService.resolve` for both orders on the same fixture. The hidden layer shows the
@@ -264,20 +278,22 @@ mixes balance on the **effective rating**. The idea and its specification are
 ([@dmelackov](https://github.com/dmelackov)) — `docs/MathDescription.md` at commit `32f3f039`;
 `src/domain/mix_ranker.py` is an independent implementation of it, not a port of its code.
 
-- **Two ratings per member and role.** The open one is the rank in the host's book (the expert's
-  number, as before). The hidden one is an OpenSkill Thurstone-Mosteller `(mu, sigma)` in
-  `balancer.member_hidden_rating`, one per `workspace_member` and role — never per platform player, so
-  no host of another workspace can move it. It advances on **every** recorded match, in both modes.
+- **Two ratings per member and catalog role.** The open one is the rank in the host's book (the
+  expert's number, as before). The hidden one is an OpenSkill Thurstone-Mosteller `(mu, sigma)` in
+  `balancer.member_hidden_rating`, unique per `(workspace_member_id, role_id)` of the discipline's
+  rated dimension — never per platform player. It advances on every recorded match in both modes
+  for role-bearing seats. An open (`flex`) seat contributes to results but stores no hidden rating
+  and moves no host book.
 - **Effective rating** = open rating + gate × (hidden projected onto the open scale − open). In ranker
   mode the solver gets it, `encounter.team_member.rank` freezes it, and the lineup document keeps the open
   rank beside it as `players[uuid].open_ratings`.
 - **After a match** the open rating moves by the match's impulse on the hidden projection plus a pull
   towards the hidden rating, never against the result. The applied amount is frozen per seat in
   `balancer.custom_game_round_member.rank_delta_applied`; undo gives back exactly that.
-- **The hidden book is derived** — a fold over the workspace's recorded mix rounds. Undo, a change
-  of `rating_min`/`rating_max`/`rating_avg`/`sigma_init`, and the admin's *Recalculate hidden ratings*
-  (`admin.workspace_ranker_rebuild`, a button on the admin *Ranks* page next to *Ranker settings*)
-  replay it from scratch; a workspace starts empty until the first rebuild or recorded match.
+- **The hidden book is derived** — a fold over the workspace's recorded mix rounds by role ID.
+  Undo, a change of `rating_min`/`rating_max`/`rating_avg`/`sigma_init`, and the admin's *Recalculate
+  hidden ratings* (`admin.workspace_ranker_rebuild`, beside *Ranker settings*) replay it from scratch;
+  a workspace starts empty until the first rebuild or recorded match.
 - **Knobs** live in `workspace_config.ranker_json` (`admin.workspace_ranker_get/upsert`); `variant`
   picks `corrected` (default: gate and pull scaled by the hidden rating's own uncertainty) or
   `reference` (the specification's whole-range scaling). Deviations from the specification and the

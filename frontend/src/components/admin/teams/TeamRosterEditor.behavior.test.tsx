@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { OW_REFERENCE_GRID } from "@/lib/divisions/grid";
 import type { Player } from "@/types/team.types";
 import { TeamRosterEditor } from "./TeamRosterEditor";
 
@@ -40,7 +41,7 @@ vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
   default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} />
 }));
-vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
+vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => OW_REFERENCE_GRID }));
 vi.mock("@/components/admin/UserSearchCombobox", () => ({
   UserSearchCombobox: () => <div data-testid="user-search" />
 }));
@@ -180,10 +181,10 @@ describe("TeamRosterEditor", () => {
     );
     expect(roleTriggers[0].querySelector("svg")).not.toBeNull();
 
-    // Rank: a division image beside the editable number.
-    const divisionIcons = scope.querySelectorAll<HTMLImageElement>("img");
-    expect(divisionIcons).toHaveLength(4);
-    expect(divisionIcons[0].getAttribute("src")).toContain("/divisions/");
+    // The supplied OW division stays visible beside the editable rank.
+    const divisionIcon = scope.querySelector<HTMLImageElement>('img[alt="Diamond 5"]');
+    expect(divisionIcon?.getAttribute("src")).toBe("/divisions/diamond-5.png");
+    expect(rankFields(scope)[0].value).toBe("3300");
   });
 
   it("persists a rank edit on blur", async () => {

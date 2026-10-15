@@ -44,6 +44,9 @@ Alembic head: **`discipline01c`** (117 revisions in `backend/migrations/versions
   view refreshed out of band and does not appear. Append-only journals carry their
   `workspace_id` / `tournament_id` / actor ids as plain `BigInteger` with no FK, so they appear
   unconnected — see [platform](#platform--public-realtime).
+  The SQL/DBML snapshots are also ORM-derived, not a complete physical migration inventory:
+  unmapped legacy role columns, the old workspace grid pointer, and migration audit tables retained
+  until P9's `discipline02` are deliberately absent.
 
 ## Postgres schemas
 
@@ -396,7 +399,7 @@ Composite unique keys:
 ## tenancy — `public`
 
 The tenant root and its membership anchor, plus workspace-level settings: branding, subdomain
-and custom domain, Discord guild binding, enabled disciplines and the default division grid.
+and custom domain, Discord guild binding, enabled disciplines and per-discipline default grids.
 
 `workspace` is the tenant and carries the white-label surface: `timezone` (IANA), the
 `brand_*` palette behind `branding_enabled`, `subdomain` and `custom_domain` (both UNIQUE, the
@@ -500,11 +503,19 @@ author alone.
 
 The nullable `author_user_id` *is* the discriminator, and there is deliberately no `scope`
 column that could disagree with it. Two partial unique indexes enforce the split: one canon row
-per `(workspace, member, role)` where the author is NULL, one private row per
-`(workspace, author, member, role)` where it is not. They are partial indexes rather than plain
+per `(workspace_id, workspace_member_id, role_id)` where the author is NULL, one private row per
+`(workspace_id, author_user_id, workspace_member_id, role_id)` where it is not. They are partial indexes rather than plain
 unique constraints because Postgres treats NULLs in a composite unique key as distinct and would
 happily store two canon rows for the same member and role. One table replaced three earlier
 per-context rank stores, so the resolver reads both layers in a single query.
+
+Both `member_rank` and `member_hidden_rating` reference `(role_id, dimension_id)` in the discipline's
+rated module roles; hidden ratings are unique per `(workspace_member_id, role_id)`. Same-named roles
+in different games are independent. The `role` hybrid exposes the catalog code, not the retained
+physical legacy column. Composite role FKs are `DEFERRABLE INITIALLY DEFERRED`, with leading role-ID
+indexes. The resolver's final `native` layer is the module hook, not a core Overwatch reader.
+Open slots (`flex`) have no rank key: their old rows are retained only in the migration audit table
+`balancer.discipline01c_dropped_ranks`, listed by reconcile, and removed by P9 rather than runtime.
 
 <!-- ERD:auto member_rank -->
 ```mermaid
@@ -771,8 +782,8 @@ Composite unique keys:
 
 ## division_grid — `public`
 
-Versioned rank grids: tiers with SR ranges, and mappings between versions so ranks stay
-comparable across seasons and Overwatch rebindings. A workspace picks the version it uses.
+Versioned rank grids belonging to a discipline: organizer rank ranges and mappings between versions
+keep ranks comparable across seasons. A workspace selects defaults independently for each game.
 
 A tier carries both the internal rank range (`rank_min`/`rank_max`) and the game's native ladder range
 (`native_rank_min`/`native_rank_max`); mappings between two versions, with weighted rules per tier pair,
@@ -784,9 +795,16 @@ with `workspace_id = NULL` is global.
 `(workspace_id, discipline)`. `tournament.division_grid_version_id` can pin a
 same-discipline version instead of inheriting that discipline's workspace default,
 so a finished tournament keeps showing the ranks it was actually played at.
-The legacy unmapped workspace column is retained only through migration reconciliation
-until P9. `division_grid_import_job` covers copying a grid from another workspace;
-it is idempotent per `(workspace_id, idempotency_key)`.
+Activation and deletion change only the corresponding assignment; a valid pin needs no workspace
+default. `WorkspaceRead.default_division_grid_versions` exposes explicit IDs, while
+`effective_division_grid_versions` exposes persisted effective versions/tiers (including matching
+system fallback). Missing versions are omitted, not synthetic rows. Both maps are read-only on
+workspace create/update; old scalar payloads are rejected. LoL has no native ladder: creation,
+clone and runtime reads without a tiered LoL grid return 422 `division_grid_required`, never OW tiers.
+The legacy unmapped workspace column/FK is retained for initial migration reconciliation until P9,
+and is not dual-written. `division_grid_import_job` covers copying a grid from another workspace;
+it is idempotent per `(workspace_id, idempotency_key)`. Portable v1 imports are Overwatch; exports
+write `division-grid/v2` with `discipline` and native-bound names.
 
 <!-- ERD:auto division_grid -->
 ```mermaid
@@ -919,6 +937,11 @@ re-fetched.
 `consecutive_failures` and `priority_tier` are the backoff, and `last_snapshot_id` is the
 shortcut to the newest reading. `fetch_log` is the attempt history, with a nullable account FK
 so it survives unlinking.
+
+These remain Overwatch module data. Core reads them only through the registry's `native_ranks`
+hook; the 45-tier ladder lives in `shared/disciplines/overwatch/ladder.py`. LoL declares neither
+native ranks nor a native ladder. Collector process re-homing remains P5; P3 does not move the
+OverFast client, scheduler or queues.
 
 <!-- ERD:auto ranks -->
 ```mermaid

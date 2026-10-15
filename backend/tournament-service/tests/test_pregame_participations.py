@@ -140,7 +140,7 @@ class RoomCase(IsolatedAsyncioTestCase):
         self.engine = create_test_async_engine()
         self.Session = async_sessionmaker(self.engine, expire_on_commit=False)
         self.tag = f"pb-{os.getpid()}-{next(_TAG)}"
-        DISCIPLINES.setdefault(SIDED.code, SIDED)
+        self.enterContext(patch.dict(DISCIPLINES, {SIDED.code: SIDED}))
         async with self.Session() as s:
             await s.execute(
                 sa.text("INSERT INTO catalog.discipline (code, name) VALUES (:c, :n) ON CONFLICT DO NOTHING"),

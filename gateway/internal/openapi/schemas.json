@@ -52367,6 +52367,12 @@
           "title": "Id",
           "type": "integer"
         },
+        "identity_provider": {
+          "description": "The discipline's player identity provider (D90).",
+          "readOnly": true,
+          "title": "Identity Provider",
+          "type": "string"
+        },
         "is_finished": {
           "title": "Is Finished",
           "type": "boolean"
@@ -52549,7 +52555,8 @@
         "start_date",
         "end_date",
         "participants_count",
-        "division_grid_version_id"
+        "division_grid_version_id",
+        "identity_provider"
       ],
       "title": "TournamentRead",
       "type": "object"

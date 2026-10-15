@@ -209,8 +209,11 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   and a character's class is `attrs.class`. Names and slugs are unique per discipline and kind.
   Behaviour lives under `backend/shared/disciplines/<slug>/`, reached only through the
   `shared.disciplines` registry: supported kinds and labels ("Hero", "Champion"), character classes,
-  sides and catalog sync. P1 ships Overwatch's OverFast source and LoL's Data Dragon source, not
-  LoL gameplay support. Parser-service dispatches `rpc.parser.catalog.sync` to the module;
+  sides, catalog sync, `native_ranks`, `native_ladder` and `identity_provider`. Overwatch declares
+  its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares no native layer/ladder
+  and uses `riot`. P1's catalog sources are OverFast and Data Dragon; the collector process remains
+  in parser-service until P5. These declarations are not the complete LoL gameplay vertical.
+  Parser-service dispatches `rpc.parser.catalog.sync` to the module;
   app-service provides generic admin CRUD by discipline and kind on `rpc.app.catalog.admin_*`.
   `catalog.alias_miss` is the unresolved-name worklist, keyed by `(discipline, kind, raw_name)`.
   `catalog.entity_legacy` maps old hero/map/gamemode ids to the new ids for migration reconciliation
@@ -237,6 +240,25 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   Only tournament/MOO sub-role rules with `recommended_max <= 1` gate the existing collision
   penalty; other recommendations, and all mix recommendations, are post-solve advisories and
   equal-objective tie-breakers. See the [P2 release and cutover guide](./multi-game-p2-roles-release.md).
+- **Ranks and division grids (P3).** `balancer.member_rank` and `member_hidden_rating` reference
+  catalog roles of the owner's rated dimension through `(role_id, dimension_id)`; identical codes
+  such as `support` in two games never share storage. Domain rank maps remain code-keyed within
+  that discipline. Registration/author overrides precede workspace canon and then the registry's
+  native reader; effective source values use `native`. Open slots hold no hidden rating or host-book
+  rank. `division_grid.discipline` scopes grids, mappings and fallback; tier native bounds are
+  `native_rank_min/max`. Overwatch alone has the native-ladder fallback; LoL creation/clone/runtime
+  reads without a usable LoL grid fail with 422 `division_grid_required`.
+  `public.workspace_division_grid_default` selects one version per `(workspace_id, discipline)`.
+  Activation and deletion affect only that game's assignment and preserve valid event pins.
+  `WorkspaceRead.default_division_grid_versions` contains explicit IDs;
+  `effective_division_grid_versions` contains persisted effective version/tier payloads, including
+  matching system fallback. Absent versions are omitted, not synthetic IDs. Neither map is writable
+  through workspace create/update, and the old scalar fields are rejected. A valid event pin needs
+  no workspace activation. Known-owner UI consumers retain the pin and discipline; unresolved owners
+  expose no wrong-game controls. Legacy OW data explicitly chooses OW, and LoL grids show no OW native
+  ladder/crests. Open-ended tiers stay open-ended. The legacy physical workspace pointer and old rank
+  role columns remain unmapped until P9; ORM diagrams do not inventory that migration-only storage.
+  See the [P3 release and cutover guide](./multi-game-p3-ranks-release.md).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
   `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only
@@ -247,6 +269,14 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   registration columns and `balancer.registration_identity` rows, organizer-defined fields
   in `registration.custom_fields_json`. Every field declares its visibility, which is what
   keeps organizer-only answers off the public roster.
+  The module's provider chooses the default identity field, roster/chat handle and parser matching.
+  `TournamentRead.identity_provider` is computed from discipline; backend `default_schema(provider)`
+  requires it. Riot IDs preserve inner name spaces and match case-insensitively after normalization.
+  Known-owner form loading/errors cannot create an implicit Battle.net default; loaded existing forms
+  remain intact. Optional admin game identities remain optional, with fresh registration relationships
+  initialized before flush and persisted reads still eagerly loaded. P7 owns primary-identity
+  reconciliation, provider-explicit workspace upsert and the complete generic identity wire/UI rename;
+  P8 consumes those contracts.
 - **Registration role ontology (P2).** `balancer.registration_role` stores a rated
   `catalog.role` leaf through `(role_id, dimension_id)`, unique per registration
   and leaf. Its top-level role and qualified sub-role code are derived, never
@@ -262,7 +292,8 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   `null` still means all ranked roles; `[]` means an explicit empty selection.
   A foreign dimension returns 422 `role_dimension_mismatch`; unknown roles and
   workspace sub-roles return 422 `unknown_role`, regardless of submitted `parent`.
-  Discord and the site use the same wire contract; rank maps stay code-keyed until P3.
+  Discord and the site use the same wire contract; rank maps remain code-keyed within the discipline,
+  while P3 stores ranks and hidden ratings by catalog role ID.
 - **Draft role references (P2 wire break).** Captain pins and pick assignments now
   store `(role_id, dimension_id)` references to the tournament's rated module roles.
   Open-slot picks store neither a role nor a dimension. Draft requests, boards,

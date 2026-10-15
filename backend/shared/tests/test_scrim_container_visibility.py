@@ -47,14 +47,14 @@ from shared.testing import install_postgres_type_shims  # noqa: E402
 install_postgres_type_shims()
 
 
-# ``Tournament.phase_schedule`` is ``lazy="selectin"``, so selecting a tournament
-# always queries it — the table has to exist even though no row is inserted.
+# Select-in relationships query these tables even when their collections are empty.
 TABLE_NAMES = (
     "tournament.tournament",
     "tournament.tournament_phase_schedule",
     "tournament.tournament_preview_access",
     "tournament.scrim_room",
     "workspace",
+    "workspace_division_grid_default",
 )
 WORKSPACE_ID = 1
 OTHER_WORKSPACE_ID = 2
