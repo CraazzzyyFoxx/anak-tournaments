@@ -19,14 +19,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.models.balancer.draft import DraftTeam  # noqa: E402
 from src.domain.draft import fit  # noqa: E402
 from src.domain.draft.entities import DraftSnapshot, FitResult  # noqa: E402
 from src.services.draft.selection import selection_service  # noqa: E402
 from tests.factories import roster  # noqa: E402
 
-T, D, SUP = HeroClass.tank, HeroClass.damage, HeroClass.support
+T, D, SUP = "tank", "damage", "support"
 
 
 def _snapshot(rosters: dict[int, object]) -> DraftSnapshot:
@@ -38,7 +37,7 @@ def _team(queue: list[int]) -> DraftTeam:
 
 
 def _choose(queue, rosters, safe, available):
-    return selection_service._queued_choice(_team(queue), _snapshot(rosters), safe, available)
+    return selection_service._queued_choice(_team(queue), _snapshot(rosters), safe, available, {T: 0, D: 1, SUP: 2})
 
 
 # ---- which queued entry wins ----

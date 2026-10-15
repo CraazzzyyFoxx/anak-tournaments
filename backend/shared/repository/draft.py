@@ -144,7 +144,7 @@ class DraftPlayerRepository(BaseRepository[models.DraftPlayer]):
         filters: list[Any] = [self.model.id == id]
         if session_id is not None:
             filters.append(self.model.session_id == session_id)
-        query = self._apply_options(self.select().where(*filters), options).with_for_update()
+        query = self._apply_options(self.select().where(*filters), options).with_for_update(of=self.model)
         result = await session.execute(query)
         return result.unique().scalar_one_or_none()
 
@@ -202,7 +202,7 @@ class DraftPickRepository(BaseRepository[models.DraftPick]):
             self.select()
             .where(self.model.session_id == session_id, self.model.status == DraftPickStatus.UPCOMING.value)
             .order_by(self.model.overall_no.asc())
-            .with_for_update(skip_locked=True)
+            .with_for_update(skip_locked=True, of=self.model)
             .limit(1)
         )
 

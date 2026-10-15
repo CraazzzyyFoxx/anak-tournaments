@@ -1,3 +1,4 @@
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import type { RosterShape } from "@/lib/roster/shape";
 import type {
   DraftPick,
@@ -66,7 +67,7 @@ export function filterDraftPlayers(
     const roles = playerRoles(player);
     const haystack = [
       player.battle_tag ?? `#${player.id}`,
-      player.sub_role ?? "",
+      subRoleSlugOf(player.primary_role) ?? "",
       ...Object.values(player.role_sub_roles ?? {}),
       ...roles.flatMap((r) => ROLE_LABELS[r] ?? [r]),
     ].join(" ").toLocaleLowerCase();
@@ -144,7 +145,7 @@ export function optionForSelection(
   role: DraftRole
 ): DraftPickOption | null {
   return (
-    response?.options.find((option) => option.player_id === playerId && option.role === role) ?? null
+    response?.options.find((option) => option.player_id === playerId && roleOf(option.role) === role) ?? null
   );
 }
 
@@ -161,9 +162,9 @@ export function optionForSelection(
 export function playerRoles(player: DraftPlayer): DraftRole[] {
   // `primary_role` is null once the player has no playable role left; nothing
   // may be substituted for it.
-  const declared = player.secondary_roles as DraftRole[];
+  const declared = player.secondary_roles.map((ref) => roleOf(ref) as DraftRole);
   return Array.from(
-    new Set<DraftRole>(player.primary_role ? [player.primary_role, ...declared] : declared)
+    new Set<DraftRole>(player.primary_role ? [roleOf(player.primary_role) as DraftRole, ...declared] : declared)
   );
 }
 
@@ -205,7 +206,7 @@ export function allPlayerHeroes(player: DraftPlayer): { slug: string; imagePath:
 /** The role a rostered player fills: the pick's frozen role, else a captain's seat role, else the lead role. */
 export function rosterRoleForPlayer(player: DraftPlayer, picks: DraftPick[]): DraftRole | null {
   const pick = picks.find((p) => p.picked_player_id === player.id && p.target_role != null);
-  return (pick?.target_role as DraftRole | undefined) ?? player.captain_role ?? player.primary_role;
+  return roleOf(pick?.target_role ?? player.captain_role ?? player.primary_role) as DraftRole | null;
 }
 
 /**

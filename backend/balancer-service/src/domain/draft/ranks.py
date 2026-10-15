@@ -13,14 +13,13 @@ disagree about the rank a flex draft shows.
 
 from __future__ import annotations
 
-from shared.core.enums import HeroClass
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import RosterShape
 
 __all__ = ("captain_rank", "seat_role", "slot_rank")
 
 
-def slot_rank(roster: PlayerRoster | None, role: HeroClass | str | None, shape: RosterShape) -> int | None:
+def slot_rank(roster: PlayerRoster | None, role: str | None, shape: RosterShape) -> int | None:
     """The rank ``roster`` is worth on its slot under ``shape``.
 
     ``role=None`` is the honest input for a player holding no role yet -- a pool
@@ -29,11 +28,10 @@ def slot_rank(roster: PlayerRoster | None, role: HeroClass | str | None, shape: 
     """
     if roster is None:
         return None
-    code = role.slot_code if isinstance(role, HeroClass) else role
-    return roster.rank_on(code if shape.has_role_slots else None)
+    return roster.rank_on(role if shape.has_role_slots else None)
 
 
-def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> HeroClass | None:
+def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> str | None:
     """The role a rostered player holds when no pick froze one.
 
     ``pinned`` is ``DraftPlayer.captain_role``: the role the organizer seated a
@@ -44,12 +42,10 @@ def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> HeroCla
     """
     if roster is None:
         return None
-    if pinned is not None:
-        role = HeroClass.from_slot_code(pinned)
-        if pinned in roster.playable_roles:
-            return role
+    if pinned in roster.playable_roles:
+        return pinned
     lead = roster.primary
-    return HeroClass.from_slot_code(lead.role) if lead is not None else None
+    return lead.role if lead is not None else None
 
 
 def captain_rank(roster: PlayerRoster | None, pinned: str | None, shape: RosterShape) -> int:

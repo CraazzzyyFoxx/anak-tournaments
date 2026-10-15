@@ -10,7 +10,7 @@ import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
 import { DRAFT_ROLES, pickHistory, type TeamView } from "@/lib/draft/room-model";
 import { getRoleIconName, ROLE_ACCENT } from "@/lib/roster/roles";
-import type { DraftBoard, DraftPick } from "@/types/draft.types";
+import type { DraftBoard, DraftPick, DraftRole } from "@/types/draft.types";
 
 interface DraftQueueProps {
   board: DraftBoard;
@@ -125,11 +125,11 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor }
                   {splitBattleTag(tag).name}
                 </span>
                 {pick.target_role && (
-                  <span className="flex-none" title={t(`roles.${pick.target_role}`)}>
+                  <span className="flex-none" title={t(`roles.${pick.target_role.role as DraftRole}`)}>
                     <PlayerRoleIcon
-                      role={getRoleIconName(pick.target_role)}
+                      role={getRoleIconName(pick.target_role.role as DraftRole)}
                       size={18}
-                      color={ROLE_ACCENT[pick.target_role]}
+                      color={ROLE_ACCENT[pick.target_role.role as DraftRole]}
                     />
                   </span>
                 )}

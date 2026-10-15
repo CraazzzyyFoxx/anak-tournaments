@@ -1,11 +1,11 @@
 import { apiFetch } from "@/lib/api/fetch";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
   DraftFeasibility,
   DraftJournalResponse,
   DraftPickExtendRequest,
   DraftPickOptionsResponse,
-  DraftRole,
   DraftRoleEditRequest,
   DraftRoleEditResponse,
   DraftSeedRequest,
@@ -171,7 +171,7 @@ export default class draftService {
   // --- pick actions (keyed by pick_id) ---
   static async select(
     pickId: number,
-    body: { player_id: number; expected_version: number; target_role?: DraftRole | null }
+    body: { player_id: number; expected_version: number; target_role?: RoleRef | null }
   ): Promise<DraftSession> {
     const res = await apiFetch(`/api/v1/balancer/draft/picks/${pickId}/select`, {
       method: "POST",
@@ -196,7 +196,7 @@ export default class draftService {
     body: {
       expected_version: number;
       player_id?: number | null;
-      target_role?: DraftRole | null;
+      target_role?: RoleRef | null;
       note?: string | null;
     }
   ): Promise<DraftSession> {

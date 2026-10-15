@@ -77,8 +77,7 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
     registration_id: 70,
     user_id: null,
     battle_tag: "Ana#1234",
-    primary_role: "support",
-    sub_role: null,
+    primary_role: { dimension: "player_role", role: "support" },
     is_flex: false,
     effective_rank: 3000,
     status: "available",
@@ -372,9 +371,9 @@ describe("captain", () => {
     const { onSelectRole } = await open({
       gating: CAPTAIN_WAITING,
       actingTeamId: 2,
-      subject: player({ secondary_roles: ["tank"], role_ranks: { support: 3000, tank: 2500 } }),
+      subject: player({ secondary_roles: [{ dimension: "player_role", role: "tank" }], role_ranks: { support: 3000, tank: 2500 } }),
       others: [
-        player({ id: 8, primary_role: "tank", status: "picked", drafted_by_team_id: 2, role_ranks: { tank: 3000 } })
+        player({ id: 8, primary_role: { dimension: "player_role", role: "tank" }, status: "picked", drafted_by_team_id: 2, role_ranks: { tank: 3000 } })
       ]
     });
 
@@ -428,7 +427,7 @@ describe("admin override", () => {
 
 describe("role tiles", () => {
   it("shows no rank on a role the player has none on, not the primary's", async () => {
-    await open({ subject: player({ secondary_roles: ["tank"], is_flex: true, role_ranks: { support: 2814 } }) });
+    await open({ subject: player({ secondary_roles: [{ dimension: "player_role", role: "tank" }], is_flex: true, role_ranks: { support: 2814 } }) });
 
     expect(tile("support")?.textContent).toContain("2814");
     expect(tile("tank")?.textContent).not.toContain("2814");
@@ -437,7 +436,7 @@ describe("role tiles", () => {
 
   it("puts the rank the server resolved for this draft in the header crest", async () => {
     const { body } = await open({
-      subject: player({ secondary_roles: ["damage"], effective_rank: 2814, role_ranks: { support: 2814, damage: 3900 } })
+      subject: player({ secondary_roles: [{ dimension: "player_role", role: "damage" }], effective_rank: 2814, role_ranks: { support: 2814, damage: 3900 } })
     });
 
     expect(body.querySelector("[role='dialog'] img")?.getAttribute("alt")).toBe("Low");

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 
-from shared.core.enums import DraftAutopickStrategy, HeroClass
+from shared.core.enums import DraftAutopickStrategy
 from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftPlayer
 from src.domain.draft.entities import FitConfig, FitPlayer, FitResult
@@ -48,11 +48,11 @@ def fit_players(players: Iterable[DraftPlayer], rosters: Mapping[int, PlayerRost
             FitPlayer(
                 player_id=player.id,
                 rank_value=roster.best_rank or 0,
-                playable_roles=frozenset(HeroClass.from_slot_code(code) for code in roster.playable_roles),
-                preference_order=((HeroClass.from_slot_code(lead.role),) if lead is not None else ()),
+                playable_roles=roster.playable_roles,
+                preference_order=((lead.role,) if lead is not None else ()),
                 is_flex=roster.is_full_flex,
                 user_id=player.user_id,
-                rank_by_role={HeroClass.from_slot_code(code): rank for code, rank in roster.role_ranks.items()},
+                rank_by_role=roster.role_ranks,
             )
         )
     return built
@@ -74,7 +74,7 @@ def normalized_scores(results: Sequence[FitResult]) -> list[int]:
     return [1 + round((score - low) / (high - low) * 98) for score in scores]
 
 
-def role_discomfort(player: FitPlayer, role: HeroClass) -> int:
+def role_discomfort(player: FitPlayer, role: str) -> int:
     """How much a role hurts this player, for autopick ranking.
 
     NOT in step with the balancer, despite encoding the same idea. ``preference_order``
@@ -92,7 +92,7 @@ def role_discomfort(player: FitPlayer, role: HeroClass) -> int:
 
 def player_fit(
     player: FitPlayer,
-    role: HeroClass,
+    role: str,
     cfg: FitConfig,
     *,
     strategy: DraftAutopickStrategy = DraftAutopickStrategy.BEST_FIT,
@@ -129,10 +129,10 @@ def player_fit(
 
 def candidates(
     available: Sequence[FitPlayer],
-    role_capacity: Mapping[HeroClass, int],
+    role_capacity: Mapping[str, int],
     cfg: FitConfig,
     strategy: DraftAutopickStrategy,
-    allowed_options: set[tuple[int, HeroClass]] | None = None,
+    allowed_options: set[tuple[int, str]] | None = None,
 ) -> list[FitResult]:
     open_roles = [role for role, cap in role_capacity.items() if cap > 0]
     results: list[FitResult] = []
@@ -162,16 +162,16 @@ def sort_key(result: FitResult, available_by_id: Mapping[int, FitPlayer]) -> tup
     which of two equally-scored options comes first.
     """
     rank = available_by_id[result.player_id].rank_for(result.role)
-    return (-result.fit_score, -rank, result.player_id, result.role.slot_code)
+    return (-result.fit_score, -rank, result.player_id, result.role)
 
 
 def best_fit(
     available: Sequence[FitPlayer],
-    role_capacity: Mapping[HeroClass, int],
+    role_capacity: Mapping[str, int],
     strategy: DraftAutopickStrategy,
     cfg: FitConfig,
     *,
-    allowed_options: set[tuple[int, HeroClass]] | None = None,
+    allowed_options: set[tuple[int, str]] | None = None,
 ) -> FitResult | None:
     results = candidates(available, role_capacity, cfg, strategy, allowed_options)
     if not results:
@@ -182,12 +182,12 @@ def best_fit(
 
 def rank_suggestions(
     available: Sequence[FitPlayer],
-    role_capacity: Mapping[HeroClass, int],
+    role_capacity: Mapping[str, int],
     cfg: FitConfig,
     *,
     strategy: DraftAutopickStrategy = DraftAutopickStrategy.BEST_FIT,
     limit: int = 5,
-    allowed_options: set[tuple[int, HeroClass]] | None = None,
+    allowed_options: set[tuple[int, str]] | None = None,
 ) -> list[FitResult]:
     results = candidates(available, role_capacity, cfg, strategy, allowed_options)
     by_id = {p.player_id: p for p in available}

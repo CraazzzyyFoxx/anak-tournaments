@@ -17,8 +17,8 @@ const feasible = (matched: number, isFeasible = false): DraftFeasibility => ({
 const player = {
   id: 10,
   version: 4,
-  primary_role: "tank",
-  secondary_roles: ["damage"]
+  primary_role: { dimension: "player_role", role: "tank" },
+  secondary_roles: [{ dimension: "player_role", role: "damage" }]
 } as DraftPlayer;
 
 describe("admin draft control model", () => {
@@ -29,7 +29,7 @@ describe("admin draft control model", () => {
   it("requires a current preview and valid audit inputs before role commit", () => {
     const preview: DraftRoleEditResponse = {
       player_id: player.id,
-      role: "support",
+      role: { dimension: "player_role", role: "support" },
       player_version: player.version,
       committed: false,
       before: feasible(1),

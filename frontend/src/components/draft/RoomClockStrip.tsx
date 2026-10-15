@@ -18,7 +18,7 @@ import {
 } from "@/lib/draft/room-model";
 import type { DraftViewParams } from "@/lib/draft/workspace-model";
 import { getRoleIconName } from "@/lib/roster/roles";
-import type { DraftBoard, DraftPick, DraftTeam } from "@/types/draft.types";
+import type { DraftBoard, DraftPick, DraftRole, DraftTeam } from "@/types/draft.types";
 
 import { DraftClockRing } from "./DraftClockRing";
 
@@ -273,9 +273,9 @@ export function RoomClockStrip({
                 {lastPlayer.battle_tag ?? `#${lastPlayer.id}`}
               </span>
               {last.target_role && (
-                <span title={t(`roles.${last.target_role}`)} className="inline-flex shrink-0">
-                  <PlayerRoleIcon role={getRoleIconName(last.target_role)} size={20} decorative />
-                  <span className="sr-only">{t(`roles.${last.target_role}`)}</span>
+                <span title={t(`roles.${last.target_role.role as DraftRole}`)} className="inline-flex shrink-0">
+                  <PlayerRoleIcon role={getRoleIconName(last.target_role.role as DraftRole)} size={20} decorative />
+                  <span className="sr-only">{t(`roles.${last.target_role.role as DraftRole}`)}</span>
                 </span>
               )}
               {last.is_autopick && (

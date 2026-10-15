@@ -8,9 +8,9 @@ shared StrEnums so values are validated and serialize to their string form.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from shared.core.enums import (
     DraftAutopickStrategy,
@@ -20,10 +20,10 @@ from shared.core.enums import (
     DraftPlayerStatus,
     DraftPoolSource,
     DraftStatus,
-    HeroClass,
 )
 from shared.domain.player_sub_roles import workspace_sub_role_slug
-from shared.domain.roster_shape import RegistrationRoleCode, RosterShape
+from shared.domain.roster_shape import RosterShape
+from shared.schemas.role import RoleRef
 from shared.schemas.roster_slots import RosterShapeRead
 from src.domain.draft.ranks import seat_role, slot_rank
 from src.schemas.base import BaseRead
@@ -68,21 +68,6 @@ __all__ = (
 _ReadConfig = ConfigDict(from_attributes=True)
 
 
-def _role_slot_code(value: Any) -> Any:
-    """Accept the domain's ``HeroClass`` next to the wire slot code.
-
-    ``domain/draft`` thinks in ``HeroClass`` (``HeroClass.damage``), every read
-    model here carries its slot code string (``damage``). Coercing in the field means
-    a handler that hands a read model a domain role gets the right JSON instead
-    of a ``ValidationError`` that turns the whole response into a 500 —
-    ``HeroClass.flex`` still fails, since no pick can name it.
-    """
-    return value.slot_code if isinstance(value, HeroClass) else value
-
-
-DraftRoleRead = Annotated[RegistrationRoleCode, BeforeValidator(_role_slot_code)]
-
-
 # --------------------------------------------------------------------------- #
 # Requests
 # --------------------------------------------------------------------------- #
@@ -125,7 +110,7 @@ class DraftPoolCaptainInput(BaseModel):
     name: str | None = None
     #: The role this captain is seated on; ``None`` = their lead role. Must be
     #: one they play and one the roster has a slot for (422 otherwise).
-    role: RegistrationRoleCode | None = None
+    role: RoleRef | None = None
 
 
 class DraftSeedRequest(BaseModel):
@@ -192,7 +177,7 @@ class DraftOrderRequest(BaseModel):
 class DraftPickSelectRequest(BaseModel):
     player_id: int
     expected_version: int
-    target_role: RegistrationRoleCode | None = None
+    target_role: RoleRef | None = None
 
 
 class DraftPickAutopickRequest(BaseModel):
@@ -224,7 +209,7 @@ class DraftPickOverrideRequest(BaseModel):
     expected_version: int
     player_id: int | None = None
     draft_team_id: int | None = None
-    target_role: RegistrationRoleCode | None = None
+    target_role: RoleRef | None = None
     note: str | None = None
 
 
@@ -236,7 +221,7 @@ class DraftRoleEditRequest(BaseModel):
     is not playable, so adding one without a number would change nothing.
     """
 
-    role: RegistrationRoleCode
+    role: RoleRef
     rank_value: int = Field(gt=0)
     reason: str
     expected_version: int
@@ -302,8 +287,7 @@ class DraftPlayerRead(BaseRead):
     #: the balancer ranks them on no role at all -- possible mid-draft if an
     #: organizer clears their ranks. Clients must render that as "no role", not
     #: substitute a default; feasibility reports it as a shortage.
-    primary_role: str | None
-    sub_role: str | None
+    primary_role: RoleRef | None
     is_flex: bool
     status: DraftPlayerStatus
     is_captain: bool
@@ -311,9 +295,9 @@ class DraftPlayerRead(BaseRead):
     #: A captain's seat role -- the one the organizer pinned while it stays
     #: playable, else their lead role. ``None`` for everyone who is not a
     #: captain: their role on a roster is the pick's ``target_role``.
-    captain_role: str | None = None
+    captain_role: RoleRef | None = None
     #: Playable off-roles, priority-ordered. Empty, never null.
-    secondary_roles: list[str] = Field(default_factory=list)
+    secondary_roles: list[RoleRef] = Field(default_factory=list)
     #: ``{slot_code: rank}`` over playable roles. A missing key means the role is
     #: not playable -- clients render a dash there and never borrow another
     #: role's number.
@@ -321,9 +305,7 @@ class DraftPlayerRead(BaseRead):
     #: ``{slot_code: registration|workspace|ow}`` -- which layer that rank came
     #: from, so an organizer can see why a number is what it is.
     role_sources: dict[str, str] = Field(default_factory=dict)
-    #: ``{slot_code: sub_role}`` over playable roles that declare one -- the
-    #: per-role twin of ``sub_role``, which only ever answers for the lead role.
-    #: A role without a sub-role is absent, never empty-string.
+    #: ``{top-level code: sub-role slug}`` over playable roles that declare one.
     role_sub_roles: dict[str, str] = Field(default_factory=dict)
     role_top_heroes: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     #: The registration's ``public_notes``: captains read them in the Player
@@ -348,6 +330,7 @@ class DraftPlayerRead(BaseRead):
         *,
         shape: Any,
         custom_fields: list[Any],
+        dimension: str,
     ) -> DraftPlayerRead:
         from src.services.draft.board import player_custom_fields
 
@@ -361,14 +344,17 @@ class DraftPlayerRead(BaseRead):
             registration_id=player.registration_id,
             user_id=player.user_id,
             battle_tag=roster.battle_tag if roster is not None else None,
-            primary_role=lead.role if lead is not None else None,
-            sub_role=workspace_sub_role_slug(lead.role, lead.subrole) if lead is not None and lead.subrole else None,
+            primary_role=RoleRef.of(dimension, lead.role, lead.subrole) if lead is not None else None,
             is_flex=bool(roster.is_full_flex) if roster is not None else False,
             status=player.status,
             is_captain=player.is_captain,
             drafted_by_team_id=player.drafted_by_team_id,
-            captain_role=seat.slot_code if (player.is_captain and seat is not None) else None,
-            secondary_roles=list(roster.secondary_roles) if roster is not None else [],
+            captain_role=RoleRef.of(dimension, seat) if player.is_captain else None,
+            secondary_roles=[
+                RoleRef.of(dimension, code, roster.role_sub_roles.get(code)) for code in roster.secondary_roles
+            ]
+            if roster is not None
+            else [],
             role_ranks=roster.role_ranks if roster is not None else {},
             role_sources=roster.role_sources if roster is not None else {},
             role_sub_roles={
@@ -396,7 +382,7 @@ class DraftPickRead(BaseRead):
     round_no: int
     pick_in_round: int
     draft_team_id: int
-    target_role: str | None
+    target_role: RoleRef | None
     target_rank_value: int | None
     status: DraftPickStatus
     picked_player_id: int | None
@@ -409,6 +395,15 @@ class DraftPickRead(BaseRead):
     # is the OVERTIME deadline and no further grace period is granted.
     overtime_started_at: datetime | None
     version: int
+
+    @classmethod
+    def from_pick(cls, pick: Any, *, dimension: str) -> DraftPickRead:
+        return cls.model_validate(
+            {
+                **{name: getattr(pick, name) for name in cls.model_fields},
+                "target_role": RoleRef.of(dimension, pick.target_role),
+            }
+        )
 
 
 class DraftSessionRead(BaseRead):
@@ -466,7 +461,7 @@ class DraftBoardSnapshot(BaseModel):
 
 class DraftSuggestion(BaseModel):
     player_id: int
-    role: DraftRoleRead
+    role: RoleRef
     fit_score: float
     breakdown: dict[str, float] = Field(default_factory=dict)
 
@@ -509,7 +504,7 @@ class DraftPickOptionRead(BaseModel):
     model_config = _ReadConfig
 
     player_id: int
-    role: DraftRoleRead
+    role: RoleRef
     is_safe: bool
     reason_code: str | None = None
     unmatched_slots: list[DraftSlotRead] = Field(default_factory=list)
@@ -525,7 +520,7 @@ class DraftPickOptionsResponse(BaseModel):
 
 class DraftRoleEditResponse(BaseModel):
     player_id: int
-    role: DraftRoleRead
+    role: RoleRef
     player_version: int
     committed: bool
     before: DraftFeasibilityResponse
@@ -566,7 +561,7 @@ class DraftTeamFitScore(BaseModel):
     player_id: int
     #: ``None`` under a role-less (all-flex) shape, where no seat has a role and
     #: a player therefore has exactly one entry.
-    role: DraftRoleRead | None = None
+    role: RoleRef | None = None
     #: 1..99, min-max normalized across THIS response; 50 when every candidate
     #: scores the same. Raw fit is an unbounded heuristic, so only the ordering
     #: within one answer means anything.
@@ -594,7 +589,7 @@ class DraftAutopickPreview(BaseModel):
 
     player_id: int
     #: ``None`` under a role-less (all-flex) shape.
-    role: DraftRoleRead | None = None
+    role: RoleRef | None = None
     source: Literal["queue", "fit"]
 
 
@@ -618,7 +613,7 @@ class DraftJournalEntry(BaseModel):
     pick_no: int | None = None
     team_id: int | None = None
     player_id: int | None = None
-    role: DraftRoleRead | None = None
+    role: RoleRef | None = None
     seconds: int | None = None
 
 

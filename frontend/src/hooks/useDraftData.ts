@@ -12,6 +12,7 @@ import { realtimeClient } from "@/services/realtime.service";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import { applyResourcePatch, registerRealtimeResource } from "@/services/realtime-patch";
 import { type Coalescer, createTrailingCoalescer } from "@/lib/realtime/coalesce";
+import { toRoleRef } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
   DraftEventData,
@@ -396,7 +397,7 @@ export function useDraftMutations(tournamentId: number) {
       draftService.select(v.pickId, {
         player_id: v.playerId,
         expected_version: v.version,
-        target_role: v.role ?? null,
+        target_role: toRoleRef(v.role, null, "player_role"),
       }),
     onSettled: invalidate,
   });
@@ -418,7 +419,7 @@ export function useDraftMutations(tournamentId: number) {
       draftService.override(v.pickId, {
         player_id: v.playerId,
         expected_version: v.version,
-        target_role: v.role,
+        target_role: toRoleRef(v.role, null, "player_role"),
         note: v.note
       }),
     onSettled: invalidate,

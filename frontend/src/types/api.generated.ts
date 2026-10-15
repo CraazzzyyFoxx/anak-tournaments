@@ -14420,11 +14420,8 @@ export interface components {
         "balancer.DraftAutopickPreview": {
             /** Player Id */
             player_id: number;
-            /**
-             * Role
-             * @default null
-             */
-            role: BalancerDraftAutopickPreviewRoleAnyOf0 | null;
+            /** @default null */
+            role: components["schemas"]["balancer.RoleRef"] | null;
             /**
              * Source
              * @enum {string}
@@ -14524,11 +14521,8 @@ export interface components {
             player_id: number | null;
             /** Reason */
             reason: string;
-            /**
-             * Role
-             * @default null
-             */
-            role: BalancerDraftJournalEntryRoleAnyOf0 | null;
+            /** @default null */
+            role: components["schemas"]["balancer.RoleRef"] | null;
             /**
              * Seconds
              * @default null
@@ -14586,11 +14580,7 @@ export interface components {
              * @default null
              */
             reason_code: string | null;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: BalancerDraftPickOptionReadRole;
+            role: components["schemas"]["balancer.RoleRef"];
             /** Unmatched Slots */
             unmatched_slots?: components["schemas"]["balancer.DraftSlotRead"][];
         };
@@ -14624,11 +14614,8 @@ export interface components {
              * @default null
              */
             player_id: number | null;
-            /**
-             * Target Role
-             * @default null
-             */
-            target_role: BalancerDraftPickOverrideRequestTarget_roleAnyOf0 | null;
+            /** @default null */
+            target_role: components["schemas"]["balancer.RoleRef"] | null;
         };
         /** DraftPickRead */
         "balancer.DraftPickRead": {
@@ -14661,8 +14648,7 @@ export interface components {
             status: components["schemas"]["balancer.DraftPickStatus"];
             /** Target Rank Value */
             target_rank_value: number | null;
-            /** Target Role */
-            target_role: string | null;
+            target_role: components["schemas"]["balancer.RoleRef"] | null;
             /** Version */
             version: number;
         };
@@ -14672,11 +14658,8 @@ export interface components {
             expected_version: number;
             /** Player Id */
             player_id: number;
-            /**
-             * Target Role
-             * @default null
-             */
-            target_role: BalancerDraftPickSelectRequestTarget_roleAnyOf0 | null;
+            /** @default null */
+            target_role: components["schemas"]["balancer.RoleRef"] | null;
         };
         /**
          * DraftPickStatus
@@ -14715,11 +14698,8 @@ export interface components {
         "balancer.DraftPlayerRead": {
             /** Battle Tag */
             battle_tag: string | null;
-            /**
-             * Captain Role
-             * @default null
-             */
-            captain_role: string | null;
+            /** @default null */
+            captain_role: components["schemas"]["balancer.RoleRef"] | null;
             /** Custom Fields */
             custom_fields?: components["schemas"]["balancer.DraftPlayerCustomFieldRead"][];
             /** Drafted By Team Id */
@@ -14740,8 +14720,7 @@ export interface components {
              * @default null
              */
             notes: string | null;
-            /** Primary Role */
-            primary_role: string | null;
+            primary_role: components["schemas"]["balancer.RoleRef"] | null;
             /** Registration Id */
             registration_id: number;
             /** Role Ranks */
@@ -14763,12 +14742,10 @@ export interface components {
                 }[];
             };
             /** Secondary Roles */
-            secondary_roles?: string[];
+            secondary_roles?: components["schemas"]["balancer.RoleRef"][];
             /** Session Id */
             session_id: number;
             status: components["schemas"]["balancer.DraftPlayerStatus"];
-            /** Sub Role */
-            sub_role: string | null;
             /** User Id */
             user_id: number | null;
             /** Version */
@@ -14791,11 +14768,8 @@ export interface components {
             name: string | null;
             /** Registration Id */
             registration_id: number;
-            /**
-             * Role
-             * @default null
-             */
-            role: BalancerDraftPoolCaptainInputRoleAnyOf0 | null;
+            /** @default null */
+            role: components["schemas"]["balancer.RoleRef"] | null;
         };
         /**
          * DraftPoolSource
@@ -14822,11 +14796,7 @@ export interface components {
             rank_value: number;
             /** Reason */
             reason: string;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: BalancerDraftRoleEditRequestRole;
+            role: components["schemas"]["balancer.RoleRef"];
         };
         /** DraftRoleEditResponse */
         "balancer.DraftRoleEditResponse": {
@@ -14838,11 +14808,7 @@ export interface components {
             player_id: number;
             /** Player Version */
             player_version: number;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: BalancerDraftRoleEditResponseRole;
+            role: components["schemas"]["balancer.RoleRef"];
         };
         /** DraftSeedDiff */
         "balancer.DraftSeedDiff": {
@@ -15052,11 +15018,7 @@ export interface components {
             fit_score: number;
             /** Player Id */
             player_id: number;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: BalancerDraftSuggestionRole;
+            role: components["schemas"]["balancer.RoleRef"];
         };
         /** DraftSuggestionsResponse */
         "balancer.DraftSuggestionsResponse": {
@@ -15083,11 +15045,8 @@ export interface components {
         "balancer.DraftTeamFitScore": {
             /** Player Id */
             player_id: number;
-            /**
-             * Role
-             * @default null
-             */
-            role: BalancerDraftTeamFitScoreRoleAnyOf0 | null;
+            /** @default null */
+            role: components["schemas"]["balancer.RoleRef"] | null;
             /** Score */
             score: number;
         };
@@ -15257,6 +15216,21 @@ export interface components {
             role: string;
             /** Supply */
             supply: number;
+        };
+        /**
+         * RoleRef
+         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         */
+        "balancer.RoleRef": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Parent
+             * @default null
+             */
+            parent: string | null;
+            /** Role */
+            role: string;
         };
         /**
          * RoleSettingsOverride
@@ -21040,21 +21014,6 @@ export interface components {
              * @default null
              */
             source: BalancerRankOverviewRowSourceAnyOf0 | null;
-        };
-        /**
-         * RoleRef
-         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
-         */
-        "balancer.RoleRef": {
-            /** Dimension */
-            dimension: string;
-            /**
-             * Parent
-             * @default null
-             */
-            parent: string | null;
-            /** Role */
-            role: string;
         };
         /**
          * UserMixPreferencesRead
@@ -73349,11 +73308,6 @@ export enum BalancerCreateJobResponseStatus {
     succeeded = "succeeded",
     failed = "failed"
 }
-export enum BalancerDraftAutopickPreviewRoleAnyOf0 {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
 export enum BalancerDraftAutopickPreviewSource {
     queue = "queue",
     fit = "fit"
@@ -73374,29 +73328,9 @@ export enum BalancerDraftFormat {
     linear = "linear",
     custom = "custom"
 }
-export enum BalancerDraftJournalEntryRoleAnyOf0 {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
 export enum BalancerDraftPickAutopickRequestReason {
     expiry = "expiry",
     admin = "admin"
-}
-export enum BalancerDraftPickOptionReadRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
-export enum BalancerDraftPickOverrideRequestTarget_roleAnyOf0 {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
-export enum BalancerDraftPickSelectRequestTarget_roleAnyOf0 {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
 }
 export enum BalancerDraftPickStatus {
     upcoming = "upcoming",
@@ -73410,24 +73344,9 @@ export enum BalancerDraftPlayerStatus {
     picked = "picked",
     removed = "removed"
 }
-export enum BalancerDraftPoolCaptainInputRoleAnyOf0 {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
 export enum BalancerDraftPoolSource {
     balancer_balance = "balancer_balance",
     manual = "manual"
-}
-export enum BalancerDraftRoleEditRequestRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
-export enum BalancerDraftRoleEditResponseRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
 }
 export enum BalancerDraftStatus {
     setup = "setup",
@@ -73436,16 +73355,6 @@ export enum BalancerDraftStatus {
     paused = "paused",
     completed = "completed",
     cancelled = "cancelled"
-}
-export enum BalancerDraftSuggestionRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
-export enum BalancerDraftTeamFitScoreRoleAnyOf0 {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
 }
 export enum BalancerJobStatusResponseStatus {
     queued = "queued",

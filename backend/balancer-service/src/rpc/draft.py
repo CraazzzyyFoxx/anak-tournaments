@@ -18,13 +18,14 @@ one draft-package service singleton. All DB access goes through
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import DraftStatus, HeroClass
+from shared.core.enums import DraftStatus
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer.draft import DraftPick, DraftSession, DraftTeam
 from shared.repository.draft import (
@@ -34,6 +35,7 @@ from shared.repository.draft import (
 )
 from shared.repository.identity import UserRepository
 from shared.rpc.common import optional_actor
+from shared.schemas.role import RoleRef
 from shared.services.chat import (
     HISTORY_DEFAULT,
     ChatMuteInput,
@@ -41,6 +43,7 @@ from shared.services.chat import (
     ChatRoom,
     ChatSettingsInput,
 )
+from shared.services.ontology import resolve_role_ref
 from shared.services.realtime import Scope, emit, enqueue_invalidation_outbox
 from shared.services.team_format import tournament_slot_shape
 from src import schemas
@@ -56,6 +59,7 @@ from src.domain.draft.entities import DraftResult
 from src.rpc import _common as c
 from src.services.balancer.realtime import EXPORT_RESOURCES
 from src.services.draft import clock as clock_svc
+from src.services.draft import loaders
 from src.services.draft import realtime as draft_rt
 from src.services.draft.board import board_service
 from src.services.draft.chat_access import draft_chat_service
@@ -135,25 +139,26 @@ async def _actor_player_ids(session: AsyncSession, auth_user_id: int) -> list[in
     return [player_id] if player_id is not None else []
 
 
-def _to_role(slot_code: str | None) -> HeroClass | None:
-    """Wire slot code -> the domain's ``HeroClass``.
+async def _resolve_role(session: AsyncSession, draft: DraftSession, ref: RoleRef | None) -> str | None:
+    tournament = await loaders.tournament(session, draft)
+    row = await resolve_role_ref(
+        session,
+        discipline=tournament.discipline,
+        workspace_id=tournament.workspace_id,
+        ref=ref,
+        top_level_only=True,
+    )
+    return row.code if row is not None else None
 
-    Requests carry ``tank``/``damage``/``support``; everything below this layer —
-    ``rules.resolve_pick_slot``, ``role_edit_service``, ``fit`` — takes a
-    ``HeroClass``. Handing the raw string down reached ``role.slot_code`` on a
-    ``str`` and 500'd the pick instead of drafting anyone.
-    """
-    return HeroClass.from_slot_code(slot_code) if slot_code is not None else None
 
-
-def _pick_event_payload(draft: DraftSession, pick: DraftPick) -> dict:
+def _pick_event_payload(draft: DraftSession, pick: DraftPick, *, dimension: str) -> dict:
     return {
         "session_id": draft.id,
         "pick_id": pick.id,
         "overall_pick_no": pick.overall_no,
         "draft_team_id": pick.draft_team_id,
         "picked_player_id": pick.picked_player_id,
-        "target_role": pick.target_role,
+        "target_role": ref.model_dump() if (ref := RoleRef.of(dimension, pick.target_role)) else None,
         "target_rank_value": pick.target_rank_value,
         "pick_version": pick.version,
         "status": pick.status,
@@ -184,14 +189,14 @@ def _player_updated_payload(
     *,
     session_id: int,
     player_id: int,
-    role: HeroClass,
+    role: RoleRef,
     player_version: int,
     is_feasible: bool,
 ) -> dict:
     return {
         "session_id": session_id,
         "player_id": player_id,
-        "role": role.slot_code,
+        "role": role.model_dump(),
         "player_version": player_version,
         "is_feasible": is_feasible,
     }
@@ -245,7 +250,7 @@ async def _publish_result(
         session,
         draft_session=draft,
         event_type=made_event,
-        payload=_pick_event_payload(draft, result.pick),
+        payload=_pick_event_payload(draft, result.pick, dimension=await loaders.rated_dimension(session, draft)),
         actor_user_id=actor_user_id,
     )
     if result.completed:
@@ -389,11 +394,15 @@ def register(broker: Any, logger: Any) -> None:
                 actor_player_ids=public_user_ids,
                 is_workspace_admin=user.is_workspace_admin(draft.workspace_id),
             )
+            dimension = await loaders.rated_dimension(session, draft)
             return schemas.DraftPickOptionsResponse(
                 pick_id=pick.id,
                 pick_version=pick.version,
                 draft_team_id=pick.draft_team_id,
-                options=[schemas.DraftPickOptionRead.model_validate(option) for option in options],
+                options=[
+                    schemas.DraftPickOptionRead(**{**asdict(option), "role": RoleRef.of(dimension, option.role)})
+                    for option in options
+                ],
             )
 
         return await c.envelope(logger, "draft.pick_options", op, session_factory=_SF)
@@ -412,16 +421,17 @@ def register(broker: Any, logger: Any) -> None:
                 session,
                 draft,
                 player_id=player_id,
-                role=HeroClass.from_slot_code(payload.role),
+                role=await _resolve_role(session, draft, payload.role),
                 rank_value=payload.rank_value,
                 reason=payload.reason,
                 expected_version=payload.expected_version,
                 actor_auth_user_id=user.id,
                 preview_only=payload.preview_only,
             )
+            dimension = await loaders.rated_dimension(session, draft)
             response = schemas.DraftRoleEditResponse(
                 player_id=result.player_id,
-                role=result.role,
+                role=RoleRef.of(dimension, result.role),
                 player_version=result.player_version,
                 committed=result.committed,
                 before=schemas.DraftFeasibilityResponse.model_validate(result.preview.before),
@@ -435,7 +445,7 @@ def register(broker: Any, logger: Any) -> None:
                     payload=_player_updated_payload(
                         session_id=draft.id,
                         player_id=result.player_id,
-                        role=result.role,
+                        role=response.role,
                         player_version=result.player_version,
                         is_feasible=result.preview.after.is_feasible,
                     ),
@@ -454,12 +464,16 @@ def register(broker: Any, logger: Any) -> None:
             c.require_workspace_permission(data, user, ws_id, "team", "read")
             draft = await _load_session(session, session_id)
             current, ranked = await feasibility_service.rank_current_suggestions(session, draft)
+            dimension = await loaders.rated_dimension(session, draft)
             return schemas.DraftSuggestionsResponse(
                 pick_id=current.id,
                 draft_team_id=current.draft_team_id,
                 suggestions=[
                     schemas.DraftSuggestion(
-                        player_id=r.player_id, role=r.role, fit_score=r.fit_score, breakdown=r.breakdown
+                        player_id=r.player_id,
+                        role=RoleRef.of(dimension, r.role),
+                        fit_score=r.fit_score,
+                        breakdown=r.breakdown,
                     )
                     for r in ranked
                 ],
@@ -477,10 +491,16 @@ def register(broker: Any, logger: Any) -> None:
 
             async def compute() -> schemas.DraftTeamFitResponse:
                 scores = await feasibility_service.team_fit_scores(session, draft, team_id=team.id)
+                dimension = await loaders.rated_dimension(session, draft)
                 return schemas.DraftTeamFitResponse(
                     session_id=draft.id,
                     team_id=team.id,
-                    scores=[schemas.DraftTeamFitScore.model_validate(score) for score in scores],
+                    scores=[
+                        schemas.DraftTeamFitScore(
+                            player_id=score.player_id, role=RoleRef.of(dimension, score.role), score=score.score
+                        )
+                        for score in scores
+                    ],
                 )
 
             # Refetched by every viewer on every draft event: one run per board state.
@@ -605,7 +625,11 @@ def register(broker: Any, logger: Any) -> None:
                     team_names={c_.registration_id: c_.name for c_ in payload.pool_captains if c_.name},
                     captain_order=payload.captain_order,
                     rng_seed=payload.seed,
-                    captain_roles={c_.registration_id: c_.role for c_ in payload.pool_captains if c_.role},
+                    captain_roles={
+                        c_.registration_id: await _resolve_role(session, draft, c_.role)
+                        for c_ in payload.pool_captains
+                        if c_.role
+                    },
                 )
 
                 after = await lifecycle_service.seed_row_counts(session, draft.id)
@@ -839,7 +863,7 @@ def register(broker: Any, logger: Any) -> None:
                 pick,
                 player_id=payload.player_id,
                 expected_version=payload.expected_version,
-                target_role=_to_role(payload.target_role),
+                target_role=await _resolve_role(session, draft, payload.target_role),
                 actor_user_id=public_user_id,
                 actor_auth_user_id=user.id,
                 actor_player_ids=public_user_ids,
@@ -952,7 +976,7 @@ def register(broker: Any, logger: Any) -> None:
                 player_id=payload.player_id,
                 expected_version=payload.expected_version,
                 actor_user_id=public_user_id,
-                target_role=_to_role(payload.target_role),
+                target_role=await _resolve_role(session, draft, payload.target_role),
             )
             await journal_service.record(
                 session,

@@ -288,20 +288,22 @@ class DraftBoardService:
             else None
         )
         shape = await self.feasibility.resolve_shape(session, draft_session)
+        dimension = await loaders.rated_dimension(session, draft_session)
         snapshot = schemas.DraftBoardSnapshot(
             session=await self.session_read(session, draft_session),
             teams=[schemas.DraftTeamRead.model_validate(t) for t in teams],
-            picks=[schemas.DraftPickRead.model_validate(p) for p in picks],
+            picks=[schemas.DraftPickRead.from_pick(p, dimension=dimension) for p in picks],
             players=[
                 schemas.DraftPlayerRead.from_seat(
                     p,
                     rosters.get(p.id),
                     shape=shape,
                     custom_fields=custom_field_defs,
+                    dimension=dimension,
                 )
                 for p in players
             ],
-            current_pick=schemas.DraftPickRead.model_validate(current) if current else None,
+            current_pick=schemas.DraftPickRead.from_pick(current, dimension=dimension) if current else None,
             server_time=datetime.now(UTC),
             last_event_id=last_event_id,
         )

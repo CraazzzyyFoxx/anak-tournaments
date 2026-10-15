@@ -8,7 +8,7 @@ import { splitBattleTag } from "@/components/balancer/balancer-page-helpers";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { currentRound, orderGrid, pickState, picksAway, type RoundDirection } from "@/lib/draft/room-model";
 import { cn } from "@/lib/utils";
-import type { DraftBoard } from "@/types/draft.types";
+import type { DraftBoard, DraftRole } from "@/types/draft.types";
 
 import type { OrderKind } from "./TeamsPanel";
 
@@ -157,7 +157,7 @@ export function DraftOrderGrid({
                   title={[
                     t("teams.order.cellTitle", { round: pick.round_no, n: pick.overall_no }),
                     tag,
-                    done && pick.target_role ? t(`roles.${pick.target_role}`) : null
+                    done && pick.target_role ? t(`roles.${pick.target_role.role as DraftRole}`) : null
                   ]
                     .filter(Boolean)
                     .join(" · ")}

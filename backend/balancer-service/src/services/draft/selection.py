@@ -18,13 +18,11 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import (
-    HERO_TYPE_CLASSES,
     DraftAutopickStrategy,
     DraftFormat,
     DraftPickStatus,
     DraftPlayerStatus,
     DraftStatus,
-    HeroClass,
 )
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
@@ -259,7 +257,7 @@ class DraftSelectionService:
         *,
         player_id: int,
         expected_version: int,
-        target_role: HeroClass | None,
+        target_role: str | None,
         actor_user_id: int | None,
         actor_auth_user_id: int | None = None,
         actor_player_ids: Collection[int] = (),
@@ -283,6 +281,7 @@ class DraftSelectionService:
             raise _err("not_your_pick", "Only the on-clock captain may pick", status_code=403)
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
+        rows = await loaders.rated_rows(session, draft_session)
         player = rules.available_player_from(snapshot, player_id)
         roster = snapshot.roster(player.id)
         counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters)
@@ -295,7 +294,7 @@ class DraftSelectionService:
             hypothetical=DraftAssignment(
                 player_id=player.id,
                 team_id=pick.draft_team_id,
-                slot_code=decision.role.slot_code,
+                slot_code=decision.role,
             ),
         )
         if not feasibility_report.is_feasible:
@@ -316,7 +315,8 @@ class DraftSelectionService:
         # Always record the resolved decision (role + its rank) on the pick, so the
         # pick is a complete (player, role, rank) record regardless of off-role. A
         # role-less roster records no role: recorded_role is None there.
-        pick.target_role = decision.recorded_role
+        pick.target_role_row = rows[decision.recorded_role] if decision.recorded_role else None
+        pick.dimension_id = pick.target_role_row.dimension_id if pick.target_role_row else None
         pick.target_rank_value = domain_ranks.slot_rank(roster, decision.role, shape)
         await journal_service.record(
             session,
@@ -339,8 +339,9 @@ class DraftSelectionService:
         self,
         team: DraftTeam | None,
         snapshot: DraftSnapshot,
-        safe_by_player: Mapping[int, set[HeroClass]],
+        safe_by_player: Mapping[int, set[str]],
         available_ids: Collection[int],
+        role_order: Mapping[str, int],
     ) -> AutopickChoice | None:
         """The captain's own list, consulted before the fit strategy.
 
@@ -362,9 +363,9 @@ class DraftSelectionService:
             role = min(
                 safe_roles,
                 key=lambda candidate: (
-                    -((roster.rank_on(candidate.slot_code) if roster is not None else None) or 0),
-                    candidate.slot_code != lead,
-                    HERO_TYPE_CLASSES.index(candidate),
+                    -((roster.rank_on(candidate) if roster is not None else None) or 0),
+                    candidate != lead,
+                    role_order[candidate],
                 ),
             )
             return AutopickChoice(player_id=player_id, role=role, source="queue")
@@ -391,21 +392,24 @@ class DraftSelectionService:
         shape = await self.feasibility.resolve_shape(session, draft_session)
         available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
         counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters)
-        capacity = rules.role_openings(shape, counts)
+        impact = await self.feasibility.resolve_role_impact(session, draft_session)
+        capacity = rules.role_openings(shape, counts, impact)
         options = await self.feasibility.evaluate_session_pick_options(
             session,
             draft_session,
             team_id=pick.draft_team_id,
             state=await self.feasibility.state_from_snapshot(session, draft_session, snapshot),
         )
-        safe_by_player: dict[int, set[HeroClass]] = {}
+        safe_by_player: dict[int, set[str]] = {}
         for option in options:
             if option.is_safe:
                 safe_by_player.setdefault(option.player_id, set()).add(option.role)
 
         available_ids = {p.id for p in available}
         team = next((t for t in snapshot.teams if t.id == pick.draft_team_id), None)
-        queued = self._queued_choice(team, snapshot, safe_by_player, available_ids)
+        queued = self._queued_choice(
+            team, snapshot, safe_by_player, available_ids, {code: index for index, code in enumerate(impact)}
+        )
         if queued is not None:
             return queued
 
@@ -416,7 +420,7 @@ class DraftSelectionService:
             fit_players(available, snapshot.rosters),
             capacity,
             DraftAutopickStrategy(draft_session.autopick_strategy),
-            rules.team_fit_config(shape, counts, await self.feasibility.resolve_role_impact(session, draft_session)),
+            rules.team_fit_config(shape, counts, impact),
             allowed_options={(player_id, role) for player_id, roles in safe_by_player.items() for role in roles},
         )
         if choice is None:
@@ -437,6 +441,7 @@ class DraftSelectionService:
         rules.validate_current_pick(draft_session, pick)
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
+        rows = await loaders.rated_rows(session, draft_session)
         choice = await self.autopick_choice(session, draft_session, pick, snapshot=snapshot)
 
         if choice is None:
@@ -458,7 +463,8 @@ class DraftSelectionService:
             raise _err("pick_already_resolved", "Pick was already resolved")
         player = next(p for p in snapshot.players if p.id == choice.player_id)
         roster = snapshot.roster(player.id)
-        pick.target_role = choice.role.slot_code if shape.has_role_slots else None
+        pick.target_role_row = rows[choice.role] if shape.has_role_slots else None
+        pick.dimension_id = pick.target_role_row.dimension_id if pick.target_role_row else None
         pick.target_rank_value = domain_ranks.slot_rank(roster, choice.role, shape)
         await journal_service.record(
             session,
@@ -488,7 +494,7 @@ class DraftSelectionService:
         player_id: int | None,
         expected_version: int,
         actor_user_id: int | None,
-        target_role: HeroClass | None = None,
+        target_role: str | None = None,
     ) -> DraftResult:
         if not draft_session.allow_admin_override:
             raise _err("override_disabled", "Admin override is disabled for this draft")
@@ -497,6 +503,7 @@ class DraftSelectionService:
             raise _err("override_needs_player", "Override requires a player_id", status_code=422)
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
+        rows = await loaders.rated_rows(session, draft_session)
         player = rules.available_player_from(snapshot, player_id)
         roster = snapshot.roster(player.id)
         counts = rules.team_slot_counts(snapshot.players, snapshot.picks, pick.draft_team_id, shape, snapshot.rosters)
@@ -508,7 +515,7 @@ class DraftSelectionService:
             hypothetical=DraftAssignment(
                 player_id=player.id,
                 team_id=pick.draft_team_id,
-                slot_code=decision.role.slot_code,
+                slot_code=decision.role,
             ),
         )
         if not feasibility_report.is_feasible:
@@ -526,7 +533,8 @@ class DraftSelectionService:
         )
         if not won:
             raise _err("pick_already_resolved", "Pick was already resolved")
-        pick.target_role = decision.recorded_role
+        pick.target_role_row = rows[decision.recorded_role] if decision.recorded_role else None
+        pick.dimension_id = pick.target_role_row.dimension_id if pick.target_role_row else None
         pick.target_rank_value = domain_ranks.slot_rank(roster, decision.role, shape)
         return await self._apply_won(session, draft_session, pick, player)
 

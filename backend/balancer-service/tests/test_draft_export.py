@@ -10,10 +10,11 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.core.enums import DraftPickStatus, HeroClass  # noqa: E402
+from shared.core.enums import DraftPickStatus  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
+from shared.models.catalog import CatalogRole  # noqa: E402
 from shared.models.tenancy.workspace import WorkspaceMember  # noqa: E402
 from src.services.draft.export import _draft_to_balancer_payload  # noqa: E402
 from tests.factories import roster  # noqa: E402
@@ -33,7 +34,7 @@ def _player(
     *,
     captain=False,
     bt=None,
-    role=HeroClass.damage,
+    role="damage",
     rank=3000,
     sub=None,
     uid=None,
@@ -55,10 +56,10 @@ def _player(
     )
     seat.player_roster = roster(
         1000 + pid,
-        ranks={role.slot_code: rank, **(role_ranks or {})},
-        primary=role.slot_code,
+        ranks={role: rank, **(role_ranks or {})},
+        primary=role,
         battle_tag=bt,
-        subroles={role.slot_code: sub} if sub is not None else None,
+        subroles={role: sub} if sub is not None else None,
     )
     return seat
 
@@ -72,7 +73,7 @@ def _payload(teams, roster_by_team, shape, picks=None):
     return _draft_to_balancer_payload(teams, roster_by_team, shape, _rosters(*seated), picks or {})
 
 
-def _pick(player_id: int, team_id: int, *, role: HeroClass | None, rank: int | None) -> DraftPick:
+def _pick(player_id: int, team_id: int, *, role: str | None, rank: int | None) -> DraftPick:
     return DraftPick(
         session_id=1,
         overall_no=player_id,
@@ -80,7 +81,7 @@ def _pick(player_id: int, team_id: int, *, role: HeroClass | None, rank: int | N
         pick_in_round=1,
         draft_team_id=team_id,
         picked_player_id=player_id,
-        target_role=role.slot_code if role else None,
+        target_role_row=CatalogRole(code=role) if role else None,
         target_rank_value=rank,
         status=DraftPickStatus.COMPLETED.value,
     )
@@ -111,9 +112,9 @@ def test_payload_totals_and_members() -> None:
     teams = [_team(1, 1, "T")]
     roster_by_team = {
         1: [
-            _player(10, captain=True, bt="Cap#1", role=HeroClass.tank, rank=4000),
-            _player(11, bt="A#1", role=HeroClass.damage, rank=3000),
-            _player(12, bt="B#1", role=HeroClass.support, rank=3500),
+            _player(10, captain=True, bt="Cap#1", role="tank", rank=4000),
+            _player(11, bt="A#1", role="damage", rank=3000),
+            _player(12, bt="B#1", role="support", rank=3500),
         ]
     }
     payload = _payload(teams, roster_by_team, ROLE_SHAPE)
@@ -136,11 +137,9 @@ def test_payload_empty_roster_team() -> None:
 def test_payload_uses_drafted_off_role_and_its_rank() -> None:
     # Player's lead role is DPS@4000 but they were drafted on SUPPORT@2800.
     teams = [_team(1, 1, "T")]
-    p = _player(
-        11, bt="Mate#1", role=HeroClass.damage, rank=4000, uid=11, sub="damage_hitscan", role_ranks={"support": 2800}
-    )
-    roster_by_team = {1: [_player(10, captain=True, bt="Cap#1", role=HeroClass.tank, rank=3900, uid=10), p]}
-    picks = {11: _pick(11, 1, role=HeroClass.support, rank=2800)}
+    p = _player(11, bt="Mate#1", role="damage", rank=4000, uid=11, sub="damage_hitscan", role_ranks={"support": 2800})
+    roster_by_team = {1: [_player(10, captain=True, bt="Cap#1", role="tank", rank=3900, uid=10), p]}
+    picks = {11: _pick(11, 1, role="support", rank=2800)}
     payload = _payload(teams, roster_by_team, ROLE_SHAPE, picks)
     member = next(m for m in payload[0].members if m.name == "Mate#1")
     assert member.role == "support"  # drafted role, not lead "damage"
@@ -152,9 +151,9 @@ def test_payload_derives_off_role_rank_when_pick_rank_missing() -> None:
     # Legacy pick with target_role but no frozen target_rank_value -> resolve the
     # role's CURRENT rank off the registration.
     teams = [_team(1, 1, "T")]
-    p = _player(11, bt="Mate#1", role=HeroClass.damage, rank=4000, uid=11, role_ranks={"support": 2800})
+    p = _player(11, bt="Mate#1", role="damage", rank=4000, uid=11, role_ranks={"support": 2800})
     roster_by_team = {1: [p]}
-    picks = {11: _pick(11, 1, role=HeroClass.support, rank=None)}
+    picks = {11: _pick(11, 1, role="support", rank=None)}
     payload = _payload(teams, roster_by_team, ROLE_SHAPE, picks)
     member = payload[0].members[0]
     assert member.role == "support"
@@ -163,7 +162,7 @@ def test_payload_derives_off_role_rank_when_pick_rank_missing() -> None:
 
 def test_payload_captain_without_pick_uses_their_lead_role() -> None:
     teams = [_team(1, 1, "T")]
-    roster_by_team = {1: [_player(10, captain=True, bt="Cap#1", role=HeroClass.tank, rank=3900, uid=10)]}
+    roster_by_team = {1: [_player(10, captain=True, bt="Cap#1", role="tank", rank=3900, uid=10)]}
     payload = _payload(teams, roster_by_team, ROLE_SHAPE, {})
     member = payload[0].members[0]
     assert member.role == "tank"
@@ -172,9 +171,7 @@ def test_payload_captain_without_pick_uses_their_lead_role() -> None:
 
 def test_payload_exports_the_sub_role_off_the_registration() -> None:
     teams = [_team(1, 1, "T")]
-    roster_by_team = {
-        1: [_player(10, captain=True, bt="Cap#1", role=HeroClass.support, rank=3000, sub="support_main_heal")]
-    }
+    roster_by_team = {1: [_player(10, captain=True, bt="Cap#1", role="support", rank=3000, sub="support_main_heal")]}
     payload = _payload(teams, roster_by_team, ROLE_SHAPE, {})
     assert payload[0].members[0].sub_role == "main_heal"
 
@@ -185,7 +182,7 @@ def test_flex_shape_exports_the_flex_slot_code_and_the_best_rank() -> None:
     # rank. The slot code says "no fixed role" outright instead of guessing the
     # lead role -- bulk_create_from_balancer turns it into HeroClass.flex.
     teams = [_team(1, 1, "T")]
-    p = _player(11, bt="Mate#1", role=HeroClass.support, rank=2800, uid=11, role_ranks={"damage": 4000})
+    p = _player(11, bt="Mate#1", role="support", rank=2800, uid=11, role_ranks={"damage": 4000})
     roster_by_team = {1: [p]}
     picks = {11: _pick(11, 1, role=None, rank=2800)}
     payload = _payload(teams, roster_by_team, FLEX_SHAPE, picks)
@@ -196,7 +193,7 @@ def test_flex_shape_exports_the_flex_slot_code_and_the_best_rank() -> None:
 
 def test_flex_shape_exports_the_best_rank_for_a_captain() -> None:
     teams = [_team(1, 1, "T")]
-    cap = _player(10, captain=True, bt="Cap#1", role=HeroClass.tank, rank=3100, uid=10, role_ranks={"damage": 3700})
+    cap = _player(10, captain=True, bt="Cap#1", role="tank", rank=3100, uid=10, role_ranks={"damage": 3700})
     payload = _payload(teams, {1: [cap]}, FLEX_SHAPE, {})
     member = payload[0].members[0]
     assert member.role == "flex"
@@ -210,11 +207,11 @@ def test_role_shape_still_exports_a_game_role_never_flex() -> None:
     teams = [_team(1, 1, "T")]
     roster_by_team = {
         1: [
-            _player(10, captain=True, bt="Cap#1", role=HeroClass.tank, rank=3100, uid=10),
-            _player(11, bt="Mate#1", role=HeroClass.damage, rank=4000, uid=11, role_ranks={"support": 2800}),
+            _player(10, captain=True, bt="Cap#1", role="tank", rank=3100, uid=10),
+            _player(11, bt="Mate#1", role="damage", rank=4000, uid=11, role_ranks={"support": 2800}),
         ]
     }
-    picks = {11: _pick(11, 1, role=HeroClass.support, rank=2800)}
+    picks = {11: _pick(11, 1, role="support", rank=2800)}
     payload = _payload(teams, roster_by_team, ROLE_SHAPE, picks)
     assert sorted(m.role for m in payload[0].members) == ["support", "tank"]
 

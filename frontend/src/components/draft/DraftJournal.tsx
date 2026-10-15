@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { useFormatter } from "@/lib/datetime/client";
 
-import type { DraftBoard, DraftJournalAction, DraftJournalEntry } from "@/types/draft.types";
+import type { DraftBoard, DraftJournalAction, DraftJournalEntry, DraftRole } from "@/types/draft.types";
 
 interface DraftJournalProps {
   id: string;
@@ -55,7 +55,7 @@ export function DraftJournal({ id, board, entries, isLoading, isError, onRetry }
           pick: entry.pick_no ?? "—",
           team: teamName(entry.team_id),
           player: playerTag(entry.player_id),
-          role: t(`roles.${entry.role ?? "flex"}`),
+          role: t(`roles.${entry.role?.role as DraftRole ?? "flex"}`),
           reason: entry.reason ?? "",
           seconds: entry.seconds ?? 0
         })

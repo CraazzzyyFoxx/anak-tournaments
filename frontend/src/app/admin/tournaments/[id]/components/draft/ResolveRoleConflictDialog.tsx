@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { notify } from "@/lib/notify";
+import { roleOf } from "@/lib/roster/role-ref";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
 import draftService from "@/services/draft.service";
@@ -82,7 +83,7 @@ export function ResolveRoleConflictDialog({
     // `gt=0`; refusing to build the body is how the organizer sees it first.
     if (!player || !role || !reason.trim() || rankValue == null || rankValue <= 0) return null;
     return {
-      role,
+      role: { dimension: "player_role", role },
       rank_value: rankValue,
       reason: reason.trim(),
       expected_version: player.version,
@@ -183,7 +184,7 @@ export function ResolveRoleConflictDialog({
               <SelectContent>
                 {players.map((candidate) => (
                   <SelectItem key={candidate.id} value={candidate.id.toString()}>
-                    {playerName(candidate)} · {candidate.primary_role ?? t("noRole")}
+                    {playerName(candidate)} · {roleOf(candidate.primary_role) ?? t("noRole")}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -195,7 +196,7 @@ export function ResolveRoleConflictDialog({
                   roles: (player.primary_role
                     ? [player.primary_role, ...player.secondary_roles]
                     : player.secondary_roles
-                  ).join(", ") || t("noRole")
+                  ).map(roleOf).join(", ") || t("noRole")
                 })}
               </p>
             )}

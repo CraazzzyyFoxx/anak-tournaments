@@ -8,6 +8,7 @@
  */
 
 import { orderSlotCodes, type RosterShape, type RosterSlotCode } from "@/lib/roster/shape";
+import { roleOf } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
   DraftPick,
@@ -239,9 +240,9 @@ export function roleMarket(board: DraftBoard, views: ReadonlyMap<number, TeamVie
   return DRAFT_ROLES.filter((role) => (shape.slots[role] ?? 0) > 0).map((role) => {
     let openSlots = 0;
     for (const view of views.values()) openSlots += view.openRoles.get(role) ?? 0;
-    const primary = available.filter((player) => player.primary_role === role).length;
+    const primary = available.filter((player) => roleOf(player.primary_role) === role).length;
     const secondary = available.filter(
-      (player) => player.primary_role !== role && playerRoles(player).includes(role)
+      (player) => roleOf(player.primary_role) !== role && playerRoles(player).includes(role)
     ).length;
     return {
       role,
@@ -271,11 +272,12 @@ export function fitByPlayer(
   const pinned = roleFilter !== "all" && roleFilter !== "need" ? roleFilter : null;
   for (const entry of scores ?? []) {
     const current = byPlayer.get(entry.player_id);
-    const entryPinned = pinned != null && entry.role === pinned;
+    const role = roleOf(entry.role) as DraftRole | null;
+    const entryPinned = pinned != null && role === pinned;
     const currentPinned = pinned != null && current?.role === pinned;
     const wins =
       current == null || (entryPinned !== currentPinned ? entryPinned : entry.score > current.score);
-    if (wins) byPlayer.set(entry.player_id, { role: entry.role, score: entry.score });
+    if (wins) byPlayer.set(entry.player_id, { role, score: entry.score });
   }
   return byPlayer;
 }

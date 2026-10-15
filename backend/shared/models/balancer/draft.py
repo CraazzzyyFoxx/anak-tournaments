@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -22,6 +23,7 @@ from shared.core import db
 
 if TYPE_CHECKING:
     from shared.models.balancer.balance import BalancerBalance
+    from shared.models.catalog import CatalogRole
     from shared.models.identity.auth_user import AuthUser
     from shared.models.registration.registration import BalancerRegistration
     from shared.models.tenancy.workspace import Workspace, WorkspaceMember
@@ -35,11 +37,8 @@ __all__ = (
     "DraftTeam",
 )
 
-# Enum-like columns are stored as plain String, matching the balancer-schema
-# convention (see BalancerRegistration.status). The values are the StrEnum
-# members in shared.core.enums (DraftStatus / DraftFormat / DraftPoolSource /
-# DraftAutopickStrategy / DraftPlayerStatus / DraftPickStatus) or, for role
-# columns, ``HeroClass.slot_code``; StrEnum equality keeps comparisons type-safe.
+# Enum-like state columns store shared.core.enums values as plain strings.
+# Draft captain and pick role columns reference catalog.role.
 
 
 class DraftSession(db.TimeStampIntegerMixin):
@@ -178,6 +177,13 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     __table_args__ = (
         UniqueConstraint("session_id", "registration_id", name="uq_draft_player_session_registration"),
         Index("ix_draft_player_session_status", "session_id", "status"),
+        ForeignKeyConstraint(
+            ["captain_role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_draft_player_captain_role",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
         {"schema": "balancer"},
     )
 
@@ -200,12 +206,19 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     drafted_by_team_id: Mapped[int | None] = mapped_column(
         ForeignKey("balancer.draft_team.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    #: The role slot the organizer pinned this CAPTAIN to at seed time
-    #: (``HeroClass.slot_code``). ``None`` -- every non-captain, and a captain
-    #: nobody pinned -- means "their lead role", resolved live. A pin whose rank
-    #: was cleared since falls back the same way; see
-    #: ``domain.draft.ranks.seat_role``.
-    captain_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    #: A top-level rated role pinned at seed time; None resolves the captain's lead role live.
+    dimension_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    captain_role_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    captain_role_row: Mapped[CatalogRole | None] = relationship(
+        primaryjoin="foreign(DraftPlayer.captain_role_id) == CatalogRole.id",
+        foreign_keys=[captain_role_id],
+        lazy="joined",
+    )
+
+    @property
+    def captain_role(self) -> str | None:
+        return None if self.captain_role_row is None else self.captain_role_row.code
+
     version: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 
     session: Mapped[DraftSession] = relationship(back_populates="players")
@@ -259,6 +272,13 @@ class DraftPick(db.TimeStampIntegerMixin):
         # session+order lookup index — no separate ix needed.
         UniqueConstraint("session_id", "overall_no", name="uq_draft_pick_session_overall"),
         Index("ix_draft_pick_session_status", "session_id", "status"),
+        ForeignKeyConstraint(
+            ["target_role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_draft_pick_target_role",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
         {"schema": "balancer"},
     )
 
@@ -267,7 +287,18 @@ class DraftPick(db.TimeStampIntegerMixin):
     round_no: Mapped[int] = mapped_column(Integer(), nullable=False)
     pick_in_round: Mapped[int] = mapped_column(Integer(), nullable=False)
     draft_team_id: Mapped[int] = mapped_column(ForeignKey("balancer.draft_team.id", ondelete="CASCADE"), index=True)
-    target_role: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    dimension_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    target_role_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    target_role_row: Mapped[CatalogRole | None] = relationship(
+        primaryjoin="foreign(DraftPick.target_role_id) == CatalogRole.id",
+        foreign_keys=[target_role_id],
+        lazy="joined",
+    )
+
+    @property
+    def target_role(self) -> str | None:
+        return None if self.target_role_row is None else self.target_role_row.code
+
     # Frozen rank of the drafted role at finalize time, so a pick is a complete
     # ``(player, role, rank)`` record (resolved via ``ranks.role_rank``).
     target_rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)

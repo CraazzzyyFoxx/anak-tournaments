@@ -12,12 +12,14 @@ import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { notify } from "@/lib/notify";
 import type { RosterShape } from "@/lib/roster/shape";
+import { roleOf, toRoleRef } from "@/lib/roster/role-ref";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import balancerAdminService from "@/services/balancer-admin.service";
 import draftService from "@/services/draft.service";
 import type {
   DraftBoard,
+  DraftRole,
   DraftFormatSettings,
   DraftSeedRequest,
   DraftSeedResponse,
@@ -170,8 +172,8 @@ export function DraftSetupWizard({
         // keeps following their registration's lead role.
         roles: Object.fromEntries(
           board.players.flatMap((player) =>
-            player.is_captain && player.captain_role && player.captain_role !== player.primary_role
-              ? [[player.registration_id, player.captain_role]]
+            player.is_captain && player.captain_role && roleOf(player.captain_role) !== roleOf(player.primary_role)
+              ? [[player.registration_id, roleOf(player.captain_role) as DraftRole]]
               : []
           )
         )
@@ -271,7 +273,7 @@ export function DraftSetupWizard({
       return {
         registration_id: id,
         name: captains.teamNames[id]?.trim() || null,
-        role: pinned && seated === pinned ? pinned : null
+        role: pinned && seated === pinned ? toRoleRef(pinned, null, "player_role") : null
       };
     }),
     preview_only: previewOnly,

@@ -18,7 +18,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from shared.core.enums import HERO_TYPE_CLASSES, HeroClass
 from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
 from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS
@@ -51,7 +50,7 @@ __all__ = (
 @dataclass(frozen=True)
 class EligiblePlayer:
     player_id: int
-    playable_roles: frozenset[HeroClass]
+    playable_roles: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -92,7 +91,7 @@ class DraftFeasibilityReport:
 @dataclass(frozen=True)
 class DraftPickOption:
     player_id: int
-    role: HeroClass
+    role: str
     is_safe: bool
     reason_code: str | None
     unmatched_slots: tuple[DraftSlot, ...] = ()
@@ -170,7 +169,7 @@ class AutopickChoice:
     """
 
     player_id: int
-    role: HeroClass
+    role: str
     source: str
 
 
@@ -183,7 +182,7 @@ class SlotDecision:
     where a role would be a value the shape gives no meaning to.
     """
 
-    role: HeroClass
+    role: str
     recorded_role: str | None
 
 
@@ -199,7 +198,7 @@ class RoleEditPreview:
 @dataclass(frozen=True)
 class RoleEditResult:
     player_id: int
-    role: HeroClass
+    role: str
     player_version: int
     committed: bool
     preview: RoleEditPreview
@@ -208,15 +207,9 @@ class RoleEditResult:
 # --- autopick fit scoring (domain/draft/fit.py) ------------------------------
 
 
-def _default_role_impact() -> dict[HeroClass, float]:
-    """The balancer's own per-role impact, before a team's filled seats discount it.
-
-    Base values only, and only the fallback: the draft reads the tournament's
-    effective config live (``DraftFeasibilityService.resolve_role_impact``) and
-    ``rules.team_fit_config`` scales whatever it gets by how much of each role a
-    team already filled.
-    """
-    return {role: DEFAULT_ROLE_SETTINGS[role.slot_code].impact for role in HERO_TYPE_CLASSES}
+def _default_role_impact() -> dict[str, float]:
+    """Fallback impact weights; services supply the owning discipline's config."""
+    return {code: settings.impact for code, settings in DEFAULT_ROLE_SETTINGS.items()}
 
 
 @dataclass(frozen=True)
@@ -225,16 +218,16 @@ class FitPlayer:
     #: The player's strongest playable role -- what they are worth with no role
     #: context (a role-less roster, or the tie-break in a scarce-role choice).
     rank_value: int
-    playable_roles: frozenset[HeroClass]
-    preference_order: tuple[HeroClass, ...] = ()
+    playable_roles: frozenset[str]
+    preference_order: tuple[str, ...] = ()
     is_flex: bool = False
     user_id: int | None = None
     #: Per-role ranks over PLAYABLE roles only, straight from the engine. No
     #: fallback: a role the player carries no rank on is not playable, so it is
     #: never scored -- ``best`` is only reached for a role-less slot.
-    rank_by_role: Mapping[HeroClass, int] = field(default_factory=dict)
+    rank_by_role: Mapping[str, int] = field(default_factory=dict)
 
-    def rank_for(self, role: HeroClass) -> int:
+    def rank_for(self, role: str) -> int:
         return self.rank_by_role.get(role, self.rank_value)
 
 
@@ -247,13 +240,13 @@ class TeamFitScore:
     """
 
     player_id: int
-    role: HeroClass | None
+    role: str | None
     score: int
 
 
 @dataclass(frozen=True)
 class FitConfig:
-    role_impact: Mapping[HeroClass, float] = field(default_factory=_default_role_impact)
+    role_impact: Mapping[str, float] = field(default_factory=_default_role_impact)
     discomfort_weight: float = 1.0
     # Large enough that role-need dominates raw fit when filling scarce roles.
     role_need_bonus: float = 1_000_000.0
@@ -262,6 +255,6 @@ class FitConfig:
 @dataclass(frozen=True)
 class FitResult:
     player_id: int
-    role: HeroClass
+    role: str
     fit_score: float
     breakdown: dict[str, float]

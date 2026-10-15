@@ -50,7 +50,7 @@ def _draft_to_balancer_payload(
     A captain has no pick, so they are valued live on their seat role -- the
     one the organizer pinned, else their lead role (``ranks.seat_role``). A
     role-less (all-flex) shape drafted nobody onto a role, so it exports the
-    ``flex`` slot code -- stored as ``HeroClass.flex`` -- at the player's best
+    ``flex`` open-slot code at the player's best
     playable rank, the same number the board showed the captain who picked
     them; the frozen pick rank is skipped there because it was frozen against a
     role the shape gives no meaning to.
@@ -69,9 +69,7 @@ def _draft_to_balancer_payload(
             pk = pick_by_player_id.get(p.id)
             if shape.has_role_slots:
                 seat = ranks.seat_role(player_roster, p.captain_role)
-                role = (pk.target_role if (pk and pk.target_role) else None) or (
-                    seat.slot_code if seat is not None else FLEX_SLOT_CODE
-                )
+                role = (pk.target_role if (pk and pk.target_role) else None) or seat or FLEX_SLOT_CODE
                 rank = (
                     pk.target_rank_value
                     if (pk is not None and pk.target_rank_value is not None)

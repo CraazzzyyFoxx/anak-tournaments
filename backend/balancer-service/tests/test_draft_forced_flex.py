@@ -38,7 +38,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 os.environ["DEBUG"] = "false"
 
-from shared.core.enums import HERO_TYPE_CLASSES, HeroClass  # noqa: E402
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
@@ -49,7 +48,7 @@ from shared.models.registration.registration import (  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
 from shared.testing.roles import registration_role  # noqa: E402
 
-ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
+ALL_ROLE_VALUES = {"tank", "damage", "support"}
 
 
 def _form(roles_params: dict[str, Any] | None) -> Any:
@@ -124,7 +123,7 @@ class TestEveryRoleModeMakesEveryRolePlayable:
         # Tank was never ranked, so it takes the maximum: eligibility is the
         # presence of a rating, and that is the only value available for it.
         assert resolved.role_ranks == {"damage": 3900, "support": 2400, "tank": 3900}
-        assert resolved.playable_roles == frozenset(role.slot_code for role in HERO_TYPE_CLASSES)
+        assert resolved.playable_roles == frozenset(role for role in ("tank", "damage", "support"))
 
     def test_the_best_rank_is_the_max_not_the_lead_role_s(self) -> None:
         """The bug this closes: the lead role's rank won even when lower."""
@@ -168,7 +167,7 @@ class TestEveryRoleModeMakesEveryRolePlayable:
 
         lead = resolved.primary
         assert lead is not None
-        assert {lead.role, *resolved.secondary_roles} == {role.slot_code for role in HERO_TYPE_CLASSES}
+        assert {lead.role, *resolved.secondary_roles} == ALL_ROLE_VALUES
 
     def test_sub_role_comes_from_the_first_role_by_priority(self) -> None:
         resolved = _resolve(
@@ -321,15 +320,15 @@ class TestDiscomfortDivergesFromTheBalancer:
         player = sug.FitPlayer(
             player_id=1,
             rank_value=3300,
-            playable_roles=frozenset(HERO_TYPE_CLASSES),
-            preference_order=(HeroClass.tank,),
+            playable_roles=frozenset(("tank", "damage", "support")),
+            preference_order=("tank",),
             is_flex=False,
-            rank_by_role=dict.fromkeys(HERO_TYPE_CLASSES, 3300),
+            rank_by_role=dict.fromkeys(("tank", "damage", "support"), 3300),
         )
 
-        assert sug.role_discomfort(player, HeroClass.tank) == 0
-        assert sug.role_discomfort(player, HeroClass.damage) == 1000
-        assert sug.role_discomfort(player, HeroClass.support) == 1000
+        assert sug.role_discomfort(player, "tank") == 0
+        assert sug.role_discomfort(player, "damage") == 1000
+        assert sug.role_discomfort(player, "support") == 1000
 
     def test_balancer_penalises_them_by_position_instead(self) -> None:
         from src.domain.balancer.entities import Player

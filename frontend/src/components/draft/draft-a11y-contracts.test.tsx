@@ -31,8 +31,7 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
     user_id: null,
     battle_tag: `P${id}#1`,
     status: "available",
-    primary_role: "damage",
-    sub_role: null,
+    primary_role: { dimension: "player_role", role: "damage" },
     is_flex: false,
     is_captain: false,
     effective_rank: 2500,
@@ -51,9 +50,9 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
 
 const ana = makePlayer(7, {
   battle_tag: "Ana#1234",
-  primary_role: "support",
+  primary_role: { dimension: "player_role", role: "support" },
   effective_rank: 3000,
-  secondary_roles: ["damage"],
+  secondary_roles: [{ dimension: "player_role", role: "damage" }],
   role_ranks: { support: 3000, damage: 2800 }
 });
 
@@ -179,7 +178,7 @@ describe("draft accessibility contracts", () => {
         options: [
           {
             player_id: 7,
-            role: "support",
+            role: { dimension: "player_role", role: "support" },
             is_safe: false,
             reason_code: "role_shortage",
             unmatched_slots: [],
@@ -240,8 +239,8 @@ describe("draft accessibility contracts", () => {
     const rostered = [
       makePlayer(1, { status: "picked", drafted_by_team_id: 3 }),
       makePlayer(2, { status: "picked", drafted_by_team_id: 3 }),
-      makePlayer(3, { status: "picked", drafted_by_team_id: 3, primary_role: "support", role_ranks: { support: 2000 } }),
-      makePlayer(4, { status: "picked", drafted_by_team_id: 3, primary_role: "support", role_ranks: { support: 2000 } })
+      makePlayer(3, { status: "picked", drafted_by_team_id: 3, primary_role: { dimension: "player_role", role: "support" }, role_ranks: { support: 2000 } }),
+      makePlayer(4, { status: "picked", drafted_by_team_id: 3, primary_role: { dimension: "player_role", role: "support" }, role_ranks: { support: 2000 } })
     ];
     const html = renderPool({ players: [ana, ...rostered], slots: { tank: 1, damage: 2, flex: 2 } });
 

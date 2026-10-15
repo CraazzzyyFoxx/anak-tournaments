@@ -11,13 +11,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.core.enums import DraftAutopickStrategy, HeroClass  # noqa: E402
+from shared.core.enums import DraftAutopickStrategy  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from src.domain.draft import fit as sug  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
 from src.services.balancer.config.defaults import DEFAULT_ROLE_SETTINGS  # noqa: E402
 
-T, D, SUP = HeroClass.tank, HeroClass.damage, HeroClass.support
+T, D, SUP = "tank", "damage", "support"
 
 
 def fp(pid, rank, playable, prefs=(), is_flex=False, rank_by_role=None):
@@ -60,7 +60,7 @@ def test_discomfort_unplayable_is_5000() -> None:
 
 def test_role_impact_defaults_come_from_the_balancer_config() -> None:
     cfg = sug.FitConfig()
-    assert cfg.role_impact == {role: DEFAULT_ROLE_SETTINGS[role.slot_code].impact for role in (T, D, SUP)}
+    assert cfg.role_impact == {role: DEFAULT_ROLE_SETTINGS[role].impact for role in (T, D, SUP)}
 
 
 # ---- BEST_FIT ----
@@ -105,7 +105,7 @@ def test_best_fit_prefers_the_role_a_support_captain_team_still_lacks() -> None:
     counts = {"tank": 0, "damage": 0, "support": 1}  # only the support captain seated
     base_impact = sug.FitConfig().role_impact
     captain_support = rules.team_fit_config(shape, counts, base_impact)
-    capacity = rules.role_openings(shape, counts)
+    capacity = rules.role_openings(shape, counts, ("tank", "damage", "support"))
 
     res = sug.best_fit([supp, dps], capacity, DraftAutopickStrategy.BEST_FIT, captain_support)
     assert res is not None

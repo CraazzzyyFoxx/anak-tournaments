@@ -20,8 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.enums import DraftPlayerStatus, DraftStatus
 from shared.models.balancer.draft import DraftSession, DraftTeam
 from shared.repository.draft import DraftPickRepository
+from shared.schemas.role import RoleRef
 from src import schemas
 from src.domain.draft.entities import DraftSnapshot
+from src.services.draft import loaders
 from src.services.draft._errors import err as _err
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.draft.selection import DraftSelectionService, selection_service
@@ -127,9 +129,10 @@ class DraftQueueService:
         if choice is None:
             return None
         shape = await self.feasibility.resolve_shape(session, draft_session)
+        dimension = await loaders.rated_dimension(session, draft_session)
         return schemas.DraftAutopickPreview(
             player_id=choice.player_id,
-            role=choice.role.slot_code if shape.has_role_slots else None,
+            role=RoleRef.of(dimension, choice.role) if shape.has_role_slots else None,
             source=choice.source,
         )
 

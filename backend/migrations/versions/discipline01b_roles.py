@@ -444,6 +444,33 @@ _MIX_ROLES = (
     """,
 )
 
+#: §14.3: draft decisions reference module roles; flex is an open slot, not a role.
+_DRAFT_ROLES = tuple(
+    statement
+    for table, column, new in (
+        ("balancer.draft_player", "captain_role", "captain_role_id"),
+        ("balancer.draft_pick", "target_role", "target_role_id"),
+    )
+    for statement in (
+        f"ALTER TABLE {table} ADD COLUMN dimension_id BIGINT, ADD COLUMN {new} BIGINT",
+        f"""
+        UPDATE {table} x
+           SET {new} = r.id, dimension_id = r.dimension_id
+          FROM balancer.draft_session s
+          JOIN tournament.tournament t ON t.id = s.tournament_id,
+               catalog.role r
+          JOIN catalog.role_dimension d ON d.id = r.dimension_id
+         WHERE s.id = x.session_id AND d.discipline = t.discipline AND d.rated
+           AND r.workspace_id IS NULL AND r.code = lower(btrim(x.{column}))
+        """,
+        f"""
+        ALTER TABLE {table} ADD CONSTRAINT fk_{table.split(".")[1]}_{new.removesuffix("_id")}
+          FOREIGN KEY ({new}, dimension_id) REFERENCES catalog.role (id, dimension_id)
+          DEFERRABLE INITIALLY DEFERRED
+        """,
+    )
+)
+
 
 def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
@@ -459,6 +486,7 @@ def upgrade() -> None:
         *_REGISTRATION_ROLES,
         *_TEAM_MEMBER_ROLES,
         *_MIX_ROLES,
+        *_DRAFT_ROLES,
     ):
         if callable(statement):
             statement()

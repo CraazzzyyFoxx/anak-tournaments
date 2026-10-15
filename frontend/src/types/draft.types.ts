@@ -2,6 +2,7 @@
 
 import type { RosterRoleSlotCode, RosterShape, RosterSlotCode } from "@/lib/roster/shape";
 import type { FormField } from "@/types/forms.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 export type DraftStatus = "setup" | "ready" | "live" | "paused" | "completed" | "cancelled";
 
@@ -86,8 +87,7 @@ export interface DraftPlayer {
    * `null` when the player has no playable role left — an organizer can strip
    * every rank mid-draft. Render that as "no role", never as a default one.
    */
-  primary_role: DraftRole | null;
-  sub_role: string | null;
+  primary_role: RoleRef | null;
   is_flex: boolean;
   /**
    * Server-resolved: the ONE rank that represents this player in THIS draft.
@@ -104,8 +104,8 @@ export interface DraftPlayer {
    * playable, else their lead role. `null` for everyone else — their roster
    * role is the pick's `target_role`.
    */
-  captain_role: DraftRole | null;
-  secondary_roles: string[];
+  captain_role: RoleRef | null;
+  secondary_roles: RoleRef[];
   role_ranks: Record<string, number>;
   /** Per-role provenance of `role_ranks`, keyed the same way. */
   role_sources: Record<string, DraftRankSource>;
@@ -124,7 +124,7 @@ export interface DraftPick {
   round_no: number;
   pick_in_round: number;
   draft_team_id: number;
-  target_role: DraftRole | null;
+  target_role: RoleRef | null;
   target_rank_value: number | null;
   status: DraftPickStatus;
   picked_player_id: number | null;
@@ -180,7 +180,7 @@ export interface DraftFeasibility {
 
 export interface DraftPickOption {
   player_id: number;
-  role: DraftRole;
+  role: RoleRef;
   is_safe: boolean;
   reason_code: string | null;
   unmatched_slots: DraftSlot[];
@@ -198,7 +198,7 @@ export interface DraftPickOptionsResponse {
 export interface DraftTeamFitScore {
   player_id: number;
   /** `null` under an all-flex shape: nobody is seated on a role. */
-  role: DraftRole | null;
+  role: RoleRef | null;
   score: number;
 }
 
@@ -211,7 +211,7 @@ export interface DraftTeamFitResponse {
 /** What the autopick would take for the team on the clock right now. */
 export interface DraftAutopickPreview {
   player_id: number;
-  role: DraftRole | null;
+  role: RoleRef | null;
   /** `queue`: the first safe player of the captain's list; `fit`: the strategy's best fit. */
   source: "queue" | "fit";
 }
@@ -249,7 +249,7 @@ export interface DraftJournalEntry {
   pick_no: number | null;
   team_id: number | null;
   player_id: number | null;
-  role: DraftRole | null;
+  role: RoleRef | null;
   seconds: number | null;
 }
 
@@ -282,7 +282,7 @@ export interface DraftEventData {
   blocked_reason?: string;
   /** Why an autopick fired, on `draft.autopicked`. Informational. */
   autopick_reason?: string;
-  target_role?: DraftRole | null;
+  target_role?: RoleRef | null;
   target_rank_value?: number | null;
   pick_version?: number;
   player_id?: number;
@@ -308,7 +308,7 @@ interface DraftPoolCaptainInput {
   registration_id: number;
   name?: string | null;
   /** The role the captain is seated on; omitted/null = their lead role. */
-  role?: DraftRole | null;
+  role?: RoleRef | null;
 }
 
 export type DraftCaptainOrder = "manual" | "weakest_first" | "strongest_first" | "random";
@@ -345,7 +345,7 @@ export interface DraftSeedResponse {
 }
 
 export interface DraftRoleEditRequest {
-  role: DraftRole;
+  role: RoleRef;
   /**
    * REQUIRED and positive. A rankless role is not playable, so adding one used
    * to create a role the draft would never offer; the server dropped the
@@ -359,7 +359,7 @@ export interface DraftRoleEditRequest {
 
 export interface DraftRoleEditResponse {
   player_id: number;
-  role: DraftRole;
+  role: RoleRef;
   player_version: number;
   committed: boolean;
   before: DraftFeasibility;

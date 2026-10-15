@@ -25,7 +25,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.core.enums import DraftStatus, HeroClass  # noqa: E402
+from shared.core.enums import DraftStatus  # noqa: E402
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession  # noqa: E402
 from shared.models.registration.registration import BalancerRegistrationRole  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
@@ -66,7 +66,7 @@ def test_role_edit_requires_setup_ready_or_paused(status: DraftStatus) -> None:
             _draft(status),
             _player(),
             _roster(),
-            role=HeroClass.support,
+            role="support",
             rank_value=2500,
             reason="Player confirmed secondary role",
             expected_version=4,
@@ -81,7 +81,7 @@ def test_role_edit_rejects_a_role_the_player_already_plays() -> None:
             _draft(),
             _player(),
             _roster(),
-            role=HeroClass.damage,
+            role="damage",
             rank_value=3000,
             reason="Duplicate",
             expected_version=4,
@@ -98,7 +98,7 @@ def test_a_role_declared_but_unranked_is_not_a_duplicate() -> None:
         _draft(),
         _player(),
         roster(120, ranks={"damage": 4000, "support": None}),
-        role=HeroClass.support,
+        role="support",
         rank_value=2500,
         reason="  Rank confirmed in VOD  ",
         expected_version=4,
@@ -115,7 +115,7 @@ def test_role_edit_requires_a_reason_a_positive_rank_and_the_current_version() -
             _draft(),
             player,
             _roster(),
-            role=HeroClass.support,
+            role="support",
             rank_value=2500,
             reason="   ",
             expected_version=4,
@@ -129,7 +129,7 @@ def test_role_edit_requires_a_reason_a_positive_rank_and_the_current_version() -
             _draft(),
             player,
             _roster(),
-            role=HeroClass.support,
+            role="support",
             rank_value=0,
             reason="Confirmed by player",
             expected_version=4,
@@ -141,7 +141,7 @@ def test_role_edit_requires_a_reason_a_positive_rank_and_the_current_version() -
             _draft(),
             player,
             _roster(),
-            role=HeroClass.support,
+            role="support",
             rank_value=2500,
             reason="Confirmed by player",
             expected_version=3,
@@ -158,7 +158,7 @@ def test_role_edit_accepts_a_seat_the_engine_resolved_no_roster_for() -> None:
             _draft(),
             _player(),
             None,
-            role=HeroClass.support,
+            role="support",
             rank_value=2500,
             reason="Rank recovered",
             expected_version=4,
@@ -172,10 +172,10 @@ def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state
         team_ids=(10, 20),
         slot_targets={"tank": 1, "damage": 1, "support": 1},
         players=(
-            feasibility.EligiblePlayer(1, frozenset({HeroClass.support})),
-            feasibility.EligiblePlayer(2, frozenset({HeroClass.damage})),
-            feasibility.EligiblePlayer(3, frozenset({HeroClass.damage})),
-            feasibility.EligiblePlayer(4, frozenset({HeroClass.damage})),
+            feasibility.EligiblePlayer(1, frozenset({"support"})),
+            feasibility.EligiblePlayer(2, frozenset({"damage"})),
+            feasibility.EligiblePlayer(3, frozenset({"damage"})),
+            feasibility.EligiblePlayer(4, frozenset({"damage"})),
         ),
         assignments=(
             feasibility.DraftAssignment(101, 10, "tank"),
@@ -183,11 +183,11 @@ def test_role_edit_preview_can_restore_global_feasibility_without_mutating_state
         ),
     )
 
-    preview = rules.preview_role_addition(state, player_id=2, role=HeroClass.support)
+    preview = rules.preview_role_addition(state, player_id=2, role="support")
 
     assert preview.before.is_feasible is False
     assert preview.after.is_feasible is True
-    assert state.players[1].playable_roles == frozenset({HeroClass.damage})
+    assert state.players[1].playable_roles == frozenset({"damage"})
 
 
 class _FakeSession:
@@ -248,10 +248,10 @@ def _preview(player_id: int = 20):
     state = feasibility.DraftFeasibilityState(
         team_ids=(10,),
         slot_targets={"tank": 1, "damage": 1, "support": 1},
-        players=(feasibility.EligiblePlayer(player_id, frozenset({HeroClass.damage})),),
+        players=(feasibility.EligiblePlayer(player_id, frozenset({"damage"})),),
         assignments=(),
     )
-    return rules.preview_role_addition(state, player_id=player_id, role=HeroClass.support)
+    return rules.preview_role_addition(state, player_id=player_id, role="support")
 
 
 def test_apply_role_edit_writes_the_registration_bumps_the_seat_and_audits() -> None:
@@ -268,7 +268,7 @@ def test_apply_role_edit_writes_the_registration_bumps_the_seat_and_audits() -> 
             _draft(),
             player,
             before,
-            role=HeroClass.support,
+            role="support",
             rank_value=2750,
             reason="  Confirmed secondary role  ",
             actor_auth_user_id=99,
@@ -323,7 +323,7 @@ def test_apply_role_edit_reactivates_an_existing_inactive_registration_role() ->
             _draft(),
             _player(),
             roster(120, ranks={"damage": 4000, "support": None}),
-            role=HeroClass.support,
+            role="support",
             rank_value=2750,
             reason="Rank confirmed in VOD",
             actor_auth_user_id=99,

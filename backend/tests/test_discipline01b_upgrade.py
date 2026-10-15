@@ -412,6 +412,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         "registration roles",
         "team member roles",
         "mix player roles",
+        "draft roles",
     } <= set(statuses)
 
 
@@ -475,6 +476,40 @@ def _seed_team_formats(conn, ids: dict) -> None:
         workspace_id=ids["ws_a"],
         config_json=Json({"role_settings": {"flex": {"impact": 1.3}}}),
     )
+    session_id = _insert(conn, "balancer.draft_session", tournament_id=ids["t_a"], workspace_id=ids["ws_a"])
+    team = _insert(conn, "balancer.draft_team", session_id=session_id, name="A", draft_position=1)
+    ids["captain"] = _insert(
+        conn,
+        "balancer.draft_player",
+        session_id=session_id,
+        registration_id=ids["reg_a"],
+        is_captain=True,
+        captain_role="Tank",
+    )
+    for overall, role in ((1, "damage"), (2, "flex"), (3, None)):
+        ids[f"pick_{overall}"] = _insert(
+            conn,
+            "balancer.draft_pick",
+            session_id=session_id,
+            overall_no=overall,
+            round_no=1,
+            pick_in_round=overall,
+            draft_team_id=team,
+            target_role=role,
+        )
+
+
+def test_draft_roles_point_at_module_roles_and_flex_is_an_open_slot(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    code = "SELECT r.code FROM catalog.role r WHERE r.id = %s"
+    captain = _scalar(conn, "SELECT captain_role_id FROM balancer.draft_player WHERE id = %s", (ids["captain"],))
+    assert _scalar(conn, code, (captain,)) == "tank"
+    picks = [
+        _scalar(conn, "SELECT target_role_id FROM balancer.draft_pick WHERE id = %s", (ids[f"pick_{n}"],))
+        for n in (1, 2, 3)
+    ]
+    assert _scalar(conn, code, (picks[0],)) == "damage"
+    assert picks[1:] == [None, None]
 
 
 _FORMAT = """
@@ -860,4 +895,35 @@ def test_mix_role_reconcile_rejects_a_matching_code_outside_the_owners_rated_mod
         tx.execute(function)
         tx.execute(create)
         assert ("mix player roles", ids["mix_player"], "support") in _rows(tx, skipped)
+        tx.rollback()
+
+
+@pytest.mark.parametrize("wrong_scope", ["discipline", "dimension", "workspace"])
+def test_draft_role_reconcile_rejects_roles_outside_the_owners_rated_module(wrong_scope, migrated) -> None:
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        player_id, role_id, dimension_id = _rows(
+            tx, "SELECT id, captain_role_id, dimension_id FROM balancer.draft_player WHERE captain_role_id IS NOT NULL"
+        )[0]
+        values = {"dimension_id": dimension_id, "code": "tank", "name": "Tank"}
+        if wrong_scope in ("discipline", "dimension"):
+            values["dimension_id"] = _insert(
+                tx,
+                "catalog.role_dimension",
+                discipline="lol" if wrong_scope == "discipline" else "overwatch",
+                code="other",
+                name="Other",
+                selection_mode="single",
+                rated=wrong_scope == "discipline",
+            )
+        else:
+            values.update(workspace_id=migrated["ids"]["ws_a"], parent_role_id=role_id)
+        replacement = _insert(tx, "catalog.role", **values)
+        tx.execute(
+            "UPDATE balancer.draft_player SET captain_role_id = %s, dimension_id = %s WHERE id = %s",
+            (replacement, values["dimension_id"], player_id),
+        )
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        assert ("draft roles", player_id, "captain Tank") in _rows(tx, skipped)
         tx.rollback()

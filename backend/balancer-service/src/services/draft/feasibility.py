@@ -17,8 +17,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HERO_TYPE_CLASSES, DraftAutopickStrategy, DraftPlayerStatus, DraftStatus, HeroClass
+from shared.core.enums import DraftAutopickStrategy, DraftPlayerStatus, DraftStatus
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.domain.roster_shape import RosterShape
 from shared.models.balancer.draft import DraftPick, DraftSession
 from shared.repository.balance import BalancerTournamentConfigRepository
@@ -130,7 +131,7 @@ class DraftFeasibilityService:
         self,
         session: AsyncSession,
         draft_session: DraftSession,
-    ) -> dict[HeroClass, float]:
+    ) -> dict[str, float]:
         """Base per-role impact for this draft: defaults <- the tournament's stored config.
 
         Read live on every call rather than captured at session start, so the
@@ -142,7 +143,11 @@ class DraftFeasibilityService:
             AlgorithmConfig(),
             normalize_config_payload(stored.config_json if stored is not None else None),
         )
-        return {role: config.role_settings[role.slot_code].impact for role in HERO_TYPE_CLASSES}
+        owner = await loaders.tournament(session, draft_session)
+        return {
+            role.code: config.role_settings[role.code].impact if role.code in config.role_settings else 1.0
+            for role in DISCIPLINES[owner.discipline].rated_dimension.roles
+        }
 
     async def state_from_snapshot(
         self,
@@ -275,7 +280,8 @@ class DraftFeasibilityService:
         counts = rules.team_slot_counts(
             snapshot.players, snapshot.picks, current.draft_team_id, shape, snapshot.rosters
         )
-        capacity = rules.role_openings(shape, counts)
+        impact = await self.resolve_role_impact(session, draft_session)
+        capacity = rules.role_openings(shape, counts, impact)
         # Same construction as autopick's, from the same snapshot rosters, so
         # a suggestion and the autopick that follows it cannot disagree.
         fit_players = sug.fit_players(available, snapshot.rosters)
@@ -289,7 +295,7 @@ class DraftFeasibilityService:
         ranked = sug.rank_suggestions(
             fit_players,
             capacity,
-            rules.team_fit_config(shape, counts, await self.resolve_role_impact(session, draft_session)),
+            rules.team_fit_config(shape, counts, impact),
             strategy=DraftAutopickStrategy(draft_session.autopick_strategy),
             limit=5,
             allowed_options=safe_options,
@@ -316,7 +322,8 @@ class DraftFeasibilityService:
         snapshot = await self.load_read_snapshot(session, draft_session)
         shape = await self.resolve_shape(session, draft_session)
         counts = rules.team_slot_counts(snapshot.players, snapshot.picks, team_id, shape, snapshot.rosters)
-        capacity = rules.role_openings(shape, counts)
+        impact = await self.resolve_role_impact(session, draft_session)
+        capacity = rules.role_openings(shape, counts, impact)
         if not any(opening > 0 for opening in capacity.values()):
             return []  # this team's roster is full
         available = [p for p in snapshot.players if p.status == DraftPlayerStatus.AVAILABLE.value]
@@ -324,7 +331,7 @@ class DraftFeasibilityService:
         results = sug.candidates(
             players,
             capacity,
-            rules.team_fit_config(shape, counts, await self.resolve_role_impact(session, draft_session)),
+            rules.team_fit_config(shape, counts, impact),
             DraftAutopickStrategy(draft_session.autopick_strategy),
         )
         by_id = {player.player_id: player for player in players}

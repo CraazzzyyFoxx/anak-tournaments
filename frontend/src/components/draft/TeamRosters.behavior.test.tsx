@@ -77,14 +77,13 @@ const drafted: DraftPlayer = {
   registration_id: 70,
   user_id: null,
   battle_tag: "Ana#1234",
-  primary_role: "support",
-  sub_role: null,
+  primary_role: { dimension: "player_role", role: "support" },
   is_flex: false,
   effective_rank: 4000,
   status: "picked",
   is_captain: false,
   drafted_by_team_id: 1,
-  secondary_roles: ["damage"],
+  secondary_roles: [{ dimension: "player_role", role: "damage" }],
   role_ranks: { support: 2800, damage: 4000 },
   role_sources: { support: "registration", damage: "registration" },
   role_top_heroes: {},
@@ -124,7 +123,7 @@ function makePick(
   };
 }
 
-const supportPick = makePick(1, 1, 1, 1, "completed", { picked_player_id: 7, target_role: "support" });
+const supportPick = makePick(1, 1, 1, 1, "completed", { picked_player_id: 7, target_role: { dimension: "player_role", role: "support" } });
 
 function makeBoard(
   shape: RosterShape,

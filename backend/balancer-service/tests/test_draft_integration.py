@@ -32,13 +32,13 @@ from shared.core.enums import (  # noqa: E402
     DraftPickStatus,
     DraftPlayerStatus,
     DraftStatus,
-    HeroClass,
     TournamentStatus,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.balancer.draft import DraftPick  # noqa: E402
+from shared.models.catalog import CatalogRole  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
@@ -49,6 +49,7 @@ from shared.models.registration.registration import (  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from shared.repository import CatalogRoleRepository  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from src import models  # noqa: E402
@@ -389,7 +390,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                     )
                 )
             ).all()
-            chosen = available[0]
+            chosen = min(available, key=lambda player: player.id)  # First seeded seat is damage.
             res = await selection.selection_service.select(
                 s,
                 draft,
@@ -452,7 +453,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 current,
                 player_id=chosen.id,
                 expected_version=current.version,
-                target_role=HeroClass.damage,
+                target_role="damage",
                 actor_user_id=team.captain_user_id,
                 actor_auth_user_id=None,
                 actor_player_ids=[team.captain_user_id],
@@ -460,7 +461,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
             await s.commit()
             # The pick records the drafted off-role and its rank (not primary TANK@3000).
-            self.assertEqual(res.pick.target_role, HeroClass.damage.slot_code)
+            self.assertEqual(res.pick.target_role, "damage")
             self.assertEqual(res.pick.target_rank_value, 2500)
 
     async def test_select_allows_captain_auth_user_without_team_import(self) -> None:
@@ -1043,7 +1044,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                     )
                 )
             ).all()
-            chosen = available[0]
+            chosen = min(available, key=lambda player: player.id)  # First seeded seat is damage.
 
             await selection.selection_service.select(
                 s,
@@ -1143,7 +1144,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             preview = queued.autopick_preview
             self.assertIsNotNone(preview)
             self.assertEqual(preview.player_id, weakest_damage)
-            self.assertEqual(preview.role, "damage")
+            self.assertEqual(preview.role.role, "damage")
             self.assertEqual(preview.source, "queue")
 
             result = await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
@@ -1151,7 +1152,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             # Preview and autopick are one code path: the board must land on
             # exactly the player the captain was shown.
             self.assertEqual(result.pick.picked_player_id, preview.player_id)
-            self.assertEqual(result.pick.target_role, preview.role)
+            self.assertEqual(result.pick.target_role, preview.role.role)
 
     async def test_an_empty_queue_leaves_autopick_on_its_fit_strategy(self) -> None:
         async with self.Session() as s:
@@ -1232,7 +1233,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
             # The captain already fills this shape's single tank slot and there
             # are no flex slots, so damage is the only role left to seat.
-            self.assertEqual({score.role.slot_code for score in scores}, {"damage"})
+            self.assertEqual({score.role for score in scores}, {"damage"})
             self.assertEqual({score.player_id for score in scores}, set(pool["damage"]))
             self.assertTrue(all(1 <= score.score <= 99 for score in scores))
             # Min-max normalization: the spread always reaches both ends.
@@ -1349,3 +1350,87 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
         denied = await broker.handlers["rpc.balancer.draft.queue_set"]({**reader, "payload": {"player_ids": []}}, None)
         self.assertEqual(denied["error"]["code"], "forbidden")
+
+    async def test_all_role_input_boundaries_reject_foreign_dimensions_and_sub_roles(self) -> None:
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            draft = await self._live_draft(s)
+            pick = await s.get(DraftPick, draft.current_pick_id)
+            players = (
+                (await s.scalars(sa.select(models.DraftPlayer).where(models.DraftPlayer.session_id == draft.id)))
+                .unique()
+                .all()
+            )
+            player = next(player for player in players if not player.is_captain)
+            captain = next(player for player in players if player.is_captain)
+            roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
+            s.add(
+                CatalogRole(
+                    dimension_id=roles["damage"].dimension_id,
+                    code="damage_custom",
+                    name="Custom",
+                    workspace_id=self.workspace_id,
+                    parent_role_id=roles["damage"].id,
+                )
+            )
+            await s.commit()
+            # Parent is derived output, never an alternative lookup key.
+            resolved = await draft_rpc._resolve_role(
+                s, draft, RoleRef(dimension="player_role", role="damage", parent="tank")
+            )
+            self.assertEqual(resolved, "damage")
+            self.assertIsNone(await draft_rpc._resolve_role(s, draft, None))
+
+        identity = _identity(self.captain_auth_user_ids[0], self.workspace_id, ["create"])
+        for ref, error in (
+            ({"dimension": "lane", "role": "damage"}, "role_dimension_mismatch"),
+            ({"dimension": "player_role", "role": "damage_custom", "parent": "damage"}, "unknown_role"),
+        ):
+            cases = (
+                (
+                    "seed",
+                    {"id": draft.id, "tournament_id": self.tournament_id},
+                    {
+                        "expected_version": draft.version,
+                        "pool_captains": [{"registration_id": captain.registration_id, "role": ref}],
+                    },
+                ),
+                (
+                    "player_role_edit",
+                    {"id": player.id, "session_id": draft.id},
+                    {
+                        "expected_version": player.version,
+                        "role": ref,
+                        "rank_value": 2500,
+                        "reason": "Role boundary",
+                        "preview_only": True,
+                    },
+                ),
+                (
+                    "pick_select",
+                    {"id": pick.id},
+                    {
+                        "expected_version": pick.version,
+                        "player_id": player.id,
+                        "target_role": ref,
+                    },
+                ),
+                (
+                    "pick_override",
+                    {"id": pick.id},
+                    {
+                        "expected_version": pick.version,
+                        "player_id": player.id,
+                        "target_role": ref,
+                    },
+                ),
+            )
+            for subject, path, payload in cases:
+                with self.subTest(subject=subject, ref=ref):
+                    result = await broker.handlers[f"rpc.balancer.draft.{subject}"](
+                        {**path, "identity": identity, "payload": payload}, None
+                    )
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(result["error"]["code"], "unprocessable")
+                    self.assertIn(error, result["error"]["message"])

@@ -15,13 +15,11 @@ from datetime import datetime, timedelta
 from typing import Final, Protocol, TypeVar
 
 from shared.core.enums import (
-    HERO_TYPE_CLASSES,
     DraftCaptainOrder,
     DraftFormat,
     DraftPickStatus,
     DraftPlayerStatus,
     DraftStatus,
-    HeroClass,
 )
 from shared.core.errors import ApiHTTPException
 from shared.domain.roster import PlayerRoster
@@ -335,7 +333,7 @@ def team_slot_counts(
             code = pk.target_role
         else:
             role = seat_role(rosters.get(p.id), p.captain_role)
-            code = role.slot_code if role is not None else None
+            code = role if role is not None else None
         if code in role_slot_targets and counts[code] < role_slot_targets[code]:
             counts[code] += 1
     if FLEX_SLOT_CODE in counts:
@@ -346,7 +344,7 @@ def team_slot_counts(
     return counts
 
 
-def role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[HeroClass, int]:
+def role_openings(shape: RosterShape, counts: Mapping[str, int], roles: Collection[str]) -> dict[str, int]:
     """How many more slots each role can still take on this team.
 
     A role lands either in its own remaining role slot or in any free flex slot,
@@ -356,10 +354,7 @@ def role_openings(shape: RosterShape, counts: Mapping[str, int]) -> dict[HeroCla
     """
     targets = shape.slots
     free_flex = max(0, targets.get(FLEX_SLOT_CODE, 0) - counts.get(FLEX_SLOT_CODE, 0))
-    return {
-        role: max(0, targets.get(role.slot_code, 0) - counts.get(role.slot_code, 0)) + free_flex
-        for role in HERO_TYPE_CLASSES
-    }
+    return {role: max(0, targets.get(role, 0) - counts.get(role, 0)) + free_flex for role in roles}
 
 
 #: Share of a role's impact a team gives up once every seat that role can take
@@ -370,7 +365,7 @@ FILLED_ROLE_DISCOUNT: Final = 0.5
 def team_fit_config(
     shape: RosterShape,
     counts: Mapping[str, int],
-    role_impact: Mapping[HeroClass, float],
+    role_impact: Mapping[str, float],
 ) -> FitConfig:
     """Fit weights for ONE team: a role's impact shrinks as the team fills it.
 
@@ -385,12 +380,12 @@ def team_fit_config(
     balancer config's ``role_settings``), read by the caller -- the draft and the
     solver weigh a role the same or a captain's "best fit" is not the balancer's.
     """
-    openings = role_openings(shape, counts)
+    openings = role_openings(shape, counts, role_impact)
     targets = shape.slots
     flex = targets.get(FLEX_SLOT_CODE, 0)
-    impact: dict[HeroClass, float] = {}
+    impact: dict[str, float] = {}
     for role, weight in role_impact.items():
-        seats = targets.get(role.slot_code, 0) + flex
+        seats = targets.get(role, 0) + flex
         filled = 1.0 - openings[role] / seats if seats else 1.0
         impact[role] = weight * (1.0 - FILLED_ROLE_DISCOUNT * filled)
     return FitConfig(role_impact=impact)
@@ -416,7 +411,7 @@ def resolve_pick_slot(
     shape: RosterShape,
     counts: Mapping[str, int],
     roster: PlayerRoster | None,
-    target_role: HeroClass | None,
+    target_role: str | None,
 ) -> SlotDecision:
     """Validate one pick against the shape and this team's already filled slots.
 
@@ -434,7 +429,7 @@ def resolve_pick_slot(
     # A role-less roster has no role to validate against, so a requested role
     # carries no meaning: drop it instead of rejecting the request.
     requested = target_role if shape.has_role_slots else None
-    if not roster.covers(requested.slot_code if requested is not None else None):
+    if not roster.covers(requested):
         raise _err("illegal_role", "Player cannot play the requested role", status_code=422)
     lead = roster.primary
     if lead is None:  # unreachable while ``is_draftable`` holds; never guess a role
@@ -443,14 +438,14 @@ def resolve_pick_slot(
             "This player has no ranked role in the balancer and cannot be picked",
             status_code=422,
         )
-    role = requested or HeroClass.from_slot_code(lead.role)
-    if role_openings(shape, counts).get(role, 0) <= 0:
+    role = requested or lead.role
+    if role_openings(shape, counts, roster.playable_roles).get(role, 0) <= 0:
         raise _err(
             "slot_filled",
-            f"No roster slot left for {role.slot_code} on this team",
+            f"No roster slot left for {role} on this team",
             status_code=422,
         )
-    return SlotDecision(role=role, recorded_role=role.slot_code if shape.has_role_slots else None)
+    return SlotDecision(role=role, recorded_role=role if shape.has_role_slots else None)
 
 
 def unsafe_pick_error(report: DraftFeasibilityReport) -> ApiHTTPException:
@@ -509,7 +504,7 @@ def validate_role_edit_request(
     player: DraftPlayer,
     roster: PlayerRoster | None,
     *,
-    role: HeroClass,
+    role: str,
     rank_value: int,
     reason: str,
     expected_version: int,
@@ -528,8 +523,8 @@ def validate_role_edit_request(
         raise _err("player_not_available", "Only a remaining available player can receive an emergency role")
     if player.version != expected_version:
         raise _err("draft_player_stale", "Player snapshot changed; reload the role-edit preview", status_code=409)
-    if roster is not None and role.slot_code in roster.playable_roles:
-        raise _err("role_already_exists", f"Player already plays {role.slot_code}", status_code=409)
+    if roster is not None and role in roster.playable_roles:
+        raise _err("role_already_exists", f"Player already plays {role}", status_code=409)
     if rank_value <= 0:
         raise _err("role_rank_required", "An emergency role needs a rank; a rankless role is not playable")
     normalized_reason = reason.strip()
@@ -542,7 +537,7 @@ def preview_role_addition(
     state: DraftFeasibilityState,
     *,
     player_id: int,
-    role: HeroClass,
+    role: str,
 ) -> RoleEditPreview:
     before = analyze_draft_feasibility(
         team_ids=state.team_ids,

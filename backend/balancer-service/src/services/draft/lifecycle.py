@@ -42,6 +42,7 @@ from shared.schemas.draft_format import session_format_from_tournament
 from src.domain.draft import ranks, rules
 from src.domain.draft.entities import PoolSeat
 from src.domain.draft.errors import err as _err
+from src.services.draft import loaders
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.draft.rosters import DraftRosterService, draft_rosters
 
@@ -239,6 +240,7 @@ class DraftLifecycleService:
             raise rules.unranked_pool_error(unranked)
         shape = await self.feasibility.resolve_shape(session, draft_session)
         rules.validate_captain_roles(captains, rosters, shape)
+        rows = await loaders.rated_rows(session, draft_session)
 
         # Re-seed: clear any prior teams/players/picks (cascade via relationships).
         await self.picks_repo.delete_by_session(session, draft_session.id)
@@ -308,7 +310,8 @@ class DraftLifecycleService:
                     is_captain=True,
                     status=DraftPlayerStatus.PICKED.value,
                     drafted_by_team_id=team_by_position[position].id,
-                    captain_role=seat.captain_role,
+                    captain_role_row=rows[seat.captain_role] if seat.captain_role else None,
+                    dimension_id=rows[seat.captain_role].dimension_id if seat.captain_role else None,
                 )
             )
         for seat in seats:
@@ -617,7 +620,8 @@ class DraftLifecycleService:
             pick.picked_by_workspace_member_id = None
             pick.is_autopick = False
             pick.is_admin_override = False
-            pick.target_role = None
+            pick.target_role_row = None
+            pick.dimension_id = None
             pick.target_rank_value = None
             # The grace period is per pick: a pick autopicked out of overtime must
             # come back on its MAIN clock, not already "in overtime", or the next

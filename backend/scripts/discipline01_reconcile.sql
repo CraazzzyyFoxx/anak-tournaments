@@ -146,6 +146,23 @@ SELECT 'mix player roles', pr.custom_game_player_id, pr.role,
   JOIN balancer.custom_game g ON g.id = p.custom_game_id
  WHERE pr.role IS NOT NULL
 UNION ALL
+SELECT 'draft roles', x.id, x.source || ' ' || x.code,
+       CASE WHEN lower(btrim(x.code)) = 'flex' THEN x.role_id IS NULL AND x.dimension_id IS NULL
+            ELSE EXISTS (SELECT 1 FROM catalog.role r JOIN catalog.role_dimension d ON d.id = r.dimension_id
+                          WHERE r.id = x.role_id AND r.dimension_id = x.dimension_id AND r.workspace_id IS NULL
+                            AND d.discipline = x.discipline AND d.rated AND r.code = lower(btrim(x.code))) END
+  FROM (SELECT 'captain' AS source, p.id, p.captain_role AS code, p.captain_role_id AS role_id, p.dimension_id, t.discipline
+          FROM balancer.draft_player p
+          JOIN balancer.draft_session ds ON ds.id = p.session_id
+          JOIN tournament.tournament t ON t.id = ds.tournament_id
+         WHERE p.captain_role IS NOT NULL
+        UNION ALL
+        SELECT 'pick', k.id, k.target_role, k.target_role_id, k.dimension_id, t.discipline
+          FROM balancer.draft_pick k
+          JOIN balancer.draft_session ds ON ds.id = k.session_id
+          JOIN tournament.tournament t ON t.id = ds.tournament_id
+         WHERE k.target_role IS NOT NULL) x
+UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        NOT EXISTS (SELECT 1 FROM catalog.entity_legacy l WHERE l.legacy_kind = soft.kind AND l.legacy_id = soft.item_id)

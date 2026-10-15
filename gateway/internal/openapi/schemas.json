@@ -24718,19 +24718,13 @@
         "role": {
           "anyOf": [
             {
-              "enum": [
-                "tank",
-                "damage",
-                "support"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Role"
+          "default": null
         },
         "source": {
           "enum": [
@@ -24972,19 +24966,13 @@
         "role": {
           "anyOf": [
             {
-              "enum": [
-                "tank",
-                "damage",
-                "support"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Role"
+          "default": null
         },
         "seconds": {
           "anyOf": [
@@ -25111,13 +25099,7 @@
           "title": "Reason Code"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
+          "$ref": "#/components/schemas/balancer.RoleRef"
         },
         "unmatched_slots": {
           "items": {
@@ -25211,19 +25193,13 @@
         "target_role": {
           "anyOf": [
             {
-              "enum": [
-                "tank",
-                "damage",
-                "support"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Target Role"
+          "default": null
         }
       },
       "required": [
@@ -25341,13 +25317,12 @@
         "target_role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
-          ],
-          "title": "Target Role"
+          ]
         },
         "version": {
           "title": "Version",
@@ -25389,19 +25364,13 @@
         "target_role": {
           "anyOf": [
             {
-              "enum": [
-                "tank",
-                "damage",
-                "support"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Target Role"
+          "default": null
         }
       },
       "required": [
@@ -25467,14 +25436,13 @@
         "captain_role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Captain Role"
+          "default": null
         },
         "custom_fields": {
           "items": {
@@ -25533,13 +25501,12 @@
         "primary_role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
-          ],
-          "title": "Primary Role"
+          ]
         },
         "registration_id": {
           "title": "Registration Id",
@@ -25579,7 +25546,7 @@
         },
         "secondary_roles": {
           "items": {
-            "type": "string"
+            "$ref": "#/components/schemas/balancer.RoleRef"
           },
           "title": "Secondary Roles",
           "type": "array"
@@ -25590,17 +25557,6 @@
         },
         "status": {
           "$ref": "#/components/schemas/balancer.DraftPlayerStatus"
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Sub Role"
         },
         "user_id": {
           "anyOf": [
@@ -25625,7 +25581,6 @@
         "user_id",
         "battle_tag",
         "primary_role",
-        "sub_role",
         "is_flex",
         "status",
         "is_captain",
@@ -25666,19 +25621,13 @@
         "role": {
           "anyOf": [
             {
-              "enum": [
-                "tank",
-                "damage",
-                "support"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Role"
+          "default": null
         }
       },
       "required": [
@@ -25717,13 +25666,7 @@
           "type": "string"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
+          "$ref": "#/components/schemas/balancer.RoleRef"
         }
       },
       "required": [
@@ -25756,13 +25699,7 @@
           "type": "integer"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
+          "$ref": "#/components/schemas/balancer.RoleRef"
         }
       },
       "required": [
@@ -26257,13 +26194,7 @@
           "type": "integer"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
+          "$ref": "#/components/schemas/balancer.RoleRef"
         }
       },
       "required": [
@@ -26335,19 +26266,13 @@
         "role": {
           "anyOf": [
             {
-              "enum": [
-                "tank",
-                "damage",
-                "support"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/balancer.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Role"
+          "default": null
         },
         "score": {
           "title": "Score",

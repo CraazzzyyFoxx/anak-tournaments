@@ -2148,7 +2148,8 @@ erDiagram
         int round_no
         int pick_in_round
         bigint draft_team_id FK
-        varchar(16) target_role "nullable"
+        bigint dimension_id FK "nullable"
+        bigint target_role_id FK "nullable"
         int target_rank_value "nullable"
         varchar(16) status
         bigint picked_player_id FK "nullable"
@@ -2171,7 +2172,8 @@ erDiagram
         varchar(16) status
         boolean is_captain
         bigint drafted_by_team_id FK "nullable"
-        varchar(16) captain_role "nullable"
+        bigint dimension_id FK "nullable"
+        bigint captain_role_id FK "nullable"
         int version
     }
     BALANCER_DRAFT_SESSION {
@@ -2282,6 +2284,10 @@ erDiagram
     BALANCER_DRAFT_TEAM ||--o{ BALANCER_DRAFT_PICK : "draft_team_id"
     BALANCER_REGISTRATION ||--o{ BALANCER_DRAFT_PLAYER : "registration_id"
     BALANCER_TEAM ||--o{ BALANCER_TEAM_SLOT : "team_id"
+    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PICK : "dimension_id"
+    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PICK : "target_role_id"
+    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PLAYER : "captain_role_id"
+    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PLAYER : "dimension_id"
     PUBLIC_WORKSPACE |o--o{ BALANCER_BALANCE : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_DRAFT_SESSION : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_TOURNAMENT_CONFIG : "workspace_id"

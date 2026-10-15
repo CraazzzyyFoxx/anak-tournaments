@@ -18,7 +18,6 @@ import asyncio
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HeroClass
 from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession
 from shared.models.registration.registration import BalancerRegistration, BalancerRegistrationRole
@@ -92,7 +91,7 @@ class DraftRoleEditService:
         session: AsyncSession,
         registration_id: int,
         *,
-        role: HeroClass,
+        role: str,
         rank_value: int,
     ) -> None:
         """Add or re-activate the role on the registration, with its rank.
@@ -104,7 +103,7 @@ class DraftRoleEditService:
         existing = await session.scalar(
             sa.select(BalancerRegistrationRole).where(
                 BalancerRegistrationRole.registration_id == registration_id,
-                BalancerRegistrationRole.role == role.slot_code,
+                BalancerRegistrationRole.role == role,
             )
         )
         if existing is not None:
@@ -126,7 +125,7 @@ class DraftRoleEditService:
         catalog_roles = await CatalogRoleRepository().rated_rows(
             session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
         )
-        leaf = catalog_roles[role.slot_code]
+        leaf = catalog_roles[role]
         await self.roles_repo.create(
             session,
             BalancerRegistrationRole(
@@ -147,7 +146,7 @@ class DraftRoleEditService:
         player: DraftPlayer,
         roster: PlayerRoster | None,
         *,
-        role: HeroClass,
+        role: str,
         rank_value: int,
         reason: str,
         actor_auth_user_id: int,
@@ -191,7 +190,7 @@ class DraftRoleEditService:
         draft_session: DraftSession,
         *,
         player_id: int,
-        role: HeroClass,
+        role: str,
         rank_value: int,
         reason: str,
         expected_version: int,

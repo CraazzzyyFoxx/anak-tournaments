@@ -38,8 +38,7 @@ function player(id: number): DraftPlayer {
     registration_id: id * 10,
     user_id: id,
     battle_tag: `P${id}`,
-    primary_role: "damage",
-    sub_role: null,
+    primary_role: { dimension: "player_role", role: "damage" },
     is_flex: false,
     effective_rank: 3000,
     status: "available",
@@ -349,14 +348,14 @@ describe("draft safety state", () => {
       ev("draft.pick_made", {
         pick_id: 1,
         picked_player_id: 50,
-        target_role: "support",
+        target_role: { dimension: "player_role", role: "support" },
         target_rank_value: 2875,
         pick_version: 4
       })
     );
 
     const resolved = next.picks.find((p) => p.id === 1)!;
-    expect(resolved.target_role).toBe("support");
+    expect(resolved.target_role).toEqual({ dimension: "player_role", role: "support" });
     expect(resolved.target_rank_value).toBe(2875);
     expect(resolved.version).toBe(4);
   });
@@ -403,7 +402,7 @@ describe("draft safety state", () => {
       options: [
         {
           player_id: 50,
-          role: "support" as const,
+          role: { dimension: "player_role", role: "support" },
           is_safe: true,
           reason_code: null,
           unmatched_slots: [],

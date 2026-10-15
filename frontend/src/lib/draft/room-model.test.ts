@@ -22,7 +22,7 @@ const shape = (slots: RosterShape["slots"]): RosterShape => {
 
 const player = (id: number, patch: Partial<DraftPlayer>): DraftPlayer => ({
   id, session_id: 1, registration_id: id, user_id: id, battle_tag: `P${id}`,
-  primary_role: "damage", sub_role: null, is_flex: false, effective_rank: 3000,
+  primary_role: { dimension: "player_role", role: "damage" }, is_flex: false, effective_rank: 3000,
   status: "available", is_captain: false, drafted_by_team_id: null,
   secondary_roles: [], role_ranks: { damage: 3000 }, role_sources: {}, role_top_heroes: {}, role_sub_roles: {},
   notes: null, custom_fields: [], version: 1, ...patch
@@ -67,11 +67,11 @@ describe("buildTeamViews", () => {
       players: [
         player(1, { status: "picked", drafted_by_team_id: 1, is_captain: true }),
         player(2, { status: "picked", drafted_by_team_id: 1 }),
-        player(3, { status: "picked", drafted_by_team_id: 1, primary_role: "support", role_ranks: { support: 2800 } })
+        player(3, { status: "picked", drafted_by_team_id: 1, primary_role: { dimension: "player_role", role: "support" }, role_ranks: { support: 2800 } })
       ],
       picks: [
-        pick(1, { status: "completed", picked_player_id: 2, target_role: "damage" }),
-        pick(2, { status: "completed", picked_player_id: 3, target_role: "tank" })
+        pick(1, { status: "completed", picked_player_id: 2, target_role: { dimension: "player_role", role: "damage" } }),
+        pick(2, { status: "completed", picked_player_id: 3, target_role: { dimension: "player_role", role: "tank" } })
       ]
     });
     const cells = buildTeamViews(b).get(1)!.cells;
@@ -88,7 +88,7 @@ describe("buildTeamViews", () => {
 
 describe("pool columns and seating", () => {
   it("shows only the roles the shape asks for, plus pool roles when a flex slot can seat them", () => {
-    const players = [player(1, {}), player(2, { primary_role: "support", role_ranks: { support: 1 } })];
+    const players = [player(1, {}), player(2, { primary_role: { dimension: "player_role", role: "support" }, role_ranks: { support: 1 } })];
     expect(poolRoleColumns(shape({ tank: 1, damage: 2 }), players)).toEqual(["tank", "damage"]);
     expect(poolRoleColumns(shape({ flex: 6 }), players)).toEqual(["damage", "support"]);
   });
@@ -97,7 +97,7 @@ describe("pool columns and seating", () => {
     const b = board({ shape: shape({ tank: 1, support: 1 }) });
     const view = buildTeamViews(b).get(1)!;
     const flexy = player(9, {
-      primary_role: "damage", secondary_roles: ["tank", "support"],
+      primary_role: { dimension: "player_role", role: "damage" }, secondary_roles: [{ dimension: "player_role", role: "tank" }, { dimension: "player_role", role: "support" }],
       role_ranks: { damage: 4000, tank: 3000, support: 3500 }
     });
     expect(bestSeatRole(flexy, view, "all")).toBe("support");
@@ -110,7 +110,7 @@ describe("roleMarket", () => {
   it("flags a deficit when mains plus flex players cannot fill the open slots", () => {
     const b = board({
       shape: shape({ tank: 1, damage: 1 }),
-      players: [player(1, { primary_role: "tank", role_ranks: { tank: 1 } })]
+      players: [player(1, { primary_role: { dimension: "player_role", role: "tank" }, role_ranks: { tank: 1 } })]
     });
     const market = roleMarket(b, buildTeamViews(b));
     expect(market.map((entry) => [entry.role, entry.openSlots, entry.deficit])).toEqual([
@@ -183,8 +183,8 @@ describe("roundDirection", () => {
 describe("fitByPlayer", () => {
   it("prefers the filtered role's score over a higher score on another role", () => {
     const scores = [
-      { player_id: 1, role: "damage" as const, score: 90 },
-      { player_id: 1, role: "tank" as const, score: 60 }
+      { player_id: 1, role: { dimension: "player_role", role: "damage" }, score: 90 },
+      { player_id: 1, role: { dimension: "player_role", role: "tank" }, score: 60 }
     ];
     expect(fitByPlayer(scores, "all").get(1)).toEqual({ role: "damage", score: 90 });
     expect(fitByPlayer(scores, "tank").get(1)).toEqual({ role: "tank", score: 60 });

@@ -15,6 +15,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
+from types import SimpleNamespace
+
 from shared.core.enums import (  # noqa: E402
     DraftAutopickStrategy,
     DraftFormat,
@@ -22,10 +24,11 @@ from shared.core.enums import (  # noqa: E402
     DraftPlayerStatus,
     DraftPoolSource,
     DraftStatus,
-    HeroClass,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.models.catalog import CatalogRole  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
 
 DEFAULT_ROSTER_SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam  # noqa: E402
@@ -35,7 +38,7 @@ from src import (  # noqa: E402
     schemas,  # noqa: E402
 )
 from src.domain.draft import ranks, rules  # noqa: E402
-from src.domain.draft.entities import DraftPickOption, DraftSnapshot, PoolSeat  # noqa: E402
+from src.domain.draft.entities import DraftSnapshot, PoolSeat  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import board, journal, lifecycle  # noqa: E402
 from src.services.draft import feasibility as draft_feasibility  # noqa: E402
@@ -92,7 +95,7 @@ def test_feasibility_and_pick_options_have_typed_public_contracts() -> None:
         options=[
             {
                 "player_id": 20,
-                "role": "support",
+                "role": {"dimension": "player_role", "role": "support"},
                 "is_safe": False,
                 "reason_code": "role_shortage",
                 "unmatched_slots": feasibility.unmatched_slots,
@@ -106,31 +109,16 @@ def test_feasibility_and_pick_options_have_typed_public_contracts() -> None:
     assert options.options[0].is_safe is False
 
 
-def test_read_models_and_handlers_cross_the_role_vocabulary_both_ways() -> None:
-    # domain -> wire: the option/suggestion/role-edit reads are fed straight
-    # from `domain/draft`, which speaks HeroClass. A read model that only took
-    # the slot code raised a ValidationError and 500'd the whole response, so
-    # the captain's pool showed no safe pick at all.
-    option = DraftPickOption(
-        player_id=20,
-        role=HeroClass.damage,
-        is_safe=True,
-        reason_code=None,
-    )
-    assert schemas.DraftPickOptionRead.model_validate(option).role == "damage"
-    assert schemas.DraftSuggestion(player_id=20, role=HeroClass.tank, fit_score=1.0).role == "tank"
-
-    # wire -> domain: the reverse crossing, which the pick/override/role-edit
-    # handlers own. Passing the raw string down reached `role.slot_code` on a
-    # `str`.
-    assert draft_rpc._to_role("damage") is HeroClass.damage
-    assert draft_rpc._to_role(None) is None
-    shape = DEFAULT_ROSTER_SHAPE
+def test_read_models_carry_role_refs_while_the_domain_uses_codes() -> None:
+    ref = RoleRef(dimension="player_role", role="damage")
+    option = schemas.DraftPickOptionRead(player_id=20, role=ref, is_safe=True)
+    assert option.model_dump()["role"] == {"dimension": "player_role", "role": "damage", "parent": None}
+    assert schemas.DraftSuggestion(player_id=20, role=ref, fit_score=1.0).role == ref
     decision = rules.resolve_pick_slot(
-        shape,
-        dict.fromkeys(shape.slots, 0),
+        DEFAULT_ROSTER_SHAPE,
+        dict.fromkeys(DEFAULT_ROSTER_SHAPE.slots, 0),
         roster(101, ranks={"damage": 4000}),
-        draft_rpc._to_role("damage"),
+        "damage",
     )
     assert decision.recorded_role == "damage"
 
@@ -140,22 +128,37 @@ def test_role_edit_contract_requires_a_reason_and_a_positive_rank() -> None:
     # without a rank is not playable, so "add it and confirm the rank is
     # missing" added a role nobody could ever be drafted on.
     for invalid in (
-        {"role": "support", "rank_value": 2500, "reason": "  ", "expected_version": 2},
-        {"role": "support", "rank_value": None, "reason": "Missing role", "expected_version": 2},
-        {"role": "support", "rank_value": 0, "reason": "Missing role", "expected_version": 2},
-        {"role": "support", "reason": "Missing role", "expected_version": 2},
+        {
+            "role": {"dimension": "player_role", "role": "support"},
+            "rank_value": 2500,
+            "reason": "  ",
+            "expected_version": 2,
+        },
+        {
+            "role": {"dimension": "player_role", "role": "support"},
+            "rank_value": None,
+            "reason": "Missing role",
+            "expected_version": 2,
+        },
+        {
+            "role": {"dimension": "player_role", "role": "support"},
+            "rank_value": 0,
+            "reason": "Missing role",
+            "expected_version": 2,
+        },
+        {"role": {"dimension": "player_role", "role": "support"}, "reason": "Missing role", "expected_version": 2},
     ):
         with pytest.raises(ValidationError):
             schemas.DraftRoleEditRequest(**invalid)
 
     request = schemas.DraftRoleEditRequest(
-        role="support",
+        role=RoleRef(dimension="player_role", role="support"),
         rank_value=2500,
         reason="Role was missing from registration",
         expected_version=2,
         preview_only=True,
     )
-    assert request.role == "support"
+    assert request.role == RoleRef(dimension="player_role", role="support")
     assert request.rank_value == 2500
     assert request.preview_only is True
 
@@ -196,6 +199,7 @@ def test_player_read_carries_registration_notes_and_never_the_organizer_ones() -
         ),
         shape=DEFAULT_ROSTER_SHAPE,
         custom_fields=[],
+        dimension="player_role",
     )
 
     assert read.notes == "registration note shown to captains"
@@ -215,11 +219,12 @@ def test_player_read_of_a_seat_with_no_roster_states_no_role_instead_of_guessing
         None,
         shape=DEFAULT_ROSTER_SHAPE,
         custom_fields=[board.VisibleCustomField(key="vk", label="VK profile", type="url")],
+        dimension="player_role",
     )
 
     assert read.registration_id == 120
     assert read.primary_role is None
-    assert read.sub_role is None
+    assert "sub_role" not in read.model_dump()
     assert read.battle_tag is None
     assert read.is_flex is False
     assert read.secondary_roles == []
@@ -246,9 +251,10 @@ def test_player_read_carries_a_sub_role_per_playable_role_not_just_the_lead_one(
         ),
         shape=DEFAULT_ROSTER_SHAPE,
         custom_fields=[],
+        dimension="player_role",
     )
 
-    assert read.sub_role == "hitscan"
+    assert read.primary_role == RoleRef(dimension="player_role", role="damage_hitscan", parent="damage")
     assert read.role_sub_roles == {"damage": "hitscan", "support": "flex_support"}
 
 
@@ -260,7 +266,7 @@ def test_a_captain_is_worth_the_rank_of_the_role_they_are_seated_on() -> None:
     assert ranks.captain_rank(tank_lead, None, DEFAULT_ROSTER_SHAPE) == 2600
     assert ranks.captain_rank(tank_lead, "damage", DEFAULT_ROSTER_SHAPE) == 3900
     # A pin whose rank was cleared since falls back to the lead role.
-    assert ranks.seat_role(tank_lead, "support") is HeroClass.tank
+    assert ranks.seat_role(tank_lead, "support") == "tank"
     assert ranks.captain_rank(tank_lead, "support", DEFAULT_ROSTER_SHAPE) == 2600
     # A role-less roster seats nobody on a role: the best rank, pinned or not.
     all_flex = RosterShape(entries=tuple({"flex": 5}.items()))
@@ -276,13 +282,15 @@ def test_a_pinned_captain_reads_and_counts_on_the_pinned_role() -> None:
         status="picked",
         is_captain=True,
         drafted_by_team_id=10,
-        captain_role="damage",
+        captain_role_row=CatalogRole(code="damage"),
         version=1,
     )
     tank_lead = roster(120, ranks={"tank": 2600, "damage": 3900})
 
-    read = schemas.DraftPlayerRead.from_seat(captain, tank_lead, shape=DEFAULT_ROSTER_SHAPE, custom_fields=[])
-    assert (read.primary_role, read.captain_role, read.effective_rank) == ("tank", "damage", 3900)
+    read = schemas.DraftPlayerRead.from_seat(
+        captain, tank_lead, shape=DEFAULT_ROSTER_SHAPE, custom_fields=[], dimension="player_role"
+    )
+    assert (read.primary_role.role, read.captain_role.role, read.effective_rank) == ("tank", "damage", 3900)
 
     counts = rules.team_slot_counts([captain], [], 10, DEFAULT_ROSTER_SHAPE, {captain.id: tank_lead})
     assert (counts["tank"], counts["damage"]) == (0, 1)
@@ -324,15 +332,15 @@ def test_pick_event_payload_contains_resolved_role_rank_and_version() -> None:
         pick_in_round=1,
         draft_team_id=10,
         picked_player_id=20,
-        target_role=HeroClass.support.slot_code,
+        target_role_row=CatalogRole(code="support"),
         target_rank_value=2875,
         status=DraftPickStatus.COMPLETED.value,
         version=4,
     )
 
-    payload = draft_rpc._pick_event_payload(draft, pick)
+    payload = draft_rpc._pick_event_payload(draft, pick, dimension="player_role")
 
-    assert payload["target_role"] == "support"
+    assert payload["target_role"] == {"dimension": "player_role", "role": "support", "parent": None}
     assert payload["target_rank_value"] == 2875
     assert payload["pick_version"] == 4
 
@@ -340,7 +348,7 @@ def test_pick_event_payload_contains_resolved_role_rank_and_version() -> None:
 def test_role_edit_result_serializes_before_and_after_feasibility() -> None:
     response = schemas.DraftRoleEditResponse(
         player_id=20,
-        role="support",
+        role=RoleRef(dimension="player_role", role="support"),
         player_version=3,
         committed=False,
         before={
@@ -389,7 +397,7 @@ def test_player_updated_event_does_not_expose_private_reason() -> None:
     payload = draft_rpc._player_updated_payload(
         session_id=1,
         player_id=20,
-        role=HeroClass.support,
+        role=RoleRef(dimension="player_role", role="support"),
         player_version=3,
         is_feasible=True,
     )
@@ -397,7 +405,7 @@ def test_player_updated_event_does_not_expose_private_reason() -> None:
     assert payload == {
         "session_id": 1,
         "player_id": 20,
-        "role": "support",
+        "role": {"dimension": "player_role", "role": "support", "parent": None},
         "player_version": 3,
         "is_feasible": True,
     }
@@ -626,6 +634,9 @@ class _BoardSession:
 
     async def scalar(self, _statement):
         return self._scalar.pop(0)
+
+    async def scalars(self, _statement):
+        return SimpleNamespace(one=lambda: SimpleNamespace(discipline="overwatch"))
 
     async def execute(self, _statement) -> _ExecuteResult:
         return _ExecuteResult(self._results.pop(0))

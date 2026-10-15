@@ -1,3 +1,4 @@
+import { roleOf } from "@/lib/roster/role-ref";
 import type { RealtimeEventEnvelope } from "@/types/realtime.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
 import type {
@@ -274,7 +275,7 @@ export function canConfirmPick(
   if (options.pick_version !== currentPickVersion) return false;
   return options.options.some(
     (option) =>
-      option.player_id === selection.playerId && option.role === selection.role && option.is_safe
+      option.player_id === selection.playerId && roleOf(option.role) === selection.role && option.is_safe
   );
 }
 
