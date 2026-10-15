@@ -24,6 +24,7 @@ import { PlaceBadge } from "@/components/ui/place-badge";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
 import { normalizePlayerRole, PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
+import { roleOf, type RoleRef } from "@/lib/roster/role-ref";
 import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
@@ -81,7 +82,7 @@ export function RosterRole({
   position,
   inline
 }: Readonly<{
-  role: string | null;
+  role: RoleRef | null;
   position?: RosterSlotPosition<SortableRosterPlayer & { name: string }>;
   inline?: boolean;
 }>) {
@@ -115,7 +116,7 @@ export function RosterRole({
     );
   }
 
-  const roleKey = PLAYER_ROLE_LABEL_KEY[normalizePlayerRole(role)];
+  const roleKey = PLAYER_ROLE_LABEL_KEY[(role ? normalizePlayerRole(roleOf(role)) : "Flex")];
   return (
     <>
       {lineBelow ? (
@@ -125,7 +126,7 @@ export function RosterRole({
         label={t(roleKey)}
         className={cn("shrink-0", position && isReplaced(position) && "opacity-50")}
       >
-        <PlayerRoleIcon role={role} decorative />
+        <PlayerRoleIcon role={roleOf(role)} decorative />
       </IconTooltip>
     </>
   );
@@ -138,7 +139,7 @@ export function RosterPlayer({
   highlightUserId,
   dimmed
 }: Readonly<{
-  player: Pick<TeamRosterPlayer, "name" | "role" | "sub_role" | "user_id" | "is_newcomer" | "is_newcomer_role">;
+  player: Pick<TeamRosterPlayer, "name" | "role" | "user_id" | "is_newcomer" | "is_newcomer_role">;
   captainUserId?: number | null;
   /** When the row belongs to this user id, it gets a "you" tag. */
   highlightUserId?: number;
@@ -164,7 +165,7 @@ export function RosterPlayer({
       ) : null}
       {/* Same rule as the Teams list view: a flex player has no role to be new
           to, and a flex tournament sets the flag on everyone. */}
-      {player.is_newcomer_role && normalizePlayerRole(player.role) !== "Flex" ? (
+      {player.is_newcomer_role && player.role != null ? (
         <IconTooltip
           label={t("teams.roster.newcomerRole")}
           hint={t("teams.roster.newcomerRoleHint")}

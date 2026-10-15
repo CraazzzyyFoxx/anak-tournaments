@@ -107,6 +107,15 @@ SELECT 'balancer configs', c.id, c.source, NOT (c.config ? 'role_settings' AND c
         UNION ALL SELECT 'workspace_config', w.id, w.config_json::jsonb FROM balancer.workspace_config w
         UNION ALL SELECT 'balance', b.id, b.config_json::jsonb FROM balancer.balance b WHERE b.config_json IS NOT NULL) c
 UNION ALL
+-- Every legacy player holds its leaf; a flex player holds no assignment (D86).
+SELECT 'player roles', p.id, p.role::text || coalesce('/' || p.sub_role, ''),
+       (SELECT array_agg(pr.role_id) FROM tournament.player_role pr WHERE pr.player_id = p.id)
+         IS NOT DISTINCT FROM
+       CASE WHEN p.role::text = 'flex' THEN NULL
+            ELSE ARRAY[pg_temp.discipline01b_leaf(t.workspace_id, p.role::text, p.sub_role)] END
+  FROM tournament.player p JOIN tournament.tournament t ON t.id = p.tournament_id
+ WHERE p.role IS NOT NULL
+UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        NOT EXISTS (SELECT 1 FROM catalog.entity_legacy l WHERE l.legacy_kind = soft.kind AND l.legacy_id = soft.item_id)

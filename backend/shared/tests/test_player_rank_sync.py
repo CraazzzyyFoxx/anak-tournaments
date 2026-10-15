@@ -19,7 +19,9 @@ from sqlalchemy.pool import StaticPool
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
 
+from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
+from shared.models.tournament.player_role import PlayerRole  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
 from shared.services.team_export import (  # noqa: E402
@@ -27,7 +29,7 @@ from shared.services.team_export import (  # noqa: E402
     MaterializationTeam,
     sync_player_ranks,
 )
-from shared.testing import install_postgres_type_shims  # noqa: E402
+from shared.testing import create_sqlite_tables, install_postgres_type_shims  # noqa: E402
 
 install_postgres_type_shims()
 
@@ -37,6 +39,9 @@ TABLES = (
     Tournament.__table__,
     Team.__table__,
     Player.__table__,
+    RoleDimension.__table__,
+    CatalogRole.__table__,
+    PlayerRole.__table__,
 )
 
 
@@ -70,8 +75,7 @@ class SyncPlayerRanksTests(IsolatedAsyncioTestCase):
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in TABLES if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in TABLES:
-                table.create(conn)
+            create_sqlite_tables(conn, TABLES)
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
 

@@ -27,7 +27,7 @@ from test_scrim_achievement_isolation import (  # noqa: E402
     _EngineTestCase,
 )
 
-from shared.core.enums import EncounterStatus, HeroClass, LogStatsName, StageType  # noqa: E402
+from shared.core.enums import EncounterStatus, LogStatsName, StageType  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from src.services.achievement.engine.runner import _rule_requires_normalized_divisions  # noqa: E402
 
@@ -50,32 +50,6 @@ CLIMB_GRID = DivisionGrid(
 
 
 class _NodeFixture(_scrim._Fixture):
-    def player(
-        self,
-        tournament_id: int,
-        team_id: int,
-        member_id: int,
-        *,
-        name: str,
-        role: object | None = enums.HeroClass.damage,
-        rank: int = 3000,
-    ) -> int:
-        player_id = self._id()
-        self.insert(
-            models.Player.__table__,
-            id=player_id,
-            tournament_id=tournament_id,
-            team_id=team_id,
-            workspace_member_id=member_id,
-            name=name,
-            role=role,
-            rank=rank,
-            is_substitution=False,
-            is_newcomer=False,
-            is_newcomer_role=False,
-        )
-        return player_id
-
     def match(
         self,
         encounter_id: int,
@@ -282,18 +256,16 @@ class TeamPlayersMatchTests(_NodeCase):
         high = self.db.team(REAL_TOURNAMENT_ID, "high", captain_id=REAL_HOME_USER)
         support = self.db.team(REAL_TOURNAMENT_ID, "support", captain_id=REAL_AWAY_USER)
         neither = self.db.team(REAL_TOURNAMENT_ID, "neither", captain_id=USER_C)
-        self.db.player(
-            REAL_TOURNAMENT_ID, high, self.db.member(REAL_HOME_USER), name="high", role=HeroClass.damage, rank=2500
-        )
+        self.db.player(REAL_TOURNAMENT_ID, high, self.db.member(REAL_HOME_USER), name="high", role="damage", rank=2500)
         self.db.player(
             REAL_TOURNAMENT_ID,
             support,
             self.db.member(REAL_AWAY_USER),
             name="sup",
-            role=HeroClass.support,
+            role="support",
             rank=500,
         )
-        self.db.player(REAL_TOURNAMENT_ID, neither, self.db.member(USER_C), name="low", role=HeroClass.damage, rank=500)
+        self.db.player(REAL_TOURNAMENT_ID, neither, self.db.member(USER_C), name="low", role="damage", rank=500)
         self.db.session.commit()
         tree = {
             "type": "team_players_match",
@@ -322,13 +294,11 @@ class TeamPlayersMatchTests(_NodeCase):
             with_support,
             self.db.member(REAL_HOME_USER),
             name="sup",
-            role=HeroClass.support,
+            role="support",
         )
-        self.db.player(REAL_TOURNAMENT_ID, with_support, self.db.member(USER_C), name="damage", role=HeroClass.damage)
-        self.db.player(
-            REAL_TOURNAMENT_ID, no_support, self.db.member(REAL_AWAY_USER), name="damage2", role=HeroClass.damage
-        )
-        self.db.player(REAL_TOURNAMENT_ID, no_support, self.db.member(USER_D), name="damage3", role=HeroClass.damage)
+        self.db.player(REAL_TOURNAMENT_ID, with_support, self.db.member(USER_C), name="damage", role="damage")
+        self.db.player(REAL_TOURNAMENT_ID, no_support, self.db.member(REAL_AWAY_USER), name="damage2", role="damage")
+        self.db.player(REAL_TOURNAMENT_ID, no_support, self.db.member(USER_D), name="damage3", role="damage")
         self.db.session.commit()
         tree = {
             "type": "team_players_match",
@@ -378,7 +348,7 @@ class StableStreakTests(_NodeCase):
     async def test_min_streak_one_awards_a_single_participation(self) -> None:
         self.db.tournament(REAL_TOURNAMENT_ID, name="Once", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
         team = self.db.team(REAL_TOURNAMENT_ID, "home", captain_id=REAL_HOME_USER)
-        self.db.player(REAL_TOURNAMENT_ID, team, self.db.member(REAL_HOME_USER), name="home", role=HeroClass.damage)
+        self.db.player(REAL_TOURNAMENT_ID, team, self.db.member(REAL_HOME_USER), name="home", role="damage")
         self.db.session.commit()
         result = await evaluator.evaluate(
             self.db.shim,

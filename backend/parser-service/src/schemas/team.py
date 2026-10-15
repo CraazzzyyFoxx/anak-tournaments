@@ -1,3 +1,4 @@
+from shared.schemas.role import RoleRef
 from src.schemas import BaseRead
 from src.schemas.tournament import TournamentRead
 from src.schemas.user import UserRead
@@ -10,10 +11,9 @@ __all__ = (
 
 class PlayerRead(BaseRead):
     name: str
-    sub_role: str | None
     rank: int
     division: int
-    role: str
+    role: RoleRef | None = None
     tournament_id: int
     user_id: int
     team_id: int

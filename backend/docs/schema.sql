@@ -1,6 +1,6 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 158
+-- Tables: 159
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -3154,9 +3154,7 @@ CREATE TABLE tournament.player (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	updated_at TIMESTAMP WITH TIME ZONE,
 	name VARCHAR NOT NULL,
-	sub_role VARCHAR(128),
 	rank INTEGER NOT NULL,
-	role heroclass,
 	is_substitution BOOLEAN DEFAULT 'false' NOT NULL,
 	related_player_id BIGINT,
 	tournament_id BIGINT NOT NULL,
@@ -3177,11 +3175,18 @@ CREATE INDEX ix_player_related_player_id ON tournament.player (related_player_id
 
 CREATE INDEX ix_player_team_workspace_member ON tournament.player (team_id, workspace_member_id);
 
-CREATE INDEX ix_player_tournament_role_sub_role ON tournament.player (tournament_id, role, sub_role);
-
 CREATE INDEX ix_player_workspace_member_tournament ON tournament.player (workspace_member_id, tournament_id);
 
 CREATE INDEX ix_tournament_player_tournament_id ON tournament.player (tournament_id);
+
+CREATE TABLE tournament.player_role (
+	player_id BIGINT NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
+	PRIMARY KEY (player_id, role_id),
+	CONSTRAINT fk_player_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+	CONSTRAINT fk_player_role_player FOREIGN KEY(player_id) REFERENCES tournament.player (id) ON DELETE CASCADE
+);
 
 CREATE TABLE tournament.recalculation_state (
 	tournament_id BIGINT NOT NULL,

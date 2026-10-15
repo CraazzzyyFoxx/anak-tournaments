@@ -879,7 +879,7 @@ describe("phase selection", () => {
         eligible: { item_ids: [201, 202], by_target: { "55": [201, 202] } },
         targets: {
           [HOME]: [],
-          [AWAY]: [{ player_id: 55, name: "Foxy", role: "tank", sub_role: null, is_substitution: false, division: 7 }]
+          [AWAY]: [{ player_id: 55, name: "Foxy", role: { dimension: "player_role", role: "tank" }, is_substitution: false, division: 7 }]
         }
       })
     );
@@ -912,16 +912,14 @@ describe("phase selection", () => {
             {
               player_id: 55,
               name: "Foxy",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: false,
               division: 7
             },
             {
               player_id: 56,
               name: "Vixen",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: true,
               division: 12
             }
@@ -2374,16 +2372,14 @@ describe("admin controls", () => {
             {
               player_id: 55,
               name: "Foxy",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: false,
               division: 7
             },
             {
               player_id: 56,
               name: "Vixen",
-              role: "tank",
-              sub_role: null,
+              role: { dimension: "player_role", role: "tank" },
               is_substitution: true,
               division: 12
             }

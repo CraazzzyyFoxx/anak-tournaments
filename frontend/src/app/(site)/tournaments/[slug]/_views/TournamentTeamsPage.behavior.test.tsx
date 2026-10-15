@@ -132,10 +132,11 @@ function player(id: number, name: string, role: string, division: number): Playe
     created_at: new Date(0),
     updated_at: null,
     name,
-    sub_role: role === "Tank" ? "main_tank" : null,
     rank: 4,
     division,
-    role,
+    role: role === "Tank"
+      ? { dimension: "player_role", role: "tank_main_tank", parent: "tank" }
+      : { dimension: "player_role", role: role.toLowerCase() },
     tournament_id: TOURNAMENT_ID,
     user_id: id + 500,
     team_id: 0,

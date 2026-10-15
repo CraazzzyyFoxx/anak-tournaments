@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.clients.s3 import S3Client
 from shared.core import impact as impact_consts
 from shared.core.social import SocialProvider
+from shared.disciplines import discipline
 from shared.domain.pick_ban_config import pool_allows
+from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.tournament.pick_ban import PickBanConfig
@@ -1046,7 +1048,7 @@ class MatchLogProcessor:
                 player_id=p.user_id,
                 user_id=p.user_id,
                 team_id=p.team_id,
-                role=roles.get(p.user_id) or p.role,
+                role=roles.get(p.user_id) or (enums.HeroClass[p.role] if p.role else None),
                 rank=p.rank,
             )
             for p in players_map.values()
@@ -1214,6 +1216,9 @@ class MatchLogProcessor:
         profile = max(known_profiles, key=lambda p: p.tournament_id or 0, default=None)
         rank = profile.rank if profile else player_to_be_replaced.rank
         role = player_to_be_replaced.role
+        roles = ((discipline(self.tournament.discipline).rated_dimension.code, role),) if role else ()
+        if role and player_to_be_replaced.sub_role:
+            roles += (("sub_role", workspace_sub_role_slug(role, player_to_be_replaced.sub_role)),)
 
         (member_id,) = (
             await team_service.resolve_workspace_member_ids(
@@ -1228,10 +1233,17 @@ class MatchLogProcessor:
                 display_name=sub_user.name,
                 rank=rank,
                 is_substitute=True,
-                roles=(("player_role", role.name),) if role else (),
+                roles=roles,
             ),
         )
-        return LogPlayer(user_id=sub_user.id, team_id=participation.team_id, name=sub_user.name, role=role, rank=rank)
+        return LogPlayer(
+            user_id=sub_user.id,
+            team_id=participation.team_id,
+            name=sub_user.name,
+            role=role,
+            rank=rank,
+            sub_role=player_to_be_replaced.sub_role,
+        )
 
     async def fix_team_players_collision(
         self,
@@ -1285,6 +1297,7 @@ class MatchLogProcessor:
                         team_id=team_db.id,
                         name=substitute_user.name,
                         role=missing_roster_player.role,
+                        sub_role=missing_roster_player.sub_role,
                         rank=missing_roster_player.rank if existing_sub.rank is None else existing_sub.rank,
                     )
                 else:

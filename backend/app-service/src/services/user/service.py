@@ -8,7 +8,7 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.division_grid import DivisionGrid
-from shared.domain.roster_shape import RegistrationRoleCode
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import (
     build_workspace_division_grid_normalizer,
     get_effective_division_grid_version_ids,
@@ -53,11 +53,6 @@ tournament_stats = [
     enums.LogStatsName.Deaths,
     enums.LogStatsName.Performance,
 ]
-
-
-# The draft card speaks slot codes (``tank``/``damage``/``support``); a roster
-# row typed ``flex`` is not one of them and never reaches the card.
-_DRAFT_CARD_ROLE_CODES: frozenset[str] = frozenset(typing.get_args(RegistrationRoleCode))
 
 
 # Computed once at import — COMPARE_METRIC_DEFINITIONS is module-level
@@ -106,7 +101,7 @@ async def _tournament_grid_versions(
 
 async def _overview_role_divisions(
     session: AsyncSession,
-    raw_roles_map: dict[int, list[tuple[enums.HeroClass, int, int | None]]],
+    raw_roles_map: dict[int, list[tuple[RoleRef, int, int | None]]],
     *,
     grid: DivisionGrid,
     normalizer: DivisionGridNormalizer | None,
@@ -304,7 +299,7 @@ class UserService:
         workspace_id: int | None,
         top_heroes_limit: int = 5,
     ) -> tuple[
-        dict[int, list[tuple[enums.HeroClass, int, int | None]]],
+        dict[int, list[tuple[RoleRef | None, int, int | None]]],
         dict[int, int],
         dict[int, int],
         dict[int, tuple[float | None, float | None, float | None, float | None, int | None]],
@@ -431,6 +426,7 @@ class UserService:
         payload = await self.overview.get_overview_stats(
             session,
             role=params.role,
+            has_role_filter="role" in params.model_fields_set,
             divisions=params.divisions,
             has_logs=params.has_logs,
             query=params.query,
@@ -451,6 +447,7 @@ class UserService:
         letters_with_users, total_users, available_letters = await self.overview.get_catalog_users(
             session,
             role=params.role,
+            has_role_filter=params.has_role_filter,
             divisions=params.divisions,
             has_logs=params.has_logs,
             query=params.query,
@@ -725,7 +722,7 @@ class UserService:
             schemas.UserCompareParams(
                 baseline=baseline,
                 target_user_id=target_user_id,
-                role=enums.HeroClass(role) if role is not None else None,
+                role=RoleRef.model_validate_json(role) if role is not None else None,
                 div_min=div_min,
                 div_max=div_max,
                 tournament_id=tournament_id,
@@ -749,7 +746,7 @@ class UserService:
             id,
             params.baseline,
             params.target_user_id if params.baseline == "target_user" else None,
-            params.role.value if is_cohort and params.role is not None else None,
+            params.role.model_dump_json(exclude={"parent"}) if is_cohort and params.role is not None else None,
             params.div_min if is_cohort else None,
             params.div_max if is_cohort else None,
             params.tournament_id,
@@ -986,7 +983,7 @@ class UserService:
                 left_hero_id=left_hero_id,
                 right_hero_id=right_hero_id,
                 map_id=map_id,
-                role=enums.HeroClass(role) if role is not None else None,
+                role=RoleRef.model_validate_json(role) if role is not None else None,
                 div_min=div_min,
                 div_max=div_max,
                 tournament_id=tournament_id,
@@ -1018,7 +1015,7 @@ class UserService:
             params.left_hero_id,
             params.right_hero_id,
             params.map_id,
-            params.role.value if is_cohort and params.role is not None else None,
+            params.role.model_dump_json(exclude={"parent"}) if is_cohort and params.role is not None else None,
             params.div_min if is_cohort else None,
             params.div_max if is_cohort else None,
             params.tournament_id,
@@ -1237,14 +1234,13 @@ class UserService:
         matches = await self.profile.get_overall_statistics(session, user.id, workspace_id=workspace_id)
         maps_won, maps_lost = (matches[0] or 0, matches[1] or 0) if matches else (0, 0)
 
-        # ``Player.role`` is nullable and can be ``flex``; the card only speaks the
-        # three draft slot codes, so anything else is dropped rather than guessed at.
+        # Open slots have no role. Keep every assigned discipline-qualified leaf.
         role_rows = [
-            (role.slot_code, role_won, role_lost, entries)
+            (role, role_won, role_lost, entries)
             for role, role_won, role_lost, entries in await self.profile.get_roles(
                 session, user.id, workspace_id=workspace_id
             )
-            if role is not None and role.slot_code in _DRAFT_CARD_ROLE_CODES
+            if role is not None
         ]
         roles = [
             schemas.UserDraftCardRole(role=code, maps=role_won + role_lost, maps_won=role_won)
@@ -1255,14 +1251,14 @@ class UserService:
         # Which role (and at which rank) the player held per tournament: the role
         # rows already carry one entry per played encounter side, so the most
         # frequent role in a tournament is the one they actually played there.
-        weights: Counter[tuple[int, str]] = Counter()
-        ranks: dict[tuple[int, str], int | None] = {}
+        weights: Counter[tuple[int, RoleRef]] = Counter()
+        ranks: dict[tuple[int, RoleRef], int | None] = {}
         for code, _won, _lost, entries in role_rows:
             for entry in entries:
                 key = (entry["tournament"], code)
                 weights[key] += 1
                 ranks.setdefault(key, entry["rank"])
-        played_as: dict[int, tuple[str, int | None]] = {}
+        played_as: dict[int, tuple[RoleRef, int | None]] = {}
         for (tournament_id, code), _count in weights.most_common():
             played_as.setdefault(tournament_id, (code, ranks[(tournament_id, code)]))
 
@@ -1374,7 +1370,7 @@ class UserService:
         )
 
         for team, wins, losses, avg_closeness in tournaments:
-            user_role: enums.HeroClass | None = None
+            user_role: RoleRef | None = None
             user_division: int | None = None
             won: int = 0
             lost: int = 0
@@ -1389,7 +1385,7 @@ class UserService:
 
             for player in team.players:
                 if player.workspace_member is not None and player.workspace_member.player_id == user.id:
-                    user_role = player.role
+                    user_role = player.role_ref
                     user_division = resolve_tournament_division(
                         player.rank,
                         tournament_grid=tournament_grid,
@@ -1607,7 +1603,7 @@ class UserService:
             ),
             division_grid_version=_mappers._division_grid_version(team.tournament),
             closeness=round(statistics[2], 2) if statistics[2] else 0,
-            role=player.role,
+            role=player.role_ref,
             maps=statistics[0] + statistics[1] if statistics[0] else 0,
             maps_won=statistics[0] if statistics[0] else 0,
             playtime=round(statistics[3], 2) if statistics[3] else 0,

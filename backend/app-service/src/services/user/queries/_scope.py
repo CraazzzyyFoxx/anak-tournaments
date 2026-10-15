@@ -11,6 +11,9 @@ from sqlalchemy.orm import aliased, joinedload, selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.division_grid import DivisionGrid, division_case_expr, division_filter_predicates
+from shared.models.catalog.role import CatalogRole, RoleDimension
+from shared.models.tournament.player_role import PlayerRole
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import effective_division_number_expr
 from src import models
 from src.core import enums, utils
@@ -184,10 +187,26 @@ def division_set_predicates(
     ]
 
 
+def player_role_filter(player_model: type[models.Player], ref: RoleRef | None) -> sa.ColumnElement[bool]:
+    """Match a submitted leaf or top-level role without trusting its output-only parent."""
+    role = CatalogRole
+    if ref is None:
+        return ~player_model.assignments.any(PlayerRole.role.has(role.dimension.has(RoleDimension.rated.is_(True))))
+    return player_model.assignments.any(
+        PlayerRole.role.has(
+            sa.and_(
+                role.dimension.has(RoleDimension.code == ref.dimension),
+                sa.or_(role.code == ref.role, role.parent.has(role.code == ref.role)),
+            )
+        )
+    )
+
+
 def _apply_overview_role_filters(
     query: sa.Select,
     *,
-    role: enums.HeroClass | None,
+    role: RoleRef | None,
+    has_role_filter: bool = False,
     divisions: typing.Sequence[int] = (),
     grid: DivisionGrid,
     workspace_id: int | None = None,
@@ -204,8 +223,8 @@ def _apply_overview_role_filters(
         models.Player.is_substitution.is_(False),
     ]
 
-    if role is not None:
-        role_filters.append(models.Player.role == role)
+    if has_role_filter or role is not None:
+        role_filters.append(player_role_filter(models.Player, role))
     role_filters.extend(
         division_set_predicates(
             models.Player.rank,
@@ -261,7 +280,7 @@ def _compare_player_scope_filters(
     player_model: type[models.Player],
     user_id_column: sa.ColumnElement[typing.Any] | int,
     *,
-    role: enums.HeroClass | None,
+    role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
     tournament_id: int | None = None,
@@ -273,7 +292,7 @@ def _compare_player_scope_filters(
     ]
 
     if role is not None:
-        filters.append(player_model.role == role)
+        filters.append(player_role_filter(player_model, role))
     filters.extend(division_filter_predicates(player_model.rank, div_min, div_max, grid))
     if tournament_id is not None:
         filters.append(player_model.tournament_id == tournament_id)
@@ -285,7 +304,7 @@ def _compare_tournament_scope_exists(
     user_id_column: sa.ColumnElement[typing.Any] | int,
     tournament_id_column: sa.ColumnElement[typing.Any],
     *,
-    role: enums.HeroClass | None,
+    role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
     tournament_id: int | None = None,
@@ -317,7 +336,7 @@ def _compare_team_scope_exists(
     user_id_column: sa.ColumnElement[typing.Any] | int,
     team_id_column: sa.ColumnElement[typing.Any],
     *,
-    role: enums.HeroClass | None,
+    role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
     tournament_id: int | None = None,
@@ -340,7 +359,7 @@ def _compare_team_scope_exists(
 def _compare_user_scope_exists(
     user_id_column: sa.ColumnElement[typing.Any] | int,
     *,
-    role: enums.HeroClass | None,
+    role: RoleRef | None,
     div_min: int | None,
     div_max: int | None,
     tournament_id: int | None = None,

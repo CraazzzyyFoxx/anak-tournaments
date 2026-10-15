@@ -10,7 +10,6 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HeroClass
 from shared.models.achievements.achievement import AchievementGrain
 from src import models
 
@@ -66,7 +65,7 @@ def _build_player_filter(
     params = condition.get("params", {})
 
     if ctype == "player_role":
-        return [models.Player.role == HeroClass(params["role"])]
+        return [models.Player.role == sa.func.lower(params["role"])]
     if ctype == "player_div":
         # Division filter handled post-query since it needs grid
         return []
@@ -125,7 +124,7 @@ def _player_matches_condition(
     params = condition.get("params", {})
 
     if ctype == "player_role":
-        return player.role == HeroClass(params["role"])
+        return player.role == params["role"].lower()
     if ctype == "player_div":
         return _player_matches_div_condition(
             context,

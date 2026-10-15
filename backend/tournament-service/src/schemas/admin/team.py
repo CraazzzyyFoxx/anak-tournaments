@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from shared.schemas.role import RoleRef
+
 __all__ = (
     "TeamCreate",
     "TeamUpdate",
@@ -38,9 +40,8 @@ class PlayerCreate(BaseModel):
     user_id: int
     team_id: int
     tournament_id: int
-    role: str | None = None
+    role: RoleRef | None = None
     rank: int = 0
-    sub_role: str | None = None
     is_newcomer: bool = False
     is_newcomer_role: bool = False
     is_substitution: bool = False
@@ -51,9 +52,8 @@ class PlayerUpdate(BaseModel):
     """Schema for updating a player"""
 
     name: str | None = None
-    role: str | None = None
+    role: RoleRef | None = None
     rank: int | None = None
-    sub_role: str | None = None
     is_newcomer: bool | None = None
     is_newcomer_role: bool | None = None
     is_substitution: bool | None = None

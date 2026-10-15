@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
+from shared.schemas.role import RoleRef
+
 analytics_flows = importlib.import_module("src.services.analytics.reads")
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -60,9 +62,8 @@ def _player(
         created_at=NOW,
         updated_at=None,
         name=f"Player {player_id}",
-        sub_role="hitscan",
         rank=rank,
-        role="Damage",
+        role_ref=RoleRef(dimension="player_role", role="damage_hitscan", parent="damage"),
         tournament_id=7,
         # Player.user_id was dropped in the contract step (iwrefac07); the
         # identity anchor is workspace_member.player_id instead.

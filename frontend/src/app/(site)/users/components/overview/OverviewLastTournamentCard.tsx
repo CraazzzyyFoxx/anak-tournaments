@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { roleOf } from "@/lib/roster/role-ref";
 import { ArrowUpRight, Hourglass } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -37,9 +38,8 @@ const formatPercent = (value: number | null | undefined, digits = 0) => {
   return `${(value * 100).toFixed(digits)}%`;
 };
 
-// Role → its `--aqt-*` hue. Flex is a real roster role, so it gets its own
-// token instead of falling through to damage.
-const roleColor = (role: string) => `var(--aqt-${playerRoleTint(role) ?? "damage"})`;
+// OW-shaped presentation until P7; absent assignments have no role color.
+const roleColor = (role: string | null) => `var(--aqt-${playerRoleTint(role) ?? "fg-muted"})`;
 
 // The card title IS the tournament switcher: heading type, no box. Focus is
 // shown by colour + underline because the title row clips outside rings.
@@ -233,8 +233,8 @@ const OverviewLastTournamentCard = ({ tournament, tournaments, userId, mapPips }
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 font-onest text-[20px] font-bold leading-none text-[color:var(--aqt-fg)]">
-              <PlayerRoleIcon role={tournament.role} size={18} color={roleColor(tournament.role)} decorative />
-              {t(PLAYER_ROLE_LABEL_KEY[normalizePlayerRole(tournament.role)] as Parameters<typeof t>[0])}
+              <PlayerRoleIcon role={roleOf(tournament.role)} size={18} color={roleColor(roleOf(tournament.role))} decorative />
+              {t(PLAYER_ROLE_LABEL_KEY[(tournament.role ? normalizePlayerRole(roleOf(tournament.role)) : "Flex")] as Parameters<typeof t>[0])}
             </div>
             {hasData ? (
               <div className="aqt-tnum mt-1 text-caption text-[color:var(--aqt-fg-muted)]">

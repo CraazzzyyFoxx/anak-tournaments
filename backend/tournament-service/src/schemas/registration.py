@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from shared.schemas.role import RoleRef
 from shared.services.subscriptions import VERIFICATION_METHODS, VerificationMethod, parse_requirement
 from src.schemas.admission import AdmissionRead
 from src.schemas.division_grid import DivisionGridVersionRead
@@ -163,7 +164,7 @@ class RegistrationRead(BaseModel):
 class TournamentHistoryEntry(BaseModel):
     tournament_id: int
     tournament_name: str
-    role: str | None = None
+    role: RoleRef | None = None
     division: int | None = None
     # References a version in ``RegistrationListResponse.division_grids`` instead of
     # embedding the (large) version per entry. ``None`` when the rank/division is unknown.

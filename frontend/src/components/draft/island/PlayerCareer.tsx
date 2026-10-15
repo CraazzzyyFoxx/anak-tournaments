@@ -8,6 +8,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { roleOf } from "@/lib/roster/role-ref";
 import { getRoleIconName } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import type { UserDraftCard } from "@/types/user.types";
@@ -337,7 +338,7 @@ export function CareerTables({
                     )}
                   </span>
                   <span className="flex justify-center">
-                    {entry.role && <PlayerRoleIcon role={getRoleIconName(entry.role)} size={16} />}
+                    {entry.role && <PlayerRoleIcon role={roleOf(entry.role)} size={16} />}
                   </span>
                   <span className="flex items-center justify-end gap-1.5" title={crestLabel ?? undefined}>
                     {division != null && (

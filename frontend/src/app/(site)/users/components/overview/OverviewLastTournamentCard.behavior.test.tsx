@@ -27,7 +27,7 @@ function tournament(over: Partial<UserTournamentWithStats> = {}): UserTournament
     name: "Spring Cup #5",
     division: 5,
     division_grid_version: null,
-    role: "Damage",
+    role: { dimension: "player_role", role: "damage" },
     group_placement: 0,
     playoff_placement: 0,
     maps_won: 0,

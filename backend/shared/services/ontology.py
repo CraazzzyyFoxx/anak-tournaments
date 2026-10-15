@@ -16,8 +16,15 @@ from shared.domain.player_sub_roles import normalize_role, workspace_sub_role_co
 from shared.domain.roles import UnknownRole
 from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.repository import CatalogRoleRepository
+from shared.schemas.role import RoleRef
 
-__all__ = ("assert_discipline_enabled", "normalize_disciplines_enabled", "project_disciplines", "rated_leaf")
+__all__ = (
+    "assert_discipline_enabled",
+    "normalize_disciplines_enabled",
+    "project_disciplines",
+    "rated_leaf",
+    "resolve_role_ref",
+)
 
 _roles = CatalogRoleRepository()
 
@@ -74,3 +81,32 @@ async def rated_leaf(
             detail=f"unknown_sub_role: {sub_role!r} is not a sub-role of {role!r} in this workspace",
         )
     return leaf
+
+
+async def resolve_role_ref(
+    session: AsyncSession, *, discipline: str, workspace_id: int, ref: RoleRef | None, top_level_only: bool = False
+) -> models.CatalogRole | None:
+    """Resolve the submitted leaf on the owner's rated dimension; parent is output-only."""
+    if ref is None:
+        return None
+    rated = DISCIPLINES[discipline].rated_dimension.code
+    if ref.dimension != rated:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"role_dimension_mismatch: {ref.dimension!r} is not {discipline}'s {rated!r}",
+        )
+    try:
+        row = await _roles.resolve(
+            session,
+            discipline=discipline,
+            workspace_id=None if top_level_only else workspace_id,
+            dimension=rated,
+            code=ref.role,
+        )
+    except UnknownRole as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown_role: {exc}") from None
+    if top_level_only and row.parent_role_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown_role: {ref.role!r} is a sub-role"
+        )
+    return row

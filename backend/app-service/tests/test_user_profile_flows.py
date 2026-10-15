@@ -5,6 +5,10 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, patch
 
+from shared.models.catalog.role import CatalogRole, RoleDimension
+from shared.models.tournament.player_role import assignment_of
+from shared.schemas.role import RoleRef
+
 user_flows = importlib.import_module("src.services.user.service")
 enums = importlib.import_module("src.core.enums")
 division_grid = importlib.import_module("shared.division_grid")
@@ -167,7 +171,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                 ),
             ],
         )
-        player = SimpleNamespace(user_id=42, role=enums.HeroClass.damage, rank=1500)
+        player = SimpleNamespace(user_id=42, role_ref=RoleRef(dimension="player_role", role="damage"), rank=1500)
         standing = SimpleNamespace(overall_position=2, win=3, lose=1, draw=0)
         team = SimpleNamespace(
             id=9,
@@ -207,10 +211,9 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                     return_value=user_flows.schemas.PlayerRead.model_construct(
                         id=91,
                         name="Player Example",
-                        sub_role=None,
                         rank=1500,
                         division=9,
-                        role=enums.HeroClass.damage.value,
+                        role=RoleRef(dimension="player_role", role="damage"),
                         tournament_id=3,
                         user_id=42,
                         team_id=9,
@@ -272,7 +275,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             division_grid_version=tournament_grid_version,
         )
         team = SimpleNamespace(id=9, tournament=tournament, standings=[])
-        player = SimpleNamespace(rank=1500, role=enums.HeroClass.damage, team=team)
+        player = SimpleNamespace(rank=1500, role_ref=RoleRef(dimension="player_role", role="damage"), team=team)
 
         with (
             patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
@@ -312,6 +315,25 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         self.assertIsNotNone(result)
         self.assertIsNotNone(result.division_grid_version)
         self.assertEqual(77, result.division_grid_version.id)
+        leaf = CatalogRole(
+            id=1,
+            dimension_id=1,
+            code="support",
+            dimension=RoleDimension(id=1, discipline="lol", code="position", rated=True),
+        )
+        player = user_flows.models.Player(
+            id=1,
+            name="Support",
+            rank=1500,
+            assignments=[assignment_of(leaf)],
+            workspace_member=user_flows.models.WorkspaceMember(player_id=42),
+            is_substitution=False,
+            is_newcomer=False,
+            is_newcomer_role=False,
+        )
+        result = user_flows._mappers.to_user_tournament_player(player, grid=division_grid.DEFAULT_GRID)
+        self.assertEqual({"dimension": "position", "role": "support", "parent": None}, result.model_dump()["role"])
+        self.assertNotIn("sub_role", result.model_dump())
 
     async def test_get_tournaments_uses_best_positive_team_placement(self) -> None:
         self.skipTest(
@@ -320,7 +342,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         )
         session = SimpleNamespace()
         user = SimpleNamespace(id=42)
-        player = SimpleNamespace(user_id=42, role=enums.HeroClass.damage, rank=1500)
+        player = SimpleNamespace(user_id=42, role_ref=RoleRef(dimension="player_role", role="damage"), rank=1500)
         team = SimpleNamespace(
             id=9,
             name="Team Example",
@@ -362,10 +384,9 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                     return_value=user_flows.schemas.PlayerRead.model_construct(
                         id=91,
                         name="Player Example",
-                        sub_role=None,
                         rank=1500,
                         division=9,
-                        role=enums.HeroClass.damage.value,
+                        role=RoleRef(dimension="player_role", role="damage"),
                         tournament_id=3,
                         user_id=42,
                         team_id=9,
@@ -402,8 +423,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         player = SimpleNamespace(
             id=91,
             name="Player Example",
-            role=enums.HeroClass.damage,
-            sub_role=None,
+            role_ref=RoleRef(dimension="player_role", role="damage"),
             rank=1500,
             workspace_member=SimpleNamespace(player_id=42),
             is_substitution=False,

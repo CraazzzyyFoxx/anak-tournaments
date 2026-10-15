@@ -39,6 +39,7 @@ import {
   subRoleCatalogRole,
   type PlayerRoleOption
 } from "@/lib/roster/player-role";
+import { roleOf, subRoleOf, toRoleRef } from "@/lib/roster/role-ref";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { PlayerCreateInput, PlayerUpdateInput } from "@/types/admin.types";
@@ -364,7 +365,7 @@ export function TeamRosterEditor({
    */
   const subRoleOptionsFor = (role: string | null | undefined) =>
     filterSubRoleOptions(playerSubRoles, role).map((subRole) => ({
-      slug: subRole.slug,
+      slug: `${subRoleCatalogRole(role)}_${subRole.slug}`,
       label: subRole.label
     }));
 
@@ -378,9 +379,8 @@ export function TeamRosterEditor({
       user_id: draft.userId,
       team_id: teamId,
       tournament_id: tournamentId,
-      role: draft.role,
+      role: toRoleRef(draft.role === "Flex" ? null : draft.role.toLowerCase(), draft.subRole, "player_role"),
       rank: draft.rank,
-      sub_role: draft.subRole || null,
       is_substitution: draft.parentId != null,
       related_player_id: draft.parentId
     });
@@ -521,7 +521,7 @@ export function TeamRosterEditor({
           </TableHeader>
           <TableBody>
             {rows.map(({ player, depth }) => {
-              const role = normalizePlayerRole(player.role);
+              const role = player.role ? normalizePlayerRole(roleOf(player.role)) : "Flex";
               const saving = savingPlayerId === player.id;
 
               return (
@@ -557,7 +557,7 @@ export function TeamRosterEditor({
                       value={role}
                       label={t("roleOfPlayer", { name: player.name })}
                       disabled={!canUpdatePlayer}
-                      onChange={(next) => patch(player, { role: next, sub_role: null })}
+                      onChange={(next) => patch(player, { role: toRoleRef(next === "Flex" ? null : next.toLowerCase(), null, player.role?.dimension ?? "player_role") })}
                     />
                   </TableCell>
 
@@ -587,11 +587,11 @@ export function TeamRosterEditor({
 
                   <TableCell className={tableStyles.cell}>
                     <SubRoleSelect
-                      value={player.sub_role ?? ""}
-                      options={subRoleOptionsFor(player.role)}
+                      value={subRoleOf(player.role) ?? ""}
+                      options={subRoleOptionsFor(roleOf(player.role))}
                       label={t("subRoleOfPlayer", { name: player.name })}
-                      disabled={!canUpdatePlayer || subRoleCatalogRole(player.role) == null}
-                      onChange={(subRole) => patch(player, { sub_role: subRole || null })}
+                      disabled={!canUpdatePlayer || subRoleCatalogRole(roleOf(player.role)) == null}
+                      onChange={(subRole) => patch(player, { role: toRoleRef(roleOf(player.role), subRole, player.role?.dimension ?? "player_role") })}
                     />
                   </TableCell>
 

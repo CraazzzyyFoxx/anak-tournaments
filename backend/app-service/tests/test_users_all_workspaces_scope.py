@@ -27,10 +27,12 @@ from sqlalchemy.dialects import postgresql
 from shared.core.errors import BaseAPIException
 from shared.division_grid import DEFAULT_GRID
 from shared.rpc import common as rpc_common
+from shared.rpc.query import build_query_model
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.normalization import DivisionGridNormalizer
 from shared.services.workspace_scope import ALL_WORKSPACES
 from shared.testing.factories import division_grid as make_grid
-from src import models
+from src import models, schemas
 from src.services.user.queries import _scope
 
 user_rpc = importlib.import_module("src.rpc.users")
@@ -120,7 +122,7 @@ class OverviewDivisionFilterTests(TestCase):
         sql = _compiled(
             _scope._apply_overview_role_filters(
                 sa.select(models.User.id),
-                role=enums.HeroClass.tank,
+                role=RoleRef(dimension="player_role", role="tank"),
                 divisions=[],
                 grid=DEFAULT_GRID,
                 workspace_id=7,
@@ -128,6 +130,29 @@ class OverviewDivisionFilterTests(TestCase):
         )
         self.assertNotIn("player.rank", sql)
         self.assertNotIn("division_grid_tier", sql)
+        for query_model, params_model in (
+            (schemas.UserOverviewQueryParams, schemas.UserOverviewParams),
+            (schemas.UserCatalogQueryParams, schemas.UserCatalogParams),
+        ):
+            self.assertFalse(params_model.from_query_params(build_query_model(query_model, {})).has_role_filter)
+            unassigned = params_model.from_query_params(build_query_model(query_model, {"role": ["null"]}))
+            self.assertTrue(unassigned.has_role_filter)
+            self.assertIsNone(unassigned.role)
+            role = RoleRef(dimension="position", role="support")
+            selected = params_model.from_query_params(
+                build_query_model(query_model, {"role": [role.model_dump_json()]})
+            )
+            self.assertEqual(role, selected.role)
+        unassigned_sql = _compiled(
+            _scope._apply_overview_role_filters(
+                sa.select(models.User.id),
+                role=None,
+                has_role_filter=True,
+                grid=DEFAULT_GRID,
+            )
+        )
+        self.assertIn("NOT (EXISTS", unassigned_sql)
+        self.assertIn("catalog.role_dimension.rated IS true", unassigned_sql)
 
     def test_all_workspaces_read_filters_each_row_on_its_own_grid(self) -> None:
         sql = _compiled(
@@ -186,8 +211,8 @@ class OverviewRoleDivisionTests(IsolatedAsyncioTestCase):
     async def test_each_role_keeps_the_grid_its_rank_was_played_on(self) -> None:
         roles_by_user, division_grids = await self._resolve(
             {
-                1: [(enums.HeroClass.tank, 2500, 101)],
-                2: [(enums.HeroClass.tank, 2500, 202)],
+                1: [(RoleRef(dimension="player_role", role="tank"), 2500, 101)],
+                2: [(RoleRef(dimension="player_role", role="tank"), 2500, 202)],
             },
             workspace_id=None,
         )
@@ -201,8 +226,8 @@ class OverviewRoleDivisionTests(IsolatedAsyncioTestCase):
         roles_by_user, division_grids = await self._resolve(
             {
                 1: [
-                    (enums.HeroClass.tank, 2500, 101),
-                    (enums.HeroClass.support, 2500, 202),
+                    (RoleRef(dimension="player_role", role="tank"), 2500, 101),
+                    (RoleRef(dimension="player_role", role="support"), 2500, 202),
                 ]
             },
             workspace_id=None,
@@ -223,7 +248,12 @@ class OverviewRoleDivisionTests(IsolatedAsyncioTestCase):
             weighted_targets_by_source_tier_id={},
         )
         roles_by_user, division_grids = await self._resolve(
-            {1: [(enums.HeroClass.tank, 2500, 101), (enums.HeroClass.support, 2500, 202)]},
+            {
+                1: [
+                    (RoleRef(dimension="player_role", role="tank"), 2500, 101),
+                    (RoleRef(dimension="player_role", role="support"), 2500, 202),
+                ]
+            },
             workspace_id=7,
             normalizer=normalizer,
         )

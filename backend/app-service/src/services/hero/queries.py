@@ -461,6 +461,8 @@ class HeroQueries:
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.name,
                 models.Player.role,
+                models.Player.sub_role,
+                models.Tournament.discipline,
                 (
                     # All-workspaces read: the player's division belongs to
                     # their own tournament's grid, not to one request grid.
@@ -478,6 +480,7 @@ class HeroQueries:
                 .label("rn"),
             )
             .join(models.Team, models.Team.id == models.Player.team_id)
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .where(models.Player.is_substitution.is_(False))
         ).subquery("player_rn")
@@ -487,6 +490,8 @@ class HeroQueries:
                 player_rn_subq.c.user_id,
                 player_rn_subq.c.name,
                 player_rn_subq.c.role,
+                player_rn_subq.c.sub_role,
+                player_rn_subq.c.discipline,
                 player_rn_subq.c.div,
                 player_rn_subq.c.team_id,
                 player_rn_subq.c.team,
@@ -509,6 +514,8 @@ class HeroQueries:
                 models.User.name.label("username"),
                 player_latest_subq.c.name.label("player_name"),
                 player_latest_subq.c.role,
+                player_latest_subq.c.sub_role,
+                player_latest_subq.c.discipline,
                 player_latest_subq.c.div,
                 player_latest_subq.c.team_id,
                 player_latest_subq.c.team,

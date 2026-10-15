@@ -25,6 +25,7 @@ from pydantic import BaseModel
 
 from shared.core import enums, pagination
 from shared.schemas.base import BaseRead
+from shared.schemas.role import RoleRef
 
 __all__ = (
     "GamemodeRead",
@@ -129,7 +130,7 @@ class HeroLeaderboardEntry(BaseModel):
     user_id: int
     username: str
     player_name: str
-    role: enums.HeroClass | None
+    role: RoleRef | None = None
     div: int
     team: str | None = None
     team_id: int | None = None

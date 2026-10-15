@@ -272,13 +272,13 @@ function card(overrides: Partial<UserDraftCard> = {}): UserDraftCard {
     mvp_maps: 4,
     best_placement: 1,
     avg_placement: 4.4,
-    roles: [{ role: "support", maps: 40, maps_won: 26 }],
+    roles: [{ role: { dimension: "player_role", role: "support" }, maps: 40, maps_won: 26 }],
     heroes: [
       { hero: { id: 1, slug: "ana", name: "Ana", image_path: null } as never, role: "support", maps: 30, maps_won: 20 }
     ],
     recent_tournaments: [
-      { id: 9, name: "Spring Cup", date: "2026-05-01", role: "support", rank: 3100, placement: 2, teams_count: 16 },
-      { id: 2, name: "Winter Cup", date: "2026-01-01", role: "support", rank: 2900, placement: 5, teams_count: 16 }
+      { id: 9, name: "Spring Cup", date: "2026-05-01", role: { dimension: "player_role", role: "support" }, rank: 3100, placement: 2, teams_count: 16 },
+      { id: 2, name: "Winter Cup", date: "2026-01-01", role: { dimension: "player_role", role: "support" }, rank: 2900, placement: 5, teams_count: 16 }
     ],
     ...overrides
   };

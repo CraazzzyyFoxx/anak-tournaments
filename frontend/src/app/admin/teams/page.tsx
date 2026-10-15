@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import { roleOf } from "@/lib/roster/role-ref";
 import type { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Users } from "lucide-react";
@@ -60,7 +61,7 @@ function RosterList({ players }: Readonly<{ players: Player[] }>) {
         <li key={player.id} className="flex items-center justify-between gap-2">
           <span className="truncate">{player.user?.name ?? player.name}</span>
           <span className="shrink-0 text-xs text-muted-foreground">
-            {player.role}
+            {roleOf(player.role)}
             {" · "}
             <span className="font-mono tabular-nums">{player.rank}</span>
           </span>

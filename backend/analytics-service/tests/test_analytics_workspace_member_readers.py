@@ -96,9 +96,9 @@ class GetAnalyticsWindowAndSelfJoinTests(IsolatedAsyncioTestCase):
         sql = _compiled(session.statements[0])
         # CTEs group by the substitute identity column and still expose it
         # labeled "user_id" for the self-join predicates below.
-        self.assertIn(
-            "GROUP BY workspace_member.player_id, tournament.player.role, tournament.player.team_id",
+        self.assertRegex(
             sql,
+            r"(?s)GROUP BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\), tournament\.player\.team_id",
         )
         # Self-join of the outer query against both home/away CTEs keys off
         # workspace_member.player_id, not the retained FK column.
@@ -108,24 +108,18 @@ class GetAnalyticsWindowAndSelfJoinTests(IsolatedAsyncioTestCase):
         )
         self.assertNotIn("home_team_id", sql)
         # Window functions partition by the substitute identity column.
-        self.assertIn(
-            "PARTITION BY workspace_member.player_id, tournament.player.role "
-            "ORDER BY tournament.tournament.id) AS previous_cost",
-            sql,
-        )
-        self.assertIn(
-            "PARTITION BY workspace_member.player_id, tournament.player.role "
-            "ORDER BY tournament.tournament.id) AS pre_previous_cost",
-            sql,
-        )
+        for label in ("previous_cost", "pre_previous_cost"):
+            self.assertRegex(
+                sql,
+                rf"(?s)PARTITION BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\) ORDER BY tournament\.tournament\.id\) AS {label}",
+            )
         # Outer SELECT still exposes a "user_id" column (frontend/ML readers
         # of get_analytics rows key off row["user_id"]).
         self.assertIn("workspace_member.player_id AS user_id", sql)
         # Final ORDER BY uses the substitute column, same position as before.
-        self.assertTrue(
-            sql.rstrip().endswith(
-                "ORDER BY workspace_member.player_id, tournament.player.role, tournament.tournament.id"
-            )
+        self.assertRegex(
+            sql,
+            r"(?s)ORDER BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\), tournament\.tournament\.id$",
         )
         # performance_points CTE's Player<->MatchStatistics join must route
         # through workspace_member, not the retained Player.user_id column.
@@ -206,7 +200,10 @@ class ShiftFeaturesRankHistoryTests(IsolatedAsyncioTestCase):
 
         sql = _compiled(session.statements[0])
         self.assertIn("workspace_member.player_id AS user_id", sql)
-        self.assertTrue("ORDER BY workspace_member.player_id, tournament.player.role, tournament.tournament.id" in sql)
+        self.assertRegex(
+            sql,
+            r"(?s)ORDER BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\), tournament\.tournament\.id$",
+        )
 
 
 class MvpDominanceJoinTests(IsolatedAsyncioTestCase):
@@ -275,7 +272,7 @@ class BacktestRealisedShiftTests(IsolatedAsyncioTestCase):
 
         sql = _compiled(session.statements[0])
         self.assertIn("workspace_member.player_id AS user_id", sql)
-        self.assertIn(
-            "ORDER BY workspace_member.player_id, tournament.player.role, tournament.tournament.id",
+        self.assertRegex(
             sql,
+            r"(?s)ORDER BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\), tournament\.tournament\.id$",
         )

@@ -1,6 +1,7 @@
 // Admin CRUD Types
 
 import type { CaptainReport, ReplayCode } from "@/types/encounter.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 // ─── Global Settings (parser.*) ───────────────────────────────────────────────
 
@@ -624,9 +625,8 @@ export interface PlayerCreateInput {
   user_id: number;
   team_id: number;
   tournament_id: number;
-  role: string;
+  role: RoleRef | null;
   rank?: number;
-  sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
@@ -635,9 +635,8 @@ export interface PlayerCreateInput {
 
 export interface PlayerUpdateInput {
   name?: string;
-  role?: string;
+  role?: RoleRef | null;
   rank?: number;
-  sub_role?: string | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;

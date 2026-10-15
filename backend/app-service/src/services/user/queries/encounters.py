@@ -637,10 +637,14 @@ class UserEncounterQueries:
             )
         ).all()
 
-        roles: dict[int, list[str]] = {}
-        for member_id, role in (
+        roles: dict[int, list[tuple[str, str]]] = {}
+        for member_id, dimension, role in (
             await session.execute(
-                sa.select(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role)
+                sa.select(
+                    models.EncounterTeamMemberRole.team_member_id,
+                    models.EncounterTeamMemberRole.dimension,
+                    models.EncounterTeamMemberRole.role,
+                )
                 .join(
                     models.EncounterTeamMember,
                     models.EncounterTeamMember.id == models.EncounterTeamMemberRole.team_member_id,
@@ -648,12 +652,11 @@ class UserEncounterQueries:
                 .where(
                     models.EncounterTeamMember.encounter_id.in_(ids),
                     models.EncounterTeamMember.active.is_(True),
-                    models.EncounterTeamMemberRole.dimension == "player_role",
                 )
                 .order_by(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role)
             )
         ).all():
-            roles.setdefault(member_id, []).append(role)
+            roles.setdefault(member_id, []).append((dimension, role))
         rosters: dict[int, list[_mappers.RosterEntry]] = {}
         for member, user_id in (
             await session.execute(

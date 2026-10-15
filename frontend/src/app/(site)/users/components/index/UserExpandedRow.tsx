@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
+import { roleOf } from "@/lib/roster/role-ref";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import HeroImage from "@/components/hero/HeroImage";
@@ -99,9 +100,9 @@ export function UserExpandedRow({
           ) : (
             <ul className="space-y-1.5">
               {data.roles.map((role) => {
-                const roleOption = normalizePlayerRole(role.role);
+                const roleOption = (role.role ? normalizePlayerRole(roleOf(role.role)) : "Flex");
                 return (
-                <li key={role.role} className="flex items-center gap-2 text-caption">
+                <li key={`${role.role?.dimension}-${role.role?.role}`} className="flex items-center gap-2 text-caption">
                   <PlayerRoleIcon role={roleOption} size={16} decorative />
                   <span className="text-[color:var(--aqt-fg-muted)]">
                     {t(PLAYER_ROLE_LABEL_KEY[roleOption])}

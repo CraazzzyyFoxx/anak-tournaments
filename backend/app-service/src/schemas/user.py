@@ -1,15 +1,23 @@
 import datetime
+import json
 import typing
 from dataclasses import dataclass, field
 
 import sqlalchemy as sa
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 from shared.domain.roster_shape import RegistrationRoleCode
+from shared.schemas.role import RoleRef
 from src import schemas
 from src.core import enums, pagination
+from src.schemas import MapRead
 from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead
+
+# Structured GET filters are JSON-encoded query values; RPC callers may supply the object directly.
+RoleQuery = typing.Annotated[
+    RoleRef | None, BeforeValidator(lambda value: json.loads(value) if isinstance(value, str) else value)
+]
 
 __all__ = (
     "UserProfile",
@@ -75,11 +83,9 @@ __all__ = (
     "UserHeroCompareResponse",
 )
 
-from src.schemas import MapRead
-
 
 class UserRole(BaseModel):
-    role: enums.HeroClass
+    role: RoleRef | None = None
     tournaments: int
     maps_won: int
     maps: int
@@ -111,8 +117,7 @@ class UserTournamentPlayer(BaseModel):
 
     id: int
     name: str
-    role: enums.HeroClass | None = None
-    sub_role: str | None = None
+    role: RoleRef | None = None
     rank: int
     division: int
     user_id: int
@@ -166,7 +171,7 @@ class UserEncounterTeamPlayerRef(BaseModel):
 
     id: int
     user_id: int
-    role: enums.HeroClass | None = None
+    role: RoleRef | None = None
     name: str
 
 
@@ -250,7 +255,7 @@ class UserTournament(BaseModel):
     maps_lost: int
     # Nullable because the user may not have a Player record on the team
     # (e.g. teams returned for adjacency aggregates have no resolved role).
-    role: enums.HeroClass | None = None
+    role: RoleRef | None = None
     division: int | None = None
     division_grid_version: DivisionGridVersionRead | None = None
     # Populated only by `get_tournament_encounters` (the lazy per-tournament
@@ -276,7 +281,7 @@ class UserTournamentWithStats(BaseModel):
     # the workspace default.
     division_grid_version: DivisionGridVersionRead | None = None
     closeness: float
-    role: enums.HeroClass
+    role: RoleRef | None = None
     group_placement: float | None
     playoff_placement: float | None
     maps_won: int
@@ -392,7 +397,7 @@ class UserProfile(BaseModel):
 class UserDraftCardRole(BaseModel):
     """One role's map record on the draft-room player card."""
 
-    role: RegistrationRoleCode
+    role: RoleRef | None = None
     maps: int
     maps_won: int
 
@@ -412,7 +417,7 @@ class UserDraftCardTournament(BaseModel):
     id: int
     name: str
     date: datetime.date | None = None
-    role: RegistrationRoleCode | None = None
+    role: RoleRef | None = None
     #: The player's raw rank on that tournament's roster (never a resolved
     #: division — the draft room resolves it against the tournament's own grid).
     rank: int | None = None
@@ -505,7 +510,7 @@ class UserSearch(BaseModel):
 
 
 class UserOverviewRoleDivision(BaseModel):
-    role: enums.HeroClass
+    role: RoleRef | None = None
     division: int
     # Which grid ``division`` is a number on: the workspace's target grid in a
     # scoped read, the role's own tournament grid in the all-workspaces read.
@@ -566,7 +571,7 @@ class UserOverviewQueryParams(
         ]
     ]
 ):
-    role: enums.HeroClass | None = None
+    role: RoleQuery = None
     divisions: list[DivisionNumber] = Field(default_factory=list)
     has_logs: bool = False
     #: ``sort=winrate`` only: users under this many encounters are ordered after
@@ -576,10 +581,18 @@ class UserOverviewQueryParams(
 
 @dataclass
 class UserOverviewParams(pagination.PaginationSortSearchParams):
-    role: enums.HeroClass | None = None
+    role: RoleRef | None = None
+    has_role_filter: bool = False
     divisions: list[int] = field(default_factory=list)
     has_logs: bool = False
     min_encounters: int = 20
+
+    @classmethod
+    def from_query_params(cls, query_params: UserOverviewQueryParams) -> UserOverviewParams:
+        params = super().from_query_params(query_params)
+        params.role = query_params.role
+        params.has_role_filter = "role" in query_params.model_fields_set
+        return params
 
     def apply_search(self, query: sa.Select, model: type) -> sa.Select:
         fields = self.fields if self.fields else ["name"]
@@ -603,15 +616,14 @@ class UserOverviewStats(BaseModel):
     damage_count: int
     support_count: int
     flex_count: int
-    #: What the Flex chip selects (declared ``role=flex``), unlike the broader
-    #: ``flex_count`` which also counts multi-role players.
+    #: Players with no rated-role assignment, unlike ``flex_count`` which also counts multi-role players.
     flex_declared_count: int
     #: Per-division chip counts, computed without the division filter itself.
     division_counts: list[UserOverviewDivisionCount] = Field(default_factory=list)
 
 
 class UserOverviewStatsQueryParams(BaseModel):
-    role: enums.HeroClass | None = None
+    role: RoleQuery = None
     divisions: list[DivisionNumber] = Field(default_factory=list)
     has_logs: bool = False
     query: str | None = None
@@ -647,7 +659,7 @@ class UserCatalogResponse(BaseModel):
 
 
 class UserCatalogQueryParams(BaseModel):
-    role: enums.HeroClass | None = None
+    role: RoleQuery = None
     divisions: list[DivisionNumber] = Field(default_factory=list)
     has_logs: bool = False
     query: str | None = None
@@ -658,7 +670,8 @@ class UserCatalogQueryParams(BaseModel):
 
 @dataclass
 class UserCatalogParams:
-    role: enums.HeroClass | None = None
+    role: RoleRef | None = None
+    has_role_filter: bool = False
     divisions: list[int] = field(default_factory=list)
     has_logs: bool = False
     query: str | None = None
@@ -669,6 +682,8 @@ class UserCatalogParams:
     @classmethod
     def from_query_params(cls, query_params: UserCatalogQueryParams) -> UserCatalogParams:
         data = query_params.model_dump()
+        data["role"] = query_params.role
+        data["has_role_filter"] = "role" in query_params.model_fields_set
         if data.get("letter"):
             data["letter"] = data["letter"].upper()
         return cls(**data)
@@ -686,7 +701,7 @@ class UserCompareBaselineInfo(BaseModel):
     mode: UserCompareBaselineMode
     sample_size: int
     target_user: UserCompareUser | None
-    role: enums.HeroClass | None
+    role: RoleRef | None = None
     div_min: int | None
     div_max: int | None
 
@@ -713,7 +728,7 @@ class UserCompareResponse(BaseModel):
 class UserCompareQueryParams(BaseModel):
     baseline: UserCompareBaselineMode = "global"
     target_user_id: int | None = Field(default=None, ge=1)
-    role: enums.HeroClass | None = None
+    role: RoleQuery = None
     div_min: int | None = Field(default=None, ge=1, le=20)
     div_max: int | None = Field(default=None, ge=1, le=20)
     tournament_id: int | None = Field(default=None, ge=1)
@@ -723,14 +738,14 @@ class UserCompareQueryParams(BaseModel):
 class UserCompareParams:
     baseline: UserCompareBaselineMode = "global"
     target_user_id: int | None = None
-    role: enums.HeroClass | None = None
+    role: RoleRef | None = None
     div_min: int | None = None
     div_max: int | None = None
     tournament_id: int | None = None
 
     @classmethod
     def from_query_params(cls, query_params: UserCompareQueryParams):
-        return cls(**query_params.model_dump())
+        return cls(**(query_params.model_dump() | {"role": query_params.role}))
 
 
 class UserHeroCompareMetric(BaseModel):
@@ -761,7 +776,7 @@ class UserHeroCompareQueryParams(BaseModel):
     left_hero_id: int | None = Field(default=None, ge=1)
     right_hero_id: int | None = Field(default=None, ge=1)
     map_id: int | None = Field(default=None, ge=1)
-    role: enums.HeroClass | None = None
+    role: RoleQuery = None
     div_min: int | None = Field(default=None, ge=1, le=20)
     div_max: int | None = Field(default=None, ge=1, le=20)
     tournament_id: int | None = Field(default=None, ge=1)
@@ -775,7 +790,7 @@ class UserHeroCompareParams:
     left_hero_id: int | None = None
     right_hero_id: int | None = None
     map_id: int | None = None
-    role: enums.HeroClass | None = None
+    role: RoleRef | None = None
     div_min: int | None = None
     div_max: int | None = None
     tournament_id: int | None = None
@@ -784,5 +799,6 @@ class UserHeroCompareParams:
     @classmethod
     def from_query_params(cls, query_params: UserHeroCompareQueryParams):
         payload = query_params.model_dump()
+        payload["role"] = query_params.role
         payload["stats"] = payload.get("stats") or []
         return cls(**payload)

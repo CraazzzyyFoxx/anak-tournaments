@@ -14,10 +14,12 @@ from datetime import UTC, datetime
 import sqlalchemy as sa
 
 from shared.core.impact import BADGE_THRESHOLD
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
+from shared.domain.player_sub_roles import workspace_sub_role_code
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src import models, schemas
-from src.core import enums
 from src.schemas.base import Score
 from src.schemas.division_grid import DivisionGridVersionRead
 
@@ -104,8 +106,7 @@ def to_user_tournament_player(
     return schemas.UserTournamentPlayer(
         id=player.id,
         name=player.name,
-        role=player.role,
-        sub_role=player.sub_role,
+        role=player.role_ref,
         rank=player.rank,
         division=resolve_tournament_division(player.rank, tournament_grid=grid),
         # workspace_member_id is NOT NULL (contract step, iwrefac07): the
@@ -221,8 +222,8 @@ class RosterEntry:
 
     member: models.EncounterTeamMember
     user_id: int
-    #: Every role code of the member (a role and a sub-role are two rows).
-    roles: tuple[str, ...]
+    #: Dimension/code pairs from the legacy encounter snapshot until Task 6.
+    roles: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -240,25 +241,27 @@ class EncounterContext:
         return [seat for seat, _ in self.seats]
 
 
-def _hero_class(roles: tuple[str, ...]) -> enums.HeroClass | None:
-    """The first role code that is a roster role (a sub-role code is not one).
+def _roster_role(roles: tuple[tuple[str, str], ...], discipline_code: str) -> RoleRef | None:
+    """Read the rated role from a legacy encounter snapshot until Task 6 migrates it."""
+    rated = discipline(discipline_code).rated_dimension
+    role = next((code for dimension, code in roles if dimension == rated.code), None)
+    if role == "flex":
+        return None
+    sub_role = next((code for dimension, code in roles if dimension == "sub_role"), None)
+    return RoleRef.of(rated.code, role, workspace_sub_role_code(role, sub_role) if role else None)
 
-    Codes are the lowercase member NAMES -- what ``tournament.player.role`` stores.
-    """
-    return next((enums.HeroClass[role] for role in roles if role in enums.HeroClass.__members__), None)
 
-
-def _to_encounter_team_player_ref(entry: RosterEntry) -> schemas.UserEncounterTeamPlayerRef:
+def _to_encounter_team_player_ref(entry: RosterEntry, discipline_code: str) -> schemas.UserEncounterTeamPlayerRef:
     return schemas.UserEncounterTeamPlayerRef(
         id=entry.member.id,
         user_id=entry.user_id,
-        role=_hero_class(entry.roles),
+        role=_roster_role(entry.roles, discipline_code),
         name=entry.member.display_name_snapshot,
     )
 
 
 def to_encounter_team_summary(
-    seat: models.EncounterTeam, roster: list[RosterEntry]
+    seat: models.EncounterTeam, roster: list[RosterEntry], *, discipline_code: str
 ) -> schemas.UserEncounterTeamSummary:
     return schemas.UserEncounterTeamSummary(
         id=seat.id,
@@ -267,7 +270,7 @@ def to_encounter_team_summary(
         name=seat.name,
         score=seat.score,
         placement=seat.placement,
-        players=[_to_encounter_team_player_ref(entry) for entry in roster],
+        players=[_to_encounter_team_player_ref(entry, discipline_code) for entry in roster],
     )
 
 
@@ -308,7 +311,10 @@ def to_encounter_with_user_stats(
         tournament=to_encounter_tournament_summary(getattr(encounter, "tournament", None)),
         stage=to_encounter_stage_summary(context.stage),
         stage_item=to_encounter_stage_item_summary(context.stage_item),
-        teams=[to_encounter_team_summary(seat, roster) for seat, roster in context.seats],
+        teams=[
+            to_encounter_team_summary(seat, roster, discipline_code=encounter.discipline)
+            for seat, roster in context.seats
+        ],
         matches=matches,
     )
 

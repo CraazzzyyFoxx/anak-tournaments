@@ -29,6 +29,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from shared.models.catalog.role import CatalogRole, RoleDimension
+from shared.models.tournament.player_role import PlayerRole
 from shared.testing import create_sqlite_tables
 
 backend_root = Path(__file__).resolve().parents[2]
@@ -67,6 +69,9 @@ TABLES = (
     models.TournamentPhaseSchedule.__table__,
     models.Team.__table__,
     models.Player.__table__,
+    PlayerRole.__table__,
+    CatalogRole.__table__,
+    RoleDimension.__table__,
     models.WorkspaceMember.__table__,
     models.Encounter.__table__,
     models.EncounterTeam.__table__,
@@ -76,7 +81,6 @@ TABLES = (
 )
 
 WORKSPACE_ID = 1
-ROLE = enums.HeroClass.damage
 PERFORMANCE_POINTS = enums.LogStatsName.PerformancePoints
 
 # ``get_analytics``'s ``team_standings`` CTE uses ``DISTINCT ON``, which SQLite
@@ -140,6 +144,16 @@ class _Fixture:
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 1
+        self.insert(
+            RoleDimension.__table__,
+            id=1,
+            discipline="overwatch",
+            code="player_role",
+            name="Role",
+            selection_mode="single",
+            rated=True,
+        )
+        self.insert(CatalogRole.__table__, id=1, dimension_id=1, code="damage", name="Damage", attrs={})
 
     def close(self) -> None:
         self.session.close()
@@ -198,12 +212,12 @@ class _Fixture:
             team_id=team_id,
             workspace_member_id=member_id,
             name=name,
-            role=ROLE,
             rank=rank,
             is_substitution=False,
             is_newcomer=False,
             is_newcomer_role=False,
         )
+        self.insert(PlayerRole.__table__, player_id=player_id, dimension_id=1, role_id=1)
         return player_id
 
     def encounter(self, tournament_id: int, home_team_id: int, away_team_id: int) -> int:

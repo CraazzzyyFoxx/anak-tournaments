@@ -49,10 +49,9 @@ function player(overrides: Partial<Player> & { id: number; name: string }): Play
   return {
     created_at: new Date(0),
     updated_at: null,
-    sub_role: null,
     rank: 3000,
     division: 20,
-    role: "Damage",
+    role: { dimension: "player_role", role: "damage" },
     tournament_id: 7,
     user_id: overrides.id + 100,
     team_id: 3,
@@ -65,13 +64,13 @@ function player(overrides: Partial<Player> & { id: number; name: string }): Play
   };
 }
 
-const SUPPORT = player({ id: 1, name: "Mercy", role: "Support", rank: 2800 });
-const TANK = player({ id: 2, name: "Rein", role: "Tank", rank: 3300, sub_role: "main_heal" });
-const DAMAGE = player({ id: 3, name: "Tracer", role: "Damage", rank: 3100 });
+const SUPPORT = player({ id: 1, name: "Mercy", role: { dimension: "player_role", role: "support" }, rank: 2800 });
+const TANK = player({ id: 2, name: "Rein", role: { dimension: "player_role", role: "tank_main_heal", parent: "tank" }, rank: 3300 });
+const DAMAGE = player({ id: 3, name: "Tracer", role: { dimension: "player_role", role: "damage" }, rank: 3100 });
 const TANK_SUB = player({
   id: 4,
   name: "Sigma",
-  role: "Tank",
+  role: { dimension: "player_role", role: "tank" },
   rank: 3200,
   is_substitution: true,
   related_player_id: 2

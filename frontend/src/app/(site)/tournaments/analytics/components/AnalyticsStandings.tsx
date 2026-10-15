@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronRight, Minus } from "lucide-react";
+import { roleOf } from "@/lib/roster/role-ref";
 import {
   AnalyticsAnomaly,
   PerformanceV2,
@@ -273,8 +274,8 @@ const TeamDetail = ({
                 <tr key={player.id}>
                   <td>
                     <div className="flex items-center gap-2">
-                      <PlayerRoleIcon role={player.role} size={18} decorative />
-                      <span className="text-muted-foreground">{player.role}</span>
+                      <PlayerRoleIcon role={roleOf(player.role)} size={18} decorative />
+                      <span className="text-muted-foreground">{roleOf(player.role)}</span>
                     </div>
                   </td>
                   <td>
@@ -403,7 +404,7 @@ const RoleLane = ({ team }: { team: TeamAnalytics }) => {
           )}
           title={player.name}
         >
-          <PlayerRoleIcon role={player.role} size={14} />
+          <PlayerRoleIcon role={roleOf(player.role)} size={14} />
           <DivisionBadge division={player.division} tournamentGrid={tournamentGrid} size={22} />
           <span className={styles.roleName}>{player.name.split("#")[0]}</span>
         </div>

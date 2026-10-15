@@ -16,7 +16,7 @@ const buildResponse = (): RegistrationListResponse =>
           {
             tournament_id: 10,
             tournament_name: "T10",
-            role: "tank",
+            role: { dimension: "player_role", role: "tank" },
             division: 4,
             division_grid_version_id: 5,
           },
@@ -30,7 +30,7 @@ const buildResponse = (): RegistrationListResponse =>
           {
             tournament_id: 12,
             tournament_name: "T12",
-            role: "damage",
+            role: { dimension: "player_role", role: "damage" },
             division: 2,
             division_grid_version_id: 99, // not present in division_grids
           },

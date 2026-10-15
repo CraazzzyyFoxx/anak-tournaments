@@ -5,7 +5,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.models.tournament.player_role import assignment_of
 from shared.repository import (
     PlayerRepository,
     StandingRepository,
@@ -14,13 +14,13 @@ from shared.repository import (
     UserRepository,
     resolve_workspace_member_id,
 )
+from shared.services.ontology import resolve_role_ref
 from src import models, schemas
 from src.services.tournament.events import STRUCTURE_RESOURCES, publish_tournament_invalidation
 
 
 def _prepare_player_create_data(data: schemas.PlayerCreate) -> dict:
-    player_data = data.model_dump()
-    player_data["sub_role"] = normalize_sub_role(player_data.get("sub_role"))
+    player_data = data.model_dump(exclude={"role"})
     if not player_data.get("is_substitution"):
         player_data["related_player_id"] = None
     return player_data
@@ -30,9 +30,7 @@ def _prepare_player_update_data(
     player: models.Player,
     data: schemas.PlayerUpdate,
 ) -> dict:
-    update_data = data.model_dump(exclude_unset=True)
-    if "sub_role" in update_data:
-        update_data["sub_role"] = normalize_sub_role(update_data["sub_role"])
+    update_data = data.model_dump(exclude_unset=True, exclude={"role"})
     if update_data.get("is_substitution") is False:
         update_data["related_player_id"] = None
     return update_data
@@ -323,6 +321,11 @@ class AdminTeamService:
             tournament_id=team.tournament_id,
             player_id=player_data.pop("user_id"),
         )
+        tournament = await self.tournament_repo.get(session, team.tournament_id)
+        leaf = await resolve_role_ref(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id, ref=data.role
+        )
+        player_data["assignments"] = [] if leaf is None else [assignment_of(leaf)]
 
         # Create player
         player = await self.player_repo.create(session, models.Player(**player_data))
@@ -384,6 +387,11 @@ class AdminTeamService:
             tournament_id=team.tournament_id,
             player_id=player_data.pop("user_id"),
         )
+        tournament = await self.tournament_repo.get(session, team.tournament_id)
+        leaf = await resolve_role_ref(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id, ref=data.role
+        )
+        player_data["assignments"] = [] if leaf is None else [assignment_of(leaf)]
 
         # Create player
         player = await self.player_repo.create(session, models.Player(**player_data))
@@ -413,6 +421,12 @@ class AdminTeamService:
 
         # Update fields
         update_data = _prepare_player_update_data(player, data)
+        if "role" in data.model_fields_set:
+            tournament = await self.tournament_repo.get(session, player.tournament_id)
+            leaf = await resolve_role_ref(
+                session, discipline=tournament.discipline, workspace_id=tournament.workspace_id, ref=data.role
+            )
+            player.assignments = [] if leaf is None else [assignment_of(leaf)]
         for field, value in update_data.items():
             setattr(player, field, value)
 

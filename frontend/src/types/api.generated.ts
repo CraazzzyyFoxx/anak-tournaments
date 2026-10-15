@@ -11810,19 +11810,14 @@ export interface components {
              * @default null
              */
             related_player_id: number | null;
-            /** Role */
-            role: string;
+            /** @default null */
+            role: components["schemas"]["analytics.RoleRef"] | null;
             /** Sample Matches */
             sample_matches: number;
             /** Sample Tournaments */
             sample_tournaments: number;
             /** Shift */
             shift: number | null;
-            /**
-             * Sub Role
-             * @default null
-             */
-            sub_role: string | null;
             /** Team Id */
             team_id: number;
             /** Tournament Id */
@@ -11872,11 +11867,26 @@ export interface components {
             pre_previous_position: number | null;
             /** Previous Position */
             previous_position: number | null;
-            /** Role */
-            role: string;
+            /** @default null */
+            role: components["schemas"]["analytics.RoleRef"] | null;
             /** Sum Position */
             sum_position: number;
             user: components["schemas"]["analytics.UserReadMin"];
+        };
+        /**
+         * RoleRef
+         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         */
+        "analytics.RoleRef": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Parent
+             * @default null
+             */
+            parent: string | null;
+            /** Role */
+            role: string;
         };
         /** StandingsRow */
         "analytics.StandingsRow": {
@@ -12353,29 +12363,6 @@ export interface components {
             /** Slug */
             slug: string;
         };
-        /**
-         * HeroClass
-         * @description A roster role OR an Overwatch character's class.
-         *
-         *     ``tank``/``damage``/``support`` mean both things at once. The Postgres
-         *     ``heroclass`` type still backs ``matches.stat_baselines.role`` and
-         *     ``tournament.player.role``; character classes now live in ``catalog.entity.attrs``.
-         *     ``flex`` only means a player who holds no fixed role, which is what a
-         *     role-less roster shape drafts and balances for. No hero has a class of
-         *     "flex": the module's ``character_classes`` and :data:`HeroTypeClass` narrow
-         *     the catalog values; a database CHECK still narrows baseline roles.
-         *
-         *     Member NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),
-         *     so the DB sees ``flex`` while the Python value is ``"Flex"``.
-         *
-         *     THE single role enum for the whole backend (frontend mirror:
-         *     ``PlayerRoleOption`` in ``lib/roster/player-role.ts``). One spelling per role, in
-         *     code, on the wire and in the database: :attr:`slot_code` is the lowercase
-         *     member name. This docstring is the public OpenAPI description of the enum,
-         *     so the retired spelling is documented on :attr:`slot_code` instead.
-         * @enum {string}
-         */
-        "app.HeroClass": AppHeroClass;
         /** HeroLeaderboardEntry */
         "app.HeroLeaderboardEntry": {
             /** Avg Crit Accuracy */
@@ -12430,7 +12417,8 @@ export interface components {
             playtime_seconds: number;
             /** Rank */
             rank: number;
-            role: components["schemas"]["app.HeroClass"] | null;
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
             /**
              * Team
              * @default null
@@ -12954,6 +12942,21 @@ export interface components {
             /** Value */
             value: number;
         };
+        /**
+         * RoleRef
+         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         */
+        "app.RoleRef": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Parent
+             * @default null
+             */
+            parent: string | null;
+            /** Role */
+            role: string;
+        };
         /** Score */
         "app.Score": {
             /** Away */
@@ -13131,7 +13134,8 @@ export interface components {
              * @enum {string}
              */
             mode: AppUserCompareBaselineInfoMode;
-            role: components["schemas"]["app.HeroClass"] | null;
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
             /** Sample Size */
             sample_size: number;
             target_user: components["schemas"]["app.UserCompareUser"] | null;
@@ -13239,11 +13243,8 @@ export interface components {
             maps: number;
             /** Maps Won */
             maps_won: number;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: AppUserDraftCardRoleRole;
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
         };
         /**
          * UserDraftCardTournament
@@ -13269,11 +13270,8 @@ export interface components {
              * @default null
              */
             rank: number | null;
-            /**
-             * Role
-             * @default null
-             */
-            role: AppUserDraftCardTournamentRoleAnyOf0 | null;
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
             /** Teams Count */
             teams_count: number;
         };
@@ -13312,7 +13310,7 @@ export interface components {
             /** Name */
             name: string;
             /** @default null */
-            role: components["schemas"]["app.HeroClass"] | null;
+            role: components["schemas"]["app.RoleRef"] | null;
             /** User Id */
             user_id: number;
         };
@@ -13548,7 +13546,8 @@ export interface components {
              * @default null
              */
             division_grid_version_id: number | null;
-            role: components["schemas"]["app.HeroClass"];
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
         };
         /** UserOverviewRow */
         "app.UserOverviewRow": {
@@ -13670,7 +13669,8 @@ export interface components {
             maps: number;
             /** Maps Won */
             maps_won: number;
-            role: components["schemas"]["app.HeroClass"];
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
             /** Tournaments */
             tournaments: number;
         };
@@ -13722,7 +13722,7 @@ export interface components {
             /** Players */
             players: components["schemas"]["app.UserTournamentPlayer"][];
             /** @default null */
-            role: components["schemas"]["app.HeroClass"] | null;
+            role: components["schemas"]["app.RoleRef"] | null;
             /** Team */
             team: string;
             /** Team Id */
@@ -13770,12 +13770,7 @@ export interface components {
              */
             relative_player: number | null;
             /** @default null */
-            role: components["schemas"]["app.HeroClass"] | null;
-            /**
-             * Sub Role
-             * @default null
-             */
-            sub_role: string | null;
+            role: components["schemas"]["app.RoleRef"] | null;
             /** User Id */
             user_id: number;
         };
@@ -13834,7 +13829,8 @@ export interface components {
             playoff_placement: number | null;
             /** Playtime */
             playtime: number;
-            role: components["schemas"]["app.HeroClass"];
+            /** @default null */
+            role: components["schemas"]["app.RoleRef"] | null;
             /** Stats */
             stats: {
                 [key: string]: components["schemas"]["app.UserTournamentStat"];
@@ -17517,10 +17513,8 @@ export interface components {
             rank: number;
             /** Related Player Id */
             related_player_id: number | null;
-            /** Role */
-            role: string | null;
-            /** Sub Role */
-            sub_role: string | null;
+            /** @default null */
+            role: components["schemas"]["tournament.RoleRef"] | null;
             team: components["schemas"]["tournament.TeamRead"] | null;
             /** Team Id */
             team_id: number;
@@ -17553,16 +17547,14 @@ export interface components {
             rank: number;
             /** Related Player Id */
             related_player_id: number | null;
-            /** Role */
-            role: string | null;
+            /** @default null */
+            role: components["schemas"]["tournament.RoleRef"] | null;
             /** Stats */
             stats: {
                 [key: string]: {
                     [key: string]: number;
                 };
             };
-            /** Sub Role */
-            sub_role: string | null;
             team: components["schemas"]["tournament.TeamRead"] | null;
             /** Team Id */
             team_id: number;
@@ -18329,6 +18321,21 @@ export interface components {
              * @enum {string}
              */
             state: TournamentRequirementVerdictReadState;
+        };
+        /**
+         * RoleRef
+         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         */
+        "tournament.RoleRef": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Parent
+             * @default null
+             */
+            parent: string | null;
+            /** Role */
+            role: string;
         };
         /**
          * RosterShapeRead
@@ -25866,16 +25873,8 @@ export interface components {
              * @default null
              */
             related_player_id: number | null;
-            /**
-             * Role
-             * @default null
-             */
-            role: string | null;
-            /**
-             * Sub Role
-             * @default null
-             */
-            sub_role: string | null;
+            /** @default null */
+            role: components["schemas"]["tournament.RoleRef"] | null;
             /** Team Id */
             team_id: number;
             /** Tournament Id */
@@ -26008,16 +26007,8 @@ export interface components {
              * @default null
              */
             related_player_id: number | null;
-            /**
-             * Role
-             * @default null
-             */
-            role: string | null;
-            /**
-             * Sub Role
-             * @default null
-             */
-            sub_role: string | null;
+            /** @default null */
+            role: components["schemas"]["tournament.RoleRef"] | null;
         };
         /**
          * PregameGamesSummary
@@ -26590,21 +26581,6 @@ export interface components {
              * @constant
              */
             type: "text";
-        };
-        /**
-         * RoleRef
-         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
-         */
-        "tournament.RoleRef": {
-            /** Dimension */
-            dimension: string;
-            /**
-             * Parent
-             * @default null
-             */
-            parent: string | null;
-            /** Role */
-            role: string;
         };
         /** RoleTierRead */
         "tournament.RoleTierRead": {
@@ -42295,7 +42271,7 @@ export interface operations {
                 order?: components["schemas"]["app.SortOrder"];
                 query?: string;
                 fields?: string[];
-                role?: components["schemas"]["app.HeroClass"] | null;
+                role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 min_encounters?: number;
@@ -42358,7 +42334,7 @@ export interface operations {
     get__api_v1_users_overview_catalog: {
         parameters: {
             query?: {
-                role?: components["schemas"]["app.HeroClass"] | null;
+                role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 query?: string | null;
@@ -42424,7 +42400,7 @@ export interface operations {
     get__api_v1_users_overview_stats: {
         parameters: {
             query?: {
-                role?: components["schemas"]["app.HeroClass"] | null;
+                role?: components["schemas"]["app.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 query?: string | null;
@@ -42550,7 +42526,7 @@ export interface operations {
             query?: {
                 baseline?: PathsApiV1UsersIdCompareGetParametersQueryBaseline;
                 target_user_id?: number | null;
-                role?: components["schemas"]["app.HeroClass"] | null;
+                role?: components["schemas"]["app.RoleRef"] | null;
                 div_min?: number | null;
                 div_max?: number | null;
                 tournament_id?: number | null;
@@ -42620,7 +42596,7 @@ export interface operations {
                 left_hero_id?: number | null;
                 right_hero_id?: number | null;
                 map_id?: number | null;
-                role?: components["schemas"]["app.HeroClass"] | null;
+                role?: components["schemas"]["app.RoleRef"] | null;
                 div_min?: number | null;
                 div_max?: number | null;
                 tournament_id?: number | null;
@@ -73302,12 +73278,6 @@ export enum AnalyticsPlayerAnalyticsPredicted_direction {
     demote = "demote",
     flat = "flat"
 }
-export enum AppHeroClass {
-    Tank = "Tank",
-    Damage = "Damage",
-    Support = "Support",
-    Flex = "Flex"
-}
 export enum AppLogStatsName {
     eliminations = "eliminations",
     final_blows = "final_blows",
@@ -73383,16 +73353,6 @@ export enum AppUserCompareMetricBetter_worseAnyOf0 {
     equal = "equal"
 }
 export enum AppUserDraftCardHeroRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
-export enum AppUserDraftCardRoleRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
-export enum AppUserDraftCardTournamentRoleAnyOf0 {
     tank = "tank",
     damage = "damage",
     support = "support"

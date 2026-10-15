@@ -123,6 +123,7 @@ class TeamFlowsService:
         # is resolved from workspace_member.player_id instead (workspace_member is always
         # loaded by team_entities/player_entities regardless of the "user" entity flag).
         player_dict["user_id"] = player.workspace_member.player_id
+        player_dict["role"] = player.role_ref
 
         return schemas.PlayerRead(
             **player_dict,

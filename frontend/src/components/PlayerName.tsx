@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { getPlayerSlug, getPlayerType } from "@/lib/player";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 /**
  * Minimal player-like shape accepted by `PlayerName`. Compatible with
@@ -8,8 +9,7 @@ import { getPlayerSlug, getPlayerType } from "@/lib/player";
  */
 interface PlayerNameInput {
   name: string;
-  role?: string | null;
-  sub_role?: string | null;
+  role?: RoleRef | null;
 }
 
 const PlayerName = ({
@@ -25,7 +25,7 @@ const PlayerName = ({
   const tag = player.name.split("#")[1];
   const playerRoleInfo =
     "role" in player && player.role !== undefined
-      ? { role: player.role ?? null, sub_role: player.sub_role ?? null }
+      ? { role: player.role ?? null }
       : null;
 
   return (

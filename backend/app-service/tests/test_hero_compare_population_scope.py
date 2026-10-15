@@ -40,6 +40,10 @@ os.environ["DEBUG"] = "true"
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
 from shared.division_grid import DivisionGrid  # noqa: E402
+from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
+from shared.models.tournament.player_role import PlayerRole  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
+from shared.testing import create_sqlite_tables  # noqa: E402
 from src import models  # noqa: E402
 from src.core import enums  # noqa: E402
 from src.services.user.queries import _scope  # noqa: E402
@@ -68,8 +72,8 @@ UNFINISHED = 90
 LEAGUE = 91
 WORKSPACE = 1
 OTHER_WORKSPACE = 2
-ROLE = enums.HeroClass.damage
-OTHER_ROLE = enums.HeroClass.support
+ROLE = RoleRef(dimension="player_role", role="damage")
+OTHER_ROLE = RoleRef(dimension="player_role", role="support")
 
 # One user per reason to be in or out of the cohort.
 QUALIFIES = 10
@@ -111,15 +115,29 @@ class HeroCompareBaselineScopeTests(TestCase):
             models.WorkspaceMember.__table__,
             models.Tournament.__table__,
             models.Player.__table__,
+            PlayerRole.__table__,
+            CatalogRole.__table__,
+            RoleDimension.__table__,
         ]
         self.engine = sa.create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
         with self.engine.begin() as conn:
             for schema in sorted({t.schema for t in tables if t.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in tables:
-                table.create(conn)
+            create_sqlite_tables(conn, tables)
         self.session = Session(self.engine)
         self.addCleanup(self.session.close)
+        self.session.execute(
+            sa.insert(RoleDimension.__table__).values(
+                id=1, discipline="overwatch", code="player_role", name="Role", selection_mode="single", rated=True
+            )
+        )
+        role_ids = {ref: index for index, ref in enumerate((ROLE, OTHER_ROLE), 1)}
+        for ref, role_id in role_ids.items():
+            self.session.execute(
+                sa.insert(CatalogRole.__table__).values(
+                    id=role_id, dimension_id=1, code=ref.role, name=ref.role, attrs={}
+                )
+            )
 
         for tournament_id, workspace_id, finished, league in (
             (TOURNAMENT, WORKSPACE, True, False),
@@ -156,9 +174,11 @@ class HeroCompareBaselineScopeTests(TestCase):
                     tournament_id=tournament_id,
                     workspace_member_id=user_id,
                     team_id=1,
-                    role=role,
                     is_substitution=substitution,
                 )
+            )
+            self.session.execute(
+                sa.insert(PlayerRole.__table__).values(player_id=user_id, dimension_id=1, role_id=role_ids[role])
             )
         self.session.commit()
 

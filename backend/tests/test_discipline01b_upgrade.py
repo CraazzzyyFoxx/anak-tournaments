@@ -386,6 +386,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         "flex sub-roles (dropped)",
         "team formats",
         "balancer configs",
+        "player roles",
     } <= set(statuses)
 
 
@@ -625,3 +626,27 @@ def test_reconcile_matches_workspace_defaults_by_discipline(migrated) -> None:
         tx.execute(create)
         assert ("team formats", workspace_id, "workspace") in _rows(tx, skipped)
         tx.rollback()
+
+
+_LEAF = """
+    SELECT p.name, r.code, m.code, r.workspace_id
+      FROM tournament.player p
+      LEFT JOIN tournament.player_role pr ON pr.player_id = p.id
+      LEFT JOIN catalog.role r ON r.id = pr.role_id
+      LEFT JOIN catalog.role m ON m.id = r.parent_role_id
+     WHERE p.id = ANY(%s)
+     ORDER BY p.name
+"""
+
+
+def test_every_player_holds_one_leaf_role_and_flex_holds_none(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    keys = ["by_slug", "by_label", "off_catalog", "plain", "flex_sub", "no_catalog"]
+    assert _rows(conn, _LEAF, ([ids[key] for key in keys],)) == [
+        ("by_label", "support_main_heal", "support", ids["ws_a"]),
+        ("by_slug", "damage_hitscan", "damage", ids["ws_a"]),
+        ("flex_sub", None, None, None),
+        ("no_catalog", "damage_projectile", "damage", ids["ws_b"]),
+        ("off_catalog", "support_light_heal", "support", ids["ws_a"]),
+        ("plain", "tank", None, None),
+    ]

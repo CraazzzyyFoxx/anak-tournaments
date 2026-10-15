@@ -34,16 +34,18 @@ from typing import Literal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HeroClass
 from shared.core.errors import ApiExc, ApiHTTPException
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.disciplines import discipline
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.models.catalog.role import CatalogRole
 from shared.models.identity.user import User
 from shared.models.tenancy.workspace import WorkspaceMember
+from shared.models.tournament.player_role import assignment_of
 from shared.models.tournament.team import Player, Team
 from shared.models.tournament.tournament import Tournament
 from shared.repository import get_or_create_workspace_member
 from shared.services.newcomer_status import load_prior_participation
+from shared.services.ontology import rated_leaf
 from shared.services.team_export.identity import find_users_by_battle_tags
 
 __all__ = (
@@ -60,23 +62,15 @@ logger = logging.getLogger(__name__)
 OnUnresolved = Literal["skip", "error"]
 
 
-def resolve_slot_role(role: str | None, *, on_unresolved: OnUnresolved) -> HeroClass | None:
-    """Roster slot code -> the role stored on ``tournament.player``.
-
-    ``flex`` is a real slot, not bad input: a role-less roster assigns no game
-    role and ``HeroClass.flex`` is how that survives the import.
-    """
+def resolve_slot_role(role: str | None, *, discipline_code: str, on_unresolved: OnUnresolved) -> str | None:
+    """A module role slot keeps its code; flex is open and holds no assignment."""
     if role is None:
         return None
     normalized = role.lower()
-    if normalized == "tank":
-        return HeroClass.tank
-    if normalized == "damage":
-        return HeroClass.damage
-    if normalized == "support":
-        return HeroClass.support
     if normalized == FLEX_SLOT_CODE:
-        return HeroClass.flex
+        return None
+    if any(item.code == normalized for item in discipline(discipline_code).rated_dimension.roles):
+        return normalized
     if on_unresolved == "error":
         raise ApiHTTPException(
             status_code=400,
@@ -162,9 +156,8 @@ async def materialize_teams(
 ) -> MaterializationResult:
     """Create tournament teams and players. Flushes; never commits.
 
-    Front-loads a handful of batch queries and makes only in-memory decisions
-    plus INSERTs in the build loop — the per-player query fan this replaced was
-    O(players x 5) round-trips.
+    Front-loads identity/history queries. Role pairs are resolved once per distinct pair,
+    not per player; the old identity/history query fan was O(players x 5) round-trips.
 
     Idempotent twice over: a team whose lowercased ``name`` already exists in the
     tournament is reused rather than duplicated, and a player already placed in
@@ -265,8 +258,9 @@ async def materialize_teams(
         for member_row in member_rows:
             members_by_player[member_row.player_id] = member_row
 
-    # ── Build phase: in-memory decisions + INSERTs only ────────────────────────
+    # Build rows, reusing resolved leaves across players on the same role.
     placed_user_ids: set[int] = set(players_in_tournament)
+    leaves: dict[tuple[str | None, str | None], CatalogRole | None] = {}
 
     for team_data in teams:
         name = team_data.display_name
@@ -326,7 +320,19 @@ async def materialize_teams(
                 logger.info("Player %s already in tournament %s, skipping", member.name, tournament_id)
                 continue
 
-            role = resolve_slot_role(member.slot_code, on_unresolved=on_unresolved)
+            role = resolve_slot_role(
+                member.slot_code, discipline_code=tournament.discipline, on_unresolved=on_unresolved
+            )
+            key = (role, member.sub_role)
+            if key not in leaves:
+                leaves[key] = await rated_leaf(
+                    session,
+                    discipline=tournament.discipline,
+                    workspace_id=tournament.workspace_id,
+                    role=role,
+                    sub_role=member.sub_role,
+                )
+            leaf = leaves[key]
 
             if member_id is None:
                 workspace_member = members_by_player.get(player_id)
@@ -340,9 +346,8 @@ async def materialize_teams(
             session.add(
                 Player(
                     name=member.name,
-                    sub_role=normalize_sub_role(member.sub_role),
                     rank=member.rank,
-                    role=role,
+                    assignments=[] if leaf is None else [assignment_of(leaf)],
                     tournament_id=tournament_id,
                     team_id=team.id,
                     # A registration-time substitute has replaced nobody yet, so

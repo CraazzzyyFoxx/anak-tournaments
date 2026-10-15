@@ -23,9 +23,14 @@ statuses map to the envelope ``error.code`` (gateway mapping): 400->bad_request,
 404->not_found.
 """
 
+import json
+
 import pytest
 from sqlalchemy.orm import Session
 
+from shared.models.catalog.role import CatalogRole, RoleDimension
+from shared.models.tournament.player_role import assignment_of
+from shared.schemas.role import RoleRef
 from src import models
 from src.core import enums
 from tests.conftest import RpcHarness, build_query
@@ -50,18 +55,14 @@ def _skip_if_compare_test_db_unavailable(db: Session) -> None:
         pytest.skip("DB is not reachable in this environment for compare regression fixture setup")
 
 
-def _pick_unused_role_division_pair(db: Session) -> tuple[enums.HeroClass, int]:
+def _pick_unused_role_division_pair(db: Session) -> tuple[str, int]:
     existing_pairs = {
         (role, division)
         for role, division in db.query(models.Player.role, models.Player.div).distinct().all()
         if role is not None
     }
 
-    for role in enums.HeroClass:
-        if role is enums.HeroClass.flex:
-            # A flex roster row carries one rank that stands for no particular
-            # role, so it has no per-role division for compare to bucket by.
-            continue
+    for role in ("tank", "damage", "support"):
         for division in range(1, 21):
             if (role, division) not in existing_pairs:
                 return role, division
@@ -118,12 +119,18 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
         )
         return {
             "subject_user_id": subject_user_id,
-            "role": cohort_player.role.value,
+            "role": cohort_player.role_ref.model_dump_json(exclude={"parent"}),
             "division": cohort_player.div,
             "hero_id": hero_id,
         }
 
     role, division = _pick_unused_role_division_pair(db)
+    leaf = (
+        db.query(CatalogRole)
+        .join(RoleDimension, CatalogRole.dimension_id == RoleDimension.id)
+        .filter(RoleDimension.discipline == "overwatch", RoleDimension.code == "player_role", CatalogRole.code == role)
+        .one()
+    )
     other_division = 1 if division != 1 else 2
     hero_row = (
         db.query(models.CatalogEntity.id)
@@ -263,10 +270,9 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             models.Player(
                 id=ids["subject_cohort_player"],
                 name="compare-division-subject",
-                sub_role="hitscan",
                 rank=3000,
                 div=division,
-                role=role,
+                assignments=[assignment_of(leaf)],
                 tournament_id=ids["subject_cohort_tournament"],
                 user_id=ids["subject_user"],
                 team_id=ids["subject_cohort_team"],
@@ -274,10 +280,9 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             models.Player(
                 id=ids["subject_other_player"],
                 name="compare-division-subject",
-                sub_role="hitscan",
                 rank=3000,
                 div=other_division,
-                role=role,
+                assignments=[assignment_of(leaf)],
                 tournament_id=ids["subject_other_tournament"],
                 user_id=ids["subject_user"],
                 team_id=ids["subject_other_team"],
@@ -285,10 +290,9 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
             models.Player(
                 id=ids["baseline_cohort_player"],
                 name="compare-division-baseline",
-                sub_role="hitscan",
                 rank=3000,
                 div=division,
-                role=role,
+                assignments=[assignment_of(leaf)],
                 tournament_id=ids["baseline_cohort_tournament"],
                 user_id=ids["baseline_user"],
                 team_id=ids["baseline_cohort_team"],
@@ -495,7 +499,7 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
 
     return {
         "subject_user_id": subject_user_id,
-        "role": role.value,
+        "role": RoleRef(dimension="player_role", role=role).model_dump_json(exclude={"parent"}),
         "division": division,
         "hero_id": hero_id,
     }
@@ -572,7 +576,7 @@ def test_search_user(
         (1, 10, "avg_placement", "asc", "cra", None, None, False),
         (1, 10, "winrate", "desc", "", None, None, True),
         (1, 10, "best_placement", "asc", "", None, None, False),
-        (1, 10, "name", "asc", "", "Damage", [8, 9, 10], False),
+        (1, 10, "name", "asc", "", {"dimension": "player_role", "role": "damage"}, [8, 9, 10], False),
     ],
 )
 def test_get_users_overview(
@@ -582,7 +586,7 @@ def test_get_users_overview(
     sort: str,
     order: str,
     query: str,
-    role: str | None,
+    role: dict[str, str] | None,
     divisions: list[int] | None,
     has_logs: bool,
 ) -> None:
@@ -595,7 +599,7 @@ def test_get_users_overview(
         "has_logs": has_logs,
     }
     if role is not None:
-        params["role"] = role
+        params["role"] = json.dumps(role)
     if divisions is not None:
         params["divisions"] = divisions
 
@@ -630,7 +634,12 @@ def test_get_users_overview(
             assert query.lower() in first["name"].lower()
 
         if role is not None:
-            assert any(role_row["role"] == role for role_row in first["roles"])
+            assert any(
+                role_row["role"] is not None
+                and role_row["role"]["dimension"] == role["dimension"]
+                and (role_row["role"].get("parent") or role_row["role"]["role"]) == role["role"]
+                for role_row in first["roles"]
+            )
 
         if divisions is not None:
             assert any(role_row["division"] in divisions for role_row in first["roles"])
@@ -685,7 +694,7 @@ def test_get_user_compare_cohort(rpc: RpcHarness) -> None:
             "query": build_query(
                 {
                     "baseline": "cohort",
-                    "role": "Damage",
+                    "role": json.dumps({"dimension": "player_role", "role": "damage"}),
                     "div_min": 8,
                     "div_max": 20,
                 }

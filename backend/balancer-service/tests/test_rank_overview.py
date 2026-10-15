@@ -33,11 +33,12 @@ import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
 from shared import models  # noqa: E402
-from shared.core import enums  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
+from shared.models.tournament.player_role import assignment_of  # noqa: E402
 from shared.services.division_grid.access import get_effective_division_grid  # noqa: E402
 from shared.services.member_rank import MIX_ORDER, TOURNAMENT_ORDER, member_rank_service  # noqa: E402
+from shared.services.ontology import rated_leaf  # noqa: E402
 from shared.testing import create_test_async_engine, division_grid  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
 from src.rpc import ranks as ranks_rpc  # noqa: E402
@@ -331,7 +332,13 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                 models.Player(
                     name="Parity",
                     rank=2100,
-                    role=enums.HeroClass.tank,
+                    assignments=[
+                        assignment_of(
+                            await rated_leaf(
+                                s, discipline="overwatch", workspace_id=workspace.id, role="tank", sub_role=None
+                            )
+                        )
+                    ],
                     tournament_id=tournament.id,
                     team_id=team.id,
                     workspace_member_id=member.id,

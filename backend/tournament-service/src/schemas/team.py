@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pydantic import UUID4, BaseModel, Field
 
 from shared.domain.roster_shape import RosterSlotCode
+from shared.schemas.role import RoleRef
 from src.core import enums, pagination
 from src.schemas import BaseRead, HeroRead
 from src.schemas.tournament import TournamentRead
@@ -28,7 +29,7 @@ class BalancerTeamMember(BaseModel):
     name: str
     sub_role: str | None = None
     # A roster slot code, not a game role: ``flex`` is what a role-less roster
-    # assigns, and the tournament player it creates carries HeroClass.flex.
+    # assigns, and the tournament player it creates holds no role assignment.
     role: RosterSlotCode
     rank: int
 
@@ -43,10 +44,9 @@ class BalancerTeam(BaseModel):
 
 class PlayerRead(BaseRead):
     name: str
-    sub_role: str | None
     rank: int
     division: int
-    role: str | None
+    role: RoleRef | None = None
     tournament_id: int
     user_id: int
     team_id: int

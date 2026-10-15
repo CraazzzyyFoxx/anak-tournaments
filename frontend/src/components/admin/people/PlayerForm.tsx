@@ -32,6 +32,7 @@ import type { PlayerCreateInput, PlayerSubRole, PlayerUpdateInput } from "@/type
 import type { Team } from "@/types/team.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import { formatSubRoleLabel } from "@/lib/player";
+import { roleOf, subRoleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 
 /** Shown on the sub-role field for a role the sub-role catalog has no rows for. */
 
@@ -52,8 +53,7 @@ export interface PlayerFormState {
 /** A participation the form can be opened on — the subset the fields read. */
 export interface PlayerFormSubject {
   name: string;
-  role: string | null;
-  sub_role: string | null;
+  role: RoleRef | null;
   rank: number;
   is_newcomer: boolean;
   is_substitution: boolean;
@@ -77,26 +77,14 @@ export function playerFormOf(subject: PlayerFormSubject, userId: number): Player
   return {
     ...emptyPlayerForm(userId, null),
     name: subject.name,
-    role: normalizePlayerRole(subject.role),
-    sub_role: subject.sub_role ?? "",
+    role: subject.role ? normalizePlayerRole(roleOf(subject.role)) : "Flex",
+    sub_role: subRoleOf(subject.role) ?? "",
     rank: subject.rank,
     is_newcomer: subject.is_newcomer,
     is_substitution: subject.is_substitution
   };
 }
 
-/**
- * Sub-role fragment of a player payload. A role with no sub-role catalog (Flex)
- * sends an explicit `null`, because omitting the key would leave an already
- * stored sub-role in place on a role that cannot have one.
- */
-function buildSubRolePayload(
-  role: PlayerRoleOption,
-  subRole: string
-): { sub_role?: string | null } {
-  if (subRoleCatalogRole(role) == null) return { sub_role: null };
-  return subRole ? { sub_role: subRole } : {};
-}
 
 export function playerCreatePayload(state: PlayerFormState): PlayerCreateInput {
   const role = normalizePlayerRole(state.role);
@@ -105,11 +93,10 @@ export function playerCreatePayload(state: PlayerFormState): PlayerCreateInput {
     user_id: state.user_id,
     team_id: state.team_id,
     tournament_id: state.tournament_id,
-    role,
+    role: toRoleRef(role === "Flex" ? null : role.toLowerCase(), state.sub_role, "player_role"),
     rank: state.rank,
     is_newcomer: state.is_newcomer,
-    is_substitution: state.is_substitution,
-    ...buildSubRolePayload(role, state.sub_role)
+    is_substitution: state.is_substitution
   };
 }
 
@@ -117,11 +104,10 @@ export function playerUpdatePayload(state: PlayerFormState): PlayerUpdateInput {
   const role = normalizePlayerRole(state.role);
   return {
     name: state.name.trim(),
-    role,
+    role: toRoleRef(role === "Flex" ? null : role.toLowerCase(), state.sub_role, "player_role"),
     rank: state.rank,
     is_newcomer: state.is_newcomer,
-    is_substitution: state.is_substitution,
-    ...buildSubRolePayload(role, state.sub_role)
+    is_substitution: state.is_substitution
   };
 }
 
@@ -275,7 +261,7 @@ export function PlayerForm({
   const hasSubRoleCatalog = subRoleCatalogRole(role) != null;
   const subRoleOptions = filterSubRoleOptions(subRoles, role);
   const hasCurrentSubRoleOption = subRoleOptions.some(
-    (subRole) => subRole.slug === value.sub_role
+    (subRole) => `${subRoleCatalogRole(role)}_${subRole.slug}` === value.sub_role
   );
 
   const subRoleSelectOptions = useMemo(() => {
@@ -284,7 +270,7 @@ export function PlayerForm({
     const options: PlayerOption[] = [
       { value: "none", label: t("noSubRole") },
       ...subRoleOptions.map((subRole) => ({
-        value: subRole.slug,
+        value: `${subRoleCatalogRole(role)}_${subRole.slug}`,
         label: subRole.label,
         meta: subRole.slug
       }))
@@ -299,7 +285,7 @@ export function PlayerForm({
     }
 
     return options;
-  }, [t, value.sub_role, hasCurrentSubRoleOption, hasSubRoleCatalog, subRoleOptions]);
+  }, [t, value.sub_role, hasCurrentSubRoleOption, hasSubRoleCatalog, subRoleOptions, role]);
 
   return (
     <div className="space-y-4">

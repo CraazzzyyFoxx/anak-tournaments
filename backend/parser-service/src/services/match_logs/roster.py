@@ -11,7 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from src import models
-from src.core import enums
 
 __all__ = ("LogPlayer",)
 
@@ -21,8 +20,9 @@ class LogPlayer:
     user_id: int
     team_id: int
     name: str
-    role: enums.HeroClass | None
+    role: str | None
     rank: int
+    sub_role: str | None = None
 
     @classmethod
     def from_roster(cls, player: models.Player) -> LogPlayer:
@@ -33,4 +33,5 @@ class LogPlayer:
             name=player.name,
             role=player.role,
             rank=player.rank,
+            sub_role=player.sub_role,
         )

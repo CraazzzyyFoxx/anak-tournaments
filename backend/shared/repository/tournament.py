@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
-from shared.core.enums import HeroClass
 from shared.core.utils import join_entity, prepare_entities, selectin_entity
 from shared.repository.base import BaseRepository
 from shared.repository.identity import UserRepository
@@ -378,7 +377,7 @@ class PlayerRepository(BaseRepository[models.Player]):
         session: AsyncSession,
         *,
         user_id: int,
-        role: HeroClass,
+        role: str | None,
         options: Sequence[_AbstractLoad] | None = None,
     ) -> Sequence[models.Player]:
         query = self._apply_options(

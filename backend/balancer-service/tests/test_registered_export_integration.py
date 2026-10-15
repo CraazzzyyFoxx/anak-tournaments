@@ -244,8 +244,8 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             await registered_teams_service.export_registered(session, self.tournament_id)
 
         _team, players = await self._exported()
-        roles = sorted((player.role.value if player.role else None) for player in players)
-        self.assertEqual([HeroClass.damage.value] * 3 + [HeroClass.tank.value], roles)
+        roles = sorted(player.role for player in players)
+        self.assertEqual(["damage"] * 3 + ["tank"], roles)
 
     async def test_ranks_come_from_the_registration_roles(self) -> None:
         """`Player.rank` is NOT NULL, so a wrong rank source here is a silent data

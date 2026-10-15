@@ -95,5 +95,5 @@ class CatalogRole(db.TimeStampIntegerMixin):
         primaryjoin="foreign(CatalogRole.parent_role_id) == remote(CatalogRole.id)",
         viewonly=True,
         lazy="joined",
-        join_depth=1,
+        join_depth=2,
     )

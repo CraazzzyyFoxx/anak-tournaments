@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from shared.core import enums, errors, pagination
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
 from shared.repository import (
     AnalyticsAnomalyFeedbackRepository,
@@ -26,6 +27,7 @@ from shared.repository import (
     MLModelArtifactRepository,
     PlayerRepository,
 )
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src import models, schemas
 from src.core.workspace import get_division_grid
@@ -125,10 +127,9 @@ def _player_to_pydantic(player: models.Player, *, grid: DivisionGrid) -> schemas
         created_at=player.created_at,
         updated_at=player.updated_at,
         name=getattr(player, "name", None),
-        sub_role=getattr(player, "sub_role", None),
         rank=player.rank,
         division=resolve_tournament_division(player.rank, tournament_grid=grid),
-        role=player.role,
+        role=player.role_ref,
         tournament_id=player.tournament_id,
         # Player.user_id was dropped in the contract step (iwrefac07); the
         # identity anchor is workspace_member.player_id instead. Callers must
@@ -422,13 +423,13 @@ class AnalyticsReadFlowsService:
         )
 
     async def get_streaks(self, session: AsyncSession, tournament_id: int) -> list[schemas.PlayerStreak]:
-        cache_pos: dict[str, list[int]] = {}
-        cache_users: dict[str, schemas.UserReadMin | None] = {}
+        cache_pos: dict[tuple[int, RoleRef | None], list[int]] = {}
+        cache_users: dict[tuple[int, RoleRef | None], schemas.UserReadMin | None] = {}
         output: list[schemas.PlayerStreak] = []
         streaks = await analytics_read_service.get_streaks(session, tournament_id)
 
-        for user, role, place in streaks:
-            key = f"{user.id}-{role}"
+        for user, role, sub_role, discipline_code, place in streaks:
+            key = (user.id, RoleRef.of(discipline(discipline_code).rated_dimension.code, role, sub_role))
             cache_users.setdefault(key, _user_to_pydantic(user))
             cache_pos.setdefault(key, [])
             if len(cache_pos[key]) < 3:
@@ -440,7 +441,7 @@ class AnalyticsReadFlowsService:
             user = cache_users[key]
             if user is None:
                 continue
-            _, role = key.split("-", 1)
+            _, role = key
             current_position = positions[0]
             previous_position = positions[1] if len(positions) > 1 else None
             pre_previous_position = positions[2] if len(positions) > 2 else None

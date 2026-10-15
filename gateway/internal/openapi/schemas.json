@@ -2230,7 +2230,7 @@
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/app.HeroClass"
+                "$ref": "#/components/schemas/app.RoleRef"
               },
               {
                 "type": "null"
@@ -2390,7 +2390,7 @@
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/app.HeroClass"
+                "$ref": "#/components/schemas/app.RoleRef"
               },
               {
                 "type": "null"
@@ -3149,7 +3149,7 @@
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/app.HeroClass"
+                "$ref": "#/components/schemas/app.RoleRef"
               },
               {
                 "type": "null"
@@ -3206,7 +3206,7 @@
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/app.HeroClass"
+                "$ref": "#/components/schemas/app.RoleRef"
               },
               {
                 "type": "null"
@@ -3309,7 +3309,7 @@
           "schema": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/app.HeroClass"
+                "$ref": "#/components/schemas/app.RoleRef"
               },
               {
                 "type": "null"
@@ -11577,8 +11577,15 @@
           "title": "Related Player Id"
         },
         "role": {
-          "title": "Role",
-          "type": "string"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/analytics.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "sample_matches": {
           "title": "Sample Matches",
@@ -11598,18 +11605,6 @@
             }
           ],
           "title": "Shift"
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Sub Role"
         },
         "team_id": {
           "title": "Team Id",
@@ -11652,7 +11647,6 @@
         "id",
         "created_at",
         "rank",
-        "role",
         "tournament_id",
         "user_id",
         "team_id",
@@ -11785,8 +11779,15 @@
           "title": "Previous Position"
         },
         "role": {
-          "title": "Role",
-          "type": "string"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/analytics.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "sum_position": {
           "title": "Sum Position",
@@ -11798,13 +11799,47 @@
       },
       "required": [
         "user",
-        "role",
         "sum_position",
         "current_position",
         "previous_position",
         "pre_previous_position"
       ],
       "title": "PlayerStreak",
+      "type": "object"
+    },
+    "analytics.RoleRef": {
+      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "properties": {
+        "dimension": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Dimension",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "role": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimension",
+        "role"
+      ],
+      "title": "RoleRef",
       "type": "object"
     },
     "analytics.StandingsRow": {
@@ -14685,17 +14720,6 @@
       "title": "GamemodeRead",
       "type": "object"
     },
-    "app.HeroClass": {
-      "description": "A roster role OR an Overwatch character's class.\n\n``tank``/``damage``/``support`` mean both things at once. The Postgres\n``heroclass`` type still backs ``matches.stat_baselines.role`` and\n``tournament.player.role``; character classes now live in ``catalog.entity.attrs``.\n``flex`` only means a player who holds no fixed role, which is what a\nrole-less roster shape drafts and balances for. No hero has a class of\n\"flex\": the module's ``character_classes`` and :data:`HeroTypeClass` narrow\nthe catalog values; a database CHECK still narrows baseline roles.\n\nMember NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),\nso the DB sees ``flex`` while the Python value is ``\"Flex\"``.\n\nTHE single role enum for the whole backend (frontend mirror:\n``PlayerRoleOption`` in ``lib/roster/player-role.ts``). One spelling per role, in\ncode, on the wire and in the database: :attr:`slot_code` is the lowercase\nmember name. This docstring is the public OpenAPI description of the enum,\nso the retired spelling is documented on :attr:`slot_code` instead.",
-      "enum": [
-        "Tank",
-        "Damage",
-        "Support",
-        "Flex"
-      ],
-      "title": "HeroClass",
-      "type": "string"
-    },
     "app.HeroLeaderboardEntry": {
       "properties": {
         "avg_crit_accuracy": {
@@ -14805,12 +14829,13 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "team": {
           "anyOf": [
@@ -14850,7 +14875,6 @@
         "user_id",
         "username",
         "player_name",
-        "role",
         "div",
         "games_played",
         "playtime_seconds",
@@ -18684,7 +18708,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
@@ -18768,12 +18792,13 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "sample_size": {
           "title": "Sample Size",
@@ -18794,7 +18819,6 @@
         "mode",
         "sample_size",
         "target_user",
-        "role",
         "div_min",
         "div_max"
       ],
@@ -18962,7 +18986,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
@@ -19192,17 +19216,18 @@
           "type": "integer"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.RoleRef"
+            },
+            {
+              "type": "null"
+            }
           ],
-          "title": "Role",
-          "type": "string"
+          "default": null
         }
       },
       "required": [
-        "role",
         "maps",
         "maps_won"
       ],
@@ -19260,19 +19285,13 @@
         "role": {
           "anyOf": [
             {
-              "enum": [
-                "tank",
-                "damage",
-                "support"
-              ],
-              "type": "string"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Role"
+          "default": null
         },
         "teams_count": {
           "title": "Teams Count",
@@ -19339,7 +19358,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
@@ -19603,7 +19622,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
@@ -20662,7 +20681,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
@@ -20746,11 +20765,18 @@
           "title": "Division Grid Version Id"
         },
         "role": {
-          "$ref": "#/components/schemas/app.HeroClass"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
-        "role",
         "division"
       ],
       "title": "UserOverviewRoleDivision",
@@ -20961,7 +20987,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
@@ -21158,7 +21184,15 @@
           "type": "integer"
         },
         "role": {
-          "$ref": "#/components/schemas/app.HeroClass"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "tournaments": {
           "title": "Tournaments",
@@ -21166,7 +21200,6 @@
         }
       },
       "required": [
-        "role",
         "tournaments",
         "maps_won",
         "maps",
@@ -21300,7 +21333,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
@@ -21417,25 +21450,13 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroClass"
+              "$ref": "#/components/schemas/app.RoleRef"
             },
             {
               "type": "null"
             }
           ],
           "default": null
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Sub Role"
         },
         "user_id": {
           "title": "User Id",
@@ -21593,7 +21614,15 @@
           "type": "number"
         },
         "role": {
-          "$ref": "#/components/schemas/app.HeroClass"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.RoleRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "stats": {
           "additionalProperties": {
@@ -21608,7 +21637,6 @@
         "name",
         "division",
         "closeness",
-        "role",
         "group_placement",
         "playoff_placement",
         "maps_won",
@@ -44565,26 +44593,13 @@
         "role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/tournament.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Role"
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Sub Role"
+          "default": null
         },
         "team_id": {
           "title": "Team Id",
@@ -44652,24 +44667,13 @@
         "role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/tournament.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "title": "Role"
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Sub Role"
+          "default": null
         },
         "team": {
           "anyOf": [
@@ -44717,10 +44721,8 @@
       "required": [
         "id",
         "name",
-        "sub_role",
         "rank",
         "division",
-        "role",
         "tournament_id",
         "user_id",
         "team_id",
@@ -45018,26 +45020,13 @@
         "role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/tournament.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Role"
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Sub Role"
+          "default": null
         }
       },
       "title": "PlayerUpdate",
@@ -45097,13 +45086,13 @@
         "role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/tournament.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "title": "Role"
+          "default": null
         },
         "stats": {
           "additionalProperties": {
@@ -45117,17 +45106,6 @@
           },
           "title": "Stats",
           "type": "object"
-        },
-        "sub_role": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Sub Role"
         },
         "team": {
           "anyOf": [
@@ -45175,10 +45153,8 @@
       "required": [
         "id",
         "name",
-        "sub_role",
         "rank",
         "division",
-        "role",
         "tournament_id",
         "user_id",
         "team_id",

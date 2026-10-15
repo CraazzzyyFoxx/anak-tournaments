@@ -143,8 +143,7 @@ const PARTICIPATIONS = [
       {
         id: 11,
         name: "nnniik#2515",
-        role: "support",
-        sub_role: null,
+        role: { dimension: "player_role", role: "support" },
         rank: 1800,
         division: 9,
         user_id: 42,
@@ -164,7 +163,7 @@ const PARTICIPATIONS = [
     maps_lost: 5,
     division: 9,
     division_grid_version: null,
-    role: "support"
+    role: { dimension: "player_role", role: "support" }
   }
 ];
 
@@ -413,7 +412,7 @@ describe("person hub", () => {
 
     expect(updatePlayer).toHaveBeenCalledWith(
       11,
-      expect.objectContaining({ name: "nnniik#9999", role: "Support", rank: 1800 })
+      expect.objectContaining({ name: "nnniik#9999", role: { dimension: "player_role", role: "support" }, rank: 1800 })
     );
   });
 

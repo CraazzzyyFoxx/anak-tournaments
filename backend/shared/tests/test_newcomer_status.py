@@ -28,12 +28,14 @@ from sqlalchemy.pool import StaticPool
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
 
-from shared.core.enums import HeroClass  # noqa: E402
+from shared.disciplines import discipline  # noqa: E402
+from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
+from shared.models.tournament.player_role import PlayerRole  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
 from shared.services.newcomer_status import load_prior_participation  # noqa: E402
-from shared.testing import install_postgres_type_shims  # noqa: E402
+from shared.testing import create_sqlite_tables, install_postgres_type_shims  # noqa: E402
 
 install_postgres_type_shims()
 
@@ -44,6 +46,9 @@ TABLES = (
     Tournament.__table__,
     Team.__table__,
     Player.__table__,
+    RoleDimension.__table__,
+    CatalogRole.__table__,
+    PlayerRole.__table__,
 )
 
 
@@ -69,11 +74,25 @@ class _Fixture:
         with self.engine.begin() as conn:
             for schema in sorted({table.schema for table in TABLES if table.schema}):
                 conn.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
-            for table in TABLES:
-                table.create(conn)
+            create_sqlite_tables(conn, TABLES)
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 1
+        rated = discipline("overwatch").rated_dimension
+        dimension_id = self.session.execute(
+            sa.insert(RoleDimension)
+            .values(discipline="overwatch", code=rated.code, name=rated.name, selection_mode="single", rated=True)
+            .returning(RoleDimension.id)
+        ).scalar_one()
+        self.role_ids = {
+            role.code: self.session.execute(
+                sa.insert(CatalogRole)
+                .values(dimension_id=dimension_id, code=role.code, name=role.name)
+                .returning(CatalogRole.id)
+            ).scalar_one()
+            for role in rated.roles
+        }
+        self.dimension_id = dimension_id
 
     def close(self) -> None:
         self.session.close()
@@ -135,7 +154,7 @@ class _Fixture:
         *,
         user_id: int,
         workspace_id: int,
-        role: HeroClass | None = HeroClass.tank,
+        role: str | None = "tank",
         is_substitution: bool = False,
     ) -> int:
         team_id = self.team(tournament_id)
@@ -148,10 +167,13 @@ class _Fixture:
             team_id=team_id,
             workspace_member_id=member_id,
             name=f"Player {player_id}",
-            role=role,
             rank=3000,
             is_substitution=is_substitution,
         )
+        if role is not None:
+            self.insert(
+                PlayerRole.__table__, player_id=player_id, dimension_id=self.dimension_id, role_id=self.role_ids[role]
+            )
         return player_id
 
 
@@ -257,14 +279,14 @@ class RoleScopeTests(_DatabaseTestCase):
     async def test_newcomer_role_is_independent_of_overall_newcomer_status(self) -> None:
         self.db.workspace(1)
         self.db.tournament(10, workspace_id=1, start_date=datetime(2025, 1, 1, tzinfo=UTC))
-        self.db.player(10, user_id=42, workspace_id=1, role=HeroClass.tank)
+        self.db.player(10, user_id=42, workspace_id=1, role="tank")
 
         current = _current(20, workspace_id=1, start_date=datetime(2026, 1, 1, tzinfo=UTC))
         history = await load_prior_participation(self.db.shim, tournament=current, user_ids=[42])
 
         self.assertFalse(history.is_newcomer(42))
-        self.assertFalse(history.is_newcomer_role(42, HeroClass.tank))
-        self.assertTrue(history.is_newcomer_role(42, HeroClass.support))
+        self.assertFalse(history.is_newcomer_role(42, "tank"))
+        self.assertTrue(history.is_newcomer_role(42, "support"))
 
 
 class SubstitutionCountsAsExperienceTests(_DatabaseTestCase):

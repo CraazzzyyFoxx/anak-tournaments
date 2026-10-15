@@ -12,6 +12,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from shared.schemas.role import RoleRef
+
 __all__ = (
     "BaseRead",
     "UserReadMin",
@@ -60,10 +62,9 @@ class TournamentMin(BaseRead):
 
 class PlayerRead(BaseRead):
     name: str | None = None
-    sub_role: str | None = None
     rank: int
     division: int | None = None
-    role: str
+    role: RoleRef | None = None
     tournament_id: int
     user_id: int
     team_id: int

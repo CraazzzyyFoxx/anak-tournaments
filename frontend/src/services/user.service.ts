@@ -25,6 +25,12 @@ import { AchievementRarity } from "@/types/achievement.types";
 import { LogStatsName } from "@/types/stats.types";
 import { apiFetch } from "@/lib/api/fetch";
 import { scopeQuery, type StatsScope } from "@/lib/site/stats-scope";
+import { toRoleRef } from "@/lib/roster/role-ref";
+
+// OW-shaped controls until P7. Omission means no filter; JSON null selects no assignment.
+function roleQuery(role: UserRoleType | undefined): string | undefined {
+  return role === undefined ? undefined : JSON.stringify(toRoleRef(role === "Flex" ? null : role.toLowerCase(), null, "player_role"));
+}
 
 // Public, workspace-scoped profile reads are cached in the Next Data Cache for
 // this long (seconds) when fetched server-side. Tagged for on-demand
@@ -355,7 +361,7 @@ export default class userService {
         order,
         query,
         fields: ["name"],
-        role,
+        role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
         min_encounters: minEncounters,
@@ -380,7 +386,7 @@ export default class userService {
     return apiFetch("/api/v1/users/overview/stats", {
       query: {
         query,
-        role,
+        role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
         workspace_id: workspaceId ?? undefined
@@ -410,7 +416,7 @@ export default class userService {
     return apiFetch("/api/v1/users/overview/catalog", {
       query: {
         query,
-        role,
+        role: roleQuery(role),
         divisions,
         has_logs: hasLogs || undefined,
         letter,
@@ -448,7 +454,7 @@ export default class userService {
       query: {
         baseline,
         target_user_id: targetUserId,
-        role,
+        role: roleQuery(role),
         div_min: divMin,
         div_max: divMax,
         tournament_id: tournamentId,
@@ -495,7 +501,7 @@ export default class userService {
         left_hero_id: leftHeroId,
         right_hero_id: rightHeroId,
         map_id: mapId,
-        role,
+        role: roleQuery(role),
         div_min: divMin,
         div_max: divMax,
         tournament_id: tournamentId,

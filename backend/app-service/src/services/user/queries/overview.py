@@ -9,7 +9,9 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
+from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
@@ -24,6 +26,7 @@ from ._scope import (
     _compare_tournament_scope_exists,
     apply_has_logs_filter,
     overview_division_number_expr,
+    player_role_filter,
 )
 
 if typing.TYPE_CHECKING:
@@ -43,7 +46,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None,
+        role: RoleRef | None,
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
@@ -123,7 +126,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -152,7 +155,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -208,7 +211,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -244,7 +247,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -272,7 +275,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -297,7 +300,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -322,7 +325,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -347,7 +350,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -371,7 +374,7 @@ class UserOverviewQueries:
         self,
         user_id_column: sa.ColumnElement[typing.Any],
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -458,7 +461,7 @@ class UserOverviewQueries:
         user_id_column: sa.ColumnElement[typing.Any],
         stat: enums.LogStatsName,
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -612,6 +615,7 @@ class UserOverviewQueries:
             sort_key in _EXPENSIVE_OVERVIEW_SORTS
             and not params.query
             and params.role is None
+            and not params.has_role_filter
             and not params.divisions
             and not params.has_logs
         ):
@@ -646,10 +650,11 @@ class UserOverviewQueries:
             query = apply_has_logs_filter(query)
             total_query = apply_has_logs_filter(total_query)
 
-        if params.role is not None or params.divisions:
+        if params.has_role_filter or params.role is not None or params.divisions:
             query = _apply_overview_role_filters(
                 query,
                 role=params.role,
+                has_role_filter=params.has_role_filter,
                 divisions=params.divisions,
                 grid=grid,
                 workspace_id=workspace_id,
@@ -657,6 +662,7 @@ class UserOverviewQueries:
             total_query = _apply_overview_role_filters(
                 total_query,
                 role=params.role,
+                has_role_filter=params.has_role_filter,
                 divisions=params.divisions,
                 grid=grid,
                 workspace_id=workspace_id,
@@ -683,7 +689,7 @@ class UserOverviewQueries:
         session: AsyncSession,
         user_ids: list[int],
         workspace_id: int | None = None,
-    ) -> dict[int, list[tuple[enums.HeroClass, int, int | None]]]:
+    ) -> dict[int, list[tuple[RoleRef, int, int | None]]]:
         """Return (role, rank, division_grid_version_id) for each user's most recent entry per role.
 
         The version id is the tournament's *effective* one (own pin, else its
@@ -701,16 +707,19 @@ class UserOverviewQueries:
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role.label("role"),
+                models.Player.sub_role,
+                models.Tournament.discipline,
                 models.Player.rank.label("rank"),
                 models.Player.tournament_id.label("tournament_id"),
                 sa.func.row_number()
                 .over(
-                    partition_by=[models.WorkspaceMember.player_id, models.Player.role],
+                    partition_by=[models.WorkspaceMember.player_id, models.Tournament.discipline, models.Player.role],
                     order_by=[models.Player.tournament_id.desc(), models.Player.id.desc()],
                 )
                 .label("row_num"),
             )
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
                 models.Player.is_substitution.is_(False),
@@ -718,34 +727,33 @@ class UserOverviewQueries:
             )
         )
         if workspace_id is not None:
-            latest_roles_select = latest_roles_select.join(
-                models.Tournament, models.Tournament.id == models.Player.tournament_id
-            ).where(models.Tournament.workspace_id == workspace_id)
+            latest_roles_select = latest_roles_select.where(models.Tournament.workspace_id == workspace_id)
         latest_roles_subquery = latest_roles_select.subquery()
 
         query = sa.select(
             latest_roles_subquery.c.user_id,
             latest_roles_subquery.c.role,
+            latest_roles_subquery.c.sub_role,
+            latest_roles_subquery.c.discipline,
             latest_roles_subquery.c.rank,
             tournament_effective_version_id_expr(latest_roles_subquery.c.tournament_id),
         ).where(latest_roles_subquery.c.row_num == 1)
 
         result = await session.execute(query)
 
-        payload: dict[int, list[tuple[enums.HeroClass, int, int | None]]] = defaultdict(list)
-        for user_id, role, rank, version_id in result.all():
+        payload: dict[int, list[tuple[RoleRef, int, int | None]]] = defaultdict(list)
+        for user_id, role, sub_role, discipline_code, rank, version_id in result.all():
             if role is None:
                 continue
-            payload[user_id].append((role, rank, version_id))
+            payload[user_id].append(
+                (RoleRef.of(discipline(discipline_code).rated_dimension.code, role, sub_role), rank, version_id)
+            )
 
-        role_order = {
-            enums.HeroClass.tank: 0,
-            enums.HeroClass.damage: 1,
-            enums.HeroClass.support: 2,
-        }
+        # OW-shaped read (wire fields name these roles); P7 makes it data-driven.
+        role_order = {"tank": 0, "damage": 1, "support": 2}
 
         for user_id in payload:
-            payload[user_id].sort(key=lambda row: role_order.get(row[0], 99))
+            payload[user_id].sort(key=lambda row: role_order.get(row[0].parent or row[0].role, 99))
 
         return dict(payload)
 
@@ -1098,7 +1106,8 @@ class UserOverviewQueries:
         self,
         session: AsyncSession,
         *,
-        role: enums.HeroClass | None,
+        role: RoleRef | None,
+        has_role_filter: bool = False,
         divisions: typing.Sequence[int],
         has_logs: bool,
         query: str | None,
@@ -1127,10 +1136,11 @@ class UserOverviewQueries:
         if has_logs:
             base_query = apply_has_logs_filter(base_query)
 
-        if role is not None:
+        if has_role_filter or role is not None:
             base_query = _apply_overview_role_filters(
                 base_query,
                 role=role,
+                has_role_filter=has_role_filter,
                 grid=grid,
                 workspace_id=workspace_id,
             )
@@ -1148,6 +1158,7 @@ class UserOverviewQueries:
             base_query = _apply_overview_role_filters(
                 base_query,
                 role=role,
+                has_role_filter=has_role_filter,
                 divisions=divisions,
                 grid=grid,
                 workspace_id=workspace_id,
@@ -1262,7 +1273,6 @@ class UserOverviewQueries:
             .where(
                 models.WorkspaceMember.player_id.in_(candidate_ids),
                 models.Player.is_substitution.is_(False),
-                models.Player.role.isnot(None),
             )
             .distinct()
         )
@@ -1270,28 +1280,23 @@ class UserOverviewQueries:
             roles_query = roles_query.join(
                 models.Tournament, models.Tournament.id == models.Player.tournament_id
             ).where(models.Tournament.workspace_id == workspace_id)
-        user_roles: dict[int, set[enums.HeroClass]] = defaultdict(set)
+        user_roles: dict[int, set[str | None]] = defaultdict(set)
         for user_id, player_role in (await session.execute(roles_query)).all():
             user_roles[user_id].add(player_role)
 
         tank_count = damage_count = support_count = flex_count = flex_declared_count = 0
         for roles_set in user_roles.values():
-            # "Flex" here means "plays anything", which a player reaches two ways:
-            # by having been rostered on more than one role, or by carrying the
-            # explicit HeroClass.flex a role-less roster assigns. Before flex
-            # existed only the first was possible; an explicitly flex player has a
-            # one-element role set and would otherwise land in no bucket at all.
-            if len(roles_set) > 1 or enums.HeroClass.flex in roles_set:
+            # OW-shaped read (wire fields name these roles); P7 makes it data-driven.
+            # An open slot has no assignment; multi-role players also count as flex.
+            if len(roles_set) > 1 or None in roles_set:
                 flex_count += 1
-            # What the Flex *chip* selects: ``role=flex`` matches the declared
-            # role literally, so its count cannot be the broader flex_count.
-            if enums.HeroClass.flex in roles_set:
+            if None in roles_set:
                 flex_declared_count += 1
-            if enums.HeroClass.tank in roles_set:
+            if "tank" in roles_set:
                 tank_count += 1
-            if enums.HeroClass.damage in roles_set:
+            if "damage" in roles_set:
                 damage_count += 1
-            if enums.HeroClass.support in roles_set:
+            if "support" in roles_set:
                 support_count += 1
 
         # Per-division chip counts, over the candidate set *before* the division
@@ -1310,7 +1315,7 @@ class UserOverviewQueries:
             .where(
                 models.WorkspaceMember.player_id.in_(sa.select(division_candidates.c.id)),
                 models.Player.is_substitution.is_(False),
-                *([models.Player.role == role] if role is not None else []),
+                *([player_role_filter(models.Player, role)] if has_role_filter or role is not None else []),
             )
             .group_by(division_expr)
             .order_by(division_expr)
@@ -1350,7 +1355,8 @@ class UserOverviewQueries:
         self,
         session: AsyncSession,
         *,
-        role: enums.HeroClass | None,
+        role: RoleRef | None,
+        has_role_filter: bool = False,
         divisions: typing.Sequence[int],
         has_logs: bool,
         query: str | None,
@@ -1381,10 +1387,11 @@ class UserOverviewQueries:
         if has_logs:
             base_query = apply_has_logs_filter(base_query)
 
-        if role is not None or divisions:
+        if has_role_filter or role is not None or divisions:
             base_query = _apply_overview_role_filters(
                 base_query,
                 role=role,
+                has_role_filter=has_role_filter,
                 divisions=divisions,
                 grid=grid,
                 workspace_id=workspace_id,

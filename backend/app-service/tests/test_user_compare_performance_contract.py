@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from shared.division_grid import DEFAULT_GRID
+from shared.schemas.role import RoleRef
 from src import models, schemas
 from src.core import enums, errors, pagination
 from src.services.dashboard.service import dashboard as dashboard_service
@@ -131,7 +132,7 @@ def test_hero_role_scope_preserves_legacy_team_filter_semantics() -> None:
         hero_id=None,
         map_id=None,
         stats=[enums.LogStatsName.Eliminations],
-        role=enums.HeroClass.support,
+        role=RoleRef(dimension="player_role", role="support"),
         div_min=None,
         div_max=None,
         tournament_id=None,
@@ -354,7 +355,7 @@ def test_cohort_compare_falls_back_when_subject_missing_from_population() -> Non
             user_service.users.get_compare(
                 AsyncMock(),
                 7,
-                schemas.UserCompareParams(baseline="cohort", role=enums.HeroClass.tank),
+                schemas.UserCompareParams(baseline="cohort", role=RoleRef(dimension="player_role", role="tank")),
                 grid=DEFAULT_GRID,
             )
         )

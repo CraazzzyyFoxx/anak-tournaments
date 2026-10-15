@@ -1,6 +1,7 @@
 import { duelSeats } from "@/lib/encounter/seats";
 import { getEncounterWinner } from "@/lib/encounter/status";
 import { normalizePlayerRole } from "@/lib/roster/player-role";
+import { roleOf } from "@/lib/roster/role-ref";
 import type { Encounter } from "@/types/encounter.types";
 import type { Hero } from "@/types/hero.types";
 import type { Registration } from "@/types/registration.types";
@@ -90,7 +91,7 @@ export function declaredHeroes(
 ): Hero[] {
   if (!registration) return [];
   const roles = registration.roles ?? [];
-  const wanted = normalizePlayerRole(player.role);
+  const wanted = player.role ? normalizePlayerRole(roleOf(player.role)) : "Flex";
   const role =
     roles.find((entry) => normalizePlayerRole(entry.role) === wanted) ??
     roles.find((entry) => entry.is_primary) ??

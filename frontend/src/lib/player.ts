@@ -1,5 +1,6 @@
 import { Hero } from "@/types/hero.types";
 import { User, UserProfile } from "@/types/user.types";
+import { roleOf, subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 
 /**
  * Fields `sortTeamPlayers` actually reads. Display-only roster fields
@@ -9,7 +10,7 @@ import { User, UserProfile } from "@/types/user.types";
  */
 export interface SortableRosterPlayer {
   id: number;
-  role: string | null;
+  role: RoleRef | null;
   rank: number;
   is_substitution: boolean;
   related_player_id: number | null;
@@ -19,7 +20,6 @@ export interface SortableRosterPlayer {
 /** Minimal shape required for `sortTeamPlayers` / TournamentTeamTable rendering. */
 export interface TeamRosterPlayer extends SortableRosterPlayer {
   name: string;
-  sub_role: string | null;
   division: number;
   is_newcomer: boolean;
   is_newcomer_role: boolean;
@@ -32,8 +32,7 @@ export interface TeamRosterPlayer extends SortableRosterPlayer {
 }
 
 type PlayerRoleInfo = {
-  role: string | null;
-  sub_role?: string | null;
+  role: RoleRef | null;
 };
 
 export const formatSubRoleLabel = (subRole: string | null | undefined) => {
@@ -49,7 +48,7 @@ export const formatSubRoleLabel = (subRole: string | null | undefined) => {
 };
 
 export const getPlayerType = (player: PlayerRoleInfo) => {
-  const subRoleLabel = formatSubRoleLabel(player.sub_role);
+  const subRoleLabel = formatSubRoleLabel(subRoleOf(player.role));
   if (subRoleLabel) {
     return subRoleLabel;
   }
@@ -57,14 +56,14 @@ export const getPlayerType = (player: PlayerRoleInfo) => {
 };
 
 export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[]): P[] => {
-  const getRolePriority = (role: string | null) => {
-    if (role === "Tank") return 1;
-    if (role === "Damage") return 2;
-    if (role === "Support") return 3;
-    // Flex is a real role and ranks right after Support; unknown/null is corrupt
-    // or missing data and sorts last, so the two are no longer interchangeable.
-    if (role === "Flex") return 4;
-    return 5;
+  // OW's presentation order remains stable; other discipline codes sort last.
+  const getRolePriority = (role: RoleRef | null) => {
+    switch (roleOf(role)) {
+      case "tank": return 1;
+      case "damage": return 2;
+      case "support": return 3;
+      default: return 4;
+    }
   };
 
   const playerById = new Map(players.map((p) => [p.id, p]));
@@ -164,4 +163,3 @@ export const getHeroIconUrl = (slug: string, imagePath?: string | null): string 
   }
   return `/avatar/0.png`;
 };
-

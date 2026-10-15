@@ -1,5 +1,6 @@
 import type { Answers, FormSchema } from "@/types/forms.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 export interface SubroleOption {
   slug: string;
@@ -264,7 +265,7 @@ type BalancerStatus = string;
 export interface TournamentHistoryEntry {
   tournament_id: number;
   tournament_name: string;
-  role: string | null;
+  role: RoleRef | null;
   division: number | null;
   /** Reference into `RegistrationListResponse.division_grids`. */
   division_grid_version_id?: number | null;

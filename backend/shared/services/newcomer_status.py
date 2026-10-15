@@ -24,7 +24,6 @@ from typing import Literal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.core.enums import HeroClass
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament.team import Player
 from shared.models.tournament.tournament import Tournament
@@ -45,12 +44,12 @@ class PriorParticipation:
     the tournament this was resolved for."""
 
     experienced_user_ids: frozenset[int]
-    experienced_user_roles: frozenset[tuple[int, HeroClass | None]]
+    experienced_user_roles: frozenset[tuple[int, str | None]]
 
     def is_newcomer(self, user_id: int) -> bool:
         return user_id not in self.experienced_user_ids
 
-    def is_newcomer_role(self, user_id: int, role: HeroClass | None) -> bool:
+    def is_newcomer_role(self, user_id: int, role: str | None) -> bool:
         return (user_id, role) not in self.experienced_user_roles
 
 

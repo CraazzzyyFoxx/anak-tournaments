@@ -11,7 +11,8 @@ import {
   SavedBalance
 } from "@/types/balancer-admin.types";
 import { BalanceResponse, BalancerConfig, PlayerData } from "@/types/balancer.types";
-import { playerRoleSlotCode } from "@/lib/roster/player-role";
+import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/roster/player-role";
+import { roleOf } from "@/lib/roster/role-ref";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 import { DEFAULT_DIVISION_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
@@ -675,7 +676,7 @@ export async function fetchPlayerRankHistoryPreview(
         }
 
         for (const tournament of sorted) {
-          const roleName = tournament.role as UserRoleType;
+          const roleName = tournament.role ? normalizePlayerRole(roleOf(tournament.role)) : "Flex";
           const roleCode = toBalancerRoleCode(roleName);
           if (!roleCode) continue;
           if (latestPerRole.has(roleCode)) continue;

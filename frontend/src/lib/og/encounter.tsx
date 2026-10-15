@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { ImageResponse } from "next/og";
 import { getTranslations } from "next-intl/server";
+import { roleOf } from "@/lib/roster/role-ref";
 
 import DamageIcon from "@/components/icons/DamageIcon";
 import FlexIcon from "@/components/icons/FlexIcon";
@@ -103,10 +104,10 @@ const LINE = "#1f2b45";
 const ACCENT = "#2dd4bf";
 
 const ROLE_ICON = {
-  Tank: TankIcon,
-  Damage: DamageIcon,
-  Support: SupportIcon,
-  Flex: FlexIcon
+  tank: TankIcon,
+  damage: DamageIcon,
+  support: SupportIcon,
+  flex: FlexIcon
 } as const;
 
 /** `EncounterState` sentinels are English words; the catalog keys are camelCase. */
@@ -129,8 +130,8 @@ function RosterRow({
   isCaptain: boolean;
   subLabel: string;
 }) {
-  const RoleIcon =
-    player.role in ROLE_ICON ? ROLE_ICON[player.role as keyof typeof ROLE_ICON] : null;
+  const role = roleOf(player.role) ?? "flex";
+  const RoleIcon = role in ROLE_ICON ? ROLE_ICON[role as keyof typeof ROLE_ICON] : null;
   return (
     <div
       style={{

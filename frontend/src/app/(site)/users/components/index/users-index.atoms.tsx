@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { roleOf } from "@/lib/roster/role-ref";
+import { normalizePlayerRole } from "@/lib/roster/player-role";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -98,8 +100,8 @@ export function RolesCrests({
     <span className="inline-flex items-center gap-1.5">
       {roles.map((role) => (
         <DivisionHex
-          key={`${role.role}-${role.division}`}
-          role={role.role}
+          key={`${role.role?.dimension}-${role.role?.role}-${role.division}`}
+          role={role.role ? normalizePlayerRole(roleOf(role.role)) : "Flex"}
           division={role.division}
           roleGrid={gridForRole(role, grids)}
           size={size}

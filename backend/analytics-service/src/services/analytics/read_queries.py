@@ -253,14 +253,17 @@ class AnalyticsReadService:
 
     async def get_streaks(
         self, session: AsyncSession, tournament_id: int
-    ) -> typing.Sequence[tuple[models.User, int, str, int]]:
+    ) -> typing.Sequence[tuple[models.User, str | None, str | None, str, int]]:
         subquery = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role,
+                models.Player.sub_role,
+                models.Tournament.discipline,
                 models.Standing.overall_position,
             )
             .select_from(models.Player)
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .join(
                 models.WorkspaceMember,
                 models.WorkspaceMember.id == models.Player.workspace_member_id,
@@ -278,6 +281,8 @@ class AnalyticsReadService:
             sa.select(
                 models.User,
                 subquery.c.role,
+                subquery.c.sub_role,
+                subquery.c.discipline,
                 subquery.c.overall_position,
             )
             .select_from(models.Player)

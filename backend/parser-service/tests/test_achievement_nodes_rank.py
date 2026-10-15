@@ -103,19 +103,7 @@ class _RankFixture(_scrim._Fixture):
             balancer_name="Foreign team",
             captain_id=user_id,
         )
-        self.insert(
-            models.Player.__table__,
-            id=self._id(),
-            tournament_id=FOREIGN_TOURNAMENT_ID,
-            team_id=team_id,
-            workspace_member_id=member_id,
-            name="foreign",
-            role=enums.HeroClass.damage,
-            rank=3000,
-            is_substitution=False,
-            is_newcomer=False,
-            is_newcomer_role=False,
-        )
+        self.player(FOREIGN_TOURNAMENT_ID, team_id, member_id, name="foreign")
 
 
 class _RankCase(_EngineTestCase):

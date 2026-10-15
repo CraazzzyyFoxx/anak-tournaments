@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core.social import SocialProvider, normalize_social_handle
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.models import mv_hero_global_stats
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
 from src.core import enums, pagination
@@ -254,7 +256,7 @@ class UserProfileQueries:
 
     async def get_roles(
         self, session: AsyncSession, user_id: int, workspace_id: int | None = None
-    ) -> typing.Sequence[tuple[enums.HeroClass, int, int, list[dict]]]:
+    ) -> typing.Sequence[tuple[RoleRef | None, int, int, list[dict]]]:
         """Per-role ``(role, maps won, maps lost, tournament entries)`` rows for a user.
 
         Each tournament entry is a dict of ``tournament``, ``rank`` and
@@ -269,6 +271,8 @@ class UserProfileQueries:
         q = (
             sa.select(
                 models.Player.role,
+                models.Tournament.discipline,
+                models.Player.sub_role,
                 seat.maps_won.label("maps_won"),
                 seat.maps_lost.label("maps_lost"),
                 models.Team.tournament_id.label("tournament_id"),
@@ -290,6 +294,8 @@ class UserProfileQueries:
         query = (
             sa.select(
                 sides.c.role,
+                sides.c.discipline,
+                sides.c.sub_role,
                 sa.func.sum(sides.c.maps_won).label("won_maps"),
                 sa.func.sum(sides.c.maps_lost).label("lost_maps"),
                 sa.func.jsonb_agg(
@@ -304,19 +310,24 @@ class UserProfileQueries:
                 ),
             )
             .select_from(sides)
-            .group_by(sides.c.role)
+            .group_by(sides.c.role, sides.c.discipline, sides.c.sub_role)
         )
         result = await session.execute(query)
-        return result.all()  # type: ignore
+        return [
+            (RoleRef.of(discipline(code).rated_dimension.code, role, sub_role), won, lost, entries)
+            for role, code, sub_role, won, lost, entries in result.all()
+        ]
 
     async def get_tournament_role(
         self, session: AsyncSession, tournament: models.Tournament, user_id: int, *, grid: DivisionGrid
-    ) -> tuple[enums.HeroClass, int]:
+    ) -> tuple[RoleRef | None, int]:
         """A user's ``(role, division)`` in one tournament — the division already resolved
         against ``grid``, not the raw rank.
         """
         query = (
-            sa.select(models.Player.role, division_case_expr(models.Player.rank, grid).label("div"))
+            sa.select(
+                models.Player.role, models.Player.sub_role, division_case_expr(models.Player.rank, grid).label("div")
+            )
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
@@ -329,7 +340,8 @@ class UserProfileQueries:
             )
         )
         result_role = await session.execute(query)
-        return result_role.one()  # type: ignore
+        role, sub_role, division = result_role.one()
+        return RoleRef.of(discipline(tournament.discipline).rated_dimension.code, role, sub_role), division
 
     async def get_tournaments_with_stats(
         self,

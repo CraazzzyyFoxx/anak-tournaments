@@ -1,7 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
 from shared.repository import CatalogEntityRepository
+from shared.schemas.role import RoleRef
 from src import models, schemas
 from src.core import errors, pagination
 
@@ -58,7 +60,7 @@ class HeroService:
                     user_id=row.user_id,
                     username=row.username,
                     player_name=row.player_name,
-                    role=row.role,
+                    role=RoleRef.of(discipline(row.discipline).rated_dimension.code, row.role, row.sub_role),
                     div=row.div,
                     team=row.team,
                     team_id=row.team_id,

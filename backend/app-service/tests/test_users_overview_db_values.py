@@ -28,6 +28,9 @@ from shared.models.division_grid import DivisionGridTier, DivisionGridVersion
 from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament import Player, Standing, Team, Tournament
+from shared.models.tournament.player_role import assignment_of
+from shared.schemas.role import RoleRef
+from shared.services.ontology import rated_leaf
 from src import schemas
 from src.core import db as app_db
 from src.services.user.queries.overview import overview as overview_queries
@@ -157,25 +160,28 @@ async def _seed(session: Any) -> _Seed:
         teams[label] = team
     await session.flush()
 
-    roster: list[tuple[str, str, enums.HeroClass, int, Tournament]] = [
-        ("A", "alpha", enums.HeroClass.tank, 3, t1),
-        ("A", "bravo", enums.HeroClass.damage, 5, t1),
-        ("B", "charlie", enums.HeroClass.support, 7, t1),
-        ("E", "delta", enums.HeroClass.flex, 5, t1),
-        ("C", "alpha", enums.HeroClass.tank, 3, t2),
-        ("C", "charlie", enums.HeroClass.support, 7, t2),
-        ("D", "bravo", enums.HeroClass.damage, 5, t2),
-        ("F", "delta", enums.HeroClass.flex, 5, t4),
-        ("G", "bravo", enums.HeroClass.damage, 5, t4),
-        ("H", "alpha", enums.HeroClass.tank, 3, t5),
-        ("I", "foxtrot", enums.HeroClass.damage, 5, t5),
+    roster: list[tuple[str, str, str | None, int, Tournament]] = [
+        ("A", "alpha", "tank", 3, t1),
+        ("A", "bravo", "damage", 5, t1),
+        ("B", "charlie", "support", 7, t1),
+        ("E", "delta", None, 5, t1),
+        ("C", "alpha", "tank", 3, t2),
+        ("C", "charlie", "support", 7, t2),
+        ("D", "bravo", "damage", 5, t2),
+        ("F", "delta", None, 5, t4),
+        ("G", "bravo", "damage", 5, t4),
+        ("H", "alpha", "tank", 3, t5),
+        ("I", "foxtrot", "damage", 5, t5),
     ]
     for team_label, user_key, role, division, tournament in roster:
+        leaf = await rated_leaf(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id, role=role, sub_role=None
+        )
         session.add(
             Player(
                 name=seed.name(user_key),
                 rank=DIV_RANK[division],
-                role=role,
+                assignments=[] if leaf is None else [assignment_of(leaf)],
                 is_substitution=False,
                 tournament_id=tournament.id,
                 team_id=teams[team_label].id,
@@ -358,7 +364,7 @@ async def _assertions(session: Any, seed: _Seed) -> None:
     assert rows["echo"].last_active_at is None
     assert (alpha.tournaments_count, rows["delta"].tournaments_count) == (2, 1)
 
-    assert [role.role for role in alpha.roles] == [enums.HeroClass.tank]
+    assert [role.role for role in alpha.roles] == [RoleRef(dimension="player_role", role="tank")]
     assert [role.division for role in alpha.roles] == [3]
 
     # ---- sorts ----------------------------------------------------------

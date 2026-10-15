@@ -37,7 +37,7 @@ const { getDraftCard } = vi.hoisted(() => ({
     mvp_maps: null,
     best_placement: 2,
     avg_placement: 4,
-    roles: [{ role: "tank" as const, maps: 40, maps_won: 24 }],
+    roles: [{ role: { dimension: "player_role", role: "tank" }, maps: 40, maps_won: 24 }],
     heroes: [],
     recent_tournaments: [
       { id: 3, name: "OWT Cup 12", date: null, role: null, rank: null, placement: 2, teams_count: 16 }
@@ -53,7 +53,7 @@ vi.mock("@/services/user.service", () => ({
           id: 7,
           name: "Ana#1234",
           avatar_url: null,
-          roles: [{ role: "Tank", division: 5, division_grid_version_id: null }],
+          roles: [{ role: { dimension: "player_role", role: "tank" }, division: 5, division_grid_version_id: null }],
           tournaments_count: 9,
           achievements_count: 3,
           maps_won: 24,

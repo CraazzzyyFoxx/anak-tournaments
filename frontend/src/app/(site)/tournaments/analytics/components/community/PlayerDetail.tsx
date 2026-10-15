@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
+import { roleOf } from "@/lib/roster/role-ref";
 
 import { getImpactColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
@@ -50,8 +51,8 @@ export default function PlayerDetail({
       ? t("analytics.community.player.drop")
       : t("analytics.community.player.hold");
 
-  const rk = normalizeRoleTint(player.role);
-  const roleLabel = rk ? t(`analytics.community.role.${rk}`) : player.role;
+  const rk = normalizeRoleTint(roleOf(player.role));
+  const roleLabel = rk ? t(`analytics.community.role.${rk}`) : roleOf(player.role) ?? "";
   const roleLower = roleLabel.toLowerCase();
   const confPct = Math.round(player.confidence * 100);
   const predictedDivision = player.predicted_division ?? player.division;
@@ -109,7 +110,7 @@ export default function PlayerDetail({
             ) : null}
           </div>
           <div className={styles.cPlayerRole}>
-            <PlayerRoleIcon role={player.role} size={15} decorative />
+            <PlayerRoleIcon role={roleOf(player.role)} size={15} decorative />
             <span>
               {t("analytics.community.player.roleLine", {
                 role: roleLabel,

@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, patch
 
 from cashews import cache
 
+from shared.schemas.role import RoleRef
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "app-service"))
@@ -39,7 +41,9 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
     async def test_overall_cache_ignores_runtime_session_and_uses_grid_version(self) -> None:
         response = {"result": "overall"}
         compute = AsyncMock(return_value=response)
-        params = schemas.UserCompareParams(baseline="cohort", role=enums.HeroClass.support, div_min=4, div_max=9)
+        params = schemas.UserCompareParams(
+            baseline="cohort", role=RoleRef(dimension="player_role", role="support"), div_min=4, div_max=9
+        )
 
         with patch.object(flows.users, "get_compare", compute):
             first = await flows.users.get_compare_cached(object(), 101, params, grid=_grid(17))

@@ -20,7 +20,7 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 
 
 team_service = importlib.import_module("src.services.team.service")
-enums = importlib.import_module("src.core.enums")
+from shared.models.catalog.role import CatalogRole, RoleDimension
 
 
 class TeamServiceWorkspaceMemberTests(IsolatedAsyncioTestCase):
@@ -52,19 +52,29 @@ class TeamServiceWorkspaceMemberTests(IsolatedAsyncioTestCase):
     async def test_create_player_sets_workspace_member_id(self) -> None:
         session = SimpleNamespace(add=Mock(), flush=AsyncMock(), commit=AsyncMock())
         user = SimpleNamespace(id=42)
-        tournament = SimpleNamespace(id=88)
+        tournament = SimpleNamespace(id=88, discipline="overwatch", workspace_id=1)
         team = SimpleNamespace(id=3)
 
-        with patch.object(
-            team_service,
-            "_resolve_workspace_member_id",
-            AsyncMock(return_value=999),
-        ) as resolve_member:
+        with (
+            patch.object(team_service, "_resolve_workspace_member_id", AsyncMock(return_value=999)) as resolve_member,
+            patch.object(
+                team_service,
+                "rated_leaf",
+                AsyncMock(
+                    return_value=CatalogRole(
+                        id=1,
+                        dimension_id=1,
+                        code="tank",
+                        dimension=RoleDimension(id=1, discipline="overwatch", code="player_role", rated=True),
+                    )
+                ),
+            ),
+        ):
             player = await team_service.create_player(
                 session,
                 name="Sub Player",
                 rank=3000,
-                role=enums.HeroClass.tank,
+                role="tank",
                 user=user,
                 tournament=tournament,
                 team=team,

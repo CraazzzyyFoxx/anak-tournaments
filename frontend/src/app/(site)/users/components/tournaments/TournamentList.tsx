@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import { roleOf } from "@/lib/roster/role-ref";
 import { Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
@@ -101,8 +102,8 @@ const TournamentRow = ({
             <span className="truncate">{t("users.tournaments.divisionsCount", { count: String(entries.length) })}</span>
           ) : (
             <>
-              <span className="inline-flex shrink-0" title={lead.role ?? undefined}>
-                <PlayerRoleIcon role={lead.role} size={13} />
+              <span className="inline-flex shrink-0" title={roleOf(lead.role) ?? undefined}>
+                <PlayerRoleIcon role={roleOf(lead.role)} size={13} />
               </span>
               <span className="truncate">{t("users.tournaments.teamName", { name: String(lead.team) })}</span>
             </>

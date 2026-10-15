@@ -20,7 +20,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "parser-service"))
 os.environ["DEBUG"] = "true"
 
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.models.encounter import Encounter  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
@@ -194,7 +193,7 @@ class ResolutionThroughParticipationsTests(ParticipationCase):
 class SubstituteTests(ParticipationCase):
     def _processor(self):
         processor = match_logs_flows.MatchLogProcessor.__new__(match_logs_flows.MatchLogProcessor)
-        processor.tournament = SimpleNamespace(workspace_id=self.ids["ws"])
+        processor.tournament = SimpleNamespace(workspace_id=self.ids["ws"], discipline="overwatch")
         return processor
 
     async def _players_in_tournament(self, session) -> int:
@@ -210,8 +209,8 @@ class SubstituteTests(ParticipationCase):
             team_id, participation_id = participation.team_id, participation.id
 
         # m0 is in the log, m1 is not: user 2 played in his place.
-        missing = roster.LogPlayer(user_id=self.users[1], team_id=team_id, name="u1", role=HeroClass.damage, rank=2800)
-        present = roster.LogPlayer(user_id=self.users[0], team_id=team_id, name="u0", role=HeroClass.damage, rank=3000)
+        missing = roster.LogPlayer(user_id=self.users[1], team_id=team_id, name="u1", role="damage", rank=2800)
+        present = roster.LogPlayer(user_id=self.users[0], team_id=team_id, name="u0", role="damage", rank=3000)
         roster_rows = [
             SimpleNamespace(
                 is_substitution=False,
@@ -219,6 +218,7 @@ class SubstituteTests(ParticipationCase):
                 team_id=player.team_id,
                 name=player.name,
                 role=player.role,
+                sub_role=player.sub_role,
                 rank=player.rank,
             )
             for player in (present, missing)
@@ -244,7 +244,7 @@ class SubstituteTests(ParticipationCase):
                     user_id=self.users[2],
                     team_id=team_id,
                     name=sub_user.name,
-                    role=HeroClass.damage,
+                    role="damage",
                     rank=2800,
                 ),
                 players["u2"],

@@ -2,15 +2,15 @@ import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.models.tournament.player_role import assignment_of
 from shared.repository import (
     PlayerRepository,
     TeamRepository,
     WorkspaceMemberRepository,
     resolve_workspace_member_id,
 )
+from shared.services.ontology import rated_leaf
 from src import models
-from src.core import enums
 
 
 class TeamService:
@@ -90,7 +90,7 @@ class TeamService:
         )
 
     async def get_player_by_user_and_role(
-        self, session: AsyncSession, user_id: int, role: enums.HeroClass, entities: list[str]
+        self, session: AsyncSession, user_id: int, role: str | None, entities: list[str]
     ) -> typing.Sequence[models.Player]:
         return await self.player_repo.list_by_user_and_role(
             session, user_id=user_id, role=role, options=PlayerRepository.player_entities(entities)
@@ -103,7 +103,7 @@ class TeamService:
         name: str,
         sub_role: str | None = None,
         rank: int,
-        role: enums.HeroClass,
+        role: str | None,
         user: models.User,
         tournament: models.Tournament,
         team: models.Team,
@@ -117,11 +117,17 @@ class TeamService:
             tournament_id=tournament.id,
             player_id=user.id,
         )
+        leaf = await rated_leaf(
+            session,
+            discipline=tournament.discipline,
+            workspace_id=tournament.workspace_id,
+            role=role,
+            sub_role=sub_role,
+        )
         player = models.Player(
             name=name,
-            sub_role=normalize_sub_role(sub_role),
             rank=rank,
-            role=role,
+            assignments=[] if leaf is None else [assignment_of(leaf)],
             tournament_id=tournament.id,
             team_id=team.id,
             is_substitution=is_substitution,

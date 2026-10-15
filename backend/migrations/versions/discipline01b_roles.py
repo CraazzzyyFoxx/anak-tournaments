@@ -294,11 +294,33 @@ _SUB_ROLES = (
 )
 
 
+#: §14.3: one leaf on the rated dimension; flex holds no assignment (D86).
+_PLAYER_ROLES = (
+    """
+    CREATE TABLE tournament.player_role (
+      player_id    BIGINT NOT NULL CONSTRAINT fk_player_role_player REFERENCES tournament.player (id) ON DELETE CASCADE,
+      dimension_id BIGINT NOT NULL,
+      role_id      BIGINT NOT NULL,
+      PRIMARY KEY (player_id, role_id),
+      CONSTRAINT fk_player_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id)
+    )
+    """,
+    """
+    INSERT INTO tournament.player_role (player_id, dimension_id, role_id)
+    SELECT p.id, r.dimension_id, r.id
+      FROM tournament.player p
+      JOIN tournament.tournament t ON t.id = p.tournament_id
+      JOIN catalog.role r ON r.id = pg_temp.discipline01b_leaf(t.workspace_id, p.role::text, p.sub_role)
+     WHERE p.role::text IN ('tank', 'damage', 'support')
+    """,
+)
+
+
 def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
     op.execute("SET CONSTRAINTS ALL IMMEDIATE")
     _preflight()
-    for statement in (*_SCHEMA, *_ONTOLOGY, *_SUB_ROLES, *_TEAM_FORMATS, *_CONFIG_JSON):
+    for statement in (*_SCHEMA, *_ONTOLOGY, *_SUB_ROLES, *_TEAM_FORMATS, *_CONFIG_JSON, *_PLAYER_ROLES):
         op.execute(statement)
     op.execute("SET CONSTRAINTS ALL DEFERRED")
 

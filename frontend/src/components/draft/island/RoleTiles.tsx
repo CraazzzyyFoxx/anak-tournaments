@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { roleOf } from "@/lib/roster/role-ref";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -88,7 +89,7 @@ export function RoleTiles({
         const usable = team != null && canSeat(team, role);
         const on = selection?.playerId === player.id && selection.role === role;
         const priority = PRIORITY_KEYS[index];
-        const roleStats = card?.roles.find((entry) => entry.role === role) ?? null;
+        const roleStats = card?.roles.find((entry) => roleOf(entry.role) === role) ?? null;
         const share = roleStats && roleStats.maps > 0 ? roleStats.maps_won / roleStats.maps : 0;
         const lowMaps = (roleStats?.maps ?? 0) < MIN_WINRATE_MAPS;
 

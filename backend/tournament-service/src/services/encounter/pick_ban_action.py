@@ -154,14 +154,10 @@ def serialize_submission(row: pbr.SubmissionLike) -> dict[str, Any]:
 
 
 def serialize_target(player: Player, grid: DivisionGrid) -> dict[str, Any]:
-    role = getattr(player.role, "value", player.role)
     return {
         "player_id": player.id,
         "name": player.name,
-        # The TS contract spells roles lowercase; `HeroClass` already does, but
-        # a raw column read can hand back whatever the DB stored.
-        "role": role.lower() if isinstance(role, str) else None,
-        "sub_role": player.sub_role,
+        "role": player.role_ref.model_dump() if player.role_ref is not None else None,
         "is_substitution": bool(player.is_substitution),
         # Against the tournament's own grid, exactly as `PlayerRead.division`.
         "division": resolve_tournament_division(player.rank, tournament_grid=grid),
@@ -169,8 +165,7 @@ def serialize_target(player: Player, grid: DivisionGrid) -> dict[str, Any]:
 
 
 def _target_sort_key(player: Player) -> tuple[int, int, str]:
-    role = getattr(player.role, "value", player.role)
-    rank = _ROLE_ORDER.get(role.lower(), len(_ROLE_ORDER)) if isinstance(role, str) else len(_ROLE_ORDER)
+    rank = _ROLE_ORDER.get(player.role, len(_ROLE_ORDER))
     return (rank, 1 if player.is_substitution else 0, player.name or "")
 
 
@@ -304,11 +299,7 @@ class PickBanActionService:
                 targets[team_id] = [
                     pbr.TargetPlayer(
                         player_id=player.id,
-                        role=(
-                            role.lower()
-                            if isinstance(role := getattr(player.role, "value", player.role), str)
-                            else None
-                        ),
+                        role=player.role,
                     )
                     for opponent, players in rt.rosters.items()
                     if opponent != team_id

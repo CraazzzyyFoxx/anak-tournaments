@@ -27,6 +27,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 os.environ["DEBUG"] = "false"
 
+from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
 from shared.models.tournament.team import Player, Team  # noqa: E402
 from shared.services.team_export import materialization as materialization_module  # noqa: E402
 from src.schemas.team import BalancerTeam, BalancerTeamMember  # noqa: E402
@@ -55,7 +56,7 @@ def _rows_result(rows):
 
 class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
     async def test_new_player_gets_workspace_member_id(self) -> None:
-        tournament = SimpleNamespace(id=88, workspace_id=55, start_date=None)
+        tournament = SimpleNamespace(id=88, workspace_id=55, start_date=None, discipline="overwatch")
         member_user = SimpleNamespace(id=42)
         created_team = SimpleNamespace(id=3, name="Roster", tournament_id=88)
         created_member = SimpleNamespace(id=9001)
@@ -118,6 +119,18 @@ class MaterializeTeamsWorkspaceMemberTests(IsolatedAsyncioTestCase):
                 "get_or_create_workspace_member",
                 AsyncMock(return_value=created_member),
             ) as get_or_create,
+            patch.object(
+                materialization_module,
+                "rated_leaf",
+                AsyncMock(
+                    return_value=CatalogRole(
+                        id=1,
+                        dimension_id=1,
+                        code="tank",
+                        dimension=RoleDimension(id=1, discipline="overwatch", code="player_role", rated=True),
+                    )
+                ),
+            ),
         ):
             await materialization_module.materialize_teams(session, 88, to_materialization_teams(payload))
 

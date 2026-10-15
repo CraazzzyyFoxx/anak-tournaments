@@ -1,4 +1,5 @@
 import { getTranslations } from "next-intl/server";
+import { roleOf } from "@/lib/roster/role-ref";
 import { UserProfile, UserRole, UserMapRead } from "@/types/user.types";
 import { HeroWithUserStats } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
@@ -83,7 +84,7 @@ const OverviewRoleSplit = async ({ profile, heroes = [], maps = [] }: Props) => 
   const t = await getTranslations();
   const totalMaps = profile.maps_total;
   const buckets = ROLE_ORDER.map<Bucket | null>((roleKey) => {
-    const role = profile.roles.find((r) => playerRoleTint(r.role) === roleKey);
+    const role = profile.roles.find((r) => playerRoleTint(roleOf(r.role)) === roleKey);
     if (!role) return null;
     return {
       key: roleKey,

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { roleOf } from "@/lib/roster/role-ref";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { tournamentHref } from "@/lib/tournament/url";
 import { Trophy } from "lucide-react";
@@ -218,8 +219,8 @@ const SingleDossier = ({
               {t.is_league ? <LeagueBadge>{tr("users.tournaments.leagueBadge")}</LeagueBadge> : null}
             </div>
             <div className="mt-1.5 flex items-center gap-2 text-caption text-[color:var(--aqt-fg-muted)]">
-              <span className="inline-flex" title={t.role ?? undefined}>
-                <PlayerRoleIcon role={t.role} size={15} color={roleColorVar(t.role)} />
+              <span className="inline-flex" title={roleOf(t.role) ?? undefined}>
+                <PlayerRoleIcon role={roleOf(t.role)} size={15} color={roleColorVar(roleOf(t.role))} />
               </span>
               <span className="aqt-tnum truncate">{tr("users.tournaments.teamName", { name: String(t.team) })}</span>
               <DivisionIcon division={t.division} tournamentGrid={t.division_grid_version} width={20} height={20} />

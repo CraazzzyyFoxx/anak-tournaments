@@ -23,10 +23,12 @@ os.environ["DEBUG"] = "true"
 from shared.core import enums  # noqa: E402
 from shared.models.encounter import Encounter  # noqa: E402
 from shared.models.tournament.bracket_encounter import BracketEncounter  # noqa: E402
+from shared.models.tournament.player_role import assignment_of  # noqa: E402
 from shared.models.tournament.stage import Stage, StageItem  # noqa: E402
 from shared.models.tournament.team import Player  # noqa: E402
 from shared.services.encounter import participants  # noqa: E402
 from shared.services.encounter.result import apply_result  # noqa: E402
+from shared.services.ontology import rated_leaf  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 
 models = importlib.import_module("src.models")
@@ -59,7 +61,13 @@ class SeriesConditionsOnPostgresTests(EncounterWriterCase):
                         workspace_member_id=self.ids[f"m{index}"],
                         name=f"p{index}",
                         rank=3000,
-                        role=enums.HeroClass.damage,
+                        assignments=[
+                            assignment_of(
+                                await rated_leaf(
+                                    s, discipline="overwatch", workspace_id=None, role="damage", sub_role=None
+                                )
+                            )
+                        ],
                     )
                 )
             await s.flush()

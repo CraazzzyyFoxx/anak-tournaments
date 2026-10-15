@@ -562,12 +562,8 @@ class TournamentFlowsService:
         # aggregates players to a per-(tournament, role, rank) histogram, so the
         # average is weighted by the count instead of iterating every player row.
         #
-        # Keyed by HeroClass, so a ``flex`` roster row lands in a bucket the three
-        # response fields below never read -- flex players are deliberately absent
-        # from the per-role averages, because their single rank stands for no
-        # particular role and averaging it into one would misreport that role's
-        # strength. The reads use ``.get()``, so this stays a silent skip by design.
-        raw_rank_cache: dict[int, dict[enums.HeroClass, list[tuple[float, int]]]] = {}
+        # Open slots have no role, and are excluded from the per-role averages.
+        raw_rank_cache: dict[int, dict[str | None, list[tuple[float, int]]]] = {}
         tournament_names: dict[int, str] = {}
 
         rows = await self.tournaments.get_avg_div_tournaments(session, workspace_id=workspace_id)
@@ -603,14 +599,15 @@ class TournamentFlowsService:
             return round(sum(division * count for division, count in values) / total_players, 2)
 
         output: list[schemas.DivisionStatistics] = []
+        # OW-shaped read (wire fields name these roles); P7 makes it data-driven.
         for tournament_id, roles in raw_rank_cache.items():
             output.append(
                 schemas.DivisionStatistics(
                     id=tournament_id,
                     name=tournament_names[tournament_id],
-                    tank_avg_div=avg_or_none(roles.get(enums.HeroClass.tank)),
-                    damage_avg_div=avg_or_none(roles.get(enums.HeroClass.damage)),
-                    support_avg_div=avg_or_none(roles.get(enums.HeroClass.support)),
+                    tank_avg_div=avg_or_none(roles.get("tank")),
+                    damage_avg_div=avg_or_none(roles.get("damage")),
+                    support_avg_div=avg_or_none(roles.get("support")),
                 )
             )
 

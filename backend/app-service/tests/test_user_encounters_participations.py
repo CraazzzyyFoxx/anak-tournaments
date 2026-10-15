@@ -23,6 +23,9 @@ from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament import Player, Stage, Team, Tournament
 from shared.models.tournament.bracket_encounter import BracketEncounter
+from shared.models.tournament.player_role import assignment_of
+from shared.schemas.role import RoleRef
+from shared.services.ontology import rated_leaf
 from src.core import pagination
 from src.services.user import _mappers
 from src.services.user.queries.encounters import encounters as encounter_queries
@@ -92,7 +95,17 @@ async def _seed(session: Any) -> _Seed:
             Player(
                 name=f"zz{suffix}-{user_key}",
                 rank=2000,
-                role=enums.HeroClass.tank,
+                assignments=[
+                    assignment_of(
+                        await rated_leaf(
+                            session,
+                            discipline="overwatch",
+                            workspace_id=tournament.workspace_id,
+                            role="tank",
+                            sub_role=None,
+                        )
+                    )
+                ],
                 is_substitution=False,
                 tournament_id=tournament.id,
                 team_id=teams[key].id,
@@ -246,8 +259,10 @@ def test_the_dossier_context_carries_the_live_seats_roster_and_bracket_position(
         assert [(team.slot, team.score, team.placement) for team in read.teams] == [(1, 2.0, 1), (2, 1.0, 2)]
         assert read.user_team_id == seed.teams["X"]
         assert [(player.user_id, player.name, player.role) for player in read.teams[0].players] == [
-            (seed.users["alice"], "Alice", enums.HeroClass.tank)
+            (seed.users["alice"], "Alice", RoleRef(dimension="player_role", role="tank"))
         ]
+        assert _mappers._roster_role((("player_role", "flex"),), "overwatch") is None
+        assert _mappers._roster_role((("position", "support"),), "lol") == RoleRef(dimension="position", role="support")
         assert read.teams[1].players == []
         # An encounter outside any bracket reads round 0 and no stage.
         assert contexts[seed.encounters["E2"]].position is None

@@ -14,6 +14,8 @@ import os
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
+from shared.schemas.role import RoleRef
+
 os.environ.setdefault("DEBUG", "true")
 
 team_flows = importlib.import_module("src.services.team.flows")
@@ -26,9 +28,7 @@ def _player(*, workspace_member_player_id: int) -> SimpleNamespace:
             "created_at": None,
             "updated_at": None,
             "name": "Roster Player",
-            "sub_role": None,
             "rank": 1500,
-            "role": "damage",
             "tournament_id": 7,
             "team_id": 9,
             "is_newcomer": False,
@@ -38,6 +38,7 @@ def _player(*, workspace_member_player_id: int) -> SimpleNamespace:
             "workspace_member_id": 555,
         },
         rank=1500,
+        role_ref=RoleRef(dimension="player_role", role="damage"),
         workspace_member=SimpleNamespace(player_id=workspace_member_player_id),
         tournament=None,
         team=None,

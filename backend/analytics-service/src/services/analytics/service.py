@@ -175,7 +175,7 @@ class AnalyticsService:
                 points,
                 sa.and_(
                     models.WorkspaceMember.player_id == points.c.user_id,
-                    models.Player.role == points.c.role,
+                    models.Player.role.is_not_distinct_from(points.c.role),
                     models.Player.team_id == points.c.team_id,
                 ),
                 isouter=True,

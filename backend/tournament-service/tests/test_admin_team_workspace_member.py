@@ -70,7 +70,9 @@ class AdminTeamWorkspaceMemberTests(IsolatedAsyncioTestCase):
         team_result = _result(SimpleNamespace(id=3, tournament_id=88))
         user_result = _result(SimpleNamespace(id=7))
         session = SimpleNamespace(
-            execute=AsyncMock(side_effect=[team_result, user_result]),
+            execute=AsyncMock(
+                side_effect=[team_result, user_result, _result(SimpleNamespace(discipline="overwatch", workspace_id=1))]
+            ),
             add=Mock(side_effect=lambda player: setattr(player, "id", 501)),
             flush=AsyncMock(),
             commit=AsyncMock(),
@@ -103,7 +105,9 @@ class AdminTeamWorkspaceMemberTests(IsolatedAsyncioTestCase):
         user_result = _result(SimpleNamespace(id=9))
         team_result = _result(SimpleNamespace(id=4, tournament_id=101))
         session = SimpleNamespace(
-            execute=AsyncMock(side_effect=[user_result, team_result]),
+            execute=AsyncMock(
+                side_effect=[user_result, team_result, _result(SimpleNamespace(discipline="overwatch", workspace_id=1))]
+            ),
             add=Mock(side_effect=lambda player: setattr(player, "id", 502)),
             flush=AsyncMock(),
             commit=AsyncMock(),

@@ -5,24 +5,13 @@ from typing import Final, Literal
 
 
 class HeroClass(StrEnum):
-    """A roster role OR an Overwatch character's class.
+    """An Overwatch character's class and a stat-baseline key until P4.
 
-    ``tank``/``damage``/``support`` mean both things at once. The Postgres
-    ``heroclass`` type still backs ``matches.stat_baselines.role`` and
-    ``tournament.player.role``; character classes now live in ``catalog.entity.attrs``.
-    ``flex`` only means a player who holds no fixed role, which is what a
-    role-less roster shape drafts and balances for. No hero has a class of
-    "flex": the module's ``character_classes`` and :data:`HeroTypeClass` narrow
-    the catalog values; a database CHECK still narrows baseline roles.
-
-    Member NAMES are the stored Postgres labels (SQLAlchemy ``Enum`` default),
-    so the DB sees ``flex`` while the Python value is ``"Flex"``.
-
-    THE single role enum for the whole backend (frontend mirror:
-    ``PlayerRoleOption`` in ``lib/roster/player-role.ts``). One spelling per role, in
-    code, on the wire and in the database: :attr:`slot_code` is the lowercase
-    member name. This docstring is the public OpenAPI description of the enum,
-    so the retired spelling is documented on :attr:`slot_code` instead.
+    Player roles are ontology codes (D86, D92), not this enum. Character classes
+    live in ``catalog.entity.attrs``; ``matches.stat_baselines.role`` still uses
+    the PostgreSQL enum. Member names are stored labels, values are display names.
+    ``flex`` is retained only for legacy inputs; no character or player assignment
+    has that class.
     """
 
     tank = "Tank"

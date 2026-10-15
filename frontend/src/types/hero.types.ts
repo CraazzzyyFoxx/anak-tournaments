@@ -1,4 +1,5 @@
 import { LogStatsName } from "@/types/stats.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 export interface Hero {
   id: number;
@@ -48,7 +49,7 @@ export interface HeroLeaderboardEntry {
   user_id: number;
   username: string;
   player_name: string;
-  role: string | null;
+  role: RoleRef | null;
   div: number;
   team: string | null;
   team_id: number | null;

@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowDown, ArrowRight, ArrowUp, Minus } from "lucide-react";
+import { roleOf } from "@/lib/roster/role-ref";
 
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
@@ -69,7 +70,7 @@ export default function RosterRow({ player, tournamentGrid, onSelect }: Readonly
     // carries the full button reset, and Enter/Space come for free.
     <button type="button" className={styles.cRosterRow} onClick={onSelect}>
       <span className={styles.cRoleChip}>
-        <PlayerRoleIcon role={player.role} size={19} />
+        <PlayerRoleIcon role={roleOf(player.role)} size={19} />
       </span>
       <span className={styles.cBadgeWrap}>
         <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={30} height={30} />

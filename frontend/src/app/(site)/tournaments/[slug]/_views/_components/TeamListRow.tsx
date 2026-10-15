@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronDown, Crown } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { roleOf } from "@/lib/roster/role-ref";
 import { useFormatter } from "@/lib/datetime/client";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -97,7 +98,7 @@ export const TeamListRow = ({
                     {/* Inline, not flex: an atomic box is clipped whole, so
                         `truncate` could only ellipsize plain text runs. */}
                     <span className="mr-1 inline-block align-[-2px]">
-                      <PlayerRoleIcon role={player.role} size={13} decorative />
+                      <PlayerRoleIcon role={roleOf(player.role)} size={13} decorative />
                     </span>
                     {matched ? (
                       <mark className={MARK_CLASS}>{player.name}</mark>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { roleOf } from "@/lib/roster/role-ref";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -8,12 +9,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { getDivisionLabel } from "@/lib/divisions/grid";
 import type { TournamentHistoryEntry } from "@/types/registration.types";
 
-const ROLE_TO_ICON: Record<string, string> = {
-  tank: "Tank",
-  damage: "Damage",
-  support: "Support",
-  flex: "Flex",
-};
 
 function getHistoryRoleLabel(
   role: string,
@@ -79,9 +74,9 @@ export default function TournamentHistoryCell({
                     <div className="flex items-center gap-2 text-[color:var(--aqt-fg-dim)]">
                       {h.role ? (
                         <span className="inline-flex items-center">
-                          <span className="sr-only">{getHistoryRoleLabel(h.role, t)}</span>
+                          <span className="sr-only">{getHistoryRoleLabel(roleOf(h.role)!, t)}</span>
                           <PlayerRoleIcon
-                            role={ROLE_TO_ICON[h.role] ?? h.role}
+                            role={roleOf(h.role)}
                             size={16}
                             aria-hidden
                           />

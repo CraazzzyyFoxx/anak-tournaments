@@ -39,6 +39,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from shared.models.catalog.role import CatalogRole, RoleDimension
+from shared.models.tournament.player_role import PlayerRole
 from shared.testing import create_sqlite_tables
 
 backend_root = Path(__file__).resolve().parents[2]
@@ -84,6 +86,9 @@ TABLE_NAMES = (
     "tournament.stage_item",
     "tournament.team",
     "tournament.player",
+    "tournament.player_role",
+    "catalog.role_dimension",
+    "catalog.role",
     "tournament.bracket_encounter",
     "tournament.standing",
     "matches.match",
@@ -230,6 +235,18 @@ class _Fixture:
         self.session = Session(self.engine)
         self.shim = _AsyncSessionShim(self.session)
         self._next_id = 1000
+        self.insert(
+            RoleDimension.__table__,
+            id=1,
+            discipline="overwatch",
+            code="player_role",
+            name="Role",
+            selection_mode="single",
+            rated=True,
+        )
+        self.role_ids = {code: index for index, code in enumerate(("tank", "damage", "support"), 1)}
+        for code, role_id in self.role_ids.items():
+            self.insert(CatalogRole.__table__, id=role_id, dimension_id=1, code=code, name=code, attrs={})
 
     def close(self) -> None:
         self.session.close()
@@ -287,7 +304,15 @@ class _Fixture:
         return team_id
 
     def player(
-        self, tournament_id: int, team_id: int, member_id: int, *, name: str, is_substitution: bool = False
+        self,
+        tournament_id: int,
+        team_id: int,
+        member_id: int,
+        *,
+        name: str,
+        is_substitution: bool = False,
+        role: str | None = "damage",
+        rank: int = 3000,
     ) -> int:
         player_id = self._id()
         self.insert(
@@ -297,12 +322,13 @@ class _Fixture:
             team_id=team_id,
             workspace_member_id=member_id,
             name=name,
-            role=enums.HeroClass.damage,
-            rank=3000,
+            rank=rank,
             is_substitution=is_substitution,
             is_newcomer=False,
             is_newcomer_role=False,
         )
+        if role is not None:
+            self.insert(PlayerRole.__table__, player_id=player_id, dimension_id=1, role_id=self.role_ids[role])
         return player_id
 
     def encounter(

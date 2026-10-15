@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, Check } from "lucide-react";
 import { User, UserProfile } from "@/types/user.types";
 import { getSocialProviderConfig, socialProfileUrl, sortSocialAccounts } from "@/lib/social/providers";
 import { playerRoleTint } from "@/lib/roster/player-role";
+import { roleOf } from "@/lib/roster/role-ref";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { getPlayerImage } from "@/lib/player";
 import DivisionIcon from "@/components/DivisionIcon";
@@ -81,9 +82,7 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
     lastTournament && lastTournament.maps > 0 ? (lastTournament.maps_won / lastTournament.maps) * 100 : null;
   const winrateDelta = lastWinrate !== null && winrate !== null ? lastWinrate - winrate : null;
 
-  // `playerRoleTint` is null only when there is no role at all, so a Flex
-  // primary role tints flex instead of falling through to damage.
-  const roleTint = playerRoleTint(primaryRole?.role);
+  const roleTint = playerRoleTint(roleOf(primaryRole?.role));
 
   return (
     <HeroFrame className="aqt-player" variant="profile" tint={roleTint ? `var(--aqt-${roleTint})` : undefined}>
@@ -96,7 +95,7 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
             <div
               className="absolute -bottom-2 -right-2"
               title={t("users.profile.header.divisionTitle", {
-                role: primaryRole.role,
+                role: roleOf(primaryRole.role) ?? "",
                 division: String(primaryRole.division)
               })}
             >
@@ -164,7 +163,7 @@ const UserHeader = async ({ profile, user, scope }: UserHeaderProps) => {
             card={{
               name,
               tag: tag ?? null,
-              role: primaryRole?.role ?? null,
+              role: roleOf(primaryRole?.role),
               roleTint,
               division: primaryRole?.division ?? null,
               winrate,

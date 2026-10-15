@@ -4,6 +4,7 @@ import { DivisionGridVersion } from "@/types/workspace.types";
 import type { RosterShape } from "@/lib/roster/shape";
 import type { TournamentLink } from "@/types/stream.types";
 import type { DraftFormatSettings } from "@/types/draft.types";
+import type { RoleRef } from "@/lib/roster/role-ref";
 
 // ─── Enums ──────────────────────────────────────────────────────────────────
 
@@ -499,8 +500,7 @@ export interface PickBanSubmission {
 export interface PickBanTarget {
   player_id: number;
   name: string;
-  role: "tank" | "damage" | "support" | "flex" | null;
-  sub_role: string | null;
+  role: RoleRef | null;
   is_substitution: boolean;
   /** Resolved against the tournament's grid, like `Player.division`. */
   division: number;

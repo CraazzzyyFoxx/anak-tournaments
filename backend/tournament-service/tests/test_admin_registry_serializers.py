@@ -40,6 +40,7 @@ from sqlalchemy.orm import make_transient_to_detached  # noqa: E402
 
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 from src import models  # noqa: E402
 from src.core import enums  # noqa: E402
@@ -52,9 +53,7 @@ def _player() -> SimpleNamespace:
             "created_at": None,
             "updated_at": None,
             "name": "Roster Player",
-            "sub_role": None,
             "rank": 1500,
-            "role": "damage",
             "tournament_id": 78,
             "team_id": 9,
             "is_newcomer": False,
@@ -64,6 +63,7 @@ def _player() -> SimpleNamespace:
             "workspace_member_id": 555,
         },
         rank=1500,
+        role_ref=RoleRef(dimension="player_role", role="damage"),
         tournament_id=78,
         # The nested `.player` is the real `User` row `player_to_read` serializes
         # through `user_to_read`, so it needs every column `UserRead` requires --

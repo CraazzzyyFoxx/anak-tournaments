@@ -1116,9 +1116,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         varchar name
-        varchar(128) sub_role "nullable"
         int rank
-        heroclass role "nullable"
         boolean is_substitution
         bigint related_player_id FK "nullable"
         bigint tournament_id FK
@@ -1126,6 +1124,11 @@ erDiagram
         boolean is_newcomer_role
         bigint workspace_member_id FK
         bigint team_id FK
+    }
+    TOURNAMENT_PLAYER_ROLE {
+        bigint player_id PK,FK
+        bigint dimension_id FK
+        bigint role_id PK,FK
     }
     TOURNAMENT_RECALCULATION_STATE {
         bigint tournament_id PK,FK
@@ -1329,6 +1332,8 @@ erDiagram
     AUTH_USER ||--o{ TOURNAMENT_SCRIM_ROOM : "created_by_auth_user_id"
     AUTH_USER ||--o{ TOURNAMENT_TOURNAMENT_PREVIEW_ACCESS : "auth_user_id"
     CATALOG_DISCIPLINE ||--o{ TOURNAMENT_TOURNAMENT : "discipline"
+    CATALOG_ROLE ||--o{ TOURNAMENT_PLAYER_ROLE : "dimension_id"
+    CATALOG_ROLE ||--o| TOURNAMENT_PLAYER_ROLE : "role_id"
     ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_BRACKET_ENCOUNTER : "tournament_id"
     ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_CHALLONGE_MATCH_MAPPING : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ TOURNAMENT_ENCOUNTER_LINK : "source_encounter_id"
@@ -1349,6 +1354,7 @@ erDiagram
     TOURNAMENT_PICK_BAN_CONFIG ||--o{ TOURNAMENT_PICK_BAN_CONFIG_SLOT : "pick_ban_config_id"
     TOURNAMENT_PICK_BAN_CONFIG_SLOT ||--o{ TOURNAMENT_PICK_BAN_CONFIG_SLOT_ITEM : "pick_ban_config_slot_id"
     TOURNAMENT_PLAYER |o--o{ TOURNAMENT_PLAYER : "related_player_id"
+    TOURNAMENT_PLAYER ||--o| TOURNAMENT_PLAYER_ROLE : "player_id"
     TOURNAMENT_STAGE |o--o{ TOURNAMENT_BRACKET_ENCOUNTER : "stage_id"
     TOURNAMENT_STAGE |o--o{ TOURNAMENT_CHALLONGE_SOURCE : "stage_id"
     TOURNAMENT_STAGE |o--o{ TOURNAMENT_COMPUTATION_JOB : "stage_id"

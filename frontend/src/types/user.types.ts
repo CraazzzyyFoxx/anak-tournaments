@@ -1,4 +1,5 @@
 import type { PlayerRoleOption } from "@/lib/roster/player-role";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import { Hero, HeroPlaytime } from "@/types/hero.types";
 import { Score } from "@/types/encounter.types";
 import { MapRead } from "@/types/map.types";
@@ -38,7 +39,7 @@ export interface User {
 }
 
 export interface UserRole {
-  role: string;
+  role: RoleRef | null;
   tournaments: number;
   maps_won: number;
   maps: number;
@@ -53,7 +54,7 @@ export interface UserTournamentWithStats {
   /** Grid the `division` was resolved against — render its icon on this grid,
    * not the workspace default. */
   division_grid_version: DivisionGridVersion | null;
-  role: string;
+  role: RoleRef | null;
   group_placement: number;
   playoff_placement: number;
   maps_won: number;
@@ -83,8 +84,7 @@ export interface UserTournamentSummary {
 interface UserTournamentPlayer {
   id: number;
   name: string;
-  role: string | null;
-  sub_role: string | null;
+  role: RoleRef | null;
   rank: number;
   division: number;
   user_id: number;
@@ -120,7 +120,7 @@ interface UserEncounterStageItemSummary {
 interface UserEncounterTeamPlayerRef {
   id: number;
   user_id: number;
-  role: string | null;
+  role: RoleRef | null;
   name: string;
 }
 
@@ -193,7 +193,7 @@ export interface UserTournament {
   maps_lost: number;
   division: number;
   division_grid_version: DivisionGridVersion | null;
-  role: string;
+  role: RoleRef | null;
 
   /** Only populated after a lazy fetch of `/tournaments/{id}/encounters` for
    *  the tournament currently open in the dossier — the list endpoint omits
@@ -213,7 +213,7 @@ export interface UserDraftCard {
   mvp_maps: number | null;
   best_placement: number | null;
   avg_placement: number | null;
-  roles: { role: "tank" | "damage" | "support"; maps: number; maps_won: number }[];
+  roles: { role: RoleRef | null; maps: number; maps_won: number }[];
   /** Every hero played, most maps first. */
   heroes: { hero: Hero; role: "tank" | "damage" | "support"; maps: number; maps_won: number }[];
   /** Newest first, at most five. */
@@ -221,7 +221,7 @@ export interface UserDraftCard {
     id: number;
     name: string;
     date: string | null;
-    role: "tank" | "damage" | "support" | null;
+    role: RoleRef | null;
     rank: number | null;
     placement: number | null;
     teams_count: number | null;
@@ -342,7 +342,7 @@ export interface MinimizedUser {
 export type UserRoleType = PlayerRoleOption;
 
 export interface UserOverviewRoleDivision {
-  role: UserRoleType;
+  role: RoleRef | null;
   division: number;
   /**
    * The grid version `division` belongs to — the workspace's target grid in
@@ -445,7 +445,7 @@ interface UserCompareBaselineInfo {
   mode: UserCompareBaselineMode;
   sample_size: number;
   target_user: UserCompareUser | null;
-  role: UserRoleType | null;
+  role: RoleRef | null;
   div_min: number | null;
   div_max: number | null;
 }

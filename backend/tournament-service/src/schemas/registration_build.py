@@ -17,10 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import build_unknown_status_meta
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.domain.forms import RolesParams, schema_from_form, schema_from_version
 from shared.domain.roster import PlayerRoster
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
+from shared.schemas.role import RoleRef
 from shared.services.admission.requirements.open_profile import KEY as OPEN_PROFILE_KEY
 from shared.services.admission.requirements.subscription import KEY as SUBSCRIPTION_KEY
 from shared.services.admission.types import AdmissionEvaluation
@@ -415,8 +417,8 @@ async def _build_tournament_history(
 
     History is capped in SQL (``ROW_NUMBER`` after deduping substitutions)
     and the pre-cap count is returned as a window column. Python still
-    deduplicates and caps as a safety net; tests that mock 5-column rows keep
-    the Python count.
+    deduplicates and caps as a safety net; a missing SQL count uses the
+    number of distinct tournaments in the returned rows.
 
     Returns a tuple of:
     - ``history_map``: registration_id -> most-recent-first history entries,
@@ -450,6 +452,8 @@ async def _build_tournament_history(
             models.Player.rank,
             models.Tournament.name.label("tournament_name"),
             models.Tournament.start_date.label("start_date"),
+            models.Player.sub_role,
+            models.Tournament.discipline,
             sa.func.row_number()
             .over(
                 partition_by=(models.WorkspaceMember.player_id, models.Player.tournament_id),
@@ -482,6 +486,8 @@ async def _build_tournament_history(
             history_ranked.c.role,
             history_ranked.c.rank,
             history_ranked.c.tournament_name,
+            history_ranked.c.sub_role,
+            history_ranked.c.discipline,
             sa.func.row_number()
             .over(
                 partition_by=history_ranked.c.player_id,
@@ -502,6 +508,8 @@ async def _build_tournament_history(
             history_deduped.c.rank,
             history_deduped.c.tournament_name,
             history_deduped.c.history_count,
+            history_deduped.c.sub_role,
+            history_deduped.c.discipline,
         )
         .where(history_deduped.c.hist_rn <= HISTORY_LIMIT)
         .order_by(history_deduped.c.player_id, history_deduped.c.hist_rn)
@@ -545,12 +553,12 @@ async def _build_tournament_history(
         role = row[2]
         rank = row[3]
         tournament_name = row[4]
-        sql_history_count = int(row[5]) if len(row) > 5 and row[5] is not None else None
+        sql_history_count = int(row[5]) if row[5] is not None else None
         reg_ids = player_to_reg_ids.get(user_id)
         if not reg_ids:
             continue
 
-        role_str = role.value if role else None
+        role_ref = RoleRef.of(discipline(row[7]).rated_dimension.code, role, row[6])
         division = None
         version_id = None
         if rank is not None:
@@ -566,7 +574,7 @@ async def _build_tournament_history(
         entry = TournamentHistoryEntry(
             tournament_id=tournament_id,
             tournament_name=tournament_name,
-            role=role_str,
+            role=role_ref,
             division=division,
             division_grid_version_id=version_id,
         )

@@ -38,14 +38,14 @@ import { formatSubRoleLabel } from "@/lib/player";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { userQueryKeys } from "@/lib/users/query-keys";
+import { roleOf, subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 
 /** One tournament this person played, flattened to the roster row that is them. */
 interface ParticipationRow {
   /** `players.id` — the roster row, and this table's identity. */
   id: number;
   name: string;
-  role: string | null;
-  sub_role: string | null;
+  role: RoleRef | null;
   rank: number;
   division: number;
   is_newcomer: boolean;
@@ -119,7 +119,6 @@ export function PersonParticipationsTab({
             id: player.id,
             name: player.name,
             role: player.role,
-            sub_role: player.sub_role,
             rank: player.rank,
             division: player.division,
             is_newcomer: player.is_newcomer,
@@ -245,8 +244,8 @@ export function PersonParticipationsTab({
         accessorKey: "role",
         header: t("role"),
         cell: ({ row }) => (
-          <div className="flex items-center" title={normalizePlayerRole(row.original.role)}>
-            <PlayerRoleIcon role={normalizePlayerRole(row.original.role)} size={18} />
+          <div className="flex items-center" title={(row.original.role ? normalizePlayerRole(roleOf(row.original.role)) : "Flex")}>
+            <PlayerRoleIcon role={(row.original.role ? normalizePlayerRole(roleOf(row.original.role)) : "Flex")} size={18} />
           </div>
         )
       },
@@ -268,9 +267,9 @@ export function PersonParticipationsTab({
         )
       },
       {
-        accessorKey: "sub_role",
+        id: "sub_role",
         header: t("subRole"),
-        cell: ({ row }) => <div>{formatSubRoleLabel(row.original.sub_role) ?? "—"}</div>
+        cell: ({ row }) => <div>{formatSubRoleLabel(subRoleOf(row.original.role)) ?? "—"}</div>
       },
       {
         id: "flags",
@@ -350,9 +349,9 @@ export function PersonParticipationsTab({
               {row.original.team_name} · {row.original.tournament_name}
             </p>
             <p className="text-xs text-muted-foreground">
-              {normalizePlayerRole(row.original.role)} ·{" "}
+              {(row.original.role ? normalizePlayerRole(roleOf(row.original.role)) : "Flex")} ·{" "}
               <span className="tabular-nums">{row.original.rank}</span>
-              {row.original.sub_role ? ` · ${formatSubRoleLabel(row.original.sub_role)}` : ""}
+              {subRoleOf(row.original.role) ? ` · ${formatSubRoleLabel(subRoleOf(row.original.role))}` : ""}
             </p>
           </div>
         )}

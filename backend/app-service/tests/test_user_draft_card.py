@@ -17,6 +17,8 @@ from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.dialects import postgresql
 
+from shared.schemas.role import RoleRef
+
 user_flows = importlib.import_module("src.services.user.service")
 enums = importlib.import_module("src.core.enums")
 queries = importlib.import_module("src.services.user.queries.encounters")
@@ -122,7 +124,7 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
         history."""
         roles = [
             (
-                enums.HeroClass.damage,
+                RoleRef(dimension="player_role", role="damage"),
                 40,
                 20,
                 [{"tournament": tid, "rank": 3700 + tid, "division_grid_version_id": None} for tid in range(1, 8)],
@@ -141,14 +143,14 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
         self.assertEqual([7, 6, 5, 4, 3], [entry.placement for entry in card.recent_tournaments])
         self.assertEqual([24] * 5, [entry.teams_count for entry in card.recent_tournaments])
         self.assertEqual(3707, card.recent_tournaments[0].rank)
-        self.assertEqual("damage", card.recent_tournaments[0].role)
+        self.assertEqual(RoleRef(dimension="player_role", role="damage"), card.recent_tournaments[0].role)
         self.assertEqual(datetime.date(2026, 1, 7), card.recent_tournaments[0].date)
         self.assertEqual(7, card.tournaments)
         self.assertEqual(1, card.tournaments_won)
         self.assertEqual(1, card.best_placement)
         self.assertEqual(4.0, card.avg_placement)
         self.assertEqual(
-            [{"role": "damage", "maps": 60, "maps_won": 40}],
+            [{"role": {"dimension": "player_role", "role": "damage", "parent": None}, "maps": 60, "maps_won": 40}],
             [entry.model_dump() for entry in card.roles],
         )
 

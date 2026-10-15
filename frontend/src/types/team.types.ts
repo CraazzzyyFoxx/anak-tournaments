@@ -1,3 +1,4 @@
+import type { RoleRef } from "@/lib/roster/role-ref";
 import { User } from "@/types/user.types";
 import { Tournament, TeamGroup } from "@/types/tournament.types";
 import { LogStatsName } from "@/types/stats.types";
@@ -8,10 +9,9 @@ export interface Player {
   created_at: Date;
   updated_at: Date | null;
   name: string;
-  sub_role: string | null;
   rank: number;
   division: number;
-  role: string;
+  role: RoleRef | null;
   tournament_id: number;
   user_id: number;
   team_id: number;

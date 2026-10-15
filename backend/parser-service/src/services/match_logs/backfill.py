@@ -263,7 +263,8 @@ class BackfillService:
             )
         ).all()
         roster_by_key: dict[tuple[int, int], tuple[enums.HeroClass | None, int]] = {
-            (row.team_id, row.user_id): (row.role, row.rank) for row in roster_rows
+            (row.team_id, row.user_id): (enums.HeroClass[row.role] if row.role else None, row.rank)
+            for row in roster_rows
         }
 
         refs: dict[int, impact.PlayerRef] = {}

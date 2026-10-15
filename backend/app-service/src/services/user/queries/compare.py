@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from shared.division_grid import DivisionGrid, division_filter_predicates
+from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models
 from src.core import enums
@@ -15,6 +16,7 @@ from src.domain.encounter_seats import Seat
 from ._scope import (
     _compare_user_scope_exists,
     _hero_compare_stat_visibility_condition,
+    player_role_filter,
 )
 
 DEFAULT_HERO_COMPARE_STATS: tuple[enums.LogStatsName, ...] = tuple(
@@ -90,7 +92,7 @@ class UserCompareQueries:
     def _compare_scoped_players_cte(
         self,
         *,
-        role: enums.HeroClass | None,
+        role: RoleRef | None,
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
@@ -112,7 +114,7 @@ class UserCompareQueries:
                 ]
             )
         if role is not None:
-            filters.append(models.Player.role == role)
+            filters.append(player_role_filter(models.Player, role))
         filters.extend(division_filter_predicates(models.Player.rank, div_min, div_max, grid))
         if tournament_id is not None:
             filters.append(models.Player.tournament_id == tournament_id)
@@ -136,7 +138,7 @@ class UserCompareQueries:
         self,
         *,
         user_ids: list[int] | None,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -522,7 +524,7 @@ class UserCompareQueries:
         session: AsyncSession,
         *,
         user_ids: list[int] | None = None,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -560,7 +562,7 @@ class UserCompareQueries:
         self,
         session: AsyncSession,
         *,
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -599,7 +601,7 @@ class UserCompareQueries:
         self,
         *,
         user_ids: list[int] | None,
-        role: enums.HeroClass | None,
+        role: RoleRef | None,
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
@@ -640,7 +642,7 @@ class UserCompareQueries:
         hero_id: int | None,
         map_id: int | None,
         stats: list[enums.LogStatsName],
-        role: enums.HeroClass | None,
+        role: RoleRef | None,
         div_min: int | None,
         div_max: int | None,
         tournament_id: int | None,
@@ -799,7 +801,7 @@ class UserCompareQueries:
         hero_id: int | None,
         map_id: int | None,
         stats: list[enums.LogStatsName],
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,
@@ -844,7 +846,7 @@ class UserCompareQueries:
         hero_id: int | None,
         map_id: int | None,
         stats: list[enums.LogStatsName],
-        role: enums.HeroClass | None = None,
+        role: RoleRef | None = None,
         div_min: int | None = None,
         div_max: int | None = None,
         tournament_id: int | None = None,

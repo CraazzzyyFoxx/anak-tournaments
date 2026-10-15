@@ -2,6 +2,7 @@
 
 import { Ban, Repeat2 } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { roleOf, subRoleOf } from "@/lib/roster/role-ref";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -75,9 +76,10 @@ export function PickBanTargetBoard({
                 ? (assigned?.name ?? t("hero.itemNumber", { id: assignedId }))
                 : null;
             const selected = selectedPlayerId === target.player_id;
-            const role = target.role != null ? normalizePlayerRole(target.role) : null;
-            const roleText = target.sub_role
-              ? formatSubroleSlug(target.sub_role)
+            const role = target.role != null ? normalizePlayerRole(roleOf(target.role)) : null;
+            const subRole = subRoleOf(target.role);
+            const roleText = subRole
+              ? formatSubroleSlug(subRole)
               : role != null
                 ? tRoot(PLAYER_ROLE_LABEL_KEY[role])
                 : null;
