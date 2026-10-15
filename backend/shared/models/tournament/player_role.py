@@ -32,7 +32,7 @@ class PlayerRole(db.Base):
         ForeignKey("tournament.player.id", ondelete="CASCADE", name="fk_player_role_player"), primary_key=True
     )
     dimension_id: Mapped[int] = mapped_column(BigInteger())
-    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
+    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False, index=True)
     role: Mapped[CatalogRole] = relationship(
         primaryjoin="foreign(PlayerRole.role_id) == CatalogRole.id", foreign_keys=[role_id], lazy="joined"
     )

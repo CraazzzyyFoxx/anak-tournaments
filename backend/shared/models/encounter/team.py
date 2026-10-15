@@ -160,7 +160,7 @@ class EncounterTeamMemberRole(db.Base):
         ForeignKey(EncounterTeamMember.id, ondelete="CASCADE", name="fk_team_member_role_member"), primary_key=True
     )
     dimension_id: Mapped[int] = mapped_column(BigInteger())
-    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
+    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False, index=True)
 
     catalog_role: Mapped[CatalogRole] = relationship(
         primaryjoin="foreign(EncounterTeamMemberRole.role_id) == CatalogRole.id", foreign_keys=[role_id], lazy="joined"

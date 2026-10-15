@@ -152,7 +152,7 @@ class RosterFormatRoleRule(db.Base):
 
     team_format_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
     dimension_id: Mapped[int] = mapped_column(BigInteger())
-    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
+    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False, index=True)
     hard_min: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     hard_max: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     recommended_min: Mapped[int | None] = mapped_column(Integer(), nullable=True)

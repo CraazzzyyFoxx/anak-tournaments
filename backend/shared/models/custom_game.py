@@ -230,7 +230,7 @@ class CustomGamePlayerRole(db.Base):
         ForeignKey("balancer.custom_game_player.id", ondelete="CASCADE"), primary_key=True
     )
     dimension_id: Mapped[int] = mapped_column(BigInteger())
-    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
+    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False, index=True)
     priority: Mapped[int] = mapped_column(Integer(), nullable=False)
 
     catalog_role: Mapped[CatalogRole] = relationship(

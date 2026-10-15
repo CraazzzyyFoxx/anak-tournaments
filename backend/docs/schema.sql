@@ -736,6 +736,8 @@ CREATE TABLE balancer.custom_game_player_role (
 	FOREIGN KEY(custom_game_player_id) REFERENCES balancer.custom_game_player (id) ON DELETE CASCADE
 );
 
+CREATE INDEX ix_balancer_custom_game_player_role_role_id ON balancer.custom_game_player_role (role_id);
+
 CREATE TABLE balancer.custom_game_round (
 	encounter_id BIGINT NOT NULL,
 	lobby_index INTEGER NOT NULL,
@@ -823,6 +825,8 @@ CREATE INDEX ix_balancer_draft_pick_draft_team_id ON balancer.draft_pick (draft_
 
 CREATE INDEX ix_balancer_draft_pick_picked_player_id ON balancer.draft_pick (picked_player_id);
 
+CREATE INDEX ix_balancer_draft_pick_target_role_id ON balancer.draft_pick (target_role_id);
+
 CREATE INDEX ix_draft_pick_session_status ON balancer.draft_pick (session_id, status);
 
 CREATE TABLE balancer.draft_player (
@@ -846,6 +850,8 @@ CREATE TABLE balancer.draft_player (
 	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL,
 	FOREIGN KEY(drafted_by_team_id) REFERENCES balancer.draft_team (id) ON DELETE SET NULL
 );
+
+CREATE INDEX ix_balancer_draft_player_captain_role_id ON balancer.draft_player (captain_role_id);
 
 CREATE INDEX ix_balancer_draft_player_drafted_by_team_id ON balancer.draft_player (drafted_by_team_id);
 
@@ -1169,6 +1175,8 @@ CREATE TABLE balancer.registration_role (
 
 CREATE INDEX ix_balancer_registration_role_registration_id ON balancer.registration_role (registration_id);
 
+CREATE INDEX ix_balancer_registration_role_role_id ON balancer.registration_role (role_id);
+
 CREATE TABLE balancer.registration_role_entity (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -1338,6 +1346,8 @@ CREATE TABLE balancer.team_slot (
 );
 
 CREATE INDEX ix_balancer_team_slot_battle_tag_normalized ON balancer.team_slot (battle_tag_normalized);
+
+CREATE INDEX ix_balancer_team_slot_role_id ON balancer.team_slot (role_id);
 
 CREATE INDEX ix_balancer_team_slot_team_id ON balancer.team_slot (team_id);
 
@@ -1848,6 +1858,8 @@ CREATE TABLE encounter.team_member_role (
 	CONSTRAINT fk_team_member_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_team_member_role_member FOREIGN KEY(team_member_id) REFERENCES encounter.team_member (id) ON DELETE CASCADE
 );
+
+CREATE INDEX ix_encounter_team_member_role_role_id ON encounter.team_member_role (role_id);
 
 CREATE TABLE encounter.team_report (
 	id BIGSERIAL NOT NULL,
@@ -2773,6 +2785,8 @@ CREATE TABLE roster.format_role_rule (
 	CONSTRAINT ck_frr_recommended CHECK (recommended_min IS NULL OR recommended_max IS NULL OR recommended_min <= recommended_max)
 );
 
+CREATE INDEX ix_roster_format_role_rule_role_id ON roster.format_role_rule (role_id);
+
 CREATE TABLE roster.team_format (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -3199,6 +3213,8 @@ CREATE TABLE tournament.player_role (
 	CONSTRAINT fk_player_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_player_role_player FOREIGN KEY(player_id) REFERENCES tournament.player (id) ON DELETE CASCADE
 );
+
+CREATE INDEX ix_tournament_player_role_role_id ON tournament.player_role (role_id);
 
 CREATE TABLE tournament.recalculation_state (
 	tournament_id BIGINT NOT NULL,

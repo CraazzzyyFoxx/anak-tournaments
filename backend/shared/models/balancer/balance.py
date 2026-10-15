@@ -204,7 +204,7 @@ class BalancerTeamSlot(db.TimeStampIntegerMixin):
     # tag rather than a hard FK; resolve to a registration at query time if needed.
     battle_tag_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     dimension_id: Mapped[int | None] = mapped_column(BigInteger)
-    role_id: Mapped[int | None] = mapped_column(BigInteger)
+    role_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     role_row: Mapped[CatalogRole | None] = relationship(lazy="joined", foreign_keys=[role_id])
     assigned_rank: Mapped[int] = mapped_column(Integer(), nullable=False)
     discomfort: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)

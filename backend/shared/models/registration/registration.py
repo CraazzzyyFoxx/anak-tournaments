@@ -447,7 +447,7 @@ class BalancerRegistrationRole(db.TimeStampIntegerMixin):
 
     registration_id: Mapped[int] = mapped_column(ForeignKey("balancer.registration.id", ondelete="CASCADE"), index=True)
     dimension_id: Mapped[int] = mapped_column(BigInteger())
-    role_id: Mapped[int] = mapped_column(BigInteger())
+    role_id: Mapped[int] = mapped_column(BigInteger(), index=True)
     is_primary: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     priority: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)

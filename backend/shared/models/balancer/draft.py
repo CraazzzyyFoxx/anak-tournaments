@@ -208,7 +208,7 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     )
     #: A top-level rated role pinned at seed time; None resolves the captain's lead role live.
     dimension_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    captain_role_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    captain_role_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True, index=True)
     captain_role_row: Mapped[CatalogRole | None] = relationship(
         primaryjoin="foreign(DraftPlayer.captain_role_id) == CatalogRole.id",
         foreign_keys=[captain_role_id],
@@ -288,7 +288,7 @@ class DraftPick(db.TimeStampIntegerMixin):
     pick_in_round: Mapped[int] = mapped_column(Integer(), nullable=False)
     draft_team_id: Mapped[int] = mapped_column(ForeignKey("balancer.draft_team.id", ondelete="CASCADE"), index=True)
     dimension_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
-    target_role_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    target_role_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True, index=True)
     target_role_row: Mapped[CatalogRole | None] = relationship(
         primaryjoin="foreign(DraftPick.target_role_id) == CatalogRole.id",
         foreign_keys=[target_role_id],

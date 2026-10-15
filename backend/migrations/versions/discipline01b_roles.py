@@ -535,6 +535,26 @@ def upgrade() -> None:
             statement()
         else:
             op.execute(statement)
+    for schema, table, column in (
+        ("tournament", "player_role", "role_id"),
+        ("encounter", "team_member_role", "role_id"),
+        ("balancer", "registration_role", "role_id"),
+        ("balancer", "custom_game_player_role", "role_id"),
+        ("balancer", "team_slot", "role_id"),
+        ("balancer", "draft_player", "captain_role_id"),
+        ("balancer", "draft_pick", "target_role_id"),
+        ("roster", "format_role_rule", "role_id"),
+    ):
+        op.create_index(f"ix_{schema}_{table}_{column}", table, [column], schema=schema)
+    immediate = (
+        op.get_bind()
+        .execute(
+            sa.text("SELECT conrelid::regclass, conname FROM pg_constraint WHERE condeferrable AND NOT condeferred")
+        )
+        .all()
+    )
+    if immediate:
+        raise RuntimeError(f"discipline01b cannot restore INITIALLY IMMEDIATE constraints: {immediate}")
     op.execute("SET CONSTRAINTS ALL DEFERRED")
 
 

@@ -821,6 +821,7 @@ Table balancer.custom_game_player_role {
   priority int [not null]
   indexes {
     (custom_game_player_id, priority) [unique, name: "uq_custom_game_player_role_priority"]
+    (role_id) [name: "ix_balancer_custom_game_player_role_role_id"]
   }
 }
 
@@ -890,6 +891,7 @@ Table balancer.draft_pick {
     (session_id, overall_no) [unique, name: "uq_draft_pick_session_overall"]
     (draft_team_id) [name: "ix_balancer_draft_pick_draft_team_id"]
     (picked_player_id) [name: "ix_balancer_draft_pick_picked_player_id"]
+    (target_role_id) [name: "ix_balancer_draft_pick_target_role_id"]
     (session_id, status) [name: "ix_draft_pick_session_status"]
   }
 }
@@ -909,6 +911,7 @@ Table balancer.draft_player {
   version int [not null, default: 0]
   indexes {
     (session_id, registration_id) [unique, name: "uq_draft_player_session_registration"]
+    (captain_role_id) [name: "ix_balancer_draft_player_captain_role_id"]
     (drafted_by_team_id) [name: "ix_balancer_draft_player_drafted_by_team_id"]
     (registration_id) [name: "ix_balancer_draft_player_registration_id"]
     (workspace_member_id) [name: "ix_balancer_draft_player_workspace_member_id"]
@@ -1150,8 +1153,8 @@ Table balancer.registration_identity {
   handle VARCHAR(255) [not null]
   handle_normalized VARCHAR(255) [not null]
   indexes {
-    (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
     (registration_id, provider, position) [unique, name: "uq_balancer_registration_identity_position"]
+    (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
     (provider, handle_normalized) [name: "ix_balancer_registration_identity_handle"]
     (registration_id) [name: "ix_balancer_registration_identity_registration_id"]
   }
@@ -1171,6 +1174,7 @@ Table balancer.registration_role {
   indexes {
     (registration_id, role_id) [unique, name: "uq_registration_role_role"]
     (registration_id) [name: "ix_balancer_registration_role_registration_id"]
+    (role_id) [name: "ix_balancer_registration_role_role_id"]
   }
 }
 
@@ -1183,8 +1187,8 @@ Table balancer.registration_role_entity {
   entity_kind VARCHAR(16) [not null, default: `character`]
   priority int [not null]
   indexes {
-    (role_id, entity_id) [unique, name: "uq_reg_role_entity_role_entity"]
     (role_id, priority) [unique, name: "uq_reg_role_entity_role_priority"]
+    (role_id, entity_id) [unique, name: "uq_reg_role_entity_role_entity"]
     (role_id) [name: "ix_balancer_registration_role_entity_role_id"]
   }
 }
@@ -1309,6 +1313,7 @@ Table balancer.team_slot {
   sort_order int [not null, default: 0]
   indexes {
     (battle_tag_normalized) [name: "ix_balancer_team_slot_battle_tag_normalized"]
+    (role_id) [name: "ix_balancer_team_slot_role_id"]
     (team_id) [name: "ix_balancer_team_slot_team_id"]
   }
 }
@@ -1430,10 +1435,10 @@ Table catalog.entity {
   active boolean [not null, default: true]
   indexes {
     (id, kind) [unique, name: "uq_entity_id_kind"]
-    (discipline, kind, slug) [unique, name: "uq_entity_slug"]
-    (id, discipline) [unique, name: "uq_entity_id_discipline"]
     (discipline, kind, name) [unique, name: "uq_entity_name"]
+    (id, discipline) [unique, name: "uq_entity_id_discipline"]
     (id, discipline, kind) [unique, name: "uq_entity_key"]
+    (discipline, kind, slug) [unique, name: "uq_entity_slug"]
   }
 }
 
@@ -1474,8 +1479,8 @@ Table catalog.role_dimension {
   active boolean [not null, default: true]
   sort_order int [not null, default: 0]
   indexes {
-    (discipline, code) [unique, name: "uq_role_dimension_code"]
     (id, discipline) [unique, name: "uq_role_dimension_key"]
+    (discipline, code) [unique, name: "uq_role_dimension_code"]
     (discipline) [unique, name: "uq_role_dimension_rated"]
   }
 }
@@ -1624,8 +1629,8 @@ Table encounter.pick_ban_session {
   current_step_started_at timestamptz
   paused_at timestamptz
   indexes {
-    (id, encounter_id) [unique, name: "uq_pick_ban_session_id_encounter"]
     (encounter_id, kind) [unique, name: "uq_pick_ban_session_encounter_kind"]
+    (id, encounter_id) [unique, name: "uq_pick_ban_session_id_encounter"]
     (encounter_id) [name: "ix_pick_ban_session_encounter_id"]
   }
 }
@@ -1762,6 +1767,9 @@ Table encounter.team_member_role {
   team_member_id bigint [pk]
   dimension_id bigint [not null]
   role_id bigint [pk]
+  indexes {
+    (role_id) [name: "ix_encounter_team_member_role_role_id"]
+  }
 }
 
 Table encounter.team_report {
@@ -1777,8 +1785,8 @@ Table encounter.team_report {
   comment text
   custom_fields_json json [not null, default: `{}`]
   indexes {
-    (id, encounter_id) [unique, name: "uq_team_report_id_encounter"]
     (encounter_id, encounter_team_id) [unique, name: "uq_team_report_claimant"]
+    (id, encounter_id) [unique, name: "uq_team_report_id_encounter"]
   }
 }
 
@@ -2609,6 +2617,9 @@ Table roster.format_role_rule {
   recommended_min int
   recommended_max int
   include_descendants boolean [not null, default: true]
+  indexes {
+    (role_id) [name: "ix_roster_format_role_rule_role_id"]
+  }
 }
 
 Table roster.team_format {
@@ -2626,9 +2637,9 @@ Table roster.team_format {
   substitute_min int [not null, default: 0]
   substitute_max int [not null, default: 0]
   indexes {
-    (tournament_id) [unique, name: "uq_team_format_tournament"]
     (custom_game_id) [unique, name: "uq_team_format_custom_game"]
     (id, discipline) [unique, name: "uq_team_format_key"]
+    (tournament_id) [unique, name: "uq_team_format_tournament"]
     (workspace_id, discipline) [unique, name: "uq_team_format_workspace_default"]
   }
 }
@@ -2972,6 +2983,9 @@ Table tournament.player_role {
   player_id bigint [pk]
   dimension_id bigint [not null]
   role_id bigint [pk]
+  indexes {
+    (role_id) [name: "ix_tournament_player_role_role_id"]
+  }
 }
 
 Table tournament.recalculation_state {
@@ -2995,8 +3009,8 @@ Table tournament.scrim_room {
   created_by_auth_user_id bigint [not null]
   closed_at timestamptz
   indexes {
-    (token) [unique, name: "uq_scrim_room_token"]
     (encounter_id) [unique, name: "uq_scrim_room_encounter"]
+    (token) [unique, name: "uq_scrim_room_token"]
     (created_by_auth_user_id) [name: "ix_scrim_room_open_by_creator"]
     (created_by_auth_user_id) [name: "ix_tournament_scrim_room_created_by_auth_user_id"]
     (stage_id) [name: "ix_tournament_scrim_room_stage_id"]
@@ -3616,17 +3630,17 @@ Ref: roster.format_role_rule.team_format_id > roster.team_format_dimension.team_
 Ref: roster.format_role_rule.dimension_id > catalog.role.dimension_id
 Ref: roster.format_role_rule.dimension_id > roster.team_format_dimension.dimension_id [delete: cascade]
 Ref: roster.format_role_rule.role_id > catalog.role.id
-Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
-Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
-Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
+Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
+Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
 Ref: roster.team_format.discipline > catalog.discipline.code
 Ref: roster.team_format.discipline > balancer.custom_game.discipline [delete: cascade]
+Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
 Ref: roster.team_format.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: roster.team_format.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: roster.team_format_dimension.team_format_id > roster.team_format.id [delete: cascade]
-Ref: roster.team_format_dimension.discipline > roster.team_format.discipline [delete: cascade]
 Ref: roster.team_format_dimension.discipline > catalog.role_dimension.discipline
+Ref: roster.team_format_dimension.discipline > roster.team_format.discipline [delete: cascade]
 Ref: roster.team_format_dimension.dimension_id > catalog.role_dimension.id
 Ref: subscriptions.check_log.workspace_id > workspace.id [delete: set null]
 Ref: subscriptions.check_log.auth_user_id > auth.user.id [delete: set null]

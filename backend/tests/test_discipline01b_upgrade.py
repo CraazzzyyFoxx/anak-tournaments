@@ -429,6 +429,40 @@ def test_the_chain_ends_at_discipline01b_with_every_constraint_validated(migrate
     assert _rows(conn, "SELECT conrelid::regclass::text, conname FROM pg_constraint WHERE NOT convalidated") == []
 
 
+@pytest.mark.parametrize(
+    ("table", "column"),
+    [
+        ("tournament.player_role", "role_id"),
+        ("encounter.team_member_role", "role_id"),
+        ("balancer.registration_role", "role_id"),
+        ("balancer.custom_game_player_role", "role_id"),
+        ("balancer.team_slot", "role_id"),
+        ("balancer.draft_player", "captain_role_id"),
+        ("balancer.draft_pick", "target_role_id"),
+        ("roster.format_role_rule", "role_id"),
+    ],
+)
+def test_assignment_role_foreign_keys_have_leading_indexes(migrated, table, column) -> None:
+    assert _scalar(
+        migrated["conn"],
+        """SELECT EXISTS (
+            SELECT 1 FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = i.indkey[0]
+            WHERE i.indrelid = %s::regclass AND a.attname = %s
+              AND i.indisvalid AND i.indpred IS NULL
+        )""",
+        (table, column),
+    )
+
+
+def test_initially_immediate_deferrable_constraint_stops_the_revision(legacy_template) -> None:
+    done = _rejected("CREATE TABLE public.immediate_guard (id integer UNIQUE DEFERRABLE INITIALLY IMMEDIATE)")
+    assert done.returncode != 0
+    assert "discipline01b cannot restore INITIALLY IMMEDIATE constraints" in done.stderr
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == PRE_REVISION
+
+
 def _seed_team_formats(conn, ids: dict) -> None:
     """A workspace default, tournament override, inheriting tournament, two mixes and two configs."""
     conn.execute(
