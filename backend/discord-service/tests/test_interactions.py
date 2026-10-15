@@ -109,7 +109,7 @@ def _mix_state(**overrides: Any) -> dict[str, Any]:
         "self_role_edit": True,
         "seat": {
             "participation": "pool",
-            "roles": ["tank", "support"],
+            "roles": [{"dimension": "player_role", "role": code} for code in ("tank", "support")],
             "is_flex": False,
             "ranks": {"tank": 3100, "damage": None, "support": None},
             "divisions": {"tank": {"name": "Gold 3", "slug": "gold-3"}, "damage": None, "support": None},
@@ -416,7 +416,13 @@ class SeatFormTests(IsolatedAsyncioTestCase):
         subject, body = rpc.calls[-1]
         self.assertEqual(subject, "rpc.balancer.custom.self_update")
         self.assertEqual(body["custom_game_id"], 42)
-        self.assertEqual(body["payload"], {"roles": ["support", "tank"], "is_flex": True})
+        self.assertEqual(
+            body["payload"],
+            {
+                "roles": [{"dimension": "player_role", "role": code} for code in ("support", "tank")],
+                "is_flex": True,
+            },
+        )
         # The form was opened from a panel only the clicker sees: the answer
         # replaces that panel instead of stacking another reply under it.
         submit.followup.send.assert_not_awaited()

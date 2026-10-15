@@ -1,3 +1,4 @@
+import { roleOf } from "@/lib/roster/role-ref";
 import { ROLES, canonicalToRegistrationRole, type RoleCode } from "@/lib/roster/roles";
 import type {
   CustomGameOutcome,
@@ -62,7 +63,8 @@ export function resolveRoleOrder(row: Pick<CustomGamePlayer, "roles" | "ranks">)
   }
   const seen = new Set<string>();
   const out: RoleCode[] = [];
-  for (const code of row.roles) {
+  for (const ref of row.roles) {
+    const code = roleOf(ref);
     const role = LINEUP_ROLES.find((item) => item === code);
     if (role == null || seen.has(role)) {
       continue;

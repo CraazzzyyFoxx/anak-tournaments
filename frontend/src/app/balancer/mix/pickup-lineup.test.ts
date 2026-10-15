@@ -131,8 +131,8 @@ describe("summarizeRoleSupply", () => {
   it("counts a player once per role they both picked and are ranked for", () => {
     expect(
       summarizeRoleSupply([
-        row({ workspace_member_id: 1, roles: ["tank", "damage"] }),
-        row({ workspace_member_id: 2, roles: ["support"] }),
+        row({ workspace_member_id: 1, roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })) }),
+        row({ workspace_member_id: 2, roles: [{ dimension: "player_role", role: "support" }] }),
       ]),
     ).toEqual([
       { role: "tank", supply: 1, need: 2, short: 1 },
@@ -143,7 +143,7 @@ describe("summarizeRoleSupply", () => {
 
   it("does not count a selected role the player has no rank for", () => {
     // The balance refuses to seat it, so it is not supply however lit the chip is.
-    const supply = summarizeRoleSupply([row({ roles: ["tank"], ranks: { damage: 2600 } })]);
+    const supply = summarizeRoleSupply([row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: { damage: 2600 } })]);
     expect(supply.find((entry) => entry.role === "tank")).toEqual({
       role: "tank",
       supply: 0,
@@ -153,13 +153,13 @@ describe("summarizeRoleSupply", () => {
   });
 
   it("ignores benched players entirely", () => {
-    const supply = summarizeRoleSupply([row({ participation: "benched", roles: ["tank"] })]);
+    const supply = summarizeRoleSupply([row({ participation: "benched", roles: [{ dimension: "player_role", role: "tank" }] })]);
     expect(supply.every((entry) => entry.supply === 0)).toBe(true);
   });
 
   it("never reports a negative shortfall once a role is oversupplied", () => {
     const rows = Array.from({ length: 5 }, (_unused, index) =>
-      row({ workspace_member_id: index + 1, roles: ["tank"] }),
+      row({ workspace_member_id: index + 1, roles: [{ dimension: "player_role", role: "tank" }] }),
     );
     expect(summarizeRoleSupply(rows)[0]).toEqual({ role: "tank", supply: 5, need: 2, short: 0 });
   });
@@ -211,10 +211,9 @@ describe("resolveRoleOrder", () => {
   });
 
   it("keeps the stored selection and drops codes the balancer cannot use", () => {
-    expect(resolveRoleOrder(row({ roles: ["support", "flex", "tank", "support"] }))).toEqual([
-      "support",
-      "tank",
-    ]);
+    expect(resolveRoleOrder(row({
+      roles: ["support", "flex", "tank", "support"].map((role) => ({ dimension: "player_role", role })),
+    }))).toEqual(["support", "tank"]);
   });
 });
 
@@ -241,7 +240,7 @@ describe("getLineupIssue", () => {
   });
 
   it("flags an active player whose selected roles have no rank", () => {
-    expect(getLineupIssue(row({ roles: ["tank"], ranks: { damage: 2600 } }))).toBe("no_rank");
+    expect(getLineupIssue(row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: { damage: 2600 } }))).toBe("no_rank");
   });
 
   it("flags an active player with every role switched off", () => {
@@ -249,17 +248,17 @@ describe("getLineupIssue", () => {
   });
 
   it("passes a player with one ranked role", () => {
-    expect(getLineupIssue(row({ roles: ["damage"], ranks: { damage: 2600 } }))).toBeNull();
+    expect(getLineupIssue(row({ roles: [{ dimension: "player_role", role: "damage" }], ranks: { damage: 2600 } }))).toBeNull();
   });
 });
 
 describe("averageRank", () => {
   it("averages only the roles the player will be assigned", () => {
-    expect(averageRank(row({ roles: ["tank"], ranks: { tank: 2400, damage: 3000 } }))).toBe(2400);
+    expect(averageRank(row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: { tank: 2400, damage: 3000 } }))).toBe(2400);
   });
 
   it("has no value when nothing is ranked", () => {
-    expect(averageRank(row({ roles: ["tank"], ranks: {} }))).toBeNull();
+    expect(averageRank(row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: {} }))).toBeNull();
   });
 });
 

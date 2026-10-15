@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock
 
+from shared import models
 from shared.repository import custom_game
 
 
@@ -24,8 +25,14 @@ class CustomGameRepositoryTests(IsolatedAsyncioTestCase):
     async def test_role_repository_replaces_the_explicit_order(self) -> None:
         session = _session()
         repository = custom_game.CustomGamePlayerRoleRepository()
+        session.scalars.return_value = SimpleNamespace(
+            all=lambda: [
+                models.CatalogRole(id=101 + index, dimension_id=10, code=code, parent_role_id=None)
+                for index, code in enumerate(("support", "tank"))
+            ]
+        )
 
-        await repository.replace_for_player(session, 11, ["support", "tank"])
+        await repository.replace_for_player(session, 11, ["support", "tank"], discipline="overwatch")
 
         session.execute.assert_awaited_once()
         rows = session.add_all.call_args.args[0]

@@ -3,6 +3,7 @@
 import { ROLE_ICON_COLOR } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
+import { toRoleRef } from "@/lib/roster/role-ref";
 import { ROLE_LABELS, ROLES } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import type { CustomGamePlayer, CustomGamePlayerPatch } from "@/services/custom-game.service";
@@ -71,7 +72,9 @@ export function RolePriorityRail({
               aria-label={`${ROLE_LABELS[role]} for ${label}, ${
                 isOn ? (isPrimary ? "first choice" : "also plays") : "off"
               }${roleRank == null ? ", no rank" : `, ${roleRank} points`}`}
-              onClick={() => onPatch({ roles: toggleRole(order, role) })}
+              onClick={() => onPatch({
+                roles: toggleRole(order, role).map((code) => toRoleRef(code, null, "player_role")),
+              })}
               className={cn(
                 "relative flex size-[30px] items-center justify-center rounded-lg transition-opacity",
                 isOn ? "opacity-100" : "opacity-30",

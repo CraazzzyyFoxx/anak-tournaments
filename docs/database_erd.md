@@ -2370,7 +2370,8 @@ erDiagram
     }
     BALANCER_CUSTOM_GAME_PLAYER_ROLE {
         bigint custom_game_player_id PK,FK
-        varchar(16) role PK
+        bigint dimension_id FK
+        bigint role_id PK,FK
         int priority
     }
     BALANCER_CUSTOM_GAME_ROUND {
@@ -2401,6 +2402,8 @@ erDiagram
     CATALOG_DISCIPLINE ||--o{ BALANCER_CUSTOM_GAME : "discipline"
     CATALOG_ENTITY |o--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_id"
     CATALOG_ENTITY ||--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_kind"
+    CATALOG_ROLE ||--o{ BALANCER_CUSTOM_GAME_PLAYER_ROLE : "dimension_id"
+    CATALOG_ROLE ||--o| BALANCER_CUSTOM_GAME_PLAYER_ROLE : "role_id"
     ENCOUNTER_ENCOUNTER ||--o| BALANCER_CUSTOM_GAME_ROUND : "encounter_id"
     ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "scoring_rule_id"
     ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"

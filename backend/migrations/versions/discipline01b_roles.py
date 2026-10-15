@@ -420,6 +420,31 @@ _TEAM_MEMBER_ROLES = (
 )
 
 
+#: §14.3: mix preferences refer only to module roles on the owning mix's rated dimension.
+_MIX_ROLES = (
+    "ALTER TABLE balancer.custom_game_player_role ADD COLUMN dimension_id BIGINT, ADD COLUMN role_id BIGINT",
+    """
+    UPDATE balancer.custom_game_player_role pr
+       SET role_id = r.id, dimension_id = r.dimension_id
+      FROM balancer.custom_game_player p
+      JOIN balancer.custom_game g ON g.id = p.custom_game_id,
+           catalog.role r
+      JOIN catalog.role_dimension d ON d.id = r.dimension_id
+     WHERE p.id = pr.custom_game_player_id AND d.discipline = g.discipline AND d.rated
+       AND r.workspace_id IS NULL AND r.code = lower(btrim(pr.role))
+    """,
+    _drop_constraint("balancer.custom_game_player_role", (), "p"),
+    """
+    ALTER TABLE balancer.custom_game_player_role
+      ALTER COLUMN role DROP NOT NULL,
+      ALTER COLUMN dimension_id SET NOT NULL,
+      ALTER COLUMN role_id SET NOT NULL,
+      ADD CONSTRAINT custom_game_player_role_pkey PRIMARY KEY (custom_game_player_id, role_id),
+      ADD CONSTRAINT fk_custom_game_player_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED
+    """,
+)
+
+
 def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
     op.execute("SET CONSTRAINTS ALL IMMEDIATE")
@@ -433,6 +458,7 @@ def upgrade() -> None:
         *_PLAYER_ROLES,
         *_REGISTRATION_ROLES,
         *_TEAM_MEMBER_ROLES,
+        *_MIX_ROLES,
     ):
         if callable(statement):
             statement()

@@ -53,8 +53,10 @@ from shared import models
 from shared.core import http_status as status
 from shared.core.enums import MixRoleSelectionMode
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.domain.custom_game_round import winner_slot
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.schemas.role import RoleRef
 from shared.services import discord_messages
 from shared.services.discord_client import DiscordClient
 from shared.services.division_grid.access import get_effective_division_grid
@@ -187,6 +189,8 @@ def _dump_row(
     resolved: dict[tuple[int, str], Any],
     author_ranks: dict[tuple[int, str], int],
     current_lobby: int | None = None,
+    *,
+    discipline: str,
 ) -> dict[str, Any]:
     effective = {
         role: resolved[(row.workspace_member_id, role)]
@@ -211,7 +215,11 @@ def _dump_row(
         # separate, durable wish the next balance honours.
         "current_lobby": current_lobby,
         "lobby_pin": row.lobby_pin,
-        "roles": roles,
+        "roles": [
+            RoleRef(dimension=DISCIPLINES[discipline].rated_dimension.code, role=code).model_dump() for code in roles
+        ]
+        if roles is not None
+        else None,
         # The ranks balance would actually use: host book > workspace canon > OW.
         "ranks": {role: rank.value for role, rank in effective.items()},
         # Which of those three a value came from, so the sheet can say whether it
@@ -383,6 +391,7 @@ def _dump_game(
                 resolved or {},
                 author_ranks or {},
                 (current_lobby or {}).get(row.workspace_member_id),
+                discipline=game.discipline,
             )
             for row in roster
         ]

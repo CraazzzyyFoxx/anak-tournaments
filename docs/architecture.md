@@ -235,6 +235,14 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   slug. Both writers resolve against the tournament discipline and owning
   workspace. The roster engine uses module role codes rather than Overwatch
   enums; pre-P2 balancer/draft payload adapters retain their existing shapes.
+- **Mix role preferences (P2).** `balancer.custom_game_player_role` stores ordered
+  `(role_id, dimension_id)` references, restricted to module roles of the mix's
+  rated dimension. Host and self-service `roles` inputs and outputs now use
+  `RoleRef[]`, not strings (for example, `[{"dimension":"player_role","role":"tank"}]`).
+  `null` still means all ranked roles; `[]` means an explicit empty selection.
+  A foreign dimension returns 422 `role_dimension_mismatch`; unknown roles and
+  workspace sub-roles return 422 `unknown_role`, regardless of submitted `parent`.
+  Discord and the site use the same wire contract; rank maps stay code-keyed until P3.
 - **RBAC.** Grant-only permission catalog + workspace system roles, with a
   `user_permission_deny` overlay. Bootstrapped from `backend/shared/rbac/`.
 - **Migrations.** A single Alembic project under `backend/migrations/`. `make migrate` runs

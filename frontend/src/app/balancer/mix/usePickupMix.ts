@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { notify } from "@/lib/notify";
-import type { RoleCode } from "@/lib/roster/roles";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import {
   customGameKeys,
   customGameService,
@@ -58,7 +58,7 @@ export type PickupSwapSeatsInput = {
 export type PickupBalanceInput = { scope: "lobby"; lobbyIndex: number } | { scope: "all" };
 
 /** The two fields a player owns on their own row. `roles: null` is `all_ranked`. */
-export type PickupMySeatInput = { roles: RoleCode[] | null; is_flex: boolean };
+export type PickupMySeatInput = { roles: RoleRef[] | null; is_flex: boolean };
 
 
 /**

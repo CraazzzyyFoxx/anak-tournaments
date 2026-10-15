@@ -71,7 +71,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     battle_tag: "Aria#1111",
     sort_order: 0,
     participation: "pool",
-    roles: ["tank", "damage"],
+    roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
     ranks: { tank: 3300, damage: 2700, support: 2900 },
     rank_sources: { tank: "author", damage: "workspace", support: "ow" },
     author_ranks: { tank: 3300 },
@@ -180,7 +180,7 @@ describe("PickupPlayerSheet ranks", () => {
     const [patch, rankChange] = onSave.mock.calls[0];
     expect(patch).toEqual({
       participation: "pool",
-      roles: ["tank", "damage"],
+      roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
       is_flex: false,
     });
     expect(rankChange).toEqual({ ranks: { damage: 3000 }, clear: [] });
@@ -247,21 +247,21 @@ describe("PickupPlayerSheet priority", () => {
     // outranks damage). The order shown, and the order Save writes, must stay
     // exactly what the host stored.
     const scope = await mount(
-      row({ roles: ["damage", "tank"], ranks: { tank: 3300, damage: 2700, support: 2900 } }),
+      row({ roles: ["damage", "tank"].map((role) => ({ dimension: "player_role", role })), ranks: { tank: 3300, damage: 2700, support: 2900 } }),
     );
 
     expect(rankFields(scope).map((node) => node.value)).toEqual(["2700", "3300", "2900"]);
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch.roles).toEqual(["damage", "tank"]);
+    expect(patch.roles).toEqual(["damage", "tank"].map((role) => ({ dimension: "player_role", role })));
   });
 
   it("appends a role turned on to the end of the order, not a rank-sorted slot", async () => {
     // Support outranks both selected roles, but switching it on must not jump
     // it to the front.
     const scope = await mount(
-      row({ roles: ["tank", "damage"], ranks: { tank: 2000, damage: 2700, support: 4000 } }),
+      row({ roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })), ranks: { tank: 2000, damage: 2700, support: 4000 } }),
     );
 
     const supportSwitch = scope.querySelector<HTMLElement>('[aria-label="Support for Aria#1111"]');
@@ -270,11 +270,11 @@ describe("PickupPlayerSheet priority", () => {
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch.roles).toEqual(["tank", "damage", "support"]);
+    expect(patch.roles).toEqual(["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })));
   });
 
   it("drops a role turned off from the order without touching the rest", async () => {
-    const scope = await mount(row({ roles: ["tank", "damage"] }));
+    const scope = await mount(row({ roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })) }));
 
     const tankSwitch = scope.querySelector<HTMLElement>('[aria-label="Tank for Aria#1111"]');
     if (!tankSwitch) throw new Error("Tank switch not found");
@@ -282,7 +282,7 @@ describe("PickupPlayerSheet priority", () => {
 
     await click(findButton(scope, "Save"));
     const [patch] = onSave.mock.calls[0];
-    expect(patch.roles).toEqual(["damage"]);
+    expect(patch.roles).toEqual([{ dimension: "player_role", role: "damage" }]);
   });
 });
 

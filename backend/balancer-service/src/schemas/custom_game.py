@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints
 
 from shared.core.enums import MixParticipation, MixSelfSignup
 from shared.domain.mix_lobby import MAX_LOBBIES
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.schemas.role import RoleRef
 
 __all__ = (
     "CustomGameBalanceRequest",
@@ -64,7 +64,7 @@ class CustomGameRosterUpdate(_Request):
 
 class CustomGamePlayerPatch(_Request):
     participation: MixParticipation | None = None
-    roles: list[str] | None = None
+    roles: list[RoleRef] | None = None
     is_flex: StrictBool | None = None
     # ``None`` is "auto": the balance places them wherever they fit. A patch that
     # does not mention the field leaves the pin exactly as it was.
@@ -72,19 +72,10 @@ class CustomGamePlayerPatch(_Request):
 
     @field_validator("roles")
     @classmethod
-    def _roles(cls, roles: list[str] | None) -> list[str] | None:
+    def _roles(cls, roles: list[RoleRef] | None) -> list[RoleRef] | None:
         if roles is None:
             return None
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in roles:
-            role = raw.strip().lower()
-            if role not in REGISTRATION_ROLE_CODES:
-                raise ValueError(f"unknown role {role}")
-            if role not in seen:
-                seen.add(role)
-                normalized.append(role)
-        return normalized
+        return list({(ref.dimension, ref.role): ref for ref in roles}.values())
 
 
 class CustomGamePlayerParticipationPatch(_Request):
@@ -173,24 +164,15 @@ class CustomGameSelfUpdate(_Request):
     ``model_fields_set``, so a flex toggle cannot silently reset a role order.
     """
 
-    roles: list[str] | None = None
+    roles: list[RoleRef] | None = None
     is_flex: StrictBool | None = None
 
     @field_validator("roles")
     @classmethod
-    def _roles(cls, roles: list[str] | None) -> list[str] | None:
+    def _roles(cls, roles: list[RoleRef] | None) -> list[RoleRef] | None:
         if roles is None:
             return None
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in roles:
-            role = raw.strip().lower()
-            if role not in REGISTRATION_ROLE_CODES:
-                raise ValueError(f"unknown role {role}")
-            if role not in seen:
-                seen.add(role)
-                normalized.append(role)
-        return normalized
+        return list({(ref.dimension, ref.role): ref for ref in roles}.values())
 
 
 class CustomGameSelfServicePatch(_Request):

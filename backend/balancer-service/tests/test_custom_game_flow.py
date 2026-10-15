@@ -28,6 +28,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 from shared.core.enums import MixParticipation, MixRoleSelectionMode  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.services import ontology  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
@@ -87,7 +88,7 @@ class _PlayerRoles:
         wanted = set(player_ids)
         return {pid: roles for pid, roles in self.by_player.items() if pid in wanted}
 
-    async def replace_for_player(self, _session: Any, player_id: int, roles: Any) -> None:
+    async def replace_for_player(self, _session: Any, player_id: int, roles: Any, *, discipline: str) -> None:
         self.by_player[player_id] = list(roles)
 
 
@@ -279,6 +280,13 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             run_balance=AsyncMock(),
             ranker=in_memory_ranker(),
         )
+        self.enterContext(
+            patch.object(
+                ontology._roles,
+                "resolve",
+                AsyncMock(side_effect=lambda _s, **kw: SimpleNamespace(code=kw["code"], parent_role_id=None)),
+            )
+        )
 
     async def test_a_whole_mix_from_create_to_close(self) -> None:
         self.host_prefs.save(9, points_per_win=25)
@@ -312,7 +320,7 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             workspace_id=1,
             custom_game_id=game.id,
             workspace_member_id=8,
-            patch={"roles": ["damage"], "is_flex": False},
+            patch={"roles": [{"dimension": "player_role", "role": "damage"}], "is_flex": False},
             actor_user_id=9,
         )
         narrowed = next(row for row in self.roster.rows if row.workspace_member_id == 8)

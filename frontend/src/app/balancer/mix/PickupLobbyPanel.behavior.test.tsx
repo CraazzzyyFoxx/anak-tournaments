@@ -411,23 +411,23 @@ describe("PickupLobbyPanel", () => {
 
     await click(byLabel(scope, "Tank for Aria#1111, first choice, 2400 points"));
 
-    expect(patchOf(7)).toEqual({ roles: ["damage", "support"] });
+    expect(patchOf(7)).toEqual({ roles: ["damage", "support"].map((role) => ({ dimension: "player_role", role })) });
   });
 
   it("appends a switched-on role to the end of the stored order, not by its rank", async () => {
     // Support (2500) outranks the already-selected tank (2400), but turning it
     // on must not jump it in front — the host's order for tank is left alone.
-    const scope = await mount([row({ roles: ["tank"] })]);
+    const scope = await mount([row({ roles: [{ dimension: "player_role", role: "tank" }] })]);
 
     await click(byLabel(scope, "Support for Aria#1111, off, 2500 points"));
 
-    expect(patchOf(7)).toEqual({ roles: ["tank", "support"] });
+    expect(patchOf(7)).toEqual({ roles: ["tank", "support"].map((role) => ({ dimension: "player_role", role })) });
   });
 
   it("names which role the balancer will seat first from the stored order, not the rank", async () => {
     // The order was stored tank-damage-support; ranks say damage is strongest, but
     // the rail shows what the host set, not what the ranks would pick.
-    const scope = await mount([row({ roles: ["tank", "damage", "support"] })]);
+    const scope = await mount([row({ roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })) })]);
 
     expect(byLabel(scope, "Tank for Aria#1111, first choice, 2400 points")).not.toBeNull();
     expect(byLabel(scope, "Damage for Aria#1111, also plays, 2600 points")).not.toBeNull();
@@ -436,8 +436,8 @@ describe("PickupLobbyPanel", () => {
 
   it("freezes the role rail for a benched row, but not for pool or must-play", async () => {
     const scope = await mount([
-      row({ roles: ["tank"] }),
-      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: ["tank"], participation: "benched" }),
+      row({ roles: [{ dimension: "player_role", role: "tank" }] }),
+      row({ id: 2, workspace_member_id: 8, battle_tag: "Borys#2222", roles: [{ dimension: "player_role", role: "tank" }], participation: "benched" }),
     ]);
 
     expect(
@@ -452,12 +452,12 @@ describe("PickupLobbyPanel", () => {
     // Tank is selected but unranked, so it is not supply: 5v5 wants 2 tanks and
     // this lineup can seat none.
     const scope = await mount([
-      row({ roles: ["tank", "damage"], ranks: { damage: 2600 } }),
+      row({ roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })), ranks: { damage: 2600 } }),
       row({
         id: 2,
         workspace_member_id: 8,
         battle_tag: "Borys#2222",
-        roles: ["damage"],
+        roles: [{ dimension: "player_role", role: "damage" }],
         ranks: { damage: 2500 },
       }),
     ]);
@@ -467,7 +467,7 @@ describe("PickupLobbyPanel", () => {
   });
 
   it("warns once every selected role of an active player is unranked", async () => {
-    const scope = await mount([row({ roles: ["tank"], ranks: { damage: 2600 } })]);
+    const scope = await mount([row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: { damage: 2600 } })]);
 
     expect(scope.textContent).toContain("1 player has no ranked role");
   });
@@ -577,7 +577,7 @@ describe("PickupLobbyPanel", () => {
 
   it("asks for twice the roles once two lobbies have to be filled", async () => {
     const rows = Array.from({ length: 3 }, (_, index) =>
-      row({ workspace_member_id: index + 1, roles: ["tank"], ranks: { tank: 2400 } }),
+      row({ workspace_member_id: index + 1, roles: [{ dimension: "player_role", role: "tank" }], ranks: { tank: 2400 } }),
     );
     const scope = await mount(rows, { lobbyCount: 2 });
 

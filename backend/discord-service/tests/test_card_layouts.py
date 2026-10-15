@@ -92,7 +92,7 @@ def _mix_state(**overrides: Any) -> dict[str, Any]:
         "lobby_count": 1,
         "seat": {
             "participation": "pool",
-            "roles": ["tank", "support"],
+            "roles": [{"dimension": "player_role", "role": code} for code in ("tank", "support")],
             "is_flex": False,
             "ranks": {"tank": 3100, "damage": None, "support": None},
             "divisions": {"tank": {"name": "Gold 3", "slug": "gold-3"}, "damage": None, "support": None},

@@ -30,10 +30,15 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
+from shared.domain.roles import UnknownRole  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.schemas.events import PickupMixChangedEvent  # noqa: E402
+from shared.schemas.role import RoleRef  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
-from shared.services import discord_messages  # noqa: E402
+from shared.services import (
+    discord_messages,  # noqa: E402
+    ontology,  # noqa: E402
+)
 from shared.services.member_rank import MIX_ORDER  # noqa: E402
 from shared.services.subscriptions.providers.discord_role import DiscordUnavailable  # noqa: E402
 from shared.services.workspace_roster import RosterMember  # noqa: E402
@@ -485,6 +490,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
         self.session = _session()
 
+        async def resolve_catalog_role(_session, *, code, workspace_id, **_kwargs):
+            if code not in ("tank", "damage", "support"):
+                raise UnknownRole(code)
+            return models.CatalogRole(code=code, parent_role_id=None, workspace_id=None)
+
+        self.catalog_resolve = AsyncMock(side_effect=resolve_catalog_role)
+        self.enterContext(patch.object(ontology._roles, "resolve", self.catalog_resolve))
+
     async def test_entity_read_resolves_owner_but_explicit_workspace_still_isolates(self) -> None:
         game = _game(workspace_id=2)
         self.games.get.return_value = game
@@ -614,7 +627,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             [MixRoleSelectionMode.EXPLICIT, MixRoleSelectionMode.ALL_RANKED],
         )
         self.assertEqual([row.is_flex for row in rows], [True, False])
-        self.player_roles.replace_for_player.assert_awaited_once_with(self.session, 101, ["tank", "damage"])
+        self.player_roles.replace_for_player.assert_awaited_once_with(
+            self.session, 101, ["tank", "damage"], discipline="overwatch"
+        )
         # No shape and no points knob travel: they are not the mix's to copy,
         # they live on the host's account and the new mix already reads them.
         self.assertEqual(
@@ -829,10 +844,48 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 workspace_id=1,
                 custom_game_id=11,
                 workspace_member_id=7,
-                patch={"roles": ["tank", "healer"]},
+                patch={"roles": [{"dimension": "player_role", "role": role} for role in ("tank", "healer")]},
                 actor_user_id=9,
             )
         self.assertEqual(ctx.exception.status_code, 422)
+        self.assertIn("unknown_role", ctx.exception.detail)
+        self.player_roles.replace_for_player.assert_not_awaited()
+
+    async def test_mix_role_ref_rejects_another_disciplines_dimension(self) -> None:
+        self.games.get.return_value = _game(discipline="lol")
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.update_player(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                workspace_member_id=7,
+                patch={"roles": [{"dimension": "player_role", "role": "support"}]},
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertIn("role_dimension_mismatch", ctx.exception.detail)
+        self.catalog_resolve.assert_not_awaited()
+        self.player_roles.replace_for_player.assert_not_awaited()
+
+    async def test_mix_role_ref_rejects_a_sub_role_even_with_a_supplied_parent(self) -> None:
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.catalog_resolve.side_effect = None
+        self.catalog_resolve.return_value = models.CatalogRole(code="support_main", parent_role_id=10)
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.update_player(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                workspace_member_id=7,
+                patch={"roles": [{"dimension": "player_role", "role": "support_main", "parent": "support"}]},
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertIn("unknown_role", ctx.exception.detail)
+        self.assertIsNone(self.catalog_resolve.await_args.kwargs["workspace_id"])
+        self.player_roles.replace_for_player.assert_not_awaited()
 
     async def test_update_player_keeps_stored_balance(self) -> None:
         """A lineup edit must not blow away the last balance -- only pressing
@@ -1196,11 +1249,16 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             self.session,
             custom_game_id=11,
             auth_user=_auth(),
-            patch={"roles": ["support", "tank"], "is_flex": True},
+            patch={
+                "roles": [{"dimension": "player_role", "role": role} for role in ("support", "tank")],
+                "is_flex": True,
+            },
             workspace_id=1,
         )
 
-        self.player_roles.replace_for_player.assert_awaited_once_with(self.session, 1, ["support", "tank"])
+        self.player_roles.replace_for_player.assert_awaited_once_with(
+            self.session, 1, ["support", "tank"], discipline="overwatch"
+        )
         self.assertEqual(row.role_selection_mode, MixRoleSelectionMode.EXPLICIT)
         self.assertTrue(row.is_flex)
 
@@ -1249,7 +1307,10 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         state = await self.service.self_state(self.session, custom_game_id=11, auth_user=_auth(), workspace_id=1)
 
         self.assertEqual(state["seat"]["ranks"], {"tank": 3100, "damage": None, "support": None})
-        self.assertEqual(state["seat"]["roles"], ["tank", "support"])
+        self.assertEqual(
+            state["seat"]["roles"],
+            [RoleRef(dimension="player_role", role=role).model_dump() for role in ("tank", "support")],
+        )
         self.assertEqual(state["unranked_roles"], ["support"])
         self.assertEqual(state["self_signup"], "pool")
         self.assertIs(state["self_role_edit"], True)

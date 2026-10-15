@@ -25,6 +25,7 @@ from shared.core.enums import (
 )
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
+from shared.disciplines import DISCIPLINES
 from shared.division_grid import DEFAULT_GRID
 from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
@@ -49,13 +50,14 @@ from shared.repository import (
 from shared.repository.discord_message import LIVE_STATUSES
 from shared.repository.workspace import get_or_create_workspace_member
 from shared.schemas.events import DiscordCard, DiscordCommandEvent
+from shared.schemas.role import RoleRef
 from shared.schemas.roster_slots import RosterShapeRead
 from shared.services import discord_messages
 from shared.services.account_links import missing_account_links
 from shared.services.discord_client import DiscordClient
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
-from shared.services.ontology import assert_discipline_enabled
+from shared.services.ontology import assert_discipline_enabled, resolve_role_ref
 from shared.services.subscriptions.providers.discord_role import DiscordError
 from shared.services.team_format import (
     copy_for_custom_game,
@@ -213,25 +215,6 @@ def _mix_channel_id(config_json: Any) -> int | None:
         return int(value) if value else None
     except (TypeError, ValueError):
         return None
-
-
-def _normalize_roles(raw: Any) -> list[str] | None:
-    """Ordered, de-duplicated registration role codes; ``None`` means "all ranked"."""
-    if raw is None:
-        return None
-    if not isinstance(raw, (list, tuple)):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="roles must be a list")
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in raw:
-        code = str(item).strip().lower()
-        if code not in REGISTRATION_ROLE_CODES:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown role {code}")
-        if code in seen:
-            continue
-        seen.add(code)
-        out.append(code)
-    return out
 
 
 def _normalize_team_names(raw: Mapping[str, Any]) -> dict[str, str | None]:
@@ -756,7 +739,7 @@ class CustomGameService:
             for source_row, row in cloned:
                 roles = roles_by_source_row.get(source_row.id)
                 if roles:
-                    await self.player_roles.replace_for_player(session, row.id, roles)
+                    await self.player_roles.replace_for_player(session, row.id, roles, discipline=game.discipline)
             for index, team_name in (await self.team_names.mapping_for_game(session, source.id)).items():
                 await self.team_names.set(session, game.id, index, team_name)
             for user_id in await self.co_hosts.user_ids_for_game(session, source.id):
@@ -841,7 +824,9 @@ class CustomGameService:
         row = next((item for item in roster if item.workspace_member_id == workspace_member_id), None)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game player not found")
-        await self._apply_player_patch(session, row, patch, _PLAYER_PATCH_FIELDS, lobby_count=game.lobby_count)
+        await self._apply_player_patch(
+            session, row, patch, _PLAYER_PATCH_FIELDS, game=game, lobby_count=game.lobby_count
+        )
         await session.flush()
         return game
 
@@ -852,6 +837,7 @@ class CustomGameService:
         patch: Mapping[str, Any],
         allowed: frozenset[str],
         *,
+        game: models.CustomGame,
         lobby_count: int = 1,
     ) -> None:
         """Apply a validated lineup patch to one row, within ``allowed`` fields.
@@ -877,11 +863,23 @@ class CustomGameService:
                     detail="invalid participation",
                 ) from exc
         if "roles" in patch:
-            roles = _normalize_roles(patch["roles"])
+            refs = patch["roles"]
+            roles = None if refs is None else []
+            if refs is not None:
+                for ref in refs:
+                    role = await resolve_role_ref(
+                        session,
+                        discipline=game.discipline,
+                        workspace_id=game.workspace_id,
+                        ref=RoleRef.model_validate(ref),
+                        top_level_only=True,
+                    )
+                    if role.code not in roles:
+                        roles.append(role.code)
             row.role_selection_mode = (
                 MixRoleSelectionMode.ALL_RANKED if roles is None else MixRoleSelectionMode.EXPLICIT
             )
-            await self.player_roles.replace_for_player(session, row.id, roles or ())
+            await self.player_roles.replace_for_player(session, row.id, roles or (), discipline=game.discipline)
         if "is_flex" in patch:
             if not isinstance(patch["is_flex"], bool):
                 raise HTTPException(
@@ -1082,7 +1080,12 @@ class CustomGameService:
                 "participation": ctx.row.participation,
                 # ``null`` means all_ranked: every role this player has a number
                 # for plays, which is a different statement from an empty list.
-                "roles": list(stored) if explicit else None,
+                "roles": [
+                    RoleRef(dimension=DISCIPLINES[ctx.game.discipline].rated_dimension.code, role=code).model_dump()
+                    for code in stored
+                ]
+                if explicit
+                else None,
                 "is_flex": ctx.row.is_flex,
                 "ranks": ranks,
                 # The Overwatch rank each of those values lands in.
@@ -1289,7 +1292,7 @@ class CustomGameService:
         )
         if ctx.row is None or not ctx.policy.can_edit_roles:
             raise _blocker(ctx.policy.edit_blocker or "not_on_roster")
-        await self._apply_player_patch(session, ctx.row, patch, _SELF_PATCH_FIELDS)
+        await self._apply_player_patch(session, ctx.row, patch, _SELF_PATCH_FIELDS, game=ctx.game)
         await session.flush()
         await emit_pickup_mix_changed(
             session,

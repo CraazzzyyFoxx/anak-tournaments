@@ -20,6 +20,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { toRoleRef } from "@/lib/roster/role-ref";
 import { type RoleCode } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import {
@@ -179,7 +180,7 @@ export function PickupPlayerSheet({
     onSave(
       {
         participation: draft.participation,
-        roles: draft.order,
+        roles: draft.order.map((code) => toRoleRef(code, null, "player_role")),
         is_flex: draft.isFlex,
         // A one-lobby mix 422s this field, and there is no control to set it.
         ...(lobbyCount > 1 ? { lobby_pin: draft.lobbyPin } : {}),
@@ -417,7 +418,12 @@ function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
       ranks[role] = value;
     }
   }
-  return { ...row, participation: draft.participation, roles: draft.order, ranks };
+  return {
+    ...row,
+    participation: draft.participation,
+    roles: draft.order.map((code) => toRoleRef(code, null, "player_role")),
+    ranks,
+  };
 }
 
 /** The rank field's value, source badge and clearability, from the server row plus any staged edit. */

@@ -13,9 +13,12 @@ from typing import Any, Literal
 import discord
 from discord.utils import escape_markdown
 
+from shared.disciplines import DISCIPLINES
 from shared.domain.discord_ui import ROLE_EMOJI, division_emoji, emoji
 from shared.domain.mix_lobby import LOBBY_LETTERS, MAX_LOBBIES
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+
+OW_ROLE_DIMENSION = DISCIPLINES["overwatch"].rated_dimension.code
 
 __all__ = (
     "LINK_BLOCKERS",
@@ -400,7 +403,7 @@ def registration_text(locale: Locale, registration: Mapping[str, Any]) -> str:
     roles = [role for role in registration.get("roles") or [] if isinstance(role, Mapping)]
     if roles:
         parts = [
-            _role(locale, role.get("role")) + (f" ({card['primary']})" if role.get("is_primary") else "")
+            _role(locale, role["role"]["role"]) + (f" ({card['primary']})" if role.get("is_primary") else "")
             for role in roles
         ]
         lines.append(f"**{card['roles']}:** {', '.join(parts)}")
@@ -477,7 +480,7 @@ def _roles_block(locale: Locale, seat: Mapping[str, Any]) -> list[str]:
         lines += [f"{_role_emoji(role)}{_role(locale, role)} — {_rank_text(locale, seat, role)}" for role in ranked]
         return lines
 
-    picked = [str(role) for role in roles]
+    picked = [role["role"] for role in roles]
     lines = [
         f"{_SLOT_NUMBERS[index]} {_role_emoji(role)}{_role(locale, role)} — {_rank_text(locale, seat, role)}"
         for index, role in enumerate(picked[: len(_SLOT_NUMBERS)])

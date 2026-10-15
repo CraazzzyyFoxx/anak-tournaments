@@ -20714,7 +20714,7 @@ export interface components {
              * Roles
              * @default null
              */
-            roles: string[] | null;
+            roles: components["schemas"]["balancer.RoleRef"][] | null;
         };
         /** CustomGamePlayersParticipationPatch */
         "balancer.CustomGamePlayersParticipationPatch": {
@@ -20817,7 +20817,7 @@ export interface components {
              * Roles
              * @default null
              */
-            roles: string[] | null;
+            roles: components["schemas"]["balancer.RoleRef"][] | null;
         };
         /** CustomGameTeamNamesPatch */
         "balancer.CustomGameTeamNamesPatch": {
@@ -21040,6 +21040,21 @@ export interface components {
              * @default null
              */
             source: BalancerRankOverviewRowSourceAnyOf0 | null;
+        };
+        /**
+         * RoleRef
+         * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
+         */
+        "balancer.RoleRef": {
+            /** Dimension */
+            dimension: string;
+            /**
+             * Parent
+             * @default null
+             */
+            parent: string | null;
+            /** Role */
+            role: string;
         };
         /**
          * UserMixPreferencesRead

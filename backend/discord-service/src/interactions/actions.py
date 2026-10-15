@@ -22,6 +22,7 @@ from typing import Any
 
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.services.notifications import NOTIFICATION_GROUPS
+from src.interactions.copy import OW_ROLE_DIMENSION
 
 __all__ = (
     "ACTIONS",
@@ -137,7 +138,13 @@ def _mix_seat_set(target: str, fields: Mapping[str, str]) -> dict[str, Any]:
                 raise ValueError(f"not a role this bot minted: {pick!r}")
             if pick not in roles:
                 roles.append(pick)
-    return {"custom_game_id": int(target), "payload": {"roles": roles, "is_flex": fields.get("flex") == "1"}}
+    return {
+        "custom_game_id": int(target),
+        "payload": {
+            "roles": [{"dimension": OW_ROLE_DIMENSION, "role": code} for code in roles] if roles is not None else None,
+            "is_flex": fields.get("flex") == "1",
+        },
+    }
 
 
 #: The voice buttons and ``/mix move|return``: ``<game>-<lobby index>`` or ``<game>-all``.

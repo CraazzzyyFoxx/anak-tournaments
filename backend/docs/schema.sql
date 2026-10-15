@@ -724,11 +724,13 @@ CREATE INDEX ix_balancer_custom_game_player_workspace_member_id ON balancer.cust
 
 CREATE TABLE balancer.custom_game_player_role (
 	custom_game_player_id BIGINT NOT NULL,
-	role VARCHAR(16) NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
 	priority INTEGER NOT NULL,
-	PRIMARY KEY (custom_game_player_id, role),
+	PRIMARY KEY (custom_game_player_id, role_id),
 	CONSTRAINT uq_custom_game_player_role_priority UNIQUE (custom_game_player_id, priority),
 	CONSTRAINT ck_custom_game_player_role_priority CHECK (priority > 0),
+	CONSTRAINT fk_custom_game_player_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(custom_game_player_id) REFERENCES balancer.custom_game_player (id) ON DELETE CASCADE
 );
 

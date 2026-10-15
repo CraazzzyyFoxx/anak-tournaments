@@ -815,7 +815,8 @@ Table balancer.custom_game_player {
 
 Table balancer.custom_game_player_role {
   custom_game_player_id bigint [pk]
-  role VARCHAR(16) [pk, increment]
+  dimension_id bigint [not null]
+  role_id bigint [pk]
   priority int [not null]
   indexes {
     (custom_game_player_id, priority) [unique, name: "uq_custom_game_player_role_priority"]
@@ -1108,8 +1109,8 @@ Table balancer.registration_google_sheet_binding {
   row_hash VARCHAR(128)
   last_seen_at timestamptz
   indexes {
-    (registration_id) [unique, name: "uq_balancer_registration_google_sheet_binding_registration"]
     (feed_id, source_record_key) [unique, name: "uq_balancer_registration_google_sheet_binding_key"]
+    (registration_id) [unique, name: "uq_balancer_registration_google_sheet_binding_registration"]
     (feed_id) [name: "ix_balancer_registration_google_sheet_binding_feed_id"]
   }
 }
@@ -1146,8 +1147,8 @@ Table balancer.registration_identity {
   handle VARCHAR(255) [not null]
   handle_normalized VARCHAR(255) [not null]
   indexes {
-    (registration_id, provider, position) [unique, name: "uq_balancer_registration_identity_position"]
     (registration_id, provider, handle_normalized) [unique, name: "uq_balancer_registration_identity_handle"]
+    (registration_id, provider, position) [unique, name: "uq_balancer_registration_identity_position"]
     (provider, handle_normalized) [name: "ix_balancer_registration_identity_handle"]
     (registration_id) [name: "ix_balancer_registration_identity_registration_id"]
   }
@@ -2312,8 +2313,8 @@ Table division_grid_tier {
   ow_rank_min bigint
   ow_rank_max bigint
   indexes {
-    (version_id, slug) [unique]
     (version_id, sort_order) [unique]
+    (version_id, slug) [unique]
     (version_id) [name: "ix_division_grid_tier_version_id"]
   }
 }
@@ -3352,8 +3353,8 @@ Ref: balancer.balance.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: balancer.balance.workspace_id > workspace.id [delete: set null]
 Ref: balancer.balance.saved_by > auth.user.id [delete: set null]
 Ref: balancer.balance_variant.balance_id > balancer.balance.id [delete: cascade]
-Ref: balancer.custom_game.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.custom_game.workspace_id > encounter.scoring_rule.workspace_id
+Ref: balancer.custom_game.workspace_id > workspace.id [delete: cascade]
 Ref: balancer.custom_game.host_user_id > auth.user.id [delete: set null]
 Ref: balancer.custom_game.discipline > catalog.discipline.code
 Ref: balancer.custom_game.scoring_rule_id > encounter.scoring_rule.id
@@ -3365,6 +3366,8 @@ Ref: balancer.custom_game_lobby.next_map_kind > catalog.entity.kind [delete: set
 Ref: balancer.custom_game_player.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: balancer.custom_game_player.workspace_member_id > workspace_member.id [delete: cascade]
 Ref: balancer.custom_game_player_role.custom_game_player_id > balancer.custom_game_player.id [delete: cascade]
+Ref: balancer.custom_game_player_role.dimension_id > catalog.role.dimension_id
+Ref: balancer.custom_game_player_role.role_id > catalog.role.id
 Ref: balancer.custom_game_round.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: balancer.custom_game_round_member.encounter_id > balancer.custom_game_round.encounter_id [delete: cascade]
 Ref: balancer.custom_game_round_member.workspace_member_id > workspace_member.id
@@ -3601,12 +3604,12 @@ Ref: roster.format_role_rule.team_format_id > roster.team_format_dimension.team_
 Ref: roster.format_role_rule.dimension_id > catalog.role.dimension_id
 Ref: roster.format_role_rule.dimension_id > roster.team_format_dimension.dimension_id [delete: cascade]
 Ref: roster.format_role_rule.role_id > catalog.role.id
-Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
 Ref: roster.team_format.workspace_id > balancer.custom_game.workspace_id [delete: cascade]
 Ref: roster.team_format.workspace_id > tournament.tournament.workspace_id [delete: cascade]
+Ref: roster.team_format.workspace_id > workspace.id [delete: cascade]
 Ref: roster.team_format.discipline > balancer.custom_game.discipline [delete: cascade]
-Ref: roster.team_format.discipline > catalog.discipline.code
 Ref: roster.team_format.discipline > tournament.tournament.discipline [delete: cascade]
+Ref: roster.team_format.discipline > catalog.discipline.code
 Ref: roster.team_format.tournament_id > tournament.tournament.id [delete: cascade]
 Ref: roster.team_format.custom_game_id > balancer.custom_game.id [delete: cascade]
 Ref: roster.team_format_dimension.team_format_id > roster.team_format.id [delete: cascade]

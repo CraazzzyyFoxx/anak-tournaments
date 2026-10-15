@@ -65,7 +65,7 @@ const onSave = vi.fn();
 function seat(overrides: Partial<MixSelfSeat> = {}): MixSelfSeat {
   return {
     participation: "pool",
-    roles: ["tank", "damage"],
+    roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
     is_flex: false,
     ranks: { tank: 3300, damage: 2700, support: null },
     current_lobby: null,
@@ -265,10 +265,16 @@ describe("PickupMySeatPanel roles", () => {
     const scope = await mount(state());
 
     await click(scope.querySelector('[aria-label="Support for you"]'));
-    expect(onSave).toHaveBeenLastCalledWith({ roles: ["tank", "damage", "support"], is_flex: false });
+    expect(onSave).toHaveBeenLastCalledWith({
+      roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
+      is_flex: false,
+    });
 
     await click(scope.querySelector('[aria-label="Full flex for you"]'));
-    expect(onSave).toHaveBeenLastCalledWith({ roles: ["tank", "damage", "support"], is_flex: true });
+    expect(onSave).toHaveBeenLastCalledWith({
+      roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
+      is_flex: true,
+    });
   });
 
   it("puts the server's seat back once a write settles without it", async () => {

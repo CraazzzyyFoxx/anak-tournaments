@@ -158,7 +158,7 @@ def _seed(conn) -> dict:
 
 def _scramble_names(conn) -> None:
     """Restored databases need not carry the migration chain's constraint names."""
-    for table in ("balancer.registration_role", "encounter.team_member_role"):
+    for table in ("balancer.registration_role", "encounter.team_member_role", "balancer.custom_game_player_role"):
         for index, (name,) in enumerate(
             _rows(
                 conn,
@@ -411,6 +411,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         "player roles",
         "registration roles",
         "team member roles",
+        "mix player roles",
     } <= set(statuses)
 
 
@@ -457,6 +458,16 @@ def _seed_team_formats(conn, ids: dict) -> None:
     ids["mix_plain"] = _insert(
         conn, "balancer.custom_game", workspace_id=ids["ws_a"], name="plain", scoring_rule_id=ids["rule_a"]
     )
+    user = _insert(conn, "players.user", name="d1b-mixer")
+    member = _insert(conn, "workspace_member", workspace_id=ids["ws_a"], player_id=user)
+    ids["mix_player"] = _insert(
+        conn, "balancer.custom_game_player", custom_game_id=ids["mix_plain"], workspace_member_id=member
+    )
+    for priority, role in ((1, "support"), (2, "Tank")):
+        conn.execute(
+            "INSERT INTO balancer.custom_game_player_role (custom_game_player_id, role, priority) VALUES (%s, %s, %s)",
+            (ids["mix_player"], role, priority),
+        )
     ids["tconfig"] = _insert(
         conn,
         "balancer.tournament_config",
@@ -803,4 +814,50 @@ def test_reconcile_rejects_extra_roster_assignments(migrated, member_key) -> Non
         tx.execute(function)
         tx.execute(create)
         assert any(row[0] == "team member roles" and row[1] == member for row in _rows(tx, skipped))
+        tx.rollback()
+
+
+def test_mix_player_roles_point_at_module_roles_in_priority_order(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    assert _rows(
+        conn,
+        "SELECT r.code, p.priority FROM balancer.custom_game_player_role p JOIN catalog.role r ON r.id = p.role_id"
+        " WHERE p.custom_game_player_id = %s ORDER BY p.priority",
+        (ids["mix_player"],),
+    ) == [("support", 1), ("tank", 2)]
+
+
+@pytest.mark.parametrize("wrong_scope", ["discipline", "dimension", "workspace"])
+def test_mix_role_reconcile_rejects_a_matching_code_outside_the_owners_rated_module(wrong_scope, migrated) -> None:
+    ids = migrated["ids"]
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        role_id, dimension_id = _rows(
+            tx,
+            "SELECT role_id, dimension_id FROM balancer.custom_game_player_role"
+            " WHERE custom_game_player_id = %s AND priority = 1",
+            (ids["mix_player"],),
+        )[0]
+        values = {"dimension_id": dimension_id, "code": "support", "name": "Support"}
+        if wrong_scope in ("discipline", "dimension"):
+            values["dimension_id"] = _insert(
+                tx,
+                "catalog.role_dimension",
+                discipline="lol" if wrong_scope == "discipline" else "overwatch",
+                code="other",
+                name="Other",
+                selection_mode="single",
+                rated=wrong_scope == "discipline",
+            )
+        else:
+            values.update(workspace_id=ids["ws_a"], parent_role_id=role_id)
+        replacement = _insert(tx, "catalog.role", **values)
+        tx.execute(
+            "UPDATE balancer.custom_game_player_role SET role_id = %s, dimension_id = %s"
+            " WHERE custom_game_player_id = %s AND priority = 1",
+            (replacement, values["dimension_id"], ids["mix_player"]),
+        )
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        assert ("mix player roles", ids["mix_player"], "support") in _rows(tx, skipped)
         tx.rollback()

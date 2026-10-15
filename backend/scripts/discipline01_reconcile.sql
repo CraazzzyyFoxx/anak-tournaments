@@ -137,6 +137,15 @@ SELECT 'team member roles', tm.id, coalesce(x.top, '-') || coalesce('/' || x.sub
                       WHERE l.team_member_id = tm.id AND l.dimension = 'player_role') x
  WHERE x.top IS NOT NULL OR x.sub IS NOT NULL
 UNION ALL
+SELECT 'mix player roles', pr.custom_game_player_id, pr.role,
+       EXISTS (SELECT 1 FROM catalog.role r JOIN catalog.role_dimension d ON d.id = r.dimension_id
+                WHERE r.id = pr.role_id AND r.dimension_id = pr.dimension_id AND r.workspace_id IS NULL
+                  AND d.discipline = g.discipline AND d.rated AND r.code = lower(btrim(pr.role)))
+  FROM balancer.custom_game_player_role pr
+  JOIN balancer.custom_game_player p ON p.id = pr.custom_game_player_id
+  JOIN balancer.custom_game g ON g.id = p.custom_game_id
+ WHERE pr.role IS NOT NULL
+UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        NOT EXISTS (SELECT 1 FROM catalog.entity_legacy l WHERE l.legacy_kind = soft.kind AND l.legacy_id = soft.item_id)

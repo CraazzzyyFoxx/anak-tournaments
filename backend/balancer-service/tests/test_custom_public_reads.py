@@ -179,6 +179,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         game = SimpleNamespace(
             id=3,
             workspace_id=7,
+            discipline="overwatch",
             host_user_id=5,
             name="Friday mix",
             status="balanced",
@@ -218,7 +219,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 workspace_member_id=7,
                 sort_order=0,
                 participation="pool",
-                role_selection_mode="all_ranked",
+                role_selection_mode="explicit",
                 is_flex=False,
                 lobby_pin=None,
             ),
@@ -251,7 +252,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             return_value={0: (2, datetime(2026, 1, 1, 22, 0, tzinfo=UTC))}
         )
         service.members = AsyncMock(return_value={})
-        service.player_roles.roles_for_players = AsyncMock(return_value={})
+        service.player_roles.roles_for_players = AsyncMock(return_value={1: ["support", "tank"]})
         service.ranks.list_layer_rows = AsyncMock(return_value=[])
         service.ranks.resolve = AsyncMock(return_value={})
 
@@ -265,6 +266,11 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         data = read["data"]
         self.assertNotIn("balance_result", data)
         by_member = {row["workspace_member_id"]: row for row in data["players"]}
+        self.assertEqual(
+            by_member[7]["roles"],
+            [{"dimension": "player_role", "role": code, "parent": None} for code in ("support", "tank")],
+        )
+        self.assertIsNone(by_member[9]["roles"])
         # 7 sits in lobby A's selected option; 9 is pinned to B but seated nowhere.
         self.assertEqual(0, by_member[7]["current_lobby"])
         self.assertIsNone(by_member[9]["current_lobby"])

@@ -119,7 +119,7 @@ function seated(memberId: number, battleTag: string, overrides: Partial<CustomGa
     battle_tag: battleTag,
     sort_order: memberId,
     participation: "pool",
-    roles: ["tank"],
+    roles: [{ dimension: "player_role", role: "tank" }],
     ranks: { tank: 2400 },
     rank_sources: { tank: "workspace" as const },
     author_ranks: {},

@@ -23,6 +23,7 @@ from shared.core import db
 from shared.domain.mix_lobby import MAX_LOBBIES
 
 if typing.TYPE_CHECKING:
+    from shared.models.catalog.role import CatalogRole
     from shared.models.encounter.encounter import Encounter
 
 __all__ = (
@@ -205,6 +206,8 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
 
 
 class CustomGamePlayerRole(db.Base):
+    """A mix player's ordered preferences: module roles of the mix's rated dimension."""
+
     __tablename__ = "custom_game_player_role"
     __table_args__ = (
         UniqueConstraint(
@@ -213,14 +216,30 @@ class CustomGamePlayerRole(db.Base):
             name="uq_custom_game_player_role_priority",
         ),
         CheckConstraint("priority > 0", name="ck_custom_game_player_role_priority"),
+        ForeignKeyConstraint(
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_custom_game_player_role_role",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
         {"schema": "balancer"},
     )
 
     custom_game_player_id: Mapped[int] = mapped_column(
         ForeignKey("balancer.custom_game_player.id", ondelete="CASCADE"), primary_key=True
     )
-    role: Mapped[str] = mapped_column(String(16), primary_key=True)
+    dimension_id: Mapped[int] = mapped_column(BigInteger())
+    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
     priority: Mapped[int] = mapped_column(Integer(), nullable=False)
+
+    catalog_role: Mapped[CatalogRole] = relationship(
+        primaryjoin="foreign(CustomGamePlayerRole.role_id) == CatalogRole.id", foreign_keys=[role_id], lazy="joined"
+    )
+
+    @property
+    def role(self) -> str:
+        return self.catalog_role.code
 
 
 class CustomGameTeamName(db.Base):

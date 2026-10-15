@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api/fetch";
-import type { RoleCode } from "@/lib/roster/roles";
 import type { RosterShape } from "@/lib/roster/shape";
+import type { RoleRef } from "@/lib/roster/team-format";
 import type { DiscordVoicePermission } from "@/types/discord.types";
 
 /** Where an effective rank came from, strongest first. */
@@ -55,7 +55,7 @@ export type CustomGamePlayer = {
   /** The host's own tie to a lobby, independent of where the balance seated them. */
   lobby_pin?: number | null;
   /** `null` only when `role_selection_mode === "all_ranked"`. */
-  roles: string[] | null;
+  roles: RoleRef[] | null;
   ranks: Record<string, number>;
   rank_sources: Record<string, RankSource>;
   author_ranks: Record<string, number>;
@@ -287,7 +287,7 @@ export type CustomGameMatch = {
 /** Patch semantics: an omitted key is left untouched on the server. */
 export type CustomGamePlayerPatch = {
   participation?: MixParticipation;
-  roles?: string[] | null;
+  roles?: RoleRef[] | null;
   is_flex?: boolean;
   /**
    * Which lobby this player is tied to, or `null` for "wherever the balance
@@ -324,7 +324,7 @@ export type MixSelfBlocker =
 export type MixSelfSeat = {
   participation: MixParticipation;
   /** `null` is the `all_ranked` mode -- every role this player has a rank for. */
-  roles: string[] | null;
+  roles: RoleRef[] | null;
   is_flex: boolean;
   /** Effective rank per role; `null` where no layer answers for it. */
   ranks: Record<string, number | null>;
@@ -823,7 +823,7 @@ export const customGameService = {
   updateMySeat(
     workspaceId: number,
     gameId: number,
-    patch: { roles?: RoleCode[] | null; is_flex?: boolean },
+    patch: { roles?: RoleRef[] | null; is_flex?: boolean },
   ): Promise<MixSelfState> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/me`, {
       skipWorkspace: true,

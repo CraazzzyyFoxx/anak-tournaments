@@ -300,7 +300,7 @@ class ActionDispatcher:
                     # opens it needs no lookup -- Discord takes no other answer.
                     target=setup_target(
                         target,
-                        roles if isinstance(roles, list) else None,
+                        [role["role"] for role in roles] if isinstance(roles, list) else None,
                         bool(seat and seat.get("is_flex")),
                     ),
                     emoji="edit",

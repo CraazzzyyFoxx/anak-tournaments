@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from shared import models
+from shared.core.errors import BaseAPIException
 from shared.repository.base import BaseRepository
+from shared.repository.roles import CatalogRoleRepository
 
 
 class CustomGameRepository(BaseRepository[models.CustomGame]):
@@ -86,7 +88,13 @@ class CustomGamePlayerRoleRepository:
         session: AsyncSession,
         custom_game_player_id: int,
         roles: Sequence[str],
+        *,
+        discipline: str,
     ) -> None:
+        rows = await CatalogRoleRepository().rated_rows(session, discipline=discipline, workspace_id=None)
+        for code in roles:
+            if code not in rows or rows[code].parent_role_id is not None:
+                raise BaseAPIException(status_code=422, detail=f"unknown_role: {code!r}")
         await session.execute(
             sa.delete(models.CustomGamePlayerRole).where(
                 models.CustomGamePlayerRole.custom_game_player_id == custom_game_player_id
@@ -96,7 +104,9 @@ class CustomGamePlayerRoleRepository:
             [
                 models.CustomGamePlayerRole(
                     custom_game_player_id=custom_game_player_id,
-                    role=role,
+                    dimension_id=rows[role].dimension_id,
+                    role_id=rows[role].id,
+                    catalog_role=rows[role],
                     priority=priority,
                 )
                 for priority, role in enumerate(roles, start=1)

@@ -24369,7 +24369,7 @@
           "anyOf": [
             {
               "items": {
-                "type": "string"
+                "$ref": "#/components/schemas/balancer.RoleRef"
               },
               "type": "array"
             },
@@ -24602,7 +24602,7 @@
           "anyOf": [
             {
               "items": {
-                "type": "string"
+                "$ref": "#/components/schemas/balancer.RoleRef"
               },
               "type": "array"
             },
@@ -27121,6 +27121,41 @@
         "demand"
       ],
       "title": "RoleFeasibility",
+      "type": "object"
+    },
+    "balancer.RoleRef": {
+      "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
+      "properties": {
+        "dimension": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Dimension",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "role": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dimension",
+        "role"
+      ],
+      "title": "RoleRef",
       "type": "object"
     },
     "balancer.RoleSettingsOverride": {

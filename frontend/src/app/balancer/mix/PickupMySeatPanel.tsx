@@ -8,6 +8,7 @@ import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor"
 import { CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { Button } from "@/components/ui/button";
+import { roleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 import { ROLE_LABELS, type RoleCode } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
 import {
@@ -36,7 +37,7 @@ type PickupMySeatPanelProps = {
   saving: boolean;
   onJoin: () => void;
   onLeave: () => void;
-  onSave: (patch: { roles: RoleCode[] | null; is_flex: boolean }) => void;
+  onSave: (patch: { roles: RoleRef[] | null; is_flex: boolean }) => void;
 };
 
 /** Everything the panel edits before Save, kept apart from the server seat. */
@@ -62,7 +63,7 @@ function buildDraft(seat: MixSelfSeat | null): SeatDraft {
 /** The server seat as one comparable string, so a refetch that changed nothing leaves a draft alone. */
 function signatureOf(seat: MixSelfSeat | null): string {
   if (seat == null) return "none";
-  return `${seat.participation}|${seat.roles?.join(",") ?? "all"}|${seat.is_flex}`;
+  return `${seat.participation}|${seat.roles?.map(roleOf).join(",") ?? "all"}|${seat.is_flex}`;
 }
 
 /**
@@ -125,7 +126,10 @@ export function PickupMySeatPanel({
   const editable = policy.can_edit_roles && seat != null;
   const commit = (next: SeatDraft) => {
     setDraft(next);
-    onSave({ roles: next.order, is_flex: next.isFlex });
+    onSave({
+      roles: next.order.map((code) => toRoleRef(code, null, "player_role")),
+      is_flex: next.isFlex,
+    });
   };
 
   return (
