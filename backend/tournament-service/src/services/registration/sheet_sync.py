@@ -32,7 +32,7 @@ from shared.core import http_status as status
 from shared.core.errors import ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import GAME_PROVIDERS, normalize_social_handle
-from shared.disciplines import DISCIPLINES
+from shared.disciplines import DISCIPLINES, identity_provider
 from shared.domain.forms import FormSchema, default_schema, identity_key, schema_from_form
 from shared.domain.roster import FlexRoleMode, flex_role_mode_from_schema
 from shared.repository import (
@@ -258,11 +258,15 @@ class SheetSyncService:
         that accepts one the sync ignores, is worse than either rule alone.
 
         A tournament with no form (or no version yet) falls back to
-        ``default_schema()``, matching ``lifecycle._validated_answers`` — before
+        the discipline's default schema, matching ``lifecycle._validated_answers`` — before
         the schema existed the sheet wrote its columns unconditionally, and
         dropping every battle tag on such a tournament is not a fix.
         """
-        return schema_from_form(await self.common.get_registration_form(session, tournament_id)) or default_schema()
+        schema = schema_from_form(await self.common.get_registration_form(session, tournament_id))
+        if schema is not None:
+            return schema
+        tournament = await self.common.ensure_tournament_exists(session, tournament_id)
+        return default_schema(identity_provider(tournament.discipline))
 
     async def get_google_sheet_feed(
         self,
@@ -606,7 +610,7 @@ class SheetSyncService:
         # identity -- instead of writing nothing at all. Same fallback as
         # ``_registration_schema``, spelled out because the sync needs the form
         # row itself for ``current_version_id``.
-        schema = schema_from_form(form) or default_schema()
+        schema = schema_from_form(form) or default_schema(identity_provider(tournament.discipline))
         # The sheet sync is the one role-write path that never read the form. In a
         # non-optional flex mode a sheet row must land with the same role set as any
         # other, so the mode is resolved once per sync rather than per row.
@@ -763,6 +767,7 @@ class SheetSyncService:
                         admin_notes=parsed_fields.get("admin_notes"),
                         status="approved",
                         submitted_at=parsed_fields.get("submitted_at") or now,
+                        identities=[],
                     )
                     answer_service.apply(
                         registration, values, schema=schema, hero_catalog=None, catalog_roles=catalog_roles

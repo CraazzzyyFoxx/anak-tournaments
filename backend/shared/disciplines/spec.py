@@ -138,6 +138,8 @@ class DisciplineSpec:
     dimensions: tuple[DimensionSpec, ...] = ()
     #: Team-format presets; the first is what an owner without a format of its own gets (D35).
     team_format_presets: tuple[TeamFormatPreset, ...] = ()
+    #: The provider used for default form identities, roster names and log matching (D90).
+    identity_provider: str | None = None
 
     @property
     def rated_dimension(self) -> DimensionSpec:

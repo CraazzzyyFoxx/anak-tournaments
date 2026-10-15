@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from shared.disciplines import CATALOG_KINDS, DISCIPLINES, DisciplineSpec, discipline
+from shared.disciplines import CATALOG_KINDS, DISCIPLINES, DisciplineSpec, discipline, identity_provider
 from shared.domain import pick_ban_rules as pbr
 
 #: Participation ids: resolved actors are participations, never sides.
@@ -65,6 +65,13 @@ def test_a_module_labels_only_kinds_of_the_core_vocabulary() -> None:
 def test_an_unknown_code_has_no_catalog_kinds() -> None:
     assert discipline("chess").kinds == {}
     assert discipline("chess").character_classes == ()
+
+
+def test_identity_provider_requires_a_module_declaration() -> None:
+    assert identity_provider("overwatch") == "battlenet"
+    assert identity_provider("lol") == "riot"
+    with pytest.raises(LookupError):
+        identity_provider("chess")
 
 
 # ── v1 / legacy actor tokens resolve to slots ───────────────────────────────

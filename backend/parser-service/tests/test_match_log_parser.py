@@ -24,7 +24,7 @@ models = importlib.import_module("src.models")
 
 class MatchLogParserTests(TestCase):
     def test_wide_player_stat_row_is_not_truncated_or_shifted(self) -> None:
-        tournament = SimpleNamespace(id=1, name="Test Cup")
+        tournament = SimpleNamespace(id=1, name="Test Cup", discipline="overwatch")
         stat_payload = [
             "1",
             "Blue Team",
@@ -41,7 +41,7 @@ class MatchLogParserTests(TestCase):
         self.assertEqual(stat_payload, rows.iloc[0]["data"])
 
     def test_quoted_commas_and_type_index_survive_batched_csv_parse(self) -> None:
-        tournament = SimpleNamespace(id=1, name="Test Cup")
+        tournament = SimpleNamespace(id=1, name="Test Cup", discipline="overwatch")
         lines = [
             "2026-04-19T12:00:00Z,meta,0,ignored",
             '2026-04-19T12:00:00Z,match_start,0.0,Ilios,"Control","Team, A","Team, B"',

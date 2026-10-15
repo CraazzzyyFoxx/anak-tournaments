@@ -17,6 +17,8 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { tabFallback } from "../../hubQueries";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useRegistrationFormSection } from "../useRegistrationFormSection";
 
@@ -52,13 +54,26 @@ function AdmissionForm({
 }: Readonly<{ tournamentId: number; teamRegistration: boolean; disabled: boolean }>) {
   const t = useTranslations("registrationFormAdmin.page");
   const ids = useId();
-  const { value, saved, patch, dirty, summary, saving, save, discard } =
+  const { value, saved, patch, dirty, summary, saving, save, discard, error, retry } =
     useRegistrationFormSection(tournamentId);
 
   // Read-only: the rule lives on the workspace and the server projects it onto
   // the form, so this page can state what the toggle enforces without offering
   // to edit it here.
   const resolvedRequirement = useRequirementDescription(saved?.subscription_requirement_json);
+
+  if (!value) {
+    return error ? (
+      <PageStateCard
+        state="error"
+        title={t("loadError.title")}
+        description={error.message}
+        onAction={retry}
+      />
+    ) : (
+      tabFallback
+    );
+  }
 
   return (
     <>

@@ -417,8 +417,8 @@ class RegistrationService:
         player id (``players.user.id`` == the member's ``player_id``). Flushes
         only; caller commits.
 
-        Only GAME identities (``shared.core.social.GAME_PROVIDERS``, Battle.net
-        today) find or create a player: a discord or boosty handle says nothing
+        Only GAME identities (``shared.core.social.GAME_PROVIDERS``)
+        find or create a player: a discord or boosty handle says nothing
         about which player this is, so a registration carrying only those and no
         authenticated account resolves to no player at all.
 
@@ -621,6 +621,7 @@ class RegistrationService:
             status="approved" if auto_approve else "pending",
             submitted_at=datetime.now(UTC),
             reviewed_at=datetime.now(UTC) if auto_approve else None,
+            identities=[],
         )
         # Before the INSERT: the answers carry the game handle the row is named
         # after, and ``ensure_player_identity`` below resolves the domain player

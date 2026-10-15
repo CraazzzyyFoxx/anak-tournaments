@@ -33,8 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import balancer_pool_included_clause
-from shared.core.social import SocialProvider
-from shared.disciplines import rated_role_codes
+from shared.disciplines import identity_provider, rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.domain.member_rank import RankScope, ResolvedRank
 from shared.domain.player_sub_roles import workspace_sub_role_slug
@@ -74,20 +73,16 @@ def registration_load_options() -> list[Any]:
     ]
 
 
-def _primary_tag_order() -> sa.ScalarSelect[str]:
-    """The registration's primary battlenet handle, as a correlated scalar.
+def _primary_tag_order(provider: str) -> sa.ScalarSelect[str]:
+    """The event provider's primary handle, as a correlated scalar.
 
-    A scalar subquery rather than a join: a registrant with smurfs owns several
-    battlenet rows, and joining them would multiply the result.
-
-    ponytail: one game (Overwatch -> battlenet). When a second game provider
-    lands, widen this to the first ``GAME_PROVIDERS`` entry present.
+    Joining would multiply registrations that carry several handles.
     """
     return (
         sa.select(BalancerRegistrationIdentity.handle_normalized)
         .where(
             BalancerRegistrationIdentity.registration_id == BalancerRegistration.id,
-            BalancerRegistrationIdentity.provider == SocialProvider.BATTLENET,
+            BalancerRegistrationIdentity.provider == provider,
             BalancerRegistrationIdentity.position == 0,
         )
         .limit(1)
@@ -150,7 +145,7 @@ class RosterEngine:
             sa.select(BalancerRegistration)
             .where(BalancerRegistration.tournament_id == tournament_id)
             .options(*registration_load_options())
-            .order_by(_primary_tag_order().asc(), BalancerRegistration.id.asc())
+            .order_by(_primary_tag_order(identity_provider(tournament.discipline)).asc(), BalancerRegistration.id.asc())
         )
         if not include_deleted:
             query = query.where(BalancerRegistration.deleted_at.is_(None))
@@ -240,8 +235,10 @@ class RosterEngine:
             order=order,
             author_user_id=author_user_id,
         )
+        provider = identity_provider(discipline)
         return {
-            reg.id: self._build(reg, declared[reg.id], resolved.get(reg.id, {}), mode=mode) for reg in registrations
+            reg.id: self._build(reg, declared[reg.id], resolved.get(reg.id, {}), mode=mode, provider=provider)
+            for reg in registrations
         }
 
     # -- role set ------------------------------------------------------------
@@ -378,6 +375,7 @@ class RosterEngine:
         resolved: Mapping[str, ResolvedRank],
         *,
         mode: str,
+        provider: str,
     ) -> PlayerRoster:
         entries: list[RosterRole] = []
         from_row: set[str] = set()
@@ -429,7 +427,7 @@ class RosterEngine:
 
         member = reg.workspace_member
         player = member.player if member is not None else None
-        battle_tags = reg.handles(SocialProvider.BATTLENET)
+        battle_tags = reg.handles(provider)
         return PlayerRoster(
             registration_id=reg.id,
             battle_tag=battle_tags[0] if battle_tags else None,

@@ -49,8 +49,8 @@ from src.services.registration.form_service import (  # noqa: E402
 
 
 def _schema_with_vk() -> FormSchema:
-    """``default_schema()`` plus one custom question in the ``details`` section."""
-    changed = default_schema()
+    """The Overwatch default plus one custom question in the ``details`` section."""
+    changed = default_schema("battlenet")
     changed.sections[2].fields.append(FormField(key="vk", kind="url", label="VK"))
     return changed
 
@@ -157,17 +157,17 @@ def test_an_identical_schema_appends_no_version() -> None:
     a version written by the migration's own converter must compare equal to the
     same form round-tripped through today's model, or every toggle-only save
     would orphan every existing answer behind a cosmetic new version."""
-    form = _form_stub(default_schema())
+    form = _form_stub(default_schema("battlenet"))
     session = _FakeSession(latest_number=1)
 
-    version = asyncio.run(form_service.apply_schema(session, form, default_schema(), actor_user_id=None))
+    version = asyncio.run(form_service.apply_schema(session, form, default_schema("battlenet"), actor_user_id=None))
 
     assert version is form.current_version
     assert session.flushes == 0
 
 
 def test_a_changed_schema_appends_the_next_number() -> None:
-    form = _form_stub(default_schema())
+    form = _form_stub(default_schema("battlenet"))
     session = _FakeSession(latest_number=4)
 
     version = asyncio.run(form_service.apply_schema(session, form, _schema_with_vk(), actor_user_id=99))
@@ -187,7 +187,7 @@ def test_the_first_version_of_a_brand_new_form_is_number_one() -> None:
     form = _form_stub(None)
     session = _FakeSession(latest_number=None)
 
-    version = asyncio.run(form_service.apply_schema(session, form, default_schema(), actor_user_id=None))
+    version = asyncio.run(form_service.apply_schema(session, form, default_schema("battlenet"), actor_user_id=None))
 
     assert version.number == 1
 
@@ -196,7 +196,7 @@ def test_stale_count_asks_for_live_rows_on_a_different_version() -> None:
     """``IS DISTINCT FROM``, not ``!=``: a legacy row whose ``form_version_id`` is
     NULL is exactly the kind nobody can render, so it must count as stale. A plain
     inequality would evaluate to NULL and silently drop it from the badge."""
-    form = _form_stub(default_schema())
+    form = _form_stub(default_schema("battlenet"))
     form.current_version_id = 12
     session = _CapturingSession()
 
@@ -241,7 +241,7 @@ def test_upsert_creates_a_version_only_when_the_schema_changes(db_session) -> No
             form = await form_service.upsert(
                 db_session,
                 tournament_id,
-                RegistrationFormUpsert(form_schema=default_schema()),
+                RegistrationFormUpsert(form_schema=default_schema("battlenet")),
                 workspace_id=workspace_id,
                 actor_user_id=None,
             )
@@ -251,7 +251,7 @@ def test_upsert_creates_a_version_only_when_the_schema_changes(db_session) -> No
             again = await form_service.upsert(
                 db_session,
                 tournament_id,
-                RegistrationFormUpsert(form_schema=default_schema(), show_ranks=True),
+                RegistrationFormUpsert(form_schema=default_schema("battlenet"), show_ranks=True),
                 workspace_id=workspace_id,
                 actor_user_id=None,
             )
@@ -286,7 +286,7 @@ def test_stale_count_counts_live_registrations_on_older_versions(db_session) -> 
             form = await form_service.upsert(
                 db_session,
                 tournament_id,
-                RegistrationFormUpsert(form_schema=default_schema()),
+                RegistrationFormUpsert(form_schema=default_schema("battlenet")),
                 workspace_id=workspace_id,
                 actor_user_id=None,
             )

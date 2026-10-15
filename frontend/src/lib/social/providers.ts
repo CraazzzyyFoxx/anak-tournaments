@@ -25,16 +25,15 @@ export interface SocialProviderConfig {
    *  gates the admin "manually verify" action and a form's `require_verified`
    *  toggle. Mirrors backend `ProviderSpec.can_be_verified`. */
   canBeVerified?: boolean;
-  /** Whether this is a GAME account (Battle.net now; Steam, Riot later). The
-   *  primary game handle is a registration's public identity. Mirrors
-   *  `ProviderSpec.is_game_provider`. */
+  /** Whether this is a GAME account. The primary game handle is a registration's
+   *  public identity. Mirrors `ProviderSpec.is_game_provider`. */
   isGameProvider?: boolean;
   /** Default ceiling on handles of this provider in one registration answer;
    *  `undefined` means one. Mirrors `ProviderSpec.default_max_count`. */
   defaultMaxCount?: number;
-  /** `battletag` additionally collapses the spacing a human types around `#`.
-   *  Mirrors `ProviderSpec.normalize`. */
-  normalizeRule?: "battletag";
+  /** Collapse spacing around `#`; only BattleTags also drop inner name spaces
+   *  when matched. Mirrors `ProviderSpec.normalize`. */
+  normalizeRule?: "battletag" | "riot_id";
 }
 
 /** Display/selection order. */
@@ -44,7 +43,8 @@ export const SOCIAL_PROVIDER_ORDER: SocialProvider[] = [
   "twitch",
   "boosty",
   "vk",
-  "youtube"
+  "youtube",
+  "riot"
 ];
 
 const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
@@ -85,8 +85,31 @@ const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
     placeholder: "username",
     profileUrl: (u) => `https://boosty.to/${encodeURIComponent(u)}`
   },
-  vk: { value: "vk", label: "VK", icon: null, color: "var(--aqt-brand-vk)", placeholder: "username", profileUrl: (u) => `https://vk.com/${encodeURIComponent(u)}` },
-  youtube: { value: "youtube", label: "YouTube", icon: null, color: "var(--aqt-brand-youtube)", placeholder: "@handle", profileUrl: (u) => `https://youtube.com/${encodeURIComponent(u)}` }
+  vk: {
+    value: "vk",
+    label: "VK",
+    icon: null,
+    color: "var(--aqt-brand-vk)",
+    placeholder: "username",
+    profileUrl: (u) => `https://vk.com/${encodeURIComponent(u)}`
+  },
+  youtube: {
+    value: "youtube",
+    label: "YouTube",
+    icon: null,
+    color: "var(--aqt-brand-youtube)",
+    placeholder: "@handle",
+    profileUrl: (u) => `https://youtube.com/${encodeURIComponent(u)}`
+  },
+  riot: {
+    value: "riot",
+    label: "Riot ID",
+    icon: null,
+    color: "var(--aqt-fg-dim)",
+    placeholder: "Name#TAG",
+    isGameProvider: true,
+    normalizeRule: "riot_id"
+  }
 };
 
 /** Config for any provider string, with a safe fallback for unknown ones. */
@@ -133,14 +156,13 @@ const BATTLE_TAG_HASH = /\s*#\s*/g;
 
 /**
  * The handle as STORED, mirroring `shared.core.social.display_social_handle`:
- * trimmed, casing kept; a BattleTag additionally loses the spacing a human
- * types around `#` (`Player # 1234` → `Player#1234`).
+ * trimmed, casing kept; a BattleTag or Riot ID additionally loses the spacing
+ * a human types around `#` (`Player # 1234` → `Player#1234`).
  */
 export function displaySocialHandle(provider: string, handle: string): string {
   const text = handle.trim();
-  return getSocialProviderConfig(provider).normalizeRule === "battletag"
-    ? text.replace(BATTLE_TAG_HASH, "#")
-    : text;
+  const rule = getSocialProviderConfig(provider).normalizeRule;
+  return rule === "battletag" || rule === "riot_id" ? text.replace(BATTLE_TAG_HASH, "#") : text;
 }
 
 /**

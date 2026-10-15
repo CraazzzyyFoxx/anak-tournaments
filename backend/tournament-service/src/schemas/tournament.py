@@ -2,8 +2,9 @@ import typing
 from dataclasses import dataclass
 from datetime import datetime
 
-from pydantic import BaseModel, BeforeValidator
+from pydantic import BaseModel, BeforeValidator, computed_field
 
+from shared.disciplines import identity_provider as discipline_identity_provider
 from shared.schemas.roster_slots import RosterShapeRead
 from shared.services.workspace_scope import ALL_WORKSPACES
 from src.core import enums, pagination
@@ -101,6 +102,12 @@ class TournamentRead(BaseRead):
     # Opt-in too, and for the same reason: the rows live in their own table, so
     # filling them unconditionally would cost a query per nested TournamentRead.
     links: list[TournamentLinkRead] = []
+
+    @computed_field
+    @property
+    def identity_provider(self) -> str:
+        """The discipline's player identity provider (D90)."""
+        return discipline_identity_provider(self.discipline)
 
 
 class TournamentPaginationSortSearchQueryParams(

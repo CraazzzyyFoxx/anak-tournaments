@@ -552,9 +552,15 @@ export function useSubroleCatalog(workspaceId: number | null) {
  * policy fields are echoed back from `toRegistrationFormUpsert`.
  */
 export default function RegistrationFormBuilder({
-  tournamentId
+  tournamentId,
+  identityProvider,
+  identityProviderError,
+  onRetryIdentityProvider
 }: Readonly<{
   tournamentId: number | null;
+  identityProvider?: string;
+  identityProviderError?: Error | null;
+  onRetryIdentityProvider?: () => void;
 }>) {
   const t = useTranslations("registrationFormAdmin.page");
   const tBuilder = useTranslations("registrationFormAdmin.builder");
@@ -583,23 +589,26 @@ export default function RegistrationFormBuilder({
   const workspaceId = formQuery.data?.workspace_id ?? currentWorkspaceId ?? null;
   const { catalog, loading: catalogLoading } = useSubroleCatalog(workspaceId);
 
-  // A tournament with no form row yet has no schema to render, and the upsert
-  // that creates it needs one; the server would have built exactly this.
-  const serverSchema = useMemo<FormSchema>(
-    () => formQuery.data?.form_schema ?? defaultFormSchema(),
-    [formQuery.data]
+  // A known tournament's default must wait for its owner metadata. A saved
+  // questionnaire is already authoritative and does not need that lookup.
+  const serverSchema = useMemo(
+    () =>
+      formQuery.data?.form_schema ??
+      (formQuery.isSuccess && identityProvider ? defaultFormSchema(identityProvider) : null),
+    [formQuery.data, formQuery.isSuccess, identityProvider]
   );
   const schema = draft ?? serverSchema;
-  const blocked = useMemo(() => blockedFieldKeys(schema), [schema]);
+  const blocked = useMemo(() => (schema ? blockedFieldKeys(schema) : new Set<string>()), [schema]);
 
   const saveMutation = useMutation({
     mutationFn: (payload: FormSchema) => {
       if (!tournamentId) throw new Error(t("noTournamentError"));
+      if (!serverSchema) throw new Error(t("loadError.fallback"));
       return balancerAdminService.upsertRegistrationForm(tournamentId, {
         // The upsert is a full replace, so the policy fields this page no
         // longer shows travel back untouched from the saved form. Editing a
         // question must not reset the admission rules.
-        ...toRegistrationFormUpsert(formQuery.data),
+        ...toRegistrationFormUpsert(formQuery.data, identityProvider),
         form_schema: payload
       });
     },
@@ -640,20 +649,21 @@ export default function RegistrationFormBuilder({
     );
   }
 
-  if (formQuery.isError) {
+  const loadError = formQuery.error ?? (!serverSchema ? identityProviderError : null);
+  if (loadError) {
     return (
       <PageStateCard
         state="error"
         title={t("loadError.title")}
-        description={(formQuery.error as Error)?.message ?? t("loadError.fallback")}
-        onAction={() => void formQuery.refetch()}
+        description={loadError.message || t("loadError.fallback")}
+        onAction={formQuery.isError ? () => void formQuery.refetch() : onRetryIdentityProvider}
       />
     );
   }
 
   // Avoid flashing the default questionnaire while the saved one is loading —
   // skeletons in the editor's own shape, so nothing jumps when it arrives.
-  if (formQuery.isLoading) {
+  if (!schema) {
     return (
       <div role="status" className="flex flex-col gap-4 md:flex-row md:items-start">
         <span className="sr-only">{t("loading")}</span>
@@ -676,7 +686,11 @@ export default function RegistrationFormBuilder({
         fieldErrors={fieldErrors}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
-            {saved && <Badge variant="outline">{tBuilder("version", { number: saved.version_number })}</Badge>}
+            {saved && (
+              <Badge variant="outline">
+                {tBuilder("version", { number: saved.version_number })}
+              </Badge>
+            )}
             {stale > 0 && (
               <Badge tone="warning" title={tBuilder("staleHint")}>
                 {tBuilder("stale", { count: stale })}
@@ -702,9 +716,7 @@ export default function RegistrationFormBuilder({
       <SaveBar
         dirty={draft !== null || saved === null}
         guardNavigation={draft !== null}
-        summary={
-          blocked.size > 0 ? tBuilder("blocked") : draft !== null ? t("unsavedChanges") : ""
-        }
+        summary={blocked.size > 0 ? tBuilder("blocked") : draft !== null ? t("unsavedChanges") : ""}
         saving={saveMutation.isPending}
         primaryLabel={saved ? t("saveChanges") : t("createForm")}
         onDiscard={() => {

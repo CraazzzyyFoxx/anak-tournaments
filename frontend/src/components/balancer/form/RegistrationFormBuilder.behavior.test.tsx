@@ -20,19 +20,27 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import type { FormField, FormSchema } from "@/types/forms.types";
 
-import RegistrationFormBuilder from "./RegistrationFormBuilder";
+import RegistrationFormSubRoutePage from "@/app/admin/tournaments/[id]/registration/form/page";
+import { validateAnswer } from "@/lib/forms/validate";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Keep the actual route, queries and builder; only replace Next's bundler
+// loader, which does not settle its render-time import in Vitest.
+vi.mock("next/dynamic", async () => {
+  const builder = await import("./RegistrationFormBuilder");
+  return { default: () => builder.default };
+});
 
 // Radix's menus and selects reach for layout APIs happy-dom does not implement.
 // Without these the trigger throws before anything ever opens.
@@ -56,6 +64,7 @@ for (const [name, value] of Object.entries({
 const getRegistrationForm = vi.fn();
 const upsertRegistrationForm = vi.fn();
 const listTemplates = vi.fn();
+const getTournament = vi.fn();
 
 vi.mock("@/services/balancer-admin.service", () => ({
   default: {
@@ -76,7 +85,10 @@ vi.mock("@/services/registration-form-templates.service", () => ({
 }));
 
 vi.mock("@/services/admin.service", () => ({
-  default: { getPlayerSubRoles: vi.fn().mockResolvedValue([]) }
+  default: {
+    getPlayerSubRoles: vi.fn().mockResolvedValue([]),
+    getTournament: (...args: unknown[]) => getTournament(...args)
+  }
 }));
 
 vi.mock("@/stores/workspace.store", () => ({
@@ -164,7 +176,7 @@ async function mount() {
         <QueryClientProvider
           client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
         >
-          <RegistrationFormBuilder tournamentId={1} />
+          <RegistrationFormSubRoutePage />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -252,6 +264,12 @@ function railText(): string {
 beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = "";
+  getTournament.mockResolvedValue({
+    id: 1,
+    workspace_id: 1,
+    discipline: "overwatch",
+    identity_provider: "battlenet"
+  });
   getRegistrationForm.mockResolvedValue({
     id: 7,
     tournament_id: 1,
@@ -288,7 +306,108 @@ beforeEach(() => {
   ]);
 });
 
+afterEach(async () => {
+  await act(async () => root.unmount());
+  container.remove();
+});
+
 describe("registration form builder", () => {
+  it("waits for a delayed LoL owner before offering or saving a default form", async () => {
+    const owner = Promise.withResolvers<unknown>();
+    getTournament.mockReturnValue(owner.promise);
+    getRegistrationForm.mockResolvedValue(null);
+    await mount();
+
+    expect(container.querySelector('[role="status"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("identity_battlenet");
+    expect(container.querySelector('[role="region"]')).toBeNull();
+    expect(upsertRegistrationForm).not.toHaveBeenCalled();
+
+    await act(async () => {
+      owner.resolve({ id: 1, workspace_id: 1, discipline: "lol", identity_provider: "riot" });
+    });
+    await settle();
+    expect(container.textContent).toContain("identity_riot");
+    expect(container.textContent).not.toContain("identity_battlenet");
+    await click(button("Create form"));
+
+    const schema: FormSchema = upsertRegistrationForm.mock.calls[0][1].form_schema;
+    const fields = schema.sections.flatMap((section) => section.fields);
+    const identity = fields.find((field) => field.key === "identity_riot")!;
+    expect(identity.required).toBe(true);
+    expect(fields.some((field) => field.key === "identity_battlenet")).toBe(false);
+    expect(validateAnswer(identity, undefined, (code) => code)).toBe("required");
+    expect(validateAnswer(identity, ["Hide On Bush # KR1"], (code) => code)).toBeNull();
+    expect(validateAnswer(identity, ["Name#123456"], (code) => code)).toBe("invalid_format");
+  });
+
+  it("still creates an Overwatch default requiring a BattleTag", async () => {
+    getRegistrationForm.mockResolvedValue(null);
+    await mount();
+    await click(button("Create form"));
+    const schema: FormSchema = upsertRegistrationForm.mock.calls[0][1].form_schema;
+    const fields = schema.sections.flatMap((section) => section.fields);
+    const identity = fields.find((field) => field.key === "identity_battlenet")!;
+    expect(identity.required).toBe(true);
+    expect(fields.some((field) => field.key === "identity_riot")).toBe(false);
+    expect(validateAnswer(identity, ["Player # 1234"], (code) => code)).toBeNull();
+    expect(validateAnswer(identity, ["Faker#KR1"], (code) => code)).toBe("invalid_format");
+  });
+
+  it("shows an owner error without creating a default, then recovers on retry", async () => {
+    getRegistrationForm.mockResolvedValue(null);
+    getTournament.mockRejectedValueOnce(new Error("Owner unavailable")).mockResolvedValue({
+      id: 1,
+      workspace_id: 1,
+      discipline: "lol",
+      identity_provider: "riot"
+    });
+    await mount();
+    expect(container.textContent).toContain("Owner unavailable");
+    expect(container.textContent).not.toContain("identity_battlenet");
+    expect(upsertRegistrationForm).not.toHaveBeenCalled();
+    await click(button(en.common.retry));
+    expect(container.textContent).toContain("identity_riot");
+  });
+
+  it.each(["pending", "error"])(
+    "keeps an existing form editable while its owner is %s",
+    async (state) => {
+      if (state === "pending") getTournament.mockReturnValue(Promise.withResolvers().promise);
+      else getTournament.mockRejectedValue(new Error("Owner unavailable"));
+      await mount();
+      await click(button("Stream POVstream_pov"));
+      await click(labelled("Required"));
+      await click(button("Save changes"));
+      const schema: FormSchema = upsertRegistrationForm.mock.calls[0][1].form_schema;
+      expect(schema.sections[0].fields.find((field) => field.key === "stream_pov")?.required).toBe(
+        true
+      );
+      expect(
+        schema.sections[0].fields.find((field) => field.key === "identity_battlenet")?.required
+      ).toBe(true);
+    }
+  );
+
+  it("does not replace a loaded form or its edits when the LoL owner arrives", async () => {
+    const owner = Promise.withResolvers<unknown>();
+    getTournament.mockReturnValue(owner.promise);
+    await mount();
+    await click(button("Stream POVstream_pov"));
+    await click(labelled("Required"));
+    await act(async () => owner.resolve({ id: 1, discipline: "lol", identity_provider: "riot" }));
+    await settle();
+    await click(button("Save changes"));
+    const schema: FormSchema = upsertRegistrationForm.mock.calls[0][1].form_schema;
+    expect(schema.sections[0].fields.find((field) => field.key === "stream_pov")?.required).toBe(
+      true
+    );
+    expect(schema.sections[0].fields.some((field) => field.key === "identity_riot")).toBe(false);
+    expect(
+      schema.sections[0].fields.find((field) => field.key === "identity_battlenet")?.required
+    ).toBe(true);
+  });
+
   it("sends the assembled schema: new section, custom select, earlier-field condition", async () => {
     await mount();
 

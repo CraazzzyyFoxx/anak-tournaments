@@ -53,7 +53,7 @@ class MatchLogMapPoolTests(IsolatedAsyncioTestCase):
             rollback=AsyncMock(),
         )
         processor = flows.MatchLogProcessor(
-            SimpleNamespace(id=1, name="Cup"),
+            SimpleNamespace(id=1, name="Cup", discipline="overwatch"),
             "new.log",
             [f"0,match_start,0,{map_name},Control,Home,Away", "0,match_end,100,Home,2,0"],
             SimpleNamespace(),

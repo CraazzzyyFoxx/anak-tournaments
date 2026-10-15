@@ -3,8 +3,6 @@ import { Window } from "happy-dom";
 import { act, type ReactNode } from "react";
 
 import type { FormField, FormSchema } from "@/types/forms.types";
-import en from "@/i18n/messages/en.json";
-import { IDENTITY_PROVIDERS, identityKey } from "@/lib/forms/builtin-keys";
 import type { Registration, RegistrationForm } from "@/types/registration.types";
 
 const testWindow = new Window({ url: "http://localhost:3000/", width: 900, height: 900 });
@@ -160,50 +158,55 @@ describe("RegistrationSchemaForm", () => {
     expect(submitted?.answers.public_notes).toBe(null);
   });
 
-  it("words every identity question, including the providers with no brand icon", async () => {
-    // A builtin carries no label of its own, so the renderer must have copy for
-    // each provider `IDENTITY_PROVIDERS` offers — otherwise the builder lets an
-    // organizer add VK and the registrant is asked "identity_vk".
-    container = testWindow.document.createElement("div");
-    testWindow.document.body.appendChild(container);
-    root = createRoot(container as unknown as Element);
-    act(() => {
-      root.render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <RegistrationSchemaForm
-            mode="public"
-            form={
-              {
-                ...FORM,
-                form_schema: {
-                  schema_version: 1,
-                  sections: [
-                    {
-                      key: "accounts",
-                      fields: IDENTITY_PROVIDERS.map((provider) =>
-                        field({ key: identityKey(provider), kind: "builtin", label: null }),
-                      ),
-                    },
-                  ],
-                },
-              } as unknown as RegistrationForm
+  it("requires the LoL identity rather than accepting a Battle.net answer", async () => {
+    testWindow.localStorage.clear();
+    testWindow.localStorage.setItem(
+      "aqt:registration-draft:7",
+      JSON.stringify({ identity_battlenet: ["Player#1234"] })
+    );
+    let submitted: { answers: Record<string, unknown> } | null = null;
+    mountForm({
+      form: {
+        ...FORM,
+        form_schema: {
+          schema_version: 1,
+          sections: [
+            {
+              key: "accounts",
+              fields: [field({ key: "identity_riot", kind: "builtin", required: true })]
             }
-            tournamentId={7}
-            onSubmit={async () => {}}
-            onCancel={() => {}}
-          />
-        </QueryClientProvider>,
+          ]
+        }
+      },
+      onSubmit: async (input: { answers: Record<string, unknown> }) => {
+        submitted = input;
+      }
+    });
+    const submit = () =>
+      act(async () => {
+        const buttons = container.querySelectorAll("button");
+        buttons[buttons.length - 1].dispatchEvent(
+          new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event
+        );
+      });
+    await submit();
+    expect(submitted).toBeNull();
+    expect(container.querySelector('[aria-invalid="true"]')).not.toBeNull();
+
+    const input = container.querySelector("input")!;
+    const setter = Object.getOwnPropertyDescriptor(
+      testWindow.HTMLInputElement.prototype,
+      "value"
+    )!.set!;
+    act(() => {
+      setter.call(input, "  Hide On Bush # KR1 ");
+      input.dispatchEvent(new testWindow.Event("input", { bubbles: true }) as unknown as Event);
+      input.dispatchEvent(
+        new testWindow.FocusEvent("focusout", { bubbles: true }) as unknown as Event
       );
     });
-
-    for (const provider of IDENTITY_PROVIDERS) {
-      // `useTranslations` is mocked to echo the key, so this asserts WHICH
-      // message the field asks for…
-      expect(container.textContent).toContain(`registration.accounts.${provider}`);
-      expect(container.textContent).not.toContain(identityKey(provider));
-      // …and this asserts the catalogue actually has it.
-      expect(en.registration.accounts[provider as keyof typeof en.registration.accounts]).toBeTruthy();
-    }
+    await submit();
+    expect(submitted?.answers).toEqual({ identity_riot: ["Hide On Bush#KR1"] });
   });
 
   it("keeps the answers a registrant typed when the form is closed, until it submits", async () => {

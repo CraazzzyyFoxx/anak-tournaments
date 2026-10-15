@@ -9,6 +9,8 @@ import { RosterShapeEditor } from "@/components/roster-shape/RosterShapeEditor";
 import { payloadTotalError } from "@/lib/roster/shape-editor-model";
 import { Card, CardContent } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { tabFallback } from "../../hubQueries";
 import type { Tournament } from "@/types/tournament.types";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useRegistrationFormSection } from "../useRegistrationFormSection";
@@ -75,7 +77,18 @@ function RosterForm({
         onChange={(next) => patch({ roster_slots_json: next })}
       />
 
-      {hasBench ? (
+      {hasBench && !bench.value ? (
+        bench.error ? (
+          <PageStateCard
+            state="error"
+            title={t("loadError.title")}
+            description={bench.error.message}
+            onAction={bench.retry}
+          />
+        ) : (
+          tabFallback
+        )
+      ) : hasBench && bench.value ? (
         <Card>
           <CardContent className="pt-6">
             <SettingGroup title={t("bench.title")} description={t("bench.description")}>

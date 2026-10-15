@@ -3,7 +3,6 @@
 import pytest
 
 from shared.core.social import (
-    GAME_PROVIDERS,
     OAUTH_PROVIDERS,
     PROVIDERS,
     SOCIAL_PROVIDERS,
@@ -37,11 +36,6 @@ def test_named_constants_match_the_catalog() -> None:
     assert all(spec.id == key for key, spec in PROVIDERS.items())
 
 
-def test_provider_order_is_a_total_order() -> None:
-    orders = [spec.order for spec in PROVIDERS.values()]
-    assert len(set(orders)) == len(orders)
-
-
 def test_oauth_capability_drives_every_oauth_derived_set() -> None:
     assert OAUTH_PROVIDERS == {
         SocialProvider.BATTLENET,
@@ -66,13 +60,6 @@ def test_verifiable_providers_are_the_ones_whose_ownership_can_be_proven() -> No
     assert VERIFIABLE_PROVIDERS == {spec.id for spec in PROVIDERS.values() if spec.can_be_verified}
 
 
-def test_game_providers_are_ordered_and_battlenet_is_the_only_one_so_far() -> None:
-    """The order IS the precedence a registration's player is resolved in."""
-    assert GAME_PROVIDERS == (SocialProvider.BATTLENET,)
-    orders = [PROVIDERS[p].order for p in GAME_PROVIDERS]
-    assert orders == sorted(orders)
-
-
 def test_display_handle_keeps_casing_but_canonicalizes_battletag_spacing() -> None:
     assert display_social_handle(SocialProvider.BATTLENET, "  Player # 1234 ") == "Player#1234"
     assert display_social_handle(SocialProvider.DISCORD, "  CoolGuy ") == "CoolGuy"
@@ -85,6 +72,31 @@ def test_normalize_battlenet_strips_spaces_and_casefolds() -> None:
     assert normalize_social_handle(SocialProvider.BATTLENET, "ABC#1") == normalize_social_handle(
         SocialProvider.BATTLENET, "abc#1"
     )
+
+
+def test_riot_id_keeps_inner_spaces_and_collapses_the_tag_separator() -> None:
+    assert display_social_handle(SocialProvider.RIOT, "  Hide On Bush # KR1 ") == "Hide On Bush#KR1"
+    assert normalize_social_handle(SocialProvider.RIOT, "  Hide On Bush # KR1 ") == "hide on bush#kr1"
+
+
+@pytest.mark.parametrize(
+    ("handle", "valid"),
+    [
+        ("Faker#KR1", True),
+        ("Hide on bush#KR1", True),
+        ("  Hide on bush # KR1 ", True),
+        ("abcdefghijklmnop#AB123", True),
+        ("ab#KR1", False),
+        ("abcdefghijklmnopq#KR1", False),
+        ("Name#TOOLONG", False),
+        ("Name#AB", False),
+        ("Name#K_1", False),
+        ("Name#KR1#ABC", False),
+        ("Name", False),
+    ],
+)
+def test_riot_id_grammar(handle: str, valid: bool) -> None:
+    assert matches_handle_pattern(SocialProvider.RIOT, handle) is valid
 
 
 def test_normalize_other_providers_casefold() -> None:

@@ -232,6 +232,8 @@ export interface Tournament {
   division_grid_version_id: number | null;
   division_grid_version: DivisionGridVersion | null;
   discipline: string;
+  /** Game identity provider resolved by the tournament's discipline. */
+  identity_provider: string;
   /** Draft format rule the wizard seeds every session with; `null` = snake. */
   draft_format_json: DraftFormatSettings | null;
   /** Resolved shape. `null` when the read did not opt into the entity. */

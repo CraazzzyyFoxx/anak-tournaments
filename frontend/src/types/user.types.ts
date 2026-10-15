@@ -8,7 +8,8 @@ import type { PaginatedResponse } from "@/types/pagination.types";
 import { UserTournamentStat } from "@/types/statistics.types";
 import { DivisionGridVersion } from "@/types/workspace.types";
 
-export type SocialProvider = "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube";
+export type SocialProvider =
+  "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube" | "riot";
 
 export interface SocialAccount {
   id: number;

@@ -25,6 +25,7 @@ from sqlalchemy.orm import selectinload
 from shared.balancer_registration_statuses import balancer_pool_excluded_clause, balancer_pool_included_clause
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import identity_provider
 from shared.domain.forms import FormSchema, default_schema, schema_from_form
 from shared.domain.roster import flex_role_mode
 from shared.hero_catalog import HeroCatalog
@@ -221,13 +222,13 @@ class RegistrationLifecycleService:
         the ``require_verified`` gate off.
 
         A tournament with no form (or no version yet) is validated against
-        ``default_schema()``, the same fallback the sheet-sync feed uses: before
+        ``default_schema(identity_provider(discipline))``, the same fallback the sheet-sync feed uses: before
         the form schema existed an organizer's input was written unconditionally,
         and refusing it here would silently drop every battle tag, handle and note
         they type on such a tournament. THE resolver for both callers, so the
         fallback cannot apply to one and not the other.
         """
-        schema = schema_from_form(form) or default_schema()
+        schema = schema_from_form(form) or default_schema(identity_provider(discipline))
         # ``_resolve_top_heroes_config`` reads a real form; no form means no
         # top-heroes ask to resolve, which is also what the default schema says.
         hero_catalog, max_heroes = await _resolve_top_heroes_config(session, form) if form is not None else (None, None)
@@ -297,6 +298,8 @@ class RegistrationLifecycleService:
             admin_notes=admin_notes,
             status=resolved_status,
             balancer_status=NOT_ADDED_BALANCER_STATUS,
+            # Explicitly initialize even an empty collection before the first flush.
+            identities=[],
         )
         answer_service.apply(
             registration, values, schema=schema, hero_catalog=hero_catalog, catalog_roles=catalog_roles

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from shared.core.social import SocialProvider
 from shared.disciplines.spec import (
     DimensionSpec,
     DisciplineSpec,
@@ -64,4 +65,5 @@ SPEC = DisciplineSpec(
     catalog_sync=_catalog_sync,
     dimensions=(POSITION,),
     team_format_presets=(POSITIONS_5V5, OPEN_5V5),
+    identity_provider=SocialProvider.RIOT,
 )

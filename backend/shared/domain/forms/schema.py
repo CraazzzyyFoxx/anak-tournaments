@@ -14,8 +14,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
-from shared.core.social import InvalidHandlePattern, compile_handle_pattern
-from shared.domain.forms.builtins import IDENTITY_KEY_PREFIX, builtin_spec, is_builtin_key
+from shared.core.social import InvalidHandlePattern, SocialProvider, compile_handle_pattern
+from shared.domain.forms.builtins import IDENTITY_KEY_PREFIX, builtin_spec, identity_key, is_builtin_key
 
 __all__ = (
     "KEY_PATTERN",
@@ -177,15 +177,18 @@ class FormSchema(BaseModel):
         return json.dumps(self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
 
 
-def default_schema() -> FormSchema:
+def default_schema(identity_provider: str) -> FormSchema:
+    """Start with the event discipline's required game handle, Discord and Twitch (D90)."""
+
     def b(key: str, **kw: Any) -> FormField:
         return FormField(key=key, kind="builtin", **kw)
 
+    others = [p for p in (SocialProvider.DISCORD, SocialProvider.TWITCH) if p != identity_provider]
     return FormSchema(
         sections=[
             FormSection(
                 key="accounts",
-                fields=[b("identity_battlenet", required=True), b("identity_discord"), b("identity_twitch")],
+                fields=[b(identity_key(identity_provider), required=True), *(b(identity_key(p)) for p in others)],
             ),
             FormSection(key="roles", fields=[b("roles")]),
             FormSection(key="details", fields=[b("public_notes")]),

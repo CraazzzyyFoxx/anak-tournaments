@@ -29,20 +29,22 @@ function builtin(key: string, required = false): FormField {
   };
 }
 
-export function defaultFormSchema(): FormSchema {
+/** Omit the provider only for an unowned legacy workspace template. */
+export function defaultFormSchema(identityProvider: string = "battlenet"): FormSchema {
   return {
     schema_version: 1,
     sections: [
       {
         key: "accounts",
         fields: [
-          builtin(identityKey("battlenet"), true),
-          builtin(identityKey("discord")),
-          builtin(identityKey("twitch")),
-        ],
+          builtin(identityKey(identityProvider), true),
+          ...["discord", "twitch"]
+            .filter((provider) => provider !== identityProvider)
+            .map((provider) => builtin(identityKey(provider)))
+        ]
       },
       { key: "roles", fields: [builtin("roles")] },
-      { key: "details", fields: [builtin("public_notes")] },
-    ],
+      { key: "details", fields: [builtin("public_notes")] }
+    ]
   };
 }

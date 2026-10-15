@@ -124,12 +124,12 @@ class SchemaSaveInvalidationTests(IsolatedAsyncioTestCase):
         # schema, so the cached anonymous list is stale the moment it is saved.
         key = "fastapi:registration_list:42:"
         await cache.set(key, ["stale payload"])
-        redacted = default_schema()
+        redacted = default_schema("battlenet")
         redacted.sections[2].fields.append(FormField(key="vk", kind="url", label="VK", visibility="organizers"))
         form = SimpleNamespace(
             id=1,
             tournament_id=42,
-            current_version=SimpleNamespace(schema_json=default_schema().model_dump(mode="json")),
+            current_version=SimpleNamespace(schema_json=default_schema("battlenet").model_dump(mode="json")),
             current_version_id=None,
         )
         emitted: list[tuple[Scope, frozenset[Resource]]] = []

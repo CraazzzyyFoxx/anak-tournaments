@@ -10,6 +10,8 @@ import { StatusPill } from "@/components/kit/StatusPill";
 import { Card, CardContent } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
+import { PageStateCard } from "@/components/ui/page-state-card";
+import { tabFallback } from "../../hubQueries";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useRegistrationFormSection } from "../useRegistrationFormSection";
 
@@ -42,8 +44,21 @@ function RegistrationForm({
   const t = useTranslations("registrationFormAdmin.page");
   const tStatus = useTranslations("registrationFormAdmin.status");
   const ids = useId();
-  const { value, saved, patch, dirty, summary, saving, save, discard } =
+  const { value, saved, patch, dirty, summary, saving, save, discard, error, retry } =
     useRegistrationFormSection(tournamentId);
+
+  if (!value) {
+    return error ? (
+      <PageStateCard
+        state="error"
+        title={t("loadError.title")}
+        description={error.message}
+        onAction={retry}
+      />
+    ) : (
+      tabFallback
+    );
+  }
 
   return (
     <>

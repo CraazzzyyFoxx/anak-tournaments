@@ -58,8 +58,8 @@ from src.services.registration.templates import template_service  # noqa: E402
 
 
 def _schema_with(key: str) -> FormSchema:
-    """``default_schema()`` plus one custom question in the ``details`` section."""
-    changed = default_schema()
+    """The Overwatch default plus one custom question in the ``details`` section."""
+    changed = default_schema("battlenet")
     changed.sections[2].fields.append(FormField(key=key, kind="text", label=key.upper()))
     return changed
 
@@ -113,7 +113,7 @@ def test_create_list_update_delete_round_trip(db_session) -> None:
             created = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="Open Cup", form_schema=default_schema()),
+                body=RegistrationFormTemplateUpsert(name="Open Cup", form_schema=default_schema("battlenet")),
                 actor_user_id=None,
             )
             listed = await template_service.list(db_session, workspace_id=workspace_id)
@@ -157,14 +157,14 @@ def test_a_name_differing_only_in_case_is_refused(db_session) -> None:
             first = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="Open Cup", form_schema=default_schema()),
+                body=RegistrationFormTemplateUpsert(name="Open Cup", form_schema=default_schema("battlenet")),
                 actor_user_id=None,
             )
             with pytest.raises(ApiHTTPException) as caught:
                 await template_service.create(
                     db_session,
                     workspace_id=workspace_id,
-                    body=RegistrationFormTemplateUpsert(name="open CUP", form_schema=default_schema()),
+                    body=RegistrationFormTemplateUpsert(name="open CUP", form_schema=default_schema("battlenet")),
                     actor_user_id=None,
                 )
             create_detail = list(caught.value.detail)
@@ -174,7 +174,7 @@ def test_a_name_differing_only_in_case_is_refused(db_session) -> None:
             second = await template_service.create(
                 db_session,
                 workspace_id=workspace_id,
-                body=RegistrationFormTemplateUpsert(name="Closed Cup", form_schema=default_schema()),
+                body=RegistrationFormTemplateUpsert(name="Closed Cup", form_schema=default_schema("battlenet")),
                 actor_user_id=None,
             )
             with pytest.raises(ApiHTTPException) as renamed:
@@ -182,7 +182,7 @@ def test_a_name_differing_only_in_case_is_refused(db_session) -> None:
                     db_session,
                     workspace_id=workspace_id,
                     template_id=second.id,
-                    body=RegistrationFormTemplateUpsert(name="OPEN cup", form_schema=default_schema()),
+                    body=RegistrationFormTemplateUpsert(name="OPEN cup", form_schema=default_schema("battlenet")),
                     actor_user_id=None,
                 )
             assert first.id != second.id
@@ -208,7 +208,7 @@ def test_apply_bumps_the_form_version_and_leaves_the_template_untouched(db_sessi
             form = await form_service.upsert(
                 db_session,
                 tournament_id,
-                RegistrationFormUpsert(form_schema=default_schema()),
+                RegistrationFormUpsert(form_schema=default_schema("battlenet")),
                 workspace_id=workspace_id,
                 actor_user_id=None,
             )
@@ -350,7 +350,7 @@ def test_apply_to_a_tournament_with_no_form_creates_one(db_session) -> None:
             baseline = await form_service.upsert(
                 db_session,
                 baseline_tournament.id,
-                RegistrationFormUpsert(form_schema=default_schema()),
+                RegistrationFormUpsert(form_schema=default_schema("battlenet")),
                 workspace_id=workspace_id,
                 actor_user_id=None,
             )
@@ -423,7 +423,7 @@ def test_another_workspaces_template_is_invisible(db_session) -> None:
                     db_session,
                     workspace_id=other_ws,
                     template_id=template.id,
-                    body=RegistrationFormTemplateUpsert(name="Stolen", form_schema=default_schema()),
+                    body=RegistrationFormTemplateUpsert(name="Stolen", form_schema=default_schema("battlenet")),
                     actor_user_id=None,
                 )
             )
@@ -491,7 +491,7 @@ def _template_row(**overrides: Any) -> SimpleNamespace:
         "id": 42,
         "workspace_id": 1,
         "name": "Open Cup",
-        "schema_json": default_schema().model_dump(mode="json"),
+        "schema_json": default_schema("battlenet").model_dump(mode="json"),
         # A fresh row: ``updated_at`` stays NULL until the first edit (``onupdate``).
         "created_at": datetime(2026, 5, 1, 12, 30, tzinfo=UTC),
         "updated_at": None,

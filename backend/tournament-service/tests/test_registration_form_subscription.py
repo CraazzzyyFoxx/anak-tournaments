@@ -28,7 +28,7 @@ from src.schemas.registration import WorkspaceSubscriptionRequirementUpsert  # n
 from src.schemas.registration_form import RegistrationFormRead, RegistrationFormUpsert  # noqa: E402
 from src.services.registration.serializers import serialize_registration_form  # noqa: E402
 
-DEFAULT_SCHEMA = default_schema()
+DEFAULT_SCHEMA = default_schema("battlenet")
 
 ANY_BOOSTY_OR_TWITCH = {
     "mode": "any",

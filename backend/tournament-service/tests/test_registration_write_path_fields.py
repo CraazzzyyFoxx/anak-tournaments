@@ -455,7 +455,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
         """Before the form schema existed these were unconditional keyword
         arguments, so a form-less tournament still took an organizer's input.
         Validating against nothing would silently drop all of it; the fallback is
-        ``default_schema()``, the same one the sheet-sync feed uses."""
+        the discipline's default schema, the same one the sheet-sync feed uses."""
         registration, _ = await self._create(
             form=None,
             answers={"identity_battlenet": ["Walkin # 4242"], "public_notes": "signed up at the venue"},

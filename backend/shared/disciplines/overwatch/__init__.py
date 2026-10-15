@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
+from shared.core.social import SocialProvider
 from shared.disciplines.overwatch.ladder import NATIVE_LADDER
 from shared.disciplines.spec import (
     DimensionSpec,
@@ -74,4 +75,5 @@ SPEC = DisciplineSpec(
     native_ladder=NATIVE_LADDER,
     dimensions=(PLAYER_ROLE,),
     team_format_presets=(ROLE_QUEUE_5V5,),
+    identity_provider=SocialProvider.BATTLENET,
 )

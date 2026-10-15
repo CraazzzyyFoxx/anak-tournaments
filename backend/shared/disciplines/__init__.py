@@ -34,6 +34,7 @@ __all__ = (
     "TeamFormatPreset",
     "discipline",
     "fallback_ladder",
+    "identity_provider",
     "rated_role_codes",
 )
 
@@ -46,6 +47,14 @@ def discipline(code: str) -> DisciplineSpec:
     Unknown is not an error: ``catalog.discipline`` is the authority on which codes exist, and refusing here would take
     down every encounter of it."""
     return DISCIPLINES.get(code) or DisciplineSpec(code, code, ())
+
+
+def identity_provider(code: str) -> str:
+    """The provider whose handle identifies a player of ``code`` (D90)."""
+    provider = discipline(code).identity_provider
+    if provider is None:
+        raise LookupError(f"discipline {code!r} declares no identity provider (D90)")
+    return provider
 
 
 def rated_role_codes(code: str) -> tuple[str, ...]:

@@ -355,6 +355,8 @@
     "accounts": {
       "battlenet": "BattleTag",
       "battlenetPlaceholder": "Player#1234",
+      "riot": "Riot ID",
+      "riotPlaceholder": "Name#TAG",
       "smurfs": "Smurf Accounts",
       "discord": "Discord",
       "twitch": "Twitch",
@@ -6686,6 +6688,7 @@
     },
     "builtins": {
       "identity_battlenet": "BattleTag",
+      "identity_riot": "Riot ID",
       "roles": "Roles",
       "stream_pov": "Stream POV",
       "reserve": "On call",

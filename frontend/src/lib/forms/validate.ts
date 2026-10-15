@@ -28,7 +28,8 @@ const DEFAULT_PATTERNS: Record<string, string> = {
   identity_discord: String.raw`^[a-z0-9_.]{2,32}$`,
   identity_twitch: String.raw`^[a-zA-Z0-9_]{4,25}$`,
   identity_boosty: String.raw`^[^#]{2,50}$`,
-  url: String.raw`^https?://.+$`,
+  identity_riot: String.raw`^[^#]{3,16}#[0-9a-z]{3,5}$`,
+  url: String.raw`^https?://.+$`
 };
 
 /** A number as typed by a human: `1,5` is the Russian decimal separator. */

@@ -18,14 +18,15 @@ import type {
  * Values are echoed verbatim rather than re-normalized. `form_schema` in
  * particular travels back exactly as it was read: a policy save must never
  * rewrite questions the screen it came from never displayed. A tournament with
- * no form yet has no schema to echo, so it gets the same default the server
- * would have built.
+ * no form yet has no schema to echo, so its caller must resolve the owner's
+ * identity provider before generating the same default the server would build.
  *
  * `is_open` and `subscription_requirement_json` are absent on purpose: both are
  * server-derived read-only projections, and the schema drops them on the way in.
  */
 export function toRegistrationFormUpsert(
-  form: AdminRegistrationForm | null | undefined
+  form: AdminRegistrationForm | null | undefined,
+  identityProvider?: string
 ): AdminRegistrationFormUpsert {
   return {
     auto_approve: form?.auto_approve ?? false,
@@ -45,6 +46,6 @@ export function toRegistrationFormUpsert(
     // The looser stage for a form saved before the field existed, so loading an
     // old form never silently arms a sign-up wall.
     subscription_stage: form?.subscription_stage === "registration" ? "registration" : "check_in",
-    form_schema: form?.form_schema ?? defaultFormSchema()
+    form_schema: form?.form_schema ?? defaultFormSchema(identityProvider)
   };
 }

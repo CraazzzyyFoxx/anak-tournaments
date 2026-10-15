@@ -7,12 +7,9 @@ identity anchor the OW-rank lookup finds nothing and the balancer rank-delta UI
 stays empty. Since dbarch02 dropped ``registration.user_id``, the anchor is
 ``workspace_member_id`` (member.player_id IS the domain player id).
 
-These tests verify (1) the sync now wires ``ensure_player_identity`` per
-registration (passing the tournament's workspace), (2) that helper's
-link-existing / create-new / member-anchoring / idempotent semantics that the
-fix relies on, and (3) — against a real database — that a row whose answers do
-not validate is skipped WHOLE: it reports its field errors and writes nothing,
-while the rest of the sheet still lands.
+These tests cover identity linking, creation, member anchoring and idempotence.
+Real PostgreSQL checks keep invalid answers atomic; fresh optional-identity
+writers are covered in ``test_registration_identity_db.py``.
 """
 
 from __future__ import annotations
@@ -57,104 +54,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
-from shared.testing.roles import rated_catalog  # noqa: E402
 from src import models  # noqa: E402
-
-
-def _fake_sync_session() -> SimpleNamespace:
-    """A session whose queries return no existing binding / no reuse match.
-
-    The repositories read results as ``.unique().scalars().all()``, so
-    ``unique()`` has to hand the same result object back.
-    """
-    result_mock = Mock()
-    result_mock.unique.return_value = result_mock
-    result_mock.scalars.return_value.all.return_value = []
-    result_mock.scalar_one_or_none.return_value = None
-    added: list[object] = []
-    catalog_result = Mock()
-    catalog_result.all.return_value = list(rated_catalog().values())
-    return SimpleNamespace(
-        execute=AsyncMock(return_value=result_mock),
-        scalars=AsyncMock(return_value=catalog_result),
-        commit=AsyncMock(),
-        refresh=AsyncMock(),
-        flush=AsyncMock(),
-        add=lambda obj: added.append(obj),
-        _added=added,
-    )
-
-
-class SheetSyncIdentityWiringTests(IsolatedAsyncioTestCase):
-    async def test_sync_resolves_player_identity_for_each_registration(self) -> None:
-        feed = SimpleNamespace(
-            id=1,
-            source_url="http://sheet.example",
-            sheet_id=None,
-            gid=None,
-            mapping_config_json={"target": 1},
-            value_mapping_json={"map": 1},
-            header_row_json=None,
-            last_synced_at=None,
-            last_sync_status=None,
-            last_error=None,
-        )
-        tournament = SimpleNamespace(id=77, workspace_id=1, discipline="overwatch")
-        rows = [["BattleTag"], ["Existing#1111"]]
-        parsed = SimpleNamespace(
-            fields={
-                "source_record_key": "k1",
-                "display_name": "Existing",
-                "answers": {"identity_battlenet": ["Existing#1111"]},
-            },
-            errors=[],
-        )
-        session = _fake_sync_session()
-
-        identity_mock = AsyncMock()
-        sheet_sync_service = reg_admin.sheet_sync_service
-
-        with (
-            # Methods on the service itself.
-            patch.object(sheet_sync_service, "require_google_sheet_feed", AsyncMock(return_value=feed)),
-            # Injected ``_common_service`` collaborator.
-            patch.object(sheet_sync_service.common, "get_tournament_grid", AsyncMock(return_value=Mock())),
-            patch.object(sheet_sync_service.common, "ensure_tournament_exists", AsyncMock(return_value=tournament)),
-            patch.object(sheet_sync_service.common, "get_registration_form", AsyncMock(return_value=None)),
-            # Still plain module globals of sheet_sync.
-            patch.multiple(
-                reg_admin,
-                fetch_google_sheet_rows=AsyncMock(return_value=rows),
-                resolve_subrole_catalog=AsyncMock(return_value={}),
-                parse_sheet_row_detailed=Mock(return_value=parsed),
-                build_registration_role_payloads=Mock(return_value=[]),
-                replace_registration_roles=Mock(),
-                serialize_parsed_fields=Mock(return_value={}),
-                emit=AsyncMock(),
-            ),
-            # ``registration_service`` is the singleton sheet_sync imported, so
-            # patching the method here is what the sync actually calls.
-            patch.object(reg_service.registration_service, "ensure_player_identity", identity_mock),
-        ):
-            result = await sheet_sync_service.sync_google_sheet_feed(session, tournament.id)
-
-            identity_mock.assert_awaited_once()
-            call_session, call_registration = identity_mock.await_args.args
-            self.assertIs(call_session, session)
-            self.assertIsInstance(call_registration, reg_admin.models.BalancerRegistration)
-            self.assertEqual(call_registration.primary_handle(SocialProvider.BATTLENET), "Existing#1111")
-            # The sync passes the tournament's workspace so the member anchor
-            # is created in the right workspace without an extra query.
-            self.assertEqual(
-                identity_mock.await_args.kwargs.get("workspace_id"),
-                tournament.workspace_id,
-            )
-
-        self.assertEqual(feed.last_sync_status, "success")
-        session.commit.assert_awaited()
-
-        self.assertEqual(result.created, 1)
-
 
 _WORKSPACE_ID = 1
 _MEMBER_ID = 501

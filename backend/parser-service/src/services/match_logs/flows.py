@@ -12,8 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.clients.s3 import S3Client
 from shared.core import impact as impact_consts
-from shared.core.social import SocialProvider
-from shared.disciplines import discipline
+from shared.disciplines import discipline, identity_provider
 from shared.domain.pick_ban_config import pool_allows
 from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
@@ -187,6 +186,7 @@ class MatchLogProcessor:
         attached_encounter_id: int | None = None,
     ):
         self.tournament: models.Tournament = tournament
+        self.identity_provider = identity_provider(tournament.discipline)
         self.filename: str = name
         # The ingestion row this run came from. Recorded on every match it
         # writes so provenance is a foreign key, not a filename comparison
@@ -405,7 +405,9 @@ class MatchLogProcessor:
         # Resolve every log name across both teams in a single query rather than
         # one (or two) SELECTs per player (review L14).
         all_battle_names = [player for players in teams_raw.values() for player in players]
-        users_by_name = await service.get_users_by_battle_names(session, all_battle_names)
+        users_by_name = await service.get_users_by_battle_names(
+            session, all_battle_names, provider=self.identity_provider
+        )
 
         for team_name, players in teams_raw.items():
             for player in players:
@@ -501,6 +503,7 @@ class MatchLogProcessor:
         session: AsyncSession,
         team: models.Team,
         players_from_log: list[tuple[str, models.User | None]],
+        provider: str,
     ) -> list[tuple[str, LogPlayer | None]]:
         # Resolve all roster players for the team in a single query instead of
         # one (or two) SELECTs per log name (review L14).
@@ -508,7 +511,7 @@ class MatchLogProcessor:
         players_by_name = {
             name: LogPlayer.from_roster(player)
             for name, player in (
-                await service.get_players_by_team_and_battle_names(session, team, battle_names)
+                await service.get_players_by_team_and_battle_names(session, team, battle_names, provider=provider)
             ).items()
         }
 
@@ -1341,7 +1344,7 @@ class MatchLogProcessor:
                     await social_identity_service.upsert(
                         session,
                         user_id=user_to_update.id,
-                        provider=SocialProvider.BATTLENET,
+                        provider=self.identity_provider,
                         username=f"{new_battle_name_from_log}#0000",
                     )
                     await session.commit()
@@ -1386,7 +1389,7 @@ class MatchLogProcessor:
             roster_map_initial = {
                 log_name: player_obj
                 for log_name, player_obj in await self.get_players_by_team_and_battle_name(
-                    session, team_db, players_from_log_tuples
+                    session, team_db, players_from_log_tuples, self.identity_provider
                 )
                 if player_obj
             }

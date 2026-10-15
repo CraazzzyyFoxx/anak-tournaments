@@ -12,20 +12,23 @@ import type {
 } from "@/types/balancer-admin.types";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 import { useTranslations } from "next-intl";
+import { useHubTournamentQuery } from "../hubQueries";
 
 /** Same key the questionnaire builder uses, so the four editors share one read. */
 export const registrationFormQueryKey = (tournamentId: number) =>
   balancerQueryKeys.registrationForm(tournamentId);
 
 export interface RegistrationFormSection {
-  /** The saved form with this section's unsaved edits applied. */
-  value: AdminRegistrationFormUpsert;
+  /** The saved form plus edits; null until a saved schema or its owner resolves. */
+  value: AdminRegistrationFormUpsert | null;
   /** Read-only projections the server resolves; absent until the first save. */
   saved: AdminRegistrationForm | null;
   patch: (next: Partial<AdminRegistrationFormUpsert>) => void;
   dirty: boolean;
   summary: string;
   loading: boolean;
+  error: Error | null;
+  retry: () => void;
   saving: boolean;
   save: () => void;
   discard: () => void;
@@ -48,6 +51,8 @@ export function useRegistrationFormSection(tournamentId: number): RegistrationFo
   const queryClient = useQueryClient();
   const t = useTranslations("adminTournament.registrationForm");
   const [patchState, setPatchState] = useState<Partial<AdminRegistrationFormUpsert>>({});
+  const tournamentQuery = useHubTournamentQuery(tournamentId);
+  const identityProvider = tournamentQuery.data?.identity_provider;
 
   const query = useQuery({
     queryKey: registrationFormQueryKey(tournamentId),
@@ -57,13 +62,15 @@ export function useRegistrationFormSection(tournamentId: number): RegistrationFo
     refetchOnWindowFocus: false
   });
 
-  // `null` rather than `undefined` while loading: the row is created lazily, so
-  // "no form yet" is a normal state this hook has to be able to save from.
+  // An absent row is normal, but only its resolved owner can supply a default.
   const saved = query.data ?? null;
 
   const value = useMemo(
-    () => ({ ...toRegistrationFormUpsert(saved), ...patchState }),
-    [saved, patchState]
+    () =>
+      saved?.form_schema || (query.isSuccess && identityProvider)
+        ? { ...toRegistrationFormUpsert(saved, identityProvider), ...patchState }
+        : null,
+    [saved, query.isSuccess, identityProvider, patchState]
   );
 
   const patch = useCallback((next: Partial<AdminRegistrationFormUpsert>) => {
@@ -71,7 +78,8 @@ export function useRegistrationFormSection(tournamentId: number): RegistrationFo
   }, []);
 
   const mutation = useMutation({
-    mutationFn: () => balancerAdminService.upsertRegistrationForm(tournamentId, value),
+    mutationFn: (payload: AdminRegistrationFormUpsert) =>
+      balancerAdminService.upsertRegistrationForm(tournamentId, payload),
     onSuccess: async (updated) => {
       queryClient.setQueryData(registrationFormQueryKey(tournamentId), updated);
       setPatchState({});
@@ -81,6 +89,7 @@ export function useRegistrationFormSection(tournamentId: number): RegistrationFo
   });
 
   const changed = Object.keys(patchState).length;
+  const error = query.error ?? (value === null ? tournamentQuery.error : null);
 
   return {
     value,
@@ -88,9 +97,16 @@ export function useRegistrationFormSection(tournamentId: number): RegistrationFo
     patch,
     dirty: changed > 0,
     summary: t("changed", { count: changed }),
-    loading: query.isLoading,
+    loading: value === null && !error,
+    error,
+    retry: () => {
+      if (query.isError) void query.refetch();
+      else void tournamentQuery.refetch();
+    },
     saving: mutation.isPending,
-    save: () => mutation.mutate(),
+    save: () => {
+      if (value) mutation.mutate(value);
+    },
     discard: () => setPatchState({})
   };
 }

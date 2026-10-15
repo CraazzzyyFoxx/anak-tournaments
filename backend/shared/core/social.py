@@ -66,6 +66,7 @@ class SocialProvider:
     BOOSTY = "boosty"
     VK = "vk"
     YOUTUBE = "youtube"
+    RIOT = "riot"
 
 
 #: How a raw handle becomes its canonical matching form.
@@ -75,7 +76,8 @@ class SocialProvider:
 #: - ``battletag`` — additionally collapse ``#``-separator spacing and strip
 #:   every remaining space, because a BattleTag pasted out of a chat client
 #:   routinely arrives as ``Player # 1234``.
-NormalizeRule = Literal["casefold", "battletag"]
+#: - ``riot_id`` — collapse spacing around ``#`` only; game names may contain spaces.
+NormalizeRule = Literal["casefold", "battletag", "riot_id"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +111,7 @@ class ProviderSpec:
     can_be_verified: bool = False
     #: Whether a paid subscription on this provider can be resolved.
     supports_subscription: bool = False
-    #: Whether this is a GAME account (Battle.net now; Steam, Riot later). A
+    #: Whether this is a GAME account (Battle.net, Riot). A
     #: game handle identifies the player: registration finds or creates the
     #: domain player by it. Every other provider only ever attaches to a player
     #: found that way, never creates one.
@@ -209,6 +211,17 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             handle_error_key="identity.youtube.format",
             profile_url="https://youtube.com/{handle}",
         ),
+        ProviderSpec(
+            id=SocialProvider.RIOT,
+            label="Riot ID",
+            order=6,
+            # Game name 3-16 characters, spaces allowed, then a 3-5 character alphanumeric tag.
+            # PUUID and OAuth belong to the later Riot API integration.
+            handle_pattern=r"[^#]{3,16}#[0-9a-z]{3,5}",
+            handle_error_key="identity.riot.format",
+            normalize="riot_id",
+            is_game_provider=True,
+        ),
     )
 }
 
@@ -274,18 +287,20 @@ def normalize_social_handle(provider: str, username: str | None) -> str:
     spec = PROVIDERS.get(provider)
     if spec is not None and spec.normalize == "battletag":
         text = _BATTLE_TAG_HASH.sub("#", text).replace(" ", "").strip()
+    elif spec is not None and spec.normalize == "riot_id":
+        text = _BATTLE_TAG_HASH.sub("#", text)
     return text.casefold()
 
 
 def display_social_handle(provider: str, username: str | None) -> str:
     """The handle as STORED for display: trimmed, casing kept.
 
-    A BattleTag additionally loses the spacing a human types around ``#``
+    A BattleTag or Riot ID additionally loses spacing around ``#``
     (``Player # 1234`` -> ``Player#1234``); everything else is only trimmed.
     """
     text = (username or "").strip()
     spec = PROVIDERS.get(provider)
-    if spec is not None and spec.normalize == "battletag":
+    if spec is not None and spec.normalize in ("battletag", "riot_id"):
         text = _BATTLE_TAG_HASH.sub("#", text)
     return text
 
