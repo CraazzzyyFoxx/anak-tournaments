@@ -19,7 +19,11 @@ class PlayerRole(db.Base):
     __tablename__ = "player_role"
     __table_args__ = (
         ForeignKeyConstraint(
-            ["role_id", "dimension_id"], ["catalog.role.id", "catalog.role.dimension_id"], name="fk_player_role_role"
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_player_role_role",
+            deferrable=True,
+            initially="DEFERRED",
         ),
         {"schema": "tournament"},
     )

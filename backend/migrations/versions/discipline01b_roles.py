@@ -339,6 +339,7 @@ _SUB_ROLES = (
 
 
 #: §14.3: one leaf on the rated dimension; flex holds no assignment (D86).
+#: Defer leaf checks so workspace-owned roles and their assignment owners can cascade in either order.
 _PLAYER_ROLES = (
     """
     CREATE TABLE tournament.player_role (
@@ -346,7 +347,7 @@ _PLAYER_ROLES = (
       dimension_id BIGINT NOT NULL,
       role_id      BIGINT NOT NULL,
       PRIMARY KEY (player_id, role_id),
-      CONSTRAINT fk_player_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id)
+      CONSTRAINT fk_player_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED
     )
     """,
     """
@@ -377,7 +378,7 @@ _REGISTRATION_ROLES = (
       ALTER COLUMN role DROP NOT NULL,
       ALTER COLUMN dimension_id SET NOT NULL,
       ALTER COLUMN role_id SET NOT NULL,
-      ADD CONSTRAINT fk_registration_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+      ADD CONSTRAINT fk_registration_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
       ADD CONSTRAINT uq_registration_role_role UNIQUE (registration_id, role_id)
     """,
 )
@@ -401,7 +402,7 @@ _TEAM_MEMBER_ROLES = (
       dimension_id   BIGINT NOT NULL,
       role_id        BIGINT NOT NULL,
       PRIMARY KEY (team_member_id, role_id),
-      CONSTRAINT fk_team_member_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id)
+      CONSTRAINT fk_team_member_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED
     )
     """,
     """
@@ -540,7 +541,7 @@ _TEAM_FORMAT_SCHEMA = (
       PRIMARY KEY (team_format_id, role_id),
       CONSTRAINT fk_frr_dimension FOREIGN KEY (team_format_id, dimension_id)
         REFERENCES roster.team_format_dimension (team_format_id, dimension_id) ON DELETE CASCADE,
-      CONSTRAINT fk_frr_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+      CONSTRAINT fk_frr_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
       CONSTRAINT ck_frr_nonnegative CHECK (hard_min >= 0 AND hard_max >= 0 AND recommended_min >= 0 AND recommended_max >= 0),
       CONSTRAINT ck_frr_hard CHECK (hard_min IS NULL OR hard_max IS NULL OR hard_min <= hard_max),
       CONSTRAINT ck_frr_recommended CHECK (recommended_min IS NULL OR recommended_max IS NULL OR recommended_min <= recommended_max)

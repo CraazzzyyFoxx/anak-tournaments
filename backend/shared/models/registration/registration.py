@@ -441,6 +441,8 @@ class BalancerRegistrationRole(db.TimeStampIntegerMixin):
             ["role_id", "dimension_id"],
             ["catalog.role.id", "catalog.role.dimension_id"],
             name="fk_registration_role_role",
+            deferrable=True,
+            initially="DEFERRED",
         ),
         {"schema": "balancer"},
     )

@@ -75,8 +75,6 @@ class TeamMemberRoleTests(IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         async with self.Session() as s:
-            await s.execute(sa.delete(models.Encounter).where(models.Encounter.id == self.encounter.id))
-            await s.execute(sa.delete(models.Tournament).where(models.Tournament.id == self.tournament_id))
             await s.execute(sa.delete(models.Workspace).where(models.Workspace.id == self.workspace_id))
             await s.execute(sa.delete(models.User).where(models.User.id == self.user_id))
             await s.commit()
@@ -181,3 +179,80 @@ class TeamMemberRoleTests(IsolatedAsyncioTestCase):
                         )
                 assert raised.exception.status_code == 422
                 assert "unknown_role" in raised.exception.detail
+
+    async def test_workspace_deletion_cascades_through_every_sub_role_reference(self) -> None:
+        async with self.Session() as s:
+            leaf = await CatalogRoleRepository().resolve(
+                s, discipline="overwatch", workspace_id=self.workspace_id, dimension=None, code="damage_hitscan"
+            )
+            await participants.place_team(
+                s,
+                self.encounter,
+                slot=1,
+                team_id=None,
+                name="A",
+                seed=None,
+                members=[self._snapshot((("player_role", leaf.code),))],
+            )
+            team = models.Team(tournament_id=self.tournament_id, name="A", balancer_name="A")
+            s.add(team)
+            await s.flush()
+            player = models.Player(
+                tournament_id=self.tournament_id,
+                team_id=team.id,
+                workspace_member_id=self.member_id,
+                name="m",
+                rank=2000,
+                assignments=[models.PlayerRole(dimension_id=leaf.dimension_id, role_id=leaf.id)],
+            )
+            registration = models.BalancerRegistration(
+                tournament_id=self.tournament_id,
+                roles=[models.BalancerRegistrationRole(dimension_id=leaf.dimension_id, role_id=leaf.id)],
+            )
+            team_format = models.RosterTeamFormat(
+                workspace_id=self.workspace_id,
+                discipline="overwatch",
+                name="Sub-role quota",
+                starter_min=1,
+                starter_max=1,
+            )
+            s.add_all([player, registration, team_format])
+            await s.flush()
+            s.add(
+                models.RosterTeamFormatDimension(
+                    team_format_id=team_format.id,
+                    discipline="overwatch",
+                    dimension_id=leaf.dimension_id,
+                    mode="enforced",
+                )
+            )
+            await s.flush()
+            s.add(
+                models.RosterFormatRoleRule(
+                    team_format_id=team_format.id,
+                    dimension_id=leaf.dimension_id,
+                    role_id=leaf.id,
+                    hard_min=1,
+                    hard_max=1,
+                )
+            )
+            await s.commit()
+            # No pre-deletes: the workspace's two cascade paths must meet before role FKs are checked.
+            await s.execute(sa.delete(models.Workspace).where(models.Workspace.id == self.workspace_id))
+            await s.commit()
+            for assignment in (
+                models.EncounterTeamMemberRole,
+                models.PlayerRole,
+                models.BalancerRegistrationRole,
+                models.RosterFormatRoleRule,
+            ):
+                assert (
+                    await s.scalar(
+                        sa.select(sa.func.count()).select_from(assignment).where(assignment.role_id == leaf.id)
+                    )
+                    == 0
+                )
+            assert await s.scalar(sa.select(models.CatalogRole.id).where(models.CatalogRole.id == leaf.id)) is None
+            assert (
+                await s.scalar(sa.select(models.Workspace.id).where(models.Workspace.id == self.workspace_id)) is None
+            )

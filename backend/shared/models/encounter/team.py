@@ -150,6 +150,8 @@ class EncounterTeamMemberRole(db.Base):
             ["role_id", "dimension_id"],
             ["catalog.role.id", "catalog.role.dimension_id"],
             name="fk_team_member_role_role",
+            deferrable=True,
+            initially="DEFERRED",
         ),
         {"schema": "encounter"},
     )

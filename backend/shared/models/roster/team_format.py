@@ -132,7 +132,11 @@ class RosterFormatRoleRule(db.Base):
             name="fk_frr_dimension",
         ),
         ForeignKeyConstraint(
-            ["role_id", "dimension_id"], ["catalog.role.id", "catalog.role.dimension_id"], name="fk_frr_role"
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_frr_role",
+            deferrable=True,
+            initially="DEFERRED",
         ),
         CheckConstraint(
             "hard_min >= 0 AND hard_max >= 0 AND recommended_min >= 0 AND recommended_max >= 0",

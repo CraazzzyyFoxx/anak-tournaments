@@ -63,8 +63,8 @@ class EncounterWriterCase(IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         async with self.Session() as s:
-            # Remove snapshots before their workspace-owned catalog leaves, then members before users.
-            await s.execute(sa.delete(Encounter).where(Encounter.workspace_id.in_(self.workspaces)))
+            # Workspaces first: a member row anchors the roster snapshots, and
+            # the player behind it cannot go while the member is still there.
             await s.execute(sa.delete(Workspace).where(Workspace.id.in_(self.workspaces)))
             await s.execute(sa.delete(User).where(User.id.in_(self.users)))
             await s.commit()
