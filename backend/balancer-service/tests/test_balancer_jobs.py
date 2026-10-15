@@ -317,6 +317,41 @@ class CreateJobTests(IsolatedAsyncioTestCase):
         self.assertEqual(exc_info.exception.detail, "API key scope required: team.create")
         gate.lease.assert_not_awaited()
 
+    async def test_upload_rejects_tournament_from_another_workspace(self) -> None:
+        gate = _noop_quota()
+        store = SimpleNamespace(create_job=AsyncMock())
+        with (
+            patch(f"{JOBS}.get_job_store", return_value=store),
+            patch(f"{JOBS}.quota", gate),
+            patch(
+                f"{JOBS}._payload_parser",
+                SimpleNamespace(
+                    parse_player_data=AsyncMock(return_value={"players": {}}),
+                    parse_config_overrides=lambda value: None,
+                ),
+            ),
+            patch(
+                f"{JOBS}.TournamentRepository",
+                return_value=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(id=10, workspace_id=88))),
+            ),
+            patch(f"{JOBS}.tournament_format", AsyncMock()) as load_format,
+            self.assertRaises(HTTPException) as exc_info,
+        ):
+            await jobs.create_job(
+                session=SimpleNamespace(),
+                uploaded_file=SimpleNamespace(filename="players.json", size=10),
+                raw_config=None,
+                workspace_id=77,
+                user=_api_key_user(scopes=["team.create"]),
+                broker=SimpleNamespace(),
+                tournament_id=10,
+            )
+        self.assertEqual(exc_info.exception.status_code, 404)
+        self.assertEqual(exc_info.exception.detail, "Tournament not found")
+        load_format.assert_not_awaited()
+        gate.lease.assert_not_awaited()
+        store.create_job.assert_not_awaited()
+
 
 class CreateJobFormatIntegrationTests(IsolatedAsyncioTestCase):
     if sys.platform == "win32":

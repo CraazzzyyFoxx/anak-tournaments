@@ -90,10 +90,14 @@ class TeamService:
         )
 
     async def get_player_by_user_and_role(
-        self, session: AsyncSession, user_id: int, role: str | None, entities: list[str]
+        self, session: AsyncSession, user_id: int, role: str | None, entities: list[str], *, discipline: str
     ) -> typing.Sequence[models.Player]:
         return await self.player_repo.list_by_user_and_role(
-            session, user_id=user_id, role=role, options=PlayerRepository.player_entities(entities)
+            session,
+            user_id=user_id,
+            role=role,
+            discipline=discipline,
+            options=PlayerRepository.player_entities(entities),
         )
 
     async def create_player(

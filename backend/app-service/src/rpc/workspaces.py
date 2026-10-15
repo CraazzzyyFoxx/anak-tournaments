@@ -918,6 +918,17 @@ def register(broker: Any, logger: Any) -> None:
             await save_workspace_format(
                 session, workspace_id=workspace.id, discipline=discipline, team_format=body.to_domain(discipline)
             )
+            await record_admin_audit(
+                session,
+                action="workspace.team_format_set",
+                actor=c.actor(data),
+                data=data,
+                workspace_id=workspace.id,
+                entity_type="workspace",
+                entity_id=workspace.id,
+                entity_label=workspace.slug,
+                after={"discipline": discipline, **body.model_dump(mode="json")},
+            )
             await session.commit()
             team_format, source = await workspace_format(session, workspace_id=workspace.id, discipline=discipline)
             return await team_format_read(session, team_format, source=source, workspace_id=workspace.id)

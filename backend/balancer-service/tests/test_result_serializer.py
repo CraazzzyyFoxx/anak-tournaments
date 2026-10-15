@@ -130,16 +130,34 @@ def test_owner_format_gates_solver_subclasses_and_keeps_them_in_results() -> Non
     )
     assert [player.subclasses for player in context.players] == [{"damage": "hitscan"}, {}]
     assert context.config.sub_role_collision_weight == 24.0
-    disabled = _prepare_balance_context(
-        data,
-        {"use_captains": False},
-        None,
-        {"damage": 2},
-        team_format=replace(team_format, rules=()),
-        ontology=ontology,
-    )
-    assert disabled.config.sub_role_collision_weight == 0
-    assert all(not player.subclasses for player in disabled.players)
+    for rules in ((), (FormatRule("player_role", "damage_hitscan", hard_max=2),)):
+        ungated = _prepare_balance_context(
+            data,
+            {"use_captains": False, "sub_role_collision_weight": 17.0},
+            None,
+            {"damage": 2},
+            team_format=replace(team_format, rules=rules),
+            ontology=ontology,
+        )
+        assert ungated.config.sub_role_collision_weight == 17.0
+        assert [player.subclasses for player in ungated.players] == [
+            {"damage": "hitscan"},
+            {"damage": "projectile"},
+        ]
+    for rule in (
+        FormatRule("player_role", "damage_hitscan", recommended_max=2),
+        FormatRule("player_role", "damage_hitscan", recommended_min=1),
+    ):
+        disabled = _prepare_balance_context(
+            data,
+            {"use_captains": False},
+            None,
+            {"damage": 2},
+            team_format=replace(team_format, rules=(rule,)),
+            ontology=ontology,
+        )
+        assert disabled.config.sub_role_collision_weight == 0
+        assert all(not player.subclasses for player in disabled.players)
 
     class Backend:
         name = "test"

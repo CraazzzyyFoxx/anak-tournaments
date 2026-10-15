@@ -109,24 +109,30 @@ def _prepare_balance_context(
     all_players = load_players_from_dict(input_data, mask)
     original_subclasses = {}
     if team_format is not None and ontology is not None:
-        penalized = {
-            rule.role
+        recommendations = [
+            rule
             for rule in team_format.rules
-            if rule.dimension == ontology.rated.code
-            and team_format.mode(rule.dimension) != "off"
-            and rule.recommended_max is not None
-            and rule.recommended_max <= 1
+            if (rule.recommended_min is not None or rule.recommended_max is not None)
             and ontology.node(rule.dimension, rule.role).parent_id is not None
-        }
-        if not penalized:
-            config.sub_role_collision_weight = 0
-        for player in all_players:
-            original_subclasses[player.uuid] = player.subclasses
-            player.subclasses = {
-                role: subtype
-                for role, subtype in player.subclasses.items()
-                if workspace_sub_role_code(role, subtype) in penalized
+        ]
+        if recommendations:
+            penalized = {
+                rule.role
+                for rule in recommendations
+                if rule.dimension == ontology.rated.code
+                and team_format.mode(rule.dimension) != "off"
+                and rule.recommended_max is not None
+                and rule.recommended_max <= 1
             }
+            if not penalized:
+                config.sub_role_collision_weight = 0
+            for player in all_players:
+                original_subclasses[player.uuid] = player.subclasses
+                player.subclasses = {
+                    role: subtype
+                    for role, subtype in player.subclasses.items()
+                    if workspace_sub_role_code(role, subtype) in penalized
+                }
     needed_roles = [role for role, count in mask.items() if count > 0]
     valid_players, role_capable_counts = _filter_valid_players_and_role_counts(all_players, needed_roles)
 

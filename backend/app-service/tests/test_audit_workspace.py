@@ -158,6 +158,37 @@ class _AuditCase(IsolatedAsyncioTestCase):
         self.assertEqual(["add", "commit"], session.events[-2:], f"audit row not inside the mutation: {session.events}")
 
 
+class TeamFormatAuditTests(_AuditCase):
+    async def test_team_format_put_records_the_authorized_workspace_before_commit(self) -> None:
+        session = _RecordingSession()
+        workspace = _workspace()
+        body = {
+            "name": "Open",
+            "starter_min": 5,
+            "starter_max": 5,
+            "dimensions": [{"dimension": "player_role", "mode": "off"}],
+            "rules": [],
+        }
+        handler = _handler(workspaces_rpc, "rpc.app.workspaces.team_format_put")
+        with (
+            patch.object(workspaces_rpc, "_SF", lambda: session),
+            patch.object(workspaces_rpc.workspace_service, "get_by_id", AsyncMock(return_value=workspace)),
+            patch.object(workspaces_rpc, "save_workspace_format", AsyncMock()),
+            patch.object(workspaces_rpc, "workspace_format", AsyncMock(return_value=(None, "workspace"))),
+            patch.object(workspaces_rpc, "team_format_read", AsyncMock(return_value=body)),
+        ):
+            envelope = await handler(
+                {"workspace_id": _WORKSPACE_ID, "discipline": "overwatch", "identity": _IDENTITY, "payload": body},
+                MagicMock(),
+            )
+        self.assertIn("data", envelope)
+        row = self.assert_one_row(session, "workspace.team_format_set")
+        self.assert_staged_before_commit(session)
+        self.assertEqual(row.after_json["discipline"], "overwatch")
+        self.assertEqual(row.after_json["name"], "Open")
+        self.assertEqual(row.after_json["starter_max"], 5)
+
+
 class SetCustomDomainAuditTests(_AuditCase):
     def setUp(self) -> None:
         super().setUp()

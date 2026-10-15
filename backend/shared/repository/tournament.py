@@ -378,12 +378,14 @@ class PlayerRepository(BaseRepository[models.Player]):
         *,
         user_id: int,
         role: str | None,
+        discipline: str,
         options: Sequence[_AbstractLoad] | None = None,
     ) -> Sequence[models.Player]:
         query = self._apply_options(
             sa.select(models.Player).where(
                 models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
                 models.Player.role == role,
+                models.Player.tournament.has(models.Tournament.discipline == discipline),
             ),
             options,
         )

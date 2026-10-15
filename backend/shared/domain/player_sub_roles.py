@@ -8,7 +8,6 @@ from shared.domain.roles import Ontology
 
 # OW rank and Discord consumers retain these codes until P3 moves ranks.
 REGISTRATION_ROLE_CODES: tuple[str, ...] = ("tank", "damage", "support")
-REGISTRATION_TO_CANONICAL: dict[str, str] = {role: role for role in REGISTRATION_ROLE_CODES}
 
 
 def normalize_role(role: Any) -> str | None:
@@ -64,18 +63,8 @@ def catalog_slugs(
     return slugs
 
 
-def registration_to_canonical_role(role: Any) -> str | None:
-    """Normalize any role spelling to its canonical code, ``None`` if unrecognised.
-
-    Registration and the catalog share one vocabulary, so this no longer
-    translates; it validates. ``flex`` passes through -- a registration may be
-    role-less even though the sub-role catalog has no flex rows.
-    """
-    return normalize_role(role)
-
-
 def canonical_to_registration_role(role: Any) -> str | None:
-    """Same, narrowed to the three roles a registration can name.
+    """Normalize a role, narrowed to the three roles a registration can name.
 
     ``None`` for ``flex`` and for anything unrecognised, which is what the
     sub-role catalog lookups need: flex has no catalog to index.

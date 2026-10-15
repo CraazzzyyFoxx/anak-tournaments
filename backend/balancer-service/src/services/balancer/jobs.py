@@ -150,7 +150,7 @@ async def _owner_format_context(session, workspace_id: int, tournament_id: int |
         team_format, _ = await workspace_format(session, workspace_id=workspace_id, discipline="overwatch")
     else:
         tournament = await TournamentRepository().get(session, tournament_id)
-        if tournament is None:
+        if tournament is None or tournament.workspace_id != workspace_id:
             raise HTTPException(status_code=404, detail="Tournament not found")
         team_format, _ = await tournament_format(session, tournament)
     ontology = await CatalogRoleRepository().ontology(

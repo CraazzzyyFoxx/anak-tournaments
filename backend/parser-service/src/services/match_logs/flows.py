@@ -1210,7 +1210,7 @@ class MatchLogProcessor:
         )
 
         known_profiles = await team_service.get_player_by_user_and_role(
-            session, sub_user.id, player_to_be_replaced.role, []
+            session, sub_user.id, player_to_be_replaced.role, [], discipline=self.tournament.discipline
         )
         profile = max(known_profiles, key=lambda p: p.tournament_id or 0, default=None)
         rank = profile.rank if profile else player_to_be_replaced.rank
