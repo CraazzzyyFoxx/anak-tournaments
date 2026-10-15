@@ -29,6 +29,7 @@ export interface DivisionGridVersion {
 export interface DivisionGridEntity {
   id: number;
   workspace_id: number | null;
+  discipline: string;
   slug: string;
   name: string;
   description: string | null;
@@ -186,7 +187,8 @@ interface DivisionGridPortableMapping {
 }
 
 export interface DivisionGridPortableDocument {
-  schema_version: "division-grid/v1";
+  schema_version: "division-grid/v2";
+  discipline: string;
   slug: string;
   name: string;
   description: string | null;
@@ -198,6 +200,23 @@ export interface DivisionGridPortableDocument {
   }>;
   mappings: DivisionGridPortableMapping[];
 }
+
+/** User-held v1 files carry the old native-range names and have no discipline. */
+export type DivisionGridPortableImportDocument =
+  | DivisionGridPortableDocument
+  | (Omit<DivisionGridPortableDocument, "schema_version" | "discipline" | "versions"> & {
+      schema_version: "division-grid/v1";
+      versions: Array<
+        Omit<DivisionGridPortableDocument["versions"][number], "tiers"> & {
+          tiers: Array<
+            Omit<DivisionTier, "native_rank_min" | "native_rank_max"> & {
+              ow_rank_min?: number | null;
+              ow_rank_max?: number | null;
+            }
+          >;
+        }
+      >;
+    });
 
 /** Trust tier of a workspace. New self-service workspaces start `unverified`
  * and stay off the public home-page directory until a superuser reviews them;

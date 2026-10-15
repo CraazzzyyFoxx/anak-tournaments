@@ -37,6 +37,13 @@ class DivisionGrid(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
+    discipline: Mapped[str] = mapped_column(
+        String(32),
+        ForeignKey("catalog.discipline.code", name="fk_division_grid_discipline"),
+        nullable=False,
+        default="overwatch",
+        server_default="overwatch",
+    )
     slug: Mapped[str] = mapped_column(String(), nullable=False)
     name: Mapped[str] = mapped_column(String(), nullable=False)
     description: Mapped[str | None] = mapped_column(String(), nullable=True)

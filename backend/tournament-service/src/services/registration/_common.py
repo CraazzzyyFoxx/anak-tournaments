@@ -15,9 +15,7 @@ What stays local is the WRITE side (``apply_all_roles`` /
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import get_builtin_status_values, is_balancer_status_excluded
 from shared.core import http_status as status
@@ -27,6 +25,10 @@ from shared.domain.roster import FlexRoleMode, PlayerRoster
 from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, HeroCatalog, build_hero_entries
 from shared.repository import RegistrationFormRepository, TournamentRepository
 from shared.schemas.role import RoleRef
+from shared.services.division_grid.access import (
+    get_effective_division_grid_version,
+    runtime_fallback_grid,
+)
 from shared.services.ontology import resolve_form_role
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.roster import roster_engine
@@ -45,18 +47,6 @@ VALID_BALANCER_STATUSES = get_builtin_status_values("balancer")
 AUTO_MANAGED_BALANCER_STATUSES = frozenset({"incomplete", "ready"})
 NOT_ADDED_BALANCER_STATUS = "not_in_balancer"
 EXCLUDED_BALANCER_STATUS = "excluded"
-
-
-def get_tournament_grid_from_rows(
-    tournament_row: models.Tournament | None,
-    workspace_row: models.Workspace | None,
-    fallback_version: models.DivisionGridVersion | None = None,
-) -> DivisionGrid:
-    if tournament_row and tournament_row.division_grid_version is not None:
-        return load_runtime_grid(tournament_row.division_grid_version)
-    if workspace_row and workspace_row.default_division_grid_version is not None:
-        return load_runtime_grid(workspace_row.default_division_grid_version)
-    return load_runtime_grid(fallback_version)
 
 
 def _role_row(
@@ -323,33 +313,14 @@ class RegistrationCommonService:
         )
 
     async def get_tournament_grid(self, session: AsyncSession, tournament_id: int) -> DivisionGrid:
-        # Analytical, not CRUD: the fallback is a join + order + limit across two
-        # tables, and the second read returns a (Tournament, Workspace) pair with
-        # nested eager loads. Neither fits behind a repository method.
-        fallback_version = await session.scalar(
-            sa.select(models.DivisionGridVersion)
-            .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
-            .options(selectinload(models.DivisionGridVersion.tiers))
-            .where(models.DivisionGrid.workspace_id.is_(None))
-            .order_by(models.DivisionGridVersion.id.asc())
-            .limit(1)
+        """Use the scoped full model so sheets and autofill retain native ranges."""
+        tournament = await self.ensure_tournament_exists(session, tournament_id)
+        version = await get_effective_division_grid_version(
+            session, tournament.workspace_id, tournament_id=tournament_id, discipline=tournament.discipline
         )
-        result = await session.execute(
-            sa.select(models.Tournament, models.Workspace)
-            .join(models.Workspace, models.Workspace.id == models.Tournament.workspace_id)
-            .options(
-                selectinload(models.Tournament.division_grid_version).selectinload(models.DivisionGridVersion.tiers),
-                selectinload(models.Workspace.default_division_grid_version).selectinload(
-                    models.DivisionGridVersion.tiers
-                ),
-            )
-            .where(models.Tournament.id == tournament_id)
-        )
-        row = result.first()
-        if row is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-        tournament_row, workspace_row = row
-        return get_tournament_grid_from_rows(tournament_row, workspace_row, fallback_version)
+        if version is None or not version.tiers:
+            return runtime_fallback_grid(tournament.discipline)
+        return load_runtime_grid(version)
 
     async def ensure_tournament_exists(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
         tournament = await self.tournament_repo.get(session, tournament_id)

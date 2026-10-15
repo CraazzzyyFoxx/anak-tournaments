@@ -796,6 +796,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint workspace_id FK "nullable"
+        varchar(32) discipline FK
         varchar slug
         varchar name
         varchar description "nullable"
@@ -869,6 +870,7 @@ erDiagram
     }
 
     AUTH_USER |o--o{ PUBLIC_DIVISION_GRID_IMPORT_JOB : "requested_by_user_id"
+    CATALOG_DISCIPLINE ||--o{ PUBLIC_DIVISION_GRID : "discipline"
     PUBLIC_DIVISION_GRID |o--o{ PUBLIC_DIVISION_GRID : "source_grid_id"
     PUBLIC_DIVISION_GRID ||--o{ PUBLIC_DIVISION_GRID_VERSION : "grid_id"
     PUBLIC_DIVISION_GRID_MAPPING ||--o{ PUBLIC_DIVISION_GRID_MAPPING_RULE : "mapping_id"

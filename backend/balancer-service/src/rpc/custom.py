@@ -479,7 +479,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         roles=list(rated_role_codes(game.discipline)),
         order=MIX_ORDER,
         author_user_id=game.host_user_id,
-        grid=await get_effective_division_grid(session, game.workspace_id),
+        grid=await get_effective_division_grid(session, game.workspace_id, discipline=game.discipline),
         layers=layer_rows,
     )
     author_ranks = (

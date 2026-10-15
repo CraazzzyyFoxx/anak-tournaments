@@ -14,6 +14,7 @@ from shared.repository import (
     DivisionGridVersionRepository,
     WorkspaceRepository,
 )
+from shared.services.ontology import assert_discipline_enabled
 from src import models, schemas
 from src.services.division_grid.marketplace import MarketplaceService, marketplace_service
 from src.services.division_grid.service import DivisionGridService, division_grid_service
@@ -79,6 +80,7 @@ def build_portable_document(
         )
 
     return schemas.DivisionGridPortableDocument(
+        discipline=grid.discipline,
         slug=grid.slug,
         name=grid.name,
         description=grid.description,
@@ -131,6 +133,10 @@ class PortableService:
         request: schemas.DivisionGridPortableImportRequest,
     ) -> models.DivisionGrid:
         document = request.document
+        workspace = await self.workspace_repo.get(session, workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        assert_discipline_enabled(workspace, document.discipline)
         version_numbers = [version.version for version in document.versions]
         if len(version_numbers) != len(set(version_numbers)):
             raise HTTPException(status_code=400, detail="Portable grid contains duplicate version numbers")
@@ -151,6 +157,7 @@ class PortableService:
             self.grid_repo.select()
             .where(
                 models.DivisionGrid.workspace_id == workspace_id,
+                models.DivisionGrid.discipline == document.discipline,
                 provenance_filter,
                 models.DivisionGrid.source_fingerprint == fingerprint,
                 models.DivisionGrid.archived_at.is_(None),
@@ -166,6 +173,7 @@ class PortableService:
                 self.grid_repo.select()
                 .where(
                     models.DivisionGrid.workspace_id == workspace_id,
+                    models.DivisionGrid.discipline == document.discipline,
                     models.DivisionGrid.source_key == source_key,
                     models.DivisionGrid.archived_at.is_(None),
                 )
@@ -180,6 +188,7 @@ class PortableService:
             session,
             models.DivisionGrid(
                 workspace_id=workspace_id,
+                discipline=document.discipline,
                 slug=target_slug,
                 name=document.name,
                 description=document.description,

@@ -1,0 +1,323 @@
+"""Grid creation, ownership and portable files exercised through real service consumers."""
+
+from __future__ import annotations
+
+import asyncio
+import copy
+import sys
+import uuid
+from datetime import date
+from unittest import IsolatedAsyncioTestCase
+
+import pytest
+import sqlalchemy as sa
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from shared.core.errors import BaseAPIException
+from shared.services.division_grid import cache
+from shared.services.division_grid.access import get_effective_division_grid
+from shared.services.ontology import project_disciplines
+from shared.testing import create_test_async_engine
+from shared.testing.cache import configure_test_cache
+from shared.testing.db import ensure_test_postgres
+from src import models, schemas
+from src.services.admin.tournament import AdminTournamentService
+from src.services.division_grid.marketplace import MarketplaceService
+from src.services.division_grid.portable import PortableService
+from src.services.division_grid.service import DivisionGridService
+from src.services.registration._common import RegistrationCommonService
+
+_TIER = {
+    "slug": "one",
+    "number": 9,
+    "name": "Organiser rank",
+    "sort_order": 0,
+    "rank_min": 0,
+    "rank_max": None,
+    "icon_url": "/tier.png",
+}
+
+
+def document(*, version="division-grid/v1", discipline=None, **bounds):
+    result = {
+        "schema_version": version,
+        "slug": "portable",
+        "name": "Portable",
+        "versions": [{"version": 1, "label": "v1", "status": "published", "tiers": [{**_TIER, **bounds}]}],
+    }
+    if discipline is not None:
+        result["discipline"] = discipline
+    return result
+
+
+@pytest.mark.parametrize(
+    "versions",
+    [
+        None,
+        7,
+        "bad",
+        {},
+        [None],
+        [7],
+        [{"version": 1, "label": "v1", "status": "published", "tiers": None}],
+        [{"version": 1, "label": "v1", "status": "published", "tiers": 7}],
+        [{"version": 1, "label": "v1", "status": "published", "tiers": [None]}],
+    ],
+)
+def test_malformed_legacy_containers_are_validation_errors(versions):
+    raw = document()
+    raw["versions"] = versions
+    with pytest.raises(ValidationError):
+        schemas.DivisionGridPortableDocument.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    "bounds",
+    [
+        {"ow_rank_min": 123, "native_rank_min": 456},
+        {"ow_rank_max": None, "native_rank_max": 456},
+        {"ow_rank_max": 456, "native_rank_max": 123},
+    ],
+)
+def test_conflicting_legacy_and_native_bounds_are_not_discarded(bounds):
+    with pytest.raises(ValidationError, match="conflicting v1 tier bounds"):
+        schemas.DivisionGridPortableDocument.model_validate(document(**bounds))
+
+
+def test_legacy_translation_preserves_input_and_equal_bounds():
+    raw = document(ow_rank_min=123, native_rank_min=123, ow_rank_max=456)
+    before = copy.deepcopy(raw)
+    parsed = schemas.DivisionGridPortableDocument.model_validate(raw)
+    assert raw == before
+    assert (parsed.schema_version, parsed.discipline) == ("division-grid/v2", "overwatch")
+    assert (parsed.versions[0].tiers[0].native_rank_min, parsed.versions[0].tiers[0].native_rank_max) == (123, 456)
+    assert "ow_rank" not in parsed.model_dump_json()
+    with pytest.raises(ValidationError):
+        schemas.DivisionGridPortableDocument.model_validate(document(discipline="lol"))
+
+
+class GridOwnerServiceTests(IsolatedAsyncioTestCase):
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def asyncSetUp(self):
+        ensure_test_postgres()
+        configure_test_cache()
+        self.engine = create_test_async_engine()
+        self.connection = await self.engine.connect()
+        self.transaction = await self.connection.begin()
+        # Owner creation commits internally; keep it inside this rollback-only PostgreSQL transaction.
+        self.session = AsyncSession(
+            bind=self.connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
+        )
+        await project_disciplines(self.session)
+        self.tag = uuid.uuid4().hex
+        self.workspace = models.Workspace(slug=self.tag, name=self.tag, disciplines_enabled=["overwatch", "lol"])
+        self.session.add(self.workspace)
+        await self.session.flush()
+        self.workspace_id = self.workspace.id
+        self.grids = DivisionGridService()
+        self.portable = PortableService()
+        self.admin = AdminTournamentService()
+
+    async def asyncTearDown(self):
+        await cache.invalidate_workspace(self.workspace_id)
+        await self.session.close()
+        await self.transaction.rollback()
+        remaining = await self.connection.scalar(
+            sa.select(sa.func.count()).select_from(models.Workspace).where(models.Workspace.id == self.workspace_id)
+        )
+        self.assertEqual(remaining, 0)
+        await self.connection.close()
+        await self.engine.dispose()
+
+    async def grid(self, discipline, *, tiered=True):
+        grid = await self.grids.create_grid(
+            self.session,
+            self.workspace.id,
+            schemas.DivisionGridCreate(slug=uuid.uuid4().hex, name=discipline, discipline=discipline),
+        )
+        if discipline == "lol" and tiered:
+            version = await self.grids.create_version(
+                self.session,
+                self.workspace.id,
+                grid.id,
+                schemas.DivisionGridVersionCreate(
+                    label="LoL",
+                    tiers=[schemas.DivisionGridTierWrite(**_TIER, native_rank_min=123, native_rank_max=456)],
+                ),
+            )
+            version.status = "published"
+            await self.session.flush()
+            await self.session.refresh(grid)
+        return grid
+
+    def tournament_data(self, **kwargs):
+        return schemas.TournamentCreate(
+            workspace_id=self.workspace.id,
+            name=uuid.uuid4().hex,
+            start_date=date.today(),
+            end_date=date.today(),
+            discipline="lol",
+            **kwargs,
+        )
+
+    async def test_create_starts_lol_empty_and_disabled_creation_writes_nothing(self):
+        grid = await self.grid("lol", tiered=False)
+        self.assertEqual((grid.discipline, grid.versions), ("lol", []))
+        self.workspace.disciplines_enabled = ["overwatch"]
+        await self.session.flush()
+        with self.assertRaises(BaseAPIException) as caught:
+            await self.grid("lol")
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(
+            await self.session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.DivisionGrid)
+                .where(models.DivisionGrid.workspace_id == self.workspace.id)
+            ),
+            1,
+        )
+
+    async def test_tournament_refusal_leaves_no_owner_and_accepts_only_tiered_own_grid(self):
+        ow = await self.grid("overwatch")
+        self.workspace.default_division_grid_version_id = ow.versions[0].id
+        empty = await self.grid("lol", tiered=False)
+        empty_version = models.DivisionGridVersion(grid_id=empty.id, version=1, label="Empty", status="published")
+        self.session.add(empty_version)
+        await self.session.flush()
+        for pin, code in (
+            (None, "division_grid_required"),
+            (ow.versions[0].id, "division_grid_discipline_mismatch"),
+            (empty_version.id, "division_grid_required"),
+        ):
+            with self.assertRaises(BaseAPIException) as caught:
+                await self.admin.create_tournament(self.session, self.tournament_data(division_grid_version_id=pin))
+            self.assertEqual(caught.exception.status_code, 422)
+            self.assertIn(code, str(caught.exception.detail))
+            self.assertEqual(
+                await self.session.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(models.Tournament)
+                    .where(models.Tournament.workspace_id == self.workspace.id)
+                ),
+                0,
+            )
+        lol = await self.grid("lol")
+        tournament = await self.admin.create_tournament(
+            self.session, self.tournament_data(division_grid_version_id=lol.versions[0].id)
+        )
+        self.assertEqual(tournament.division_grid_version_id, lol.versions[0].id)
+        with self.assertRaises(BaseAPIException):
+            await self.admin.update_tournament(
+                self.session, tournament.id, schemas.TournamentUpdate(division_grid_version_id=ow.versions[0].id)
+            )
+        self.assertEqual(tournament.division_grid_version_id, lol.versions[0].id)
+        runtime = await RegistrationCommonService().get_tournament_grid(self.session, tournament.id)
+        self.assertEqual(runtime.resolve_division(200).number, 9)
+        self.assertEqual(runtime.resolve_division_from_native_rank(123).number, 9)
+
+    async def test_registration_model_read_uses_scoped_default_after_cache_warming(self):
+        ow = await self.grid("overwatch")
+        lol = await self.grid("lol")
+        self.workspace.default_division_grid_version_id = ow.versions[0].id
+        tournament = models.Tournament(
+            workspace_id=self.workspace.id, name="Historical LoL", slug=self.tag, discipline="lol"
+        )
+        self.session.add(tournament)
+        await self.session.flush()
+        await get_effective_division_grid(self.session, self.workspace.id, discipline="overwatch")
+        with self.assertRaises(BaseAPIException) as caught:
+            await RegistrationCommonService().get_tournament_grid(self.session, tournament.id)
+        self.assertIn("division_grid_required", str(caught.exception.detail))
+        await self.grids.activate_version(self.session, workspace=self.workspace, version_id=lol.versions[0].id)
+        runtime = await RegistrationCommonService().get_tournament_grid(self.session, tournament.id)
+        self.assertEqual(runtime.resolve_division_from_native_rank(456).number, 9)
+
+    async def test_activation_refuses_disabled_game_and_ignores_other_games_mapping_sources(self):
+        ow = await self.grid("overwatch")
+        lol = await self.grid("lol")
+        self.session.add(
+            models.Tournament(
+                workspace_id=self.workspace.id, name="OW", slug=self.tag, division_grid_version_id=ow.versions[0].id
+            )
+        )
+        await self.session.flush()
+        self.workspace.disciplines_enabled = ["overwatch"]
+        with self.assertRaises(BaseAPIException) as caught:
+            await self.grids.activate_version(self.session, workspace=self.workspace, version_id=lol.versions[0].id)
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIsNone(self.workspace.default_division_grid_version_id)
+        self.workspace.disciplines_enabled = ["overwatch", "lol"]
+        await self.grids.activate_version(self.session, workspace=self.workspace, version_id=lol.versions[0].id)
+        self.assertEqual(self.workspace.default_division_grid_version_id, lol.versions[0].id)
+
+    async def test_postgres_create_use_clone_resolve_and_portable_import_smoke(self):
+        lol = await self.grid("lol")
+        cloned = await self.grids.clone_version(self.session, lol.versions[0].id)
+        self.assertEqual((cloned.grid.discipline, cloned.tiers[0].native_rank_max), ("lol", 456))
+        await self.grids.activate_version(self.session, workspace=self.workspace, version_id=lol.versions[0].id)
+        runtime = await get_effective_division_grid(self.session, self.workspace.id, discipline="lol")
+        self.assertEqual(runtime.resolve_division(200).number, 9)
+        # Export is a separate request in production: reload the versions after cloning in this shared transaction.
+        await self.session.refresh(lol, ["versions"])
+        exported = await self.portable.export_portable_document(self.session, grid_id=lol.id)
+        self.assertEqual((exported.schema_version, exported.discipline), ("division-grid/v2", "lol"))
+        imported = await self.portable.import_portable_document(
+            self.session,
+            workspace_id=self.workspace.id,
+            request=schemas.DivisionGridPortableImportRequest(document=exported, mode="copy"),
+        )
+        self.assertEqual((imported.discipline, len(imported.versions)), ("lol", 2))
+        legacy = await self.portable.import_portable_document(
+            self.session,
+            workspace_id=self.workspace.id,
+            request=schemas.DivisionGridPortableImportRequest(document=document(ow_rank_min=123, ow_rank_max=456)),
+        )
+        self.assertEqual((legacy.discipline, legacy.versions[0].tiers[0].native_rank_min), ("overwatch", 123))
+        print(
+            "PostgreSQL create/use/clone/resolve/import: LoL rank200=division9; native bounds123..456 retained; v1 imported as OW, exports v2; rollback asserted in teardown"
+        )
+
+    async def test_portable_and_marketplace_refuse_disabled_discipline_before_writes(self):
+        lol = await self.grid("lol")
+        target = models.Workspace(slug=self.tag + "-target", name="OW only", disciplines_enabled=["overwatch"])
+        self.session.add(target)
+        await self.session.flush()
+        with self.assertRaises(BaseAPIException):
+            await self.portable.import_portable_document(
+                self.session,
+                workspace_id=target.id,
+                request=schemas.DivisionGridPortableImportRequest(
+                    document=document(version="division-grid/v2", discipline="lol")
+                ),
+            )
+        with self.assertRaises(BaseAPIException):
+            await MarketplaceService().import_division_grids(
+                self.session,
+                None,
+                target_workspace=target,
+                source_workspace=self.workspace,
+                source_grids=[lol],
+                include_icons=False,
+            )
+        self.assertEqual(
+            await self.session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.DivisionGrid)
+                .where(models.DivisionGrid.workspace_id == target.id)
+            ),
+            0,
+        )
+        target.disciplines_enabled = ["overwatch", "lol"]
+        result = await MarketplaceService().import_division_grids(
+            self.session,
+            None,
+            target_workspace=target,
+            source_workspace=self.workspace,
+            source_grids=[lol],
+            include_icons=False,
+        )
+        copied = await self.grids.get_grid_by_id(self.session, result.imported_grids[0].target_grid_id)
+        self.assertEqual((copied.discipline, copied.versions[0].tiers[0].native_rank_max), ("lol", 456))

@@ -196,7 +196,8 @@ def test_portable_document_has_versioned_round_trip_contract() -> None:
         mappings=[],
     )
 
-    assert document.schema_version == "division-grid/v1"
+    assert document.schema_version == "division-grid/v2"
+    assert document.discipline == "overwatch"
     assert document.versions[0].tiers[0].slug == "champion-1"
 
 
@@ -274,7 +275,7 @@ def test_activation_readiness_requires_complete_mappings_from_used_versions() ->
         target = SimpleNamespace(
             id=30,
             status="published",
-            grid=SimpleNamespace(workspace_id=4),
+            grid=SimpleNamespace(workspace_id=4, discipline="overwatch"),
         )
         src10 = SimpleNamespace(
             id=10,
@@ -333,7 +334,7 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
         target = SimpleNamespace(
             id=30,
             status="published",
-            grid=SimpleNamespace(workspace_id=4),
+            grid=SimpleNamespace(workspace_id=4, discipline="overwatch"),
         )
         readiness = schemas.DivisionGridActivationReadiness(
             target_version_id=30,
@@ -342,7 +343,7 @@ def test_activate_version_rejects_incomplete_mapping_readiness() -> None:
             missing_mapping_version_ids=[10],
             incomplete_mapping_version_ids=[],
         )
-        workspace = SimpleNamespace(id=4, default_division_grid_version_id=12)
+        workspace = SimpleNamespace(id=4, default_division_grid_version_id=12, disciplines_enabled=["overwatch"])
         with (
             patch.object(grid_service, "get_version", AsyncMock(return_value=target)),
             patch.object(
@@ -694,6 +695,7 @@ def test_library_import_reuses_unchanged_import_without_writes() -> None:
         )
         source_grid = SimpleNamespace(
             id=5,
+            discipline="overwatch",
             slug="ow2",
             name="OW2",
             description=None,
@@ -720,7 +722,7 @@ def test_library_import_reuses_unchanged_import_without_writes() -> None:
             result = await marketplace_service.import_division_grids(
                 session,
                 SimpleNamespace(),
-                target_workspace=SimpleNamespace(id=9),
+                target_workspace=SimpleNamespace(id=9, disciplines_enabled=["overwatch"]),
                 source_workspace=SimpleNamespace(id=3),
                 source_grids=[source_grid],
                 mode="library",
@@ -823,6 +825,7 @@ def test_marketplace_import_rejects_source_changes_after_preflight() -> None:
     async def run() -> None:
         source_grid = SimpleNamespace(
             id=5,
+            discipline="overwatch",
             slug="ow2",
             name="OW2",
             description=None,
@@ -838,7 +841,7 @@ def test_marketplace_import_rejects_source_changes_after_preflight() -> None:
             await marketplace_service.import_division_grids(
                 SimpleNamespace(),
                 SimpleNamespace(),
-                target_workspace=SimpleNamespace(id=9),
+                target_workspace=SimpleNamespace(id=9, disciplines_enabled=["overwatch"]),
                 source_workspace=SimpleNamespace(id=3),
                 source_grids=[source_grid],
                 expected_source_fingerprint=reviewed_fingerprint,
@@ -942,7 +945,7 @@ def test_portable_export_uses_version_and_tier_slugs_instead_of_database_ids() -
         SimpleNamespace(id=11, version=1, label="S1", status="published", tiers=[tier_one]),
         SimpleNamespace(id=22, version=2, label="S2", status="published", tiers=[tier_two]),
     ]
-    grid = SimpleNamespace(slug="ow2", name="OW2", description=None, versions=versions)
+    grid = SimpleNamespace(slug="ow2", name="OW2", description=None, discipline="overwatch", versions=versions)
     mapping = SimpleNamespace(
         source_version_id=11,
         target_version_id=22,
@@ -959,7 +962,8 @@ def test_portable_export_uses_version_and_tier_slugs_instead_of_database_ids() -
 
     document = portable.build_portable_document(grid, [mapping])
 
-    assert document.schema_version == "division-grid/v1"
+    assert document.schema_version == "division-grid/v2"
+    assert document.discipline == "overwatch"
     assert document.mappings[0].source_version == 1
     assert document.mappings[0].rules[0].source_tier_slug == "champion-1"
     assert document.mappings[0].rules[0].target_tier_slug == "master-1"

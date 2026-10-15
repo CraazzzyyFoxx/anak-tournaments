@@ -85,7 +85,7 @@ def _patches(*, version_map: dict[int, int | None], division: int = 4):
         return {tid: version_map.get(tid) for tid in tournament_ids}
 
     grid = SimpleNamespace(resolve_division_number=lambda _rank: division)
-    snapshot = SimpleNamespace(to_runtime_grid=lambda: grid)
+    snapshot = SimpleNamespace(to_runtime_grid=lambda: grid, tiers=(object(),))
 
     async def fake_snapshots(_session, version_ids):
         return dict.fromkeys(version_ids, snapshot)

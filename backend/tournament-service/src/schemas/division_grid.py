@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.schemas.base import BaseRead
 
@@ -65,6 +65,7 @@ class DivisionGridVersionRead(BaseRead):
 
 class DivisionGridRead(BaseRead):
     workspace_id: int | None
+    discipline: str
     slug: str
     name: str
     description: str | None
@@ -78,6 +79,7 @@ class DivisionGridRead(BaseRead):
 
 
 class DivisionGridCreate(BaseModel):
+    discipline: str | None = Field(default=None, min_length=1, max_length=32)
     slug: str = Field(..., min_length=1, max_length=128)
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
@@ -304,12 +306,44 @@ class DivisionGridPortableMapping(BaseModel):
 class DivisionGridPortableDocument(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["division-grid/v1"] = "division-grid/v1"
+    schema_version: Literal["division-grid/v2"] = "division-grid/v2"
+    discipline: str = Field(..., min_length=1, max_length=32)
     slug: str = Field(..., min_length=1, max_length=128)
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
     versions: list[DivisionGridPortableVersion] = Field(..., min_length=1)
     mappings: list[DivisionGridPortableMapping] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _read_v1_as_overwatch(cls, data: Any) -> Any:
+        """User-held v1 exports name native ranges ``ow_rank_*`` and always belong to Overwatch."""
+        if not isinstance(data, dict) or data.get("schema_version") != "division-grid/v1":
+            return data
+        if "discipline" in data:
+            raise ValueError("a division-grid/v1 document names no discipline: it is an Overwatch grid")
+        converted = {**data, "schema_version": "division-grid/v2", "discipline": "overwatch"}
+        versions = data.get("versions")
+        # Leave malformed container shapes to Pydantic instead of iterating them (TypeError would be a 500).
+        if not isinstance(versions, list):
+            return converted
+        converted["versions"] = []
+        for version in versions:
+            if not isinstance(version, dict) or not isinstance(version.get("tiers"), list):
+                converted["versions"].append(version)
+                continue
+            tiers = []
+            for tier in version["tiers"]:
+                if isinstance(tier, dict):
+                    tier = dict(tier)
+                    for old, new in (("ow_rank_min", "native_rank_min"), ("ow_rank_max", "native_rank_max")):
+                        if old in tier:
+                            if new in tier and tier[new] != tier[old]:
+                                raise ValueError(f"conflicting v1 tier bounds: {old} and {new}")
+                            tier[new] = tier.pop(old)
+                tiers.append(tier)
+            converted["versions"].append({**version, "tiers": tiers})
+        return converted
 
 
 class DivisionGridPortableImportRequest(BaseModel):

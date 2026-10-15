@@ -22,7 +22,7 @@ from shared.repository import (
 )
 from shared.schemas.team_format import TeamFormatWrite
 from shared.services.division_grid import cache as division_grid_cache
-from shared.services.division_grid.access import get_workspace_division_grid_version_id
+from shared.services.division_grid.access import get_workspace_division_grid_version_id, require_event_grid
 from shared.services.draft_guards import assert_no_active_draft_session
 from shared.services.ontology import assert_discipline_enabled
 from shared.services.realtime import Resource, Scope, emit
@@ -132,30 +132,32 @@ class AdminTournamentService:
         session: AsyncSession,
         *,
         workspace_id: int,
+        discipline: str,
         division_grid_version_id: int | None,
     ) -> int:
         resolved_version_id = division_grid_version_id
         if resolved_version_id is None:
-            resolved_version_id = await get_workspace_division_grid_version_id(session, workspace_id)
-
+            resolved_version_id = await get_workspace_division_grid_version_id(
+                session, workspace_id, discipline=discipline
+            )
+        if resolved_version_id is not None:
+            owner = (
+                await session.execute(
+                    sa.select(models.DivisionGrid.workspace_id, models.DivisionGrid.discipline)
+                    .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
+                    .where(models.DivisionGridVersion.id == resolved_version_id)
+                )
+            ).one_or_none()
+            if owner is None or owner[0] not in {None, workspace_id}:
+                raise HTTPException(status_code=400, detail="Division grid version does not belong to this workspace")
+            if owner[1] != discipline:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"division_grid_discipline_mismatch: the grid is {owner[1]!r}, the tournament {discipline!r}",
+                )
+        await require_event_grid(session, version_id=resolved_version_id, discipline=discipline)
         if resolved_version_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Workspace does not have a default division grid version",
-            )
-
-        # Analytical: join + single-column projection across grid/version, not CRUD.
-        version_workspace = await session.scalar(
-            sa.select(models.DivisionGrid.workspace_id)
-            .join(models.DivisionGridVersion, models.DivisionGridVersion.grid_id == models.DivisionGrid.id)
-            .where(models.DivisionGridVersion.id == resolved_version_id)
-        )
-        if version_workspace not in {None, workspace_id}:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Division grid version does not belong to this workspace",
-            )
-
+            raise HTTPException(status_code=400, detail="Workspace does not have a default division grid version")
         return int(resolved_version_id)
 
     async def get_tournament(self, session: AsyncSession, tournament_id: int) -> models.Tournament:
@@ -279,6 +281,7 @@ class AdminTournamentService:
         payload["division_grid_version_id"] = await self._resolve_division_grid_version_id(
             session,
             workspace_id=data.workspace_id,
+            discipline=data.discipline,
             division_grid_version_id=data.division_grid_version_id,
         )
 
@@ -366,6 +369,7 @@ class AdminTournamentService:
             update_data["division_grid_version_id"] = await self._resolve_division_grid_version_id(
                 session,
                 workspace_id=tournament.workspace_id,
+                discipline=tournament.discipline,
                 division_grid_version_id=update_data["division_grid_version_id"],
             )
 

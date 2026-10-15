@@ -2380,6 +2380,7 @@ CREATE TABLE division_grid (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	updated_at TIMESTAMP WITH TIME ZONE,
 	workspace_id BIGINT,
+	discipline VARCHAR(32) DEFAULT 'overwatch' NOT NULL,
 	slug VARCHAR NOT NULL,
 	name VARCHAR NOT NULL,
 	description VARCHAR,
@@ -2392,6 +2393,7 @@ CREATE TABLE division_grid (
 	PRIMARY KEY (id),
 	UNIQUE (workspace_id, slug),
 	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	CONSTRAINT fk_division_grid_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
 	FOREIGN KEY(source_workspace_id) REFERENCES workspace (id) ON DELETE SET NULL,
 	FOREIGN KEY(source_grid_id) REFERENCES division_grid (id) ON DELETE SET NULL
 );

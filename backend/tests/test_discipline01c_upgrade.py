@@ -272,6 +272,19 @@ def test_tier_native_ranges_preserve_values_and_resolve_on_the_stored_grid(migra
         engine.dispose()
 
 
+def test_existing_grids_are_overwatch_grids(migrated) -> None:
+    assert _rows(
+        migrated["conn"], "SELECT discipline FROM division_grid WHERE id = %s", (migrated["ids"]["grid"],)
+    ) == [("overwatch",)]
+
+
+def test_a_grid_names_a_known_discipline(migrated) -> None:
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        with pytest.raises(psycopg.errors.ForeignKeyViolation):
+            tx.execute("UPDATE division_grid SET discipline = 'chess' WHERE id = %s", (migrated["ids"]["grid"],))
+        tx.rollback()
+
+
 def test_ranks_point_at_their_overwatch_module_role(migrated) -> None:
     conn, ids = migrated["conn"], migrated["ids"]
     for key, code in (("rank_tank", "tank"), ("rank_support", "support")):

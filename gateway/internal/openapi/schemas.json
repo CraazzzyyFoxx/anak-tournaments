@@ -38192,6 +38192,20 @@
           "default": null,
           "title": "Description"
         },
+        "discipline": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
         "name": {
           "maxLength": 255,
           "minLength": 1,
@@ -38682,6 +38696,12 @@
           "default": null,
           "title": "Description"
         },
+        "discipline": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Discipline",
+          "type": "string"
+        },
         "mappings": {
           "items": {
             "$ref": "#/components/schemas/tournament.DivisionGridPortableMapping"
@@ -38696,8 +38716,8 @@
           "type": "string"
         },
         "schema_version": {
-          "const": "division-grid/v1",
-          "default": "division-grid/v1",
+          "const": "division-grid/v2",
+          "default": "division-grid/v2",
           "title": "Schema Version",
           "type": "string"
         },
@@ -38717,6 +38737,7 @@
         }
       },
       "required": [
+        "discipline",
         "slug",
         "name",
         "versions"
@@ -38739,6 +38760,12 @@
           "default": null,
           "title": "Description"
         },
+        "discipline": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Discipline",
+          "type": "string"
+        },
         "mappings": {
           "items": {
             "$ref": "#/components/schemas/tournament.DivisionGridPortableMapping"
@@ -38753,8 +38780,8 @@
           "type": "string"
         },
         "schema_version": {
-          "const": "division-grid/v1",
-          "default": "division-grid/v1",
+          "const": "division-grid/v2",
+          "default": "division-grid/v2",
           "title": "Schema Version",
           "type": "string"
         },
@@ -38774,6 +38801,7 @@
         }
       },
       "required": [
+        "discipline",
         "slug",
         "name",
         "versions"
@@ -38925,6 +38953,10 @@
           ],
           "title": "Description"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "id": {
           "title": "Id",
           "type": "integer"
@@ -39020,6 +39052,7 @@
       "required": [
         "id",
         "workspace_id",
+        "discipline",
         "slug",
         "name",
         "description"

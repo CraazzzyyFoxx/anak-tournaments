@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
-  DivisionGridPortableDocument,
+  DivisionGridPortableImportDocument,
   DivisionGridReadinessSource,
   DivisionGridVersion
 } from "@/types/workspace.types";
@@ -197,8 +197,12 @@ export default function DivisionsSettingsPage() {
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.grids(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.versionsByWorkspace(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.readinessByWorkspace(workspaceId) }),
+      queryClient.invalidateQueries({
+        queryKey: divisionGridQueryKeys.versionsByWorkspace(workspaceId)
+      }),
+      queryClient.invalidateQueries({
+        queryKey: divisionGridQueryKeys.readinessByWorkspace(workspaceId)
+      }),
       fetchWorkspaces()
     ]);
   };
@@ -241,7 +245,7 @@ export default function DivisionsSettingsPage() {
   });
 
   const portableImportMutation = useMutation({
-    mutationFn: (document: DivisionGridPortableDocument) =>
+    mutationFn: (document: DivisionGridPortableImportDocument) =>
       workspaceService.importDivisionGridPortable(workspaceId!, document),
     onSuccess: async (grid) => {
       await refresh();
@@ -272,7 +276,9 @@ export default function DivisionsSettingsPage() {
 
   const importPortable = async (file: File) => {
     try {
-      portableImportMutation.mutate(JSON.parse(await file.text()) as DivisionGridPortableDocument);
+      portableImportMutation.mutate(
+        JSON.parse(await file.text()) as DivisionGridPortableImportDocument
+      );
     } catch (error) {
       notify.error(t("errors.invalidJson"), {
         description: t("errors.invalidJsonDescription", {
@@ -414,7 +420,9 @@ export default function DivisionsSettingsPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <p className={cn(EYEBROW_CLASS, activeVersion && "text-primary/80")}>
-              {activeVersion ? t("inForceVersion", { version: activeVersion.version }) : t("inForce")}
+              {activeVersion
+                ? t("inForceVersion", { version: activeVersion.version })
+                : t("inForce")}
             </p>
             <h2
               id="divisions-in-force"
@@ -524,9 +532,7 @@ export default function DivisionsSettingsPage() {
           ) : null}
 
           {versions.length === 0 ? (
-            <EmptyNote title={t("noVersions")}> 
-              {t("noVersionsDescription")}
-            </EmptyNote>
+            <EmptyNote title={t("noVersions")}>{t("noVersionsDescription")}</EmptyNote>
           ) : (
             <VersionHistory
               versions={versions}
@@ -587,15 +593,11 @@ export default function DivisionsSettingsPage() {
             {t("readersTitle")}
           </h2>
           {!activeVersion ? (
-            <p className="text-xs text-muted-foreground">
-              {t("readersDescription")}
-            </p>
+            <p className="text-xs text-muted-foreground">{t("readersDescription")}</p>
           ) : readinessQuery.isLoading ? (
             <Skeleton className="h-32 w-full rounded-xl" />
           ) : sources.length === 0 ? (
-            <EmptyNote size="sm">
-              {t("nothingToMap", { version: activeVersion.version })}
-            </EmptyNote>
+            <EmptyNote size="sm">{t("nothingToMap", { version: activeVersion.version })}</EmptyNote>
           ) : (
             <ul className="flex flex-col gap-3">
               {sources.map((source) => (
@@ -626,9 +628,7 @@ export default function DivisionsSettingsPage() {
             emptyMessage={t("table.empty")}
           />
         ) : (
-          <EmptyNote size="sm">
-            {t("playersUntilActivated")}
-          </EmptyNote>
+          <EmptyNote size="sm">{t("playersUntilActivated")}</EmptyNote>
         )}
       </section>
 
@@ -680,9 +680,7 @@ function SourceCard({
         </StatusPill>
       </div>
 
-      <p className={MONO_CAPTION}>
-        {t("tournamentCount", { count: source.tournament_count })}
-      </p>
+      <p className={MONO_CAPTION}>{t("tournamentCount", { count: source.tournament_count })}</p>
       {source.tournament_names.length > 0 ? (
         <ul className="flex flex-col gap-0.5 text-xs">
           {source.tournament_names.map((name) => (
@@ -690,7 +688,9 @@ function SourceCard({
               {name}
             </li>
           ))}
-          {hidden > 0 ? <li className="text-muted-foreground">{t("more", { count: hidden })}</li> : null}
+          {hidden > 0 ? (
+            <li className="text-muted-foreground">{t("more", { count: hidden })}</li>
+          ) : null}
         </ul>
       ) : null}
 
@@ -698,7 +698,10 @@ function SourceCard({
         <p className="text-xs text-muted-foreground">
           {source.status === "missing"
             ? t("sourceMissing", { version: target.version })
-            : t("sourceIncomplete", { count: source.conflict_tiers.length, version: target.version })}{" "}
+            : t("sourceIncomplete", {
+                count: source.conflict_tiers.length,
+                version: target.version
+              })}{" "}
           {t("sourceAction")}
         </p>
       )}
@@ -706,7 +709,10 @@ function SourceCard({
   );
 }
 
-function reportFailure(title: string, t: ReturnType<typeof useTranslations<"adminSettings.divisions">>) {
+function reportFailure(
+  title: string,
+  t: ReturnType<typeof useTranslations<"adminSettings.divisions">>
+) {
   return (error: unknown) =>
     notify.error(title, {
       description: t("failureDescription", {

@@ -24437,6 +24437,11 @@ export interface components {
              * @default null
              */
             description: string | null;
+            /**
+             * Discipline
+             * @default null
+             */
+            discipline: string | null;
             /** Name */
             name: string;
             /** Slug */
@@ -24623,16 +24628,18 @@ export interface components {
              * @default null
              */
             description: string | null;
+            /** Discipline */
+            discipline: string;
             /** Mappings */
             mappings?: components["schemas"]["tournament.DivisionGridPortableMapping"][];
             /** Name */
             name: string;
             /**
              * Schema Version
-             * @default division-grid/v1
+             * @default division-grid/v2
              * @constant
              */
-            schema_version: "division-grid/v1";
+            schema_version: "division-grid/v2";
             /** Slug */
             slug: string;
             /** Versions */
@@ -24645,16 +24652,18 @@ export interface components {
              * @default null
              */
             description: string | null;
+            /** Discipline */
+            discipline: string;
             /** Mappings */
             mappings?: components["schemas"]["tournament.DivisionGridPortableMapping"][];
             /** Name */
             name: string;
             /**
              * Schema Version
-             * @default division-grid/v1
+             * @default division-grid/v2
              * @constant
              */
-            schema_version: "division-grid/v1";
+            schema_version: "division-grid/v2";
             /** Slug */
             slug: string;
             /** Versions */
@@ -24718,6 +24727,8 @@ export interface components {
             archived_at: string | null;
             /** Description */
             description: string | null;
+            /** Discipline */
+            discipline: string;
             /** Id */
             id: number;
             /**

@@ -25,7 +25,7 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
 from shared.disciplines import DISCIPLINES, rated_role_codes
-from shared.division_grid import DEFAULT_GRID
+from shared.division_grid import ladder_grid
 from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.mix_lobby import LOBBY_LETTERS
@@ -54,7 +54,11 @@ from shared.schemas.roster_slots import RosterShapeRead
 from shared.services import discord_messages
 from shared.services.account_links import missing_account_links
 from shared.services.discord_client import DiscordClient
-from shared.services.division_grid.access import get_effective_division_grid
+from shared.services.division_grid.access import (
+    get_effective_division_grid,
+    get_effective_division_grid_version_id,
+    require_event_grid,
+)
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
 from shared.services.ontology import assert_discipline_enabled, resolve_role_ref
 from shared.services.subscriptions.providers.discord_role import DiscordError
@@ -605,7 +609,7 @@ class CustomGameService:
             roles=list(rated_role_codes(game.discipline)),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, game.workspace_id),
+            grid=await get_effective_division_grid(session, game.workspace_id, discipline=game.discipline),
         )
         for member_id in members:
             seed: dict[str, int] = {}
@@ -669,6 +673,12 @@ class CustomGameService:
         if workspace is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
         assert_discipline_enabled(workspace, effective)
+        if not DISCIPLINES[effective].native_ladder:
+            await require_event_grid(
+                session,
+                version_id=await get_effective_division_grid_version_id(session, workspace_id, discipline=effective),
+                discipline=effective,
+            )
 
         if source is not None:
             candidates = list(await self.roster.list_for_game(session, source.id))
@@ -1039,13 +1049,10 @@ class CustomGameService:
     async def _self_dump(self, session: AsyncSession, ctx: _SelfContext) -> dict[str, Any]:
         """One player's view of one mix: their seat, and what they may do next.
 
-        ``ranks`` carries all three roles, ``None`` included: the Discord role
-        select labels every option with a number or "no rank", and a sparse dict
-        would make the bot guess. ``divisions`` is the same three roles read off
-        the Overwatch ladder (``DEFAULT_GRID``: Bronze 5 .. Champion 1), the
-        name and slug of the rank each value lands in -- the badges the bot
-        ships as emoji. Not the platform grid: its tiers are bare numbers
-        ("Division 1") that say nothing to a player reading Discord.
+        ``ranks`` carries every rated role, ``None`` included: the Discord role
+        select labels every option with a number or "no rank". ``divisions``
+        uses the discipline's native ladder when it has one (the OW badges),
+        otherwise the organiser's effective grid, never another game's ladder.
         ``unranked_roles`` is the narrower list the warning is built from -- the
         roles this player actually plays.
 
@@ -1059,7 +1066,7 @@ class CustomGameService:
         if ctx.row is not None:
             stored = (await self.player_roles.roles_for_players(session, [ctx.row.id])).get(ctx.row.id, [])
             explicit = ctx.row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
-            grid = await get_effective_division_grid(session, ctx.game.workspace_id)
+            grid = await get_effective_division_grid(session, ctx.game.workspace_id, discipline=ctx.game.discipline)
             resolved = await self.ranks.resolve(
                 session,
                 workspace_id=ctx.game.workspace_id,
@@ -1072,10 +1079,11 @@ class CustomGameService:
             )
             ranks: dict[str, int | None] = {}
             divisions: dict[str, dict[str, str | None] | None] = {}
+            badge_grid = ladder_grid(ctx.game.discipline) or grid
             for role in rated_role_codes(ctx.game.discipline):
                 rank = resolved.get((ctx.row.workspace_member_id, role))
                 ranks[role] = rank.value if rank is not None else None
-                tier = None if ranks[role] is None else DEFAULT_GRID.resolve_division(ranks[role])
+                tier = None if ranks[role] is None else badge_grid.resolve_division(ranks[role])
                 divisions[role] = None if tier is None else {"name": tier.name, "slug": tier.slug}
             considered = list(stored) if explicit else list(rated_role_codes(ctx.game.discipline))
             unranked = [role for role in considered if ranks.get(role) is None]
@@ -1091,7 +1099,7 @@ class CustomGameService:
                 else None,
                 "is_flex": ctx.row.is_flex,
                 "ranks": ranks,
-                # The Overwatch rank each of those values lands in.
+                # The rank badge of this mix's discipline.
                 "divisions": divisions,
                 # 0 | 1 while a balance seats them, ``null`` while it does not.
                 "current_lobby": next(
@@ -1376,7 +1384,7 @@ class CustomGameService:
             roles=list(rated_role_codes(game.discipline)),
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, game.workspace_id),
+            grid=await get_effective_division_grid(session, game.workspace_id, discipline=game.discipline),
         )
         players = []
         for row in roster:
@@ -1576,7 +1584,7 @@ class CustomGameService:
             # mix balances on this host's read of these players, not the official one.
             order=MIX_ORDER,
             author_user_id=game.host_user_id,
-            grid=await get_effective_division_grid(session, game.workspace_id),
+            grid=await get_effective_division_grid(session, game.workspace_id, discipline=game.discipline),
         )
         open_ranks = {
             key: ranked.value for key, ranked in resolved.items() if ranked is not None and ranked.value is not None

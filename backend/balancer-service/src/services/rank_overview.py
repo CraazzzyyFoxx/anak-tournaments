@@ -612,7 +612,7 @@ async def rank_overview_page(
     if not filters.layers:
         return [], 0
 
-    ws_grid = await get_effective_division_grid(session, workspace_id)
+    ws_grid = await get_effective_division_grid(session, workspace_id, discipline=discipline)
     dimension_id = await CatalogRoleRepository().rated_dimension_id(session, discipline=discipline)
     members = _members_cte(workspace_id, filters)
     branches = _branches(

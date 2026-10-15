@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.core.social import SocialProvider
 from shared.disciplines import discipline
-from shared.division_grid import DivisionGrid
 from shared.domain.roster import PlayerRoster
 from shared.services.roster import roster_engine
 from src import models
@@ -370,7 +369,7 @@ class RankAutofillService:
         now = datetime.now(UTC)
         tournament = await self.rank_sources._load_tournament_for_autofill(session, tournament_id)
         enabled_sources = autofill_sources(enabled_sources, getattr(tournament, "discipline", None))
-        grid = DivisionGrid.from_version(tournament.division_grid_version if tournament else None)
+        grid = await self.common.get_tournament_grid(session, tournament_id)
         # Loop-invariant: one autofill run is scoped to one tournament, and every
         # inherited rank layer below is read through its workspace.
         workspace_id = getattr(tournament, "workspace_id", None)

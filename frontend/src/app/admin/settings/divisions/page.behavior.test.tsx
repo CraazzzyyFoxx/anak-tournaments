@@ -146,6 +146,7 @@ function grid(id: number, name: string): DivisionGridEntity {
   return {
     id,
     workspace_id: 1,
+    discipline: "overwatch",
     slug: `grid-${id}`,
     name,
     description: null,
@@ -392,9 +393,13 @@ describe("Settings › Divisions", () => {
     // Both OW endpoints filled on every tier, top tier included: either being
     // null drops that division out of OW rank resolution entirely.
     expect(
-      payload.tiers.every((entry) => entry.native_rank_min !== null && entry.native_rank_max !== null)
+      payload.tiers.every(
+        (entry) => entry.native_rank_min !== null && entry.native_rank_max !== null
+      )
     ).toBe(true);
-    expect(payload.tiers.every((entry) => entry.native_rank_min === entry.native_rank_max)).toBe(true);
+    expect(payload.tiers.every((entry) => entry.native_rank_min === entry.native_rank_max)).toBe(
+      true
+    );
     expect(new Set(payload.tiers.map((entry) => entry.native_rank_min)).size).toBe(45);
 
     // And it lands in the editor rather than leaving the user on the overview.

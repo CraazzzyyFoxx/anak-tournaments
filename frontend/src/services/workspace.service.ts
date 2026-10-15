@@ -10,6 +10,7 @@ import {
   DivisionGridMarketplaceWorkspace,
   DivisionGridMappingRule,
   DivisionGridPortableDocument,
+  DivisionGridPortableImportDocument,
   DivisionGridSaveResult,
   DivisionGridVersion,
   ManageableDiscordGuild,
@@ -25,11 +26,7 @@ import type {
   DiscordGuildInfo,
   DiscordRolesResponse
 } from "@/types/discord.types";
-import type {
-  QuotaLimitsPayload,
-  QuotaScope,
-  QuotaUsage
-} from "@/types/auth.types";
+import type { QuotaLimitsPayload, QuotaScope, QuotaUsage } from "@/types/auth.types";
 
 type DivisionGridTierInput = {
   id?: number;
@@ -327,7 +324,7 @@ export default class workspaceService {
 
   static async createDivisionGrid(
     workspaceId: number,
-    data: { slug: string; name: string; description?: string | null }
+    data: { slug: string; name: string; description?: string | null; discipline?: string }
   ): Promise<DivisionGridEntity> {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}`, {
       method: "POST",
@@ -561,7 +558,7 @@ export default class workspaceService {
 
   static async importDivisionGridPortable(
     workspaceId: number,
-    document: DivisionGridPortableDocument,
+    document: DivisionGridPortableImportDocument,
     mode: "library" | "sync" | "copy" = "library"
   ): Promise<DivisionGridEntity> {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}/portable/import`, {

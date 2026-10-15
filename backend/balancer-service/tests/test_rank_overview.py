@@ -495,6 +495,29 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
     async def test_overlapping_support_ranks_are_isolated_across_every_overview_layer(self) -> None:
         async with self.Session() as session:
             await project_disciplines(session)
+            grid = models.DivisionGrid(workspace_id=self.workspace_id, slug="lol", name="LoL", discipline="lol")
+            version = models.DivisionGridVersion(
+                grid=grid,
+                version=1,
+                label="LoL",
+                status="published",
+                tiers=[
+                    models.DivisionGridTier(
+                        slug="organiser",
+                        number=9,
+                        name="Organiser",
+                        sort_order=0,
+                        rank_min=0,
+                        rank_max=None,
+                        icon_url="/tier.png",
+                    )
+                ],
+            )
+            session.add(version)
+            await session.flush()
+            workspace = await session.get(models.Workspace, self.workspace_id)
+            workspace.default_division_grid_version_id = version.id
+            await session.flush()
             for discipline, value in (("overwatch", 1600), ("lol", 3300)):
                 await member_rank_service.set_ranks(
                     session,
@@ -527,6 +550,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             )
             assert total == 5
             assert {row["role"] for row in rows} == {"support"}
+            assert {row["division"] for row in rows} == {9}
             values = {row["layer"]: row["rank_value"] for row in rows}
             assert values == {
                 "canon": 3300,

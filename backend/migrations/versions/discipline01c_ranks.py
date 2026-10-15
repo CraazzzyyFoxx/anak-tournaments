@@ -4,7 +4,8 @@ Every rank is held on a role of its discipline's rated dimension: ``balancer.mem
 ``balancer.member_hidden_rating`` get ``role_id`` (every existing row is Overwatch's), their unique keys move to it, and
 ``flex`` rows -- flex is no role (D86) -- are dropped and kept in ``balancer.discipline01c_dropped_ranks`` for the
 reconcile. The legacy ``role`` columns stay until the gated ``discipline02``. ``division_grid_tier``'s ranges are renamed
-to the native ladder's (``native_rank_min/max``), preserving their numeric values. Forward-fix only.
+to the native ladder's (``native_rank_min/max``), preserving their numeric values. Every existing grid is an Overwatch
+grid. Forward-fix only.
 
 Revision ID: discipline01c
 Revises: discipline01b
@@ -191,6 +192,11 @@ _HIDDEN_RATINGS = (
 _DIVISION_GRIDS = (
     "ALTER TABLE division_grid_tier RENAME COLUMN ow_rank_min TO native_rank_min",
     "ALTER TABLE division_grid_tier RENAME COLUMN ow_rank_max TO native_rank_max",
+    """
+    ALTER TABLE division_grid
+      ADD COLUMN discipline VARCHAR(32) NOT NULL DEFAULT 'overwatch'
+      CONSTRAINT fk_division_grid_discipline REFERENCES catalog.discipline (code)
+    """,
 )
 
 

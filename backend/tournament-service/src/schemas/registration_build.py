@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.disciplines import discipline
-from shared.division_grid import DivisionGrid, load_runtime_grid
+from shared.division_grid import DivisionGrid
 from shared.domain.forms import RolesParams, schema_from_form, schema_from_version
 from shared.domain.roster import PlayerRoster
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
@@ -30,6 +30,7 @@ from shared.services.division_grid.access import (
     get_effective_division_grid_version_ids,
     load_division_grid_snapshots,
     load_division_grid_version_read_payloads,
+    runtime_fallback_grid,
 )
 from shared.services.roster import registration_load_options, roster_engine
 from src import models
@@ -529,8 +530,7 @@ async def _build_tournament_history(
     # Runtime grids (for division-number resolution) come from the cached snapshots.
     snapshot_by_version = await load_division_grid_snapshots(session, distinct_version_ids)
     runtime_grid_by_version: dict[int, DivisionGrid] = {
-        vid: (snapshot_by_version[vid].to_runtime_grid() if vid in snapshot_by_version else load_runtime_grid(None))
-        for vid in distinct_version_ids
+        vid: snapshot.to_runtime_grid() for vid, snapshot in snapshot_by_version.items() if snapshot.tiers
     }
 
     # Full version metadata for the response map — cached (see
@@ -565,7 +565,7 @@ async def _build_tournament_history(
             version_id = tournament_to_version.get(tournament_id)
             grid = runtime_grid_by_version.get(version_id) if version_id is not None else None
             if grid is None:
-                grid = load_runtime_grid(None)
+                grid = runtime_fallback_grid(row[7])
             division = grid.resolve_division_number(rank)
             # Only reference versions we actually have metadata for.
             if version_id not in version_read_by_id:

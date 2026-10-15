@@ -227,7 +227,7 @@ class RosterEngine:
             )
         mode = flex_role_mode(form)
         if grid is None:
-            grid = await get_effective_division_grid(session, workspace_id, tournament_id)
+            grid = await get_effective_division_grid(session, workspace_id, tournament_id, discipline=discipline)
 
         declared = {reg.id: self._declared_roles(reg, mode=mode, role_codes=role_codes) for reg in registrations}
         resolved = await self._resolve_ranks(

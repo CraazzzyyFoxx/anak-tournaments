@@ -168,20 +168,20 @@ def _version_read_key(version_id: int) -> str:
     return f"{CACHE_KEY_PREFIX}division_grid:version:{version_id}:read"
 
 
-def _workspace_default_key(workspace_id: int) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version"
+def _workspace_default_key(workspace_id: int, discipline: str | None = None) -> str:
+    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:{discipline or '*'}"
 
 
 def _tournament_effective_key(tournament_id: int) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:tournament:{tournament_id}:effective_version"
+    return f"{CACHE_KEY_PREFIX}division_grid:tournament:{tournament_id}:effective_version:v2"
 
 
 def _mapping_key(source_version_id: int, target_version_id: int) -> str:
     return f"{CACHE_KEY_PREFIX}division_grid:mapping:{source_version_id}:{target_version_id}"
 
 
-def _workspace_source_versions_key(workspace_id: int) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:source_versions"
+def _workspace_source_versions_key(workspace_id: int, discipline: str | None = None) -> str:
+    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:source_versions:{discipline or '*'}"
 
 
 async def _get(key: str) -> Any | None:
@@ -284,13 +284,15 @@ async def set_grid_version_read_payloads(payloads: Mapping[int, dict[str, Any]])
         logger.debug("Division grid cache batch set failed for version reads %s: %s", list(payloads), exc)
 
 
-async def get_workspace_default_version_id(workspace_id: int) -> int | None:
-    value = await _get(_workspace_default_key(workspace_id))
+async def get_workspace_default_version_id(workspace_id: int, discipline: str | None = None) -> int | None:
+    value = await _get(_workspace_default_key(workspace_id, discipline))
     return int(value) if value is not None else None
 
 
-async def set_workspace_default_version_id(workspace_id: int, version_id: int | None) -> None:
-    await _set(_workspace_default_key(workspace_id), version_id)
+async def set_workspace_default_version_id(
+    workspace_id: int, version_id: int | None, discipline: str | None = None
+) -> None:
+    await _set(_workspace_default_key(workspace_id, discipline), version_id)
 
 
 async def get_tournament_effective_version_id(tournament_id: int) -> int | None:
@@ -349,15 +351,17 @@ async def set_mapping_snapshot(snapshot: DivisionGridMappingSnapshot) -> None:
     )
 
 
-async def get_workspace_source_version_ids(workspace_id: int) -> set[int] | None:
-    value = await _get(_workspace_source_versions_key(workspace_id))
+async def get_workspace_source_version_ids(workspace_id: int, discipline: str | None = None) -> set[int] | None:
+    value = await _get(_workspace_source_versions_key(workspace_id, discipline))
     if value is None:
         return None
     return {int(version_id) for version_id in value}
 
 
-async def set_workspace_source_version_ids(workspace_id: int, version_ids: set[int]) -> None:
-    await _set(_workspace_source_versions_key(workspace_id), sorted(version_ids))
+async def set_workspace_source_version_ids(
+    workspace_id: int, version_ids: set[int], discipline: str | None = None
+) -> None:
+    await _set(_workspace_source_versions_key(workspace_id, discipline), sorted(version_ids))
 
 
 async def invalidate_grid_version(version_id: int) -> None:
@@ -376,9 +380,9 @@ async def invalidate_workspace(workspace_id: int) -> None:
     if not cache.is_setup():
         return
     try:
-        await cache.delete(_workspace_default_key(workspace_id))
-        await cache.delete(_workspace_source_versions_key(workspace_id))
-        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:tournament:*:effective_version")
+        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:*")
+        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:source_versions:*")
+        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:tournament:*:effective_version:v2")
     except Exception as exc:
         logger.debug("Division grid cache invalidation failed for workspace %s: %s", workspace_id, exc)
 

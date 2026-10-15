@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
+import pytest
+
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
 for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
@@ -1337,6 +1339,27 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             {"tank": {"name": "Diamond 4", "slug": "diamond-4"}, "damage": None, "support": None},
         )
 
+    async def test_lol_self_state_badges_resolve_on_its_organisers_grid(self) -> None:
+        from shared.division_grid import DivisionGrid, DivisionTier
+
+        self.games.get.return_value = _game(self_signup="pool", discipline="lol")
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.workspace_members.get_by_player.return_value = _row(id=7, player_id=70)
+        self.ranks.resolve.return_value = {(7, "support"): ResolvedRank(3100, "author")}
+        self.grid_lookup.return_value = DivisionGrid(
+            version_id=77,
+            tiers=(
+                DivisionTier(
+                    id=1, slug="veteran", number=9, name="Veteran", rank_min=3000, rank_max=None, icon_url="/v.png"
+                ),
+                DivisionTier(
+                    id=2, slug="novice", number=10, name="Novice", rank_min=0, rank_max=2999, icon_url="/n.png"
+                ),
+            ),
+        )
+        state = await self.service.self_state(self.session, custom_game_id=11, auth_user=_auth(), workspace_id=1)
+        self.assertEqual(state["seat"]["divisions"]["support"], {"name": "Veteran", "slug": "veteran"})
+
     async def test_self_state_says_which_lobby_this_player_sits_in(self) -> None:
         """Where a player sits is the same derivation the board shows -- the
         seats of each lobby's selected option -- so the panel and the bot read
@@ -2028,7 +2051,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertIs(kwargs["grid"], self.grid)
         # The mix's own workspace grid: the system default once read every OW
         # rank >= 2000 as its top tier and seeded 2000 into the host's book.
-        self.grid_lookup.assert_awaited_with(self.session, 1)
+        self.grid_lookup.assert_awaited_with(self.session, 1, discipline="overwatch")
 
     async def test_seeding_leaves_a_rank_the_host_already_owns_alone(self) -> None:
         """Re-adding somebody must not undo a correction the host already made."""
@@ -4424,3 +4447,113 @@ class MixCloneDisciplineTests(IsolatedAsyncioTestCase):
             )
         assert raised.exception.status_code == 422
         assert "discipline_not_enabled" in str(raised.exception.detail)
+
+
+def test_lol_mix_creation_and_clone_require_a_tiered_lol_grid_before_any_write() -> None:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from shared.services.division_grid import cache as grid_cache
+    from shared.services.division_grid.access import get_effective_division_grid
+    from shared.testing import create_test_async_engine
+    from shared.testing.cache import configure_test_cache
+
+    async def run():
+        configure_test_cache()
+        engine = create_test_async_engine()
+        db_session = AsyncSession(engine, expire_on_commit=False)
+        await ontology.project_disciplines(db_session)
+        tag = uuid.uuid4().hex
+        workspace = models.Workspace(slug=tag, name=tag, disciplines_enabled=["overwatch", "lol"])
+        host = models.AuthUser(email=f"{tag}@example.test", username=tag)
+        db_session.add_all([workspace, host])
+        await db_session.flush()
+        workspace_id = workspace.id
+        service = CustomGameService()
+        args = {"workspace_id": workspace.id, "host_user_id": host.id, "actor_user_id": host.id, "name": "LoL"}
+        try:
+            for empty in (False, True):
+                if empty:
+                    grid = models.DivisionGrid(workspace_id=workspace.id, slug="lol", name="LoL", discipline="lol")
+                    version = models.DivisionGridVersion(
+                        grid=grid, version=1, label="LoL", status="published", tiers=[]
+                    )
+                    db_session.add(version)
+                    await db_session.flush()
+                    workspace.default_division_grid_version_id = version.id
+                    await db_session.flush()
+                    await grid_cache.invalidate_workspace(workspace.id)
+                with pytest.raises(HTTPException) as caught:
+                    await service.create(db_session, **args, discipline="lol")
+                assert caught.value.status_code == 422
+                assert "division_grid_required" in str(caught.value.detail)
+                for model in (models.CustomGame, models.ScoringRule):
+                    assert (
+                        await db_session.scalar(
+                            sa.select(sa.func.count()).select_from(model).where(model.workspace_id == workspace.id)
+                        )
+                        == 0
+                    )
+            version.tiers.append(
+                models.DivisionGridTier(
+                    slug="organiser",
+                    number=9,
+                    name="Organiser",
+                    sort_order=0,
+                    rank_min=0,
+                    rank_max=None,
+                    icon_url="/tier.png",
+                )
+            )
+            await db_session.flush()
+            created = await service.create(db_session, **args, discipline="lol")
+            cloned = await service.create(db_session, **args, clone_from_game_id=created.id)
+            assert (created.discipline, cloned.discipline) == ("lol", "lol")
+            assert (
+                await get_effective_division_grid(db_session, workspace.id, discipline=cloned.discipline)
+            ).resolve_division(200).number == 9
+            workspace.default_division_grid_version_id = None
+            await db_session.flush()
+            await grid_cache.invalidate_workspace(workspace.id)
+            before = await db_session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.ScoringRule)
+                .where(models.ScoringRule.workspace_id == workspace.id)
+            )
+            with pytest.raises(HTTPException) as caught:
+                await service.create(db_session, **args, clone_from_game_id=created.id)
+            assert "division_grid_required" in str(caught.value.detail)
+            assert (
+                await db_session.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(models.ScoringRule)
+                    .where(models.ScoringRule.workspace_id == workspace.id)
+                )
+                == before
+            )
+            assert (
+                await db_session.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(models.CustomGame)
+                    .where(models.CustomGame.workspace_id == workspace.id)
+                )
+                == 2
+            )
+            print(
+                "PostgreSQL LoL mix create/clone: absent and empty grids refused before scoring/owner writes; tiered grid accepted; clone keeps LoL and resolves division9"
+            )
+        finally:
+            await grid_cache.invalidate_workspace(workspace_id)
+            await db_session.rollback()
+            assert (
+                await db_session.scalar(
+                    sa.select(sa.func.count()).select_from(models.Workspace).where(models.Workspace.id == workspace_id)
+                )
+                == 0
+            )
+            print("ROLLBACK confirmed: mix smoke workspace rows=0")
+            await db_session.close()
+            await engine.dispose()
+
+    asyncio.run(run(), loop_factory=asyncio.SelectorEventLoop if sys.platform == "win32" else None)

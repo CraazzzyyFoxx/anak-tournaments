@@ -24,6 +24,7 @@ from shared.repository import (
     WorkspaceRepository,
 )
 from shared.services.division_grid import cache as division_grid_cache
+from shared.services.ontology import assert_discipline_enabled
 from src import models, schemas
 from src.services.division_grid.service import DivisionGridService, division_grid_service
 
@@ -630,6 +631,9 @@ class MarketplaceService:
         include_icons: bool = True,
         include_ow_rank_mappings: bool = True,
     ) -> schemas.DivisionGridMarketplaceImportResult:
+        # Validate the whole batch before copying or archiving any grid.
+        for source_grid in source_grids:
+            assert_discipline_enabled(target_workspace, source_grid.discipline)
         copied_keys: list[str] = []
         version_id_map: dict[int, int] = {}
         tier_id_map: dict[int, int] = {}
@@ -764,6 +768,7 @@ class MarketplaceService:
                     session,
                     models.DivisionGrid(
                         workspace_id=target_workspace.id,
+                        discipline=source_grid.discipline,
                         slug=target_slug,
                         name=source_grid.name,
                         description=source_grid.description,

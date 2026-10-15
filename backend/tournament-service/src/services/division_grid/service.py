@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.division_grid import DEFAULT_GRID
+from shared.disciplines import discipline
 from shared.repository import (
     DivisionGridMappingRepository,
     DivisionGridMappingRuleRepository,
@@ -21,6 +21,7 @@ from shared.repository import (
 )
 from shared.services.division_grid import cache as division_grid_cache
 from shared.services.division_grid.access import get_workspace_source_version_ids
+from shared.services.ontology import assert_discipline_enabled
 from src import models, schemas
 from src.domain.division_grid import automap
 
@@ -28,7 +29,7 @@ __all__ = (
     "DivisionGridService",
     "SaveOutcome",
     "division_grid_service",
-    "get_default_ow2_tiers_write",
+    "ladder_tiers_write",
 )
 
 _GRID_OPTIONS = (selectinload(models.DivisionGrid.versions).selectinload(models.DivisionGridVersion.tiers),)
@@ -89,27 +90,19 @@ def _classify_tier_change(
     return "cosmetic"
 
 
-def get_default_ow2_tiers_write() -> list[schemas.DivisionGridTierWrite]:
-    """Project the in-code default grid into this service's write DTO.
-
-    The ladder lives in the Overwatch module (``native_ladder``) and reaches
-    here through ``DEFAULT_GRID``; nothing about it is re-derived. The DTO's only
-    extra field is ``sort_order``, which is the tier's position in the grid — and
-    ``DEFAULT_GRID.tiers`` is ordered top-first, so position and ``number`` agree.
-    """
+def ladder_tiers_write(discipline_code: str) -> list[schemas.DivisionGridTierWrite]:
+    """Project this discipline's native ladder; a ladder-less game starts empty."""
     return [
         schemas.DivisionGridTierWrite(
-            slug=tier.slug or f"division-{tier.number}",
+            slug=tier.slug,
             number=tier.number,
             name=tier.name,
             sort_order=index,
             rank_min=tier.rank_min,
             rank_max=tier.rank_max,
             icon_url=tier.icon_url,
-            native_rank_min=tier.native_rank_min,
-            native_rank_max=tier.native_rank_max,
         )
-        for index, tier in enumerate(DEFAULT_GRID.tiers)
+        for index, tier in enumerate(discipline(discipline_code).native_ladder)
     ]
 
 
@@ -208,10 +201,11 @@ class DivisionGridService:
         session: AsyncSession,
         workspace_id: int,
         grid_id: int,
+        discipline_code: str,
     ) -> models.DivisionGridVersion:
         data = schemas.DivisionGridVersionCreate(
-            label="Default Overwatch 2 Grid",
-            tiers=get_default_ow2_tiers_write(),
+            label=f"Default {discipline(discipline_code).name} grid",
+            tiers=ladder_tiers_write(discipline_code),
         )
         version = await self.create_version(session, workspace_id, grid_id, data)
         await self.version_repo.update_fields(
@@ -228,6 +222,11 @@ class DivisionGridService:
         workspace_id: int,
         data: schemas.DivisionGridCreate,
     ) -> models.DivisionGrid:
+        workspace = await self.workspace_repo.get(session, workspace_id)
+        if workspace is None:
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        grid_discipline = data.discipline or workspace.disciplines_enabled[0]
+        assert_discipline_enabled(workspace, grid_discipline)
         if await self.grid_repo.exists(session, workspace_id=workspace_id, slug=data.slug):
             raise HTTPException(status_code=400, detail="Division grid slug already exists in workspace")
 
@@ -235,14 +234,16 @@ class DivisionGridService:
             session,
             models.DivisionGrid(
                 workspace_id=workspace_id,
+                discipline=grid_discipline,
                 slug=data.slug,
                 name=data.name,
                 description=data.description,
             ),
         )
 
-        # Auto-seed default Overwatch 2 division grid
-        await self.seed_default_grid_version(session, workspace_id, grid.id)
+        # A game without a ladder starts empty: the organiser enters its tiers.
+        if discipline(grid_discipline).native_ladder:
+            await self.seed_default_grid_version(session, workspace_id, grid.id, grid_discipline)
 
         # Reload/refresh the grid relationship
         await session.refresh(grid)
@@ -594,7 +595,9 @@ class DivisionGridService:
                 detail="Target division grid version does not belong to the workspace",
             )
 
-        used_source_ids = await get_workspace_source_version_ids(session, workspace_id)
+        used_source_ids = await get_workspace_source_version_ids(
+            session, workspace_id, discipline=target.grid.discipline
+        )
         used_source_ids.add(target_version_id)
         missing: list[int] = []
         incomplete: list[int] = []
@@ -668,6 +671,7 @@ class DivisionGridService:
                 status_code=400,
                 detail="Division grid version does not belong to the workspace",
             )
+        assert_discipline_enabled(workspace, version.grid.discipline)
         if version.status != "published":
             raise HTTPException(status_code=409, detail="Only published division grid versions can be activated")
 

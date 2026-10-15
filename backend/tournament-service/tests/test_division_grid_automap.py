@@ -139,7 +139,7 @@ def test_automap_fully_resolves_realistic_ow2_grid_rename() -> None:
     # Smoke: the default 40-tier OW2 grid, re-slugged but keeping the same rank
     # ranges (a structural save that reorganizes labels), must auto-map with zero
     # conflicts via rank overlap and pass runtime validation.
-    writes = division_service.get_default_ow2_tiers_write()
+    writes = division_service.ladder_tiers_write("overwatch")
     source = [
         SimpleNamespace(id=index + 1, slug=w.slug, name=w.name, rank_min=w.rank_min, rank_max=w.rank_max)
         for index, w in enumerate(writes)
