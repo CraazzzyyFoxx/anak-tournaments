@@ -45,6 +45,7 @@ ANSWER_TARGET_KEYS: tuple[str, ...] = (
 #: here to become mappable (and is mappable without one, minus the suggester).
 _IDENTITY_HEADERS: dict[str, tuple[str, tuple[str, ...]]] = {
     SocialProvider.BATTLENET: ("Battle tag", ("battle tag", "battletag", "ваш battle tag", "smurf", "alt", "смурф")),
+    SocialProvider.RIOT: ("Riot ID", ("riot id", "riotid")),
     SocialProvider.DISCORD: ("Discord", ("discord", "дискорд", "дискор")),
     SocialProvider.TWITCH: ("Twitch", ("twitch", "твич")),
     SocialProvider.BOOSTY: ("Boosty", ("boosty", "бусти")),
@@ -52,7 +53,7 @@ _IDENTITY_HEADERS: dict[str, tuple[str, tuple[str, ...]]] = {
     SocialProvider.YOUTUBE: ("YouTube", ("youtube", "ютуб")),
 }
 
-# Parser identifiers understood by ``parse_target_value`` in admin.py.
+# Parser identifiers understood by ``parse_target_value`` in sheet_parsing.py.
 PARSER_STRING = "string"
 PARSER_BATTLE_TAG = "battle_tag"
 PARSER_BATTLE_TAG_LIST = "battle_tag_list"
@@ -83,7 +84,7 @@ class ParserSpec:
 PARSER_CATALOG: tuple[ParserSpec, ...] = (
     ParserSpec(PARSER_STRING, "Text", "single", "string"),
     ParserSpec(PARSER_BATTLE_TAG, "Battle tag", "single", "string"),
-    ParserSpec(PARSER_BATTLE_TAG_LIST, "Battle tag list", "multi", "list"),
+    ParserSpec(PARSER_BATTLE_TAG_LIST, "Game handle list", "multi", "list"),
     ParserSpec(PARSER_BOOLEAN, "Yes / No", "single", "bool"),
     ParserSpec(PARSER_INTEGER, "Number", "single", "int"),
     ParserSpec(PARSER_DATETIME, "Date / time", "single", "datetime"),
@@ -124,8 +125,8 @@ def _identity_specs() -> list[MappingTargetSpec]:
     """One mappable target per identity provider the form can ask about.
 
     A GAME provider's answer is a list of handles -- main first, smurfs after --
-    so its target takes several columns and parses each as a battle tag. The
-    others are single handles.
+    so its target takes several columns and parses handles for that provider.
+    The others are single handles.
     """
     specs: list[MappingTargetSpec] = []
     for provider in IDENTITY_PROVIDERS:
@@ -462,7 +463,7 @@ class MappingValidationIssue:
     column: str | None = None
 
 
-IDENTITY_TARGETS = ("source_record_key", identity_key(SocialProvider.BATTLENET))
+IDENTITY_TARGETS = ("source_record_key", *(identity_key(provider) for provider in GAME_PROVIDERS))
 
 
 def _target_is_mapped(target_config: dict[str, Any] | None) -> bool:
@@ -608,7 +609,7 @@ def validate_mapping_config(
         issues.append(
             MappingValidationIssue(
                 code="missing_identity_target",
-                message="Map either 'Battle tag' or 'Record key' so rows can be matched.",
+                message="Map a game identity or 'Record key' so rows can be matched.",
             )
         )
 

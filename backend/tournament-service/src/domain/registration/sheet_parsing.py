@@ -13,9 +13,9 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
-from shared.core.social import GAME_PROVIDERS
+from shared.core.social import GAME_PROVIDERS, SocialProvider, display_social_handle, normalize_social_handle
 from shared.division_grid import DivisionGrid
-from shared.domain.forms import IDENTITY_PROVIDERS, FormSchema, identity_key
+from shared.domain.forms import IDENTITY_PROVIDERS, FormSchema, identity_key, identity_provider
 from shared.domain.player_sub_roles import catalog_slugs, normalize_sub_role
 from src.domain.registration.mapping_catalog import (
     ANSWER_TARGET_KEYS,
@@ -331,13 +331,25 @@ def parse_target_value(
     role_codes: tuple[str, ...],
     is_list: bool = False,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
+    provider: str | None = None,
 ) -> Any:
     if parser == "string":
         return values[0].strip() if values else None
     if parser == "battle_tag":
         return normalize_battle_tag(values[0]) if values else None
     if parser == "battle_tag_list":
-        return extract_battle_tags("\n".join(values))
+        if provider is None:
+            raise ValueError("Game handle parsing requires an identity provider")
+        if provider == SocialProvider.BATTLENET:
+            return extract_battle_tags("\n".join(values))
+        # One handle per selected cell/line: spaces and punctuation can be part
+        # of a game name. Leave invalid input to the form's provider validation.
+        return [
+            display_social_handle(provider, handle)
+            for value in values
+            for handle in value.splitlines()
+            if handle.strip()
+        ]
     if parser == "boolean":
         return parse_boolean(values[0] if values else None, value_mapping)
     if parser == "integer":
@@ -439,6 +451,7 @@ def parse_sheet_row_detailed(
                 is_list=is_list,
                 subrole_catalog=subrole_catalog,
                 role_codes=role_codes,
+                provider=identity_provider(target_key),
             )
         except Exception as exc:  # noqa: BLE001 - surface per-field instead of failing the row
             flat_values[target_key] = None
@@ -460,13 +473,21 @@ def parse_sheet_row_detailed(
             continue
         answers[key] = handles
 
-    primary_handle = next(
-        (handles[0] for provider in GAME_PROVIDERS if (handles := answers.get(identity_key(provider)))),
+    primary_identity = next(
+        ((provider, handles[0]) for provider in GAME_PROVIDERS if (handles := answers.get(identity_key(provider)))),
         None,
     )
-    source_record_key = flat_values.get("source_record_key") or primary_handle
+    primary_handle = primary_identity[1] if primary_identity else None
+    source_record_key = flat_values.get("source_record_key")
     if isinstance(source_record_key, str):
         source_record_key = normalize_battle_tag_key(source_record_key) or source_record_key.strip()
+    if not source_record_key and primary_identity:
+        provider, handle = primary_identity
+        source_record_key = (
+            normalize_battle_tag_key(handle)
+            if provider == SocialProvider.BATTLENET
+            else normalize_social_handle(provider, handle)
+        )
     if not source_record_key:
         return ParsedRowResult(fields=None, errors=errors, warnings=warnings)
 

@@ -1,4 +1,4 @@
-"""Fresh optional-identity writers and discipline defaults against PostgreSQL."""
+"""Optional writers and provider-scoped sheet/team identities against PostgreSQL."""
 
 from __future__ import annotations
 
@@ -13,13 +13,18 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from shared import models
+from shared.core.social import display_social_handle, normalize_social_handle
 from shared.domain.forms import FormSchema, FormSection
+from shared.domain.team_format import TeamFormat
+from shared.models.platform.outbox import EventOutbox
 from shared.services.ontology import project_disciplines
 from shared.services.roster import roster_engine
+from shared.services.team_format import save_tournament_format
 from shared.testing import create_test_async_engine
 from src.services.registration.lifecycle import lifecycle_service
 from src.services.registration.service import registration_service
 from src.services.registration.sheet_sync import sheet_sync_service
+from src.services.registration.teams import teams_service
 from src.services.tournament.flows import TournamentFlowsService
 
 
@@ -72,8 +77,20 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self) -> None:
         async with self.Session() as s:
+            player_ids = set(
+                await s.scalars(
+                    sa.select(models.WorkspaceMember.player_id).where(
+                        models.WorkspaceMember.workspace_id == self.workspace_id
+                    )
+                )
+            ) | {self.user_id}
+            await s.execute(
+                sa.delete(EventOutbox).where(
+                    EventOutbox.payload_json["tournament_id"].as_string() == str(self.tournament_id)
+                )
+            )
             await s.execute(sa.delete(models.Workspace).where(models.Workspace.id == self.workspace_id))
-            await s.execute(sa.delete(models.User).where(models.User.id == self.user_id))
+            await s.execute(sa.delete(models.User).where(models.User.id.in_(player_ids)))
             await s.execute(sa.delete(models.AuthUser).where(models.AuthUser.id == self.auth_id))
             await s.commit()
         await self.engine.dispose()
@@ -159,6 +176,139 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
         roster = next(iter(rosters.values()))
         assert roster.display_name == "Optional Sheet Player"
         assert roster.battle_tag is None and roster.player_id is None
+
+    async def _sync_riot_sheet(self, *, explicit_key: bool) -> None:
+        suffix = uuid.uuid4().hex[:4]
+        raw_handles = [f"Faker{suffix}#KR1", f"Hide {suffix} # EUW", f"Foo {suffix} Bar#123", f"Foo{suffix}Bar#123"]
+        handles = [display_social_handle("riot", handle) for handle in raw_handles]
+        rows = [["Riot ID", "Key"], *[[handle, f"Row {index}"] for index, handle in enumerate(raw_handles)]]
+        targets = {"identity_riot": {"mode": "columns", "columns": ["Riot ID"], "parser": "battle_tag_list"}}
+        if explicit_key:
+            targets["source_record_key"] = {"mode": "columns", "columns": ["Key"], "parser": "string"}
+
+        async def fetch(*args, **kwargs):
+            return rows
+
+        async with self.Session() as s:
+            with patch("src.services.registration.sheet_sync.fetch_google_sheet_rows", fetch):
+                feed = await sheet_sync_service.upsert_google_sheet_feed(
+                    s,
+                    self.tournament_id,
+                    source_url="https://docs.google.com/spreadsheets/d/riot-identity/edit",
+                    title=None,
+                    auto_sync_enabled=False,
+                    auto_sync_interval_seconds=300,
+                    mapping_config_json={"targets": targets},
+                    value_mapping_json={},
+                )
+                preview = await sheet_sync_service.preview_google_sheet_mapping(s, self.tournament_id)
+                assert preview["create_count"] == 4 and preview["skip_count"] == 0
+                assert [row["parsed_fields"]["answers"]["identity_riot"] for row in preview["rows"]] == [
+                    [handle] for handle in handles
+                ]
+                result = await sheet_sync_service.sync_google_sheet_feed(s, self.tournament_id)
+                assert result.created == 4 and result.skipped == 0 and result.errors == []
+                repeated = await sheet_sync_service.sync_google_sheet_feed(s, self.tournament_id)
+                assert repeated.created == 0 and repeated.updated == 4 and repeated.errors == []
+                keys = set(await sheet_sync_service.binding_repo.list_source_record_keys(s, feed.id))
+                expected_keys = (
+                    {f"row{index}" for index in range(4)}
+                    if explicit_key
+                    else {normalize_social_handle("riot", handle) for handle in handles}
+                )
+                assert keys == expected_keys
+
+        async with self.Session() as s:
+            rosters = await roster_engine.for_tournament(s, self.tournament_id)
+            assert {row.battle_tag for row in rosters.values()} == set(handles)
+            assert len({row.player_id for row in rosters.values()}) == 4
+            for row in rosters.values():
+                loaded = await lifecycle_service.get_registration_by_id(s, row.registration_id)
+                assert [(identity.provider, identity.handle) for identity in loaded.identities] == [
+                    ("riot", row.battle_tag)
+                ]
+                assert row.player_id is not None
+                account = await s.scalar(
+                    sa.select(models.SocialAccount).where(
+                        models.SocialAccount.user_id == row.player_id, models.SocialAccount.provider == "riot"
+                    )
+                )
+                assert account.username == row.battle_tag
+
+    async def test_riot_sheet_without_record_key_keeps_space_distinct_identities(self) -> None:
+        await self._sync_riot_sheet(explicit_key=False)
+
+    async def test_riot_sheet_with_record_key_persists_alpha_tags(self) -> None:
+        await self._sync_riot_sheet(explicit_key=True)
+
+    async def _attach_team_game_handles(self, *, discipline: str, provider: str, other_provider: str) -> None:
+        suffix = uuid.uuid4().hex[:6]
+        handle = f"Attach{suffix}#1234"
+        second_handle = f"Team {suffix} # KR1" if provider == "riot" else f"Other{suffix}#5678"
+        async with self.Session() as s:
+            tournament = await s.get(models.Tournament, self.tournament_id)
+            tournament.discipline = discipline
+            if discipline == "overwatch":
+                tournament.division_grid_version_id = None
+            await save_tournament_format(
+                s, tournament, TeamFormat(discipline=discipline, name="Open two", starter_min=2, starter_max=2)
+            )
+            team = models.BalancerRegistrationTeam(
+                tournament_id=tournament.id,
+                workspace_id=self.workspace_id,
+                name="Identity",
+                name_normalized="identity",
+                status="forming",
+            )
+            wrong_provider = models.BalancerRegistration(
+                tournament_id=tournament.id,
+                display_name=handle,
+                status="approved",
+                identities=[
+                    models.BalancerRegistrationIdentity(
+                        provider=other_provider,
+                        position=0,
+                        handle=handle,
+                        handle_normalized=normalize_social_handle(other_provider, handle),
+                    )
+                ],
+            )
+            s.add_all([team, wrong_provider])
+            await s.commit()
+            team_id, wrong_id = team.id, wrong_provider.id
+            for candidate in (handle, handle.lower(), second_handle):
+                await teams_service.attach_member_as_organizer(
+                    s,
+                    tournament_id=self.tournament_id,
+                    team_id=team_id,
+                    handle=candidate,
+                    slot_code="flex",
+                )
+        async with self.Session() as s:
+            rosters = await roster_engine.for_tournament(s, self.tournament_id)
+            assert rosters[wrong_id].registration_team_id is None
+            assert rosters[wrong_id].battle_tag is None
+            attached = [row for row in rosters.values() if row.registration_team_id == team_id]
+            assert {row.battle_tag for row in attached} == {handle, display_social_handle(provider, second_handle)}
+            for row in attached:
+                loaded = await lifecycle_service.get_registration_by_id(s, row.registration_id)
+                assert [(identity.provider, identity.handle) for identity in loaded.identities] == [
+                    (provider, row.battle_tag)
+                ]
+                assert row.player_id is not None
+                account = await s.scalar(
+                    sa.select(models.SocialAccount).where(
+                        models.SocialAccount.user_id == row.player_id,
+                        models.SocialAccount.provider == provider,
+                    )
+                )
+                assert account.username == row.battle_tag
+
+    async def test_lol_organizer_attach_is_visible_to_riot_roster_consumers(self) -> None:
+        await self._attach_team_game_handles(discipline="lol", provider="riot", other_provider="battlenet")
+
+    async def test_overwatch_organizer_attach_never_reuses_a_riot_registration(self) -> None:
+        await self._attach_team_game_handles(discipline="overwatch", provider="battlenet", other_provider="riot")
 
     async def test_default_forms_and_tournament_read_follow_persisted_discipline(self) -> None:
         async with self.Session() as s:

@@ -16,11 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
-from shared.core.social import GAME_PROVIDERS, display_social_handle, normalize_social_handle
-from shared.disciplines import DISCIPLINES
+from shared.core.social import display_social_handle, normalize_social_handle
+from shared.disciplines import DISCIPLINES, identity_provider
 from shared.domain.team_roster import RosterMember
 from shared.domain.team_subscription import SUBSCRIPTION_SCOPE_TEAM, team_subscription_is_current
-from shared.repository import CatalogRoleRepository, TournamentRepository
+from shared.repository import CatalogRoleRepository
 from shared.services.discord_client import DiscordClient
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit
@@ -647,16 +647,16 @@ def install_team_actions(cls: type) -> None:
         blocks export, but it must not refuse the write — a player with no
         Discord/account is exactly who this path exists to add.
         """
-        # ponytail: one game provider (battlenet). A shadow registration is created
-        # under it; widen when a second game provider lands and the organizer has
-        # to say which game the handle belongs to.
-        provider = GAME_PROVIDERS[0]
-        tag = display_social_handle(provider, handle)
-        if not tag:
-            raise _fail(400, "handle_required", "A game handle is required")
         dest_probe = await self.team_repo.get_by(session, id=team_id, deleted_at=None)
         if dest_probe is None or dest_probe.tournament_id != tournament_id:
             raise _fail(404, "team_not_found", "Team not found")
+        tournament = await self.tournament_repo.get(session, tournament_id)
+        if tournament is None:
+            raise _fail(404, "tournament_not_found", "Tournament not found")
+        provider = identity_provider(tournament.discipline)
+        tag = display_social_handle(provider, handle)
+        if not tag:
+            raise _fail(400, "handle_required", "A game handle is required")
         key = normalize_social_handle(provider, tag)
         registration = await session.scalar(
             self.registration_repo.select()
@@ -665,7 +665,7 @@ def install_team_actions(cls: type) -> None:
                 models.BalancerRegistration.deleted_at.is_(None),
                 models.BalancerRegistration.identities.any(
                     sa.and_(
-                        models.BalancerRegistrationIdentity.provider.in_(GAME_PROVIDERS),
+                        models.BalancerRegistrationIdentity.provider == provider,
                         models.BalancerRegistrationIdentity.position == 0,
                         models.BalancerRegistrationIdentity.handle_normalized == key,
                     )
@@ -674,7 +674,6 @@ def install_team_actions(cls: type) -> None:
             .options(selectinload(models.BalancerRegistration.identities))
         )
         if registration is None:
-            tournament = await TournamentRepository().get(session, tournament_id)
             catalog_roles = await CatalogRoleRepository().rated_rows(
                 session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
             )

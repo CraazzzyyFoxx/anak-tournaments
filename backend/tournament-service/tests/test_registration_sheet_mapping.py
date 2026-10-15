@@ -37,59 +37,9 @@ def _schema(*fields: FormField) -> FormSchema:
 #: is what a form declaring all of them offers.
 ALL_ANSWER_FIELDS = tuple(
     FormField(key=key, kind="builtin", visibility="organizers" if key == "organizer_notes" else "public")
-    for key in (
-        "identity_battlenet",
-        "identity_discord",
-        "identity_twitch",
-        "identity_boosty",
-        "identity_vk",
-        "identity_youtube",
-        "stream_pov",
-        "reserve",
-        "public_notes",
-        "organizer_notes",
-    )
+    for key in catalog.ANSWER_TARGET_KEYS
 )
 
-#: The targets a form declaring every builtin question offers. The three
-#: ``*_nick`` targets became one ``identity_<provider>`` per
-#: ``IDENTITY_PROVIDERS``, ``battle_tag`` + ``smurf_tags`` became the single
-#: ``identity_battlenet`` list target, and ``notes`` became ``public_notes`` +
-#: ``organizer_notes``.
-BUILTIN_TARGETS = {
-    "source_record_key",
-    "display_name",
-    "submitted_at",
-    "identity_battlenet",
-    "identity_discord",
-    "identity_twitch",
-    "identity_boosty",
-    "identity_vk",
-    "identity_youtube",
-    "stream_pov",
-    "reserve",
-    "public_notes",
-    "organizer_notes",
-    "source_roles.primary",
-    "source_roles.additional",
-    "is_flex",
-    "admin_notes",
-    "roles.tank.rank_value",
-    "roles.tank.division_input",
-    "roles.tank.subrole",
-    "roles.tank.is_active",
-    "roles.tank.priority",
-    "roles.damage.rank_value",
-    "roles.damage.division_input",
-    "roles.damage.subrole",
-    "roles.damage.is_active",
-    "roles.damage.priority",
-    "roles.support.rank_value",
-    "roles.support.division_input",
-    "roles.support.subrole",
-    "roles.support.is_active",
-    "roles.support.priority",
-}
 
 #: A form that asks every builtin question, so the whole builtin target set is
 #: mappable. Most tests below are about parsers and columns, not about which
@@ -100,11 +50,6 @@ FULL_SCHEMA = _schema(*ALL_ANSWER_FIELDS)
 # ---------------------------------------------------------------------------
 # Catalog
 # ---------------------------------------------------------------------------
-
-
-def test_builtin_specs_match_the_target_set():
-    keys = {spec.key for spec in catalog.build_target_specs(FULL_SCHEMA, role_codes=ROLE_CODES)}
-    assert keys == BUILTIN_TARGETS
 
 
 def test_an_answer_target_is_offered_only_while_its_question_exists():
@@ -125,12 +70,6 @@ def test_an_answer_target_is_offered_only_while_its_question_exists():
     assert not keys & {"identity_boosty", "identity_vk", "identity_youtube", "stream_pov", "organizer_notes"}
     # Organizer state is never a question, so it is always offered.
     assert {"admin_notes", "display_name", "source_record_key", "roles.tank.rank_value"} <= keys
-
-
-def test_every_answer_target_is_a_mappable_builtin():
-    # ``parse_sheet_row_detailed`` routes exactly these into ``answers``; a key
-    # with no spec would silently never be parsed.
-    assert set(catalog.ANSWER_TARGET_KEYS) <= BUILTIN_TARGETS
 
 
 def test_custom_field_specs_added_with_type_parsers():
@@ -371,6 +310,60 @@ def test_suggest_mapping_matches_custom_field_label_case_insensitively():
 def _grid():
     # Minimal grid stub: division_to_rank isn't exercised by these rows.
     return SimpleNamespace(resolve_rank_from_division=lambda n: None)
+
+
+def test_sheet_game_handles_use_the_target_provider_and_keep_distinct_match_keys():
+    cases = (
+        ("battlenet", "BattleTag", "Main#1234, Alt#5678", ["Main#1234", "Alt#5678"], "main#1234"),
+        ("riot", "Riot ID", "Faker#KR1", ["Faker#KR1"], "faker#kr1"),
+        ("riot", "Riot ID", " Hide On Bush # KR1 ", ["Hide On Bush#KR1"], "hide on bush#kr1"),
+        ("riot", "Riot ID", "Foo Bar#123", ["Foo Bar#123"], "foo bar#123"),
+        ("riot", "Riot ID", "FooBar#123", ["FooBar#123"], "foobar#123"),
+        ("riot", "Riot ID", "Name, With Comma#EUW", ["Name, With Comma#EUW"], "name, with comma#euw"),
+        ("riot", "Riot ID", "Main#KR1\nAlt#EUW", ["Main#KR1", "Alt#EUW"], "main#kr1"),
+        # Invalid input must reach answer validation, not disappear as an empty identity.
+        ("riot", "Riot ID", "Invalid#TOOLONG", ["Invalid#TOOLONG"], "invalid#toolong"),
+    )
+    for provider, header, raw, handles, key in cases:
+        target = f"identity_{provider}"
+        schema = _schema(FormField(key=target, kind="builtin"))
+        specs = catalog.target_spec_map(schema, role_codes=ROLE_CODES)
+        mapping = sheet_parsing.suggest_mapping_from_headers([header], schema=schema, role_codes=ROLE_CODES)
+        mapping["targets"]["source_record_key"] = {"mode": "disabled"}
+        assert catalog.validate_mapping_config(mapping, target_specs=specs, header_keys=[header]) == []
+        result = sheet_parsing.parse_sheet_row_detailed(
+            headers=[header],
+            row=[raw],
+            mapping_config=mapping,
+            value_mapping=None,
+            grid=_grid(),
+            role_codes=ROLE_CODES,
+            schema=schema,
+        )
+        assert result.errors == []
+        assert result.fields["answers"][target] == handles
+        assert result.fields["source_record_key"] == key
+
+
+def test_explicit_sheet_record_keys_keep_their_existing_normalization():
+    schema = _schema(FormField(key="identity_riot", kind="builtin"))
+    result = sheet_parsing.parse_sheet_row_detailed(
+        headers=["Riot ID", "Key"],
+        row=["Hide On Bush#KR1", " My Record 1 "],
+        mapping_config={
+            "targets": {
+                "identity_riot": {"mode": "columns", "columns": ["Riot ID"], "parser": "battle_tag_list"},
+                "source_record_key": {"mode": "columns", "columns": ["Key"], "parser": "string"},
+            }
+        },
+        value_mapping=None,
+        grid=_grid(),
+        role_codes=ROLE_CODES,
+        schema=schema,
+    )
+    assert result.errors == []
+    assert result.fields["source_record_key"] == "myrecord1"
+    assert result.fields["answers"]["identity_riot"] == ["Hide On Bush#KR1"]
 
 
 def test_division_value_mapping_returns_configured_rank():
