@@ -38,11 +38,16 @@ def _code(expression: str) -> str:
     return SUB_ROLE_CODE.format(expression)
 
 
+def _workspace_code(parent: str, slug: str) -> str:
+    """SQL mirror of ``workspace_sub_role_code`` for a normalized parent expression and a legacy slug."""
+    return f"({parent} || '_' || nullif({_code(slug)}, ''))"
+
+
 #: The workspace sub-roles this revision creates: the catalog's rows, then every value players, registrations and
 #: encounter rosters use that no catalog row of the same workspace and role names by code or label (Deviation 1).
 SUB_ROLE_PLAN = f"""
     WITH catalog_rows AS (
-        SELECT s.workspace_id, lower(btrim(s.role)) AS parent, {_code("s.slug")} AS code, btrim(s.label) AS name,
+        SELECT s.workspace_id, lower(btrim(s.role)) AS parent, {_workspace_code("lower(btrim(s.role))", "s.slug")} AS code, btrim(s.label) AS name,
                s.description, s.sort_order, s.is_active AS active, true AS selectable
           FROM tournament.player_sub_role s
     ), used AS (
@@ -65,12 +70,12 @@ SUB_ROLE_PLAN = f"""
           JOIN encounter.encounter e ON e.id = tm.encounter_id
          WHERE top.dimension = 'player_role' AND top.role IN {MODULE_ROLES}
     ), off_catalog AS (
-        SELECT u.workspace_id, u.parent, {_code("u.raw")} AS code, min(u.raw) AS name
+        SELECT u.workspace_id, u.parent, {_workspace_code("u.parent", "u.raw")} AS code, min(u.raw) AS name
           FROM used u
          WHERE NOT EXISTS (SELECT 1 FROM catalog_rows c
                             WHERE c.workspace_id = u.workspace_id AND c.parent = u.parent
-                              AND {_code("u.raw")} IN (c.code, {_code("c.name")}))
-         GROUP BY u.workspace_id, u.parent, {_code("u.raw")}
+                              AND ({_workspace_code("u.parent", "u.raw")} = c.code OR {_code("u.raw")} = {_code("c.name")}))
+         GROUP BY u.workspace_id, u.parent, {_workspace_code("u.parent", "u.raw")}
     )
     SELECT workspace_id, parent, code, name, description, sort_order, active, selectable FROM catalog_rows
     UNION ALL
@@ -140,7 +145,7 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
         SELECT p.workspace_id, p.code, array_agg(p.parent ORDER BY p.parent) AS parents
           FROM ({SUB_ROLE_PLAN}) p
          GROUP BY p.workspace_id, p.code
-        HAVING count(*) > 1 OR p.code IN ('tank', 'damage', 'support', 'flex', '') OR char_length(p.code) > 64
+        HAVING char_length(p.code) > 64
             OR bool_or(p.parent NOT IN {MODULE_ROLES})
          ORDER BY p.workspace_id, p.code
         """,
@@ -191,8 +196,9 @@ LANGUAGE sql STABLE AS $$
        JOIN catalog.role_dimension d ON d.id = m.dimension_id
       WHERE d.discipline = 'overwatch' AND d.code = 'player_role' AND m.workspace_id IS NULL
         AND m.code = lower(btrim(top)) AND r.workspace_id = ws
-        AND {_code("sub")} <> '' AND {_code("sub")} IN (r.code, {_code("r.name")})
-      ORDER BY (r.code = {_code("sub")}) DESC, r.id
+        AND {_code("sub")} <> ''
+        AND ({_workspace_code("m.code", "sub")} = r.code OR {_code("sub")} = {_code("r.name")})
+      ORDER BY (r.code = {_workspace_code("m.code", "sub")}) DESC, r.id
       LIMIT 1),
     (SELECT m.id
        FROM catalog.role m

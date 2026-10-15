@@ -20,7 +20,7 @@ import pytest
 from psycopg.types.json import Json, Jsonb
 
 from shared.disciplines import DISCIPLINES
-from shared.domain.player_sub_roles import normalize_sub_role
+from shared.domain.player_sub_roles import normalize_sub_role, workspace_sub_role_code
 from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
@@ -216,19 +216,19 @@ def test_the_overwatch_ontology_is_seeded_as_the_module_declares(migrated) -> No
 def test_catalog_sub_roles_become_workspace_roles_under_their_role(migrated) -> None:
     conn, ids = migrated["conn"], migrated["ids"]
     assert _rows(conn, _SUB_ROLES, (ids["ws_a"],)) == [
-        (ids["ws_a"], "damage", "hitscan", "Hitscan", None, 1, True, True),
+        (ids["ws_a"], "damage", "damage_hitscan", "Hitscan", None, 1, True, True),
         (
             ids["ws_a"],
             "support",
-            "light_heal",
+            "support_light_heal",
             "light heal",
             "Kept by discipline01b: used by players or registrations, absent from the workspace sub-role catalog.",
             1000,
             False,
             False,
         ),
-        (ids["ws_a"], "support", "main_heal", "Main Heal", "Primary healer", 2, True, True),
-        (ids["ws_a"], "tank", "off_tank", "Off Tank", None, 0, False, True),
+        (ids["ws_a"], "support", "support_main_heal", "Main Heal", "Primary healer", 2, True, True),
+        (ids["ws_a"], "tank", "tank_off_tank", "Off Tank", None, 0, False, True),
     ]
 
 
@@ -238,7 +238,7 @@ def test_legacy_whitespace_matches_the_existing_catalog_leaf(migrated) -> None:
         conn.execute(revision.LEAF_FUNCTION)
         leaf_id = _scalar(
             conn,
-            "SELECT id FROM catalog.role WHERE workspace_id = %s AND code = 'hitscan'",
+            "SELECT id FROM catalog.role WHERE workspace_id = %s AND code = 'damage_hitscan'",
             (ids["ws_a"],),
         )
         assert (
@@ -260,6 +260,9 @@ def test_sql_normalization_matches_python_whitespace(migrated) -> None:
     for char in whitespace:
         for value in (f"{char}Hitscan{char}", f"Main{char}{char}Heal", char):
             assert _scalar(conn, f"SELECT {revision._code('%s')}", (value,)) == (normalize_sub_role(value) or "")
+            assert _scalar(
+                conn, f"SELECT {revision._workspace_code('%s', '%s')}", ("damage", value)
+            ) == workspace_sub_role_code("damage", value)
 
 
 def test_values_outside_the_catalog_become_inactive_unselectable_sub_roles(migrated) -> None:
@@ -267,28 +270,24 @@ def test_values_outside_the_catalog_become_inactive_unselectable_sub_roles(migra
     assert [
         (parent, code, active, selectable)
         for _, parent, code, _, _, _, active, selectable in _rows(conn, _SUB_ROLES, (ids["ws_b"],))
-    ] == [("damage", "projectile", False, False), ("support", "main_heal", False, False)]
+    ] == [("damage", "damage_projectile", False, False), ("support", "support_main_heal", False, False)]
 
 
 def test_a_flex_sub_role_creates_nothing(migrated) -> None:
     conn = migrated["conn"]
-    assert _scalar(conn, "SELECT count(*) FROM catalog.role WHERE code = 'main'") == 0
+    assert _scalar(conn, "SELECT count(*) FROM catalog.role WHERE code IN ('flex', 'flex_main')") == 0
 
 
 @pytest.mark.parametrize(
     ("statement", "listed"),
     [
         (
-            "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label) VALUES (%(ws)s, 'tank', 'hitscan', 'Hitscan tank')",
-            "'code': 'hitscan', 'parents': ['damage', 'tank']",
-        ),
-        (
-            "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label) VALUES (%(ws)s, 'support', 'Tank', 'Tank')",
-            "'code': 'tank'",
+            "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label) VALUES (%(ws)s, 'support', repeat('x', 57), 'Long')",
+            "'code': 'support_" + "x" * 57 + "'",
         ),
         (
             "INSERT INTO tournament.player_sub_role (workspace_id, role, slug, label) VALUES (%(ws)s, 'flex', 'anchor', 'Anchor')",
-            "'code': 'anchor', 'parents': ['flex']",
+            "'code': 'flex_anchor', 'parents': ['flex']",
         ),
     ],
 )
@@ -297,6 +296,41 @@ def test_unusable_sub_role_codes_stop_the_revision(legacy_template, statement: s
     assert done.returncode != 0
     assert "workspace sub-roles that cannot become catalog roles" in done.stderr
     assert listed in done.stderr
+
+
+def test_shared_slugs_under_two_parents_in_two_workspaces_migrate_distinctly(legacy_template) -> None:
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    owners = [legacy_template["ids"][key] for key in ("ws_a", "ws_b")]
+    with _connect(REJECTED_DB) as conn:
+        for workspace_id in owners:
+            for role in ("damage", "support"):
+                for slug in ("main", "flex"):
+                    _insert(
+                        conn,
+                        "tournament.player_sub_role",
+                        workspace_id=workspace_id,
+                        role=role,
+                        slug=slug,
+                        label=slug.title(),
+                    )
+        assert _rows(conn, revision.PREFLIGHT[3][1]) == []
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        rows = _rows(
+            conn, "SELECT id, workspace_id, code FROM catalog.role WHERE code IN ('damage_main', 'support_main')"
+        )
+        assert len({row[0] for row in rows}) == 4
+        assert {(workspace_id, code) for _, workspace_id, code in rows} == {
+            (workspace_id, code) for workspace_id in owners for code in ("damage_main", "support_main")
+        }
+        conn.execute(revision.LEAF_FUNCTION)
+        for role_id, workspace_id, code in rows:
+            parent = code.split("_", 1)[0]
+            assert _scalar(conn, "SELECT pg_temp.discipline01b_leaf(%s, %s, 'main')", (workspace_id, parent)) == role_id
+        _, create, _, skipped = _statements(RECONCILE_SQL)
+        conn.execute(create)
+        assert _rows(conn, skipped) == []
 
 
 def test_role_values_outside_the_vocabulary_stop_the_revision(legacy_template) -> None:

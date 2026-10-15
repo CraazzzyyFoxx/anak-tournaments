@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.rbac.workspace_lookup import get_player_sub_role_workspace_id
 from shared.rpc.crud import EntityConfig
 from shared.schemas.player_sub_role import PlayerSubRoleCreate, PlayerSubRoleRead, PlayerSubRoleUpdate
@@ -40,7 +41,7 @@ def _dump(row: models.CatalogRole) -> dict[str, Any]:
         discipline=row.dimension.discipline,
         dimension=row.dimension.code,
         role=row.parent.code,
-        slug=row.code,
+        slug=workspace_sub_role_slug(row.parent.code, row.code),
         label=row.name,
         description=row.description,
         sort_order=row.sort_order,

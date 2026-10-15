@@ -63,7 +63,7 @@ class PlayerSubRoleServiceTests(IsolatedAsyncioTestCase):
         async with self.Session() as s:
             row = await self.service.create_sub_role(s, _create(self.workspace_id, "Support", " Main Heal "))
         assert (row.code, row.name, row.parent.code, row.workspace_id, row.active) == (
-            "main_heal",
+            "support_main_heal",
             "Main Heal",
             "support",
             self.workspace_id,
@@ -71,7 +71,7 @@ class PlayerSubRoleServiceTests(IsolatedAsyncioTestCase):
         )
 
     async def test_create_rejects_codes_over_64_after_normalization(self) -> None:
-        for label, slug in (("Short", "x" * 65), ("x" * 65, None)):
+        for label, slug in (("Short", "x" * 58), ("x" * 58, None)):
             async with self.Session() as s:
                 with self.assertRaises(BaseAPIException) as raised:
                     await self.service.create_sub_role(s, _create(self.workspace_id, "damage", label, slug))
@@ -86,21 +86,21 @@ class PlayerSubRoleServiceTests(IsolatedAsyncioTestCase):
     async def test_update_rejects_codes_over_64_without_changing_the_row(self) -> None:
         async with self.Session() as s:
             row = await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Hitscan"))
-            for payload in ({"slug": "x" * 65}, {"slug": None, "label": "x" * 65}):
+            for payload in ({"slug": "x" * 58}, {"slug": None, "label": "x" * 58}):
                 with self.assertRaises(BaseAPIException) as raised:
                     await self.service.update_sub_role(s, row.id, PlayerSubRoleUpdate(**payload))
                 assert raised.exception.status_code == 422
                 await s.refresh(row)
-                assert (row.code, row.name) == ("hitscan", "Hitscan")
+                assert (row.code, row.name) == ("damage_hitscan", "Hitscan")
 
     async def test_code_limit_uses_normalized_length_on_create_and_update(self) -> None:
         async with self.Session() as s:
-            row = await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Long", f"\t{'X' * 64}\n"))
-            assert row.code == "x" * 64
+            row = await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Long", f"\t{'X' * 57}\n"))
+            assert row.code == "damage_" + "x" * 57
             row = await self.service.update_sub_role(
-                s, row.id, PlayerSubRoleUpdate(slug=f"\t{'Y' * 31} \t {'Z' * 32}\n")
+                s, row.id, PlayerSubRoleUpdate(slug=f"\t{'Y' * 28} \t {'Z' * 28}\n")
             )
-            assert row.code == "y" * 31 + "_" + "z" * 32
+            assert row.code == "damage_" + "y" * 28 + "_" + "z" * 28
 
     async def test_rpc_create_audits_persisted_normalized_catalog_values(self) -> None:
         cfg = player_sub_role_entity()
@@ -153,20 +153,72 @@ class PlayerSubRoleServiceTests(IsolatedAsyncioTestCase):
             catalog = await self.service.catalog_for_workspace(s, self.workspace_id, discipline="overwatch")
         assert catalog == {"tank": [], "damage": [{"slug": "hitscan", "label": "Hitscan"}], "support": []}
 
-    async def test_a_code_reserved_by_a_module_role_or_flex_is_refused(self) -> None:
+    async def test_a_slug_may_equal_a_module_role_or_flex(self) -> None:
         for label in ("Tank", "Flex"):
             async with self.Session() as s:
-                with self.assertRaises(BaseAPIException) as raised:
-                    await self.service.create_sub_role(s, _create(self.workspace_id, "support", label))
-            assert raised.exception.status_code == 409
-            assert "sub_role_code_reserved" in str(raised.exception.detail)
+                row = await self.service.create_sub_role(s, _create(self.workspace_id, "support", label))
+            assert row.code == f"support_{label.lower()}"
 
-    async def test_a_code_is_unique_in_the_workspace_even_under_another_role(self) -> None:
+    async def test_a_slug_is_unique_under_its_parent_but_reusable_under_another(self) -> None:
         async with self.Session() as s:
-            await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Main"))
+            damage = await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Main"))
+            support = await self.service.create_sub_role(s, _create(self.workspace_id, "support", "Main"))
+            assert (damage.code, support.code) == ("damage_main", "support_main")
             with self.assertRaises(BaseAPIException) as raised:
-                await self.service.create_sub_role(s, _create(self.workspace_id, "tank", "Main"))
+                await self.service.create_sub_role(s, _create(self.workspace_id, "support", "Main"))
         assert raised.exception.status_code == 409
+
+    async def test_form_pair_resolves_the_scoped_parent_qualified_leaf(self) -> None:
+        from shared.services.ontology import rated_leaf
+
+        async with self.Session() as s:
+            damage = await self.service.create_sub_role(s, _create(self.workspace_id, "damage", "Main"))
+            support = await self.service.create_sub_role(s, _create(self.workspace_id, "support", "Main"))
+            for role, expected in (("damage", damage), ("support", support)):
+                found = await rated_leaf(
+                    s, discipline="overwatch", workspace_id=self.workspace_id, role=role, sub_role="\tMain\n"
+                )
+                assert found.id == expected.id
+            for role, sub_role, discipline, workspace_id, error in (
+                ("support", "main", "overwatch", -1, "unknown_sub_role"),
+                ("tank", "main", "overwatch", self.workspace_id, "unknown_sub_role"),
+                ("support", "missing", "overwatch", self.workspace_id, "unknown_sub_role"),
+                ("support", "main", "missing", self.workspace_id, "unknown_role"),
+            ):
+                with self.assertRaises(BaseAPIException) as raised:
+                    await rated_leaf(s, discipline=discipline, workspace_id=workspace_id, role=role, sub_role=sub_role)
+                assert raised.exception.status_code == 422
+                assert error in str(raised.exception.detail)
+            assert (
+                await rated_leaf(
+                    s, discipline="overwatch", workspace_id=self.workspace_id, role="support", sub_role=None
+                )
+            ).id == support.parent_role_id
+            for role in (None, "flex"):
+                assert (
+                    await rated_leaf(
+                        s, discipline="overwatch", workspace_id=self.workspace_id, role=role, sub_role="main"
+                    )
+                    is None
+                )
+
+    async def test_crud_slug_round_trips_without_duplicating_the_parent(self) -> None:
+        cfg = player_sub_role_entity()
+        async with self.Session() as s:
+            row = await self.service.create_sub_role(s, _create(self.workspace_id, "support", "Main"))
+            payload = await cfg.serializer(s, row)
+            assert payload["slug"] == "main"
+            row = await self.service.update_sub_role(s, row.id, PlayerSubRoleUpdate(slug=payload["slug"]))
+            assert row.code == "support_main"
+
+    async def test_code_and_slug_helpers_strip_only_the_parent_prefix(self) -> None:
+        from shared.domain.player_sub_roles import workspace_sub_role_code, workspace_sub_role_slug
+
+        for slug in ("main", "support_main", "main_heal"):
+            code = workspace_sub_role_code("support", f"\t{slug}\n")
+            assert code == f"support_{slug}"
+            assert workspace_sub_role_slug("support", code) == slug
+        assert workspace_sub_role_code("support", " \t\n") is None
 
     async def test_moving_a_sub_role_to_another_role_is_refused(self) -> None:
         async with self.Session() as s:
@@ -195,7 +247,7 @@ class EntityConfigTests(IsolatedAsyncioTestCase):
         row = SimpleNamespace(
             id=1,
             workspace_id=7,
-            code="main_tank",
+            code="tank_main_tank",
             name="Main Tank",
             description=None,
             sort_order=0,

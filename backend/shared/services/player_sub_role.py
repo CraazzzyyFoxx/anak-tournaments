@@ -12,9 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import build_subrole_catalog, normalize_role, normalize_sub_role
+from shared.domain.player_sub_roles import build_subrole_catalog, normalize_role, workspace_sub_role_code
 from shared.domain.roles import UnknownRole
-from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.repository import CatalogRoleRepository
 
 __all__ = ("PlayerSubRoleService", "SubroleCatalog", "player_sub_role_service")
@@ -37,8 +36,8 @@ class _UpdateData(Protocol):
     def model_dump(self, *, exclude_unset: bool = False) -> dict[str, Any]: ...
 
 
-def _code_or_raise(slug: str | None, label: str | None) -> str:
-    normalized = normalize_sub_role(slug or label)
+def _code_or_raise(parent: str, slug: str | None, label: str | None) -> str:
+    normalized = workspace_sub_role_code(parent, slug or label)
     if normalized is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sub-role slug or label is required.")
     if len(normalized) > 64:
@@ -53,8 +52,8 @@ class PlayerSubRoleService:
     """Workspace sub-roles: ``catalog.role`` rows with ``workspace_id`` under a module role (D31, D86).
 
     A sub-role keeps its parent for life -- an assignment is the leaf, so moving it would rewrite every holder's
-    top-level role -- and never reuses a module role's code or ``flex``, so a code names one role per dimension and
-    workspace (§14.3).
+    top-level role. Its code prefixes the normalized slug with that parent, so ``main``/``flex`` can exist under
+    several parents while codes remain unique per dimension and workspace (§14.3, Deviation 11).
     """
 
     def __init__(self, *, roles: CatalogRoleRepository = CatalogRoleRepository()) -> None:
@@ -72,9 +71,7 @@ class PlayerSubRoleService:
     async def _assert_code_free(
         self, session: AsyncSession, *, parent: models.CatalogRole, workspace_id: int, code: str
     ) -> None:
-        if code == FLEX_SLOT_CODE or await self.roles.code_taken(
-            session, dimension_id=parent.dimension_id, workspace_id=None, code=code
-        ):
+        if await self.roles.code_taken(session, dimension_id=parent.dimension_id, workspace_id=None, code=code):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"sub_role_code_reserved: {code!r} is a role of the game, not a sub-role.",
@@ -119,7 +116,7 @@ class PlayerSubRoleService:
 
     async def create_sub_role(self, session: AsyncSession, data: _CreateData) -> models.CatalogRole:
         parent = await self._parent(session, discipline=data.discipline, code=data.role)
-        code = _code_or_raise(data.slug, data.label)
+        code = _code_or_raise(parent.code, data.slug, data.label)
         await self._assert_code_free(session, parent=parent, workspace_id=data.workspace_id, code=code)
         sub_role = await self.roles.create(
             session,
@@ -147,7 +144,7 @@ class PlayerSubRoleService:
                 detail="sub_role_parent_fixed: a sub-role keeps its role; create a new sub-role instead.",
             )
         if "slug" in update_data:
-            code = _code_or_raise(update_data["slug"], update_data.get("label", sub_role.name))
+            code = _code_or_raise(sub_role.parent.code, update_data["slug"], update_data.get("label", sub_role.name))
             if code != sub_role.code:
                 await self._assert_code_free(
                     session, parent=sub_role.parent, workspace_id=sub_role.workspace_id, code=code
