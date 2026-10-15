@@ -566,8 +566,8 @@ immutable `parent_role_id` and `<parent>_<slug>` code, unique per workspace and 
 Assignments hold one leaf, with its parent derived; `flex` creates no assignment. The wire is
 `RoleRef {dimension, role, parent}`, where `parent` is output-only and ignored on input.
 `tournament.player_role` and `encounter.team_member_role` use role/dimension ids, as do registration,
-mix, draft, balancer-slot and ML-artifact references. The encounter table's key is
-`(team_member_id, dimension_id, role_id)`; the old text table is retained as
+mix, draft, balancer-slot and ML-artifact references. The encounter role table's primary key is
+`(team_member_id, role_id)`; `dimension_id` is a stored reference field. The old text table is retained as
 `encounter.team_member_role_legacy` for reconciliation until `discipline02`.
 Composite assignment/quota FKs into `catalog.role` are `DEFERRABLE INITIALLY DEFERRED`, not
 immediate constraints. Legacy columns remain migration-only; rank tables stay code-keyed until P3.

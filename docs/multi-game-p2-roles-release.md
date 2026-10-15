@@ -31,8 +31,10 @@ backup and matching old application images, not `alembic downgrade`.
    `role={"dimension":"player_role","role":"support"}`. On overview, overview stats and
    catalog reads, **omitted `role` means no filter; explicit `role=null` means no rated-role
    assignment**. The OW UI maps its Flex chip to null; compare controls do not offer Flex.
-   A player's sub-role must exist in the owning workspace's ontology (422 `unknown_sub_role`,
-   no longer free text). The public registration form answer deliberately retains
+   A player's sub-role must exist in the owning workspace's ontology, no longer as free text.
+   Admin player `RoleRef` writes reject an unknown leaf with 422 `unknown_role`; the separate
+   registration form-pair resolver rejects an unknown sub-role with 422 `unknown_sub_role`.
+   The public registration form answer deliberately retains
    `{role, subrole?, is_primary, top_heroes?}` with the suffix (`main`), not `support_main`.
    The `rpc.tournament.sheet_players_export` public `format=owt-1` export now emits leaf refs in
    `players.*.owt.primary_role` (nullable) and `players.*.owt.roles[].role`, without adjacent
@@ -43,8 +45,10 @@ backup and matching old application images, not `alembic downgrade`.
    - `GET|PUT /api/v1/admin/tournaments/{tournament_id}/team-format`;
    - `GET|PUT /api/v1/workspaces/{workspace_id}/team-formats/{discipline}`.
    A tournament owns an editable copy of its workspace default (else module preset), not live
-   inheritance. A mix freezes its copy at creation: explicit `team_format_preset`, else a clone's
-   format, else workspace default, else module preset. Template edits do not change existing events.
+   inheritance. The roster editor's **inherit** choice is removed: admins select a preset or
+   custom format instead. A mix freezes its copy at creation: explicit `team_format_preset`,
+   else a clone's format, else workspace default, else module preset. Template edits do not
+   change existing events.
 3. **`RosterShapeRead` gains `dimension`.** Its source is `tournament | custom_game | workspace |
    preset`; slot keys are rated-dimension role codes, with `flex` for open slots. `flex` is never
    a catalog role or assignment, and an open `team_slot` has null role/dimension ids. Existing
