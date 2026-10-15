@@ -123,6 +123,60 @@ def test_two_roles_on_a_single_dimension_break_the_assignment_rule() -> None:
     ]
 
 
+@pytest.mark.parametrize("substitute", [False, True])
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [
+        ("informational", ["unknown_role"]),
+        ("preference", ["unknown_role"]),
+        ("enforced", ["unknown_role"]),
+        ("off", []),
+    ],
+)
+def test_unknown_assignments_are_rejected_only_on_active_dimensions(
+    mode: str, expected: list[str], substitute: bool
+) -> None:
+    ontology = _module_ontology("overwatch")
+    team_format = replace(
+        OW_5V5,
+        substitute_max=1,
+        dimensions=(FormatDimension("player_role", mode),),
+        rules=(),
+    )
+    roster = _members(ontology, "tank", "damage", "damage", "support", "support")
+    unknown = replace(ontology.node("player_role", "tank"), id=999)
+    substitutes = [[unknown]] if substitute else []
+    if not substitute:
+        # The invalid assignment must not count as a second role on a single dimension.
+        roster[0].append(unknown)
+    verdict = validate_roster(team_format, ontology, roster, substitutes)
+    assert [violation.code for violation in verdict.violations] == expected
+    assert verdict.advisories == ()
+
+
+@pytest.mark.parametrize("change", [{"dimension_id": 99}, {"id": 999, "dimension_id": 99}])
+def test_mismatched_assignments_do_not_count_toward_cardinality_or_quotas(change: dict[str, int]) -> None:
+    module = _module_ontology("overwatch")
+    ontology = Ontology(
+        module.discipline,
+        [*module.dimensions.values(), DimensionNode(99, "tactics", "Tactics", "single", False)],
+        [*module.roles("player_role"), RoleNode(999, 99, "tactics", "caller", "Caller")],
+    )
+    roster = _members(ontology, "tank", "damage", "damage", "support", "support")
+    roster[0] = [replace(roster[0][0], **change)]
+    team_format = replace(
+        OW_5V5,
+        dimensions=(FormatDimension("player_role", "enforced", player_min_assignments=1),),
+    )
+    verdict = validate_roster(team_format, ontology, roster)
+    assert [violation.code for violation in verdict.violations] == [
+        "role_dimension_mismatch",
+        "assignments_out_of_range",
+        "role_below_hard_min",
+    ]
+    assert verdict.advisories == ()
+
+
 def test_recommendations_never_reject() -> None:
     ontology = _module_ontology("overwatch", sub_roles=(("damage", "hitscan"),))
     advised = replace(OW_5V5, rules=(*OW_5V5.rules, FormatRule("player_role", "hitscan", recommended_min=1)))

@@ -213,6 +213,8 @@ def validate_roster(
     """§8.3: every member is the leaf roles assigned to them (D86); the verdict lists what breaks the format.
 
     Quotas count distinct starters holding the role -- or, with ``include_descendants``, one of its descendants.
+    Assignments on active dimensions must resolve in the ontology with matching dimension ids and codes; invalid
+    assignments are violations and do not count toward cardinality or quotas.
     """
     violations: list[Violation] = []
     advisories: list[Violation] = []
@@ -230,17 +232,44 @@ def validate_roster(
                 f"{len(substitutes)} substitutes; the format takes {team_format.substitute_min}..{team_format.substitute_max}",
             )
         )
+    starter_roles: dict[str, list[set[int]]] = {}
     for entry in team_format.dimensions:
         if entry.mode == "off":
             continue
+        dimension = ontology.dimensions[entry.dimension]
+        starter_roles[entry.dimension] = []
         # §8.3 step 3: cardinality rejects on every active dimension, whatever its mode.
-        single = ontology.dimensions[entry.dimension].selection_mode == "single"
+        single = dimension.selection_mode == "single"
         high = entry.player_max_assignments
         if single:
             high = 1 if high is None else min(high, 1)
         low = entry.player_min_assignments
         for index, member in enumerate(chain(starters, substitutes), start=1):
-            count = len({role.id for role in member if role.dimension == entry.dimension})
+            assigned: set[int] = set()
+            for role in member:
+                if role.dimension != entry.dimension:
+                    continue
+                try:
+                    resolved = ontology.by_id(role.id)
+                except UnknownRole as exc:
+                    violations.append(Violation("unknown_role", f"member {index}: {exc}"))
+                    continue
+                if (
+                    resolved.dimension != role.dimension
+                    or resolved.dimension_id != role.dimension_id
+                    or resolved.dimension_id != dimension.id
+                ):
+                    violations.append(
+                        Violation(
+                            "role_dimension_mismatch",
+                            f"member {index}: role {role.id} does not match dimension {entry.dimension!r} (id {dimension.id})",
+                        )
+                    )
+                    continue
+                assigned.add(resolved.id)
+            if index <= len(starters):
+                starter_roles[entry.dimension].append(assigned)
+            count = len(assigned)
             if (low is not None and count < low) or (high is not None and count > high):
                 violations.append(
                     Violation("assignments_out_of_range", f"member {index} holds {count} {entry.dimension} roles")
@@ -250,7 +279,7 @@ def validate_roster(
             continue
         target = ontology.node(rule.dimension, rule.role)
         wanted = ontology.subtree(target) if rule.include_descendants else frozenset({target.id})
-        count = sum(1 for member in starters if any(role.id in wanted for role in member))
+        count = sum(not member.isdisjoint(wanted) for member in starter_roles[rule.dimension])
         # §8.3 step 5: an explicit hard bound rejects; the mode only decides slots (D33).
         if rule.hard_min is not None and count < rule.hard_min:
             violations.append(Violation("role_below_hard_min", f"{rule.role}: {count} < {rule.hard_min}"))
