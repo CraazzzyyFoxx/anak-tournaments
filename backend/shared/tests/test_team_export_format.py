@@ -133,3 +133,70 @@ class TeamExportFormatTests(IsolatedAsyncioTestCase):
             self.session, discipline="overwatch", workspace_id=self.tournament.workspace_id
         )
         assert ontology.by_id(self.shotcaller.id).dimension == "communication"
+
+    async def test_duplicate_import_identities_cannot_fill_two_starter_slots(self) -> None:
+        await save_tournament_format(
+            self.session,
+            self.tournament,
+            TeamFormat(
+                "overwatch",
+                "Two starters",
+                2,
+                2,
+                dimensions=(FormatDimension("player_role", "enforced"),),
+                rules=(FormatRule("player_role", "tank", hard_min=2, hard_max=2),),
+            ),
+        )
+        starter = self.members[0]
+        # Different import identity forms resolve to the same player.
+        alias = replace(starter, workspace_member_id=None, battle_tag=starter.name)
+        with self.assertRaises(ApiHTTPException) as caught:
+            await materialize_teams(
+                self.session,
+                self.tournament.id,
+                [
+                    MaterializationTeam(balancer_name="Duplicate", members=(starter, alias)),
+                ],
+            )
+        assert caught.exception.status_code == 409
+        assert "team_format_violation" in str(caught.exception.detail)
+        assert "starters_out_of_range" in str(caught.exception.detail)
+        assert (
+            await self.session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.Team)
+                .where(models.Team.tournament_id == self.tournament.id)
+            )
+            == 0
+        )
+
+    async def test_duplicate_between_imported_teams_blocks_before_writing_either(self) -> None:
+        starter = replace(self.members[0], non_rated_roles=(self.shotcaller,))
+        with self.assertRaises(ApiHTTPException) as caught:
+            await materialize_teams(
+                self.session,
+                self.tournament.id,
+                [MaterializationTeam(balancer_name=name, members=(starter,)) for name in ("First", "Second")],
+            )
+        assert caught.exception.status_code == 409
+        assert "starters_out_of_range" in str(caught.exception.detail)
+        assert (
+            await self.session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.Team)
+                .where(models.Team.tournament_id == self.tournament.id)
+            )
+            == 0
+        )
+
+    async def test_existing_roster_is_retained_but_cannot_supply_another_team(self) -> None:
+        starter = replace(self.members[0], non_rated_roles=(self.shotcaller,))
+        team = MaterializationTeam(balancer_name="Existing", members=(starter,))
+        await materialize_teams(self.session, self.tournament.id, [team])
+        await self.session.flush()
+        repeated = await materialize_teams(self.session, self.tournament.id, [team])
+        assert repeated.created_players == 0 and repeated.created_teams == []
+        with self.assertRaises(ApiHTTPException) as caught:
+            await materialize_teams(self.session, self.tournament.id, [replace(team, balancer_name="Other")])
+        assert caught.exception.status_code == 409
+        assert "starters_out_of_range" in str(caught.exception.detail)

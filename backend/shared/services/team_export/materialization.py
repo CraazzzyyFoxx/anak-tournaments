@@ -216,7 +216,6 @@ async def materialize_teams(
         player_id_by_member_id = dict(rows)
     assignments: dict[int, tuple[CatalogRole, ...]] = {}
     for team_data in teams:
-        starters: list[tuple[RoleNode, ...]] = []
         for member in team_data.members:
             key = (member.slot_code, member.sub_role, member.role_ref)
             if key not in leaves:
@@ -249,16 +248,6 @@ async def materialize_teams(
             leaf = leaves[key]
             assigned = (() if leaf is None else (leaf,)) + member.non_rated_roles
             assignments[id(member)] = assigned
-            resolved = (
-                player_id_by_member_id.get(member.workspace_member_id) is not None
-                if member.workspace_member_id is not None
-                else member.identity_tag in users_by_tag
-            )
-            if not member.is_substitute and resolved:
-                starters.append(tuple(ontology.by_id(row.id) for row in assigned))
-        codes = export_violations(team_format, ontology, starters)
-        if codes:
-            raise ApiHTTPException(status_code=409, detail=[ApiExc(code="team_format_violation", msg=", ".join(codes))])
 
     resolved_user_ids = {user.id for user in users_by_tag.values()} | set(player_id_by_member_id.values())
 
@@ -284,22 +273,33 @@ async def materialize_teams(
     # 3. ``load_prior_participation`` answers the newcomer question separately
     #    (chronological, scope-aware); one more query finds players already in
     #    this tournament so a repeat never creates a duplicate row.
-    players_in_tournament: set[int] = set()
+    placed_user_ids: set[int] = set()
+    starters_by_name: dict[str, list[tuple[RoleNode, ...]]] = {team.display_name.lower(): [] for team in teams}
+    team_name_by_id = {team.id: name for name, team in existing_teams.items()}
     members_by_player: dict[int, WorkspaceMember] = {}
     history = await load_prior_participation(session, tournament=tournament, user_ids=resolved_user_ids)
-    if resolved_user_ids:
-        user_id_list = list(resolved_user_ids)
+    user_id_list = list(resolved_user_ids)
+    if resolved_user_ids or existing_teams:
         player_rows = (
             await session.execute(
-                sa.select(WorkspaceMember.player_id, Player.tournament_id)
+                sa.select(WorkspaceMember.player_id, Player)
                 .join(Player, Player.workspace_member_id == WorkspaceMember.id)
-                .where(WorkspaceMember.player_id.in_(user_id_list))
+                .where(
+                    Player.tournament_id == tournament_id,
+                    sa.or_(
+                        WorkspaceMember.player_id.in_(user_id_list),
+                        Player.team_id.in_(team_name_by_id),
+                    ),
+                )
             )
         ).all()
-        for player_id, player_tournament_id in player_rows:
-            if player_tournament_id == tournament_id:
-                players_in_tournament.add(player_id)
+        for player_id, player in player_rows:
+            placed_user_ids.add(player_id)
+            name = team_name_by_id.get(player.team_id)
+            if name is not None and not player.is_substitution:
+                starters_by_name[name].append(tuple(ontology.by_id(row.role_id) for row in player.assignments))
 
+    if resolved_user_ids:
         # 4. Batch-load existing workspace members for these users.
         member_rows = (
             (
@@ -316,10 +316,43 @@ async def materialize_teams(
         for member_row in member_rows:
             members_by_player[member_row.player_id] = member_row
 
-    # Build rows, reusing resolved leaves across players on the same role.
-    placed_user_ids: set[int] = set(players_in_tournament)
-
+    # Resolve and deduplicate once, in write order, before checking the final roster.
+    placements: list[list[tuple[MaterializationMember, int, int | None]]] = []
     for team_data in teams:
+        selected: list[tuple[MaterializationMember, int, int | None]] = []
+        for member in team_data.members:
+            member_id = member.workspace_member_id
+            if member_id is not None:
+                player_id = player_id_by_member_id.get(member_id)
+                if player_id is None and on_unresolved == "error":
+                    raise ApiHTTPException(
+                        status_code=400,
+                        detail=[ApiExc(code="not_found", msg=f"Workspace member {member_id} not found.")],
+                    )
+            else:
+                user = users_by_tag.get(member.identity_tag or "")
+                player_id = user.id if user is not None else None
+            if player_id is None:
+                logger.warning("User %s not found, skipping player creation", member.name)
+                result.skipped_members += 1
+                continue
+            if player_id in placed_user_ids:
+                logger.info("Player %s already in tournament %s, skipping", member.name, tournament_id)
+                continue
+            placed_user_ids.add(player_id)
+            selected.append((member, player_id, member_id))
+            if not member.is_substitute:
+                starters_by_name[team_data.display_name.lower()].append(
+                    tuple(ontology.by_id(row.id) for row in assignments[id(member)])
+                )
+        placements.append(selected)
+    for starters in starters_by_name.values():
+        codes = export_violations(team_format, ontology, starters)
+        if codes:
+            raise ApiHTTPException(status_code=409, detail=[ApiExc(code="team_format_violation", msg=", ".join(codes))])
+
+    # Build exactly the placements that passed validation.
+    for team_data, selected in zip(teams, placements, strict=True):
         name = team_data.display_name
         captain: User | None = None
         captain_id = team_data.captain_player_id
@@ -346,37 +379,7 @@ async def materialize_teams(
         else:
             logger.info("Team %s already exists in tournament %s, skipping", name, tournament_id)
 
-        for member in team_data.members:
-            if member.workspace_member_id is not None:
-                player_id = player_id_by_member_id.get(member.workspace_member_id)
-                if player_id is None:
-                    if on_unresolved == "error":
-                        raise ApiHTTPException(
-                            status_code=400,
-                            detail=[
-                                ApiExc(
-                                    code="not_found",
-                                    msg=f"Workspace member {member.workspace_member_id} not found.",
-                                )
-                            ],
-                        )
-                    result.skipped_members += 1
-                    continue
-                member_id = member.workspace_member_id
-            else:
-                user = users_by_tag.get(member.identity_tag or "")
-                if user is None:
-                    # Unreachable when ``on_unresolved == "error"`` (validated above).
-                    logger.warning("User %s not found, skipping player creation", member.name)
-                    result.skipped_members += 1
-                    continue
-                player_id = user.id
-                member_id = None
-
-            if player_id in placed_user_ids:
-                logger.info("Player %s already in tournament %s, skipping", member.name, tournament_id)
-                continue
-
+        for member, player_id, member_id in selected:
             assigned = assignments[id(member)]
             leaf = next((row for row in assigned if row.dimension_id == ontology.rated.id), None)
             role = ontology.root(ontology.by_id(leaf.id)).code if leaf is not None else None
@@ -408,7 +411,6 @@ async def materialize_teams(
                     workspace_member_id=member_id,
                 )
             )
-            placed_user_ids.add(player_id)
             result.created_players += 1
             logger.info("Player %s added to team %s", member.name, team.name)
 

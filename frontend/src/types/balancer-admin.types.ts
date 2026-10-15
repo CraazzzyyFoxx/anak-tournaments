@@ -91,6 +91,8 @@ export interface InternalBalanceTeam {
   rating_variance?: number | null;
   total_discomfort?: number | null;
   max_discomfort?: number | null;
+  format_violations?: string[];
+  format_advisories?: string[];
   roster: Record<BalancerRosterKey, InternalBalancePlayer[]>;
 }
 

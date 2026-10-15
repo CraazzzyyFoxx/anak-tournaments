@@ -445,6 +445,8 @@ export function convertBalanceResponseToInternalPayload(
         rating_variance: team.rating_variance,
         total_discomfort: team.total_discomfort,
         max_discomfort: team.max_discomfort,
+        format_violations: team.format_violations ?? [],
+        format_advisories: team.format_advisories ?? [],
         roster
       };
     }),

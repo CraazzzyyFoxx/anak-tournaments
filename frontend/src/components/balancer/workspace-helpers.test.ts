@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   derivePoolLane,
@@ -26,7 +26,11 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { BalanceResponse, PlayerData } from "@/types/balancer.types";
 import { DEFAULT_DIVISION_GRID } from "@/lib/divisions/grid";
+import { apiFetch } from "@/lib/api/fetch";
+import balancerAdminService from "@/services/balancer-admin.service";
 import type { StatusMeta, StatusScope } from "@/types/registration.types";
+
+vi.mock("@/lib/api/fetch", () => ({ apiFetch: vi.fn() }));
 
 function createPlayer(overrides: Partial<BalancerPlayerRecord>): BalancerPlayerRecord {
   return {
@@ -670,6 +674,31 @@ describe("convertBalanceResponseToInternalPayload", () => {
     expect(roster.Tank.map((entry) => entry.uuid)).toEqual(["t"]);
     expect(roster.Damage.map((entry) => entry.uuid)).toEqual(["d"]);
     expect(roster.Support.map((entry) => entry.uuid)).toEqual(["s"]);
+  });
+
+  it("preserves format findings from the solver through the save request", async () => {
+    const generated = response({ tank: [player()] });
+    const findings = {
+      format_violations: ["role_below_hard_min"],
+      format_advisories: ["role_below_recommended_min"],
+    };
+    Object.assign(generated.teams[0], findings);
+    vi.mocked(apiFetch).mockResolvedValueOnce(new Response("{}"));
+
+    await balancerAdminService.saveBalance(17, {
+      config_json: null,
+      result_json: convertBalanceResponseToInternalPayload(generated),
+    });
+
+    expect(apiFetch).toHaveBeenLastCalledWith("/api/v1/balancer/tournaments/17/balance", {
+      method: "PUT",
+      body: {
+        config_json: null,
+        result_json: expect.objectContaining({
+          teams: [expect.objectContaining(findings)],
+        }),
+      },
+    });
   });
 
   it("re-keys the per-role player maps the editor compares against roster keys", () => {
