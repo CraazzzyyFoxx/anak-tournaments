@@ -50,6 +50,7 @@ from shared.models.registration.registration import (
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
 from shared.repository import TournamentRepository
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import TOURNAMENT_ORDER, MemberRankService, member_rank_service
 
@@ -492,6 +493,7 @@ class RosterEngine:
         *,
         shape: RosterShape,
         flex_role_mode: str,
+        dimension: str,
         grid: DivisionGrid | None = None,
         source: Mapping[str, Any] | None = None,
         key: str = "registration_id",
@@ -531,15 +533,16 @@ class RosterEngine:
                 "flex_rating": roster.best_rank,
                 "draftable": roster.is_draftable,
                 "ranked_complete": roster.is_ranked_complete,
-                "primary_role": primary.role if primary is not None else None,
-                "sub_role": roster.sub_role,
+                "primary_role": RoleRef.of(dimension, primary.role, primary.subrole).model_dump()
+                if primary is not None
+                else None,
                 "status": roster.status,
                 "balancer_status": roster.balancer_status,
                 "checked_in": roster.checked_in,
                 "registration_team_id": roster.registration_team_id,
                 "team_slot_code": roster.team_slot_code,
                 "is_substitute": roster.is_substitute,
-                "roles": [_role_export(entry, grid) for entry in roster.roles],
+                "roles": [_role_export(entry, grid, dimension=dimension) for entry in roster.roles],
             }
             if include_private:
                 owt["private"] = {
@@ -599,19 +602,18 @@ def _export_name(roster: PlayerRoster) -> str:
     return roster.battle_tag or roster.display_name or f"registration-{roster.registration_id}"
 
 
-def _role_export(entry: RosterRole, grid: DivisionGrid | None) -> dict[str, Any]:
+def _role_export(entry: RosterRole, grid: DivisionGrid | None, *, dimension: str) -> dict[str, Any]:
     # A tier-less grid is a legitimate workspace state (nobody configured one);
     # ``resolve_division`` raises on it, and a decorative label is never worth
     # failing the export for.
     resolvable = grid is not None and bool(grid.tiers) and entry.rank is not None
     tier = grid.resolve_division(entry.rank) if resolvable else None  # type: ignore[union-attr, arg-type]
     return {
-        "role": entry.role,
+        "role": RoleRef.of(dimension, entry.role, entry.subrole).model_dump(),
         "rank": entry.rank,
         "source": entry.source,
         "is_primary": entry.is_primary,
         "priority": entry.priority,
-        "subrole": entry.subrole,
         "playable": entry.is_playable,
         "division": None if tier is None else {"number": tier.number, "name": tier.name},
         "top_heroes": [

@@ -42,6 +42,7 @@ from sqlalchemy.orm import selectinload
 
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import discipline
 from shared.domain.roster import flex_role_mode
 from shared.repository import TournamentRepository, WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
@@ -154,6 +155,7 @@ async def _owt_player_export(
         rosters,
         shape=shape,
         flex_role_mode=flex_role_mode(form),
+        dimension=discipline(tournament.discipline).rated_dimension.code,
         grid=grid,
         include_private=include_private,
         source={

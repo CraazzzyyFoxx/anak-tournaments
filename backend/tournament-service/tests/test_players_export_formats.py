@@ -69,7 +69,7 @@ def _roster() -> PlayerRoster:
                 source="registration",
                 is_primary=True,
                 priority=0,
-                subrole=None,
+                subrole="tank_main_tank",
             ),
         ),
         is_full_flex=False,
@@ -119,7 +119,7 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
             )
 
     async def _fake_execute(self, _query):
-        return _FakeResult(SimpleNamespace(id=TOURNAMENT_ID, name="OWT #12", workspace_id=3))
+        return _FakeResult(SimpleNamespace(id=TOURNAMENT_ID, name="OWT #12", workspace_id=3, discipline="overwatch"))
 
     async def _fake_scalar(self, _query):
         # No registration form row -> the flex mode falls back to "optional".
@@ -148,6 +148,29 @@ class PlayersExportFormatsTests(IsolatedAsyncioTestCase):
         self.assertEqual("OWT #12", payload["source"]["tournament_name"])
         self.assertEqual(7, payload["source"]["division_grid_version_id"])
         self.assertEqual(3100, payload["players"]["1"]["owt"]["flex_rating"])
+        owt = payload["players"]["1"]["owt"]
+        expected_role = {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"}
+        self.assertEqual(expected_role, owt["primary_role"])
+        self.assertEqual(expected_role, owt["roles"][0]["role"])
+        self.assertNotIn("sub_role", owt)
+        self.assertNotIn("subrole", owt["roles"][0])
+        self.assertEqual("main_tank", payload["players"]["1"]["stats"]["classes"]["tank"]["subtype"])
+
+    async def test_owt_role_refs_use_the_owner_disciplines_rated_dimension(self) -> None:
+        owner = SimpleNamespace(id=TOURNAMENT_ID, name="Arena", workspace_id=3, discipline="arena")
+        with (
+            patch.object(self, "_fake_execute", AsyncMock(return_value=_FakeResult(owner))),
+            patch.object(
+                integrations,
+                "discipline",
+                return_value=SimpleNamespace(rated_dimension=SimpleNamespace(code="position")),
+            ) as module,
+        ):
+            payload = self._result(await self._invoke({"format": ["owt-1"]}))
+        module.assert_called_once_with("arena")
+        owt = payload["players"]["1"]["owt"]
+        self.assertEqual("position", owt["primary_role"]["dimension"])
+        self.assertEqual("position", owt["roles"][0]["role"]["dimension"])
 
     async def test_private_block_needs_the_query_flag(self) -> None:
         without = self._result(await self._invoke({"format": ["owt-1"]}))

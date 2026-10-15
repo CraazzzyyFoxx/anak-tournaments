@@ -101,7 +101,7 @@ def _pool() -> list[PlayerRoster]:
         _roster(
             1,
             (
-                _role(HeroClass.tank, 3100, priority=0, is_primary=True, subrole="main_tank"),
+                _role(HeroClass.tank, 3100, priority=0, is_primary=True, subrole="tank_main_tank"),
                 _role(HeroClass.support, 2600, priority=1),
             ),
         ),
@@ -124,6 +124,7 @@ def _export(**overrides):
         _pool(),
         shape=overrides.pop("shape", RosterShape(entries=tuple(ROLE_MASK.items()))),
         flex_role_mode=overrides.pop("flex_role_mode", "optional"),
+        dimension=overrides.pop("dimension", "player_role"),
         grid=overrides.pop("grid", GRID),
         source=overrides.pop("source", {"tournament_id": 84, "scope": "pool"}),
         **overrides,
@@ -169,12 +170,20 @@ def test_unranked_declared_role_travels_but_is_inactive() -> None:
     }
     # ...and the loader neither rates it nor chokes on the null rank.
     assert dict(_loaded(_export(), ROLE_MASK)["2"][1]) == {"damage": 2800}
+    assert node["owt"]["roles"][1]["role"] == {
+        "dimension": "player_role",
+        "role": "support",
+        "parent": None,
+    }
+    assert "subrole" not in node["owt"]["roles"][1]
 
 
 def test_undraftable_registration_is_exported_and_still_not_loaded() -> None:
     payload = _export()
 
     assert payload["players"]["3"]["owt"]["draftable"] is False
+    assert payload["players"]["3"]["owt"]["primary_role"] is None
+    assert "sub_role" not in payload["players"]["3"]["owt"]
     # xv-1 drops it outright; ours keeps the row, the loader keeps ignoring it.
     assert "3" not in _loaded(payload, ROLE_MASK)
     assert "3" not in RosterEngine().balancer_input(_pool())["players"]
@@ -199,6 +208,12 @@ def test_roster_shape_and_flex_mode_travel_with_the_export() -> None:
     assert payload["source"]["player_key"] == "registration_id"
 
 
+def test_role_refs_use_the_supplied_rated_dimension() -> None:
+    owt = _export(dimension="position")["players"]["1"]["owt"]
+    assert owt["primary_role"] == {"dimension": "position", "role": "tank_main_tank", "parent": "tank"}
+    assert all(entry["role"]["dimension"] == "position" for entry in owt["roles"])
+
+
 def test_role_entries_carry_rank_source_division_and_heroes() -> None:
     engine = RosterEngine()
     roster = _roster(
@@ -208,7 +223,7 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
                 HeroClass.tank,
                 3100,
                 is_primary=True,
-                subrole="main_tank",
+                subrole="tank_main_tank",
                 source="ow",
                 top_heroes=(HeroRef(id=3, slug="dva", image_path="/dva.png"),),
             ),
@@ -219,23 +234,24 @@ def test_role_entries_carry_rank_source_division_and_heroes() -> None:
         [roster],
         shape=RosterShape(entries=tuple(ROLE_MASK.items())),
         flex_role_mode="optional",
+        dimension="player_role",
         grid=GRID,
     )["players"]["9"]["owt"]
 
     assert owt["roles"] == [
         {
-            "role": "tank",
+            "role": {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"},
             "rank": 3100,
             "source": "ow",
             "is_primary": True,
             "priority": 0,
-            "subrole": "main_tank",
             "playable": True,
             "division": {"number": 12, "name": "Diamond 2"},
             "top_heroes": [{"hero_id": 3, "slug": "dva", "image_path": "/dva.png"}],
         }
     ]
-    assert owt["primary_role"] == "tank"
+    assert owt["primary_role"] == {"dimension": "player_role", "role": "tank_main_tank", "parent": "tank"}
+    assert "sub_role" not in owt
     assert owt["flex_rating"] == 3100
     assert owt["ranked_complete"] is True
 
@@ -257,6 +273,7 @@ def test_workflow_fields_ride_along() -> None:
         [roster],
         shape=RosterShape(entries=tuple(ROLE_MASK.items())),
         flex_role_mode="optional",
+        dimension="player_role",
     )["players"]["4"]["owt"]
 
     assert (owt["status"], owt["balancer_status"], owt["checked_in"]) == ("approved", "in_balancer", True)
@@ -279,7 +296,11 @@ def test_private_answers_are_withheld_unless_asked_for() -> None:
         identities={"discord": "player#0001"},
         smurf_tags=("alt#1111",),
     )
-    kwargs = {"shape": RosterShape(entries=tuple(ROLE_MASK.items())), "flex_role_mode": "optional"}
+    kwargs = {
+        "shape": RosterShape(entries=tuple(ROLE_MASK.items())),
+        "flex_role_mode": "optional",
+        "dimension": "player_role",
+    }
 
     public = engine.full_export([roster], **kwargs)["players"]["5"]["owt"]
     private = engine.full_export([roster], include_private=True, **kwargs)["players"]["5"]["owt"]
