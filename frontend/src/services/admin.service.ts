@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api/fetch";
-import { slotsToTeamFormat } from "@/lib/roster/team-format";
+import { slotsToTeamFormat, type TeamFormatWrite } from "@/lib/roster/team-format";
 import { PaginatedResponse } from "@/types/pagination.types";
 import {
   Tournament,
@@ -330,9 +330,11 @@ class AdminService {
   async updateTournament(id: number, data: TournamentUpdateInput): Promise<Tournament> {
     const { roster_slots_json: slots, ...patch } = data;
     if (slots !== undefined) {
+      const response = await apiFetch(`/api/v1/admin/tournaments/${id}/team-format`);
+      const current: TeamFormatWrite & { roster_shape: { dimension: string } } = await response.json();
       await apiFetch(`/api/v1/admin/tournaments/${id}/team-format`, {
         method: "PUT",
-        body: slotsToTeamFormat(slots, "player_role"),
+        body: slotsToTeamFormat(slots, current.roster_shape.dimension, current),
       });
       if (Object.keys(patch).length === 0) return this.getTournament(id);
     }
