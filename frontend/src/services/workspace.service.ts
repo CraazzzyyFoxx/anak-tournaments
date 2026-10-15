@@ -40,8 +40,8 @@ type DivisionGridTierInput = {
   rank_min: number;
   rank_max: number | null;
   icon_url: string;
-  ow_rank_min: number | null;
-  ow_rank_max: number | null;
+  native_rank_min: number | null;
+  native_rank_max: number | null;
 };
 export default class workspaceService {
   /**
@@ -366,8 +366,8 @@ export default class workspaceService {
         rank_min: number;
         rank_max: number | null;
         icon_url: string;
-        ow_rank_min: number | null;
-        ow_rank_max: number | null;
+        native_rank_min: number | null;
+        native_rank_max: number | null;
       }>;
     }
   ): Promise<DivisionGridSaveResult> {

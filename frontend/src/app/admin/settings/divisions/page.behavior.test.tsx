@@ -15,7 +15,7 @@
 //  4. "Load standard OW ladder" — the scenario carried over from
 //     standardOwGrid.behavior.test.tsx, now asserted where the button actually
 //     lives. A tier with a `null` OW endpoint is skipped by
-//     `resolve_division_from_ow_rank`, and an `id` on any tier would make the
+//     `resolve_division_from_native_rank`, and an `id` on any tier would make the
 //     save rewrite a version in place instead of creating one.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
@@ -392,10 +392,10 @@ describe("Settings › Divisions", () => {
     // Both OW endpoints filled on every tier, top tier included: either being
     // null drops that division out of OW rank resolution entirely.
     expect(
-      payload.tiers.every((entry) => entry.ow_rank_min !== null && entry.ow_rank_max !== null)
+      payload.tiers.every((entry) => entry.native_rank_min !== null && entry.native_rank_max !== null)
     ).toBe(true);
-    expect(payload.tiers.every((entry) => entry.ow_rank_min === entry.ow_rank_max)).toBe(true);
-    expect(new Set(payload.tiers.map((entry) => entry.ow_rank_min)).size).toBe(45);
+    expect(payload.tiers.every((entry) => entry.native_rank_min === entry.native_rank_max)).toBe(true);
+    expect(new Set(payload.tiers.map((entry) => entry.native_rank_min)).size).toBe(45);
 
     // And it lands in the editor rather than leaving the user on the overview.
     expect(replace).toHaveBeenCalledWith("/admin/settings/divisions/v/24");

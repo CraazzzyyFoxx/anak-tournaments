@@ -12,7 +12,7 @@ Distance is measured in *divisions*, not ``rank_value``: the mapped integer is
 optional on a snapshot (and rebaseable, see ``owemerald01``), while the native
 ``division`` is always stored. ``tier`` only breaks ties for the peak evidence —
 in Overwatch tier 1 is the top of a division and tier 5 the bottom
-(``shared.domain.ow_ladder``), so a *lower* tier number is better.
+(``shared/disciplines/overwatch/ladder.py``), so a *lower* tier number is better.
 """
 
 from __future__ import annotations

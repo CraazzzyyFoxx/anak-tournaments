@@ -17,9 +17,9 @@ def canonical_division_number(source_grid: DivisionGrid, rank: int) -> int:
     """Map ``rank`` on ``source_grid`` to a division number on ``DEFAULT_GRID``."""
     tier = source_grid.resolve_division(int(rank))
 
-    if tier.ow_rank_min is not None and tier.ow_rank_max is not None:
-        low = min(int(tier.ow_rank_min), int(tier.ow_rank_max))
-        high = max(int(tier.ow_rank_min), int(tier.ow_rank_max))
+    if tier.native_rank_min is not None and tier.native_rank_max is not None:
+        low = min(int(tier.native_rank_min), int(tier.native_rank_max))
+        high = max(int(tier.native_rank_min), int(tier.native_rank_max))
         return DEFAULT_GRID.resolve_division((low + high) // 2).number
 
     n_min, n_max = source_grid.min_division, source_grid.max_division

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """Generate frontend/src/lib/divisions/ow-ladder.generated.json from the Python ladder.
 
-The ladder is written down exactly once, in ``shared.domain.ow_ladder.LADDER``.
-Every Python consumer imports it. The frontend cannot -- and cannot fetch it
+The ladder is written down exactly once, in ``shared.disciplines.overwatch.ladder.LADDER``.
+Python consumers read the module's native ladder through the registry. The frontend cannot -- and cannot fetch it
 either: the default division grid has to resolve synchronously during SSR and the
 first client render, because the workspace store persists only
 ``currentWorkspaceId`` and fetches the workspace (which carries the real grid) in
@@ -33,7 +33,7 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
 
-from shared.domain import ow_ladder  # noqa: E402
+from shared.disciplines.overwatch import ladder as ow_ladder  # noqa: E402
 
 ARTIFACT = BACKEND.parent / "frontend" / "src" / "lib" / "divisions" / "ow-ladder.generated.json"
 
@@ -42,7 +42,7 @@ def build_document() -> dict:
     """The ladder, resolved to everything the frontend reads."""
     return {
         "_generated_by": "backend/scripts/export_ow_ladder.py -- do not edit by hand",
-        "_source": "backend/shared/domain/ow_ladder.py",
+        "_source": "backend/shared/disciplines/overwatch/ladder.py",
         "tiers_per_division": ow_ladder.TIERS_PER_DIVISION,
         "tier_span": ow_ladder.TIER_SPAN,
         "division_icon_base": ow_ladder.DIVISION_ICON_BASE,
@@ -98,7 +98,7 @@ def main(argv: list[str]) -> int:
             print(f"{ARTIFACT.name} is up to date ({len(document)} bytes)", file=sys.stderr)
             return 0
         print(f"ERROR: {relative} is STALE.", file=sys.stderr)
-        print("shared.domain.ow_ladder moved on but the artifact was not regenerated.", file=sys.stderr)
+        print("shared.disciplines.overwatch.ladder moved on but the artifact was not regenerated.", file=sys.stderr)
         print(
             f"Fix: uv run python backend/scripts/export_ow_ladder.py && git add {relative}",
             file=sys.stderr,

@@ -15,7 +15,7 @@ from typing import Literal, get_args
 
 from shared.core import enums
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain import ow_ladder
+from shared.disciplines import discipline
 
 __all__ = (
     "ParsedRank",
@@ -23,7 +23,6 @@ __all__ = (
     "RankSeriesState",
     "changed_ranks",
     "RankLookup",
-    "DEFAULT_OW2_DIVISION_BASE",
     "build_default_lookup",
     "map_division_tier_to_rank_value",
     "compute_per_tick",
@@ -103,25 +102,13 @@ def changed_ranks(
     ]
 
 
-#: Lower bound (bottom tier) rank_value per native division.
-DEFAULT_OW2_DIVISION_BASE = ow_ladder.ow_division_bases()
-
 # Lookup key: (division_lowercase, tier) -> rank_value.
 RankLookup = dict[tuple[str, int], int]
 
 
 def build_default_lookup() -> RankLookup:
-    """The default division+tier -> rank_value table.
-
-    Derived from :data:`shared.domain.ow_ladder.LADDER` — the one place the
-    ladder's shape is written down — so it cannot drift from the division grid
-    every service resolves ranks against.
-    """
-    return {
-        (division, tier): ow_ladder.tier_rank_min(base, tier)
-        for division, base in DEFAULT_OW2_DIVISION_BASE.items()
-        for tier in range(1, ow_ladder.TIERS_PER_DIVISION + 1)
-    }
+    """The default division+tier -> rank_value table, read off the Overwatch module's native ladder."""
+    return {(tier.native_division, tier.native_tier): tier.rank_min for tier in discipline("overwatch").native_ladder}
 
 
 def map_division_tier_to_rank_value(

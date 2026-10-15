@@ -18,7 +18,11 @@ import sys
 import psycopg
 import pytest
 from psycopg import sql
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
+from shared.division_grid import DivisionGrid, normalize_native_ranks_to_grid
+from shared.models import DivisionGridVersion
 from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
@@ -137,7 +141,30 @@ def _seed(conn) -> dict:
     ids["hidden_flex"] = _insert(
         conn, hidden, workspace_id=ids["ws"], workspace_member_id=ids["member_flex"], role="flex", mu=24.0, sigma=8.0
     )
+    _seed_division_grid(conn, ids)
     return ids
+
+
+def _seed_division_grid(conn, ids: dict) -> None:
+    ids["grid"] = _insert(conn, "division_grid", workspace_id=ids["ws"], slug="d1c-grid", name="d1c grid")
+    ids["grid_version"] = _insert(conn, "division_grid_version", grid_id=ids["grid"], version=1, label="v1")
+    ids["tiers"] = [
+        _insert(
+            conn,
+            "division_grid_tier",
+            version_id=ids["grid_version"],
+            slug=f"division-{number}",
+            number=number,
+            name=f"Division {number}",
+            sort_order=number - 1,
+            rank_min=2100 - number * 100,
+            rank_max=None if number == 1 else 2199 - number * 100,
+            icon_url=f"/divisions/{number}.png",
+            ow_rank_min=low,
+            ow_rank_max=high,
+        )
+        for number, (low, high) in enumerate(((4900, 4700), (4500, 4699), (None, None), (2**40, 2**40 + 99)), 1)
+    ]
 
 
 def _scramble_names(conn) -> None:
@@ -214,6 +241,35 @@ _HELD_ROLE = """
 
 def test_the_preflight_is_silent_on_clean_data(legacy_template) -> None:
     assert {question: rows for question, rows in legacy_template["preflight"].items() if rows} == {}
+
+
+def test_tier_native_ranges_preserve_values_and_resolve_on_the_stored_grid(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    assert _rows(
+        conn,
+        "SELECT native_rank_min, native_rank_max FROM division_grid_tier WHERE version_id = %s ORDER BY sort_order",
+        (ids["grid_version"],),
+    ) == [(4900, 4700), (4500, 4699), (None, None), (2**40, 2**40 + 99)]
+    assert (
+        _rows(
+            conn,
+            "SELECT column_name FROM information_schema.columns"
+            " WHERE table_schema = 'public' AND table_name = 'division_grid_tier' AND column_name LIKE 'ow_rank_%'",
+        )
+        == []
+    )
+    engine = create_engine(_url(MIGRATED_DB))
+    try:
+        with Session(engine) as session:
+            version = session.get(DivisionGridVersion, ids["grid_version"])
+            grid = DivisionGrid.from_version(version)
+            assert normalize_native_ranks_to_grid(
+                {7: {"tank": 4700, "support": 4500, "damage": 2**40 + 99}, 8: {"tank": 4699}}, grid
+            ) == {7: {"tank": 2000, "support": 1900, "damage": 1700}, 8: {"tank": 1900}}
+            for outside in (4499, 4901, 1800, 2**40 - 1, 2**40 + 100):
+                assert grid.resolve_division_from_native_rank(outside) is None
+    finally:
+        engine.dispose()
 
 
 def test_ranks_point_at_their_overwatch_module_role(migrated) -> None:

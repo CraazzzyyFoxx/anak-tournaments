@@ -2326,8 +2326,8 @@ Table division_grid_tier {
   rank_min bigint [not null]
   rank_max bigint
   icon_url VARCHAR [not null]
-  ow_rank_min bigint
-  ow_rank_max bigint
+  native_rank_min bigint
+  native_rank_max bigint
   indexes {
     (version_id, slug) [unique]
     (version_id, sort_order) [unique]

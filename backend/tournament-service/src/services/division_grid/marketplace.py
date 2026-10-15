@@ -242,8 +242,9 @@ def build_source_fingerprint(
                         "rank_min": tier.rank_min,
                         "rank_max": tier.rank_max,
                         "icon_url": tier.icon_url,
-                        "ow_rank_min": tier.ow_rank_min,
-                        "ow_rank_max": tier.ow_rank_max,
+                        # Hash payload keys: renaming them would re-import every unchanged library grid.
+                        "ow_rank_min": tier.native_rank_min,
+                        "ow_rank_max": tier.native_rank_max,
                     }
                 )
             versions_payload.append(
@@ -860,8 +861,8 @@ class MarketplaceService:
                                     rank_min=source_tier.rank_min,
                                     rank_max=source_tier.rank_max,
                                     icon_url=copied.public_url,
-                                    ow_rank_min=source_tier.ow_rank_min if include_ow_rank_mappings else None,
-                                    ow_rank_max=source_tier.ow_rank_max if include_ow_rank_mappings else None,
+                                    native_rank_min=source_tier.native_rank_min if include_ow_rank_mappings else None,
+                                    native_rank_max=source_tier.native_rank_max if include_ow_rank_mappings else None,
                                 ),
                                 source_tier.id,
                             )

@@ -1,15 +1,12 @@
-"""THE Overwatch competitive ladder — the one place its shape is written down.
+"""THE Overwatch competitive ladder (the module's native ladder, D87) — the one place its shape is written down.
 
 Everything about the ladder that is a *fact* rather than a derivation lives in
 :data:`LADDER`: the divisions, their order, the SR each one starts at, and the
 two names each division answers to. Every consumer derives from it:
 
-- :mod:`shared.division_grid` builds ``DEFAULT_GRID`` (the 45-tier fallback grid
-  every service resolves ranks against) out of :func:`iter_tiers`;
-- ``tournament-service``'s ``get_default_ow2_tiers_write`` projects that grid
-  into its write DTO — it does not re-derive anything;
-- ``parser-service``'s ``overwatch_rank.mapping`` takes its native
-  division → base table from :func:`ow_division_bases`;
+- :mod:`shared.division_grid` builds ``DEFAULT_GRID`` from the registry's ``fallback_ladder()``;
+- ``tournament-service`` seeds a new grid's first version from ``DisciplineSpec.native_ladder``;
+- ``parser-service``'s OverFast division table reads ``native_division``/``native_tier`` off the same rows;
 - the frontend mirrors this table in ``frontend/src/lib/divisions/ow-ladder.ts``, pinned
   by the parity test described there (it cannot import Python, and the default
   grid has to be available synchronously during SSR).
@@ -23,7 +20,7 @@ The top division is ``champion`` on the division-grid side (tier slugs, tier
 names, icon filenames) and ``ultimate`` on the OverFast wire. They never meet at
 runtime — the OverFast name is only ever a dict key that yields an integer
 ``rank_value``, and the bridge back to a grid tier
-(:meth:`shared.division_grid.DivisionGrid.resolve_division_from_ow_rank`) is
+(:meth:`shared.division_grid.DivisionGrid.resolve_division_from_native_rank`) is
 purely numeric. Unifying them would be a data migration over stored tier slugs
 and stored snapshot divisions for no behavioural gain, so one record simply
 carries both.
@@ -31,21 +28,21 @@ carries both.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from dataclasses import dataclass
-from types import MappingProxyType
 
 from shared.core.enums import RankDivision
+from shared.disciplines.spec import NativeTier
 
 __all__ = (
     "DIVISION_ICON_BASE",
     "LADDER",
     "LadderDivision",
+    "NATIVE_LADDER",
     "TIERS_PER_DIVISION",
     "TIER_SPAN",
     "LadderTier",
     "iter_tiers",
-    "ow_division_bases",
     "tier_rank_min",
 )
 
@@ -142,6 +139,17 @@ def iter_tiers() -> Iterator[LadderTier]:
             number += 1
 
 
-def ow_division_bases() -> Mapping[str, int]:
-    """Native OverFast division → ``rank_value`` of its bottom tier."""
-    return MappingProxyType({division.ow_division.value: division.base for division in LADDER})
+#: The module's native ladder, top first, with the names a rank snapshot reports.
+NATIVE_LADDER: tuple[NativeTier, ...] = tuple(
+    NativeTier(
+        number=tier.number,
+        slug=tier.slug,
+        name=tier.name,
+        rank_min=tier.rank_min,
+        rank_max=tier.rank_max,
+        icon_url=tier.icon_url,
+        native_division=tier.division.ow_division.value,
+        native_tier=tier.tier,
+    )
+    for tier in iter_tiers()
+)

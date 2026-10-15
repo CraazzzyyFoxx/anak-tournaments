@@ -6,7 +6,7 @@
  * on the scale player ranks are stored on (`rank_min`); its ceiling is the
  * floor above minus one, so native ranges are contiguous by construction. `ow`
  * is the run of ladder ranks an OverFast snapshot resolves into the division
- * (`ow_rank_min` / `ow_rank_max`). On the OW scale the two coincide; on a grid
+ * (`native_rank_min` / `native_rank_max`). On the OW scale the two coincide; on a grid
  * like "New Era x5" — twenty divisions of 100 on 100 … 2099 — they do not, and
  * forcing them together is what re-banded such grids and dropped divisions.
  *
@@ -541,8 +541,8 @@ export interface DraftTierPayload {
   rank_min: number;
   rank_max: number | null;
   icon_url: string;
-  ow_rank_min: number | null;
-  ow_rank_max: number | null;
+  native_rank_min: number | null;
+  native_rank_max: number | null;
 }
 
 /**
@@ -560,13 +560,13 @@ export function tiersFromBands(bands: Band[]): DraftTierPayload[] {
     rank_min: band.rankMin,
     rank_max: band.rankMax,
     icon_url: bandIconUrl(band),
-    ow_rank_min: band.ow ? LADDER[band.ow.to].rank_min : null,
-    ow_rank_max: band.ow ? LADDER[band.ow.from].rank_min : null
+    native_rank_min: band.ow ? LADDER[band.ow.to].rank_min : null,
+    native_rank_max: band.ow ? LADDER[band.ow.from].rank_min : null
   }));
 }
 
 function hasOwLink(tier: DivisionTier): boolean {
-  return tier.ow_rank_min != null && tier.ow_rank_max != null;
+  return tier.native_rank_min != null && tier.native_rank_max != null;
 }
 
 /** The backend's order: highest floor first, ties by position. */
@@ -625,8 +625,8 @@ export function bandsFromTiers(tiers: DivisionTier[]): Band[] {
       const index = sorted.findIndex(
         (tier) =>
           hasOwLink(tier) &&
-          value >= Math.min(tier.ow_rank_min!, tier.ow_rank_max!) &&
-          value <= Math.max(tier.ow_rank_min!, tier.ow_rank_max!)
+          value >= Math.min(tier.native_rank_min!, tier.native_rank_max!) &&
+          value <= Math.max(tier.native_rank_min!, tier.native_rank_max!)
       );
       return index === -1 ? null : index;
     }

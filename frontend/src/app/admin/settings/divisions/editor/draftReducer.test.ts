@@ -370,8 +370,8 @@ describe("tiers <-> bands", () => {
     expect(tiers.map((tier) => tier.rank_max)).toEqual(LADDER.map((tier) => tier.rank_max));
     // A ladder rank's `rank_min` IS its OW rank value, so a one-rank band pins both
     // OW endpoints to it — a `null` endpoint would make the division unreachable.
-    expect(tiers.every((tier) => tier.ow_rank_min === tier.rank_min)).toBe(true);
-    expect(tiers.every((tier) => tier.ow_rank_max === tier.rank_min)).toBe(true);
+    expect(tiers.every((tier) => tier.native_rank_min === tier.rank_min)).toBe(true);
+    expect(tiers.every((tier) => tier.native_rank_max === tier.rank_min)).toBe(true);
   });
 
   it("opens a grid on its own scale as itself, with the backend's OW fallback drawn", () => {
@@ -394,14 +394,14 @@ describe("tiers <-> bands", () => {
 
   it("round-trips explicit OW links bit-identically", () => {
     const stored: DivisionTier[] = [
-      { id: 1, slug: "d1", number: 1, name: "Division 1", rank_min: 2000, rank_max: null, icon_url: "/1.png", ow_rank_min: 4700, ow_rank_max: 4900 },
-      { id: 2, slug: "d2", number: 2, name: "Division 2", rank_min: 1900, rank_max: 1999, icon_url: "/2.png", ow_rank_min: 4000, ow_rank_max: 4600 },
-      { id: 3, slug: "d3", number: 3, name: "Division 3", rank_min: 0, rank_max: 1899, icon_url: "/3.png", ow_rank_min: 500, ow_rank_max: 3900 }
+      { id: 1, slug: "d1", number: 1, name: "Division 1", rank_min: 2000, rank_max: null, icon_url: "/1.png", native_rank_min: 4700, native_rank_max: 4900 },
+      { id: 2, slug: "d2", number: 2, name: "Division 2", rank_min: 1900, rank_max: 1999, icon_url: "/2.png", native_rank_min: 4000, native_rank_max: 4600 },
+      { id: 3, slug: "d3", number: 3, name: "Division 3", rank_min: 0, rank_max: 1899, icon_url: "/3.png", native_rank_min: 500, native_rank_max: 3900 }
     ];
     expect(scaleOf(stored)).toBe("custom");
 
     const tiers = tiersFromBands(bandsFromTiers(stored));
-    for (const key of ["id", "slug", "rank_min", "rank_max", "icon_url", "ow_rank_min", "ow_rank_max"] as const) {
+    for (const key of ["id", "slug", "rank_min", "rank_max", "icon_url", "native_rank_min", "native_rank_max"] as const) {
       expect(tiers.map((tier) => tier[key])).toEqual(stored.map((tier) => tier[key]));
     }
   });
@@ -409,9 +409,9 @@ describe("tiers <-> bands", () => {
   it("reads inverted and overlapping OW pairs the way the backend resolves them", () => {
     // Mirrors backend `_grid_with_inverted_top`: pairs entered high → low, sharing Champion 3.
     const stored: DivisionTier[] = [
-      { id: 1, number: 1, name: "Division 1", rank_min: 2000, rank_max: 2099, icon_url: "/1.png", ow_rank_min: 4900, ow_rank_max: 4700 },
-      { id: 2, number: 2, name: "Division 2", rank_min: 1900, rank_max: 1999, icon_url: "/2.png", ow_rank_min: 4700, ow_rank_max: 4500 },
-      { id: 14, number: 14, name: "Division 14", rank_min: 700, rank_max: 799, icon_url: "/14.png", ow_rank_min: 3200, ow_rank_max: 3300 }
+      { id: 1, number: 1, name: "Division 1", rank_min: 2000, rank_max: 2099, icon_url: "/1.png", native_rank_min: 4900, native_rank_max: 4700 },
+      { id: 2, number: 2, name: "Division 2", rank_min: 1900, rank_max: 1999, icon_url: "/2.png", native_rank_min: 4700, native_rank_max: 4500 },
+      { id: 14, number: 14, name: "Division 14", rank_min: 700, rank_max: 799, icon_url: "/14.png", native_rank_min: 3200, native_rank_max: 3300 }
     ];
     const bands = bandsFromTiers(stored);
 

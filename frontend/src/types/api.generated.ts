@@ -16475,18 +16475,18 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+            /**
+             * Native Rank Max
+             * @default null
+             */
+            native_rank_max: number | null;
+            /**
+             * Native Rank Min
+             * @default null
+             */
+            native_rank_min: number | null;
             /** Number */
             number: number;
-            /**
-             * Ow Rank Max
-             * @default null
-             */
-            ow_rank_max: number | null;
-            /**
-             * Ow Rank Min
-             * @default null
-             */
-            ow_rank_min: number | null;
             /** Rank Max */
             rank_max: number | null;
             /** Rank Min */
@@ -24829,18 +24829,18 @@ export interface components {
             id: number | null;
             /** Name */
             name: string;
+            /**
+             * Native Rank Max
+             * @default null
+             */
+            native_rank_max: number | null;
+            /**
+             * Native Rank Min
+             * @default null
+             */
+            native_rank_min: number | null;
             /** Number */
             number: number;
-            /**
-             * Ow Rank Max
-             * @default null
-             */
-            ow_rank_max: number | null;
-            /**
-             * Ow Rank Min
-             * @default null
-             */
-            ow_rank_min: number | null;
             /** Rank Max */
             rank_max: number | null;
             /** Rank Min */

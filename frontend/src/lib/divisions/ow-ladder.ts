@@ -1,7 +1,7 @@
 /**
  * The Overwatch competitive ladder, read from a generated artifact.
  *
- * The ladder is written down once, in `backend/shared/domain/ow_ladder.py`. This
+ * The ladder is written down once, in `backend/shared/disciplines/overwatch/ladder.py`. This
  * module holds NO ladder facts and NO rank arithmetic — it is a typed accessor
  * over `ow-ladder.generated.json`, which `backend/scripts/export_ow_ladder.py`
  * emits with everything already resolved: the 45 tiers and the full native

@@ -1,7 +1,7 @@
 """Effective native OverFast division+tier -> integer rank_value mapping.
 
 The default table (:func:`build_default_lookup`, in
-``src.domain.overwatch_rank``) is derived from :data:`shared.domain.ow_ladder.LADDER`
+``src.domain.overwatch_rank``) is derived from ``shared/disciplines/overwatch/ladder.py``
 — the one place the ladder's shape is written down — so it cannot drift from
 the division grid every service resolves ranks against. The mapping is
 configurable at runtime via the ``parser.rank_mapping`` settings key:

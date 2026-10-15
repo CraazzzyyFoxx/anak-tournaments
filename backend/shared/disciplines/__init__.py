@@ -16,6 +16,7 @@ from shared.disciplines.spec import (
     FormatDimensionSpec,
     FormatRuleSpec,
     NativeRanks,
+    NativeTier,
     RoleSpec,
     TeamFormatPreset,
 )
@@ -28,9 +29,11 @@ __all__ = (
     "FormatDimensionSpec",
     "FormatRuleSpec",
     "NativeRanks",
+    "NativeTier",
     "RoleSpec",
     "TeamFormatPreset",
     "discipline",
+    "fallback_ladder",
     "rated_role_codes",
 )
 
@@ -48,3 +51,11 @@ def discipline(code: str) -> DisciplineSpec:
 def rated_role_codes(code: str) -> tuple[str, ...]:
     """The module roles of ``code``'s rated dimension in declaration order: what ranks are kept on (D32, D87)."""
     return tuple(role.code for role in discipline(code).rated_dimension.roles)
+
+
+def fallback_ladder() -> tuple[NativeTier, ...]:
+    """The first registered native ladder, for reads that name no discipline.
+
+    A discipline-scoped read uses only its own ladder; a game without one has no in-code grid.
+    """
+    return next((spec.native_ladder for spec in DISCIPLINES.values() if spec.native_ladder), ())

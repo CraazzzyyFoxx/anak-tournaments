@@ -92,7 +92,7 @@ def _classify_tier_change(
 def get_default_ow2_tiers_write() -> list[schemas.DivisionGridTierWrite]:
     """Project the in-code default grid into this service's write DTO.
 
-    The ladder itself lives in :data:`shared.domain.ow_ladder.LADDER` and reaches
+    The ladder lives in the Overwatch module (``native_ladder``) and reaches
     here through ``DEFAULT_GRID``; nothing about it is re-derived. The DTO's only
     extra field is ``sort_order``, which is the tier's position in the grid — and
     ``DEFAULT_GRID.tiers`` is ordered top-first, so position and ``number`` agree.
@@ -106,8 +106,8 @@ def get_default_ow2_tiers_write() -> list[schemas.DivisionGridTierWrite]:
             rank_min=tier.rank_min,
             rank_max=tier.rank_max,
             icon_url=tier.icon_url,
-            ow_rank_min=tier.ow_rank_min,
-            ow_rank_max=tier.ow_rank_max,
+            native_rank_min=tier.native_rank_min,
+            native_rank_max=tier.native_rank_max,
         )
         for index, tier in enumerate(DEFAULT_GRID.tiers)
     ]
@@ -393,8 +393,8 @@ class DivisionGridService:
                     rank_min=tier.rank_min,
                     rank_max=tier.rank_max,
                     icon_url=tier.icon_url,
-                    ow_rank_min=tier.ow_rank_min,
-                    ow_rank_max=tier.ow_rank_max,
+                    native_rank_min=tier.native_rank_min,
+                    native_rank_max=tier.native_rank_max,
                 )
                 for tier in data.tiers
             ],
@@ -501,8 +501,8 @@ class DivisionGridService:
                             rank_min=tier_data.rank_min,
                             rank_max=tier_data.rank_max,
                             icon_url=tier_data.icon_url,
-                            ow_rank_min=tier_data.ow_rank_min,
-                            ow_rank_max=tier_data.ow_rank_max,
+                            native_rank_min=tier_data.native_rank_min,
+                            native_rank_max=tier_data.native_rank_max,
                         )
                     )
                     continue
@@ -518,8 +518,8 @@ class DivisionGridService:
                 existing.rank_min = tier_data.rank_min
                 existing.rank_max = tier_data.rank_max
                 existing.icon_url = tier_data.icon_url
-                existing.ow_rank_min = tier_data.ow_rank_min
-                existing.ow_rank_max = tier_data.ow_rank_max
+                existing.native_rank_min = tier_data.native_rank_min
+                existing.native_rank_max = tier_data.native_rank_max
 
             if added_tiers:
                 await self.tier_repo.create_many(session, added_tiers)
@@ -558,8 +558,8 @@ class DivisionGridService:
                         rank_min=tier.rank_min,
                         rank_max=tier.rank_max,
                         icon_url=tier.icon_url,
-                        ow_rank_min=tier.ow_rank_min,
-                        ow_rank_max=tier.ow_rank_max,
+                        native_rank_min=tier.native_rank_min,
+                        native_rank_max=tier.native_rank_max,
                     )
                     for tier in version.tiers
                 ],
@@ -814,8 +814,8 @@ class DivisionGridService:
             tier.name = payload_tier.name
             tier.sort_order = payload_tier.sort_order
             tier.icon_url = payload_tier.icon_url
-            tier.ow_rank_min = payload_tier.ow_rank_min
-            tier.ow_rank_max = payload_tier.ow_rank_max
+            tier.native_rank_min = payload_tier.native_rank_min
+            tier.native_rank_max = payload_tier.native_rank_max
         await session.flush()
         await division_grid_cache.invalidate_grid_version(version.id)
 

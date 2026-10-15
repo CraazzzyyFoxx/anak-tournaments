@@ -73,10 +73,10 @@ class RankOverviewFilters:
 
 
 def _grid_rank_case(ow_rank: sa.ColumnElement[int], grid: DivisionGrid) -> sa.ColumnElement[int]:
-    """SQL twin of ``grid.resolve_division_from_ow_rank(ow).rank_min``.
+    """SQL twin of ``grid.resolve_division_from_native_rank(ow).rank_min``.
 
     Same two regimes as the Python helper: once *any* tier carries an explicit
-    ``ow_rank_min``/``ow_rank_max`` the admin owns the mapping and an SR outside
+    ``native_rank_min``/``native_rank_max`` the admin owns the mapping and an SR outside
     every configured range resolves to nothing; with none configured the raw SR
     is assumed to already live on the grid's own scale and is placed by plain
     ``rank_min``/``rank_max`` containment, which never misses.
@@ -89,13 +89,13 @@ def _grid_rank_case(ow_rank: sa.ColumnElement[int], grid: DivisionGrid) -> sa.Co
     if not grid.tiers:
         return _null(sa.Integer)
     guard: list[tuple[sa.ColumnElement[bool], Any]] = [(ow_rank.is_(None), sa.null())]
-    configured = [t for t in grid.tiers if t.ow_rank_min is not None and t.ow_rank_max is not None]
+    configured = [t for t in grid.tiers if t.native_rank_min is not None and t.native_rank_max is not None]
     if configured:
         whens = [
             (
                 sa.and_(
-                    ow_rank >= min(t.ow_rank_min, t.ow_rank_max),  # type: ignore[type-var]
-                    ow_rank <= max(t.ow_rank_min, t.ow_rank_max),  # type: ignore[type-var]
+                    ow_rank >= min(t.native_rank_min, t.native_rank_max),  # type: ignore[type-var]
+                    ow_rank <= max(t.native_rank_min, t.native_rank_max),  # type: ignore[type-var]
                 ),
                 t.rank_min,
             )

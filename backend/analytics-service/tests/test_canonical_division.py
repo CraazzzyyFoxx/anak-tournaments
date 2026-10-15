@@ -35,8 +35,8 @@ def _tier(tier_id, number, rank_min, rank_max, ow_min=None, ow_max=None):
         rank_min=rank_min,
         rank_max=rank_max,
         icon_url="",
-        ow_rank_min=ow_min,
-        ow_rank_max=ow_max,
+        native_rank_min=ow_min,
+        native_rank_max=ow_max,
     )
 
 

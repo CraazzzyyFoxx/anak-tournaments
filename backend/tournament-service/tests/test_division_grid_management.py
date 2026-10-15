@@ -436,8 +436,8 @@ def test_source_fingerprint_is_deterministic_and_content_sensitive() -> None:
         rank_min=4900,
         rank_max=None,
         icon_url="https://cdn.example/champion-1.png",
-        ow_rank_min=4900,
-        ow_rank_max=5000,
+        native_rank_min=4900,
+        native_rank_max=5000,
     )
     version = SimpleNamespace(version=1, label="Season 1", status="published", tiers=[tier])
     grid = SimpleNamespace(slug="ow2", name="OW2", description=None, versions=[version])
@@ -448,8 +448,12 @@ def test_source_fingerprint_is_deterministic_and_content_sensitive() -> None:
     changed = marketplace.build_source_fingerprint([grid], [])
 
     assert first == second
-    assert len(first) == 64
+    # Historical marketplace payload: field renaming must not re-import an unchanged grid.
+    assert first == "cbe3808b54bac98d78ff9c17e518b349d5d954a2dfde7da362d4d694e011a255"
     assert changed != first
+    tier.rank_min = 4900
+    tier.native_rank_max = 5100
+    assert marketplace.build_source_fingerprint([grid], []) != first
 
 
 def test_s3_copy_object_uses_server_side_copy() -> None:
@@ -533,8 +537,8 @@ def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() 
             rank_min=4900,
             rank_max=None,
             icon_url="https://minio.example/aqt/assets/divisions/champion-1.png",
-            ow_rank_min=4900,
-            ow_rank_max=5000,
+            native_rank_min=4900,
+            native_rank_max=5000,
         )
         external_tier = SimpleNamespace(
             id=2,
@@ -545,8 +549,8 @@ def test_marketplace_preflight_reports_conflicts_asset_policy_and_fingerprint() 
             rank_min=4500,
             rank_max=4899,
             icon_url="https://cdn.example/master-1.png",
-            ow_rank_min=4500,
-            ow_rank_max=4899,
+            native_rank_min=4500,
+            native_rank_max=4899,
         )
         version = SimpleNamespace(
             id=10,
@@ -589,8 +593,8 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
             rank_min=4500,
             rank_max=4899,
             icon_url="https://minio.example/aqt/assets/divisions/master-1.png",
-            ow_rank_min=4500,
-            ow_rank_max=4899,
+            native_rank_min=4500,
+            native_rank_max=4899,
         )
         second_tier = SimpleNamespace(
             id=2,
@@ -601,8 +605,8 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
             rank_min=4900,
             rank_max=None,
             icon_url="https://minio.example/aqt/assets/divisions/champion-1.png",
-            ow_rank_min=4900,
-            ow_rank_max=5000,
+            native_rank_min=4900,
+            native_rank_max=5000,
         )
         grid = SimpleNamespace(
             id=5,
@@ -678,8 +682,8 @@ def test_library_import_reuses_unchanged_import_without_writes() -> None:
             rank_min=4900,
             rank_max=None,
             icon_url="https://cdn.example/champion-1.png",
-            ow_rank_min=4900,
-            ow_rank_max=5000,
+            native_rank_min=4900,
+            native_rank_max=5000,
         )
         version = SimpleNamespace(
             id=10,
@@ -919,8 +923,8 @@ def test_portable_export_uses_version_and_tier_slugs_instead_of_database_ids() -
         rank_min=4900,
         rank_max=None,
         icon_url="https://cdn.example/champion-1.png",
-        ow_rank_min=4900,
-        ow_rank_max=5000,
+        native_rank_min=4900,
+        native_rank_max=5000,
     )
     tier_two = SimpleNamespace(
         id=202,
@@ -931,8 +935,8 @@ def test_portable_export_uses_version_and_tier_slugs_instead_of_database_ids() -
         rank_min=4500,
         rank_max=4899,
         icon_url="https://cdn.example/master-1.png",
-        ow_rank_min=4500,
-        ow_rank_max=4899,
+        native_rank_min=4500,
+        native_rank_max=4899,
     )
     versions = [
         SimpleNamespace(id=11, version=1, label="S1", status="published", tiers=[tier_one]),

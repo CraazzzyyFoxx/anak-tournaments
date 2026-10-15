@@ -41,8 +41,8 @@ def build_portable_document(
                     rank_min=tier.rank_min,
                     rank_max=tier.rank_max,
                     icon_url=tier.icon_url,
-                    ow_rank_min=tier.ow_rank_min,
-                    ow_rank_max=tier.ow_rank_max,
+                    native_rank_min=tier.native_rank_min,
+                    native_rank_max=tier.native_rank_max,
                 )
                 for tier in sorted(version.tiers, key=lambda item: item.sort_order)
             ],
@@ -215,8 +215,8 @@ class PortableService:
                         rank_min=portable_tier.rank_min,
                         rank_max=portable_tier.rank_max,
                         icon_url=portable_tier.icon_url,
-                        ow_rank_min=portable_tier.ow_rank_min,
-                        ow_rank_max=portable_tier.ow_rank_max,
+                        native_rank_min=portable_tier.native_rank_min,
+                        native_rank_max=portable_tier.native_rank_max,
                     ),
                 )
                 for portable_tier in sorted(portable_version.tiers, key=lambda item: item.sort_order)

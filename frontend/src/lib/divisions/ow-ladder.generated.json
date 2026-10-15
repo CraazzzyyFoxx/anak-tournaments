@@ -1,6 +1,6 @@
 {
   "_generated_by": "backend/scripts/export_ow_ladder.py -- do not edit by hand",
-  "_source": "backend/shared/domain/ow_ladder.py",
+  "_source": "backend/shared/disciplines/overwatch/ladder.py",
   "division_icon_base": "/divisions",
   "ow_divisions_desc": [
     "ultimate",

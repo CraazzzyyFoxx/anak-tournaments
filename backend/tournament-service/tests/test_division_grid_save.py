@@ -8,6 +8,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+import sqlalchemy as sa
+
+from shared.division_grid import DivisionGrid, normalize_native_ranks_to_grid
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -32,8 +35,8 @@ def _write_tier(
         rank_min=rank_min,
         rank_max=rank_max,
         icon_url=icon_url,
-        ow_rank_min=ow_min,
-        ow_rank_max=ow_max,
+        native_rank_min=ow_min,
+        native_rank_max=ow_max,
     )
 
 
@@ -47,8 +50,8 @@ def _active_tier(tier_id, slug, rank_min, rank_max, *, name=None, number=1, sort
         rank_min=rank_min,
         rank_max=rank_max,
         icon_url="/i.png",
-        ow_rank_min=None,
-        ow_rank_max=None,
+        native_rank_min=None,
+        native_rank_max=None,
     )
 
 
@@ -340,5 +343,69 @@ def test_save_uses_explicit_grid_id_over_workspace_resolution() -> None:
         resolve.assert_not_called()
         assert outcome.mode == "in_place"
         assert outcome.saved_version_id == 100
+
+    asyncio.run(run())
+
+
+def test_native_ranges_survive_service_writes_serialization_and_resolution(db_session) -> None:
+    async def run() -> None:
+        workspace = models.Workspace(slug="p3-native-range-smoke", name="Native range smoke")
+        db_session.add(workspace)
+        await db_session.flush()
+        workspace_id = workspace.id
+        grid = models.DivisionGrid(workspace_id=workspace_id, slug="native", name="Native", versions=[])
+        db_session.add(grid)
+        await db_session.flush()
+        try:
+            version = await grid_service.create_version(
+                db_session,
+                workspace_id,
+                grid.id,
+                schemas.DivisionGridVersionCreate(
+                    label="Native bounds",
+                    tiers=[
+                        _write_tier(None, "top", 2000, None, ow_min=4900, ow_max=4700),
+                        _write_tier(None, "base", 1000, 1999, number=2, sort_order=1, ow_min=4000, ow_max=4699),
+                    ],
+                ),
+            )
+            payload = schemas.DivisionGridVersionRead.model_validate(version, from_attributes=True).model_dump(
+                mode="json"
+            )
+            assert [(t["native_rank_min"], t["native_rank_max"]) for t in payload["tiers"]] == [
+                (4900, 4700),
+                (4000, 4699),
+            ]
+            assert all(not any(key.startswith("ow_rank_") for key in tier) for tier in payload["tiers"])
+            runtime = DivisionGrid.from_version(version)
+            assert normalize_native_ranks_to_grid({7: {"tank": 4700, "support": 4699}}, runtime) == {
+                7: {"tank": 2000, "support": 1000}
+            }
+            writes = [schemas.DivisionGridTierWrite.model_validate(tier) for tier in payload["tiers"]]
+            writes[0].native_rank_max = 4800
+            updated = await grid_service.update_version(
+                db_session, version.id, schemas.DivisionGridVersionUpdate(tiers=writes)
+            )
+            cloned = await grid_service.clone_version(db_session, updated.id)
+            cloned_payload = schemas.DivisionGridVersionRead.model_validate(cloned, from_attributes=True).model_dump(
+                mode="json"
+            )
+            assert cloned_payload["tiers"][0]["native_rank_max"] == 4800
+            runtime = DivisionGrid.from_version(cloned)
+            assert runtime.resolve_division_from_native_rank(4700) is None
+            assert runtime.resolve_division_from_native_rank(4800).rank_min == 2000
+            print("PostgreSQL native bounds: create/read 4900..4700 -> 2000; update/clone 4900..4800; 4700 excluded")
+        finally:
+            await db_session.rollback()
+        try:
+            assert (
+                await db_session.scalar(
+                    sa.select(sa.func.count()).select_from(models.Workspace).where(models.Workspace.id == workspace_id)
+                )
+                == 0
+            )
+            print("ROLLBACK confirmed: smoke workspace rows=0")
+        finally:
+            await db_session.close()
 
     asyncio.run(run())

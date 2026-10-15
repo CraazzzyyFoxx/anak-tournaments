@@ -235,7 +235,7 @@ def test_autofill_does_not_add_unapproved_player_to_balancer() -> None:
 class _FakeGrid:
     """Identity grid for ranks in [1000, 4900]; everything else is unmapped (None)."""
 
-    def resolve_division_from_ow_rank(self, ow_rank: int | None):
+    def resolve_division_from_native_rank(self, ow_rank: int | None):
         if ow_rank is None or ow_rank < 1000 or ow_rank > 4900:
             return None
         return SimpleNamespace(rank_min=ow_rank)

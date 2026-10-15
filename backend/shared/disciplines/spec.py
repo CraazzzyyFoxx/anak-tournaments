@@ -32,6 +32,7 @@ __all__ = (
     "FormatDimensionSpec",
     "FormatRuleSpec",
     "NativeRanks",
+    "NativeTier",
     "RoleSpec",
     "TeamFormatPreset",
 )
@@ -100,6 +101,23 @@ class TeamFormatPreset:
 
 
 @dataclass(frozen=True, slots=True)
+class NativeTier:
+    """One sub-tier of a game's native ladder (D87), numbered 1 from the top.
+
+    ``native_division``/``native_tier`` are the names the game's rank source reports.
+    """
+
+    number: int
+    slug: str
+    name: str
+    rank_min: int
+    rank_max: int | None
+    icon_url: str
+    native_division: str
+    native_tier: int
+
+
+@dataclass(frozen=True, slots=True)
 class DisciplineSpec:
     code: str
     name: str
@@ -114,6 +132,8 @@ class DisciplineSpec:
     #: Where a player's rank on the game's own ladder comes from (D87); ``None`` when the game has none (LoL: ranks are
     #: entered by the organiser).
     native_ranks: NativeRanks | None = field(default=None, compare=False)
+    #: The game's own ladder, top tier first (D87); ``()`` when the organiser enters ranks (LoL).
+    native_ladder: tuple[NativeTier, ...] = ()
     #: The role ontology (D31); exactly one dimension is ``rated`` (D32).
     dimensions: tuple[DimensionSpec, ...] = ()
     #: Team-format presets; the first is what an owner without a format of its own gets (D35).

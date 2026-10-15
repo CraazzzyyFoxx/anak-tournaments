@@ -143,7 +143,7 @@ class RankOverviewPermissionTests(IsolatedAsyncioTestCase):
 
 
 class GridRankCaseTests(IsolatedAsyncioTestCase):
-    """``_grid_rank_case`` is the SQL twin of ``resolve_division_from_ow_rank``.
+    """``_grid_rank_case`` is the SQL twin of ``resolve_division_from_native_rank``.
 
     Both regimes: a grid with no OW mapping configured places the raw SR by
     plain rank containment (and never misses), one with an explicit mapping
@@ -169,18 +169,18 @@ class GridRankCaseTests(IsolatedAsyncioTestCase):
     async def test_unmapped_grid_places_every_sr_by_rank_containment(self) -> None:
         grid = division_grid(1, ((10, 3, 3000, None), (11, 2, 2000, 2999), (12, 1, 1000, 1999)))
         for sr in (500, 1500, 2500, 4000):
-            expected = grid.resolve_division_from_ow_rank(sr)
+            expected = grid.resolve_division_from_native_rank(sr)
             assert expected is not None
             assert await self._mapped(grid, sr) == expected.rank_min, sr
 
     async def test_configured_grid_drops_sr_outside_every_range(self) -> None:
         base = division_grid(1, ((10, 3, 3000, None), (11, 2, 2000, 2999), (12, 1, 1000, 1999)))
         tiers = tuple(
-            replace(tier, ow_rank_min=tier.rank_min, ow_rank_max=tier.rank_max or 9999) for tier in base.tiers
+            replace(tier, native_rank_min=tier.rank_min, native_rank_max=tier.rank_max or 9999) for tier in base.tiers
         )
         grid = DivisionGrid(version_id=2, tiers=tiers)
         assert await self._mapped(grid, 2500) == 2000
-        assert grid.resolve_division_from_ow_rank(500) is None
+        assert grid.resolve_division_from_native_rank(500) is None
         assert await self._mapped(grid, 500) is None
 
     async def test_no_ow_rank_at_all_maps_to_nothing(self) -> None:

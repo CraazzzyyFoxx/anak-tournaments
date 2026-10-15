@@ -15,8 +15,8 @@ def _grid_with_ow_mapping() -> DivisionGrid:
             rank_min=2000,
             rank_max=2499,
             icon_url="",
-            ow_rank_min=2000,
-            ow_rank_max=2499,
+            native_rank_min=2000,
+            native_rank_max=2499,
         ),
         DivisionTier(
             id=2,
@@ -26,8 +26,8 @@ def _grid_with_ow_mapping() -> DivisionGrid:
             rank_min=3000,
             rank_max=3499,
             icon_url="",
-            ow_rank_min=3000,
-            ow_rank_max=3499,
+            native_rank_min=3000,
+            native_rank_max=3499,
         ),
     ]
     return DivisionGrid(version_id=None, tiers=tiers)
@@ -55,15 +55,15 @@ def _tier(number: int, rank_min: int, rank_max: int, ow: tuple[int, int] | None)
         rank_min=rank_min,
         rank_max=rank_max,
         icon_url="",
-        ow_rank_min=ow[0] if ow else None,
-        ow_rank_max=ow[1] if ow else None,
+        native_rank_min=ow[0] if ow else None,
+        native_rank_max=ow[1] if ow else None,
     )
 
 
 def test_grid_without_any_ow_mapping_falls_back_to_the_native_scale() -> None:
     """An unmapped grid is the common case: cloned from the default OW2 scale and
     never filled in. Dropping every rank there would leave the whole workspace with
-    no OW delta at all, so ``resolve_division_from_ow_rank`` treats the SR as already
+    no OW delta at all, so ``resolve_division_from_native_rank`` treats the SR as already
     living on the grid's own scale and resolves it by ``rank_min``/``rank_max``."""
     grid = DivisionGrid(version_id=None, tiers=[_tier(3, 2000, 2499, None)])
 

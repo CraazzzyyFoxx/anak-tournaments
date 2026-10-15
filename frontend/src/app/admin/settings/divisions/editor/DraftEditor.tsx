@@ -118,7 +118,7 @@ export function DraftEditor({
   // What the ladder draws for a version that stores no OW link is the backend's
   // rank-range fallback, not a decision anyone made — the column says so.
   const implicitLinks = !version.tiers.some(
-    (tier) => tier.ow_rank_min != null && tier.ow_rank_max != null
+    (tier) => tier.native_rank_min != null && tier.native_rank_max != null
   );
 
   const [isWide, setIsWide] = useState(true);

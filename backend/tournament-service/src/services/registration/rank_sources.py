@@ -346,7 +346,7 @@ def _map_ow_rank_value(ow_rank_value: int | None, grid: DivisionGrid) -> int | N
     """Map an OW ``rank_value`` to a tournament division rank via the grid, or None if unmapped."""
     if ow_rank_value is None:
         return None
-    tier = grid.resolve_division_from_ow_rank(ow_rank_value)
+    tier = grid.resolve_division_from_native_rank(ow_rank_value)
     return tier.rank_min if tier is not None else None
 
 

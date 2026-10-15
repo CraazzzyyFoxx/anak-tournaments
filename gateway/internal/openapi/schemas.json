@@ -39203,33 +39203,33 @@
           "title": "Name",
           "type": "string"
         },
+        "native_rank_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Rank Max"
+        },
+        "native_rank_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Rank Min"
+        },
         "number": {
           "title": "Number",
           "type": "integer"
-        },
-        "ow_rank_max": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Ow Rank Max"
-        },
-        "ow_rank_min": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Ow Rank Min"
         },
         "rank_max": {
           "anyOf": [
@@ -39299,33 +39299,33 @@
           "title": "Name",
           "type": "string"
         },
+        "native_rank_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Rank Max"
+        },
+        "native_rank_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Rank Min"
+        },
         "number": {
           "title": "Number",
           "type": "integer"
-        },
-        "ow_rank_max": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Ow Rank Max"
-        },
-        "ow_rank_min": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Ow Rank Min"
         },
         "rank_max": {
           "anyOf": [

@@ -776,8 +776,8 @@ Composite unique keys:
 Versioned rank grids: tiers with SR ranges, and mappings between versions so ranks stay
 comparable across seasons and Overwatch rebindings. A workspace picks the version it uses.
 
-A tier carries both the internal SR range (`rank_min`/`rank_max`) and the Overwatch-side range
-(`ow_rank_min`/`ow_rank_max`); mappings between two versions, with weighted rules per tier pair,
+A tier carries both the internal rank range (`rank_min`/`rank_max`) and the game's native ladder range
+(`native_rank_min`/`native_rank_max`); mappings between two versions, with weighted rules per tier pair,
 are what keeps ranks comparable after a season change or an Overwatch rebinding. A version is
 immutable once published — a new one is forked through `created_from_version_id` — and a grid
 with `workspace_id = NULL` is global.
@@ -853,8 +853,8 @@ erDiagram
         bigint rank_min
         bigint rank_max "nullable"
         varchar icon_url
-        bigint ow_rank_min "nullable"
-        bigint ow_rank_max "nullable"
+        bigint native_rank_min "nullable"
+        bigint native_rank_max "nullable"
     }
     PUBLIC_DIVISION_GRID_VERSION {
         bigint id PK

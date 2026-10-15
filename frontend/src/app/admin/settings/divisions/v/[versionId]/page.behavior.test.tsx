@@ -379,7 +379,7 @@ describe("Divisions › draft editor", () => {
     expect(payload.tiers).toHaveLength(4);
     // The upper half keeps the original tier id; the new band has none.
     expect(payload.tiers.map((entry) => entry.id)).toEqual([501, undefined, 502, 503]);
-    expect(payload.tiers.every((entry) => entry.ow_rank_min !== null)).toBe(true);
+    expect(payload.tiers.every((entry) => entry.native_rank_min !== null)).toBe(true);
 
     expect(putDivisionGridMapping).toHaveBeenCalledTimes(1);
     const [sourceId, targetId] = putDivisionGridMapping.mock.calls[0] as [number, number];
@@ -423,7 +423,7 @@ describe("Divisions › draft editor", () => {
       [300, 1899],
       [100, 299]
     ]);
-    expect(payload.tiers.map((entry) => [entry.ow_rank_min, entry.ow_rank_max])).toEqual([
+    expect(payload.tiers.map((entry) => [entry.native_rank_min, entry.native_rank_max])).toEqual([
       [1900, 4900],
       [null, null],
       [500, 1800],
