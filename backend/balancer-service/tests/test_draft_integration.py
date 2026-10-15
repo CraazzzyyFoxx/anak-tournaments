@@ -762,7 +762,8 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             self.assertEqual(draft.status, DraftStatus.COMPLETED.value)
             await self._provision_export_identities(s)
 
-            _, removed, imported = await draft_export.export_service.export(s, draft)
+            _, removed, imported, advisories = await draft_export.export_service.export(s, draft)
+            self.assertEqual(advisories, [])
             await s.commit()
             self.assertEqual(removed, 0)
             self.assertEqual(imported, 3)
@@ -850,12 +851,12 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 await s.commit()
             await self._provision_export_identities(s)
 
-            _, removed1, imported1 = await draft_export.export_service.export(s, draft)
+            _, removed1, imported1, _ = await draft_export.export_service.export(s, draft)
             await s.commit()
             self.assertEqual((removed1, imported1), (0, 3))
 
             # Re-export: prior teams are removed first, then re-created.
-            _, removed2, imported2 = await draft_export.export_service.export(s, draft)
+            _, removed2, imported2, _ = await draft_export.export_service.export(s, draft)
             await s.commit()
             self.assertEqual(removed2, 3)
             self.assertEqual(imported2, 3)

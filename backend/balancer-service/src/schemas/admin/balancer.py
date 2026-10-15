@@ -182,6 +182,7 @@ class BalanceExportResponse(BaseModel):
     removed_teams: int
     imported_teams: int
     balance_id: int
+    advisories: list[str] = Field(default_factory=list)
 
 
 class RanksExportResponse(BaseModel):

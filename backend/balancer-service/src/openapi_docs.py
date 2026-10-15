@@ -34,7 +34,8 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: admin-panel access plus `team.create` on the balance's workspace. "
             "Materializes a saved balance into tournament teams, returning removed/imported counts "
-            "and emitting a teams-changed realtime event."
+            "and emitting a teams-changed realtime event. Returns advisories for format violations "
+            "and names unresolved or duplicate members skipped by the export."
         ),
     },
     "rpc.balancer.admin.balance_ranks_export": {
@@ -91,7 +92,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.admin.teams_import": {
         "summary": "Import teams file",
-        "description": "Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event.",
+        "description": "Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event. Returns advisories for format violations and names skipped unresolved or duplicate members.",
     },
     "rpc.balancer.jobs.create": {
         "summary": "Create balance job",
@@ -247,7 +248,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.export": {
         "summary": "Export draft to teams",
-        "description": "Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event.",
+        "description": "Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event. The returned session includes advisories for format violations and names skipped unresolved or duplicate members.",
     },
     "rpc.balancer.draft.export_ranks": {
         "summary": "Re-export draft ranks",

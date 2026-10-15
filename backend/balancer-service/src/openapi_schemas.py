@@ -110,7 +110,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.draft.resume": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.cancel": Op(response=schemas.DraftSessionRead),
     "rpc.balancer.draft.rollback": Op(response=schemas.DraftSessionRead),
-    "rpc.balancer.draft.export": Op(response=schemas.DraftSessionRead),
+    "rpc.balancer.draft.export": Op(response=schemas.DraftExportResponse),
     "rpc.balancer.draft.export_ranks": Op(response=schemas.RanksExportResponse),
     # ── draft: pick actions (all -> DraftSessionRead) ──────────────────────
     "rpc.balancer.draft.pick_select": Op(request=schemas.DraftPickSelectRequest, response=schemas.DraftSessionRead),

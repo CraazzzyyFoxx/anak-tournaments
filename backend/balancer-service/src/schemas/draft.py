@@ -447,6 +447,10 @@ class DraftSessionRead(BaseRead):
         return cls.model_validate(payload)
 
 
+class DraftExportResponse(DraftSessionRead):
+    advisories: list[str] = Field(default_factory=list)
+
+
 class DraftBoardSnapshot(BaseModel):
     """Single-shot spectator/captain bootstrap + realtime resume cursor."""
 

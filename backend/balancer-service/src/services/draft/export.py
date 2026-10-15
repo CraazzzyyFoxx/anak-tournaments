@@ -152,8 +152,10 @@ class DraftExportService:
         )
         return teams, payload
 
-    async def export(self, session: AsyncSession, draft_session: DraftSession) -> tuple[DraftSession, int, int]:
-        """Export a COMPLETED draft. Returns (session, removed_teams, imported_teams)."""
+    async def export(
+        self, session: AsyncSession, draft_session: DraftSession
+    ) -> tuple[DraftSession, int, int, list[str]]:
+        """Export a COMPLETED draft, returning session, team counts and advisories."""
         if draft_session.status != DraftStatus.COMPLETED.value:
             raise _err("draft_not_completed", "Only a completed draft can be exported")
 
@@ -193,7 +195,7 @@ class DraftExportService:
                 on_failure=_on_failure,
             ),
         )
-        return draft_session, outcome.removed_teams, outcome.imported_teams
+        return draft_session, outcome.removed_teams, outcome.imported_teams, outcome.materialization.advisories
 
     async def export_ranks(self, session: AsyncSession, draft_session: DraftSession) -> int:
         """Re-push ranks onto the players this draft already exported. Never commits.

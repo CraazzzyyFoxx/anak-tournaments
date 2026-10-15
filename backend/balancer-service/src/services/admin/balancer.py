@@ -243,7 +243,9 @@ class BalancerAdminService:
         # no refetch needed.
         return balance
 
-    async def export_balance(self, session: AsyncSession, balance_id: int) -> tuple[models.BalancerBalance, int, int]:
+    async def export_balance(
+        self, session: AsyncSession, balance_id: int
+    ) -> tuple[models.BalancerBalance, int, int, list[str]]:
         balance = await self.balances.get_for_export(session, balance_id)
         if balance is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance not found")
@@ -288,7 +290,7 @@ class BalancerAdminService:
                 on_failure=_on_failure,
             ),
         )
-        return balance, outcome.removed_teams, outcome.imported_teams
+        return balance, outcome.removed_teams, outcome.imported_teams, outcome.materialization.advisories
 
     async def export_balance_ranks(self, session: AsyncSession, balance_id: int) -> tuple[models.BalancerBalance, int]:
         """Push the saved balance's ranks onto the already-exported players.

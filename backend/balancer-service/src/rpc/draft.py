@@ -804,7 +804,7 @@ def register(broker: Any, logger: Any) -> None:
             ws_id = await _get_tournament_workspace_id(session, tournament_id)
             c.require_workspace_permission(data, user, ws_id, "team", "create")
             draft = await _load_session(session, session_id)
-            updated, _removed, _imported = await export_service.export(session, draft)
+            updated, _removed, _imported, advisories = await export_service.export(session, draft)
             await draft_rt.publish_draft_event(
                 session,
                 draft_session=updated,
@@ -821,7 +821,8 @@ def register(broker: Any, logger: Any) -> None:
                 session, scope=Scope.tournament(updated.tournament_id), resources=EXPORT_RESOURCES
             )
             await session.commit()
-            return await board_service.session_read(session, updated)
+            read = await board_service.session_read(session, updated)
+            return schemas.DraftExportResponse(**read.model_dump(), advisories=advisories)
 
         return await c.envelope(logger, "draft.export", op, session_factory=_SF)
 

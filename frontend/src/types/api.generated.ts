@@ -1641,7 +1641,7 @@ export interface paths {
         put?: never;
         /**
          * Export draft to teams
-         * @description Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event.
+         * @description Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event. The returned session includes advisories for format violations and names skipped unresolved or duplicate members.
          *
          *     RPC subject: `rpc.balancer.draft.export`
          */
@@ -9623,7 +9623,7 @@ export interface paths {
         put?: never;
         /**
          * Export balance to teams
-         * @description Permission: admin-panel access plus `team.create` on the balance's workspace. Materializes a saved balance into tournament teams, returning removed/imported counts and emitting a teams-changed realtime event.
+         * @description Permission: admin-panel access plus `team.create` on the balance's workspace. Materializes a saved balance into tournament teams, returning removed/imported counts and emitting a teams-changed realtime event. Returns advisories for format violations and names unresolved or duplicate members skipped by the export.
          *
          *     RPC subject: `rpc.balancer.admin.balance_export`
          */
@@ -9789,7 +9789,7 @@ export interface paths {
         put?: never;
         /**
          * Import teams file
-         * @description Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event.
+         * @description Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event. Returns advisories for format violations and names skipped unresolved or duplicate members.
          *
          *     RPC subject: `rpc.balancer.admin.teams_import`
          */
@@ -14462,6 +14462,51 @@ export interface components {
          * @enum {string}
          */
         "balancer.DraftCaptainOrder": BalancerDraftCaptainOrder;
+        /** DraftExportResponse */
+        "balancer.DraftExportResponse": {
+            /** Advisories */
+            advisories?: string[];
+            /** Allow Admin Override */
+            allow_admin_override: boolean;
+            autopick_strategy: components["schemas"]["balancer.DraftAutopickStrategy"];
+            /** Blocked Reason */
+            blocked_reason: string | null;
+            /**
+             * Created At
+             * @default null
+             */
+            created_at: string | null;
+            /** Current Pick Id */
+            current_pick_id: number | null;
+            /** Export Status */
+            export_status: string | null;
+            /** Exported At */
+            exported_at: string | null;
+            format: components["schemas"]["balancer.DraftFormat"];
+            /** Id */
+            id: number;
+            /** Overtime Seconds */
+            overtime_seconds: number;
+            /** Pick Time Seconds */
+            pick_time_seconds: number;
+            pool_source: components["schemas"]["balancer.DraftPoolSource"];
+            roster_shape: components["schemas"]["balancer.RosterShapeRead"];
+            /** Rounds */
+            rounds: number;
+            /** Settings Json */
+            settings_json: {
+                [key: string]: unknown;
+            };
+            /** Source Balance Id */
+            source_balance_id: number | null;
+            status: components["schemas"]["balancer.DraftStatus"];
+            /** Tournament Id */
+            tournament_id: number;
+            /** Version */
+            version: number;
+            /** Workspace Id */
+            workspace_id: number;
+        };
         /** DraftFeasibilityResponse */
         "balancer.DraftFeasibilityResponse": {
             /** Blocking Player Ids */
@@ -20467,6 +20512,8 @@ export interface components {
         };
         /** BalanceExportResponse */
         "balancer.BalanceExportResponse": {
+            /** Advisories */
+            advisories?: string[];
             /** Balance Id */
             balance_id: number;
             /** Imported Teams */
@@ -33785,7 +33832,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
+                    "application/json": components["schemas"]["balancer.DraftExportResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */

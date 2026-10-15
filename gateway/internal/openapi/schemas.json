@@ -3900,7 +3900,7 @@
       "summary": "Verify workspace custom domain"
     },
     "rpc.balancer.admin.balance_export": {
-      "description": "Permission: admin-panel access plus `team.create` on the balance's workspace. Materializes a saved balance into tournament teams, returning removed/imported counts and emitting a teams-changed realtime event.",
+      "description": "Permission: admin-panel access plus `team.create` on the balance's workspace. Materializes a saved balance into tournament teams, returning removed/imported counts and emitting a teams-changed realtime event. Returns advisories for format violations and names unresolved or duplicate members skipped by the export.",
       "response": {
         "array": false,
         "ref": "balancer.BalanceExportResponse"
@@ -3932,7 +3932,7 @@
       "summary": "Save tournament balance"
     },
     "rpc.balancer.admin.teams_import": {
-      "description": "Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event.",
+      "description": "Permission: admin-panel access plus workspace `team.create`. Bulk-imports tournament teams from a multipart JSON upload (atravkovs or internal format, auto-detected) and emits a teams-changed realtime event. Returns advisories for format violations and names skipped unresolved or duplicate members.",
       "summary": "Import teams file"
     },
     "rpc.balancer.admin.tournament_config_get": {
@@ -4344,10 +4344,10 @@
       "summary": "Set draft chat visibility"
     },
     "rpc.balancer.draft.export": {
-      "description": "Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event.",
+      "description": "Permission: workspace `team.create`. Finalizes the drafted rosters into tournament teams and publishes a draft-completed realtime event. The returned session includes advisories for format violations and names skipped unresolved or duplicate members.",
       "response": {
         "array": false,
-        "ref": "balancer.DraftSessionRead"
+        "ref": "balancer.DraftExportResponse"
       },
       "summary": "Export draft to teams"
     },
@@ -22941,6 +22941,13 @@
     },
     "balancer.BalanceExportResponse": {
       "properties": {
+        "advisories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Advisories",
+          "type": "array"
+        },
         "balance_id": {
           "title": "Balance Id",
           "type": "integer"
@@ -24826,6 +24833,161 @@
       ],
       "title": "DraftCaptainOrder",
       "type": "string"
+    },
+    "balancer.DraftExportResponse": {
+      "properties": {
+        "advisories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Advisories",
+          "type": "array"
+        },
+        "allow_admin_override": {
+          "title": "Allow Admin Override",
+          "type": "boolean"
+        },
+        "autopick_strategy": {
+          "$ref": "#/components/schemas/balancer.DraftAutopickStrategy"
+        },
+        "blocked_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Blocked Reason"
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Created At"
+        },
+        "current_pick_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Current Pick Id"
+        },
+        "export_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Export Status"
+        },
+        "exported_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Exported At"
+        },
+        "format": {
+          "$ref": "#/components/schemas/balancer.DraftFormat"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "overtime_seconds": {
+          "title": "Overtime Seconds",
+          "type": "integer"
+        },
+        "pick_time_seconds": {
+          "title": "Pick Time Seconds",
+          "type": "integer"
+        },
+        "pool_source": {
+          "$ref": "#/components/schemas/balancer.DraftPoolSource"
+        },
+        "roster_shape": {
+          "$ref": "#/components/schemas/balancer.RosterShapeRead"
+        },
+        "rounds": {
+          "title": "Rounds",
+          "type": "integer"
+        },
+        "settings_json": {
+          "additionalProperties": true,
+          "title": "Settings Json",
+          "type": "object"
+        },
+        "source_balance_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source Balance Id"
+        },
+        "status": {
+          "$ref": "#/components/schemas/balancer.DraftStatus"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "version": {
+          "title": "Version",
+          "type": "integer"
+        },
+        "workspace_id": {
+          "title": "Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "tournament_id",
+        "workspace_id",
+        "status",
+        "blocked_reason",
+        "format",
+        "rounds",
+        "pick_time_seconds",
+        "overtime_seconds",
+        "roster_shape",
+        "current_pick_id",
+        "pool_source",
+        "source_balance_id",
+        "autopick_strategy",
+        "allow_admin_override",
+        "exported_at",
+        "export_status",
+        "settings_json",
+        "version"
+      ],
+      "title": "DraftExportResponse",
+      "type": "object"
     },
     "balancer.DraftFeasibilityResponse": {
       "properties": {

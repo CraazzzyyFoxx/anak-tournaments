@@ -171,7 +171,9 @@ def register(broker: Any, logger: Any) -> None:
             # It used to be the one expensive balancer path with no quota at all,
             # because the limiter lived in the job service this never calls.
             await quota.charge(user, "balancer.balance_export", workspace_id=ws_id)
-            balance, removed_teams, imported_teams = await balancer_admin_service.export_balance(session, balance_id)
+            balance, removed_teams, imported_teams, advisories = await balancer_admin_service.export_balance(
+                session, balance_id
+            )
             await emit_balancer_data(session, balance.tournament_id, BALANCER_TEAMS_CHANGED, actor_user_id=user.id)
             # The balancer topic reaches only the admin tool. Materialization
             # rewrote tournament.team / player / standing, so the PUBLIC reads
@@ -191,6 +193,7 @@ def register(broker: Any, logger: Any) -> None:
                 removed_teams=removed_teams,
                 imported_teams=imported_teams,
                 balance_id=balance.id,
+                advisories=advisories,
             )
 
         return await c.envelope(logger, "admin.balance_export", op, session_factory=_SF)

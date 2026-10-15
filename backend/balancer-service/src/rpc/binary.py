@@ -95,8 +95,8 @@ def register(broker: Any, logger: Any) -> None:
             await enqueue_invalidation_outbox(
                 session, scope=Scope.tournament(tournament_id), resources=EXPORT_RESOURCES
             )
-            await team_service.import_teams(session, tournament_id, teams)
-            return {"imported_teams": len(teams)}
+            outcome = await team_service.import_teams(session, tournament_id, teams)
+            return {"imported_teams": len(teams), "advisories": outcome.materialization.advisories}
 
         return await c.envelope(logger, "admin.teams_import", op, session_factory=_SF)
 

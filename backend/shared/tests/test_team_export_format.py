@@ -92,8 +92,10 @@ class TeamExportFormatTests(IsolatedAsyncioTestCase):
                     MaterializationTeam(
                         balancer_name="Roster",
                         members=tuple(self.members),
+                        captain_player_id=1,
                     )
                 ],
+                on_unresolved="error",
             )
         assert caught.exception.status_code == 409
         assert "team_format_violation" in str(caught.exception.detail)
@@ -155,8 +157,9 @@ class TeamExportFormatTests(IsolatedAsyncioTestCase):
                 self.session,
                 self.tournament.id,
                 [
-                    MaterializationTeam(balancer_name="Duplicate", members=(starter, alias)),
+                    MaterializationTeam(balancer_name="Duplicate", members=(starter, alias), captain_player_id=1),
                 ],
+                on_unresolved="error",
             )
         assert caught.exception.status_code == 409
         assert "team_format_violation" in str(caught.exception.detail)
@@ -176,7 +179,11 @@ class TeamExportFormatTests(IsolatedAsyncioTestCase):
             await materialize_teams(
                 self.session,
                 self.tournament.id,
-                [MaterializationTeam(balancer_name=name, members=(starter,)) for name in ("First", "Second")],
+                [
+                    MaterializationTeam(balancer_name=name, members=(starter,), captain_player_id=1)
+                    for name in ("First", "Second")
+                ],
+                on_unresolved="error",
             )
         assert caught.exception.status_code == 409
         assert "starters_out_of_range" in str(caught.exception.detail)
@@ -197,6 +204,40 @@ class TeamExportFormatTests(IsolatedAsyncioTestCase):
         repeated = await materialize_teams(self.session, self.tournament.id, [team])
         assert repeated.created_players == 0 and repeated.created_teams == []
         with self.assertRaises(ApiHTTPException) as caught:
-            await materialize_teams(self.session, self.tournament.id, [replace(team, balancer_name="Other")])
+            await materialize_teams(
+                self.session,
+                self.tournament.id,
+                [replace(team, balancer_name="Other", captain_player_id=1)],
+                on_unresolved="error",
+            )
         assert caught.exception.status_code == 409
         assert "starters_out_of_range" in str(caught.exception.detail)
+
+    async def test_skip_returns_format_advisories_and_names_unresolved_members(self) -> None:
+        missing = replace(self.members[0], name="Missing#1234", workspace_member_id=None)
+        outcome = await materialize_teams(
+            self.session,
+            self.tournament.id,
+            [MaterializationTeam(balancer_name="Partial", members=(missing,))],
+            on_unresolved="skip",
+        )
+        assert len(outcome.created_teams) == 1
+        assert outcome.created_players == 0
+        assert outcome.skipped_members == 1
+        assert any("Missing#1234" in advisory and "not found" in advisory for advisory in outcome.advisories)
+        assert any("Partial" in advisory and "starters_out_of_range" in advisory for advisory in outcome.advisories)
+        assert any("role_below_hard_min" in advisory for advisory in outcome.advisories)
+
+    async def test_skip_returns_advisories_naming_duplicate_members(self) -> None:
+        starter = replace(self.members[0], non_rated_roles=(self.shotcaller,))
+        outcome = await materialize_teams(
+            self.session,
+            self.tournament.id,
+            [MaterializationTeam(balancer_name=name, members=(starter,)) for name in ("First", "Second")],
+            on_unresolved="skip",
+        )
+        assert len(outcome.created_teams) == 2
+        assert outcome.created_players == 1
+        assert outcome.skipped_members == 1
+        assert any("Second" in advisory and "Starter" in advisory for advisory in outcome.advisories)
+        assert any("Second" in advisory and "starters_out_of_range" in advisory for advisory in outcome.advisories)

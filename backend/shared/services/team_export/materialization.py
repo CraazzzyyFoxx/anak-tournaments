@@ -145,6 +145,7 @@ class MaterializationResult:
     created_teams: list[Team] = field(default_factory=list)
     created_players: int = 0
     skipped_members: int = 0
+    advisories: list[str] = field(default_factory=list)
 
 
 def _require_resolved(tag: str) -> None:
@@ -335,9 +336,12 @@ async def materialize_teams(
             if player_id is None:
                 logger.warning("User %s not found, skipping player creation", member.name)
                 result.skipped_members += 1
+                result.advisories.append(f"{team_data.display_name}: skipped {member.name} (not found)")
                 continue
             if player_id in placed_user_ids:
                 logger.info("Player %s already in tournament %s, skipping", member.name, tournament_id)
+                result.skipped_members += 1
+                result.advisories.append(f"{team_data.display_name}: skipped {member.name} (already in tournament)")
                 continue
             placed_user_ids.add(player_id)
             selected.append((member, player_id, member_id))
@@ -346,10 +350,14 @@ async def materialize_teams(
                     tuple(ontology.by_id(row.id) for row in assignments[id(member)])
                 )
         placements.append(selected)
-    for starters in starters_by_name.values():
-        codes = export_violations(team_format, ontology, starters)
+    for team_data in teams:
+        codes = export_violations(team_format, ontology, starters_by_name[team_data.display_name.lower()])
         if codes:
-            raise ApiHTTPException(status_code=409, detail=[ApiExc(code="team_format_violation", msg=", ".join(codes))])
+            if on_unresolved == "error":
+                raise ApiHTTPException(
+                    status_code=409, detail=[ApiExc(code="team_format_violation", msg=", ".join(codes))]
+                )
+            result.advisories.append(f"{team_data.display_name}: team_format_violation: {', '.join(codes)}")
 
     # Build exactly the placements that passed validation.
     for team_data, selected in zip(teams, placements, strict=True):
