@@ -21,7 +21,9 @@ from shared.core.enums import (
     EncounterResultSource,
     EncounterStatus,
 )
+from shared.disciplines import discipline
 from shared.domain.encounter_scoring import GameLine, compile_rules, evaluate_encounter
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.repository import (
     CustomGameRoundRepository,
     EncounterGameRepository,
@@ -29,7 +31,6 @@ from shared.repository import (
     EncounterRepository,
     ScoringRuleRepository,
 )
-from shared.repository.custom_game_round import MIX_ROLE_DIMENSION
 from shared.services.encounter.participants import MemberSnapshot, place_team
 from shared.services.encounter.result import apply_result
 
@@ -89,6 +90,7 @@ async def record_mix_round(session: AsyncSession, draft: MixRoundDraft) -> model
         ),
     )
     participations: list[models.EncounterTeam] = []
+    dimension = discipline(draft.discipline).rated_dimension.code
     for slot, (name, team) in enumerate(zip(draft.names, draft.seats, strict=True), start=1):
         participations.append(
             await place_team(
@@ -104,7 +106,7 @@ async def record_mix_round(session: AsyncSession, draft: MixRoundDraft) -> model
                         display_name=seat.display_name,
                         rank=seat.rank,
                         is_substitute=False,
-                        roles=((MIX_ROLE_DIMENSION, seat.role),) if seat.role else (),
+                        roles=((dimension, seat.role),) if seat.role and seat.role != FLEX_SLOT_CODE else (),
                     )
                     for seat in team
                 ],

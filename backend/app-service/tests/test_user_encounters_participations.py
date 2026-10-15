@@ -18,12 +18,15 @@ import sqlalchemy as sa
 from sqlalchemy.orm import joinedload
 
 from shared.core import enums
+from shared.disciplines import DISCIPLINES
+from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.encounter import Encounter, EncounterTeamMember, EncounterTeamMemberRole
 from shared.models.identity.user import User
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament import Player, Stage, Team, Tournament
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.player_role import assignment_of
+from shared.repository import CatalogRoleRepository
 from shared.schemas.role import RoleRef
 from shared.services.ontology import rated_leaf
 from src.core import pagination
@@ -146,7 +149,10 @@ async def _seed(session: Any) -> _Seed:
     )
     session.add(member)
     await session.flush()
-    session.add(EncounterTeamMemberRole(team_member_id=member.id, dimension="player_role", role="tank"))
+    leaf = await CatalogRoleRepository().resolve(
+        session, discipline="overwatch", workspace_id=workspace.id, dimension=None, code="tank"
+    )
+    session.add(EncounterTeamMemberRole(team_member_id=member.id, dimension_id=leaf.dimension_id, role_id=leaf.id))
     await session.commit()
     return seed
 
@@ -261,11 +267,46 @@ def test_the_dossier_context_carries_the_live_seats_roster_and_bracket_position(
         assert [(player.user_id, player.name, player.role) for player in read.teams[0].players] == [
             (seed.users["alice"], "Alice", RoleRef(dimension="player_role", role="tank"))
         ]
-        assert _mappers._roster_role((("player_role", "flex"),), "overwatch") is None
-        assert _mappers._roster_role((("position", "support"),), "lol") == RoleRef(dimension="position", role="support")
         assert read.teams[1].players == []
         # An encounter outside any bracket reads round 0 and no stage.
         assert contexts[seed.encounters["E2"]].position is None
+
+        # A leaf, another dimension and another discipline must still yield only the rated leaf.
+        catalog = CatalogRoleRepository()
+        tank = await catalog.resolve(
+            db_session, discipline="overwatch", workspace_id=seed.workspace_id, dimension=None, code="tank"
+        )
+        leaf = CatalogRole(
+            dimension_id=tank.dimension_id,
+            workspace_id=seed.workspace_id,
+            parent_role_id=tank.id,
+            code="tank_main",
+            name="Main",
+        )
+        trait = RoleDimension(discipline="overwatch", code="trait", name="Trait", selection_mode="single")
+        db_session.add_all([leaf, trait])
+        await db_session.flush()
+        trait_role = CatalogRole(dimension_id=trait.id, code="caller", name="Caller")
+        db_session.add(trait_role)
+        await catalog.project_module(db_session, DISCIPLINES["lol"])
+        foreign = await catalog.resolve(db_session, discipline="lol", workspace_id=None, dimension=None, code="support")
+        member_id = read.teams[0].players[0].id
+        assignment = await db_session.scalar(
+            sa.select(EncounterTeamMemberRole).where(EncounterTeamMemberRole.team_member_id == member_id)
+        )
+        assignment.role_id = leaf.id
+        db_session.add_all(
+            [
+                EncounterTeamMemberRole(team_member_id=member_id, dimension_id=trait.id, role_id=trait_role.id),
+                EncounterTeamMemberRole(
+                    team_member_id=member_id, dimension_id=foreign.dimension_id, role_id=foreign.id
+                ),
+            ]
+        )
+        await db_session.flush()
+        contexts = await encounter_queries.get_encounter_contexts(db_session, [seed.encounters["E1"]])
+        read = _mappers.to_encounter_with_user_stats(orm, contexts[seed.encounters["E1"]], [])
+        assert read.teams[0].players[0].role == RoleRef(dimension="player_role", role="tank_main", parent="tank")
 
     _run(db_session, body)
 

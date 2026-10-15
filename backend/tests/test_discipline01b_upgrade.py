@@ -151,13 +151,14 @@ def _seed(conn) -> dict:
         ids[f"{key}_role"] = _insert(
             conn, "balancer.registration_role", registration_id=ids[key], role=role, subrole=subrole, priority=1
         )
+    _seed_encounter_roster(conn, ids)
     _seed_team_formats(conn, ids)
     return ids
 
 
 def _scramble_names(conn) -> None:
     """Restored databases need not carry the migration chain's constraint names."""
-    for table in ("balancer.registration_role",):
+    for table in ("balancer.registration_role", "encounter.team_member_role"):
         for index, (name,) in enumerate(
             _rows(
                 conn,
@@ -409,6 +410,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         "balancer configs",
         "player roles",
         "registration roles",
+        "team member roles",
     } <= set(statuses)
 
 
@@ -693,3 +695,112 @@ def test_registration_roles_point_at_their_leaf(migrated) -> None:
         )
     }
     assert {"uq_registration_role_role", "fk_registration_role_role"} <= names
+
+
+def _seed_encounter_roster(conn, ids: dict) -> None:
+    """A legacy role/sub-role pair, a flex member with a sub-role, and a plain role."""
+    rule = _insert(
+        conn, "encounter.scoring_rule", workspace_id=ids["ws_a"], preset="wins", game_formula="1", end_formula="1"
+    )
+    ids["enc"] = _insert(
+        conn,
+        "encounter.encounter",
+        workspace_id=ids["ws_a"],
+        discipline="overwatch",
+        tournament_id=ids["t_a"],
+        scoring_rule_id=rule,
+        name="A vs A",
+        slot_count=2,
+        status="PENDING",
+    )
+    side = _insert(
+        conn,
+        "encounter.team",
+        encounter_id=ids["enc"],
+        tournament_id=ids["t_a"],
+        slot=1,
+        team_id=ids["team_a"],
+        name="A",
+    )
+    for key, rows in (
+        ("by_slug", ("damage", "hitscan")),
+        ("flex_sub", ("flex", "main")),
+        ("plain", ("tank",)),
+    ):
+        ids[f"tm_{key}"] = _insert(
+            conn,
+            "encounter.team_member",
+            encounter_id=ids["enc"],
+            encounter_team_id=side,
+            active=True,
+            workspace_member_id=ids[f"member_{key}"],
+            display_name_snapshot=key,
+        )
+        for role in rows:
+            conn.execute(
+                "INSERT INTO encounter.team_member_role (team_member_id, dimension, role) VALUES (%s, 'player_role', %s)",
+                (ids[f"tm_{key}"], role),
+            )
+
+
+def test_an_encounter_roster_holds_one_leaf_per_member_and_keeps_the_legacy_rows(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    rows = _rows(
+        conn,
+        "SELECT tm.display_name_snapshot, r.code FROM encounter.team_member tm"
+        " LEFT JOIN encounter.team_member_role tmr ON tmr.team_member_id = tm.id"
+        " LEFT JOIN catalog.role r ON r.id = tmr.role_id WHERE tm.encounter_id = %s ORDER BY 1",
+        (ids["enc"],),
+    )
+    assert rows == [("by_slug", "damage_hitscan"), ("flex_sub", None), ("plain", "tank")]
+    assert (
+        _scalar(
+            conn,
+            "SELECT count(*) FROM encounter.team_member_role_legacy WHERE team_member_id = ANY(%s)",
+            ([ids["tm_by_slug"], ids["tm_flex_sub"], ids["tm_plain"]],),
+        )
+        == 5
+    )
+
+
+def test_a_roster_role_outside_player_role_stops_the_revision(legacy_template) -> None:
+    done = _rejected(
+        "INSERT INTO encounter.team_member_role (team_member_id, dimension, role) VALUES (%s, 'position', 'mid')",
+        (legacy_template["ids"]["tm_plain"],),
+    )
+    assert done.returncode != 0
+    assert "encounter roster roles outside dimension player_role" in done.stderr
+
+
+@pytest.mark.parametrize("change", ["second_sub", "second_top", "orphan_sub"])
+def test_an_ambiguous_roster_leaf_stops_the_revision(legacy_template, change) -> None:
+    member = legacy_template["ids"]["tm_by_slug"]
+    if change == "orphan_sub":
+        done = _rejected(
+            "DELETE FROM encounter.team_member_role WHERE team_member_id = %s AND role = 'damage'", (member,)
+        )
+    else:
+        done = _rejected(
+            "INSERT INTO encounter.team_member_role (team_member_id, dimension, role) VALUES (%s, 'player_role', %s)",
+            (member, "projectile" if change == "second_sub" else "support"),
+        )
+    assert done.returncode != 0
+    assert "encounter roster members whose leaf role is ambiguous" in done.stderr
+    assert f"'team_member_id': {member}" in done.stderr
+
+
+@pytest.mark.parametrize("member_key", ["tm_by_slug", "tm_flex_sub"])
+def test_reconcile_rejects_extra_roster_assignments(migrated, member_key) -> None:
+    with _connect(MIGRATED_DB, autocommit=False) as tx:
+        member = migrated["ids"][member_key]
+        tx.execute(
+            "INSERT INTO encounter.team_member_role (team_member_id, dimension_id, role_id)"
+            " SELECT %s, r.dimension_id, r.id FROM catalog.role r JOIN catalog.role_dimension d ON d.id = r.dimension_id"
+            " WHERE d.discipline = 'overwatch' AND d.code = 'player_role' AND r.workspace_id IS NULL AND r.code = 'support'",
+            (member,),
+        )
+        function, create, _, skipped = _statements(RECONCILE_SQL)
+        tx.execute(function)
+        tx.execute(create)
+        assert any(row[0] == "team member roles" and row[1] == member for row in _rows(tx, skipped))
+        tx.rollback()

@@ -102,9 +102,9 @@ async def _roster_snapshot(session: AsyncSession, participation: models.Encounte
     if not rows:
         return []
     role_rows = await session.execute(
-        select(models.EncounterTeamMemberRole).where(
-            models.EncounterTeamMemberRole.team_member_id.in_([row.id for row in rows])
-        )
+        select(models.EncounterTeamMemberRole)
+        .where(models.EncounterTeamMemberRole.team_member_id.in_([row.id for row in rows]))
+        .order_by(models.EncounterTeamMemberRole.role_id)
     )
     roles: dict[int, list[tuple[str, str]]] = {}
     for role in role_rows.scalars().all():

@@ -1832,10 +1832,11 @@ CREATE UNIQUE INDEX uq_team_member_active_member ON encounter.team_member (encou
 
 CREATE TABLE encounter.team_member_role (
 	team_member_id BIGINT NOT NULL,
-	dimension VARCHAR(32) NOT NULL,
-	role VARCHAR(64) NOT NULL,
-	PRIMARY KEY (team_member_id, dimension, role),
-	FOREIGN KEY(team_member_id) REFERENCES encounter.team_member (id) ON DELETE CASCADE
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
+	PRIMARY KEY (team_member_id, role_id),
+	CONSTRAINT fk_team_member_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+	CONSTRAINT fk_team_member_role_member FOREIGN KEY(team_member_id) REFERENCES encounter.team_member (id) ON DELETE CASCADE
 );
 
 CREATE TABLE encounter.team_report (

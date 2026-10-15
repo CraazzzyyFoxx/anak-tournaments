@@ -203,13 +203,34 @@ class SubstituteTests(ParticipationCase):
 
     async def test_a_player_outside_the_roster_is_seated_as_a_substitute_not_inserted_as_a_roster_row(self) -> None:
         async with self.Session() as s:
+            damage = await s.scalar(
+                sa.select(models.CatalogRole)
+                .join(models.RoleDimension)
+                .where(
+                    models.RoleDimension.discipline == "overwatch",
+                    models.RoleDimension.rated.is_(True),
+                    models.CatalogRole.code == "damage",
+                    models.CatalogRole.workspace_id.is_(None),
+                )
+            )
+            s.add(
+                models.CatalogRole(
+                    dimension_id=damage.dimension_id,
+                    workspace_id=self.ids["ws"],
+                    parent_role_id=damage.id,
+                    code="damage_hitscan",
+                    name="Hitscan",
+                )
+            )
             participation = await self.seat(s, 1, "team0", "m0", "m1")
             await self.seat(s, 2, "team1", "m3")
             await s.commit()
             team_id, participation_id = participation.team_id, participation.id
 
         # m0 is in the log, m1 is not: user 2 played in his place.
-        missing = roster.LogPlayer(user_id=self.users[1], team_id=team_id, name="u1", role="damage", rank=2800)
+        missing = roster.LogPlayer(
+            user_id=self.users[1], team_id=team_id, name="u1", role="damage", sub_role="damage_hitscan", rank=2800
+        )
         present = roster.LogPlayer(user_id=self.users[0], team_id=team_id, name="u0", role="damage", rank=3000)
         roster_rows = [
             SimpleNamespace(
@@ -245,6 +266,7 @@ class SubstituteTests(ParticipationCase):
                     team_id=team_id,
                     name=sub_user.name,
                     role="damage",
+                    sub_role="damage_hitscan",
                     rank=2800,
                 ),
                 players["u2"],
@@ -268,7 +290,7 @@ class SubstituteTests(ParticipationCase):
                     )
                 )
             ).all()
-            self.assertEqual(["damage"], list(roles))
+            self.assertEqual(["damage_hitscan"], list(roles))
             self.assertEqual(0, await self._players_in_tournament(s))
             self.assertIsNotNone(await match_logs_service.get_substitute(s, participation_id, self.users[2]))
             self.assertIsNone(await match_logs_service.get_substitute(s, participation_id, self.users[0]))

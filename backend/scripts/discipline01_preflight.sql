@@ -196,3 +196,14 @@ SELECT count(*) AS flex_rows_with_a_sub_role
                       OR (SELECT sum(e.value::text::int) FROM jsonb_each(s.slots) e) NOT BETWEEN 1 AND 12
                END
          ORDER BY s.source, s.owner_id;
+
+\echo '8. encounter roster members whose leaf role is ambiguous'
+        SELECT r.team_member_id, array_agg(r.role ORDER BY r.role) AS roles
+          FROM encounter.team_member_role r
+         WHERE r.dimension = 'player_role'
+         GROUP BY r.team_member_id
+        HAVING count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support', 'flex')) > 1
+            OR count(*) FILTER (WHERE r.role NOT IN ('tank', 'damage', 'support', 'flex')) > 1
+            OR (count(*) FILTER (WHERE r.role NOT IN ('tank', 'damage', 'support', 'flex')) = 1
+                AND count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support', 'flex')) = 0)
+         ORDER BY r.team_member_id;

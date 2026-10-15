@@ -1,7 +1,7 @@
 """Reads of the mix rounds recorded on the encounter layer (D74-D76).
 
 A round is one ``encounter.encounter`` owned by a ``balancer.custom_game`` plus its ``balancer.custom_game_round`` row.
-Who sat where is ``encounter.team_member`` (role in ``team_member_role``, dimension ``player_role``); what only
+Who sat where is ``encounter.team_member`` (rated-dimension leaf in ``team_member_role``); what only
 the balancer reads per member -- busy next door, the frozen rank delta -- is ``balancer.custom_game_round_member``.
 """
 
@@ -17,10 +17,7 @@ from sqlalchemy.orm import aliased, selectinload
 from shared import models
 from shared.repository.base import BaseRepository
 
-__all__ = ("MIX_ROLE_DIMENSION", "CustomGameRoundRepository")
-
-#: The role dimension a mix seat is recorded under (D67).
-MIX_ROLE_DIMENSION = "player_role"
+__all__ = ("CustomGameRoundRepository",)
 
 
 class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
@@ -104,7 +101,7 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
     def seat_rows_select(workspace_id: int) -> sa.Select:
         """The one seat join (unexecuted): a row per seat of this workspace's rounds, with its role, its frozen
         rank delta and both sides' scores -- a round stores two scores and no winner flag. A mix seat has at most
-        one ``player_role`` row, so the outer join never fans out. ``seats()`` executes it; the rank overview
+        one rated-dimension leaf, so the outer join never fans out. ``seats()`` executes it; the rank overview
         composes it as a subquery."""
         seat = models.EncounterTeamMember
         side = models.EncounterTeam
@@ -132,7 +129,18 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
             .join(models.Encounter, models.Encounter.id == seat.encounter_id)
             .join(models.CustomGameRound, models.CustomGameRound.encounter_id == models.Encounter.id)
             .join(other, sa.and_(other.encounter_id == models.Encounter.id, other.id != side.id))
-            .outerjoin(role, sa.and_(role.team_member_id == seat.id, role.dimension == MIX_ROLE_DIMENSION))
+            .outerjoin(
+                role,
+                sa.and_(
+                    role.team_member_id == seat.id,
+                    role.dimension_id.in_(
+                        sa.select(models.RoleDimension.id).where(
+                            models.RoleDimension.discipline == models.Encounter.discipline,
+                            models.RoleDimension.rated.is_(True),
+                        )
+                    ),
+                ),
+            )
             .outerjoin(
                 member,
                 sa.and_(

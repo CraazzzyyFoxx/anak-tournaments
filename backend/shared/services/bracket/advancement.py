@@ -295,7 +295,7 @@ async def _roster(session: AsyncSession, participation: EncounterTeam) -> list[M
     rows = await session.execute(
         sa.select(EncounterTeamMemberRole)
         .where(EncounterTeamMemberRole.team_member_id.in_([member.id for member in members]))
-        .order_by(EncounterTeamMemberRole.dimension, EncounterTeamMemberRole.role)
+        .order_by(EncounterTeamMemberRole.role_id)
     )
     for row in rows.scalars().all():
         roles.setdefault(row.team_member_id, []).append((row.dimension, row.role))

@@ -123,6 +123,20 @@ SELECT 'registration roles', rr.id, rr.role || coalesce('/' || rr.subrole, ''),
   JOIN tournament.tournament t ON t.id = g.tournament_id
  WHERE rr.role IS NOT NULL
 UNION ALL
+-- Compare each member's whole assignment set with its legacy leaf; flex has no assignment.
+SELECT 'team member roles', tm.id, coalesce(x.top, '-') || coalesce('/' || x.sub, ''),
+       (SELECT array_agg(n.role_id) FROM encounter.team_member_role n WHERE n.team_member_id = tm.id)
+         IS NOT DISTINCT FROM
+       CASE WHEN x.top IN ('tank', 'damage', 'support')
+            THEN ARRAY[pg_temp.discipline01b_leaf(e.workspace_id, x.top, x.sub)] END
+  FROM encounter.team_member tm
+  JOIN encounter.encounter e ON e.id = tm.encounter_id
+ CROSS JOIN LATERAL (SELECT max(l.role) FILTER (WHERE l.role IN ('tank', 'damage', 'support', 'flex')) AS top,
+                            max(l.role) FILTER (WHERE l.role NOT IN ('tank', 'damage', 'support', 'flex')) AS sub
+                       FROM encounter.team_member_role_legacy l
+                      WHERE l.team_member_id = tm.id AND l.dimension = 'player_role') x
+ WHERE x.top IS NOT NULL OR x.sub IS NOT NULL
+UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        NOT EXISTS (SELECT 1 FROM catalog.entity_legacy l WHERE l.legacy_kind = soft.kind AND l.legacy_id = soft.item_id)

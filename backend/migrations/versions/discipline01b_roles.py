@@ -200,6 +200,20 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
          ORDER BY s.source, s.owner_id
         """,
     ),
+    (
+        "encounter roster members whose leaf role is ambiguous",
+        """
+        SELECT r.team_member_id, array_agg(r.role ORDER BY r.role) AS roles
+          FROM encounter.team_member_role r
+         WHERE r.dimension = 'player_role'
+         GROUP BY r.team_member_id
+        HAVING count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support', 'flex')) > 1
+            OR count(*) FILTER (WHERE r.role NOT IN ('tank', 'damage', 'support', 'flex')) > 1
+            OR (count(*) FILTER (WHERE r.role NOT IN ('tank', 'damage', 'support', 'flex')) = 1
+                AND count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support', 'flex')) = 0)
+         ORDER BY r.team_member_id
+        """,
+    ),
 )
 PREFLIGHT_SAMPLE = 20
 
@@ -369,6 +383,42 @@ _REGISTRATION_ROLES = (
 )
 
 
+def _rename_legacy_roster_roles() -> None:
+    """Keep the original rows for reconciliation; move their PK index name with them."""
+    pkey = _name("encounter.team_member_role", (), "p")
+    op.execute("ALTER TABLE encounter.team_member_role RENAME TO team_member_role_legacy")
+    op.execute(
+        f"ALTER TABLE encounter.team_member_role_legacy RENAME CONSTRAINT {pkey} TO team_member_role_legacy_pkey"
+    )
+
+
+#: §14.3: role + sub-role becomes one leaf; Deviation 5 preserves the legacy table.
+_TEAM_MEMBER_ROLES = (
+    _rename_legacy_roster_roles,
+    """
+    CREATE TABLE encounter.team_member_role (
+      team_member_id BIGINT NOT NULL CONSTRAINT fk_team_member_role_member REFERENCES encounter.team_member (id) ON DELETE CASCADE,
+      dimension_id   BIGINT NOT NULL,
+      role_id        BIGINT NOT NULL,
+      PRIMARY KEY (team_member_id, role_id),
+      CONSTRAINT fk_team_member_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id)
+    )
+    """,
+    """
+    INSERT INTO encounter.team_member_role (team_member_id, dimension_id, role_id)
+    SELECT top.team_member_id, r.dimension_id, r.id
+      FROM encounter.team_member_role_legacy top
+      JOIN encounter.team_member tm ON tm.id = top.team_member_id
+      JOIN encounter.encounter e ON e.id = tm.encounter_id
+      LEFT JOIN encounter.team_member_role_legacy sub
+        ON sub.team_member_id = top.team_member_id AND sub.dimension = 'player_role'
+       AND sub.role NOT IN ('tank', 'damage', 'support', 'flex')
+      JOIN catalog.role r ON r.id = pg_temp.discipline01b_leaf(e.workspace_id, top.role, sub.role)
+     WHERE top.dimension = 'player_role' AND top.role IN ('tank', 'damage', 'support')
+    """,
+)
+
+
 def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
     op.execute("SET CONSTRAINTS ALL IMMEDIATE")
@@ -381,6 +431,7 @@ def upgrade() -> None:
         *_CONFIG_JSON,
         *_PLAYER_ROLES,
         *_REGISTRATION_ROLES,
+        *_TEAM_MEMBER_ROLES,
     ):
         if callable(statement):
             statement()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -13,8 +14,9 @@ for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-serv
 import sqlalchemy as sa  # noqa: E402
 
 from shared import models  # noqa: E402
+from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.custom_game_round import winner_slot  # noqa: E402
-from shared.repository import CustomGameRoundRepository  # noqa: E402
+from shared.repository import CatalogRoleRepository, CustomGameRoundRepository  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
 
@@ -104,8 +106,9 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
     async def test_seats_keep_their_role_rank_and_frozen_delta(self) -> None:
         encounter_id = await self._record(self._draft(deltas=(31, -28), points=None))
         seats = await self._rows(
-            "SELECT tm.workspace_member_id, tm.display_name_snapshot, tm.rank, r.role, rm.busy, rm.rank_delta_applied"
+            "SELECT tm.workspace_member_id, tm.display_name_snapshot, tm.rank, cr.code, rm.busy, rm.rank_delta_applied"
             " FROM encounter.team_member tm LEFT JOIN encounter.team_member_role r ON r.team_member_id = tm.id"
+            " LEFT JOIN catalog.role cr ON cr.id = r.role_id"
             " JOIN balancer.custom_game_round_member rm ON rm.encounter_id = tm.encounter_id"
             " AND rm.workspace_member_id = tm.workspace_member_id WHERE tm.encounter_id = :id"
             " ORDER BY tm.workspace_member_id",
@@ -119,6 +122,51 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             ],
             [tuple(r) for r in seats],
         )
+
+    async def test_seat_reads_use_the_encounters_rated_dimension_without_fanning_out(self) -> None:
+        async with self.Session() as s:
+            catalog = CatalogRoleRepository()
+            await catalog.project_module(s, DISCIPLINES["lol"])
+            mix = await s.get_one(models.CustomGame, self.cg.id)
+            mix.discipline = "lol"
+            draft = replace(
+                self._draft(),
+                discipline="lol",
+                seats=(
+                    (
+                        MixRoundSeat(self.ids["m0"], "Alpha", "support", 3200),
+                        MixRoundSeat(self.ids["m1"], "Bravo", "flex", 2900),
+                    ),
+                    (MixRoundSeat(self.ids["m2"], "Charlie", None, 2600),),
+                ),
+            )
+            encounter = await record_mix_round(s, draft)
+            trait = models.RoleDimension(discipline="lol", code="trait", name="Trait", selection_mode="single")
+            s.add(trait)
+            await s.flush()
+            role = models.CatalogRole(dimension_id=trait.id, code="caller", name="Caller")
+            s.add(role)
+            await s.flush()
+            ow = await catalog.resolve(s, discipline="overwatch", workspace_id=None, dimension=None, code="tank")
+            members = (
+                await s.scalars(
+                    sa.select(models.EncounterTeamMember).where(models.EncounterTeamMember.encounter_id == encounter.id)
+                )
+            ).all()
+            for member in members:
+                s.add(models.EncounterTeamMemberRole(team_member_id=member.id, dimension_id=trait.id, role_id=role.id))
+                s.add(
+                    models.EncounterTeamMemberRole(
+                        team_member_id=member.id, dimension_id=ow.dimension_id, role_id=ow.id
+                    )
+                )
+            await s.flush()
+            rows = await self.rounds.seats(s, workspace_id=self.ids["ws"], encounter_id=encounter.id)
+            assert [(row.workspace_member_id, row.role) for row in rows] == [
+                (self.ids["m0"], "support"),
+                (self.ids["m1"], None),
+                (self.ids["m2"], None),
+            ]
 
     async def test_a_busy_member_who_is_seated_counts_as_seated(self) -> None:
         encounter_id = await self._record(self._draft(busy=frozenset({self.ids["m3"], self.ids["m1"]})))

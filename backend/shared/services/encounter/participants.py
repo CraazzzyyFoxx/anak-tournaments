@@ -20,10 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import enums, http_status
 from shared.core.errors import BaseAPIException
+from shared.domain.roles import UnknownRole
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.team import EncounterTeam, EncounterTeamMember, EncounterTeamMemberRole
 from shared.repository import (
+    CatalogRoleRepository,
     EncounterGameRepository,
+    EncounterRepository,
     EncounterTeamMemberRepository,
     EncounterTeamMemberRoleRepository,
     EncounterTeamRepository,
@@ -42,6 +45,7 @@ _teams = EncounterTeamRepository()
 _members = EncounterTeamMemberRepository()
 _roles = EncounterTeamMemberRoleRepository()
 _games = EncounterGameRepository()
+_role_rows = CatalogRoleRepository()
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,8 +61,7 @@ class MemberSnapshot:
     display_name: str
     rank: int | None
     is_substitute: bool
-    #: ``(dimension, role)`` pairs, e.g. ``("player_role", "tank")``; a sub-role
-    #: is a second pair, not a second field (D36, D67).
+    #: One ``(dimension, leaf code)`` pair per dimension; a sub-role IS the leaf (D86).
     roles: tuple[tuple[str, str], ...]
 
 
@@ -110,7 +113,7 @@ async def place_team(
         ),
     )
     for member in members:
-        await _snapshot_member(session, participation, member)
+        await _snapshot_member(session, participation, member, encounter)
     return participation
 
 
@@ -151,11 +154,12 @@ async def add_substitute(
     The flag is forced rather than read off the snapshot: a player added after
     the line-up was taken IS the substitute, whatever the caller filled in.
     """
-    return await _snapshot_member(session, participation, replace(member, is_substitute=True))
+    encounter = await EncounterRepository().get(session, participation.encounter_id)
+    return await _snapshot_member(session, participation, replace(member, is_substitute=True), encounter)
 
 
 async def _snapshot_member(
-    session: AsyncSession, participation: EncounterTeam, member: MemberSnapshot
+    session: AsyncSession, participation: EncounterTeam, member: MemberSnapshot, encounter: Encounter
 ) -> EncounterTeamMember:
     row = await _members.create(
         session,
@@ -170,12 +174,25 @@ async def _snapshot_member(
             is_substitute=member.is_substitute,
         ),
     )
-    if member.roles:
-        await _roles.create_many(
-            session,
-            [
-                EncounterTeamMemberRole(team_member_id=row.id, dimension=dimension, role=role)
-                for dimension, role in member.roles
-            ],
+    roles = []
+    for dimension, code in member.roles:
+        try:
+            leaf = await _role_rows.resolve(
+                session,
+                discipline=encounter.discipline,
+                workspace_id=encounter.workspace_id,
+                dimension=dimension,
+                code=code,
+            )
+        except UnknownRole as exc:
+            raise BaseAPIException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown_role: {exc}"
+            ) from None
+        roles.append(
+            EncounterTeamMemberRole(
+                team_member_id=row.id, dimension_id=leaf.dimension_id, role_id=leaf.id, catalog_role=leaf
+            )
         )
+    if roles:
+        await _roles.create_many(session, roles)
     return row

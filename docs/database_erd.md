@@ -1664,8 +1664,8 @@ erDiagram
     }
     ENCOUNTER_TEAM_MEMBER_ROLE {
         bigint team_member_id PK,FK
-        varchar(32) dimension PK
-        varchar(64) role PK
+        bigint dimension_id FK
+        bigint role_id PK,FK
     }
     ENCOUNTER_TEAM_REPORT {
         bigint id PK
@@ -1695,6 +1695,8 @@ erDiagram
     BALANCER_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
     CATALOG_ENTITY |o--o{ ENCOUNTER_GAME : "map_id"
     CATALOG_ENTITY ||--o{ ENCOUNTER_GAME : "map_kind"
+    CATALOG_ROLE ||--o{ ENCOUNTER_TEAM_MEMBER_ROLE : "dimension_id"
+    CATALOG_ROLE ||--o| ENCOUNTER_TEAM_MEMBER_ROLE : "role_id"
     ENCOUNTER_ENCOUNTER |o--o{ ENCOUNTER_TEAM : "tournament_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME : "encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ ENCOUNTER_GAME_CLAIM : "encounter_id"

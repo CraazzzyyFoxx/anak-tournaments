@@ -15,7 +15,6 @@ from shared.core import impact as impact_consts
 from shared.core.social import SocialProvider
 from shared.disciplines import discipline
 from shared.domain.pick_ban_config import pool_allows
-from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.tournament.pick_ban import PickBanConfig
@@ -1216,9 +1215,11 @@ class MatchLogProcessor:
         profile = max(known_profiles, key=lambda p: p.tournament_id or 0, default=None)
         rank = profile.rank if profile else player_to_be_replaced.rank
         role = player_to_be_replaced.role
-        roles = ((discipline(self.tournament.discipline).rated_dimension.code, role),) if role else ()
-        if role and player_to_be_replaced.sub_role:
-            roles += (("sub_role", workspace_sub_role_slug(role, player_to_be_replaced.sub_role)),)
+        roles = (
+            ((discipline(self.tournament.discipline).rated_dimension.code, player_to_be_replaced.sub_role or role),)
+            if role
+            else ()
+        )
 
         (member_id,) = (
             await team_service.resolve_workspace_member_ids(

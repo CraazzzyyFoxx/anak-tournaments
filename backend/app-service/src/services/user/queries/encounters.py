@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from shared.core.enums import PickBanKind
+from shared.models.catalog.role import leaf_code
 from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
+from shared.schemas.role import RoleRef
 from src import models
 from src.core import enums, pagination
 from src.core.workspace import workspace_filter
@@ -637,26 +639,31 @@ class UserEncounterQueries:
             )
         ).all()
 
-        roles: dict[int, list[tuple[str, str]]] = {}
-        for member_id, dimension, role in (
+        roles: dict[int, RoleRef | None] = {}
+        for member_id, dimension, role, sub_role in (
             await session.execute(
                 sa.select(
                     models.EncounterTeamMemberRole.team_member_id,
-                    models.EncounterTeamMemberRole.dimension,
-                    models.EncounterTeamMemberRole.role,
+                    models.RoleDimension.code,
+                    leaf_code(models.EncounterTeamMemberRole.role_id, top=True).label("role"),
+                    leaf_code(models.EncounterTeamMemberRole.role_id, top=False).label("sub_role"),
                 )
+                .join(models.RoleDimension, models.RoleDimension.id == models.EncounterTeamMemberRole.dimension_id)
                 .join(
                     models.EncounterTeamMember,
                     models.EncounterTeamMember.id == models.EncounterTeamMemberRole.team_member_id,
                 )
+                .join(models.Encounter, models.Encounter.id == models.EncounterTeamMember.encounter_id)
                 .where(
                     models.EncounterTeamMember.encounter_id.in_(ids),
                     models.EncounterTeamMember.active.is_(True),
+                    models.RoleDimension.rated.is_(True),
+                    models.RoleDimension.discipline == models.Encounter.discipline,
                 )
-                .order_by(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role)
+                .order_by(models.EncounterTeamMemberRole.team_member_id, models.EncounterTeamMemberRole.role_id)
             )
         ).all():
-            roles.setdefault(member_id, []).append((dimension, role))
+            roles[member_id] = RoleRef.of(dimension, role, sub_role)
         rosters: dict[int, list[_mappers.RosterEntry]] = {}
         for member, user_id in (
             await session.execute(
@@ -669,7 +676,7 @@ class UserEncounterQueries:
             )
         ).all():
             rosters.setdefault(member.encounter_team_id, []).append(
-                _mappers.RosterEntry(member=member, user_id=user_id, roles=tuple(roles.get(member.id, ())))
+                _mappers.RosterEntry(member=member, user_id=user_id, role=roles.get(member.id))
             )
 
         stage_item = sa.orm.aliased(models.StageItem)

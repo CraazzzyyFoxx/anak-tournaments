@@ -21,11 +21,15 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    select,
     text,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import ColumnElement
 
 from shared.core import db
+from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.encounter.encounter import Encounter
 
 __all__ = ("EncounterTeam", "EncounterTeamMember", "EncounterTeamMemberRole")
@@ -138,17 +142,50 @@ class EncounterTeamMember(db.TimeStampIntegerMixin):
 
 
 class EncounterTeamMemberRole(db.Base):
-    """A roster member's role, per dimension (D36, D67).
-
-    Codes are plain strings; the FK to the role ontology arrives in V3. For
-    Overwatch the dimension is ``player_role`` and a sub-role is a second row.
-    """
+    """A roster member's leaf catalog role; snapshots read its dimension and leaf codes (D86)."""
 
     __tablename__ = "team_member_role"
-    __table_args__ = ({"schema": "encounter"},)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_team_member_role_role",
+        ),
+        {"schema": "encounter"},
+    )
 
     team_member_id: Mapped[int] = mapped_column(
-        ForeignKey(EncounterTeamMember.id, ondelete="CASCADE"), primary_key=True
+        ForeignKey(EncounterTeamMember.id, ondelete="CASCADE", name="fk_team_member_role_member"), primary_key=True
     )
-    dimension: Mapped[str] = mapped_column(String(32), primary_key=True)
-    role: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dimension_id: Mapped[int] = mapped_column(BigInteger())
+    role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
+
+    catalog_role: Mapped[CatalogRole] = relationship(
+        primaryjoin="foreign(EncounterTeamMemberRole.role_id) == CatalogRole.id", foreign_keys=[role_id], lazy="joined"
+    )
+
+    @hybrid_property
+    def dimension(self) -> str:
+        return self.catalog_role.dimension.code
+
+    @dimension.inplace.expression
+    @classmethod
+    def _dimension_expression(cls) -> ColumnElement[str]:
+        return (
+            select(RoleDimension.code)
+            .where(RoleDimension.id == cls.dimension_id)
+            .correlate(cls)
+            .scalar_subquery()
+            .label("dimension")
+        )
+
+    @hybrid_property
+    def role(self) -> str:
+        return self.catalog_role.code
+
+    @role.inplace.expression
+    @classmethod
+    def _role_expression(cls) -> ColumnElement[str]:
+        return (
+            select(CatalogRole.code).where(CatalogRole.id == cls.role_id).correlate(cls).scalar_subquery().label("role")
+        )
