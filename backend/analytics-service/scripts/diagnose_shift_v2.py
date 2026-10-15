@@ -74,11 +74,12 @@ async def main() -> int:
         print("=== active ML artifacts (freshness) ===")
         arts = await conn.fetch(
             """
-            SELECT model_kind, role, version, training_cutoff_tournament_id,
-                   created_at, updated_at, left(metrics::text, 300) AS metrics_head
-            FROM analytics.ml_model_artifact
-            WHERE is_active = true
-            ORDER BY model_kind, role
+            SELECT a.model_kind, r.code AS role, a.version, a.training_cutoff_tournament_id,
+                   a.created_at, a.updated_at, left(a.metrics::text, 300) AS metrics_head
+            FROM analytics.ml_model_artifact a
+            LEFT JOIN catalog.role r ON r.id = a.role_id
+            WHERE a.is_active = true
+            ORDER BY a.model_kind, r.code
             """
         )
         if not arts:
