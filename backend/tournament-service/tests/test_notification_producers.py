@@ -94,6 +94,8 @@ TABLE_NAMES = (
     "workspace_member",
     "balancer.registration",
     "balancer.registration_role",
+    "catalog.role",
+    "catalog.role_dimension",
     "balancer.registration_identity",
     "balancer.registration_form",
     "balancer.registration_team",

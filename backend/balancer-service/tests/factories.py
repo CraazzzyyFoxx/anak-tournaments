@@ -18,7 +18,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from shared.core.enums import HeroClass
 from shared.domain.roster import HeroRef, PlayerRoster, RosterRole
 from src.domain.balancer.entities import Player
 
@@ -107,7 +106,7 @@ def roster(
         workspace_member_id=workspace_member_id,
         roles=tuple(
             RosterRole(
-                role=HeroClass.from_slot_code(code),
+                role=code,
                 rank=rank,
                 source=(sources or {}).get(code, "registration" if rank is not None else "none"),
                 is_primary=code == lead,

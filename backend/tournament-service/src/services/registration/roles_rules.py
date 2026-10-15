@@ -14,19 +14,14 @@ first-failure validator would have raised them in.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 from typing import Any
 
-from shared.core import enums
 from shared.domain.forms.builtins import RolesParams
 from shared.domain.forms.schema import FormField
 from shared.domain.forms.validate import ErrorCode, FieldError
-from shared.domain.player_sub_roles import (
-    REGISTRATION_ROLE_CODES,
-    REGISTRATION_TO_CANONICAL,
-    normalize_sub_role,
-)
+from shared.domain.player_sub_roles import normalize_sub_role
 from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, HeroCatalog
 
 __all__ = ("SubroleCatalog", "is_flex_submission", "role_value", "validate_roles")
@@ -34,12 +29,6 @@ __all__ = ("SubroleCatalog", "is_flex_submission", "role_value", "validate_roles
 #: The one field key these errors are reported against.
 FIELD = "roles"
 
-_ROLE_LABELS = {"tank": "Tank", "damage": "DPS", "support": "Support"}
-_HERO_CLASS_BY_CANONICAL = {
-    "tank": enums.HeroClass.tank,
-    "damage": enums.HeroClass.damage,
-    "support": enums.HeroClass.support,
-}
 
 SubroleCatalog = dict[str, list[Any]]
 
@@ -114,12 +103,13 @@ def _role_errors(
     *,
     params: RolesParams,
     catalog: SubroleCatalog | None,
+    role_codes: Sequence[str],
 ) -> list[FieldError]:
     """Role codes and sub-roles, one verdict per submitted row."""
     errors: list[FieldError] = []
     for role in roles:
         role_code = role_value(role, "role")
-        if role_code not in REGISTRATION_ROLE_CODES:
+        if role_code not in role_codes:
             errors.append(_err("roles.unknown_role", f"Invalid role: {role_code}.", role=role_code))
             continue
 
@@ -186,21 +176,18 @@ def _hero_errors(
                 )
             )
 
-        expected_class = None
-        if not is_flex:
-            canonical = REGISTRATION_TO_CANONICAL.get(role_code) if role_code else None
-            expected_class = _HERO_CLASS_BY_CANONICAL.get(canonical) if canonical else None
+        expected_class = role_code if not is_flex else None
 
         for slug in slugs:
             entry = hero_catalog.get(slug)
             if entry is None:
                 errors.append(_err(ErrorCode.INVALID_OPTION.value, f"Unknown hero: {slug}.", hero=slug))
                 continue
-            if expected_class is not None and entry.hero_class != expected_class:
+            if expected_class is not None and entry.hero_class.name != expected_class:
                 errors.append(
                     _err(
                         "roles.hero_wrong_class",
-                        f"Hero '{slug}' is not a {_ROLE_LABELS.get(role_code, role_code)} hero.",
+                        f"Hero '{slug}' is not a {role_code} hero.",
                         role=role_code,
                         hero=slug,
                     )
@@ -218,6 +205,7 @@ def validate_roles(
     *,
     subrole_catalog: SubroleCatalog | None,
     hero_catalog: HeroCatalog | None,
+    role_codes: Sequence[str],
 ) -> list[FieldError]:
     """Every rule the ``roles`` builtin enforces, collected.
 
@@ -240,7 +228,7 @@ def validate_roles(
         if not covers_additional:
             errors.append(_err("roles.additional_required", "At least one additional role is required."))
 
-    errors.extend(_role_errors(roles, params=params, catalog=subrole_catalog))
+    errors.extend(_role_errors(roles, params=params, catalog=subrole_catalog, role_codes=role_codes))
 
     # Flex availability guard: when the organizer disabled the Flex role,
     # reject an all-primary (full-flex) submission.
@@ -254,7 +242,7 @@ def validate_roles(
     # which role the registrant meant.
     if params.flex_mode == "all_roles":
         primary_count = sum(1 for role in roles if role_value(role, "is_primary", False))
-        if primary_count not in (1, len(REGISTRATION_ROLE_CODES)):
+        if primary_count not in (1, len(role_codes)):
             errors.append(_err("roles.one_priority_or_flex", "Choose one priority role, or Flex."))
 
     if hero_catalog is not None:

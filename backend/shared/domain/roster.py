@@ -25,9 +25,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from shared.core.enums import HeroClass
 from shared.domain.forms import RolesParams, schema_from_form
 from shared.domain.member_rank import RankSource
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 
 __all__ = (
     "FLEX_ROLE_MODES",
@@ -83,7 +83,7 @@ class HeroRef:
 
 @dataclass(frozen=True, slots=True)
 class RosterRole:
-    role: HeroClass
+    role: str
     #: Resolved rank: the registration's own number, else the workspace canon,
     #: else the latest Overwatch snapshot (``TOURNAMENT_ORDER``). ``None`` means
     #: no layer had one, which is exactly what makes the role unplayable.
@@ -162,7 +162,7 @@ class PlayerRoster:
         return tuple(entry for entry in self.roles if entry.is_playable)
 
     @property
-    def playable_roles(self) -> frozenset[HeroClass]:
+    def playable_roles(self) -> frozenset[str]:
         return frozenset(entry.role for entry in self.roles if entry.is_playable)
 
     @property
@@ -176,9 +176,9 @@ class PlayerRoster:
         return next((entry for entry in playable if entry.is_primary), playable[0] if playable else None)
 
     @property
-    def secondary_roles(self) -> tuple[HeroClass, ...]:
+    def secondary_roles(self) -> tuple[str, ...]:
         lead = self.primary
-        return tuple(entry.role for entry in self.playable if lead is None or entry.role is not lead.role)
+        return tuple(entry.role for entry in self.playable if lead is None or entry.role != lead.role)
 
     @property
     def sub_role(self) -> str | None:
@@ -187,7 +187,7 @@ class PlayerRoster:
 
     # -- ranks ---------------------------------------------------------------
 
-    def rank_on(self, role: HeroClass | str | None) -> int | None:
+    def rank_on(self, role: str | None) -> int | None:
         """The rank this player carries on ``role``; ``None`` for no role at all.
 
         No fallback to another role's number: a role without a resolved rank is
@@ -198,15 +198,13 @@ class PlayerRoster:
         """
         if role is None:
             return self.best_rank
-        wanted = role if isinstance(role, HeroClass) else HeroClass.parse(role)
-        return next((entry.rank for entry in self.roles if entry.role is wanted and entry.is_playable), None)
+        return next((entry.rank for entry in self.roles if entry.role == role and entry.is_playable), None)
 
-    def source_on(self, role: HeroClass | str | None) -> RankSource:
+    def source_on(self, role: str | None) -> RankSource:
         if role is None:
             best = max(self.playable, key=lambda entry: entry.rank or 0, default=None)
             return best.source if best is not None else "none"
-        wanted = role if isinstance(role, HeroClass) else HeroClass.parse(role)
-        return next((entry.source for entry in self.roles if entry.role is wanted and entry.is_playable), "none")
+        return next((entry.source for entry in self.roles if entry.role == role and entry.is_playable), "none")
 
     @property
     def best_rank(self) -> int | None:
@@ -216,16 +214,16 @@ class PlayerRoster:
     @property
     def role_ranks(self) -> dict[str, int]:
         """``{slot_code: rank}`` over playable roles. Absent key = not playable."""
-        return {entry.role.slot_code: entry.rank for entry in self.playable if entry.rank is not None}
+        return {entry.role: entry.rank for entry in self.playable if entry.rank is not None}
 
     @property
     def role_sources(self) -> dict[str, RankSource]:
-        return {entry.role.slot_code: entry.source for entry in self.playable}
+        return {entry.role: entry.source for entry in self.playable}
 
     @property
     def role_top_heroes(self) -> dict[str, list[dict[str, Any]]]:
         return {
-            entry.role.slot_code: [
+            entry.role: [
                 {"hero_id": hero.id, "slug": hero.slug, "image_path": hero.image_path} for hero in entry.top_heroes
             ]
             for entry in self.playable
@@ -240,7 +238,7 @@ class PlayerRoster:
         role: a damage main who flexes support is a hitscan AND a flex support,
         and the draft board renders both.
         """
-        return {entry.role.slot_code: entry.subrole for entry in self.playable if entry.subrole}
+        return {entry.role: entry.subrole for entry in self.playable if entry.subrole}
 
     # -- verdicts ------------------------------------------------------------
 
@@ -254,9 +252,8 @@ class PlayerRoster:
         """At least one playable role: below this a player cannot be picked at all."""
         return bool(self.playable)
 
-    def covers(self, role: HeroClass | str | None) -> bool:
+    def covers(self, role: str | None) -> bool:
         """Whether this player can fill a slot of ``role``; a role-less slot fits anyone."""
-        if role is None or role is HeroClass.flex or role == HeroClass.flex.slot_code:
+        if role is None or role == FLEX_SLOT_CODE:
             return self.is_draftable
-        wanted = role if isinstance(role, HeroClass) else HeroClass.parse(role)
-        return wanted in self.playable_roles
+        return role in self.playable_roles

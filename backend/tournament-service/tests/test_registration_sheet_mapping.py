@@ -26,6 +26,8 @@ sheet_sync = importlib.import_module("src.services.registration.sheet_sync")
 
 from shared.domain.forms import FieldValidation, FormField, FormSchema, FormSection  # noqa: E402
 
+ROLE_CODES = ("tank", "damage", "support")
+
 
 def _schema(*fields: FormField) -> FormSchema:
     return FormSchema(sections=[FormSection(key="s", fields=list(fields))])
@@ -74,6 +76,7 @@ BUILTIN_TARGETS = {
     "admin_notes",
     "roles.tank.rank_value",
     "roles.tank.division_input",
+    "roles.tank.subrole",
     "roles.tank.is_active",
     "roles.tank.priority",
     "roles.damage.rank_value",
@@ -100,7 +103,7 @@ FULL_SCHEMA = _schema(*ALL_ANSWER_FIELDS)
 
 
 def test_builtin_specs_match_the_target_set():
-    keys = {spec.key for spec in catalog.build_target_specs(FULL_SCHEMA)}
+    keys = {spec.key for spec in catalog.build_target_specs(FULL_SCHEMA, role_codes=ROLE_CODES)}
     assert keys == BUILTIN_TARGETS
 
 
@@ -115,7 +118,7 @@ def test_an_answer_target_is_offered_only_while_its_question_exists():
         FormField(key="identity_battlenet", kind="builtin", required=True),
         FormField(key="identity_discord", kind="builtin"),
     )
-    keys = {spec.key for spec in catalog.build_target_specs(schema)}
+    keys = {spec.key for spec in catalog.build_target_specs(schema, role_codes=ROLE_CODES)}
 
     assert "identity_battlenet" in keys
     assert "identity_discord" in keys
@@ -137,7 +140,7 @@ def test_custom_field_specs_added_with_type_parsers():
         FormField(key="agree", label="Agree", kind="checkbox"),
         FormField(key="bio", label="Bio", kind="text"),
     )
-    specs = catalog.target_spec_map(schema)
+    specs = catalog.target_spec_map(schema, role_codes=ROLE_CODES)
     assert specs["custom_fields.age"].default_parser == catalog.PARSER_INTEGER
     assert specs["custom_fields.region"].default_parser == catalog.PARSER_STRING
     assert specs["custom_fields.agree"].default_parser == catalog.PARSER_BOOLEAN
@@ -146,12 +149,16 @@ def test_custom_field_specs_added_with_type_parsers():
 
 
 def test_parser_catalog_covers_all_accepted_parsers():
-    referenced = {p for spec in catalog.build_target_specs(_schema(*ALL_ANSWER_FIELDS)) for p in spec.accepted_parsers}
+    referenced = {
+        p
+        for spec in catalog.build_target_specs(_schema(*ALL_ANSWER_FIELDS), role_codes=ROLE_CODES)
+        for p in spec.accepted_parsers
+    }
     assert referenced <= catalog.VALID_PARSERS
 
 
 def test_mapping_catalog_includes_all_value_mapping_categories():
-    built = sheet_sync.build_mapping_catalog(None)
+    built = sheet_sync.build_mapping_catalog(None, role_codes=ROLE_CODES)
     assert {category["category"] for category in built["value_categories"]} == {
         "booleans",
         "roles",
@@ -162,7 +169,9 @@ def test_mapping_catalog_includes_all_value_mapping_categories():
 
 
 def test_mapping_catalog_merges_saved_value_maps():
-    built = sheet_sync.build_mapping_catalog(None, value_mapping={"roles": {"healer": "support"}})
+    built = sheet_sync.build_mapping_catalog(
+        None, role_codes=ROLE_CODES, value_mapping={"roles": {"healer": "support"}}
+    )
     categories = {category["category"]: category["entries"] for category in built["value_categories"]}
     assert categories["roles"]["healer"] == "support"
     assert "tank" not in categories["roles"]
@@ -219,7 +228,7 @@ def test_coerce_text_regex_warning():
 
 
 def _specs():
-    return catalog.target_spec_map(FULL_SCHEMA)
+    return catalog.target_spec_map(FULL_SCHEMA, role_codes=ROLE_CODES)
 
 
 def _codes(issues):
@@ -332,7 +341,7 @@ def test_suggest_mapping_matches_english_and_russian_headers():
     russian = ["Отметка времени", "Ваш Battle Tag", "Укажите вашу роль", "Смурф аккаунты"]
     english = ["Timestamp", "Your Battle Tag", "Your role", "Smurf accounts"]
     for headers in (russian, english):
-        mapping = sheet_parsing.suggest_mapping_from_headers(headers, schema=FULL_SCHEMA)
+        mapping = sheet_parsing.suggest_mapping_from_headers(headers, role_codes=ROLE_CODES, schema=FULL_SCHEMA)
         targets = mapping["targets"]
         # Main and smurf columns are now ONE multi-column target, main first.
         assert targets["identity_battlenet"]["mode"] == "columns"
@@ -343,14 +352,14 @@ def test_suggest_mapping_matches_english_and_russian_headers():
 
 
 def test_suggest_disabled_targets_present_as_hints():
-    mapping = sheet_parsing.suggest_mapping_from_headers(["Random column"], schema=FULL_SCHEMA)
+    mapping = sheet_parsing.suggest_mapping_from_headers(["Random column"], role_codes=ROLE_CODES, schema=FULL_SCHEMA)
     # Unmatched targets remain present but disabled (hints, not mappings).
     assert mapping["targets"]["identity_battlenet"]["mode"] == "disabled"
 
 
 def test_suggest_mapping_matches_custom_field_label_case_insensitively():
     schema = _schema(FormField(key="favorite_map", label="Favorite Map", kind="text"))
-    mapping = sheet_parsing.suggest_mapping_from_headers(["FAVORITE MAP"], schema=schema)
+    mapping = sheet_parsing.suggest_mapping_from_headers(["FAVORITE MAP"], role_codes=ROLE_CODES, schema=schema)
     assert mapping["targets"]["custom_fields.favorite_map"]["mode"] == "columns"
 
 
@@ -366,6 +375,7 @@ def _grid():
 
 def test_division_value_mapping_returns_configured_rank():
     rank = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="division_to_rank",
         values=["Gold 2"],
         value_mapping={"divisions": {"gold 2": 2450}},
@@ -391,6 +401,7 @@ def test_parse_sheet_row_writes_custom_fields():
         FormField(key="region", label="Region", kind="select", options=["EU", "NA"]),
     )
     result = sheet_parsing.parse_sheet_row_detailed(
+        role_codes=ROLE_CODES,
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -416,6 +427,7 @@ def test_parse_sheet_row_omits_unmapped_custom_fields():
         FormField(key="identity_battlenet", kind="builtin"), FormField(key="age", label="Age", kind="number")
     )
     result = sheet_parsing.parse_sheet_row_detailed(
+        role_codes=ROLE_CODES,
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -440,6 +452,7 @@ def test_parse_sheet_row_collects_custom_field_error():
         FormField(key="identity_battlenet", kind="builtin"), FormField(key="age", label="Age", kind="number")
     )
     result = sheet_parsing.parse_sheet_row_detailed(
+        role_codes=ROLE_CODES,
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -456,6 +469,7 @@ def test_parse_sheet_row_skip_without_identity_returns_none_fields():
     row = ["nobody"]
     mapping = {"targets": {"display_name": {"mode": "columns", "columns": ["Name"], "parser": "string"}}}
     result = sheet_parsing.parse_sheet_row_detailed(
+        role_codes=ROLE_CODES,
         headers=headers,
         row=row,
         mapping_config=mapping,
@@ -473,6 +487,7 @@ def test_parse_sheet_row_skip_without_identity_returns_none_fields():
 
 def test_role_subrole_token_custom_hitscan():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Хитскан ДПС"],
         value_mapping={"role_subroles": {"хитскан дпс": {"role": "damage", "subrole": "hitscan"}}},
@@ -483,6 +498,7 @@ def test_role_subrole_token_custom_hitscan():
 
 def test_role_subrole_token_custom_flex():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Флекс"],
         value_mapping={"role_subroles": {"флекс": {"role": "flex", "subrole": None}}},
@@ -493,6 +509,7 @@ def test_role_subrole_token_custom_flex():
 
 def test_role_subrole_token_custom_map():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["heal"],
         value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "main_heal"}}},
@@ -503,6 +520,7 @@ def test_role_subrole_token_custom_map():
 
 def test_role_subrole_token_explicit_role_no_subrole():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["tank"],
         value_mapping={"role_subroles": {"tank": {"role": "tank", "subrole": None}}},
@@ -513,6 +531,7 @@ def test_role_subrole_token_explicit_role_no_subrole():
 
 def test_role_subrole_token_no_mapping_returns_none():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["tank"],
         value_mapping={},
@@ -523,6 +542,7 @@ def test_role_subrole_token_no_mapping_returns_none():
 
 def test_role_subrole_token_unknown_returns_none():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["unknown_value_xyz"],
         value_mapping={},
@@ -553,6 +573,7 @@ def test_map_subrole_token_mapped_value_must_be_in_catalog():
 
 def test_role_subrole_rejects_unknown_subrole_when_catalog():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["heal"],
         value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "not_a_real"}}},
@@ -564,6 +585,7 @@ def test_role_subrole_rejects_unknown_subrole_when_catalog():
 
 def test_role_subrole_accepts_catalog_subrole():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["heal"],
         value_mapping={"role_subroles": {"heal": {"role": "support", "subrole": "main_heal"}}},
@@ -579,7 +601,7 @@ def test_validate_value_mapping_unknown_subrole():
 
 
 def test_mapping_catalog_includes_subrole_catalog():
-    built = sheet_sync.build_mapping_catalog(None, subrole_catalog=_SUBROLE_CATALOG)
+    built = sheet_sync.build_mapping_catalog(None, role_codes=ROLE_CODES, subrole_catalog=_SUBROLE_CATALOG)
     assert built["subrole_catalog"] == _SUBROLE_CATALOG
 
 
@@ -593,6 +615,7 @@ def test_catalog_slugs_none_skips_enforcement():
 
 def test_sr_value_numeric_string():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="sr_value",
         values=["2500"],
         value_mapping={},
@@ -603,6 +626,7 @@ def test_sr_value_numeric_string():
 
 def test_sr_value_text_label_from_divisions_map():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="sr_value",
         values=["Gold 3"],
         value_mapping={"divisions": {"Gold 3": 2800}},
@@ -613,6 +637,7 @@ def test_sr_value_text_label_from_divisions_map():
 
 def test_sr_value_empty_returns_none():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="sr_value",
         values=[],
         value_mapping={},
@@ -643,7 +668,7 @@ def test_priority_follows_declaration_order():
             "support": {"rank_value": 2300, "subrole": None, "is_active": True, "priority": None},
         },
     )
-    payloads = sheet_parsing.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed, role_codes=ROLE_CODES)
     by_role = {p["role"]: p for p in payloads}
     assert by_role["damage"]["priority"] == 0
     assert by_role["support"]["priority"] == 1
@@ -658,7 +683,7 @@ def test_flex_token_in_primary_sets_is_full_flex():
             "support": {"rank_value": 2100, "subrole": None, "is_active": True, "priority": None},
         },
     )
-    payloads = sheet_parsing.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed, role_codes=ROLE_CODES)
     assert all(p["is_primary"] for p in payloads)
 
 
@@ -667,7 +692,7 @@ def test_subrole_from_token_propagates_to_payload():
         primary={"role": "damage", "subrole": "hitscan"},
         roles={"damage": {"rank_value": 2500, "subrole": None, "is_active": True, "priority": None}},
     )
-    payloads = sheet_parsing.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed, role_codes=ROLE_CODES)
     damage_payload = next(p for p in payloads if p["role"] == "damage")
     assert damage_payload["subrole"] == "hitscan"
 
@@ -677,7 +702,7 @@ def test_explicit_subrole_wins_over_token_subrole():
         primary={"role": "damage", "subrole": "hitscan"},
         roles={"damage": {"rank_value": 2500, "subrole": "projectile", "is_active": True, "priority": None}},
     )
-    payloads = sheet_parsing.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed, role_codes=ROLE_CODES)
     damage_payload = next(p for p in payloads if p["role"] == "damage")
     assert damage_payload["subrole"] == "projectile"
 
@@ -691,21 +716,21 @@ def test_subrole_from_additional_token_propagates_to_payload():
             "support": {"rank_value": 2300, "subrole": None, "is_active": True, "priority": None},
         },
     )
-    payloads = sheet_parsing.build_registration_role_payloads(parsed)
+    payloads = sheet_parsing.build_registration_role_payloads(parsed, role_codes=ROLE_CODES)
     by_role = {p["role"]: p for p in payloads}
     assert by_role["damage"]["subrole"] == "hitscan"
     assert by_role["support"]["subrole"] == "main_heal"
 
 
 def test_role_subrole_token_accepted_for_primary_and_additional():
-    primary_spec = catalog.target_spec_map(FULL_SCHEMA)["source_roles.primary"]
-    additional_spec = catalog.target_spec_map(FULL_SCHEMA)["source_roles.additional"]
+    primary_spec = catalog.target_spec_map(FULL_SCHEMA, role_codes=ROLE_CODES)["source_roles.primary"]
+    additional_spec = catalog.target_spec_map(FULL_SCHEMA, role_codes=ROLE_CODES)["source_roles.additional"]
     assert catalog.PARSER_ROLE_SUBROLE_TOKEN in primary_spec.accepted_parsers
     assert catalog.PARSER_ROLE_SUBROLE_TOKEN in additional_spec.accepted_parsers
 
 
 def test_sr_value_accepted_for_all_rank_value_targets():
-    specs = catalog.target_spec_map(FULL_SCHEMA)
+    specs = catalog.target_spec_map(FULL_SCHEMA, role_codes=ROLE_CODES)
     for role_code in ("tank", "damage", "support"):
         spec = specs[f"roles.{role_code}.rank_value"]
         assert catalog.PARSER_SR_VALUE in spec.accepted_parsers
@@ -721,6 +746,7 @@ _ROLE_MAP = {"roles": {"damage": "damage", "support": "support", "tank": "tank"}
 
 def test_role_token_is_list_multiple_values():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_token",
         values=["damage", "support"],
         value_mapping=_ROLE_MAP,
@@ -732,6 +758,7 @@ def test_role_token_is_list_multiple_values():
 
 def test_role_token_is_list_splits_comma_separated():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_token",
         values=["tank,damage"],
         value_mapping=_ROLE_MAP,
@@ -743,6 +770,7 @@ def test_role_token_is_list_splits_comma_separated():
 
 def test_role_token_is_list_skips_empty_values():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_token",
         values=["", "support", ""],
         value_mapping=_ROLE_MAP,
@@ -770,6 +798,7 @@ _ROLE_SUBROLE_MAP = {
 
 def test_role_subrole_token_is_list_multiple_columns():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Хитскан ДПС", "Мейн хил"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -783,6 +812,7 @@ def test_role_subrole_token_verbose_google_forms_label():
     # Google Forms option label with hero list in parentheses — each cell is one
     # complete token matched exactly against the configured value_mapping.
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Проджектайл ДД (Генджи, Фара, Ханзо, Торбьерн, Джанкрет, Эхо, Мей, Рипер, Сомбра, Симметра, Трейсер)"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -794,6 +824,7 @@ def test_role_subrole_token_verbose_google_forms_label():
 
 def test_role_subrole_token_verbose_hitscan_label():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Хитскан ДД (Маккри, Вдова, Солдат76, Эш)"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -805,6 +836,7 @@ def test_role_subrole_token_verbose_hitscan_label():
 
 def test_role_subrole_token_verbose_light_heal_label():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Лайт хил (Мерси, Кирико)"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -818,6 +850,7 @@ def test_role_subrole_token_is_list_first_column_empty():
     # Simulates 3 mapped columns where column 1 is empty — get_selector_values already
     # filters empty cells, so parse_target_value receives only the non-empty values.
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["support"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -829,6 +862,7 @@ def test_role_subrole_token_is_list_first_column_empty():
 
 def test_role_subrole_token_is_list_deduplicates_by_role():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["damage", "damage"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -840,6 +874,7 @@ def test_role_subrole_token_is_list_deduplicates_by_role():
 
 def test_role_subrole_token_no_is_list_unchanged():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Хитскан ДПС"],
         value_mapping=_ROLE_SUBROLE_MAP,
@@ -852,6 +887,7 @@ def test_role_subrole_token_multi_role_mapping_expands():
     # A single cell value that maps to a list — e.g. "Флекс, Танк или Сап"
     # expands into two role entries without splitting on commas.
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Флекс, Танк или Сап"],
         value_mapping={
@@ -871,6 +907,7 @@ def test_role_subrole_token_multi_role_mapping_expands():
 def test_role_subrole_token_multi_role_deduplicates_across_columns():
     # Multi-role from one cell + explicit tank from another column — tank deduped.
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_subrole_token",
         values=["Флекс, Танк или Сап", "Танк"],
         value_mapping={
@@ -889,12 +926,13 @@ def test_role_subrole_token_multi_role_deduplicates_across_columns():
 
 
 def test_additional_roles_spec_has_default_is_list():
-    spec = catalog.target_spec_map(FULL_SCHEMA)["source_roles.additional"]
+    spec = catalog.target_spec_map(FULL_SCHEMA, role_codes=ROLE_CODES)["source_roles.additional"]
     assert spec.default_is_list is True
 
 
 def test_role_token_list_with_explicit_mapping():
     result = sheet_parsing.parse_target_value(
+        role_codes=ROLE_CODES,
         parser="role_token_list",
         values=["damage", "support"],
         value_mapping=_ROLE_MAP,

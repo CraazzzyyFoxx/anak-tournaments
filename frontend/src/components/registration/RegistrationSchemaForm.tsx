@@ -22,6 +22,7 @@ import { identityProvider } from "@/lib/forms/builtin-keys";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { visibleFields } from "@/lib/forms/visible-when";
 import { notify } from "@/lib/notify";
+import { roleOf, subRoleSlugOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 import { ROLES, type RoleCode } from "@/lib/roster/roles";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { cn } from "@/lib/utils";
@@ -112,8 +113,7 @@ interface RegistrationSchemaFormProps {
 
 /** A role row as either read model serves it. */
 interface StoredRole {
-  role: string;
-  subrole: string | null;
+  role: RoleRef;
   is_primary: boolean;
   priority: number;
   rank_value?: number | null;
@@ -144,8 +144,8 @@ function roleInputsFrom(roles: readonly StoredRole[]): RoleInput[] {
   return [...roles]
     .sort((a, b) => a.priority - b.priority)
     .map((role) => ({
-      role: role.role,
-      ...(role.subrole ? { subrole: role.subrole } : {}),
+      role: roleOf(role.role),
+      ...(subRoleSlugOf(role.role) ? { subrole: subRoleSlugOf(role.role)! } : {}),
       is_primary: role.is_primary,
       ...(role.top_heroes?.length ? { top_heroes: role.top_heroes } : {})
     }));
@@ -192,7 +192,7 @@ function initialAnswers(
 function initialRanks(roles: readonly StoredRole[] | undefined): Record<string, string> {
   const ranks: Record<string, string> = { tank: "", damage: "", support: "" };
   for (const role of roles ?? []) {
-    if (role.rank_value != null) ranks[role.role] = String(role.rank_value);
+    if (role.rank_value != null) ranks[roleOf(role.role)] = String(role.rank_value);
   }
   return ranks;
 }
@@ -453,14 +453,13 @@ export default function RegistrationSchemaForm({
             const typed = ranks[role.role]?.trim();
             const rank = typed ? Number(typed) : null;
             return {
-              role: role.role,
-              subrole: role.subrole ?? null,
+              role: toRoleRef(role.role, role.subrole ? `${role.role}_${role.subrole}` : null, "player_role"),
               is_primary: role.is_primary,
               priority: index + 1,
               rank_value: rank != null && Number.isFinite(rank) ? rank : null,
               is_active: true,
               ...(role.top_heroes?.length ? { top_heroes: role.top_heroes } : {})
-            } as AdminRegistrationRoleInput;
+            } satisfies AdminRegistrationRoleInput;
           });
       payload.admin = {
         display_name: displayName || null,

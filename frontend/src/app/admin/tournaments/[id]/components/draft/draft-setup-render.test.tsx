@@ -76,7 +76,7 @@ function registration(id: number, roles: string[], rank: number | null): AdminRe
     deleted_at: null,
     balancer_status_meta: { excludes_from_balancer: false },
     roles: roles.map((role, index) => ({
-      role,
+      role: { dimension: "player_role", role },
       is_active: true,
       is_primary: index === 0,
       priority: index,

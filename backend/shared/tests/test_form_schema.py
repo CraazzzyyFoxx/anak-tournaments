@@ -203,9 +203,9 @@ def test_role_ranks_are_coerced_per_role_and_never_tied_to_the_roles_answer():
     assert _codes(normalize_answers(schema, {"current_rank": {}})) == {("current_rank", "required")}
     assert _codes(normalize_answers(schema, {"current_rank": "3200"})) == {("current_rank", "invalid_type")}
     assert _codes(normalize_answers(schema, {"current_rank": {"tank": "3200.5"}})) == {("current_rank", "invalid_type")}
-    assert _codes(normalize_answers(schema, {"current_rank": {"healer": "3200"}})) == {
-        ("current_rank", "invalid_option")
-    }
+    # This pure layer accepts another discipline's codes; the registration service checks its vocabulary.
+    assert normalize_answers(schema, {"current_rank": {"healer": "3200"}}).values == {"current_rank": {"healer": 3200}}
+    assert _codes(normalize_answers(schema, {"current_rank": {"": "3200"}})) == {("current_rank", "invalid_option")}
 
 
 def test_a_required_rank_block_wants_a_rank_on_every_declared_role_and_only_those():

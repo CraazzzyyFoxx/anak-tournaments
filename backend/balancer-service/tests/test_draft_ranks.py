@@ -31,8 +31,8 @@ FLEX_SHAPE = RosterShape(entries=tuple({"flex": 5}.items()))
 
 def test_a_role_is_worth_its_own_rank_not_the_lead_role_s() -> None:
     r = roster(1, ranks={"damage": 4000, "support": 2800})
-    assert r.rank_on(HeroClass.damage) == 4000
-    assert r.rank_on(HeroClass.support) == 2800
+    assert r.rank_on("damage") == 4000
+    assert r.rank_on("support") == 2800
 
 
 def test_a_declared_role_without_a_rank_is_not_playable_and_has_no_rank() -> None:
@@ -43,15 +43,15 @@ def test_a_declared_role_without_a_rank_is_not_playable_and_has_no_rank() -> Non
     # rating the captain then picked on.
     r = roster(1, ranks={"damage": 4000, "tank": None})
 
-    assert r.rank_on(HeroClass.tank) is None
-    assert r.playable_roles == frozenset({HeroClass.damage})
-    assert r.covers(HeroClass.tank) is False
+    assert r.rank_on("tank") is None
+    assert r.playable_roles == frozenset({"damage"})
+    assert r.covers("tank") is False
     assert ranks.slot_rank(r, HeroClass.tank, ROLE_SHAPE) is None
 
 
 def test_a_role_the_registration_never_declared_has_no_rank() -> None:
     r = roster(1, ranks={"damage": 4000})
-    assert r.rank_on(HeroClass.tank) is None
+    assert r.rank_on("tank") is None
 
 
 def test_no_role_at_all_answers_the_best_playable_rank() -> None:
@@ -68,7 +68,7 @@ def test_accepts_a_slot_code_next_to_the_enum() -> None:
 
 def test_best_rank_is_the_strongest_role_not_the_lead_one() -> None:
     r = roster(1, ranks={"support": 2800, "damage": 4000}, primary="support")
-    assert r.primary is not None and r.primary.role is HeroClass.support
+    assert r.primary is not None and r.primary.role == "support"
     assert r.best_rank == 4000
 
 

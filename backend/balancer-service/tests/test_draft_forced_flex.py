@@ -47,6 +47,7 @@ from shared.models.registration.registration import (  # noqa: E402
     BalancerRegistrationRole,
 )
 from shared.services.roster import roster_engine  # noqa: E402
+from shared.testing.roles import registration_role  # noqa: E402
 
 ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
 
@@ -70,7 +71,7 @@ def _role(
     rank_value: int | None = None,
     subrole: str | None = None,
 ) -> BalancerRegistrationRole:
-    return BalancerRegistrationRole(
+    return registration_role(
         role=role,
         priority=priority,
         is_primary=is_primary,
@@ -98,6 +99,7 @@ def _resolve(roles: list[BalancerRegistrationRole], *, mode: str | None = None) 
             tournament_id=1,
             form=_form(None if mode is None else {"flex_mode": mode}),
             grid=DEFAULT_GRID,
+            role_codes=("tank", "damage", "support"),
         )
     )
     return rosters[1]
@@ -122,7 +124,7 @@ class TestEveryRoleModeMakesEveryRolePlayable:
         # Tank was never ranked, so it takes the maximum: eligibility is the
         # presence of a rating, and that is the only value available for it.
         assert resolved.role_ranks == {"damage": 3900, "support": 2400, "tank": 3900}
-        assert resolved.playable_roles == frozenset(HERO_TYPE_CLASSES)
+        assert resolved.playable_roles == frozenset(role.slot_code for role in HERO_TYPE_CLASSES)
 
     def test_the_best_rank_is_the_max_not_the_lead_role_s(self) -> None:
         """The bug this closes: the lead role's rank won even when lower."""
@@ -134,7 +136,7 @@ class TestEveryRoleModeMakesEveryRolePlayable:
             mode="all_roles",
         )
 
-        assert resolved.primary is not None and resolved.primary.role is HeroClass.support
+        assert resolved.primary is not None and resolved.primary.role == "support"
         assert resolved.best_rank == 3900
 
     def test_a_single_ranked_role_covers_the_other_two(self) -> None:
@@ -166,7 +168,7 @@ class TestEveryRoleModeMakesEveryRolePlayable:
 
         lead = resolved.primary
         assert lead is not None
-        assert {lead.role, *resolved.secondary_roles} == set(HERO_TYPE_CLASSES)
+        assert {lead.role, *resolved.secondary_roles} == {role.slot_code for role in HERO_TYPE_CLASSES}
 
     def test_sub_role_comes_from_the_first_role_by_priority(self) -> None:
         resolved = _resolve(
@@ -177,7 +179,7 @@ class TestEveryRoleModeMakesEveryRolePlayable:
             mode="forced",
         )
 
-        assert resolved.sub_role == "main_heal"
+        assert resolved.sub_role == "support_main_heal"
 
     def test_full_flex_still_comes_from_the_registration(self) -> None:
         # ``is_full_flex`` is the registration's own fact (more than one role,
@@ -222,8 +224,8 @@ class TestAllRolesModeKeepsThePriority:
             mode="all_roles",
         )
 
-        assert resolved.primary is not None and resolved.primary.role is HeroClass.tank
-        assert set(resolved.secondary_roles) == {HeroClass.damage, HeroClass.support}
+        assert resolved.primary is not None and resolved.primary.role == "tank"
+        assert set(resolved.secondary_roles) == {"damage", "support"}
 
     def test_every_role_is_rated_without_losing_the_stated_ranks(self) -> None:
         resolved = _resolve(
@@ -259,8 +261,8 @@ class TestOptionalModeIsUnchanged:
             ]
         )
 
-        assert resolved.primary is not None and resolved.primary.role is HeroClass.support
-        assert resolved.rank_on(HeroClass.support) == 2400
+        assert resolved.primary is not None and resolved.primary.role == "support"
+        assert resolved.rank_on("support") == 2400
 
     def test_an_unranked_role_is_declared_but_not_playable(self) -> None:
         # No spreading here: the role stays in ``roles`` (so the pool can report
@@ -272,8 +274,8 @@ class TestOptionalModeIsUnchanged:
             ]
         )
 
-        assert {entry.role for entry in resolved.roles} == {HeroClass.damage, HeroClass.support}
-        assert resolved.playable_roles == frozenset({HeroClass.damage})
+        assert {entry.role for entry in resolved.roles} == {"damage", "support"}
+        assert resolved.playable_roles == frozenset({"damage"})
         assert resolved.is_ranked_complete is False
 
     def test_inactive_roles_are_dropped(self) -> None:

@@ -16,6 +16,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPlayerStatus, DraftStatus
+from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
@@ -80,11 +81,16 @@ def _draft_to_balancer_payload(
                 role = FLEX_SLOT_CODE
                 rank = ranks.slot_rank(player_roster, None, shape) or 0
             total_sr += rank
+            role_entry = (
+                next((entry for entry in player_roster.roles if entry.role == role), None) if player_roster else None
+            )
             members.append(
                 BalancerTeamMember(
                     uuid=str(p.user_id) if p.user_id is not None else str(uuid4()),
                     name=(player_roster.battle_tag if player_roster is not None else None) or "",
-                    sub_role=player_roster.sub_role if player_roster is not None else None,
+                    sub_role=workspace_sub_role_slug(role, role_entry.subrole)
+                    if role_entry and role_entry.subrole
+                    else None,
                     role=role,  # tank/damage/support/flex
                     rank=rank,
                 )

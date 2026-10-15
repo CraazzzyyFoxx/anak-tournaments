@@ -1147,14 +1147,15 @@ CREATE TABLE balancer.registration_role (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	updated_at TIMESTAMP WITH TIME ZONE,
 	registration_id BIGINT NOT NULL,
-	role VARCHAR(16) NOT NULL,
-	subrole VARCHAR(128),
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
 	is_primary BOOLEAN DEFAULT 'false' NOT NULL,
 	priority INTEGER DEFAULT '0' NOT NULL,
 	rank_value INTEGER,
 	is_active BOOLEAN DEFAULT 'true' NOT NULL,
 	PRIMARY KEY (id),
-	CONSTRAINT uq_balancer_registration_role UNIQUE (registration_id, role),
+	CONSTRAINT uq_registration_role_role UNIQUE (registration_id, role_id),
+	CONSTRAINT fk_registration_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
 	FOREIGN KEY(registration_id) REFERENCES balancer.registration (id) ON DELETE CASCADE
 );
 

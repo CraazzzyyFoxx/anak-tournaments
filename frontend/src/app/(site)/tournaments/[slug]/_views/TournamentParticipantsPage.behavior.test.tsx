@@ -147,7 +147,7 @@ function makeRegistration(overrides: Partial<Registration> = {}): Registration {
     workspace_id: 3,
     user_id: 5,
     primary_handle: "Anak#2100",
-    roles: [{ role: "damage", subrole: null, is_primary: true, priority: 0, top_heroes: [] }],
+    roles: [{ role: {dimension: "player_role", role: "damage"}, is_primary: true, priority: 0, top_heroes: [] }],
     answers: { stream_pov: false, identity_battlenet: ["Anak#2100"] },
     form_version_id: 4,
     form_version_stale: false,
@@ -625,7 +625,7 @@ describe("a roster the organizer hid", () => {
       makeRegistration({
         queue_position: 12,
         queue_total: 48,
-        queue_role: "damage",
+        queue_role: { dimension: "player_role", role: "damage" },
         queue_role_position: 4,
         queue_role_total: 24
       })

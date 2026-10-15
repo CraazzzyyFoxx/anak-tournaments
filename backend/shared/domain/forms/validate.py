@@ -32,7 +32,6 @@ from shared.core.social import (
 )
 from shared.domain.forms.builtins import default_pattern, identity_max_count, identity_provider
 from shared.domain.forms.schema import Condition, FormField, FormSchema
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 
 __all__ = (
     "ErrorCode",
@@ -203,7 +202,7 @@ def _coerce_multi_select(field: FormField, raw: Any) -> tuple[Any, FieldError | 
 
 
 def _coerce_role_ranks(key: str, raw: Any) -> tuple[Any, FieldError | None]:
-    """``{role_code: int}`` over the three registration roles, blanks dropped.
+    """``{role_code: int}``, blanks dropped; the service validates the discipline's vocabulary.
 
     Not tied to the ``roles`` answer on purpose: this is extra information the
     organizer asks for (current rank, peak rank per role, …), so every role is
@@ -214,12 +213,12 @@ def _coerce_role_ranks(key: str, raw: Any) -> tuple[Any, FieldError | None]:
         return None, None
     if not isinstance(raw, dict):
         return None, _err(key, ErrorCode.INVALID_TYPE, "Expected one rank per role.")
-    unknown = sorted(str(role) for role in raw if role not in REGISTRATION_ROLE_CODES)
+    unknown = sorted(str(role) for role in raw if not isinstance(role, str) or not role.strip())
     if unknown:
         return None, _err(key, ErrorCode.INVALID_OPTION, "Not a known role.", values=tuple(unknown))
     ranks: dict[str, int] = {}
-    for role in REGISTRATION_ROLE_CODES:
-        value, error = _coerce_number(key, raw.get(role))
+    for role, raw_rank in raw.items():
+        value, error = _coerce_number(key, raw_rank)
         if error is not None:
             return None, error
         if value is None or value == "":
@@ -363,7 +362,7 @@ def _declared_roles(answers: Mapping[str, Any]) -> tuple[str, ...]:
     codes: list[str] = []
     for row in rows:
         code = row.get("role") if isinstance(row, dict) else None
-        if isinstance(code, str) and code in REGISTRATION_ROLE_CODES and code not in codes:
+        if isinstance(code, str) and code not in codes:
             codes.append(code)
     return tuple(codes)
 

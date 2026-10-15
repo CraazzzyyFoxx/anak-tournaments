@@ -186,14 +186,10 @@ function role(
   heroes: string[] = [],
   isPrimary = true
 ): RegistrationRole {
-  return {
-    role: name,
-    subrole: null,
-    is_primary: isPrimary,
-    priority: 0,
-    rank_value: rank,
-    top_heroes: heroes
-  };
+  return { role: {dimension: "player_role", role: name}, is_primary: isPrimary,
+  priority: 0,
+  rank_value: rank,
+  top_heroes: heroes };
 }
 
 function makeRegistration(

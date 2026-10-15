@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from pydantic import BaseModel, BeforeValidator, Field
 
-from shared.domain.roster_shape import RegistrationRoleCode
 from shared.schemas.role import RoleRef
 from src import schemas
 from src.core import enums, pagination
@@ -406,7 +405,7 @@ class UserDraftCardHero(BaseModel):
     """One of the player's signature heroes on the draft-room player card."""
 
     hero: schemas.HeroRead
-    role: RegistrationRoleCode
+    role: str
     maps: int
     maps_won: int
 

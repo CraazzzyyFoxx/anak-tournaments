@@ -20,7 +20,6 @@ models = importlib.import_module("src.models")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
@@ -32,13 +31,10 @@ def test_rank_snapshot_model_is_available_from_service_models() -> None:
     assert hasattr(models, "UserRankSnapshot")
 
 
-def _role(role: str, rank_value: int | None = None, priority: int = 0) -> SimpleNamespace:
-    return SimpleNamespace(
-        role=role,
-        rank_value=rank_value,
-        is_active=True,
-        priority=priority,
-    )
+def _role(role: str, rank_value: int | None = None, priority: int = 0):
+    from shared.testing.roles import registration_role
+
+    return registration_role(role=role, rank_value=rank_value, is_active=True, priority=priority)
 
 
 def _registration(*roles: SimpleNamespace, battle_tag: str | None = "Main#123") -> SimpleNamespace:
@@ -78,7 +74,7 @@ def _roster_for(registration: SimpleNamespace) -> PlayerRoster:
         workspace_member_id=None,
         roles=tuple(
             RosterRole(
-                role=HeroClass.from_slot_code(role.role),
+                role=role.role,
                 rank=role.rank_value,
                 source="registration" if role.rank_value is not None else "none",
                 is_primary=priority == 0,
@@ -450,7 +446,7 @@ def test_partial_applies_found_role_and_leaves_unparsed_role_untouched() -> None
     assert len(updates) == 1
     assert updates[0][0] is damage
     assert tank.rank_value is None  # unfilled role left untouched
-    actions = {role_row["role"]: role_row["action"] for role_row in row["roles"]}
+    actions = {role_row["role"]["role"]: role_row["action"] for role_row in row["roles"]}
     assert actions == {"tank": "missing_rank", "damage": "set"}
 
 
@@ -471,7 +467,7 @@ def test_partial_preserves_existing_rank_on_unparsed_role() -> None:
     assert len(updates) == 1
     assert updates[0][0] is damage
     assert tank.rank_value == 3100  # existing rank untouched, never cleared
-    actions = {role_row["role"]: role_row["action"] for role_row in row["roles"]}
+    actions = {role_row["role"]["role"]: role_row["action"] for role_row in row["roles"]}
     assert actions["tank"] == "unverified"
 
 

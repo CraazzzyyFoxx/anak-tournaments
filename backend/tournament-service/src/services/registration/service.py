@@ -29,6 +29,7 @@ from shared.hero_catalog import HeroCatalog
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
     BalancerRegistrationRepository,
+    CatalogRoleRepository,
     SocialAccountRepository,
     TournamentRepository,
     UserRepository,
@@ -625,7 +626,13 @@ class RegistrationService:
         # after, and ``ensure_player_identity`` below resolves the domain player
         # from it.
         await self.ensure_unique_primary_game_handles(session, tournament_id=tournament_id, values=values)
-        answer_service.apply(registration, values, schema=schema, hero_catalog=hero_catalog)
+        tournament = await self.tournament_repo.get(session, tournament_id)
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline=tournament.discipline, workspace_id=workspace_id
+        )
+        answer_service.apply(
+            registration, values, schema=schema, hero_catalog=hero_catalog, catalog_roles=catalog_roles
+        )
         primary_identity = registration.primary_game_identity()
         registration.display_name = primary_identity.handle if primary_identity is not None else None
         registration = await self.registration_repo.create(session, registration)
@@ -748,7 +755,12 @@ class RegistrationService:
         await self.ensure_unique_primary_game_handles(
             session, tournament_id=registration.tournament_id, values=values, exclude_registration_id=registration.id
         )
-        answer_service.apply(registration, values, schema=schema, hero_catalog=hero_catalog)
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
+        )
+        answer_service.apply(
+            registration, values, schema=schema, hero_catalog=hero_catalog, catalog_roles=catalog_roles
+        )
         if form_version_id is not None:
             registration.form_version_id = form_version_id
         if any(identity_provider(key) for key in values):

@@ -77,8 +77,8 @@ const TEAM: RegistrationTeam = {
 } as unknown as RegistrationTeam;
 
 const AGENTS = [
-  { registration_id: 900, primary_handle: "Ana#1111", roles: ["support"] },
-  { registration_id: 901, primary_handle: "Zen#2222", roles: ["damage", "tank"] }
+  { registration_id: 900, primary_handle: "Ana#1111", roles: [{ dimension: "player_role", role: "support" }] },
+  { registration_id: 901, primary_handle: "Zen#2222", roles: [{ dimension: "player_role", role: "damage" }, { dimension: "player_role", role: "tank" }] }
 ];
 
 async function openDialog(): Promise<HTMLElement> {

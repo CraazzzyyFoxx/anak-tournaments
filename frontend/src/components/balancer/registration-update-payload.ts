@@ -1,3 +1,4 @@
+import { roleOf, toRoleRef } from "@/lib/roster/role-ref";
 import type {
   AdminRegistration,
   AdminRegistrationUpdateInput,
@@ -17,7 +18,7 @@ export function buildRegistrationUpdateFromPlayerPayload(
 
   if (payload.role_entries_json !== undefined) {
     const existingRolesMap = new Map(
-      existingRoles?.map((role) => [role.role, role.top_heroes ?? []]) ?? []
+      existingRoles?.map((role) => [roleOf(role.role), role.top_heroes ?? []]) ?? []
     );
     const sortedEntries = [...(payload.role_entries_json ?? [])].sort(
       (left, right) => left.priority - right.priority
@@ -25,8 +26,7 @@ export function buildRegistrationUpdateFromPlayerPayload(
     registrationPatch.roles = sortedEntries.map((entry, index) => {
       const topHeroes = existingRolesMap.get(entry.role) ?? [];
       return {
-        role: entry.role,
-        subrole: entry.subtype,
+        role: toRoleRef(entry.role, entry.subtype ? `${entry.role}_${entry.subtype}` : null, "player_role"),
         priority: entry.priority,
         is_primary: payload.is_flex ? true : index === 0,
         rank_value: entry.rank_value,

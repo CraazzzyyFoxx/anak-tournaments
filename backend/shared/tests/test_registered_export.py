@@ -39,7 +39,7 @@ def _role(
     subrole: str | None = None,
 ) -> RosterRole:
     return RosterRole(
-        role=role,
+        role=role.slot_code,
         rank=rank,
         source="registration" if rank is not None else "none",
         is_primary=primary,

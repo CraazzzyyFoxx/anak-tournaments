@@ -85,7 +85,7 @@ def _role(
     top_heroes: tuple[HeroRef, ...] = (),
 ) -> RosterRole:
     return RosterRole(
-        role=role,
+        role=role.slot_code,
         rank=rank,
         source=source,  # type: ignore[arg-type]
         is_primary=is_primary,

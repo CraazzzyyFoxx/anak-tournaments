@@ -29,7 +29,8 @@ def slot_rank(roster: PlayerRoster | None, role: HeroClass | str | None, shape: 
     """
     if roster is None:
         return None
-    return roster.rank_on(role if shape.has_role_slots else None)
+    code = role.slot_code if isinstance(role, HeroClass) else role
+    return roster.rank_on(code if shape.has_role_slots else None)
 
 
 def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> HeroClass | None:
@@ -45,10 +46,10 @@ def seat_role(roster: PlayerRoster | None, pinned: str | None = None) -> HeroCla
         return None
     if pinned is not None:
         role = HeroClass.from_slot_code(pinned)
-        if role in roster.playable_roles:
+        if pinned in roster.playable_roles:
             return role
     lead = roster.primary
-    return lead.role if lead is not None else None
+    return HeroClass.from_slot_code(lead.role) if lead is not None else None
 
 
 def captain_rank(roster: PlayerRoster | None, pinned: str | None, shape: RosterShape) -> int:

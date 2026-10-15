@@ -30,6 +30,7 @@ from shared.domain.roster import flex_role_mode
 from shared.hero_catalog import HeroCatalog
 from shared.repository import (
     BalancerRegistrationRepository,
+    CatalogRoleRepository,
     RegistrationStatusRepository,
     TournamentRepository,
 )
@@ -266,6 +267,9 @@ class RegistrationLifecycleService:
         answers = answers or {}
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
         workspace_id = tournament.workspace_id
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline=tournament.discipline, workspace_id=workspace_id
+        )
         resolved_status = status_value or "approved"
         if status_value is not None:
             await self.validate_registration_status_value(
@@ -294,13 +298,16 @@ class RegistrationLifecycleService:
             status=resolved_status,
             balancer_status=NOT_ADDED_BALANCER_STATUS,
         )
-        answer_service.apply(registration, values, schema=schema, hero_catalog=hero_catalog)
+        answer_service.apply(
+            registration, values, schema=schema, hero_catalog=hero_catalog, catalog_roles=catalog_roles
+        )
         primary_identity = registration.primary_game_identity()
         registration.display_name = display_name or (primary_identity.handle if primary_identity else None)
         if roles:
             replace_registration_roles(
                 registration,
                 roles,
+                catalog_roles=catalog_roles,
                 hero_catalog=hero_catalog,
                 max_heroes=max_heroes,
                 mode=flex_role_mode(form),
@@ -357,6 +364,9 @@ class RegistrationLifecycleService:
         """
         answers = answers or {}
         registration = await self.get_registration_by_id(session, registration_id)
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline=registration.tournament.discipline, workspace_id=registration.tournament.workspace_id
+        )
         previous_status = registration.status
 
         form = await self.common.get_registration_form(session, registration.tournament_id)
@@ -375,7 +385,9 @@ class RegistrationLifecycleService:
             values=values,
             exclude_registration_id=registration.id,
         )
-        answer_service.apply(registration, values, schema=schema, hero_catalog=hero_catalog)
+        answer_service.apply(
+            registration, values, schema=schema, hero_catalog=hero_catalog, catalog_roles=catalog_roles
+        )
         if form is not None:
             registration.form_version_id = form.current_version_id
         if display_name is not None:
@@ -419,6 +431,7 @@ class RegistrationLifecycleService:
             replace_registration_roles(
                 registration,
                 roles,
+                catalog_roles=catalog_roles,
                 hero_catalog=hero_catalog,
                 max_heroes=max_heroes,
                 mode=flex_role_mode(form),

@@ -16,9 +16,9 @@ os.environ["DEBUG"] = "true"
 models = importlib.import_module("src.models")
 serializers = importlib.import_module("src.services.registration.serializers")
 player_sub_roles = importlib.import_module("shared.domain.player_sub_roles")
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
+from shared.testing.roles import registration_role  # noqa: E402
 
 
 def test_snapshot_role_is_the_canonical_damage_code() -> None:
@@ -31,7 +31,7 @@ def test_snapshot_role_is_the_canonical_damage_code() -> None:
 
 def _role_model(role: str, rank_value: int | None):
     # Transient ORM instance: unloaded `hero_entries` -> _role_top_heroes returns [].
-    return models.BalancerRegistrationRole(
+    return registration_role(
         role=role, subrole=None, priority=1, is_primary=True, rank_value=rank_value, is_active=True
     )
 
@@ -39,7 +39,7 @@ def _role_model(role: str, rank_value: int | None):
 def _entry(role: str, rank: int | None):
     """The engine's verdict for that role -- the only source of a rank on the wire."""
     return RosterRole(
-        role=HeroClass.from_slot_code(role),
+        role=role,
         rank=rank,
         source="registration" if rank is not None else "none",
         is_primary=True,

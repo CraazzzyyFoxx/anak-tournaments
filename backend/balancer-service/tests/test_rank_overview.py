@@ -36,6 +36,7 @@ from shared import models  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.models.tournament.player_role import assignment_of  # noqa: E402
+from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.division_grid.access import get_effective_division_grid  # noqa: E402
 from shared.services.member_rank import MIX_ORDER, TOURNAMENT_ORDER, member_rank_service  # noqa: E402
 from shared.services.ontology import rated_leaf  # noqa: E402
@@ -324,7 +325,15 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             )
             s.add(registration)
             await s.flush()
-            s.add(models.BalancerRegistrationRole(registration_id=registration.id, role="tank", rank_value=2200))
+            catalog_roles = await CatalogRoleRepository().rated_rows(
+                s, discipline=tournament.discipline, workspace_id=workspace.id
+            )
+            tank = catalog_roles["tank"]
+            s.add(
+                models.BalancerRegistrationRole(
+                    registration_id=registration.id, catalog_role=tank, dimension_id=tank.dimension_id, rank_value=2200
+                )
+            )
             team = models.Team(tournament_id=tournament.id, name=f"Team {suffix}", balancer_name=f"Team {suffix}")
             s.add(team)
             await s.flush()

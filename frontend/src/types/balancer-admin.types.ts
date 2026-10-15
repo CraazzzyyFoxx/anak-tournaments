@@ -1,4 +1,5 @@
 import type { PlayerRoleOption, PlayerRoleSlotCode } from "@/lib/roster/player-role";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import type { Statistics as BalancerStatistics } from "@/types/balancer.types";
 import type { Answers, FormField, FormSchema } from "@/types/forms.types";
 import type {
@@ -247,7 +248,7 @@ export interface RegistrationRankAutofillRequest {
 }
 
 export interface RegistrationRankAutofillRole {
-  role: BalancerRoleCode;
+  role: RoleRef;
   current_rank_value: number | null;
   parsed_rank_value: number | null;
   action: RegistrationRankAutofillRoleAction;
@@ -299,7 +300,7 @@ export interface RegistrationRankAutofillResponse {
 export interface BalancerRegistrationRankHistoryEntry {
   tournament_id: number;
   tournament_name: string | null;
-  role: BalancerRoleCode;
+  role: RoleRef;
   rank_value: number;
 }
 
@@ -388,8 +389,7 @@ export interface AdminRegistrationFormUpsert {
 }
 
 export interface AdminRegistrationRole {
-  role: BalancerRoleCode;
-  subrole: BalancerRoleSubtype | null;
+  role: RoleRef;
   is_primary: boolean;
   priority: number;
   /**

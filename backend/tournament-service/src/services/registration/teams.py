@@ -1419,7 +1419,7 @@ class RegistrationTeamService:
                 primary_handle=(identity.handle if (identity := row.primary_game_identity()) else None),
                 # Primary first: it is the role they actually want, and the captain
                 # scanning for one reads the first chip.
-                roles=[entry.role for entry in sorted(row.roles, key=lambda r: not r.is_primary)],
+                roles=[entry.role_ref for entry in sorted(row.roles, key=lambda r: not r.is_primary)],
             )
             for row in list(rows)
         ]

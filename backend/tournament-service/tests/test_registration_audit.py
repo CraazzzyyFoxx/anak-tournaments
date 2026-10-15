@@ -98,15 +98,10 @@ class _FakeSession:
         pass
 
 
-def _role(role: str, rank_value: int | None) -> SimpleNamespace:
-    return SimpleNamespace(
-        role=role,
-        subrole=None,
-        rank_value=rank_value,
-        is_primary=True,
-        is_active=True,
-        hero_entries=[],
-    )
+def _role(role: str, rank_value: int | None):
+    from shared.testing.roles import registration_role
+
+    return registration_role(role=role, rank_value=rank_value, is_primary=True, is_active=True, priority=0)
 
 
 def _identity(provider: str, handle: str, position: int = 0) -> SimpleNamespace:
@@ -152,8 +147,7 @@ def _update_payload(**overrides: Any) -> dict[str, Any]:
         "balancer_status": "not_in_balancer",
         "roles": [
             {
-                "role": "damage",
-                "subrole": None,
+                "role": {"dimension": "player_role", "role": "damage"},
                 "priority": 0,
                 "is_primary": True,
                 "rank_value": 30,
@@ -224,8 +218,7 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
                     admin_notes="smurf suspected",
                     roles=[
                         {
-                            "role": "damage",
-                            "subrole": None,
+                            "role": {"dimension": "player_role", "role": "damage"},
                             "priority": 0,
                             "is_primary": True,
                             "rank_value": 42,

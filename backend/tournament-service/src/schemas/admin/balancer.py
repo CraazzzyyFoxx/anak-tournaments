@@ -5,12 +5,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from shared.domain.roster_shape import RegistrationRoleCode
+from shared.schemas.role import RoleRef
 from src.schemas.admission import AdmissionRead
 from src.schemas.base import BaseRead
 from src.schemas.registration import SubroleOption
 
-BalancerRoleSubtype = str
 RegistrationStatus = str
 BalancerStatus = str
 StatusScope = Literal["registration", "balancer"]
@@ -248,8 +247,7 @@ class BalancerGoogleSheetMappingCatalogResponse(BaseModel):
 
 
 class BalancerRegistrationRoleRead(BaseModel):
-    role: RegistrationRoleCode
-    subrole: BalancerRoleSubtype | None = None
+    role: RoleRef
     priority: int = 0
     is_primary: bool = False
     rank_value: int | None = None
@@ -268,8 +266,7 @@ class BalancerRegistrationRoleRead(BaseModel):
 
 
 class BalancerRegistrationRoleInput(BaseModel):
-    role: RegistrationRoleCode
-    subrole: BalancerRoleSubtype | None = None
+    role: RoleRef
     priority: int = 0
     is_primary: bool = False
     rank_value: int | None = None
@@ -307,7 +304,7 @@ class BalancerRegistrationRankAutofillRequest(BaseModel):
 
 
 class BalancerRegistrationRankAutofillRole(BaseModel):
-    role: RegistrationRoleCode
+    role: RoleRef
     current_rank_value: int | None = None
     parsed_rank_value: int | None = None
     action: RankAutofillRoleAction
@@ -359,7 +356,7 @@ class BalancerRegistrationRankAutofillResponse(BaseModel):
 class BalancerRegistrationRankHistoryEntry(BaseModel):
     tournament_id: int
     tournament_name: str | None = None
-    role: RegistrationRoleCode
+    role: RoleRef
     rank_value: int
 
 

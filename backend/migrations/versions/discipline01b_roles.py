@@ -22,6 +22,36 @@ down_revision: str | Sequence[str] | None = "discipline01"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+_CONSTRAINTS_ON = """
+    SELECT c.conname FROM pg_constraint c
+     WHERE c.conrelid = CAST(:table AS regclass) AND c.contype = :contype
+       AND (:contype = 'p' OR
+            ARRAY(SELECT a.attname::text FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+                    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+                   ORDER BY k.ord) = CAST(:columns AS text[]))
+     ORDER BY c.conname
+"""
+
+
+def _name(table: str, columns: Sequence[str], contype: str) -> str:
+    bind = op.get_bind()
+    names = (
+        bind.execute(sa.text(_CONSTRAINTS_ON), {"table": table, "columns": list(columns), "contype": contype})
+        .scalars()
+        .all()
+    )
+    if len(names) != 1:
+        raise RuntimeError(f"discipline01b expected exactly one {contype} on {table}{tuple(columns)}, found {names}")
+    return bind.dialect.identifier_preparer.quote(names[0])
+
+
+def _drop_constraint(table: str, columns: Sequence[str], contype: str):
+    def run() -> None:
+        op.execute(f"ALTER TABLE {table} DROP CONSTRAINT {_name(table, columns, contype)}")
+
+    return run
+
+
 #: Python's Unicode whitespace set, pinned here rather than PostgreSQL's locale-dependent ``\s``.
 SUB_ROLE_WHITESPACE = (
     r"\0009\000A\000B\000C\000D\001C\001D\001E\001F\0020\0085\00A0\1680"
@@ -316,12 +346,46 @@ _PLAYER_ROLES = (
 )
 
 
+_REGISTRATION_ROLES = (
+    "ALTER TABLE balancer.registration_role ADD COLUMN dimension_id BIGINT, ADD COLUMN role_id BIGINT",
+    """
+    UPDATE balancer.registration_role rr
+       SET role_id = r.id, dimension_id = r.dimension_id
+      FROM balancer.registration g
+      JOIN tournament.tournament t ON t.id = g.tournament_id,
+           catalog.role r
+     WHERE g.id = rr.registration_id
+       AND r.id = pg_temp.discipline01b_leaf(t.workspace_id, rr.role, rr.subrole)
+    """,
+    _drop_constraint("balancer.registration_role", ("registration_id", "role"), "u"),
+    """
+    ALTER TABLE balancer.registration_role
+      ALTER COLUMN role DROP NOT NULL,
+      ALTER COLUMN dimension_id SET NOT NULL,
+      ALTER COLUMN role_id SET NOT NULL,
+      ADD CONSTRAINT fk_registration_role_role FOREIGN KEY (role_id, dimension_id) REFERENCES catalog.role (id, dimension_id),
+      ADD CONSTRAINT uq_registration_role_role UNIQUE (registration_id, role_id)
+    """,
+)
+
+
 def upgrade() -> None:
     # discipline01 ran in this same transaction and leaves RI events pending on tables altered below.
     op.execute("SET CONSTRAINTS ALL IMMEDIATE")
     _preflight()
-    for statement in (*_SCHEMA, *_ONTOLOGY, *_SUB_ROLES, *_TEAM_FORMATS, *_CONFIG_JSON, *_PLAYER_ROLES):
-        op.execute(statement)
+    for statement in (
+        *_SCHEMA,
+        *_ONTOLOGY,
+        *_SUB_ROLES,
+        *_TEAM_FORMATS,
+        *_CONFIG_JSON,
+        *_PLAYER_ROLES,
+        *_REGISTRATION_ROLES,
+    ):
+        if callable(statement):
+            statement()
+        else:
+            op.execute(statement)
     op.execute("SET CONSTRAINTS ALL DEFERRED")
 
 

@@ -362,8 +362,8 @@ class DraftSelectionService:
             role = min(
                 safe_roles,
                 key=lambda candidate: (
-                    -((roster.rank_on(candidate) if roster is not None else None) or 0),
-                    candidate is not lead,
+                    -((roster.rank_on(candidate.slot_code) if roster is not None else None) or 0),
+                    candidate.slot_code != lead,
                     HERO_TYPE_CLASSES.index(candidate),
                 ),
             )

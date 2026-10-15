@@ -136,13 +136,16 @@ def test_payload_empty_roster_team() -> None:
 def test_payload_uses_drafted_off_role_and_its_rank() -> None:
     # Player's lead role is DPS@4000 but they were drafted on SUPPORT@2800.
     teams = [_team(1, 1, "T")]
-    p = _player(11, bt="Mate#1", role=HeroClass.damage, rank=4000, uid=11, role_ranks={"support": 2800})
+    p = _player(
+        11, bt="Mate#1", role=HeroClass.damage, rank=4000, uid=11, sub="damage_hitscan", role_ranks={"support": 2800}
+    )
     roster_by_team = {1: [_player(10, captain=True, bt="Cap#1", role=HeroClass.tank, rank=3900, uid=10), p]}
     picks = {11: _pick(11, 1, role=HeroClass.support, rank=2800)}
     payload = _payload(teams, roster_by_team, ROLE_SHAPE, picks)
     member = next(m for m in payload[0].members if m.name == "Mate#1")
     assert member.role == "support"  # drafted role, not lead "damage"
     assert member.rank == 2800  # off-role rank, not the lead 4000
+    assert member.sub_role is None  # a different role's leaf cannot follow the player into this slot
 
 
 def test_payload_derives_off_role_rank_when_pick_rank_missing() -> None:
@@ -169,7 +172,9 @@ def test_payload_captain_without_pick_uses_their_lead_role() -> None:
 
 def test_payload_exports_the_sub_role_off_the_registration() -> None:
     teams = [_team(1, 1, "T")]
-    roster_by_team = {1: [_player(10, captain=True, bt="Cap#1", role=HeroClass.support, rank=3000, sub="main_heal")]}
+    roster_by_team = {
+        1: [_player(10, captain=True, bt="Cap#1", role=HeroClass.support, rank=3000, sub="support_main_heal")]
+    }
     payload = _payload(teams, roster_by_team, ROLE_SHAPE, {})
     assert payload[0].members[0].sub_role == "main_heal"
 

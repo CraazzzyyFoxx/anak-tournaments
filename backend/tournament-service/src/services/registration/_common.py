@@ -12,6 +12,7 @@ What stays local is the WRITE side (``apply_all_roles`` /
 ``replace_registration_roles``), which the engine never touches.
 """
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import sqlalchemy as sa
@@ -22,10 +23,11 @@ from shared.balancer_registration_statuses import get_builtin_status_values, is_
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES, normalize_sub_role
 from shared.domain.roster import FlexRoleMode, PlayerRoster
 from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, HeroCatalog, build_hero_entries
 from shared.repository import RegistrationFormRepository, TournamentRepository
+from shared.schemas.role import RoleRef
+from shared.services.ontology import resolve_form_role
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.roster import roster_engine
 from src import models
@@ -57,12 +59,40 @@ def get_tournament_grid_from_rows(
     return load_runtime_grid(fallback_version)
 
 
+def _role_row(
+    catalog_roles: Mapping[str, models.CatalogRole], role: str | RoleRef | dict, subrole: str | None
+) -> models.BalancerRegistrationRole | None:
+    """Form pairs use the shared resolver; API refs identify a scoped leaf, never trust parent."""
+    if isinstance(role, (RoleRef, dict)):
+        ref = role if isinstance(role, RoleRef) else RoleRef.model_validate(role)
+        leaf = catalog_roles.get(ref.role)
+        dimension = next(iter(catalog_roles.values())).dimension.code if catalog_roles else None
+        if ref.dimension != dimension:
+            raise HTTPException(status_code=422, detail=f"role_dimension_mismatch: expected {dimension!r}")
+        if leaf is None:
+            raise HTTPException(status_code=422, detail=f"unknown_role: {ref.role!r}")
+    else:
+        try:
+            leaf = resolve_form_role(catalog_roles, role, subrole)
+        except HTTPException:
+            # The form validator reports bad suffixes. Import/build paths preserve the valid top-level role.
+            try:
+                leaf = resolve_form_role(catalog_roles, role, None)
+            except HTTPException:
+                return None
+    if leaf is None:
+        return None
+    return models.BalancerRegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id)
+
+
 def apply_all_roles(
     entries: list[models.BalancerRegistrationRole],
     *,
+    catalog_roles: Mapping[str, models.CatalogRole],
+    role_codes: Sequence[str],
     force_primary: bool,
 ) -> list[models.BalancerRegistrationRole]:
-    """Backfill the role set to all three, optionally forcing every role primary.
+    """Backfill the discipline's role set, optionally forcing every role primary.
 
     Both non-optional modes need the SET normalized, whichever path produced the
     entries — public form, admin panel, API key or Google Sheets sync.
@@ -85,8 +115,10 @@ def apply_all_roles(
     present = {entry.role for entry in entries}
     result = list(entries)
     result.extend(
-        models.BalancerRegistrationRole(role=role_code)
-        for role_code in REGISTRATION_ROLE_CODES
+        models.BalancerRegistrationRole(
+            catalog_role=catalog_roles[role_code], dimension_id=catalog_roles[role_code].dimension_id
+        )
+        for role_code in role_codes
         if role_code not in present
     )
     for priority, entry in enumerate(result):
@@ -99,14 +131,16 @@ def apply_all_roles(
 def build_registration_roles(
     roles: list[Any] | None,
     *,
+    catalog_roles: Mapping[str, models.CatalogRole],
+    role_codes: Sequence[str],
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
     mode: FlexRoleMode = "optional",
 ) -> list[models.BalancerRegistrationRole]:
     """Build normalized role entries from a submitted ``roles`` answer.
 
-    Filters to valid registration role codes (tank/damage/support), de-duplicates,
-    normalizes the sub-role slug, and assigns sequential priority. Detached rows:
+    Filters to the discipline's top-level roles, de-duplicates, resolves form
+    sub-role slugs, and assigns sequential priority. Detached rows:
     the caller decides whether they are new or merged over existing ones
     (:meth:`RegistrationAnswerService.apply` does the latter, so an organizer's
     ``rank_value`` survives a player editing their roles).
@@ -118,16 +152,12 @@ def build_registration_roles(
     entries: list[models.BalancerRegistrationRole] = []
     seen: set[str] = set()
     for role in roles or []:
-        role_code = role_value(role, "role")
-        if role_code not in REGISTRATION_ROLE_CODES or role_code in seen:
+        entry = _role_row(catalog_roles, role_value(role, "role"), role_value(role, "subrole"))
+        if entry is None or entry.role not in role_codes or entry.role in seen:
             continue
-        seen.add(role_code)
-        entry = models.BalancerRegistrationRole(
-            role=role_code,
-            subrole=normalize_sub_role(role_value(role, "subrole")),
-            is_primary=bool(role_value(role, "is_primary", False)),
-            priority=len(entries),
-        )
+        seen.add(entry.role)
+        entry.is_primary = bool(role_value(role, "is_primary", False))
+        entry.priority = len(entries)
         if hero_catalog is not None:
             entry.hero_entries = build_hero_entries(
                 role_value(role, "top_heroes"),
@@ -136,7 +166,9 @@ def build_registration_roles(
             )
         entries.append(entry)
     if mode in ("all_roles", "forced"):
-        entries = apply_all_roles(entries, force_primary=mode == "forced")
+        entries = apply_all_roles(
+            entries, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced"
+        )
     return entries
 
 
@@ -144,26 +176,29 @@ def replace_registration_roles(
     registration: models.BalancerRegistration,
     roles: list[dict[str, Any]],
     *,
+    catalog_roles: Mapping[str, models.CatalogRole],
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
     mode: FlexRoleMode = "optional",
 ) -> None:
+    role_codes = tuple(
+        code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None
+    )
     existing_by_role = {existing.role: existing for existing in registration.roles}
     next_roles: list[models.BalancerRegistrationRole] = []
     seen_roles: set[str] = set()
 
     for index, role in enumerate(sorted(roles, key=lambda item: item.get("priority", DEFAULT_SORT_PRIORITY_SENTINEL))):
-        role_code = role.get("role")
-        if role_code not in {"tank", "damage", "support"} or role_code in seen_roles:
+        entry = _role_row(catalog_roles, role.get("role"), role.get("subrole"))
+        if entry is None or entry.role in seen_roles:
             continue
-        seen_roles.add(role_code)
-
-        registration_role = existing_by_role.pop(role_code, None)
+        seen_roles.add(entry.role)
+        registration_role = existing_by_role.pop(entry.role, None)
         if registration_role is None:
-            registration_role = models.BalancerRegistrationRole(role=role_code)
-
-        registration_role.role = role_code
-        registration_role.subrole = normalize_sub_role(role.get("subrole"))
+            registration_role = entry
+        else:
+            registration_role.catalog_role = entry.catalog_role
+            registration_role.dimension_id = entry.dimension_id
         registration_role.is_primary = bool(role.get("is_primary", index == 0))
         registration_role.priority = index
         registration_role.rank_value = role.get("rank_value")
@@ -183,7 +218,9 @@ def replace_registration_roles(
         next_roles.append(registration_role)
 
     if mode in ("all_roles", "forced"):
-        next_roles = apply_all_roles(next_roles, force_primary=mode == "forced")
+        next_roles = apply_all_roles(
+            next_roles, catalog_roles=catalog_roles, role_codes=role_codes, force_primary=mode == "forced"
+        )
 
     registration.roles[:] = next_roles
 

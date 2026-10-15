@@ -12,7 +12,7 @@ import type { DateFormatter } from "@/components/kit/format-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { getRoleIconName } from "@/lib/roster/roles";
+import { roleOf } from "@/lib/roster/role-ref";
 import { cn } from "@/lib/utils";
 import type {
   RankAutofillOwValue,
@@ -123,7 +123,8 @@ function RankAutofillRolePill({
   const tRoles = useTranslations("common.roles");
   const format = useFormatter();
   const grid = useDivisionGrid();
-  const roleLabel = tRoles.has(role.role) ? tRoles(role.role) : role.role;
+  const roleCode = roleOf(role.role) as Parameters<typeof tRoles>[0];
+  const roleLabel = tRoles.has(roleCode) ? tRoles(roleCode) : roleCode;
   const source = formatRankSource(format, role);
   const breakdown = formatBlendBreakdown(role, owValue, tBreakdown);
   const tone = resolveRolePillTone(role);
@@ -171,7 +172,7 @@ function RankAutofillRolePill({
     >
       <span className="shrink-0">
         <PlayerRoleIcon
-          role={getRoleIconName(role.role)}
+          role={roleOf(role.role)}
           size={14}
           color="currentColor"
           decorative
@@ -329,7 +330,7 @@ export function RankAutofillPreviewTables({
                   {player.roles
                     .filter((role) => role.action === "set" || role.action === "overwrite")
                     .map((role) => (
-                      <RankAutofillRolePill key={role.role} role={role} owValue={preview.ow_value} />
+                      <RankAutofillRolePill key={`${role.role.dimension}:${role.role.role}`} role={role} owValue={preview.ow_value} />
                     ))}
                 </div>
               </label>
@@ -365,7 +366,7 @@ export function RankAutofillPreviewTables({
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {player.roles.map((role) => (
-                    <RankAutofillRolePill key={role.role} role={role} owValue={preview.ow_value} />
+                    <RankAutofillRolePill key={`${role.role.dimension}:${role.role.role}`} role={role} owValue={preview.ow_value} />
                   ))}
                 </div>
               </div>
@@ -414,7 +415,7 @@ export function RankAutofillPreviewTables({
                   {auditRoles.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {auditRoles.map((role) => (
-                        <RankAutofillRolePill key={role.role} role={role} owValue={preview.ow_value} />
+                        <RankAutofillRolePill key={`${role.role.dimension}:${role.role.role}`} role={role} owValue={preview.ow_value} />
                       ))}
                     </div>
                   )}

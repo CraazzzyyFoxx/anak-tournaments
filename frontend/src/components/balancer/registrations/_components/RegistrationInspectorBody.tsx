@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -46,9 +47,9 @@ function RolesCell({
         .slice()
         .sort((left, right) => left.priority - right.priority)
         .map((role) => ({
-          role: role.role,
+          role: roleOf(role.role),
           rank: role.rank_value,
-          subrole: role.subrole ? getSubroleLabel(catalog, role.role, role.subrole) : null,
+          subrole: subRoleSlugOf(role.role) ? getSubroleLabel(catalog, roleOf(role.role), subRoleSlugOf(role.role)!) : null,
           dimmed: !role.is_active
         }))}
     />

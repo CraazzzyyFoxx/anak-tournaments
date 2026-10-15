@@ -84,6 +84,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
+from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.team_format import copy_for_tournament  # noqa: E402
 from shared.testing import configure_test_cache, create_test_async_engine  # noqa: E402
 from src import schemas  # noqa: E402
@@ -300,6 +301,7 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
         form.current_version_id = version.id
 
         hero_ids = await _heroes(s)
+        catalog_roles = await CatalogRoleRepository().rated_rows(s, discipline=tourn.discipline, workspace_id=ws.id)
         total_seats = TEAMS + POOL_PLAYERS
         users = [User(name=f"p-{suffix}-{i}") for i in range(total_seats)]
         s.add_all(users)
@@ -330,7 +332,8 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
             for priority, role in enumerate(declared):
                 row = BalancerRegistrationRole(
                     registration_id=reg.id,
-                    role=role,
+                    catalog_role=catalog_roles[role],
+                    dimension_id=catalog_roles[role].dimension_id,
                     is_primary=priority == 0,
                     priority=priority,
                     rank_value=2500 + (i * 37) % 2000 - priority * 150,

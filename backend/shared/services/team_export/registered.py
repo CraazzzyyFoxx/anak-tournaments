@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.domain.team_subscription import SUBSCRIPTION_SCOPE_TEAM, team_subscription_is_current
@@ -98,9 +99,8 @@ def _sub_role_for(roster: PlayerRoster, role: str | None) -> str | None:
     A role-less slot has no role to look up, so it takes the player's lead
     sub-role -- the one their primary role carries.
     """
-    if role is None:
-        return roster.sub_role
-    return next((entry.subrole for entry in roster.roles if entry.role.slot_code == role), None)
+    entry = roster.primary if role is None else next((entry for entry in roster.roles if entry.role == role), None)
+    return workspace_sub_role_slug(entry.role, entry.subrole) if entry is not None and entry.subrole else None
 
 
 def _member_name(roster: PlayerRoster) -> str:

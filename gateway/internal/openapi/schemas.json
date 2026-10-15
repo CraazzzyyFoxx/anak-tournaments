@@ -19186,11 +19186,6 @@
           "type": "integer"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
           "title": "Role",
           "type": "string"
         }
@@ -35773,13 +35768,7 @@
           "title": "Reason"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
+          "$ref": "#/components/schemas/tournament.RoleRef"
         },
         "season": {
           "anyOf": [
@@ -35846,13 +35835,7 @@
           "type": "integer"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
+          "$ref": "#/components/schemas/tournament.RoleRef"
         },
         "tournament_id": {
           "title": "Tournament Id",
@@ -36199,25 +36182,7 @@
           "title": "Rank Value"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
-        },
-        "subrole": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Subrole"
+          "$ref": "#/components/schemas/tournament.RoleRef"
         },
         "top_heroes": {
           "anyOf": [
@@ -36299,25 +36264,7 @@
           "title": "Rank Value"
         },
         "role": {
-          "enum": [
-            "tank",
-            "damage",
-            "support"
-          ],
-          "title": "Role",
-          "type": "string"
-        },
-        "subrole": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Subrole"
+          "$ref": "#/components/schemas/tournament.RoleRef"
         },
         "top_heroes": {
           "items": {
@@ -46117,7 +46064,7 @@
         },
         "roles": {
           "items": {
-            "type": "string"
+            "$ref": "#/components/schemas/tournament.RoleRef"
           },
           "title": "Roles",
           "type": "array"
@@ -46246,14 +46193,13 @@
         "queue_role": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/tournament.RoleRef"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "title": "Queue Role"
+          "default": null
         },
         "queue_role_position": {
           "anyOf": [
@@ -46437,20 +46383,7 @@
           "title": "Rank Value"
         },
         "role": {
-          "title": "Role",
-          "type": "string"
-        },
-        "subrole": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Subrole"
+          "$ref": "#/components/schemas/tournament.RoleRef"
         },
         "top_heroes": {
           "items": {

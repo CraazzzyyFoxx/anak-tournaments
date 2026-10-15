@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import type { ColumnDef, Row } from "@tanstack/react-table";
 
 import { columnMeta } from "@/components/data-table";
@@ -166,7 +167,7 @@ export function buildBalancerRegistrationColumns(
         className: "min-w-[136px]",
         searchValue: (registration) =>
           registration.roles
-            .map((role) => [role.role, role.subrole, role.rank_value].filter(Boolean).join(" "))
+            .map((role) => [roleOf(role.role), subRoleSlugOf(role.role), role.rank_value].filter(Boolean).join(" "))
             .join(" "),
       }),
     },

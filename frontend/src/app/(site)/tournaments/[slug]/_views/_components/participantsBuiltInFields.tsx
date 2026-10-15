@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf } from "@/lib/roster/role-ref";
 import { type ReactNode } from "react";
 
 import type { Registration } from "@/types/registration.types";
@@ -81,7 +82,7 @@ export const BUILT_IN_FIELD_DEFS: Record<string, BuiltInFieldDef> = {
     width: "badge",
     render: (reg, ctx) => <RolesCell roles={reg.roles} grid={ctx.grid} showRanks={ctx.showRanks} />,
     searchValue: (reg) =>
-      reg.roles?.map((r) => r.role).join(" ") ?? null,
+      reg.roles?.map((r) => roleOf(r.role)).join(" ") ?? null,
   },
   // Not a field of its own: the `roles` question carries `top_heroes` in its
   // params, and this column exists when that is switched on.

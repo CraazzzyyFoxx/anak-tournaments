@@ -18,10 +18,14 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import ColumnElement
 
 from shared.core import db, enums
 from shared.core.social import GAME_PROVIDERS
+from shared.models.catalog.role import CatalogRole, leaf_code
+from shared.schemas.role import RoleRef
 
 if TYPE_CHECKING:
     from shared.models.catalog.entity import CatalogEntity
@@ -428,28 +432,60 @@ class BalancerRegistrationIdentity(db.TimeStampIntegerMixin):
 
 
 class BalancerRegistrationRole(db.TimeStampIntegerMixin):
-    """Normalized role entry for a registration."""
+    """One leaf catalog role per preference; legacy role/subrole columns remain unmapped until discipline02."""
 
     __tablename__ = "registration_role"
     __table_args__ = (
-        UniqueConstraint("registration_id", "role", name="uq_balancer_registration_role"),
+        UniqueConstraint("registration_id", "role_id", name="uq_registration_role_role"),
+        ForeignKeyConstraint(
+            ["role_id", "dimension_id"],
+            ["catalog.role.id", "catalog.role.dimension_id"],
+            name="fk_registration_role_role",
+        ),
         {"schema": "balancer"},
     )
 
     registration_id: Mapped[int] = mapped_column(ForeignKey("balancer.registration.id", ondelete="CASCADE"), index=True)
-    role: Mapped[str] = mapped_column(String(16), nullable=False)
-    subrole: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    dimension_id: Mapped[int] = mapped_column(BigInteger())
+    role_id: Mapped[int] = mapped_column(BigInteger())
     is_primary: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     priority: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
     rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="true", default=True)
 
     registration: Mapped[BalancerRegistration] = relationship(back_populates="roles")
+    catalog_role: Mapped[CatalogRole] = relationship(
+        primaryjoin="foreign(BalancerRegistrationRole.role_id) == CatalogRole.id", foreign_keys=[role_id], lazy="joined"
+    )
     hero_entries: Mapped[list[BalancerRegistrationRoleEntity]] = relationship(
         back_populates="role",
         cascade="all, delete-orphan",
         order_by="BalancerRegistrationRoleEntity.priority",
     )
+
+    @hybrid_property
+    def role(self) -> str:
+        leaf = self.catalog_role
+        return leaf.parent.code if leaf.parent is not None else leaf.code
+
+    @role.inplace.expression
+    @classmethod
+    def _role_expression(cls) -> ColumnElement[str]:
+        return leaf_code(cls.role_id, top=True).correlate(cls).label("role")
+
+    @hybrid_property
+    def subrole(self) -> str | None:
+        leaf = self.catalog_role
+        return leaf.code if leaf.parent is not None else None
+
+    @subrole.inplace.expression
+    @classmethod
+    def _subrole_expression(cls) -> ColumnElement[str | None]:
+        return leaf_code(cls.role_id, top=False).correlate(cls).label("subrole")
+
+    @property
+    def role_ref(self) -> RoleRef:
+        return RoleRef.of(self.catalog_role.dimension.code, self.role, self.subrole)
 
 
 class BalancerRegistrationRoleEntity(db.TimeStampIntegerMixin):

@@ -1,3 +1,4 @@
+import { roleOf } from "@/lib/roster/role-ref";
 import type { RosterShape } from "@/lib/roster/shape";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftAutopickStrategy, DraftCaptainOrder, DraftRole } from "@/types/draft.types";
@@ -48,7 +49,7 @@ export function poolRegistrationSummary(registration: AdminRegistration): DraftR
     .sort((left, right) => left.priority - right.priority);
   const lead = playable.find((entry) => entry.is_primary) ?? playable[0] ?? null;
   return {
-    roles: Array.from(new Set(playable.map((entry) => entry.role))) as DraftRole[],
+    roles: Array.from(new Set(playable.map((entry) => roleOf(entry.role)))) as DraftRole[],
     rank: lead?.rank_value ?? null
   };
 }
@@ -87,14 +88,14 @@ export function captainSeat(
     return { role: null, rank: best, options: [] };
   }
   const options = playable
-    .map((entry) => entry.role as DraftRole)
+    .map((entry) => roleOf(entry.role) as DraftRole)
     .filter((role) => (shape.slots[role] ?? 0) > 0);
   const seated =
-    (pinned && options.includes(pinned) && playable.find((entry) => entry.role === pinned)) ||
+    (pinned && options.includes(pinned) && playable.find((entry) => roleOf(entry.role) === pinned)) ||
     playable.find((entry) => entry.is_primary) ||
     playable[0];
   return {
-    role: (seated?.role as DraftRole | undefined) ?? null,
+    role: roleOf(seated?.role) as DraftRole | null,
     rank: seated?.rank_value ?? null,
     options
   };

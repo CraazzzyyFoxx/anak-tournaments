@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf } from "@/lib/roster/role-ref";
 import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -160,7 +161,7 @@ export function PlaceMemberDialog({
                     organizer is filling one specific slot. */}
                 <span className="ml-auto flex items-center gap-1">
                   {agent.roles.map((role) => (
-                    <RosterSlotGlyph key={role} code={role} size={14} />
+                    <RosterSlotGlyph key={`${role.dimension}:${role.role}`} code={roleOf(role)} size={14} />
                   ))}
                 </span>
               </CommandItem>

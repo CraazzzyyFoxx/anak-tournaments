@@ -351,7 +351,7 @@ export interface Registration {
    *  index is the position. */
   queue_position?: number | null;
   queue_total?: number | null;
-  queue_role?: string | null;
+  queue_role?: RoleRef | null;
   queue_role_position?: number | null;
   queue_role_total?: number | null;
   /** Capped to the most recent few entries; see `tournament_history_count` for the true total. */
@@ -397,8 +397,7 @@ export interface RegistrationListResponse {
 }
 
 export interface RegistrationRole {
-  role: string;
-  subrole: string | null;
+  role: RoleRef;
   is_primary: boolean;
   priority: number;
   rank_value?: number | null;

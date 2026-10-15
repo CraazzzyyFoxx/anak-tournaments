@@ -242,7 +242,7 @@ def test_player_read_carries_a_sub_role_per_playable_role_not_just_the_lead_one(
             120,
             ranks={"damage": 3600, "support": 2900, "tank": 3100},
             primary="damage",
-            subroles={"damage": "hitscan", "support": "flex_support"},
+            subroles={"damage": "damage_hitscan", "support": "support_flex_support"},
         ),
         shape=DEFAULT_ROSTER_SHAPE,
         custom_fields=[],

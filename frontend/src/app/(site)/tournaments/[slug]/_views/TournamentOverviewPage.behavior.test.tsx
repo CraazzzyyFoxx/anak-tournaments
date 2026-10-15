@@ -330,7 +330,7 @@ function makeRegistration(id: number, role: string, battleTag: string): Registra
     workspace_id: WORKSPACE_ID,
     user_id: id,
     primary_handle: battleTag,
-    roles: [{ role, subrole: null, is_primary: true, priority: 0, top_heroes: [] }],
+    roles: [{ role: { dimension: "player_role", role }, is_primary: true, priority: 0, top_heroes: [] }],
     answers: { stream_pov: false, identity_battlenet: [battleTag] },
     form_version_id: 1,
     form_version_stale: false,
@@ -354,7 +354,10 @@ function regList(
   const role_counts: Record<string, number> = {};
   for (const registration of registrations) {
     const primary = registration.roles.find((role) => role.is_primary) ?? registration.roles[0];
-    if (primary) role_counts[primary.role] = (role_counts[primary.role] ?? 0) + 1;
+    if (primary) {
+      const code = primary.role.parent ?? primary.role.role;
+      role_counts[code] = (role_counts[code] ?? 0) + 1;
+    }
   }
   return {
     registrations,

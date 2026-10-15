@@ -17,9 +17,10 @@ from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.core.social import GAME_PROVIDERS, display_social_handle, normalize_social_handle
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from shared.disciplines import DISCIPLINES
 from shared.domain.team_roster import RosterMember
 from shared.domain.team_subscription import SUBSCRIPTION_SCOPE_TEAM, team_subscription_is_current
+from shared.repository import CatalogRoleRepository, TournamentRepository
 from shared.services.discord_client import DiscordClient
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit
@@ -673,7 +674,12 @@ def install_team_actions(cls: type) -> None:
             .options(selectinload(models.BalancerRegistration.identities))
         )
         if registration is None:
-            role = slot_code if slot_code in REGISTRATION_ROLE_CODES else REGISTRATION_ROLE_CODES[0]
+            tournament = await TournamentRepository().get(session, tournament_id)
+            catalog_roles = await CatalogRoleRepository().rated_rows(
+                session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
+            )
+            role_codes = tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles)
+            role = slot_code if slot_code in role_codes else role_codes[0]
             registration = models.BalancerRegistration(
                 tournament_id=tournament_id,
                 display_name=tag,
@@ -683,7 +689,7 @@ def install_team_actions(cls: type) -> None:
             registration.identities.append(
                 models.BalancerRegistrationIdentity(provider=provider, position=0, handle=tag, handle_normalized=key)
             )
-            replace_registration_roles(registration, [{"role": role, "is_primary": True}])
+            replace_registration_roles(registration, [{"role": role, "is_primary": True}], catalog_roles=catalog_roles)
             await self.registration_repo.create(session, registration)
             await session.flush()
             await self.registrations.ensure_player_identity(

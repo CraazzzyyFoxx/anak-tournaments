@@ -17,6 +17,7 @@ import sys
 
 import psycopg
 import pytest
+from psycopg import sql
 from psycopg.types.json import Json, Jsonb
 
 from shared.disciplines import DISCIPLINES
@@ -154,6 +155,25 @@ def _seed(conn) -> dict:
     return ids
 
 
+def _scramble_names(conn) -> None:
+    """Restored databases need not carry the migration chain's constraint names."""
+    for table in ("balancer.registration_role",):
+        for index, (name,) in enumerate(
+            _rows(
+                conn,
+                "SELECT conname FROM pg_constraint WHERE conrelid = %s::regclass AND contype IN ('u', 'p')",
+                (table,),
+            )
+        ):
+            conn.execute(
+                sql.SQL("ALTER TABLE {} RENAME CONSTRAINT {} TO {}").format(
+                    sql.Identifier(*table.split(".")),
+                    sql.Identifier(name),
+                    sql.Identifier(f"restored_{index}_{table.split('.')[1]}"),
+                )
+            )
+
+
 @pytest.fixture(scope="module")
 def legacy_template():
     ensure_test_postgres()
@@ -164,6 +184,7 @@ def legacy_template():
     assert done.returncode == 0, done.stderr[-3000:]
     with _connect(TEMPLATE_DB) as conn:
         ids = _seed(conn)
+        _scramble_names(conn)
         preflight = {question: _rows(conn, query) for question, query in revision.PREFLIGHT}
     yield {"ids": ids, "preflight": preflight}
     with _connect("postgres") as admin:
@@ -387,6 +408,7 @@ def test_the_reconcile_report_is_clean(migrated) -> None:
         "team formats",
         "balancer configs",
         "player roles",
+        "registration roles",
     } <= set(statuses)
 
 
@@ -650,3 +672,24 @@ def test_every_player_holds_one_leaf_role_and_flex_holds_none(migrated) -> None:
         ("off_catalog", "support_light_heal", "support", ids["ws_a"]),
         ("plain", "tank", None, None),
     ]
+
+
+def test_registration_roles_point_at_their_leaf(migrated) -> None:
+    conn, ids = migrated["conn"], migrated["ids"]
+    rows = _rows(
+        conn,
+        "SELECT rr.id, r.code, m.code FROM balancer.registration_role rr JOIN catalog.role r ON r.id = rr.role_id"
+        " LEFT JOIN catalog.role m ON m.id = r.parent_role_id WHERE rr.id = ANY(%s) ORDER BY rr.id",
+        ([ids["reg_a_role"], ids["reg_b_role"]],),
+    )
+    assert rows == [
+        (ids["reg_a_role"], "damage_hitscan", "damage"),
+        (ids["reg_b_role"], "support_main_heal", "support"),
+    ]
+    names = {
+        row[0]
+        for row in _rows(
+            conn, "SELECT conname FROM pg_constraint WHERE conrelid = 'balancer.registration_role'::regclass"
+        )
+    }
+    assert {"uq_registration_role_role", "fk_registration_role_role"} <= names

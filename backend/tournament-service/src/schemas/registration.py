@@ -52,8 +52,7 @@ class RegistrationUpdate(BaseModel):
 
 
 class RegistrationRoleRead(BaseModel):
-    role: str
-    subrole: str | None = None
+    role: RoleRef
     is_primary: bool = False
     priority: int = 0
     rank_value: int | None = None
@@ -142,7 +141,7 @@ class RegistrationRead(BaseModel):
     #: equal to the row's own index. ``None`` on every other path.
     queue_position: int | None = None
     queue_total: int | None = None
-    queue_role: str | None = None
+    queue_role: RoleRef | None = None
     queue_role_position: int | None = None
     queue_role_total: int | None = None
     #: Self-service editing, answered by the server (``self_edit_policy``): the

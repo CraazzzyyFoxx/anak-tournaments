@@ -13228,11 +13228,8 @@ export interface components {
             maps: number;
             /** Maps Won */
             maps_won: number;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: AppUserDraftCardHeroRole;
+            /** Role */
+            role: string;
         };
         /**
          * UserDraftCardRole
@@ -17594,7 +17591,7 @@ export interface components {
             /** Registration Id */
             registration_id: number;
             /** Roles */
-            roles?: string[];
+            roles?: components["schemas"]["tournament.RoleRef"][];
         };
         /** RegistrationRead */
         "tournament.RegistrationRead": {
@@ -17659,11 +17656,8 @@ export interface components {
              * @default null
              */
             queue_position: number | null;
-            /**
-             * Queue Role
-             * @default null
-             */
-            queue_role: string | null;
+            /** @default null */
+            queue_role: components["schemas"]["tournament.RoleRef"] | null;
             /**
              * Queue Role Position
              * @default null
@@ -17749,13 +17743,7 @@ export interface components {
              * @default null
              */
             rank_value: number | null;
-            /** Role */
-            role: string;
-            /**
-             * Subrole
-             * @default null
-             */
-            subrole: string | null;
+            role: components["schemas"]["tournament.RoleRef"];
             /** Top Heroes */
             top_heroes?: string[];
         };
@@ -23575,11 +23563,7 @@ export interface components {
              * @default null
              */
             reason: string | null;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: TournamentBalancerRegistrationRankAutofillRoleRole;
+            role: components["schemas"]["tournament.RoleRef"];
             /**
              * Season
              * @default null
@@ -23606,11 +23590,7 @@ export interface components {
         "tournament.BalancerRegistrationRankHistoryEntry": {
             /** Rank Value */
             rank_value: number;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: TournamentBalancerRegistrationRankHistoryEntryRole;
+            role: components["schemas"]["tournament.RoleRef"];
             /** Tournament Id */
             tournament_id: number;
             /**
@@ -23771,16 +23751,7 @@ export interface components {
              * @default null
              */
             rank_value: number | null;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: TournamentBalancerRegistrationRoleInputRole;
-            /**
-             * Subrole
-             * @default null
-             */
-            subrole: string | null;
+            role: components["schemas"]["tournament.RoleRef"];
             /**
              * Top Heroes
              * @default null
@@ -23825,16 +23796,7 @@ export interface components {
              * @default null
              */
             rank_value: number | null;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: TournamentBalancerRegistrationRoleReadRole;
-            /**
-             * Subrole
-             * @default null
-             */
-            subrole: string | null;
+            role: components["schemas"]["tournament.RoleRef"];
             /** Top Heroes */
             top_heroes?: string[];
         };
@@ -73352,11 +73314,6 @@ export enum AppUserCompareMetricBetter_worseAnyOf0 {
     worse = "worse",
     equal = "equal"
 }
-export enum AppUserDraftCardHeroRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
 export enum AppUserHeroCompareMetricBetter_worseAnyOf0 {
     better = "better",
     worse = "worse",
@@ -73886,11 +73843,6 @@ export enum TournamentBalancerRegistrationRankAutofillRoleAction {
     missing_rank = "missing_rank",
     blocked = "blocked"
 }
-export enum TournamentBalancerRegistrationRankAutofillRoleRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
 export enum TournamentBalancerRegistrationRankAutofillRoleSource {
     analytics = "analytics",
     balancer = "balancer"
@@ -73900,30 +73852,15 @@ export enum TournamentBalancerRegistrationRankAutofillRoleUsed_sourceAnyOf0 {
     ow = "ow",
     analytics = "analytics"
 }
-export enum TournamentBalancerRegistrationRankHistoryEntryRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
-}
 export enum TournamentBalancerRegistrationReadSource {
     manual = "manual",
     google_sheets = "google_sheets"
-}
-export enum TournamentBalancerRegistrationRoleInputRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
 }
 export enum TournamentBalancerRegistrationRoleReadRank_source {
     registration = "registration",
     workspace = "workspace",
     ow = "ow",
     none = "none"
-}
-export enum TournamentBalancerRegistrationRoleReadRole {
-    tank = "tank",
-    damage = "damage",
-    support = "support"
 }
 export enum TournamentBalancerRegistrationStatusCreateScope {
     registration = "registration",

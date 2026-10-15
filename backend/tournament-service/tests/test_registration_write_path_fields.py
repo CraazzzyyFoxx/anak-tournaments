@@ -31,12 +31,13 @@ from unittest import IsolatedAsyncioTestCase, mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from shared.core.enums import HeroClass, TournamentStatus  # noqa: E402
+from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
+from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src import models  # noqa: E402
 from src.services.registration import lifecycle as reg_lifecycle  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
@@ -74,7 +75,7 @@ SCHEMA = _schema()
 def _open_tournament() -> models.Tournament:
     """A tournament whose REGISTRATION window is open right now."""
     now = datetime.now(UTC)
-    tournament = models.Tournament(id=7, status=TournamentStatus.REGISTRATION)
+    tournament = models.Tournament(id=7, workspace_id=1, discipline="overwatch", status=TournamentStatus.REGISTRATION)
     tournament.phase_schedule = [
         models.TournamentPhaseSchedule(
             tournament_id=7,
@@ -116,6 +117,16 @@ class _RecordingSession:
     async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
         return self._scalar_value
 
+    async def scalars(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.all.return_value = list(rated_catalog().values())
+        return result
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.unique.return_value.scalars.return_value.first.return_value = _open_tournament()
+        return result
+
     def begin_nested(self) -> Any:
         return _Savepoint()
 
@@ -156,7 +167,7 @@ def _roster_of(registration: models.BalancerRegistration) -> PlayerRoster:
         workspace_member_id=None,
         roles=tuple(
             RosterRole(
-                role=HeroClass.from_slot_code(role.role),
+                role=role.role,
                 rank=role.rank_value,
                 source="registration" if role.rank_value is not None else "none",
                 is_primary=bool(role.is_primary),
@@ -492,7 +503,7 @@ class TestAdminProfileUpdateAnswers(IsolatedAsyncioTestCase):
 
     def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
         registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", **kwargs)
-        registration.tournament = mock.Mock(workspace_id=1)
+        registration.tournament = mock.Mock(workspace_id=1, discipline="overwatch")
         return registration
 
     async def test_the_editor_clears_an_answer_by_sending_it_blank(self) -> None:
@@ -562,12 +573,12 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
 
     def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
         registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", **kwargs)
-        registration.tournament = mock.Mock(workspace_id=1)
+        registration.tournament = mock.Mock(workspace_id=1, discipline="overwatch")
         return registration
 
     async def test_resaving_a_ready_registration_recomputes_instead_of_rejecting(self) -> None:
         registration = self._registration(balancer_status="ready")
-        registration.roles = [models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=2500)]
+        registration.roles = [registration_role(role="tank", is_active=True, rank_value=2500)]
 
         # Must not raise -- the old behaviour 400ed on this exact resend.
         await self._update(registration, balancer_status_value="ready")
@@ -576,7 +587,7 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
 
     async def test_resaving_an_incomplete_registration_stays_incomplete(self) -> None:
         registration = self._registration(balancer_status="incomplete")
-        registration.roles = [models.BalancerRegistrationRole(role="tank", is_active=True, rank_value=None)]
+        registration.roles = [registration_role(role="tank", is_active=True, rank_value=None)]
 
         await self._update(registration, balancer_status_value="incomplete")
 

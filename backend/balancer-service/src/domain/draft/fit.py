@@ -48,8 +48,8 @@ def fit_players(players: Iterable[DraftPlayer], rosters: Mapping[int, PlayerRost
             FitPlayer(
                 player_id=player.id,
                 rank_value=roster.best_rank or 0,
-                playable_roles=roster.playable_roles,
-                preference_order=((lead.role,) if lead is not None else ()),
+                playable_roles=frozenset(HeroClass.from_slot_code(code) for code in roster.playable_roles),
+                preference_order=((HeroClass.from_slot_code(lead.role),) if lead is not None else ()),
                 is_flex=roster.is_full_flex,
                 user_id=player.user_id,
                 rank_by_role={HeroClass.from_slot_code(code): rank for code, rank in roster.role_ranks.items()},

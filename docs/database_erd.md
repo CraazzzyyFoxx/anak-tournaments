@@ -1933,8 +1933,8 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint registration_id FK
-        varchar(16) role
-        varchar(128) subrole "nullable"
+        bigint dimension_id FK
+        bigint role_id FK
         boolean is_primary
         int priority
         int rank_value "nullable"
@@ -2040,6 +2040,8 @@ erDiagram
     BALANCER_REGISTRATION_TEAM ||--o{ BALANCER_REGISTRATION_TEAM_INVITE : "team_id"
     CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_id"
     CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_kind"
+    CATALOG_ROLE ||--o{ BALANCER_REGISTRATION_ROLE : "dimension_id"
+    CATALOG_ROLE ||--o{ BALANCER_REGISTRATION_ROLE : "role_id"
     PUBLIC_WORKSPACE |o--o{ BALANCER_REGISTRATION_STATUS : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_FORM : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_FORM_TEMPLATE : "workspace_id"
@@ -2058,7 +2060,7 @@ Composite unique keys:
 - `BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING` unique on (`feed_id`, `source_record_key`)
 - `BALANCER_REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `handle_normalized`)
 - `BALANCER_REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `position`)
-- `BALANCER_REGISTRATION_ROLE` unique on (`registration_id`, `role`)
+- `BALANCER_REGISTRATION_ROLE` unique on (`registration_id`, `role_id`)
 - `BALANCER_REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `entity_id`)
 - `BALANCER_REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `priority`)
 - `BALANCER_REGISTRATION_STATUS` unique on (`workspace_id`, `scope`, `slug`, `kind`)

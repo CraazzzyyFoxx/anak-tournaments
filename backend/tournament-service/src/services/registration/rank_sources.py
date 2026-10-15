@@ -21,13 +21,14 @@ from sqlalchemy.orm import aliased, selectinload
 
 from shared.core import enums
 from shared.core.social import SocialProvider
+from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
-from shared.domain.player_sub_roles import REGISTRATION_TO_CANONICAL, canonical_to_registration_role
 from shared.repository import (
     BalancerRegistrationRepository,
     SocialAccountRepository,
     TournamentRepository,
 )
+from shared.schemas.role import RoleRef
 from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
@@ -114,13 +115,6 @@ class _OwRankSignals:
     latest_snapshot: models.UserRankSnapshot | Any | None = None
 
 
-# Registration role codes, kept as a *validated* lookup: ``.get()`` answers None for
-# anything that is not one of the three roles a registration can name. Single source of
-# truth is shared.domain.player_sub_roles.
-RANK_ROLE_BY_REGISTRATION_ROLE = dict(REGISTRATION_TO_CANONICAL)
-REGISTRATION_ROLE_LABELS = {
-    role.slot_code: role.value for role in (enums.HeroClass.tank, enums.HeroClass.damage, enums.HeroClass.support)
-}
 # Window for the OW rank source: the rank a player held over one week.
 OW_RANK_WEEK_WINDOW = timedelta(days=7)
 
@@ -425,6 +419,11 @@ class RankSourcesService:
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
                 models.Tournament.workspace_id == workspace_id,
+                models.Tournament.discipline
+                == sa.select(models.Tournament.discipline)
+                .where(models.Tournament.id == current_tournament_id)
+                .correlate(None)
+                .scalar_subquery(),
                 models.BalancerRegistration.tournament_id != current_tournament_id,
                 models.BalancerRegistration.deleted_at.is_(None),
                 models.BalancerRegistrationRole.is_active.is_(True),
@@ -467,9 +466,8 @@ class RankSourcesService:
 
         This is the "analytics" source: actual ranks played in the workspace's previous tournaments
         (``tournament.player``), distinct from the balancer-registration history. Excludes the current
-        tournament and substitution rows; the most recent tournament wins per role. ``Player.role`` is
-        a HeroClass and its name is the registration role code, so the keying lines up directly. Ranks
-        are normalized from each source tournament's grid version into the target grid. When
+        tournament and substitution rows; the most recent tournament wins per role. Player.role
+        is already the top-level code. Ranks are normalized from each source tournament's grid version into the target grid. When
         ``allowed_tournament_ids`` is set, only players from those tournaments are considered
         (recency window).
         """
@@ -483,6 +481,7 @@ class RankSourcesService:
                 models.Player.rank,
                 models.Tournament.division_grid_version_id,
             )
+            .select_from(models.Player)
             .join(
                 models.Tournament,
                 models.Tournament.id == models.Player.tournament_id,
@@ -494,6 +493,11 @@ class RankSourcesService:
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
                 models.Tournament.workspace_id == workspace_id,
+                models.Tournament.discipline
+                == sa.select(models.Tournament.discipline)
+                .where(models.Tournament.id == current_tournament_id)
+                .correlate(None)
+                .scalar_subquery(),
                 models.Player.tournament_id != current_tournament_id,
                 models.Player.role.is_not(None),
                 models.Player.is_substitution.is_(False),
@@ -513,13 +517,7 @@ class RankSourcesService:
 
         latest: dict[int, dict[str, int]] = {}
         for row in rows:
-            # ``HeroClass.flex`` is not a registration role, so the validator answers None and the
-            # row is skipped: a flex roster row carries ONE rank that stands for no particular role
-            # (the player's maximum, see balancer-service ``services.draft.ranks.slot_rank``), and
-            # attributing it to tank, damage or support would invent per-role history the tournament
-            # never recorded. That is why a player whose only history is flex tournaments autofills
-            # empty.
-            role_code = canonical_to_registration_role(row.role)
+            role_code = row.role
             if role_code is None:
                 continue
             user_map = latest.setdefault(row.user_id, {})
@@ -547,8 +545,11 @@ class RankSourcesService:
                     models.Tournament.id.label("tournament_id"),
                     models.Tournament.name.label("tournament_name"),
                     models.BalancerRegistrationRole.role,
+                    models.BalancerRegistrationRole.subrole,
+                    models.Tournament.discipline,
                     models.BalancerRegistrationRole.rank_value,
                 )
+                .select_from(models.BalancerRegistrationRole)
                 .join(
                     models.BalancerRegistration,
                     models.BalancerRegistration.id == models.BalancerRegistrationRole.registration_id,
@@ -579,7 +580,7 @@ class RankSourcesService:
             {
                 "tournament_id": row.tournament_id,
                 "tournament_name": row.tournament_name,
-                "role": row.role,
+                "role": RoleRef.of(discipline(row.discipline).rated_dimension.code, row.role, row.subrole).model_dump(),
                 "rank_value": row.rank_value,
             }
             for row in rows
@@ -662,7 +663,7 @@ class RankSourcesService:
             [(account_id,) for account_id in sorted(set(social_account_ids))]
         )
         roles = sa.values(sa.column("role", sa.String), name="roles").data(
-            [(role,) for role in sorted(set(RANK_ROLE_BY_REGISTRATION_ROLE.values()))]
+            [(role.name,) for role in enums.HERO_TYPE_CLASSES]
         )
         pair = (snap.social_account_id == accounts.c.id, snap.role == roles.c.role)
         # One index descent per (account, role) on ``ix_rank_snapshot_latest_ranked``.

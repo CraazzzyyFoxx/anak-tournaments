@@ -32,8 +32,6 @@ from src.services.registration._common import (
 )
 from src.services.registration.rank_sources import (
     OW_RANK_WEEK_WINDOW,
-    RANK_ROLE_BY_REGISTRATION_ROLE,
-    REGISTRATION_ROLE_LABELS,
     RankSourcesService,
     _build_priority_rank_data,
     _OwRankSignals,
@@ -138,9 +136,7 @@ def build_registration_rank_autofill_plan(
     # row of its own has nothing to write to and is skipped.
     rows_by_role = {getattr(entry, "role", None): entry for entry in getattr(registration, "roles", [])}
     declared_roles = [
-        rows_by_role[entry.role.slot_code]
-        for entry in (roster.roles if roster is not None else ())
-        if entry.role.slot_code in rows_by_role
+        rows_by_role[entry.role] for entry in (roster.roles if roster is not None else ()) if entry.role in rows_by_role
     ]
     if not declared_roles:
         row["reason"] = "Registration has no active roles."
@@ -156,13 +152,12 @@ def build_registration_rank_autofill_plan(
 
     for role_entry in declared_roles:
         role_code = getattr(role_entry, "role", None)
-        rank_role = RANK_ROLE_BY_REGISTRATION_ROLE.get(role_code)
-        snapshot = rank_snapshots_by_role.get(rank_role or "")
+        snapshot = rank_snapshots_by_role.get(role_code)
         current_rank = getattr(role_entry, "rank_value", None)
         snapshot_payload = _rank_snapshot_payload(snapshot)
         parsed_rank = snapshot_payload["parsed_rank_value"]
         role_row = {
-            "role": role_code,
+            "role": role_entry.role_ref.model_dump(),
             "current_rank_value": current_rank,
             **snapshot_payload,
             "action": "missing_rank",
@@ -178,7 +173,7 @@ def build_registration_rank_autofill_plan(
                 role_row["action"] = "keep_existing"
                 role_row["reason"] = "Existing registration rank is kept. Enable overwrite to replace it."
         elif parsed_rank is None:
-            missing_roles.append(REGISTRATION_ROLE_LABELS.get(role_code, str(role_code)))
+            missing_roles.append(role_entry.catalog_role.name)
         elif current_rank == parsed_rank:
             kept_existing = True
             role_row["action"] = "keep_existing"
@@ -235,7 +230,7 @@ def _roles_ranked_after_updates(
     if roster is None or not roster.roles:
         return False
     updated_roles = {getattr(role_entry, "role", None) for role_entry, _snapshot in updates}
-    return all(entry.is_playable or entry.role.slot_code in updated_roles for entry in roster.roles)
+    return all(entry.is_playable or entry.role in updated_roles for entry in roster.roles)
 
 
 def _rank_autofill_balancer_addition(
@@ -442,12 +437,13 @@ class RankAutofillService:
             # plan builder expects. Registration rows, balancer/analytics history and OW snapshots
             # all speak the same role vocabulary (tank/damage/support), so the keys line up.
             rank_data_by_role: dict[str, _RankData | Any] = {}
-            for registration_role, rank_role in RANK_ROLE_BY_REGISTRATION_ROLE.items():
+            for registration_role in registration.roles:
+                rank_role = registration_role.role
                 resolved = _build_priority_rank_data(
                     order,
                     ow_signals_by_role.get(rank_role),
-                    balancer_by_role.get(registration_role),
-                    analytics_by_role.get(registration_role),
+                    balancer_by_role.get(rank_role),
+                    analytics_by_role.get(rank_role),
                     grid,
                     ow_value or "composite",
                 )

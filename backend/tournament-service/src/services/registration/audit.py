@@ -27,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.social import display_social_handle
 from shared.domain.forms import IDENTITY_PROVIDERS, identity_key
+from shared.domain.player_sub_roles import workspace_sub_role_slug
+from shared.schemas.role import RoleRef
 from shared.services.audit import AuditSource, record_audit
 from src import models
 from src.services.registration.answers import custom_answers, merge_custom_answers
@@ -66,9 +68,9 @@ def label(registration: models.BalancerRegistration) -> str | None:
     return registration.display_name or (identity.handle if identity is not None else None)
 
 
-def _role_key(value: Any) -> str:
-    """``RegistrationRoleCode`` (a plain string) on the request side, same on the model side."""
-    return str(getattr(value, "value", value))
+def _role_key(value: Any) -> dict[str, str]:
+    """The submitted leaf identity; parent is output-only and irrelevant to comparison."""
+    return RoleRef.model_validate(value).model_dump(exclude={"parent"})
 
 
 def role_snapshot(registration: models.BalancerRegistration) -> list[dict[str, Any]]:
@@ -76,15 +78,14 @@ def role_snapshot(registration: models.BalancerRegistration) -> list[dict[str, A
     return sorted(
         (
             {
-                "role": _role_key(role.role),
-                "subrole": role.subrole,
+                "role": role.role_ref.model_dump(exclude={"parent"}),
                 "rank_value": role.rank_value,
                 "is_primary": role.is_primary,
                 "is_active": role.is_active,
             }
             for role in registration.roles
         ),
-        key=lambda entry: entry["role"],
+        key=lambda entry: (entry["role"]["dimension"], entry["role"]["role"]),
     )
 
 
@@ -98,8 +99,14 @@ def _answer_roles(roles: list[Any]) -> list[dict[str, Any]]:
     return sorted(
         (
             {
-                "role": _role_key(role.get("role") if isinstance(role, dict) else role.role),
-                "subrole": (role.get("subrole") if isinstance(role, dict) else role.subrole),
+                "role": role.get("role") if isinstance(role, dict) else role.role,
+                "subrole": (
+                    role.get("subrole")
+                    if isinstance(role, dict)
+                    else workspace_sub_role_slug(role.role, role.subrole)
+                    if role.subrole
+                    else None
+                ),
                 "is_primary": bool(role.get("is_primary", False) if isinstance(role, dict) else role.is_primary),
             }
             for role in roles
@@ -113,14 +120,13 @@ def _requested_roles(roles: list[dict[str, Any]]) -> list[dict[str, Any]]:
         (
             {
                 "role": _role_key(role.get("role")),
-                "subrole": role.get("subrole"),
                 "rank_value": role.get("rank_value"),
                 "is_primary": bool(role.get("is_primary", False)),
                 "is_active": bool(role.get("is_active", True)),
             }
             for role in roles
         ),
-        key=lambda entry: entry["role"],
+        key=lambda entry: (entry["role"]["dimension"], entry["role"]["role"]),
     )
 
 

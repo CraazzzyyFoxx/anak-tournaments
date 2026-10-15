@@ -91,7 +91,11 @@ def build_feasibility_state(
     for player in players:
         roster = rosters.get(player.id)
         if player.status == DraftPlayerStatus.AVAILABLE.value:
-            playable_roles = roster.playable_roles if roster is not None else frozenset()
+            playable_roles = (
+                frozenset(HeroClass.from_slot_code(code) for code in roster.playable_roles)
+                if roster is not None
+                else frozenset()
+            )
             if playable_roles:
                 eligible_players.append(EligiblePlayer(player_id=player.id, playable_roles=playable_roles))
             continue

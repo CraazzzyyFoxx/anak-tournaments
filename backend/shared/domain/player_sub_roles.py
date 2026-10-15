@@ -4,27 +4,16 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from shared.core.enums import HeroClass
 from shared.domain.roles import Ontology
 
-# Registration, the sub-role catalog and the roster shape all speak one
-# vocabulary: tank/damage/support (``HeroClass.slot_code`` == ``HeroClass.name``).
-# Registration used to spell damage as ``dps``; migration ``roledps01`` retired
-# that. ``REGISTRATION_TO_CANONICAL`` is therefore an identity map now, kept
-# because callers use it as a *validated* lookup -- ``.get()`` answers None for a
-# role that is not one of the three, which a bare string would not.
-_REGISTRATION_ROLES: tuple[HeroClass, ...] = (HeroClass.tank, HeroClass.damage, HeroClass.support)
-REGISTRATION_ROLE_CODES: tuple[str, ...] = tuple(role.slot_code for role in _REGISTRATION_ROLES)
-REGISTRATION_TO_CANONICAL: dict[str, str] = {role.slot_code: role.name for role in _REGISTRATION_ROLES}
+# OW rank and Discord consumers retain these codes until P3 moves ranks.
+REGISTRATION_ROLE_CODES: tuple[str, ...] = ("tank", "damage", "support")
+REGISTRATION_TO_CANONICAL: dict[str, str] = {role: role for role in REGISTRATION_ROLE_CODES}
 
 
 def normalize_role(role: Any) -> str | None:
     if role is None:
         return None
-
-    parsed = HeroClass.parse(role)
-    if parsed is not None:
-        return parsed.name
 
     value = str(role).strip().lower()
     return value or None

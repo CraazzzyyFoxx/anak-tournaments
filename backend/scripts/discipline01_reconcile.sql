@@ -116,6 +116,13 @@ SELECT 'player roles', p.id, p.role::text || coalesce('/' || p.sub_role, ''),
   FROM tournament.player p JOIN tournament.tournament t ON t.id = p.tournament_id
  WHERE p.role IS NOT NULL
 UNION ALL
+SELECT 'registration roles', rr.id, rr.role || coalesce('/' || rr.subrole, ''),
+       rr.role_id IS NOT DISTINCT FROM pg_temp.discipline01b_leaf(t.workspace_id, rr.role, rr.subrole)
+  FROM balancer.registration_role rr
+  JOIN balancer.registration g ON g.id = rr.registration_id
+  JOIN tournament.tournament t ON t.id = g.tournament_id
+ WHERE rr.role IS NOT NULL
+UNION ALL
 -- A soft id still in legacy space is uncarried. Dangling ids (no legacy row) pass: preflight counts them.
 SELECT 'pick-ban ids', soft.owner_id, soft.family || ' ' || soft.item_id,
        NOT EXISTS (SELECT 1 FROM catalog.entity_legacy l WHERE l.legacy_kind = soft.kind AND l.legacy_id = soft.item_id)

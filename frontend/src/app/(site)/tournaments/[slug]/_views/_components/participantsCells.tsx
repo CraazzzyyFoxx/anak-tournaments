@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import { useMemo } from "react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -43,13 +44,13 @@ export function RolesCell({
   return (
     <div className="flex flex-wrap items-start justify-center gap-x-0.5 gap-y-2">
       {roles.map((r) => {
-        const roleLabel = getRoleLabel(r.role, t);
-        const subroleLabel = r.subrole ? formatSubroleSlug(r.subrole) : null;
+        const roleLabel = getRoleLabel(roleOf(r.role), t);
+        const subroleLabel = subRoleSlugOf(r.role) ? formatSubroleSlug(subRoleSlugOf(r.role)!) : null;
         const division = r.rank_value != null ? resolveDivisionFromRank(resolvedGrid, r.rank_value) : null;
 
         return (
           <div
-            key={`${r.role}-${r.subrole ?? "base"}-${r.priority}`}
+            key={`${roleOf(r.role)}-${subRoleSlugOf(r.role) ?? "base"}-${r.priority}`}
             className="inline-flex min-w-7 flex-col items-center gap-0.5"
             title={[
               roleLabel,
@@ -69,7 +70,7 @@ export function RolesCell({
               )}
             >
               <PlayerRoleIcon
-                role={ROLE_TO_ICON[r.role] ?? r.role}
+                role={ROLE_TO_ICON[roleOf(r.role)] ?? roleOf(r.role)}
                 size={22}
               />
             </span>
@@ -144,7 +145,7 @@ export function TopHeroesCell({
                 name: slug,
                 slug,
                 image_path: "",
-                role: r.role,
+                role: roleOf(r.role),
               } as any);
             }
           }

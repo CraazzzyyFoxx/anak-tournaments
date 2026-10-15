@@ -141,7 +141,7 @@ def test_slot_filled_needs_both_the_role_and_the_flex_capacity_gone() -> None:
             index + 1,
             player_id=player.id,
             team_id=10,
-            target_role=_roster_of(player).primary.role,
+            target_role=HeroClass.from_slot_code(_roster_of(player).primary.role),
         )
         for index, player in enumerate(picked)
     )

@@ -5,8 +5,7 @@ import { type AuditTranslator, auditDiffRows } from "@/components/kit/audit-log"
 const t = Object.assign((key: string) => key, { has: () => false }) as AuditTranslator;
 
 const role = (code: string, rank: number | null) => ({
-  role: code,
-  subrole: "main",
+  role: { dimension: "player_role", role: `${code}_main` },
   is_active: true,
   is_primary: code === "damage",
   rank_value: rank,
@@ -22,8 +21,8 @@ describe("auditDiffRows on a list of records", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0].children?.map((child) => [child.field, child.kind])).toEqual([
-      ["damage", "removed"],
-      ["support", "changed"],
+      ["player_role:damage_main", "removed"],
+      ["player_role:support_main", "changed"],
     ]);
     // Only what moved on the surviving role, not its whole record.
     expect(rows[0].children?.[1].children).toEqual([

@@ -93,7 +93,7 @@ export function declaredHeroes(
   const roles = registration.roles ?? [];
   const wanted = player.role ? normalizePlayerRole(roleOf(player.role)) : "Flex";
   const role =
-    roles.find((entry) => normalizePlayerRole(entry.role) === wanted) ??
+    roles.find((entry) => normalizePlayerRole(roleOf(entry.role)) === wanted) ??
     roles.find((entry) => entry.is_primary) ??
     roles[0];
   return (role?.top_heroes ?? [])

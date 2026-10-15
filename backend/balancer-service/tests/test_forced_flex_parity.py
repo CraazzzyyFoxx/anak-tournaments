@@ -52,9 +52,9 @@ from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
     BalancerRegistration,
-    BalancerRegistrationRole,
 )
 from shared.services.roster import roster_engine  # noqa: E402
+from shared.testing.roles import registration_role  # noqa: E402
 
 CASES: list[dict[str, Any]] = json.loads(FIXTURES.read_text(encoding="utf-8"))["cases"]
 ALL_ROLE_VALUES = {role.slot_code for role in HERO_TYPE_CLASSES}
@@ -77,7 +77,7 @@ def _flex_form(mode: str) -> SimpleNamespace:
 def _resolve(case: dict[str, Any], mode: str) -> PlayerRoster:
     registration = BalancerRegistration(id=1, tournament_id=1)
     registration.roles = [
-        BalancerRegistrationRole(
+        registration_role(
             role=spec["role"],
             priority=index,
             is_primary=True,
@@ -94,6 +94,7 @@ def _resolve(case: dict[str, Any], mode: str) -> PlayerRoster:
             tournament_id=1,
             form=_flex_form(mode),
             grid=DEFAULT_GRID,
+            role_codes=("tank", "damage", "support"),
         )
     )
     return rosters[1]
@@ -127,7 +128,7 @@ def test_all_three_roles_are_playable_whenever_any_rank_exists(case: dict[str, A
         assert resolved.playable_roles == frozenset()
         assert resolved.is_draftable is False
         return
-    assert resolved.playable_roles == frozenset(HERO_TYPE_CLASSES)
+    assert resolved.playable_roles == frozenset(role.slot_code for role in HERO_TYPE_CLASSES)
     lead = resolved.primary
     assert lead is not None
-    assert {lead.role, *resolved.secondary_roles} == set(HERO_TYPE_CLASSES)
+    assert {lead.role, *resolved.secondary_roles} == {role.slot_code for role in HERO_TYPE_CLASSES}

@@ -44,6 +44,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
+from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src import models  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
 from src.schemas.registration_build import _public_rosters  # noqa: E402
@@ -69,6 +70,32 @@ def _schema(**overrides: Any) -> FormSchema:
 
 
 SCHEMA = _schema()
+
+
+def test_rank_answers_reject_codes_outside_the_tournament_discipline() -> None:
+    schema = FormSchema(
+        sections=[FormSection(key="ranks", fields=[FormField(key="peak", kind="role_ranks", label="Peak")])]
+    )
+
+    async def validate(roles):
+        return await answer_service.validate(
+            None,
+            schema=schema,
+            answers={"peak": roles},
+            partial=False,
+            enforce_required=False,
+            player_id=None,
+            workspace_id=1,
+            discipline="overwatch",
+            hero_catalog=None,
+        )
+
+    assert asyncio.run(validate({"tank": "3200"}))["peak"] == {"tank": 3200}
+    with pytest.raises(ApiHTTPException) as raised:
+        asyncio.run(validate({"healer": "3200"}))
+    assert raised.value.status_code == 422
+    assert raised.value.detail[0]["field"] == "peak"
+    assert raised.value.detail[0]["code"] == "invalid_option"
 
 
 class _Rows:
@@ -324,13 +351,14 @@ def test_role_update_preserves_rank_value_on_surviving_roles() -> None:
     reordered their roles."""
     registration = _registration()
     registration.roles = [
-        models.BalancerRegistrationRole(role="tank", rank_value=3200, is_active=True, is_primary=True, priority=0),
-        models.BalancerRegistrationRole(role="damage", rank_value=2500, is_active=True, is_primary=False, priority=1),
+        registration_role(role="tank", rank_value=3200, is_active=True, is_primary=True, priority=0),
+        registration_role(role="damage", rank_value=2500, is_active=True, is_primary=False, priority=1),
     ]
 
     answer_service.apply(
         registration,
         {"roles": [{"role": "damage", "is_primary": True}, {"role": "support", "is_primary": False}]},
+        catalog_roles=rated_catalog(),
         schema=SCHEMA,
         hero_catalog=None,
     )
@@ -363,13 +391,14 @@ def test_a_role_edit_does_not_leave_a_parentless_role_row_in_the_session() -> No
     )
     catalog = {"ana": HeroCatalogEntry(id=11, slug="ana", hero_class=enums.HeroClass.support)}
     registration = _registration()
-    registration.roles = [models.BalancerRegistrationRole(role="tank", is_primary=True, priority=0)]
+    registration.roles = [registration_role(role="tank", is_primary=True, priority=0)]
     session = sa.orm.Session()
     session.add(registration)
 
     answer_service.apply(
         registration,
         {"roles": [{"role": "tank", "is_primary": True, "top_heroes": ["ana"]}]},
+        catalog_roles=rated_catalog(),
         schema=schema,
         hero_catalog=catalog,
     )
@@ -383,7 +412,11 @@ def test_an_identity_answer_rewrites_its_rows_in_place_and_a_blank_one_deletes()
     registration = _registration()
 
     answer_service.apply(
-        registration, {"identity_battlenet": ["Main#1111", "Alt#2222"]}, schema=SCHEMA, hero_catalog=None
+        registration,
+        {"identity_battlenet": ["Main#1111", "Alt#2222"]},
+        catalog_roles=rated_catalog(),
+        schema=SCHEMA,
+        hero_catalog=None,
     )
     assert [(row.position, row.handle, row.handle_normalized) for row in registration.identities] == [
         (0, "Main#1111", "main#1111"),
@@ -394,11 +427,19 @@ def test_an_identity_answer_rewrites_its_rows_in_place_and_a_blank_one_deletes()
     # (the positional unique is deferred so the swap can happen in place), and
     # the row left over is dropped.
     primary = registration.identities[0]
-    answer_service.apply(registration, {"identity_battlenet": ["Alt#2222"]}, schema=SCHEMA, hero_catalog=None)
+    answer_service.apply(
+        registration,
+        {"identity_battlenet": ["Alt#2222"]},
+        catalog_roles=rated_catalog(),
+        schema=SCHEMA,
+        hero_catalog=None,
+    )
     assert [(row.position, row.handle) for row in registration.identities] == [(0, "Alt#2222")]
     assert registration.identities[0] is primary
 
-    answer_service.apply(registration, {"identity_battlenet": None}, schema=SCHEMA, hero_catalog=None)
+    answer_service.apply(
+        registration, {"identity_battlenet": None}, catalog_roles=rated_catalog(), schema=SCHEMA, hero_catalog=None
+    )
     assert registration.identities == []
 
 
@@ -407,7 +448,13 @@ def test_an_identity_the_form_does_not_ask_about_is_not_written() -> None:
     inventing a key must not create a row for it."""
     registration = _registration()
 
-    answer_service.apply(registration, {"identity_twitch": ["player_tv"]}, schema=SCHEMA, hero_catalog=None)
+    answer_service.apply(
+        registration,
+        {"identity_twitch": ["player_tv"]},
+        catalog_roles=rated_catalog(),
+        schema=SCHEMA,
+        hero_catalog=None,
+    )
 
     assert registration.identities == []
 
@@ -424,6 +471,7 @@ def test_answers_of_projects_what_apply_wrote() -> None:
             "organizer_notes": "seed me low",
             "vk": "vk.com/player",
         },
+        catalog_roles=rated_catalog(),
         schema=SCHEMA,
         hero_catalog=None,
     )
@@ -864,9 +912,9 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
             )
             roster = (await _public_rosters(db_session, [updated])).get(updated.id)
             assert roster is not None
-            roster_roles = [entry.role.slot_code for entry in roster.roles]
+            roster_roles = [entry.role for entry in roster.roles]
             roster_damage_heroes = [
-                hero.slug for entry in roster.roles if entry.role.slot_code == "damage" for hero in entry.top_heroes
+                hero.slug for entry in roster.roles if entry.role == "damage" for hero in entry.top_heroes
             ]
             rows = [
                 (role, priority, slug)
@@ -877,6 +925,7 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
                             models.BalancerRegistrationRoleEntity.priority,
                             models.CatalogEntity.slug,
                         )
+                        .select_from(models.BalancerRegistrationRole)
                         .join(
                             models.BalancerRegistrationRoleEntity,
                             models.BalancerRegistrationRoleEntity.role_id == models.BalancerRegistrationRole.id,

@@ -12,7 +12,7 @@ import {
 } from "@/types/balancer-admin.types";
 import { BalanceResponse, BalancerConfig, PlayerData } from "@/types/balancer.types";
 import { normalizePlayerRole, playerRoleSlotCode } from "@/lib/roster/player-role";
-import { roleOf } from "@/lib/roster/role-ref";
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import { UserRoleType } from "@/types/user.types";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 import { DEFAULT_DIVISION_GRID, getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
@@ -487,8 +487,8 @@ export function createSyntheticPlayerFromRegistration(
     // `is_active` IS "playable" and `rank_value` IS the resolved rank, flex
     // modes included. Nothing is re-derived here.
     role_entries_json: registration.roles.map((role) => ({
-      role: role.role,
-      subtype: role.subrole,
+      role: roleOf(role.role) as BalancerRoleCode,
+      subtype: subRoleSlugOf(role.role),
       priority: role.priority,
       division_number: resolveDivisionFromRankHelper(role.rank_value, grid),
       rank_value: role.rank_value,
@@ -512,10 +512,10 @@ export function createSyntheticApplicationFromRegistration(
   const isFlex = registration.is_flex;
   const primaryRole = isFlex
     ? null
-    : (sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role ?? null);
-  const additionalRoles = isFlex
-    ? sortedRoles.map((role) => role.role)
-    : sortedRoles.filter((role) => role.role !== primaryRole).map((role) => role.role);
+    : roleOf(sortedRoles.find((role) => role.is_primary)?.role ?? sortedRoles[0]?.role);
+  const additionalRoles = sortedRoles
+    .map((role) => roleOf(role.role))
+    .filter((role) => isFlex || role !== primaryRole);
   const battleTag = getRegistrationDisplayName(registration);
 
   return {
@@ -636,9 +636,10 @@ export async function fetchPlayerRankHistoryPreview(
           balancerWorkspaceId
         );
         for (const entry of balancerHistory) {
-          if (latestPerRole.has(entry.role)) continue; // newest already kept
-          latestPerRole.set(entry.role, {
-            role: entry.role,
+          const code = normalizeApplicationRole(roleOf(entry.role));
+          if (!code || latestPerRole.has(code)) continue; // newest already kept
+          latestPerRole.set(code, {
+            role: code,
             rank_value: entry.rank_value,
             division_number: resolveDivisionFromRankHelper(entry.rank_value, grid),
             original_division_number: null,

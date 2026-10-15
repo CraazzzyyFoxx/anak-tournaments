@@ -17,7 +17,6 @@ from urllib.parse import parse_qs, urlparse
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -47,14 +46,11 @@ arrives padded, wrapped in prose or joined to a neighbour — not to decide
 whether a handle is acceptable. Validation happens later, against the canon.
 """
 
-VALID_ROLES = set(REGISTRATION_ROLE_CODES)
-ROLE_ORDER = REGISTRATION_ROLE_CODES
-
 
 class RoleSubroleEntry(TypedDict):
     """Structured role + optional sub-role token — mirrors Pydantic/SQL model shape."""
 
-    role: str  # "tank" | "damage" | "support" | "flex"
+    role: str  # A discipline role code, or the open-slot token.
     subrole: str | None
 
 

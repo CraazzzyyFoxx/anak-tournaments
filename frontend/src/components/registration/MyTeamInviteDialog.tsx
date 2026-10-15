@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf } from "@/lib/roster/role-ref";
 import { Copy } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRef } from "react";
@@ -228,10 +229,10 @@ export default function MyTeamInviteDialog({
                                     slot and should spot a tank without opening a profile. */}
                                 {agent.roles.map((role) => (
                                   <span
-                                    key={role}
+                                    key={`${role.dimension}:${role.role}`}
                                     className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-label text-[color:var(--aqt-fg-muted)]"
                                   >
-                                    {slotLabel(role)}
+                                    {slotLabel(roleOf(role))}
                                   </span>
                                 ))}
                               </span>

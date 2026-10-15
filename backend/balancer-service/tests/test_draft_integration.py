@@ -48,6 +48,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
+from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from src import models  # noqa: E402
@@ -250,11 +251,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
         )
         lead = primary or next(iter(ranks))
+        catalog_roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
         for priority, (role, rank) in enumerate(ranks.items()):
             s.add(
                 BalancerRegistrationRole(
                     registration_id=reg.id,
-                    role=role,
+                    catalog_role=catalog_roles[role],
+                    dimension_id=catalog_roles[role].dimension_id,
                     is_primary=role == lead,
                     priority=priority,
                     rank_value=rank,
@@ -868,7 +871,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             # rank typed in the balancer after seeding show up without a re-seed.
             rosters = await draft_rosters.load(s, draft, list(players))
             self.assertEqual(len(rosters), 9)
-            leads = {rosters[p.id].primary.role.slot_code for p in players}
+            leads = {rosters[p.id].primary.role for p in players}
             self.assertEqual(leads, {"tank", "damage", "support"})
             available = [p for p in players if p.status == DraftPlayerStatus.AVAILABLE.value]
             self.assertEqual(len(available), 6)
@@ -1118,7 +1121,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             roster = rosters.get(player.id)
             if roster is None or roster.primary is None:
                 continue
-            grouped.setdefault(roster.primary.role.slot_code, []).append((roster.best_rank or 0, player.id))
+            grouped.setdefault(roster.primary.role, []).append((roster.best_rank or 0, player.id))
         return {role: [pid for _, pid in sorted(rows)] for role, rows in grouped.items()}
 
     async def test_queue_skips_unsafe_entries_and_hands_autopick_its_first_safe_one(self) -> None:

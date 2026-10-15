@@ -54,8 +54,7 @@ def serialize_registration_role(
     toggles.
     """
     return schemas.BalancerRegistrationRoleRead(
-        role=role.role,
-        subrole=role.subrole,
+        role=role.role_ref,
         priority=role.priority,
         is_primary=role.is_primary,
         rank_value=entry.rank if entry is not None else None,
@@ -90,7 +89,7 @@ def serialize_registration(
     sorted_roles = sorted(roles, key=lambda item: (item.priority, item.role))
     # Every role row is still reported (the editor toggles the ones the engine
     # left out of the roster); the roster is what rates them.
-    entry_by_role = {entry.role.slot_code: entry for entry in roster.roles} if roster is not None else {}
+    entry_by_role = {entry.role: entry for entry in roster.roles} if roster is not None else {}
     resolved_status_meta = (
         status_meta_map["registration"].get(registration.status) if status_meta_map is not None else None
     ) or build_unknown_status_meta("registration", registration.status)

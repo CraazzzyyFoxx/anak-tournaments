@@ -30,6 +30,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import normalize_social_handle  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
+from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src import models  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration.answers import answer_service  # noqa: E402
@@ -69,7 +70,9 @@ def _tournament(*, ends_in: timedelta | None = timedelta(days=1)) -> models.Tour
     A negative delta with ``allow_late_registration`` is the late case: open, and
     every sign-up in it is a reserve.
     """
-    tournament = models.Tournament(id=7, status=TournamentStatus.REGISTRATION, allow_late_registration=True)
+    tournament = models.Tournament(
+        id=7, workspace_id=1, discipline="overwatch", status=TournamentStatus.REGISTRATION, allow_late_registration=True
+    )
     tournament.phase_schedule = [
         models.TournamentPhaseSchedule(
             tournament_id=7,
@@ -121,7 +124,7 @@ class PolicyTests(TestCase):
 
     def test_a_form_with_nothing_open_cannot_be_edited_at_all(self) -> None:
         answered = _registration(custom_fields_json={"vk": "x"}, is_reserve=False)
-        answered.roles = [models.BalancerRegistrationRole(role="tank", is_primary=True, priority=0)]
+        answered.roles = [registration_role(role="tank", is_primary=True, priority=0)]
         # Every schema key now has a stored answer, so the "never answered"
         # exception cannot open anything: this is the whole-form kill switch.
         policy = self_edit_policy(answered, _tournament(), _schema())
@@ -214,6 +217,16 @@ class _RecordingSession:
 
     async def scalar(self, *_args: Any, **_kwargs: Any) -> Any:
         return 42
+
+    async def scalars(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.all.return_value = list(rated_catalog().values())
+        return result
+
+    async def execute(self, *_args: Any, **_kwargs: Any) -> Any:
+        result = mock.Mock()
+        result.unique.return_value.scalars.return_value.first.return_value = _tournament()
+        return result
 
     def begin_nested(self) -> Any:
         return _Savepoint()

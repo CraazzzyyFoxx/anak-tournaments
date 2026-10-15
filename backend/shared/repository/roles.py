@@ -76,6 +76,21 @@ class CatalogRoleRepository(BaseRepository[models.CatalogRole]):
             raise UnknownRole(f"{discipline} has no role {code!r} in dimension {dimension or 'rated'}")
         return row
 
+    async def rated_rows(
+        self, session: AsyncSession, *, discipline: str, workspace_id: int | None
+    ) -> dict[str, models.CatalogRole]:
+        """Module roles and this workspace's sub-roles on the rated dimension, in display order."""
+        dim, role = models.RoleDimension, models.CatalogRole
+        rows = (
+            await session.scalars(
+                sa.select(role)
+                .join(dim, dim.id == role.dimension_id)
+                .where(dim.discipline == discipline, dim.rated.is_(True), _owned_by(workspace_id))
+                .order_by(role.sort_order, role.code)
+            )
+        ).all()
+        return {row.code: row for row in rows}
+
     async def list_sub_roles(
         self,
         session: AsyncSession,

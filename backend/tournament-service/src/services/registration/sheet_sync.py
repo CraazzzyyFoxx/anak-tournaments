@@ -32,10 +32,12 @@ from shared.core import http_status as status
 from shared.core.errors import ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import GAME_PROVIDERS, normalize_social_handle
+from shared.disciplines import DISCIPLINES
 from shared.domain.forms import FormSchema, default_schema, identity_key, schema_from_form
 from shared.domain.roster import FlexRoleMode, flex_role_mode_from_schema
 from shared.repository import (
     BalancerRegistrationRepository,
+    CatalogRoleRepository,
     GoogleSheetBindingRepository,
     GoogleSheetFeedRepository,
 )
@@ -130,12 +132,13 @@ async def _resolve_header_keys(
 def build_mapping_catalog(
     schema: FormSchema | None,
     *,
+    role_codes: tuple[str, ...],
     value_mapping: dict[str, Any] | None = None,
     header_keys: list[str] | None = None,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> dict[str, Any]:
     """Assemble the frontend mapping catalog (targets, parsers, value maps)."""
-    specs = build_target_specs(schema)
+    specs = build_target_specs(schema, role_codes=role_codes)
     default_value_mapping = build_default_value_mapping()
     saved_value_mapping = value_mapping or {}
     effective_value_mapping = {
@@ -175,7 +178,7 @@ def build_mapping_catalog(
         ],
         "custom_fields": [field_def.model_dump() for field_def in schema_custom_fields(schema)],
         "header_keys": header_keys or [],
-        "subrole_catalog": subrole_catalog or {code: [] for code in ("tank", "damage", "support")},
+        "subrole_catalog": subrole_catalog or {code: [] for code in role_codes},
     }
 
 
@@ -185,6 +188,7 @@ def apply_sheet_fields_to_registration(
     values: Mapping[str, Any],
     *,
     schema: FormSchema,
+    catalog_roles: Mapping[str, models.CatalogRole],
     allow_balancer_overwrite: bool,
     mode: FlexRoleMode = "optional",
 ) -> bool:
@@ -201,14 +205,20 @@ def apply_sheet_fields_to_registration(
     resolve inside a loop that runs every five minutes per tournament.
     """
     registration.display_name = parsed_fields.get("display_name") or registration.display_name
-    answer_service.apply(registration, values, schema=schema, hero_catalog=None)
+    answer_service.apply(registration, values, schema=schema, hero_catalog=None, catalog_roles=catalog_roles)
 
     if not allow_balancer_overwrite:
         return False
     registration.admin_notes = parsed_fields.get("admin_notes")
     replace_registration_roles(
         registration,
-        build_registration_role_payloads(parsed_fields),
+        build_registration_role_payloads(
+            parsed_fields,
+            role_codes=tuple(
+                code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None
+            ),
+        ),
+        catalog_roles=catalog_roles,
         mode=mode,
     )
     return True
@@ -284,7 +294,7 @@ class SheetSyncService:
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
         catalog = await resolve_subrole_catalog(session, tournament.workspace_id, discipline=tournament.discipline)
         schema = await self._registration_schema(session, tournament_id)
-        target_specs = target_spec_map(schema)
+        target_specs = target_spec_map(schema, role_codes=tuple(catalog))
         header_keys = await _resolve_header_keys(source_url, existing_feed)
         issues = []
         if mapping_config_json is not None:
@@ -378,7 +388,9 @@ class SheetSyncService:
         rows = await fetch_google_sheet_rows(url)
         headers = rows[0]
         schema = await self._registration_schema(session, tournament_id)
-        return feed, headers, suggest_mapping_from_headers(headers, schema=schema)
+        tournament = await self.common.ensure_tournament_exists(session, tournament_id)
+        role_codes = tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles)
+        return feed, headers, suggest_mapping_from_headers(headers, schema=schema, role_codes=role_codes)
 
     async def get_mapping_catalog(
         self,
@@ -398,6 +410,7 @@ class SheetSyncService:
                 header_keys = await _resolve_header_keys(feed.source_url, feed)
         return build_mapping_catalog(
             schema,
+            role_codes=tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles),
             value_mapping=feed.value_mapping_json if feed else None,
             header_keys=header_keys,
             subrole_catalog=await resolve_subrole_catalog(
@@ -449,6 +462,7 @@ class SheetSyncService:
                 grid=grid,
                 schema=schema,
                 subrole_catalog=subrole_catalog,
+                role_codes=tuple(subrole_catalog),
             )
             fields = result.fields
             source_record_key = fields.get("source_record_key") if fields else None
@@ -597,12 +611,18 @@ class SheetSyncService:
         # non-optional flex mode a sheet row must land with the same role set as any
         # other, so the mode is resolved once per sync rather than per row.
         mode = flex_role_mode_from_schema(schema)
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
+        )
+        role_codes = tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles)
         now = datetime.now(UTC)
 
         try:
             rows = await fetch_google_sheet_rows(feed.source_url, sheet_id=feed.sheet_id, gid=feed.gid)
             headers = rows[0]
-            mapping_config = feed.mapping_config_json or suggest_mapping_from_headers(headers, schema=schema)
+            mapping_config = feed.mapping_config_json or suggest_mapping_from_headers(
+                headers, schema=schema, role_codes=role_codes
+            )
             value_mapping = feed.value_mapping_json or build_default_value_mapping()
             subrole_catalog = await resolve_subrole_catalog(
                 session, tournament.workspace_id, discipline=tournament.discipline
@@ -620,6 +640,7 @@ class SheetSyncService:
                     grid=grid,
                     schema=schema,
                     subrole_catalog=subrole_catalog,
+                    role_codes=role_codes,
                 )
                 for entry in result.errors:
                     if len(row_errors) < SYNC_ERROR_SAMPLE_LIMIT:
@@ -743,10 +764,13 @@ class SheetSyncService:
                         status="approved",
                         submitted_at=parsed_fields.get("submitted_at") or now,
                     )
-                    answer_service.apply(registration, values, schema=schema, hero_catalog=None)
+                    answer_service.apply(
+                        registration, values, schema=schema, hero_catalog=None, catalog_roles=catalog_roles
+                    )
                     replace_registration_roles(
                         registration,
-                        build_registration_role_payloads(parsed_fields),
+                        build_registration_role_payloads(parsed_fields, role_codes=role_codes),
+                        catalog_roles=catalog_roles,
                         mode=mode,
                     )
                     await self.registration_repo.create(session, registration)
@@ -761,6 +785,7 @@ class SheetSyncService:
                         parsed_fields,
                         values,
                         schema=schema,
+                        catalog_roles=catalog_roles,
                         allow_balancer_overwrite=allow_balancer_overwrite,
                         mode=mode,
                     ):

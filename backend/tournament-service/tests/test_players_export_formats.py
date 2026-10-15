@@ -25,7 +25,6 @@ for candidate in (str(BACKEND_ROOT), str(SERVICE_ROOT)):
 
 os.environ.setdefault("DEBUG", "false")
 
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
@@ -65,7 +64,7 @@ def _roster() -> PlayerRoster:
         workspace_member_id=None,
         roles=(
             RosterRole(
-                role=HeroClass.tank,
+                role="tank",
                 rank=3100,
                 source="registration",
                 is_primary=True,

@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import type { SortingFn } from "@tanstack/react-table";
 import { useTranslations, type DateTimeFormatOptions } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
@@ -10,7 +11,7 @@ import { TONE_CLASS } from "@/components/kit/tone";
 import { Badge } from "@/components/ui/badge";
 import { formatAdmissionReason, primaryAdmissionReason } from "@/lib/registration/admission";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS, getRoleIconName, getSubroleLabel } from "@/lib/roster/roles";
+import { ROLE_LABELS, getSubroleLabel } from "@/lib/roster/roles";
 import { answerList } from "@/lib/forms/answers";
 import type { AdminRegistration, AdminRegistrationRole } from "@/types/balancer-admin.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -176,13 +177,13 @@ export function RolesCell({
   return (
     <div className="flex flex-wrap items-start justify-center gap-x-1 gap-y-2">
       {sortedRoles.map((role) => {
-        const subroleLabel = role.subrole ? getSubroleLabel(catalog, role.role, role.subrole) : null;
+        const subroleLabel = subRoleSlugOf(role.role) ? getSubroleLabel(catalog, roleOf(role.role), subRoleSlugOf(role.role)!) : null;
         return (
           <div
-            key={`${role.role}-${role.subrole ?? "base"}-${role.priority}`}
+            key={`${roleOf(role.role)}-${subRoleSlugOf(role.role) ?? "base"}-${role.priority}`}
             className={cn("inline-flex min-w-8 flex-col items-center gap-0.5", !role.is_active && "opacity-50")}
             title={[
-              ROLE_LABELS[role.role] ?? role.role,
+              ROLE_LABELS[roleOf(role.role)] ?? roleOf(role.role),
               subroleLabel,
               role.rank_value != null ? `${role.rank_value}` : t("noRank"),
               role.is_primary ? t("primary") : null,
@@ -198,7 +199,7 @@ export function RolesCell({
                   : "text-[color:var(--aqt-fg-muted)]",
               )}
             >
-              <PlayerRoleIcon role={getRoleIconName(role.role)} size={20} />
+              <PlayerRoleIcon role={roleOf(role.role)} size={20} />
             </span>
             <span className="text-center text-label font-semibold uppercase leading-none tracking-label text-[color:var(--aqt-fg-dim)]">
               {subroleLabel ?? role.rank_value ?? ""}

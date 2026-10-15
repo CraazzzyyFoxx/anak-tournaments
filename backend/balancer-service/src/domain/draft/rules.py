@@ -139,8 +139,7 @@ def validate_captain_roles(
         if seat.captain_role is None:
             continue
         roster = rosters[seat.registration_id]
-        role = HeroClass.from_slot_code(seat.captain_role)
-        if shape.role_slots.get(seat.captain_role, 0) < 1 or role not in roster.playable_roles:
+        if shape.role_slots.get(seat.captain_role, 0) < 1 or seat.captain_role not in roster.playable_roles:
             name = roster.battle_tag or roster.display_name or f"#{roster.registration_id}"
             raise _err(
                 "captain_role_invalid",
@@ -435,7 +434,7 @@ def resolve_pick_slot(
     # A role-less roster has no role to validate against, so a requested role
     # carries no meaning: drop it instead of rejecting the request.
     requested = target_role if shape.has_role_slots else None
-    if not roster.covers(requested):
+    if not roster.covers(requested.slot_code if requested is not None else None):
         raise _err("illegal_role", "Player cannot play the requested role", status_code=422)
     lead = roster.primary
     if lead is None:  # unreachable while ``is_draftable`` holds; never guess a role
@@ -444,7 +443,7 @@ def resolve_pick_slot(
             "This player has no ranked role in the balancer and cannot be picked",
             status_code=422,
         )
-    role = requested or lead.role
+    role = requested or HeroClass.from_slot_code(lead.role)
     if role_openings(shape, counts).get(role, 0) <= 0:
         raise _err(
             "slot_filled",
@@ -529,7 +528,7 @@ def validate_role_edit_request(
         raise _err("player_not_available", "Only a remaining available player can receive an emergency role")
     if player.version != expected_version:
         raise _err("draft_player_stale", "Player snapshot changed; reload the role-edit preview", status_code=409)
-    if roster is not None and role in roster.playable_roles:
+    if roster is not None and role.slot_code in roster.playable_roles:
         raise _err("role_already_exists", f"Player already plays {role.slot_code}", status_code=409)
     if rank_value <= 0:
         raise _err("role_rank_required", "An emergency role needs a rank; a rankless role is not playable")

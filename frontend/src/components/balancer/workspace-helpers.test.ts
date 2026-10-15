@@ -108,24 +108,16 @@ function createRegistration(overrides: Partial<AdminRegistration> = {}): AdminRe
     form_version_stale: false,
     best_rank: 900,
     roles: [
-      {
-        role: "support",
-        subrole: null,
-        is_primary: true,
-        priority: 0,
-        rank_value: 900,
-        is_active: true,
-        is_declared_active: true,
-      },
-      {
-        role: "damage",
-        subrole: null,
-        is_primary: false,
-        priority: 1,
-        rank_value: 700,
-        is_active: true,
-        is_declared_active: true,
-      },
+      { role: {dimension: "player_role", role: "support"}, is_primary: true,
+      priority: 0,
+      rank_value: 900,
+      is_active: true,
+      is_declared_active: true, },
+      { role: {dimension: "player_role", role: "damage"}, is_primary: false,
+      priority: 1,
+      rank_value: 700,
+      is_active: true,
+      is_declared_active: true, },
     ],
     admin_notes: null,
     is_flex: false,
@@ -428,14 +420,10 @@ describe("synthetic registration helpers", () => {
       balancer_status: "injured",
       balancer_status_meta: createStatusMeta("injured", "balancer", "Injured", false, true),
       roles: [
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 900,
-          is_active: true,
-        },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 0,
+        rank_value: 900,
+        is_active: true, },
       ],
     });
 
@@ -452,22 +440,14 @@ describe("synthetic registration helpers", () => {
     const flexRegistration = createRegistration({
       is_flex: true,
       roles: [
-        {
-          role: "tank",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 1100,
-          is_active: true,
-        },
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 1,
-          rank_value: 1200,
-          is_active: true,
-        },
+        { role: {dimension: "player_role", role: "tank"}, is_primary: true,
+        priority: 0,
+        rank_value: 1100,
+        is_active: true, },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 1,
+        rank_value: 1200,
+        is_active: true, },
       ],
     });
     const strictRegistration = createRegistration();
@@ -480,22 +460,14 @@ describe("synthetic registration helpers", () => {
     const registration = createRegistration({
       is_flex: true,
       roles: [
-        {
-          role: "tank",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 1100,
-          is_active: true,
-        },
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 1,
-          rank_value: 1200,
-          is_active: true,
-        },
+        { role: {dimension: "player_role", role: "tank"}, is_primary: true,
+        priority: 0,
+        rank_value: 1100,
+        is_active: true, },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 1,
+        rank_value: 1200,
+        is_active: true, },
       ],
     });
 
@@ -510,15 +482,11 @@ describe("synthetic registration helpers", () => {
   it("copies rank_source onto synthetic role entries", () => {
     const registration = createRegistration({
       roles: [
-        {
-          role: "support",
-          subrole: null,
-          is_primary: true,
-          priority: 0,
-          rank_value: 900,
-          is_active: true,
-          rank_source: "registration",
-        },
+        { role: {dimension: "player_role", role: "support"}, is_primary: true,
+        priority: 0,
+        rank_value: 900,
+        is_active: true,
+        rank_source: "registration", },
       ],
     });
 
@@ -540,8 +508,7 @@ describe("registration role pass-through", () => {
       priority?: number;
     } = {},
   ): AdminRegistrationRole => ({
-    role: roleCode,
-    subrole: extra.subrole ?? null,
+    role: { dimension: "player_role", role: extra.subrole ? `${roleCode}_${extra.subrole}` : roleCode, parent: extra.subrole ? roleCode : null },
     is_primary: true,
     priority: extra.priority ?? 0,
     rank_value: rank,
@@ -645,14 +612,10 @@ describe("registration rank pin save", () => {
     });
     expect(patch.clear_pin).toBe(true);
     expect(patch.roles).toEqual([
-      {
-        role: "support",
-        subrole: null,
-        priority: 1,
-        is_primary: true,
-        rank_value: 900,
-        is_active: true,
-      },
+      { role: {dimension: "player_role", role: "support"}, priority: 1,
+      is_primary: true,
+      rank_value: 900,
+      is_active: true, },
     ]);
   });
 

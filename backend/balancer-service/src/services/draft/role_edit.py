@@ -21,7 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core.enums import HeroClass
 from shared.domain.roster import PlayerRoster
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession
-from shared.models.registration.registration import BalancerRegistrationRole
+from shared.models.registration.registration import BalancerRegistration, BalancerRegistrationRole
+from shared.models.tournament import Tournament
+from shared.repository import CatalogRoleRepository
 from shared.repository.draft import DraftAuditEventRepository, DraftPlayerRepository
 from shared.repository.registration import BalancerRegistrationRoleRepository
 from src.domain.draft import rules
@@ -76,7 +78,7 @@ class DraftRoleEditService:
             return []
         return [
             {
-                "role": entry.role.slot_code,
+                "role": entry.role,
                 "rank_value": entry.rank,
                 "rank_source": entry.source,
                 "is_primary": entry.is_primary,
@@ -116,11 +118,21 @@ class DraftRoleEditService:
                 )
             )
         ) + 1
+        tournament = await session.scalar(
+            sa.select(Tournament)
+            .join(BalancerRegistration, BalancerRegistration.tournament_id == Tournament.id)
+            .where(BalancerRegistration.id == registration_id)
+        )
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id
+        )
+        leaf = catalog_roles[role.slot_code]
         await self.roles_repo.create(
             session,
             BalancerRegistrationRole(
                 registration_id=registration_id,
-                role=role.slot_code,
+                catalog_role=leaf,
+                dimension_id=leaf.dimension_id,
                 is_primary=False,
                 priority=next_priority,
                 rank_value=rank_value,

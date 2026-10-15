@@ -57,6 +57,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
+from shared.testing.roles import rated_catalog  # noqa: E402
 from src import models  # noqa: E402
 
 
@@ -71,8 +72,11 @@ def _fake_sync_session() -> SimpleNamespace:
     result_mock.scalars.return_value.all.return_value = []
     result_mock.scalar_one_or_none.return_value = None
     added: list[object] = []
+    catalog_result = Mock()
+    catalog_result.all.return_value = list(rated_catalog().values())
     return SimpleNamespace(
         execute=AsyncMock(return_value=result_mock),
+        scalars=AsyncMock(return_value=catalog_result),
         commit=AsyncMock(),
         refresh=AsyncMock(),
         flush=AsyncMock(),

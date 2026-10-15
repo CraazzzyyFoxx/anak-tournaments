@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import {
   createElement,
   Fragment,
@@ -215,15 +216,15 @@ function RegistrationRoleChip({
     <div
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium",
-        ROLE_ACCENT_CLASSES[role.role]?.bg,
-        ROLE_ACCENT_CLASSES[role.role]?.border,
-        ROLE_ACCENT_CLASSES[role.role]?.text
+        ROLE_ACCENT_CLASSES[roleOf(role.role)]?.bg,
+        ROLE_ACCENT_CLASSES[roleOf(role.role)]?.border,
+        ROLE_ACCENT_CLASSES[roleOf(role.role)]?.text
       )}
     >
-      <PlayerRoleIcon role={ROLE_TO_ICON[role.role] ?? role.role} size={12} decorative />
-      <span>{getRoleLabel(role.role, t)}</span>
-      {role.subrole && (
-        <span className="text-label opacity-60">({formatSubroleSlug(role.subrole)})</span>
+      <PlayerRoleIcon role={ROLE_TO_ICON[roleOf(role.role)] ?? roleOf(role.role)} size={12} decorative />
+      <span>{getRoleLabel(roleOf(role.role), t)}</span>
+      {subRoleSlugOf(role.role) && (
+        <span className="text-label opacity-60">({formatSubroleSlug(subRoleSlugOf(role.role)!)})</span>
       )}
       {showPrimaryMark && (
         <span className="text-label uppercase tracking-wide opacity-70">
@@ -330,7 +331,7 @@ function MyRegistrationCard({
     registration.queue_role_position != null &&
     registration.queue_role_total != null
       ? (() => {
-          const slot = playerRoleSlotCode(normalizePlayerRole(registration.queue_role));
+          const slot = playerRoleSlotCode(normalizePlayerRole(roleOf(registration.queue_role)));
           return {
             label: t(`common.roles.${slot}`),
             tint: ROLE_TINT[slot],
@@ -850,7 +851,7 @@ function MyRegistrationCard({
                   {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark t={t} />}
                   {secondaryRoles.map((r) => (
                     <RegistrationRoleChip
-                      key={`${r.role}-${r.subrole ?? "base"}-${r.priority}`}
+                      key={`${roleOf(r.role)}-${subRoleSlugOf(r.role) ?? "base"}-${r.priority}`}
                       role={r}
                       showPrimaryMark={false}
                       t={t}

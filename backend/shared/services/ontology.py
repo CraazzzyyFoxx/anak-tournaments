@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ __all__ = (
     "normalize_disciplines_enabled",
     "project_disciplines",
     "rated_leaf",
+    "resolve_form_role",
     "resolve_role_ref",
 )
 
@@ -51,6 +52,28 @@ def normalize_disciplines_enabled(codes: Sequence[str]) -> list[str]:
     return list(dict.fromkeys(codes))
 
 
+def resolve_form_role(
+    catalog_roles: Mapping[str, models.CatalogRole], role: str | None, sub_role: str | None
+) -> models.CatalogRole | None:
+    """Resolve a form's top-level code and unprefixed slug in already-scoped rated rows."""
+    role = normalize_role(role)
+    if not role or role == FLEX_SLOT_CODE:
+        return None
+    top = catalog_roles.get(role)
+    if top is None or top.parent_role_id is not None or top.workspace_id is not None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown_role: {role!r}")
+    code = workspace_sub_role_code(top.code, sub_role)
+    if code is None:
+        return top
+    leaf = catalog_roles.get(code)
+    if leaf is None or leaf.parent_role_id != top.id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"unknown_sub_role: {sub_role!r} is not a sub-role of {role!r} in this workspace",
+        )
+    return leaf
+
+
 async def rated_leaf(
     session: AsyncSession, *, discipline: str, workspace_id: int, role: str | None, sub_role: str | None
 ) -> models.CatalogRole | None:
@@ -59,28 +82,10 @@ async def rated_leaf(
     The form keeps the unprefixed slug; the ontology stores its parent-qualified code.
     No role or ``flex`` means no assignment. Unknown pairs never fall back to a parent.
     """
-    role = normalize_role(role)
-    if not role or role == FLEX_SLOT_CODE:
+    if normalize_role(role) in (None, FLEX_SLOT_CODE):
         return None
-    try:
-        top = await _roles.resolve(session, discipline=discipline, workspace_id=None, dimension=None, code=role)
-    except UnknownRole as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"unknown_role: {exc}") from None
-    code = workspace_sub_role_code(top.code, sub_role)
-    if code is None:
-        return top
-    try:
-        leaf = await _roles.resolve(
-            session, discipline=discipline, workspace_id=workspace_id, dimension=None, code=code
-        )
-    except UnknownRole:
-        leaf = None
-    if leaf is None or leaf.workspace_id != workspace_id or leaf.parent_role_id != top.id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"unknown_sub_role: {sub_role!r} is not a sub-role of {role!r} in this workspace",
-        )
-    return leaf
+    rows = await _roles.rated_rows(session, discipline=discipline, workspace_id=workspace_id)
+    return resolve_form_role(rows, role, sub_role)
 
 
 async def resolve_role_ref(

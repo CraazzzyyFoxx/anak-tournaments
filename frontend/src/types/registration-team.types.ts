@@ -9,6 +9,7 @@
  */
 
 import type { RosterSlotCode } from "@/lib/roster/shape";
+import type { RoleRef } from "@/lib/roster/role-ref";
 import type { RegistrationSubmitInput } from "@/types/registration.types";
 
 /** A registered team's lifecycle. `complete` is NOT terminal — a captain may
@@ -173,8 +174,8 @@ export interface RegistrationTeamInvitePreview {
 export interface RegistrationFreeAgent {
   registration_id: number;
   primary_handle: string;
-  /** Role codes, primary first: the captain is filling one specific slot. */
-  roles: string[];
+  /** Leaf role references, primary first: the captain is filling one specific slot. */
+  roles: RoleRef[];
 }
 
 export interface RegistrationFreeAgentListResponse {

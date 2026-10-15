@@ -22,6 +22,7 @@ from shared.core.enums import (
     DraftStatus,
     HeroClass,
 )
+from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster_shape import RegistrationRoleCode, RosterShape
 from shared.schemas.roster_slots import RosterShapeRead
 from src.domain.draft.ranks import seat_role, slot_rank
@@ -360,17 +361,21 @@ class DraftPlayerRead(BaseRead):
             registration_id=player.registration_id,
             user_id=player.user_id,
             battle_tag=roster.battle_tag if roster is not None else None,
-            primary_role=lead.role.slot_code if lead is not None else None,
-            sub_role=roster.sub_role if roster is not None else None,
+            primary_role=lead.role if lead is not None else None,
+            sub_role=workspace_sub_role_slug(lead.role, lead.subrole) if lead is not None and lead.subrole else None,
             is_flex=bool(roster.is_full_flex) if roster is not None else False,
             status=player.status,
             is_captain=player.is_captain,
             drafted_by_team_id=player.drafted_by_team_id,
             captain_role=seat.slot_code if (player.is_captain and seat is not None) else None,
-            secondary_roles=[role.slot_code for role in roster.secondary_roles] if roster is not None else [],
+            secondary_roles=list(roster.secondary_roles) if roster is not None else [],
             role_ranks=roster.role_ranks if roster is not None else {},
             role_sources=roster.role_sources if roster is not None else {},
-            role_sub_roles=roster.role_sub_roles if roster is not None else {},
+            role_sub_roles={
+                role: workspace_sub_role_slug(role, subrole) for role, subrole in roster.role_sub_roles.items()
+            }
+            if roster is not None
+            else {},
             role_top_heroes=roster.role_top_heroes if roster is not None else {},
             notes=roster.public_notes if roster is not None else None,
             # The player's OWN role under role slots -- a support main is not

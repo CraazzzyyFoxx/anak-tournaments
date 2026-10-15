@@ -17,6 +17,7 @@ import pytest
 import sqlalchemy as sa
 
 from shared.core import enums
+from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.encounter import ScoringRule
 from shared.models.registration.registration import (
     BalancerRegistration,
@@ -72,9 +73,29 @@ def seeded(db):
     db.flush()
     # Saved rank data on two registrations (one approved, one pending); the
     # role without rank_value must NOT count as ranked.
-    db.add(BalancerRegistrationRole(registration_id=regs[0].id, role="tank", is_primary=True, rank_value=2500))
-    db.add(BalancerRegistrationRole(registration_id=regs[1].id, role="damage", is_primary=True, rank_value=None))
-    db.add(BalancerRegistrationRole(registration_id=regs[3].id, role="support", is_primary=True, rank_value=1800))
+    catalog_roles = {
+        row.code: row
+        for row in db.scalars(
+            sa.select(CatalogRole)
+            .join(RoleDimension, RoleDimension.id == CatalogRole.dimension_id)
+            .where(
+                RoleDimension.discipline == t.discipline,
+                RoleDimension.rated.is_(True),
+                CatalogRole.workspace_id.is_(None),
+            )
+        )
+    }
+    for registration, code, rank in ((regs[0], "tank", 2500), (regs[1], "damage", None), (regs[3], "support", 1800)):
+        leaf = catalog_roles[code]
+        db.add(
+            BalancerRegistrationRole(
+                registration_id=registration.id,
+                catalog_role=leaf,
+                dimension_id=leaf.dimension_id,
+                is_primary=True,
+                rank_value=rank,
+            )
+        )
     db.commit()
     try:
         yield ws.id, t.id

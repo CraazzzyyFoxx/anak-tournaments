@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.social import VERIFIABLE_PROVIDERS, normalize_social_handle
+from shared.disciplines import DISCIPLINES
 from shared.domain.forms import (
     IDENTITY_PROVIDERS,
     ErrorCode,
@@ -167,6 +168,14 @@ class RegistrationAnswerService:
         normalized = normalize_answers(schema, answers, partial=partial, enforce_required=enforce_required)
         values = normalized.values
         errors: list[FieldError] = list(normalized.errors)
+        role_codes = tuple(role.code for role in DISCIPLINES[discipline].rated_dimension.roles)
+        for field in schema.fields():
+            if field.kind == "role_ranks" and isinstance(values.get(field.key), dict):
+                unknown = tuple(sorted(set(values[field.key]) - set(role_codes)))
+                if unknown:
+                    errors.append(
+                        FieldError(field.key, ErrorCode.INVALID_OPTION.value, "Not a known role.", {"values": unknown})
+                    )
 
         roles_field = schema.builtin("roles")
         if roles_field is not None and "roles" in values:
@@ -174,6 +183,7 @@ class RegistrationAnswerService:
                 validate_roles(
                     roles_field,
                     values["roles"],
+                    role_codes=role_codes,
                     subrole_catalog=await resolve_subrole_catalog(session, workspace_id, discipline=discipline),
                     hero_catalog=hero_catalog,
                 )
@@ -289,6 +299,7 @@ class RegistrationAnswerService:
         *,
         schema: FormSchema,
         hero_catalog: HeroCatalog | None,
+        catalog_roles: Mapping[str, models.CatalogRole],
     ) -> None:
         """Write validated answers onto a registration (and its child rows).
 
@@ -303,7 +314,13 @@ class RegistrationAnswerService:
             setattr(registration, column, bool(value) if column in _BOOL_COLUMNS else (value or None))
         self._apply_identities(registration, values, schema=schema)
         if "roles" in values:
-            self._apply_roles(registration, values["roles"] or [], schema=schema, hero_catalog=hero_catalog)
+            self._apply_roles(
+                registration,
+                values["roles"] or [],
+                schema=schema,
+                hero_catalog=hero_catalog,
+                catalog_roles=catalog_roles,
+            )
         custom = custom_answers(values)
         if custom:
             registration.custom_fields_json = merge_custom_answers(registration.custom_fields_json, custom) or None
@@ -358,6 +375,7 @@ class RegistrationAnswerService:
         *,
         schema: FormSchema,
         hero_catalog: HeroCatalog | None,
+        catalog_roles: Mapping[str, models.CatalogRole],
     ) -> None:
         """Replace the role set, KEEPING the rank of every role that survives.
 
@@ -371,6 +389,10 @@ class RegistrationAnswerService:
         params = RolesParams.model_validate(roles_field.params) if roles_field is not None else RolesParams()
         entries = build_registration_roles(
             roles,
+            catalog_roles=catalog_roles,
+            role_codes=tuple(
+                code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None
+            ),
             hero_catalog=hero_catalog,
             max_heroes=params.top_heroes.max,
             mode=flex_role_mode_from_schema(schema),
@@ -382,7 +404,8 @@ class RegistrationAnswerService:
             if row is None:
                 merged.append(entry)
                 continue
-            row.subrole = entry.subrole
+            row.catalog_role = entry.catalog_role
+            row.dimension_id = entry.dimension_id
             row.is_primary = entry.is_primary
             row.priority = entry.priority
             if hero_catalog is not None:

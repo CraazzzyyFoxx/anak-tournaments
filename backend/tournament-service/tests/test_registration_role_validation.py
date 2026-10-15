@@ -28,6 +28,7 @@ roles_rules = importlib.import_module("src.services.registration.roles_rules")
 reg_common = importlib.import_module("src.services.registration._common")
 
 from shared.core import enums  # noqa: E402
+from shared.core.errors import BaseAPIException  # noqa: E402
 from shared.domain.forms.schema import FormField  # noqa: E402
 from shared.domain.player_sub_roles import (  # noqa: E402
     build_subrole_catalog,
@@ -35,6 +36,7 @@ from shared.domain.player_sub_roles import (  # noqa: E402
 )
 from shared.domain.roles import DimensionNode, Ontology, RoleNode  # noqa: E402
 from shared.hero_catalog import HeroCatalogEntry  # noqa: E402
+from shared.testing.roles import rated_catalog  # noqa: E402
 
 
 def _field(**params: Any) -> FormField:
@@ -54,6 +56,7 @@ def _codes(
         roles,
         subrole_catalog=subrole_catalog,
         hero_catalog=hero_catalog,
+        role_codes=ROLE_CODES,
     )
     assert {error.field for error in errors} <= {"roles"}
     return [error.code for error in errors]
@@ -69,6 +72,53 @@ HERO_CATALOG = {
 }
 
 TOP_HEROES_ON = {"enabled": True}
+
+ROLE_CODES = ("tank", "damage", "support")
+CATALOG_ROLES = rated_catalog(sub_roles={"damage": ("hitscan",)})
+
+
+def test_builder_resolves_form_suffix_to_parent_qualified_leaf() -> None:
+    entries = reg_common.build_registration_roles(
+        [{"role": "damage", "subrole": "Hitscan", "is_primary": True}],
+        catalog_roles=CATALOG_ROLES,
+        role_codes=ROLE_CODES,
+    )
+    assert [(entry.role, entry.subrole, entry.catalog_role.id) for entry in entries] == [
+        ("damage", "damage_hitscan", 4),
+    ]
+
+
+def test_builder_drops_unknown_subrole_without_losing_top_role() -> None:
+    entries = reg_common.build_registration_roles(
+        [{"role": "support", "subrole": "hitscan"}],
+        catalog_roles=CATALOG_ROLES,
+        role_codes=ROLE_CODES,
+    )
+    assert [(entry.role, entry.subrole) for entry in entries] == [("support", None)]
+
+
+class RoleRefInputTests(TestCase):
+    def test_parentless_leaf_and_forged_parent_resolve_to_the_real_parent(self) -> None:
+        for parent in (None, "support"):
+            row = reg_common._role_row(
+                CATALOG_ROLES, {"dimension": "player_role", "role": "damage_hitscan", "parent": parent}, None
+            )
+            assert row.catalog_role is CATALOG_ROLES["damage_hitscan"]
+            assert row.role_ref.model_dump() == {
+                "dimension": "player_role",
+                "role": "damage_hitscan",
+                "parent": "damage",
+            }
+
+    def test_role_ref_requires_the_rated_dimension_and_scoped_leaf(self) -> None:
+        for ref, detail in (
+            ({"dimension": "lane", "role": "damage"}, "role_dimension_mismatch"),
+            ({"dimension": "player_role", "role": "support_other_workspace"}, "unknown_role"),
+        ):
+            with self.assertRaises(BaseAPIException) as caught:
+                reg_common._role_row(CATALOG_ROLES, ref, None)
+            assert caught.exception.status_code == 422
+            assert detail in caught.exception.detail
 
 
 def _role_input(**spec) -> SimpleNamespace:
@@ -151,18 +201,22 @@ class ValidateRolesTests(TestCase):
 class BuildRegistrationRolesTests(TestCase):
     def test_normalizes_subrole(self) -> None:
         entries = reg_common.build_registration_roles(
-            [_role_input(role="damage", subrole="Main Damage", is_primary=True)]
+            [_role_input(role="damage", subrole="Hitscan", is_primary=True)],
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
         assert len(entries) == 1
         assert entries[0].role == "damage"
-        assert entries[0].subrole == "main_damage"
+        assert entries[0].subrole == "damage_hitscan"
 
     def test_filters_invalid_role(self) -> None:
         entries = reg_common.build_registration_roles(
             [
                 _role_input(role="flex", is_primary=True),
                 _role_input(role="damage", is_primary=True),
-            ]
+            ],
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
         assert [entry.role for entry in entries] == ["damage"]
 
@@ -172,13 +226,15 @@ class BuildRegistrationRolesTests(TestCase):
                 _role_input(role="damage", is_primary=True),
                 _role_input(role="damage", is_primary=False),
                 _role_input(role="support", is_primary=False),
-            ]
+            ],
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
         assert [entry.role for entry in entries] == ["damage", "support"]
         assert [entry.priority for entry in entries] == [0, 1]
 
     def test_handles_none(self) -> None:
-        assert reg_common.build_registration_roles(None) == []
+        assert reg_common.build_registration_roles(None, catalog_roles=CATALOG_ROLES, role_codes=ROLE_CODES) == []
 
 
 class TopHeroValidationTests(TestCase):
@@ -328,6 +384,8 @@ class BuildRegistrationRoleHeroesTests(TestCase):
         entries = reg_common.build_registration_roles(
             [_role_input(role="damage", is_primary=True, top_heroes=["ashe", "genji"])],
             hero_catalog=HERO_CATALOG,
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
         heroes = entries[0].hero_entries
         assert [(h.entity_id, h.priority) for h in heroes] == [(3, 1), (4, 2)]
@@ -337,12 +395,16 @@ class BuildRegistrationRoleHeroesTests(TestCase):
             [_role_input(role="damage", is_primary=True, top_heroes=["ashe", "genji", "ashe", "nobody"])],
             hero_catalog=HERO_CATALOG,
             max_heroes=2,
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
         assert [h.entity_id for h in entries[0].hero_entries] == [3, 4]
 
     def test_no_catalog_means_no_hero_entries(self) -> None:
         entries = reg_common.build_registration_roles(
-            [_role_input(role="damage", is_primary=True, top_heroes=["ashe"])]
+            [_role_input(role="damage", is_primary=True, top_heroes=["ashe"])],
+            catalog_roles=CATALOG_ROLES,
+            role_codes=ROLE_CODES,
         )
         assert list(entries[0].hero_entries) == []
 

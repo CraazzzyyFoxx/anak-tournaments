@@ -13,6 +13,7 @@ import asyncio
 import importlib
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -27,6 +28,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 from shared.core.enums import DraftStatus, HeroClass  # noqa: E402
 from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession  # noqa: E402
 from shared.models.registration.registration import BalancerRegistrationRole  # noqa: E402
+from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src.domain.draft import entities as feasibility  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
 from tests.factories import roster  # noqa: E402
@@ -196,7 +198,11 @@ class _FakeSession:
     """
 
     def __init__(self, existing: BalancerRegistrationRole | None = None, max_priority: int = 2) -> None:
-        self._scalars: list = [existing] if existing is not None else [None, max_priority]
+        self._scalars: list = (
+            [existing]
+            if existing is not None
+            else [None, max_priority, SimpleNamespace(discipline="overwatch", workspace_id=1)]
+        )
         self.added: list[object] = []
 
     def add(self, value: object) -> None:
@@ -204,6 +210,9 @@ class _FakeSession:
 
     async def scalar(self, _statement):
         return self._scalars.pop(0)
+
+    async def scalars(self, _statement):
+        return SimpleNamespace(all=lambda: list(rated_catalog().values()))
 
     async def flush(self) -> None:
         return None
@@ -296,7 +305,7 @@ def test_apply_role_edit_reactivates_an_existing_inactive_registration_role() ->
     # parse, so it sits there inactive. Inserting a second row would violate
     # uq_balancer_registration_role, and leaving is_active=False would keep the
     # role unplayable -- the edit has to flip both fields on the row that exists.
-    existing = BalancerRegistrationRole(
+    existing = registration_role(
         registration_id=120,
         role="support",
         is_primary=False,

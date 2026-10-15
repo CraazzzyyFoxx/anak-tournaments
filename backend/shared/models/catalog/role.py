@@ -19,14 +19,18 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
+from sqlalchemy.sql import ColumnElement
+from sqlalchemy.sql.selectable import ScalarSelect
 
 from shared.core import db
 
-__all__ = ("CatalogRole", "RoleDimension")
+__all__ = ("CatalogRole", "RoleDimension", "leaf_code")
 
 
 class RoleDimension(db.Base):
@@ -97,3 +101,13 @@ class CatalogRole(db.TimeStampIntegerMixin):
         lazy="joined",
         join_depth=2,
     )
+
+
+def leaf_code(role_id: ColumnElement[int], *, top: bool) -> ScalarSelect[str | None]:
+    """SQL projection of a leaf's top-level code, or its code only when it is a sub-role."""
+    leaf, parent = aliased(CatalogRole), aliased(CatalogRole)
+    code = func.coalesce(parent.code, leaf.code) if top else leaf.code
+    query = select(code).select_from(leaf).outerjoin(parent, parent.id == leaf.parent_role_id).where(leaf.id == role_id)
+    if not top:
+        query = query.where(leaf.parent_role_id.is_not(None))
+    return query.scalar_subquery()

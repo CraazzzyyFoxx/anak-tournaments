@@ -286,8 +286,7 @@ def _reg_to_read(
         # ``is_primary``/``priority`` come from the same place for the same reason.
         roles = [
             RegistrationRoleRead(
-                role=entry.role.slot_code,
-                subrole=entry.subrole,
+                role=RoleRef.of(discipline(reg.tournament.discipline).rated_dimension.code, entry.role, entry.subrole),
                 is_primary=entry.is_primary,
                 priority=entry.priority,
                 # The engine's answer, or nothing: a role it did not rate is a role
@@ -301,8 +300,7 @@ def _reg_to_read(
     else:
         roles = [
             RegistrationRoleRead(
-                role=r.role,
-                subrole=r.subrole,
+                role=r.role_ref,
                 is_primary=r.is_primary,
                 priority=r.priority,
                 rank_value=None,
@@ -364,7 +362,9 @@ def _reg_to_read(
         submitted_late=submitted_late,
         queue_position=queue.position if queue is not None else None,
         queue_total=queue.total if queue is not None else None,
-        queue_role=queue.role if queue is not None else None,
+        queue_role=RoleRef.of(discipline(reg.tournament.discipline).rated_dimension.code, queue.role)
+        if queue is not None
+        else None,
         queue_role_position=queue.role_position if queue is not None else None,
         queue_role_total=queue.role_total if queue is not None else None,
         can_edit=bool(self_edit is not None and self_edit.can_edit),

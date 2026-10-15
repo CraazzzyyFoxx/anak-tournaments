@@ -226,6 +226,15 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   registration columns and `balancer.registration_identity` rows, organizer-defined fields
   in `registration.custom_fields_json`. Every field declares its visibility, which is what
   keeps organizer-only answers off the public roster.
+- **Registration role ontology (P2).** `balancer.registration_role` stores a rated
+  `catalog.role` leaf through `(role_id, dimension_id)`, unique per registration
+  and leaf. Its top-level role and qualified sub-role code are derived, never
+  written to the legacy columns. Registration API roles use `RoleRef`
+  (`dimension`, leaf `role`, output-only `parent`); form answers deliberately
+  retain `{role, subrole?, is_primary, top_heroes?}` with an unprefixed sub-role
+  slug. Both writers resolve against the tournament discipline and owning
+  workspace. The roster engine uses module role codes rather than Overwatch
+  enums; pre-P2 balancer/draft payload adapters retain their existing shapes.
 - **RBAC.** Grant-only permission catalog + workspace system roles, with a
   `user_permission_deny` overlay. Bootstrapped from `backend/shared/rbac/`.
 - **Migrations.** A single Alembic project under `backend/migrations/`. `make migrate` runs

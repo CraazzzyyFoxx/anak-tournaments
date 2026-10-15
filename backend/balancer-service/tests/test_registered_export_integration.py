@@ -44,6 +44,7 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
+from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from src import models  # noqa: E402
@@ -155,6 +156,9 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
         await session.flush()
 
         first_registration_id: int | None = None
+        catalog_roles = await CatalogRoleRepository().rated_rows(
+            session, discipline="overwatch", workspace_id=self.workspace_id
+        )
         for member_index, slot_code, rank, is_substitute in roster:
             tag = f"m{member_index}-{self.suffix}#1111"
             registration = BalancerRegistration(
@@ -180,7 +184,8 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             session.add(
                 BalancerRegistrationRole(
                     registration_id=registration.id,
-                    role=slot_code,
+                    catalog_role=catalog_roles[slot_code],
+                    dimension_id=catalog_roles[slot_code].dimension_id,
                     is_primary=True,
                     priority=0,
                     rank_value=rank,

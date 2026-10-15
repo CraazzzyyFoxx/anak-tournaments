@@ -17,7 +17,6 @@ from types import SimpleNamespace
 
 # Importing the read model instantiates the service Settings(); this file used
 # to rely on whichever sibling test module happened to be collected first.
-from shared.core.enums import HeroClass  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
 
@@ -38,7 +37,7 @@ def _roster(rank: int | None, source: str = "registration", *extra: RosterRole) 
         workspace_member_id=None,
         roles=(
             RosterRole(
-                role=HeroClass.tank,
+                role="tank",
                 rank=rank,
                 source=source if rank is not None else "none",
                 is_primary=True,
@@ -66,6 +65,7 @@ def _reg_stub() -> SimpleNamespace:
     return SimpleNamespace(
         id=1,
         tournament_id=78,
+        tournament=SimpleNamespace(discipline="overwatch"),
         workspace_member=SimpleNamespace(player_id=42),
         identities=identities,
         primary_game_identity=lambda: identities[0],
@@ -164,13 +164,11 @@ def test_public_roles_come_from_the_roster_not_the_rows():
     stub.roles = [
         SimpleNamespace(role="tank", subrole=None, is_primary=True, priority=0, rank_value=3200, hero_entries=[])
     ]
-    synthesized = RosterRole(
-        role=HeroClass.damage, rank=None, source="none", is_primary=False, priority=1, subrole=None
-    )
+    synthesized = RosterRole(role="damage", rank=None, source="none", is_primary=False, priority=1, subrole=None)
 
     read = _reg_to_read(stub, workspace_id=1, show_ranks=True, roster=_roster(3200, "registration", synthesized))
 
-    assert [(role.role, role.rank_value) for role in read.roles] == [("tank", 3200), ("damage", None)]
+    assert [(role.role.role, role.rank_value) for role in read.roles] == [("tank", 3200), ("damage", None)]
 
 
 def test_read_payload_includes_profile_visibility():

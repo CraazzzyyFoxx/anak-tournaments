@@ -29,6 +29,7 @@ from shared.models.registration.registration import (
 )
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
+from shared.repository import CatalogRoleRepository
 from shared.testing import create_test_async_engine  # noqa: E402
 from src import models
 from src.domain.draft.entities import PoolSeat
@@ -113,11 +114,13 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
                 handle_normalized=tag.lower(),
             )
         )
+        catalog_roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
         for priority, (role, rank) in enumerate(ranks.items()):
             s.add(
                 BalancerRegistrationRole(
                     registration_id=reg.id,
-                    role=role,
+                    catalog_role=catalog_roles[role],
+                    dimension_id=catalog_roles[role].dimension_id,
                     is_primary=priority == 0,
                     priority=priority,
                     rank_value=rank,

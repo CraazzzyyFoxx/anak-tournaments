@@ -268,11 +268,19 @@ function sameValue(a: unknown, b: unknown): boolean {
  */
 const IDENTITY_KEYS = ["id", "role", "provider", "key", "slug", "name"] as const;
 
+function listIdentity(value: unknown): string | number | null {
+  if (typeof value === "string" || typeof value === "number") return value;
+  if (isAuditRecord(value) && typeof value.dimension === "string" && typeof value.role === "string") {
+    return `${value.dimension}:${value.role}`;
+  }
+  return null;
+}
+
 /** Lists of records as records keyed by element identity, `#1…` when none holds. */
 function keyedLists(lists: AuditRecord[][]): AuditRecord[] {
   const key = IDENTITY_KEYS.find((candidate) =>
     lists.every((list) => {
-      const ids = list.map((item) => item[candidate]);
+      const ids = list.map((item) => listIdentity(item[candidate]));
       return (
         ids.every((id) => typeof id === "string" || typeof id === "number") &&
         new Set(ids).size === ids.length
@@ -285,7 +293,7 @@ function keyedLists(lists: AuditRecord[][]): AuditRecord[] {
         if (key == null) return [`#${index + 1}`, item];
         // The row is already labelled with it.
         const { [key]: id, ...rest } = item;
-        return [String(id), rest];
+        return [String(listIdentity(id)), rest];
       }),
     ),
   );

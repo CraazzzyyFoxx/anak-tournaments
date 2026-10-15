@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { aggregateRoleStats, roleOf, subRoleOf, toRoleRef } from "@/lib/roster/role-ref";
+import { aggregateRoleStats, roleOf, subRoleOf, subRoleSlugOf, toRoleRef } from "@/lib/roster/role-ref";
 
 describe("role refs", () => {
   it("reads the top-level role and the sub-role off a leaf", () => {
@@ -13,6 +13,12 @@ describe("role refs", () => {
     expect(toRoleRef("damage", "damage_hitscan", "player_role")).toEqual({ dimension: "player_role", role: "damage_hitscan" });
     expect(toRoleRef("tank", null, "player_role")).toEqual({ dimension: "player_role", role: "tank" });
     expect(toRoleRef(null, null, "player_role")).toBeNull();
+  });
+
+  it("keeps form suffixes distinct from qualified leaves", () => {
+    expect(subRoleSlugOf({ dimension: "player_role", role: "damage_hitscan", parent: "damage" })).toBe("hitscan");
+    expect(subRoleSlugOf({ dimension: "player_role", role: "support_support_main", parent: "support" })).toBe("support_main");
+    expect(subRoleSlugOf({ dimension: "player_role", role: "tank" })).toBeNull();
   });
 
   it("sums leaves by dimension and parent without merging games or inventing a Flex role", () => {

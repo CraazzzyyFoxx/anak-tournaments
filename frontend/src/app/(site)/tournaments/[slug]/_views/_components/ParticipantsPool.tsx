@@ -1,5 +1,6 @@
 "use client";
 
+import { roleOf } from "@/lib/roster/role-ref";
 import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
 import type { CSSProperties } from "react";
@@ -130,7 +131,7 @@ function topHeroes(role: RegistrationRole, heroesMap: Map<string, Hero>, limit: 
   for (const slug of role.top_heroes ?? []) {
     if (!slug || heroes.length >= limit) continue;
     const hero = heroesMap.get(slug);
-    heroes.push(hero ?? ({ name: slug, slug, image_path: "", role: role.role } as Hero));
+    heroes.push(hero ?? ({ name: slug, slug, image_path: "", role: roleOf(role.role) } as Hero));
   }
   return heroes;
 }
@@ -169,7 +170,7 @@ function PoolRow({
   const flexTitle = isFlex
     ? t("tournamentDetail.participantsPool.flexTitle", {
         roles: (registration.roles ?? [])
-          .map((declared) => getRoleLabel(declared.role, t))
+          .map((declared) => getRoleLabel(roleOf(declared.role), t))
           .join(" · ")
       })
     : null;
@@ -370,7 +371,7 @@ export default function ParticipantsPool({
     const declared = new Set<string>();
     for (const registration of active) {
       for (const role of registration.roles ?? []) {
-        if (role.role) declared.add(role.role);
+        if (roleOf(role.role)) declared.add(roleOf(role.role));
       }
     }
     const extra = [...declared]
@@ -402,7 +403,7 @@ export default function ParticipantsPool({
       const roles = registration.roles ?? [];
       const isFlex = roles.length > 1;
       for (const role of roles) {
-        const bucket = grouped.get(role.role);
+        const bucket = grouped.get(roleOf(role.role));
         if (!bucket) continue;
         const entryDivision = resolveDivisionFromRank(divisionGrid, role.rank_value);
         if (division != null && entryDivision !== division) continue;

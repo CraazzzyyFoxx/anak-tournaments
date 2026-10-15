@@ -28,8 +28,6 @@ from src.domain.registration.utils import (
     parse_integer,
 )
 
-ROLE_CODES = ("tank", "damage", "support")
-
 #: Targets that are FORM ANSWERS: they reach the registration through the
 #: answer pipeline instead of straight onto a column. Everything else a sheet
 #: can map -- ``display_name``, ``admin_notes``, ``submitted_at`` and the
@@ -122,10 +120,6 @@ class MappingTargetSpec:
     aliases: tuple[str, ...] = ()
 
 
-def _role_label(role_code: str) -> str:
-    return {"tank": "Tank", "damage": "Damage", "support": "Support"}[role_code]
-
-
 def _identity_specs() -> list[MappingTargetSpec]:
     """One mappable target per identity provider the form can ask about.
 
@@ -153,7 +147,7 @@ def _identity_specs() -> list[MappingTargetSpec]:
     return specs
 
 
-def _build_builtin_specs() -> tuple[MappingTargetSpec, ...]:
+def _build_builtin_specs(role_codes: tuple[str, ...]) -> tuple[MappingTargetSpec, ...]:
     specs: list[MappingTargetSpec] = [
         MappingTargetSpec(
             key="source_record_key",
@@ -252,8 +246,8 @@ def _build_builtin_specs() -> tuple[MappingTargetSpec, ...]:
         ),
     ]
 
-    for role_code in ROLE_CODES:
-        label = _role_label(role_code)
+    for role_code in role_codes:
+        label = role_code.replace("_", " ").title()
         specs.append(
             MappingTargetSpec(
                 key=f"roles.{role_code}.rank_value",
@@ -291,23 +285,18 @@ def _build_builtin_specs() -> tuple[MappingTargetSpec, ...]:
                 default_parser=PARSER_INTEGER,
             )
         )
-        if role_code != "tank":
-            specs.append(
-                MappingTargetSpec(
-                    key=f"roles.{role_code}.subrole",
-                    label=f"{label} sub-role",
-                    group="roles",
-                    accepted_parsers=(PARSER_SUBROLE_TOKEN,),
-                    default_parser=PARSER_SUBROLE_TOKEN,
-                )
+        specs.append(
+            MappingTargetSpec(
+                key=f"roles.{role_code}.subrole",
+                label=f"{label} sub-role",
+                group="roles",
+                accepted_parsers=(PARSER_SUBROLE_TOKEN,),
+                default_parser=PARSER_SUBROLE_TOKEN,
             )
+        )
 
     return tuple(specs)
 
-
-#: Every builtin target the engine knows HOW to parse. Not what a given
-#: tournament may bind: see :func:`builtin_target_specs`.
-_ALL_BUILTIN_SPECS: tuple[MappingTargetSpec, ...] = _build_builtin_specs()
 
 _CUSTOM_FIELD_PARSER_BY_TYPE: dict[str, str] = {
     "text": PARSER_STRING,
@@ -355,7 +344,7 @@ def schema_custom_fields(schema: FormSchema | None) -> list[FormField]:
     return [field_def for field_def in schema.fields() if not field_def.is_builtin] if schema is not None else []
 
 
-def builtin_target_specs(schema: FormSchema | None) -> tuple[MappingTargetSpec, ...]:
+def builtin_target_specs(schema: FormSchema | None, *, role_codes: tuple[str, ...]) -> tuple[MappingTargetSpec, ...]:
     """The builtin targets THIS form can receive, in catalog order.
 
     An answer target (:data:`ANSWER_TARGET_KEYS`) is offered only when the
@@ -371,16 +360,20 @@ def builtin_target_specs(schema: FormSchema | None) -> tuple[MappingTargetSpec, 
     pipeline never touches.
     """
     declared = {field_def.key for field_def in schema.fields()} if schema is not None else set()
-    return tuple(spec for spec in _ALL_BUILTIN_SPECS if spec.key not in ANSWER_TARGET_KEYS or spec.key in declared)
+    return tuple(
+        spec for spec in _build_builtin_specs(role_codes) if spec.key not in ANSWER_TARGET_KEYS or spec.key in declared
+    )
 
 
-def build_target_specs(schema: FormSchema | None = None) -> tuple[MappingTargetSpec, ...]:
+def build_target_specs(
+    schema: FormSchema | None = None, *, role_codes: tuple[str, ...]
+) -> tuple[MappingTargetSpec, ...]:
     """Every target this form can bind: its builtins plus its custom questions."""
-    return builtin_target_specs(schema) + custom_field_target_specs(schema_custom_fields(schema))
+    return builtin_target_specs(schema, role_codes=role_codes) + custom_field_target_specs(schema_custom_fields(schema))
 
 
-def target_spec_map(schema: FormSchema | None = None) -> dict[str, MappingTargetSpec]:
-    return {spec.key: spec for spec in build_target_specs(schema)}
+def target_spec_map(schema: FormSchema | None = None, *, role_codes: tuple[str, ...]) -> dict[str, MappingTargetSpec]:
+    return {spec.key: spec for spec in build_target_specs(schema, role_codes=role_codes)}
 
 
 # ---------------------------------------------------------------------------
