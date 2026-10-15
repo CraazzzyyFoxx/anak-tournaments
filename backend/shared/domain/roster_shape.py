@@ -1,8 +1,8 @@
 """Per-team roster shape: how many slots of which kind one team has.
 
-The single source of truth for team composition across draft, balancer and UI.
-A slot code is either a registration role (``tank``/``damage``/``support``) or the
-reserved ``flex`` code, meaning "any role fits this slot".
+The D33 projection of a team format (``shared.domain.team_format.slot_shape``) and the single input of draft, balancer
+and slot UI. A slot code is a role code of the discipline's rated dimension or the reserved ``flex`` -- the open slots,
+which are not a role (D86).
 
 Deliberately pure: no I/O, no service imports. Looking a shape up for a
 tournament or workspace, and caching that lookup, lives elsewhere.
@@ -83,11 +83,7 @@ def _validate_team_size(team_size: int) -> None:
 
 @dataclass(frozen=True)
 class RosterShape:
-    """Normalized per-team slot counts: canonical order, no zero entries.
-
-    ``__post_init__`` enforces that invariant, so direct construction and
-    ``parse_roster_slots`` offer the same guarantees.
-    """
+    """Normalized per-team slot counts: role slots in format order, open slots last, no zero entries."""
 
     entries: tuple[tuple[str, int], ...]
 
@@ -103,12 +99,12 @@ class RosterShape:
                 "A roster shape needs at least one slot with a positive count",
             )
 
-        previous_index = -1
-        for code, count in self.entries:
-            if code not in ROSTER_SLOT_CODES:
+        seen: set[str] = set()
+        last = len(self.entries) - 1
+        for index, (code, count) in enumerate(self.entries):
+            if not isinstance(code, str) or not code:
                 raise RosterShapeError(
-                    "roster_slots_unknown_code",
-                    f"Unknown roster slot code {code!r}; valid codes are {', '.join(ROSTER_SLOT_CODES)}",
+                    "roster_slots_unknown_code", f"A roster slot code must be a non-empty string, got {code!r}"
                 )
             # bool is an int subclass -- True would silently pass as 1.
             if isinstance(count, bool) or not isinstance(count, int) or count < 1:
@@ -116,13 +112,12 @@ class RosterShape:
                     "roster_slots_invalid_count",
                     f"Roster slot {code!r} must be a positive integer, got {count!r}",
                 )
-            index = ROSTER_SLOT_CODES.index(code)
-            if index <= previous_index:
+            if code in seen or (code == FLEX_SLOT_CODE and index != last):
                 raise RosterShapeError(
                     "roster_slots_not_canonical",
-                    f"Roster slots must be unique and ordered as {', '.join(ROSTER_SLOT_CODES)}",
+                    f"Roster slots must be unique, with the open ({FLEX_SLOT_CODE}) slots last",
                 )
-            previous_index = index
+            seen.add(code)
 
         _validate_team_size(self.team_size)
 

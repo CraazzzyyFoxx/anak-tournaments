@@ -1,14 +1,16 @@
-"""What the code knows about a discipline, beside what the DB stores (D25, D48, D83, D101).
+"""What the code knows about a discipline, beside what the DB stores (D25, D31, D48, D83, D88, D101).
 
 Pure declarations and validation, no DB: the pick-ban engine, ruleset validator and game writer read it, and none may do
-IO to answer "does this game have sides".
+IO to answer "does this game have sides". The role ontology and the team-format presets declared here are projected into
+``catalog.role_dimension``/``catalog.role`` at startup (``shared.services.ontology``) and copied into
+``roster.team_format`` (``shared.services.team_format``).
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,11 +20,78 @@ if TYPE_CHECKING:
 #: Pull the module's catalog source into ``catalog.entity`` (commits itself).
 CatalogSync = Callable[["AsyncSession", "CatalogImageMirror"], Awaitable[None]]
 
-__all__ = ("CATALOG_KINDS", "CatalogSync", "DisciplineSpec")
+__all__ = (
+    "CATALOG_KINDS",
+    "CatalogSync",
+    "DimensionSpec",
+    "DisciplineSpec",
+    "FormatDimensionSpec",
+    "FormatRuleSpec",
+    "RoleSpec",
+    "TeamFormatPreset",
+)
 
 #: The core's catalog vocabulary (D101): ``catalog.entity.kind`` and every kind-constant column spell these and
 #: nothing else. What a kind is called in a game's UI is the module's label, not a new kind.
 CATALOG_KINDS: tuple[str, ...] = ("character", "map", "mode")
+
+
+SelectionMode = Literal["single", "multi"]
+DimensionMode = Literal["off", "informational", "preference", "enforced"]
+
+
+@dataclass(frozen=True, slots=True)
+class RoleSpec:
+    """A role the module declares (D31): projected into ``catalog.role`` with ``workspace_id IS NULL``."""
+
+    code: str
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class DimensionSpec:
+    """One axis of a game's roles (§8.3): ``single``/``multi``, and whether ranks hang off it (D32)."""
+
+    code: str
+    name: str
+    selection_mode: SelectionMode
+    rated: bool
+    roles: tuple[RoleSpec, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FormatDimensionSpec:
+    dimension: str
+    mode: DimensionMode
+    player_min_assignments: int | None = None
+    player_max_assignments: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FormatRuleSpec:
+    """A quota on one role. ``None`` is "no rule", never zero (§8.3)."""
+
+    dimension: str
+    role: str
+    hard_min: int | None = None
+    hard_max: int | None = None
+    recommended_min: int | None = None
+    recommended_max: int | None = None
+    include_descendants: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class TeamFormatPreset:
+    """A team format the module offers (D35, D88); an owner gets a copy, never a reference."""
+
+    code: str
+    name: str
+    starter_min: int
+    starter_max: int
+    substitute_min: int = 0
+    substitute_max: int = 0
+    dimensions: tuple[FormatDimensionSpec, ...] = ()
+    rules: tuple[FormatRuleSpec, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +106,30 @@ class DisciplineSpec:
     #: Allowed ``attrs.class`` values of a ``character``; ``()`` leaves the class unchecked.
     character_classes: tuple[str, ...] = ()
     catalog_sync: CatalogSync | None = field(default=None, compare=False)
+    #: The role ontology (D31); exactly one dimension is ``rated`` (D32).
+    dimensions: tuple[DimensionSpec, ...] = ()
+    #: Team-format presets; the first is what an owner without a format of its own gets (D35).
+    team_format_presets: tuple[TeamFormatPreset, ...] = ()
+
+    @property
+    def rated_dimension(self) -> DimensionSpec:
+        rated = [dimension for dimension in self.dimensions if dimension.rated]
+        if len(rated) != 1:
+            raise LookupError(
+                f"discipline {self.code!r} declares {len(rated)} rated dimensions; exactly one is required (D32)"
+            )
+        return rated[0]
+
+    def preset(self, code: str | None = None) -> TeamFormatPreset:
+        """The preset called ``code``; ``None`` is the module's default, its first."""
+        if not self.team_format_presets:
+            raise LookupError(f"discipline {self.code!r} declares no team-format preset")
+        if code is None:
+            return self.team_format_presets[0]
+        for preset in self.team_format_presets:
+            if preset.code == code:
+                return preset
+        raise LookupError(f"discipline {self.code!r} has no team-format preset {code!r}")
 
     def validate_attrs(self, kind: str, attrs: Mapping[str, object]) -> None:
         """Reject catalog values that the public projections cannot read; absent optional keys use defaults."""

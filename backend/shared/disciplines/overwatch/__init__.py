@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from shared.disciplines.spec import DisciplineSpec
+from shared.disciplines.spec import (
+    DimensionSpec,
+    DisciplineSpec,
+    FormatDimensionSpec,
+    FormatRuleSpec,
+    RoleSpec,
+    TeamFormatPreset,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,13 +29,38 @@ async def _catalog_sync(session: AsyncSession, images: CatalogImageMirror) -> No
     await sync_catalog(session, images)
 
 
+PLAYER_ROLE = DimensionSpec(
+    "player_role",
+    "Role",
+    "single",
+    True,
+    (RoleSpec("tank", "Tank"), RoleSpec("damage", "Damage"), RoleSpec("support", "Support")),
+)
+
+#: Today's built-in 5v5 (ex ``DEFAULT_ROSTER_SLOTS``): one tank, two damage, two support, hard.
+ROLE_QUEUE_5V5 = TeamFormatPreset(
+    "role_queue_5v5",
+    "5v5 role queue",
+    5,
+    5,
+    dimensions=(FormatDimensionSpec("player_role", "enforced"),),
+    rules=(
+        FormatRuleSpec("player_role", "tank", hard_min=1, hard_max=1),
+        FormatRuleSpec("player_role", "damage", hard_min=2, hard_max=2),
+        FormatRuleSpec("player_role", "support", hard_min=2, hard_max=2),
+    ),
+)
+
+
 SPEC = DisciplineSpec(
     "overwatch",
     "Overwatch",
     # A map is played attack/defence per round, not per team: no sides.
     (),
     kinds={"character": "Hero", "map": "Map", "mode": "Mode"},
-    # Never "flex": that is a roster role a player holds, not a hero's class (migration ``heroflex0001``).
+    # Never "flex": flex is a slot without a constraint (D86), not a hero's class.
     character_classes=("tank", "damage", "support"),
     catalog_sync=_catalog_sync,
+    dimensions=(PLAYER_ROLE,),
+    team_format_presets=(ROLE_QUEUE_5V5,),
 )

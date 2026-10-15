@@ -173,7 +173,7 @@ def test_rejects_invalid_maps_with_machine_readable_codes(raw: object, code: str
     ("entries", "code"),
     [
         ((), "roster_slots_empty"),
-        ((("healer", 2), ("flex", 2)), "roster_slots_unknown_code"),
+        ((("", 2), ("flex", 2)), "roster_slots_unknown_code"),
         ((("tank", 0), ("flex", 5)), "roster_slots_invalid_count"),
         ((("tank", True), ("flex", 5)), "roster_slots_invalid_count"),
         ((("tank", "1"), ("flex", 5)), "roster_slots_invalid_count"),

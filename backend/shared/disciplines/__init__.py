@@ -9,9 +9,27 @@ from __future__ import annotations
 
 from shared.disciplines.lol import SPEC as _LOL
 from shared.disciplines.overwatch import SPEC as _OVERWATCH
-from shared.disciplines.spec import CATALOG_KINDS, DisciplineSpec
+from shared.disciplines.spec import (
+    CATALOG_KINDS,
+    DimensionSpec,
+    DisciplineSpec,
+    FormatDimensionSpec,
+    FormatRuleSpec,
+    RoleSpec,
+    TeamFormatPreset,
+)
 
-__all__ = ("CATALOG_KINDS", "DISCIPLINES", "DisciplineSpec", "discipline")
+__all__ = (
+    "CATALOG_KINDS",
+    "DISCIPLINES",
+    "DimensionSpec",
+    "DisciplineSpec",
+    "FormatDimensionSpec",
+    "FormatRuleSpec",
+    "RoleSpec",
+    "TeamFormatPreset",
+    "discipline",
+)
 
 DISCIPLINES: dict[str, DisciplineSpec] = {spec.code: spec for spec in (_OVERWATCH, _LOL)}
 

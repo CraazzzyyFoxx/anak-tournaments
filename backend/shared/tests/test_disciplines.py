@@ -315,3 +315,39 @@ def test_a_side_pick_spends_nothing_from_the_pool(sided_discipline):
     )
     assert [step.action for step in steps] == ["side_pick", "pick"]
     assert [step.count for step in steps] == [1, 1]
+
+
+def test_each_module_declares_exactly_one_rated_dimension() -> None:
+    assert DISCIPLINES["overwatch"].rated_dimension.code == "player_role"
+    assert DISCIPLINES["lol"].rated_dimension.code == "position"
+
+
+def test_the_overwatch_ontology_is_tank_damage_support_on_one_single_dimension() -> None:
+    dimension = DISCIPLINES["overwatch"].rated_dimension
+    assert dimension.selection_mode == "single"
+    assert [role.code for role in dimension.roles] == ["tank", "damage", "support"]
+
+
+def test_the_lol_ontology_is_five_single_positions() -> None:
+    dimension = DISCIPLINES["lol"].rated_dimension
+    assert dimension.selection_mode == "single"
+    assert [role.code for role in dimension.roles] == ["top", "jungle", "mid", "bot", "support"]
+
+
+def test_no_module_declares_flex_as_a_role() -> None:
+    # D86: ``flex`` is the open-slot key of slot maps, never a role a player holds.
+    for spec in DISCIPLINES.values():
+        for dimension in spec.dimensions:
+            assert "flex" not in {role.code for role in dimension.roles}
+
+
+def test_the_default_preset_is_the_first_and_an_unknown_one_is_a_lookup_error() -> None:
+    assert DISCIPLINES["overwatch"].preset().code == "role_queue_5v5"
+    assert DISCIPLINES["lol"].preset("open_5v5").starter_max == 5
+    with pytest.raises(LookupError):
+        DISCIPLINES["overwatch"].preset("nope")
+
+
+def test_an_unknown_code_has_no_rated_dimension() -> None:
+    with pytest.raises(LookupError):
+        discipline("chess").rated_dimension  # noqa: B018 -- the property raises
