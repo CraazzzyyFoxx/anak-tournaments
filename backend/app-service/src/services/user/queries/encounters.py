@@ -65,9 +65,9 @@ _HERO_JSON = sa.func.jsonb_build_object(
 
 def _team_encounter_match_identity(
     row: typing.Sequence[typing.Any],
-) -> tuple[int, int, int | None]:
+) -> tuple[int | None, int, int | None]:
     team, encounter, match_id, *_ = row
-    return team.id, encounter.id, match_id
+    return team.id if team is not None else None, encounter.id, match_id
 
 
 def _encounter_match_identity(
@@ -84,6 +84,36 @@ def _user_player_where(user_id: int):
     )
 
 
+def _user_history_seats(user_id: int) -> sa.CompoundSelect:
+    """Current roster seats plus observed participations, including retired history."""
+    live = (
+        sa.select(models.EncounterTeam.id)
+        .join(models.Player, models.Player.team_id == models.EncounterTeam.team_id)
+        .where(models.EncounterTeam.active.is_(True), *_user_player_where(user_id))
+    )
+    observed = (
+        sa.select(models.EncounterTeam.id)
+        .select_from(models.StatsMatchPlayer)
+        .join(_matches, _matches.c.id == models.StatsMatchPlayer.match_id)
+        .join(
+            models.EncounterTeam,
+            sa.and_(
+                models.EncounterTeam.id == models.StatsMatchPlayer.encounter_team_id,
+                models.EncounterTeam.encounter_id == _matches.c.encounter_id,
+            ),
+        )
+        .join(
+            models.WorkspaceMember,
+            sa.and_(
+                models.WorkspaceMember.id == models.StatsMatchPlayer.workspace_member_id,
+                models.WorkspaceMember.workspace_id == _matches.c.workspace_id,
+            ),
+        )
+        .where(models.WorkspaceMember.player_id == user_id)
+    )
+    return live.union(observed)
+
+
 class UserEncounterQueries:
     """Encounter, opponent and roster aggregate reads for one user."""
 
@@ -91,7 +121,7 @@ class UserEncounterQueries:
         self, session: AsyncSession, user_id: int, *, tournament_id: int | None = None
     ) -> typing.Sequence[
         tuple[
-            models.Team,
+            models.Team | None,
             models.Encounter,
             MatchReadContext | None,
             int | None,
@@ -227,15 +257,16 @@ class UserEncounterQueries:
                 overperf_cte.c.value.label("overperformance_score"),
                 overperf_cte.c.pos.label("overperf_pos"),
             )
-            .select_from(models.Player)
+            .select_from(seat.team)
             .options(
                 joinedload(models.Encounter.tournament),
             )
-            .join(models.Team, models.Player.team_id == models.Team.id)
+            .join(models.Encounter, models.Encounter.id == seat.team.encounter_id)
+            .outerjoin(models.Team, models.Team.id == seat.team.team_id)
+            .where(seat.team.id.in_(_user_history_seats(user_id)))
         )
         query = (
-            seat.join(query, models.Player.team_id, duel=False)
-            .join(_matches, models.Encounter.id == _matches.c.encounter_id, isouter=True)
+            query.join(_matches, models.Encounter.id == _matches.c.encounter_id, isouter=True)
             .outerjoin(performance_cte, performance_cte.c.match_id == _matches.c.id)
             .outerjoin(heroes_cte, heroes_cte.c.match_id == _matches.c.id)
             .outerjoin(impact_rank_cte, impact_rank_cte.c.match_id == _matches.c.id)
@@ -244,14 +275,7 @@ class UserEncounterQueries:
                 overperf_cte,
                 sa.and_(overperf_cte.c.match_id == _matches.c.id, overperf_cte.c.user_id == user_id),
             )
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(
-                sa.and_(
-                    models.WorkspaceMember.player_id == user_id,
-                    models.Player.is_substitution.is_(False),
-                    *([models.Team.tournament_id == tournament_id] if tournament_id is not None else []),
-                )
-            )
+            .where(*([models.Encounter.tournament_id == tournament_id] if tournament_id is not None else []))
             .order_by(
                 _PLAYED_AT.asc(),
                 models.Encounter.id.asc(),
@@ -306,23 +330,21 @@ class UserEncounterQueries:
         the viewer's rank (1 = best) among all match participants by
         OverperformanceScore, used to compute the MVP-impact badge.
         """
-        user_player_filter = sa.and_(
-            models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
-            models.Player.is_substitution.is_(False),
-        )
-
         seat = Seat()
-        total_query = seat.join(
-            sa.select(sa.func.count(models.Encounter.id)).select_from(models.Player), models.Player.team_id, duel=False
-        ).where(user_player_filter)
-
-        encounters_query = seat.join(
-            sa.select(models.Encounter, models.Player.id.label("player_id"), _PLAYED_AT.label("played_at")).select_from(
-                models.Player
-            ),
-            models.Player.team_id,
-            duel=False,
-        ).where(user_player_filter)
+        history_seats = _user_history_seats(user_id)
+        total_query = (
+            sa.select(sa.func.count(sa.distinct(models.Encounter.id)))
+            .select_from(seat.team)
+            .join(models.Encounter, models.Encounter.id == seat.team.encounter_id)
+            .where(seat.team.id.in_(history_seats))
+        )
+        encounters_query = (
+            sa.select(models.Encounter, _PLAYED_AT.label("played_at"))
+            .select_from(seat.team)
+            .join(models.Encounter, models.Encounter.id == seat.team.encounter_id)
+            .where(seat.team.id.in_(history_seats))
+            .distinct()
+        )
 
         if workspace_id is not None:
             total_query = total_query.join(
@@ -342,12 +364,18 @@ class UserEncounterQueries:
             )
 
         def apply_filters(q: sa.Select) -> sa.Select:
-            """Apply the Matches-tab filters server-side. Both the count and the
-            result query must get identical filters so pagination stays correct.
-            `models.Player.team_id` is the viewer's team for the encounter (joined
-            above), which lets us express win/loss and opponent-name conditions."""
+            """History may be retired; result filters still use the viewer's live roster seat."""
             if has_logs is not None:
                 q = q.where(models.Encounter.has_logs.is_(has_logs))
+            if result in ("win", "loss", "draw"):
+                q = q.where(
+                    seat.team.active.is_(True),
+                    sa.exists(
+                        sa.select(models.Player.id).where(
+                            models.Player.team_id == seat.team.team_id, *_user_player_where(user_id)
+                        )
+                    ),
+                )
 
             if result == "win":
                 q = q.where(seat.won)

@@ -129,6 +129,7 @@ async def capture_owner_delete(
     )
     matches = sa.select(m.id).where(
         sa.or_(
+            m.encounter_id.in_(encounters),
             m.encounter_game_id.in_(games),
             m.ingest_job_id.in_(deleted_jobs),
             m.workspace_id == workspace_id if workspace_id is not None else sa.false(),

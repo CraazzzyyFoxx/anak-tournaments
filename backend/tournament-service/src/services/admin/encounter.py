@@ -593,9 +593,9 @@ class AdminEncounterService:
     ) -> MatchReadContext:
         binding = (
             await session.execute(
-                select(models.StatsMatch.encounter_game_id, models.EncounterGame.encounter_id)
-                .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
-                .where(models.StatsMatch.id == match_id, models.StatsMatch.discipline == "overwatch")
+                select(models.StatsMatch.encounter_game_id, models.StatsMatch.encounter_id).where(
+                    models.StatsMatch.id == match_id, models.StatsMatch.discipline == "overwatch"
+                )
             )
         ).first()
         if binding is None:
@@ -607,20 +607,21 @@ class AdminEncounterService:
             )
             .with_for_update()
         )
-        await session.execute(
-            select(models.EncounterGame.id)
-            .where(
-                models.EncounterGame.id == binding.encounter_game_id,
+        if binding.encounter_game_id is not None:
+            await session.execute(
+                select(models.EncounterGame.id)
+                .where(
+                    models.EncounterGame.id == binding.encounter_game_id,
+                )
+                .with_for_update()
             )
-            .with_for_update()
-        )
         await session.execute(select(models.StatsMatch.id).where(models.StatsMatch.id == match_id).with_for_update())
         read = (await get_match_reads(session, match_ids=[match_id])).get(match_id)
         if read is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
         changes = data.model_dump(exclude_unset=True)
         if "map_id" in changes and (
-            changes["map_id"] != read.game.map_id
+            (read.game is not None and changes["map_id"] != read.game.map_id)
             or changes["map_id"] != read.match.map_entity_id
             or read.map.discipline != read.match.discipline
         ):

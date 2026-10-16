@@ -3,15 +3,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Swords, Zap, ZapOff, Plus, Skull, Crosshair } from "lucide-react";
-import { TeamWithStats } from "@/types/team.types";
+import type { MatchStatsTeam } from "@/lib/match-stats";
 import { KillFeedEntry, MatchKillFeed, MatchTimelineEvent } from "@/types/killfeed.types";
 import encounterService from "@/services/encounter.service";
 import HeroImage from "@/components/hero/HeroImage";
 
 interface MatchKillFeedTimelineProps {
   matchId: number;
-  home: TeamWithStats | null;
-  away: TeamWithStats | null;
+  home: MatchStatsTeam | null;
+  away: MatchStatsTeam | null;
 }
 
 type Side = "home" | "away";
@@ -20,7 +20,7 @@ const sideColor = (side: Side | null) =>
   side === "home" ? "var(--aqt-teal)" : side === "away" ? "var(--aqt-rose)" : "var(--aqt-fg-muted)";
 
 const teamSide = (teamId: number | null, homeId: number | null, awayId: number | null): Side | null => {
-  if (teamId == null) return null;
+  if (teamId == null || homeId === awayId) return null;
   if (teamId === homeId) return "home";
   if (teamId === awayId) return "away";
   return null;
@@ -109,13 +109,16 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
     const map = new Map<number, string>();
     for (const team of [home, away]) {
       if (team == null) continue;
-      for (const player of team.players) map.set(player.user_id, player.name.split("#")[0]);
+      for (const player of team.players) {
+        if (player.user_id != null) map.set(player.user_id, player.name.split("#")[0]);
+      }
     }
     return map;
   }, [home, away]);
 
-  const homeTeamId = home?.id ?? null;
-  const awayTeamId = away?.id ?? null;
+  // The kill-feed wire still names nullable source teams, not participations.
+  const homeTeamId = home?.team_id ?? null;
+  const awayTeamId = away?.team_id ?? null;
   const nameOf = (userId: number | null) => userId == null ? "—" : nameByUserId.get(userId) ?? "—";
   const sideOf = (teamId: number | null) => teamSide(teamId, homeTeamId, awayTeamId);
 

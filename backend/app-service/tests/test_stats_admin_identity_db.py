@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import copy
+import hashlib
 from importlib import import_module
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, Mock, patch
@@ -238,6 +239,7 @@ class StatsAdminIdentityTests(IsolatedAsyncioTestCase):
         match = models.StatsMatch(
             workspace_id=self.seed["workspace"].id,
             discipline=self.seed["spec"].code,
+            encounter_id=self.seed["encounter"].id,
             encounter_game_id=game.id,
             map_entity_id=self.seed["catalog"][0].id,
         )
@@ -247,8 +249,6 @@ class StatsAdminIdentityTests(IsolatedAsyncioTestCase):
         for rows in observations.values():
             for row in rows:
                 row["match_id"] = match.id
-                if "encounter_game_id" in row:
-                    row["encounter_game_id"] = game.id
                 for key in ("workspace_member_id", "actor_member_id", "target_member_id"):
                     if row.get(key) == self.source_member_id:
                         row[key] = member.id
@@ -326,10 +326,15 @@ class StatsAdminIdentityTests(IsolatedAsyncioTestCase):
             ),
         )
 
-    async def test_raw_download_uses_prepared_reference_after_real_visibility_gate(self):
+    async def test_unbound_raw_download_checks_owner_before_source_state_and_bytes(self):
+        raw = b"original prepared bytes\x00\xff"
         job = await self._job()
+        job.content_hash = hashlib.sha256(raw).hexdigest().upper()
         self.seed["match"].ingest_job_id = job.id
+        self.seed["match"].encounter_game_id = None
         self.seed["tournament"].is_hidden = True
+        # Source hints are not permission to read the observation's real owner.
+        job.hint_tournament_id = None
         await self.session.commit()
         handlers = {}
 
@@ -344,11 +349,11 @@ class StatsAdminIdentityTests(IsolatedAsyncioTestCase):
         binary.register(Broker(), Mock())
         storage = import_module("src.services.workspace.binary")
         accessed = []
-        raw = b"original prepared bytes\x00\xff"
+        response_bytes = raw
 
         async def get_object(key):
             accessed.append(key)
-            return raw if key == "prepared/nested/original-object" else None
+            return response_bytes if key == "prepared/nested/original-object" else None
 
         with patch.object(binary, "_SF", self.factory), patch.object(storage.s3_client, "get_object", get_object):
             handler = handlers["rpc.app.matches.log"]
@@ -383,6 +388,62 @@ class StatsAdminIdentityTests(IsolatedAsyncioTestCase):
             self.assertEqual(raw, base64.b64decode(allowed["data"]["content_b64"]))
             self.assertEqual("display.txt", allowed["data"]["filename"])
             self.assertEqual(["prepared/nested/original-object"], accessed)
+            original_hash = job.content_hash
+            for raw_status, content_hash, expected_code in (
+                (models.RawSourceStatus.MISSING, original_hash, "not_found"),
+                (models.RawSourceStatus.CONFLICT, original_hash, "conflict"),
+                (models.RawSourceStatus.UNVERIFIED, original_hash, "conflict"),
+                (models.RawSourceStatus.UNVERIFIED, None, "conflict"),
+            ):
+                with self.subTest(raw_status=raw_status, content_hash=content_hash):
+                    job.raw_status = raw_status
+                    job.content_hash = content_hash
+                    await self.session.commit()
+                    accessed.clear()
+                    hidden = await handler({"id": self.seed["match"].id}, None)
+                    self.assertEqual("not_found", hidden["error"]["code"])
+                    refused = await handler(
+                        {
+                            "id": self.seed["match"].id,
+                            "identity": {"user_id": 1, "is_active": True, "is_superuser": True},
+                        },
+                        None,
+                    )
+                    self.assertEqual(expected_code, refused["error"]["code"])
+                    self.assertEqual([], accessed)
+
+            for content_hash in (None, "unknown"):
+                accessed.clear()
+                with self.assertRaises(BaseAPIException) as refused:
+                    await storage.workspace_binary.fetch_log_bytes(
+                        job.raw_ref, raw_status=models.RawSourceStatus.AVAILABLE, content_hash=content_hash
+                    )
+                self.assertEqual(409, refused.exception.status_code)
+                self.assertEqual([], accessed)
+
+            job.raw_status = models.RawSourceStatus.AVAILABLE
+            job.content_hash = original_hash
+            await self.session.commit()
+            for response_bytes, expected_code in (
+                (b"corrupted bytes", "conflict"),
+                (None, "not_found"),
+                (b"", "conflict"),
+            ):
+                with self.subTest(response_bytes=response_bytes):
+                    accessed.clear()
+                    refused = await handler(
+                        {
+                            "id": self.seed["match"].id,
+                            "identity": {"user_id": 1, "is_active": True, "is_superuser": True},
+                        },
+                        None,
+                    )
+                    self.assertEqual(expected_code, refused["error"]["code"])
+                    self.assertEqual(["prepared/nested/original-object"], accessed)
+            await self.session.refresh(job)
+            self.assertEqual(original_hash, job.content_hash)
+            self.assertEqual("prepared/nested/original-object", job.raw_ref)
+            self.assertEqual(models.RawSourceStatus.AVAILABLE, job.raw_status)
 
     async def test_auth_merge_preserves_member_and_chains_key_deletion_before_identity(self):
         from shared.schemas.user_merge_auth import AuthMergeOAuthDestination, AuthMergePolicy
@@ -570,8 +631,12 @@ class StatsAdminIdentityTests(IsolatedAsyncioTestCase):
 
     async def test_missing_raw_job_is_not_a_reconstructed_object_key(self):
         service = import_module("src.services.workspace.binary").workspace_binary
+        raw_ref, _, tournament_id, raw_status, content_hash = await service.resolve_match_log_ref(
+            self.session, self.seed["match"].id
+        )
+        self.assertEqual(self.seed["tournament"].id, tournament_id)
         with self.assertRaises(BaseAPIException) as caught:
-            await service.resolve_match_log_ref(self.session, self.seed["match"].id)
+            await service.fetch_log_bytes(raw_ref, raw_status=raw_status, content_hash=content_hash)
         self.assertEqual(404, caught.exception.status_code)
 
     async def test_member_evidence_chunks_cover_each_original_member_once(self):

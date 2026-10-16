@@ -87,9 +87,6 @@ def classifications(conn):
 # Each corruption is committed in its own isolated legacy clone. No mocked SQL
 # results: both the preflight and real Alembic process see the actual bad rows.
 REFUSALS = (
-    ("1_game_binding", "UPDATE encounter.game SET state='cancelled' WHERE encounter_id=:encounter"),
-    ("1_game_binding", "UPDATE matches.match SET map_index=1,map_id=:map WHERE id=:match_no_raw"),
-    ("1_game_binding", "UPDATE matches.match SET map_index=1,map_id=:map_other WHERE id=:match"),
     ("2_missing_member", "UPDATE matches.event SET user_id=:player_no_member WHERE match_id=:match"),
     ("3_team_binding", "UPDATE matches.match SET home_team_id=away_team_id WHERE id=:match"),
     (
@@ -99,6 +96,16 @@ REFUSALS = (
     (
         "3_team_binding",
         "UPDATE matches.event SET related_user_id=:player_event_only,related_team_id=NULL WHERE match_id=:match",
+    ),
+    (
+        "3_team_binding",
+        "UPDATE encounter.team SET team_id=NULL WHERE encounter_id=:encounter AND team_id=:team_away",
+    ),
+    (
+        "3_team_binding",
+        "INSERT INTO encounter.team(encounter_id,tournament_id,team_id,slot,name,active) "
+        "SELECT encounter_id,tournament_id,team_id,slot,'Replaced participation',false FROM encounter.team "
+        "WHERE encounter_id=:encounter AND team_id=:team_away",
     ),
     (
         "4_duplicate_facts",
@@ -115,12 +122,10 @@ REFUSALS = (
         "7_baselines",
         "UPDATE catalog.role SET code='unresolved_source_role' WHERE id=(SELECT r.id FROM catalog.role r JOIN catalog.role_dimension d ON d.id=r.dimension_id JOIN matches.stat_baselines b ON lower(b.role::text)=r.code WHERE b.id=:baseline AND d.discipline='overwatch' AND r.workspace_id IS NULL)",
     ),
-    ("8_raw_provenance", "UPDATE log_processing.record SET content_hash=NULL WHERE id=:record"),
     ("8_raw_provenance", "UPDATE log_processing.record SET content_hash='not-a-sha256' WHERE id=:record"),
     ("8_raw_provenance", "UPDATE log_processing.record SET filename='../escape' WHERE id=:record"),
     ("8_raw_provenance", "UPDATE log_processing.record SET filename='/absolute' WHERE id=:record"),
     ("8_raw_provenance", "UPDATE log_processing.record SET filename='logs/' WHERE id=:record"),
-    ("8_raw_provenance", "UPDATE matches.match SET log_record_id=NULL WHERE id=:match"),
     ("8_raw_provenance", "UPDATE matches.match SET log_name='different-object' WHERE id=:match"),
     ("9_representability", "UPDATE matches.statistics SET round=-1 WHERE match_id=:match"),
     ("9_representability", "UPDATE matches.event SET round=32768 WHERE match_id=:match"),
@@ -141,6 +146,102 @@ REFUSALS = (
     ("10_dependencies", "CREATE TABLE public.unreviewed_reference(id bigint REFERENCES matches.match(id))"),
     ("10_dependencies", "CREATE VIEW public.unreviewed_view AS SELECT id FROM matches.match"),
 )
+
+
+@pytest.mark.parametrize(
+    "mutations",
+    (
+        ("UPDATE encounter.game SET state='cancelled' WHERE encounter_id=:encounter",),
+        ("UPDATE matches.match SET map_index=1,map_id=:map WHERE id=:match_no_raw",),
+        ("UPDATE matches.match SET map_index=1,map_id=:map_other WHERE id=:match",),
+        ("DELETE FROM encounter.game_claim WHERE game_id=:game", "DELETE FROM encounter.game_team WHERE game_id=:game"),
+    ),
+)
+def test_uncertain_game_claims_preserve_complete_history(stats01_legacy_database, mutations):
+    url, ids = stats01_legacy_database
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            for statement in mutations:
+                conn.execute(sa.text(statement), ids)
+            games = conn.scalar(sa.text("SELECT count(*) FROM encounter.game"))
+            source = conn.execute(sa.text("SELECT id,encounter_id,map_index FROM matches.match ORDER BY id")).all()
+            facts = conn.scalar(sa.text("SELECT count(*) FROM matches.statistics"))
+            events = conn.scalar(
+                sa.text("SELECT (SELECT count(*) FROM matches.event)+(SELECT count(*) FROM matches.kill_feed)")
+            )
+        result = upgrade_database(url, "stats01a")
+        assert result.returncode == 0, result.stdout + result.stderr
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT count(*) FROM encounter.game")) == games
+            assert (
+                conn.execute(sa.text("SELECT id,encounter_id,source_map_index FROM stats.match ORDER BY id")).all()
+                == source
+            )
+            assert (
+                conn.scalar(sa.text("SELECT count(*) FROM stats.fact WHERE workspace_member_id IS NOT NULL")) == facts
+            )
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.event")) == events
+            assert conn.scalar(sa.text("SELECT encounter_game_id FROM stats.match WHERE id=:match"), ids) is None
+            prepare_proof(conn)
+            assert mismatches(conn) == []
+    finally:
+        engine.dispose()
+
+
+def test_null_hashes_and_recordless_references_are_native_unverified_provenance(stats01_legacy_database):
+    url, ids = stats01_legacy_database
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.text("UPDATE log_processing.record SET content_hash=NULL WHERE id=:record"), ids)
+            conn.execute(sa.text("UPDATE matches.match SET log_record_id=NULL WHERE id=:match"), ids)
+            records = conn.execute(
+                sa.text(
+                    "SELECT id,content_hash,created_at,updated_at,attempts,started_at,finished_at FROM log_processing.record ORDER BY id"
+                )
+            ).all()
+            max_record = conn.scalar(sa.text("SELECT max(id) FROM log_processing.record"))
+        result = upgrade_database(url, "stats01a")
+        assert result.returncode == 0, result.stdout + result.stderr
+        with engine.connect() as conn:
+            assert (
+                conn.execute(
+                    sa.text(
+                        "SELECT id,content_hash,created_at,updated_at,attempts,started_at,finished_at FROM stats.ingest_job WHERE source_kind<>'historical_reference' ORDER BY id"
+                    )
+                ).all()
+                == records
+            )
+            job = (
+                conn.execute(
+                    sa.text(
+                        "SELECT j.* FROM stats.ingest_job j JOIN stats.match m ON m.ingest_job_id=j.id WHERE m.id=:match"
+                    ),
+                    ids,
+                )
+                .mappings()
+                .one()
+            )
+            assert job["id"] == max_record + 1
+            assert job["external_id"] == f"legacy:matches.match:{ids['match']}"
+            assert job["source_kind"] == "historical_reference"
+            assert job["content_hash"] is None and job["raw_status"] == "unverified"
+            assert job["uploader_user_id"] is None and job["attempts"] == 0
+            assert job["started_at"] is None and job["finished_at"] is None and job["updated_at"] is None
+            assert job["created_at"] == conn.scalar(
+                sa.text("SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer'")
+            )
+            assert job["created_at"] != conn.scalar(
+                sa.text("SELECT created_at FROM matches.match WHERE id=:match"), ids
+            )
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.ingest_job WHERE raw_status<>'unverified'")) == 0
+            prepare_proof(conn)
+            assert mismatches(conn) == []
+        repeated = upgrade_database(url, "stats01a")
+        assert repeated.returncode == 0, repeated.stdout + repeated.stderr
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize("expected_class,mutation", REFUSALS)
@@ -810,5 +911,138 @@ def test_null_segment_refused_in_drifted_legacy_schema(stats01_legacy_database, 
         result = upgrade_database(url, "stats01")
         assert result.returncode != 0
         assert "invalid_segment" in result.stdout + result.stderr
+    finally:
+        engine.dispose()
+
+
+def test_original_bound_head_upgrades_without_rewriting_observations(stats01_database):
+    from shared.testing.stats_parity import original_stats01_shape
+
+    url, ids = stats01_database
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            original_stats01_shape(conn)
+            jobs = conn.execute(
+                sa.text(
+                    "SELECT id,content_hash,created_at,updated_at,attempts,started_at,finished_at FROM stats.ingest_job ORDER BY id"
+                )
+            ).all()
+            facts = conn.scalar(sa.text("SELECT count(*) FROM stats.fact"))
+            events = conn.scalar(sa.text("SELECT count(*) FROM stats.event"))
+            oracle = conn.execute(
+                sa.text("SELECT id,after_json FROM audit_log WHERE action='stats.initial_transfer' ORDER BY id")
+            ).all()
+        result = upgrade_database(url, "stats01a")
+        assert result.returncode == 0, result.stdout + result.stderr
+        with engine.connect() as conn:
+            assert (
+                conn.execute(
+                    sa.text(
+                        "SELECT id,content_hash,created_at,updated_at,attempts,started_at,finished_at FROM stats.ingest_job ORDER BY id"
+                    )
+                ).all()
+                == jobs
+            )
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.fact")) == facts
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.event")) == events
+            assert (
+                conn.execute(
+                    sa.text("SELECT id,after_json FROM audit_log WHERE action='stats.initial_transfer' ORDER BY id")
+                ).all()
+                == oracle
+            )
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.ingest_job WHERE raw_status<>'unverified'")) == 0
+            assert conn.execute(
+                sa.text("SELECT encounter_id,source_map_index FROM stats.match WHERE id=:match"), ids
+            ).one() == (ids["encounter"], 1)
+            prepare_proof(conn)
+            assert mismatches(conn) == []
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "UPDATE stats.ingest_job SET attempts=attempts+1 WHERE id=:record",
+        "UPDATE stats.fact SET value=value+1 WHERE match_id=:match AND segment=0",
+        "DELETE FROM audit_log WHERE action='stats.initial_transfer'",
+    ),
+)
+def test_original_bound_head_refuses_unexplained_mutations_before_ddl(stats01_database, mutation):
+    from shared.testing.stats_parity import original_stats01_shape
+
+    url, ids = stats01_database
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            original_stats01_shape(conn)
+            conn.execute(sa.text(mutation), ids)
+        result = upgrade_database(url, "stats01a")
+        assert result.returncode != 0
+        assert "stats01a refuses unexplained" in result.stdout + result.stderr
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT version_num FROM alembic_version")) == "stats01"
+            assert (
+                conn.scalar(
+                    sa.text(
+                        "SELECT count(*) FROM information_schema.columns WHERE table_schema='stats' AND column_name IN ('raw_status','source_map_index')"
+                    )
+                )
+                == 0
+            )
+            assert conn.scalar(sa.text("SELECT count(*) FROM audit_log WHERE action='stats.history_upgrade'")) == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("native_value", ("-0", "0"))
+def test_original_bound_head_preserves_exact_signed_zero_outside_mv(stats01_database, native_value):
+    from shared.testing.stats_parity import original_stats01_shape
+
+    url, ids = stats01_database
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            source = conn.execute(
+                sa.text("""UPDATE matches.statistics SET value='-0'::double precision
+                WHERE match_id=:match AND round=0 AND hero_id IS NULL AND name::text='HeroTimePlayed'"""),
+                ids,
+            )
+            target = conn.execute(
+                sa.text("""UPDATE stats.fact SET value=CAST(:value AS double precision)
+                WHERE match_id=:match AND segment=0 AND entity_id IS NULL
+                  AND stat_id=(SELECT id FROM stats.stat_def WHERE discipline='overwatch' AND code='hero_time_played')"""),
+                {**ids, "value": native_value},
+            )
+            assert source.rowcount == target.rowcount > 0
+            original_stats01_shape(conn)
+            oracle = conn.execute(
+                sa.text("SELECT id,after_json FROM audit_log WHERE action='stats.initial_transfer' ORDER BY id")
+            ).all()
+        result = upgrade_database(url, "stats01a")
+        if native_value == "-0":
+            assert result.returncode == 0, result.stdout + result.stderr
+        else:
+            assert result.returncode != 0
+            assert "stats01a refuses unexplained facts semantic differences" in result.stdout + result.stderr
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT version_num FROM alembic_version")) == (
+                "stats01a" if native_value == "-0" else "stats01"
+            )
+            assert (
+                conn.execute(
+                    sa.text("SELECT id,after_json FROM audit_log WHERE action='stats.initial_transfer' ORDER BY id")
+                ).all()
+                == oracle
+            )
+            assert conn.scalar(sa.text("SELECT count(*) FROM audit_log WHERE action='stats.history_upgrade'")) == (
+                1 if native_value == "-0" else 0
+            )
+            assert conn.scalar(
+                sa.text("""SELECT count(*) FROM information_schema.columns
+                WHERE table_schema='stats' AND column_name IN ('raw_status','source_map_index')""")
+            ) == (2 if native_value == "-0" else 0)
     finally:
         engine.dispose()

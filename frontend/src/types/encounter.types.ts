@@ -1,5 +1,7 @@
 import { MapRead } from "@/types/map.types";
-import { Team, TeamWithStats } from "@/types/team.types";
+import { Team } from "@/types/team.types";
+import { LogStatsName } from "@/types/stats.types";
+import { Hero } from "@/types/hero.types";
 import {
   EncounterGame,
   EncounterResultSource,
@@ -31,7 +33,7 @@ export interface EncounterSlotSource {
 }
 
 /**
- * One live seat of an encounter (`encounter.team`), in slot order. `id` is the
+ * One live or historical participation of an encounter (`encounter.team`). `id` is the
  * participation id every write addresses — a claim, a report and an admin
  * result all name it, never a slot. `team_id` goes null when the source team
  * is deleted; `name` is the snapshot that outlives it.
@@ -188,6 +190,8 @@ export const DEFAULT_MATCH_REPORT_BUILT_INS: MatchReportForm["built_in_fields"] 
   comment: Object.freeze({ enabled: true, required: false })
 });
 
+export type RawSourceStatus = "available" | "missing" | "conflict" | "unverified";
+
 export interface Match {
   id: number;
   created_at: Date;
@@ -199,23 +203,40 @@ export interface Match {
   encounter_id: number;
   map_id: number;
   /**
-   * Bound game's 1-based series position. It, not `map_id`, identifies a
-   * played map: a series may play the same map twice. Null means the response
-   * has no position information (see `seriesMatchesByPosition`).
+   * Proven game's 1-based series position, never source order or an array
+   * index. Null means the observation has no confirmed game binding.
    */
   map_index: number | null;
   log_name: string | null;
+  raw_status: RawSourceStatus | null;
+  raw_available: boolean;
 
   map: MapRead | null;
+  home_participation: EncounterTeam;
+  away_participation: EncounterTeam;
   home_team: Team | null;
   away_team: Team | null;
   encounter: Encounter | null;
 }
 
+/** A parsed identity, not a current roster row or a tournament registration. */
+export interface MatchObservedPlayer {
+  workspace_member_id: number;
+  user_id: number | null;
+  /** Exact handle recorded by the observation. */
+  name: string;
+  stats: Record<number, Record<LogStatsName, number>>;
+  heroes: Record<number, Hero[]>;
+}
+
+export interface MatchParticipationWithStats extends EncounterTeam {
+  players: MatchObservedPlayer[];
+}
+
 export interface MatchWithStats extends Match {
   rounds: number;
-  home_team: TeamWithStats | null;
-  away_team: TeamWithStats | null;
+  home_participation: MatchParticipationWithStats;
+  away_participation: MatchParticipationWithStats;
 }
 
 type EncounterScope = "all" | "my_team";

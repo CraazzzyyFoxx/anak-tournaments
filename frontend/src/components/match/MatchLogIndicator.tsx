@@ -6,17 +6,18 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import type { RawSourceStatus } from "@/types/encounter.types";
 
 interface MatchLogRef {
   matchId: number;
+  rawAvailable: boolean;
   label?: string;
 }
 
 interface MatchLogIndicatorProps {
-  /** Whether the encounter has any logs (authoritative availability flag). */
+  /** Whether parsed observations exist, independently of raw availability. */
   hasLogs: boolean;
-  /** Per-match downloadable logs within this encounter. When omitted, the
-   *  indicator is informational only. */
+  /** Per-observation raw capability from the server. Omit for an informational indicator. */
   logs?: MatchLogRef[];
   size?: number;
   className?: string;
@@ -35,13 +36,22 @@ const NONE = "border-border text-[color:var(--aqt-fg-faint)]";
 
 const stop = (e: React.MouseEvent) => e.stopPropagation();
 
+export function RawLogStatus({
+  raw_status,
+  raw_available
+}: Readonly<{ raw_status: RawSourceStatus | null; raw_available: boolean }>) {
+  const t = useTranslations("common.rawLog");
+  const status = raw_available ? "available" : raw_status === "available" ? "unverified" : raw_status ?? "none";
+  return <span>{t(status)}</span>;
+}
+
 /**
  * Global indicator for match-log availability with download. Theme-agnostic
  * (uses shared tokens, no page-scoped vars) so it renders correctly anywhere
  * encounters are shown.
  * - no logs → dimmed, non-interactive;
- * - logs without per-match refs, or a viewer who is not signed in → emerald
- *   icon, "Logs available";
+ * - logs without verified raw refs, or a viewer who is not signed in →
+ *   non-interactive parsed-statistics indicator;
  * - one downloadable log → direct download link;
  * - several → click opens a popover listing each map's log.
  *
@@ -56,7 +66,9 @@ const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndi
   // Only a confirmed session gets links: "idle"/"loading"/"error" mean the
   // viewer is not known yet, and offering a link that 401s is worse than
   // offering none — the store flips to "authenticated" and the link appears.
-  const downloadable = status === "authenticated" ? (logs ?? []) : [];
+  const downloadable = status === "authenticated"
+    ? (logs ?? []).filter((log) => log.rawAvailable)
+    : [];
 
   if (!hasLogs) {
     const label = t("common.matchLogs.noneAvailable");
@@ -68,7 +80,9 @@ const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndi
   }
 
   if (downloadable.length === 0) {
-    const label = t("common.matchLogs.available");
+    const label = t(logs != null && !logs.some((log) => log.rawAvailable)
+      ? "common.matchLogs.rawUnavailable"
+      : "common.matchLogs.available");
     return (
       <span role="img" className={cn(BASE, HAS, className)} title={label} aria-label={label}>
         <ScrollText size={size} strokeWidth={1.75} aria-hidden />

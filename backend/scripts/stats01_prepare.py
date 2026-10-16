@@ -1,9 +1,21 @@
-"""Read-only P3 statistics preparation inventory and explicit reviewed repairs.
+"""Statistics transfer preparation and reviewed native raw-source verification.
 
-No ORM/parser imports: SQL below targets the frozen P3 schema. Run with writers
-stopped. A report is evidence, NOT approval; copy snapshots into a version=1
-manifest, record the review rationale, then supply its independently reviewed SHA.
-Each apply_item runs inside a caller-owned transaction (the CLI commits one item).
+Legacy preparation targets frozen P3 SQL. Native verification uses repository
+writes and stats.raw_verification evidence. Stop writers before either apply.
+Reports are proposals, not approval: add a nonempty review and independently
+review the exact manifest SHA-256 before --apply-native-raw.
+
+Capture the initial stats01 receipt BEFORE native classification. The native
+proposal includes target database/revision and exact job/observation state SHA.
+Review a copy, set its review string, then apply that copy with its reviewed SHA.
+
+Optional --inventory JSON is {format: "stats01-native-raw-inventory/1",
+target: <proposal target>, objects: <proposal objects>}; it must cover every key.
+Optional --source-evidence JSON is {format: "stats01-native-raw-source/1",
+target: <proposal target>, evidence: <nonempty explanation>, ...}. It supplements,
+never replaces, byte inspection. Both inputs require their independent SHA flags;
+apply requires the same input digests as the reviewed proposal. Old inventories
+without this exact target binding are intentionally refused.
 """
 
 from __future__ import annotations
@@ -354,7 +366,7 @@ def validate_item(kind, item):
         raise PreparationBlocked("unknown_manifest_class", row_id)
 
 
-def load_manifest(path, expected_sha256):
+def load_signed_json(path, expected_sha256):
     data = Path(path).read_bytes()
     if (
         not isinstance(expected_sha256, str)
@@ -372,6 +384,11 @@ def load_manifest(path, expected_sha256):
         return result
 
     manifest = json.loads(data, object_pairs_hook=unique_pairs)
+    return manifest
+
+
+def load_manifest(path, expected_sha256):
+    manifest = load_signed_json(path, expected_sha256)
     if (
         not isinstance(manifest, dict)
         or type(manifest.get("version")) is not int
@@ -899,6 +916,22 @@ async def check(conn, s3, *, max_bytes=25 * 1024 * 1024):
                 diagnostic("missing_historical_member", member["player_id"], workspace_id=member["workspace_id"])
             )
         last_wid, last_pid = missing[-1]["workspace_id"], missing[-1]["player_id"]
+    uncertainty = {
+        "missing_raw_hash",
+        "recordless_raw_reference",
+        "ambiguous_raw_candidates",
+        "missing_raw_object",
+        "raw_hash_conflict",
+        "empty_raw_object",
+        "oversize_raw_object",
+        "unprocessable_raw_object",
+        "unresolved_game",
+        "explicit_position_map_mismatch",
+        "duplicate_game_claim",
+        "game_participant_conflict",
+    }
+    report["warnings"] = [row for row in report["blockers"] if row["reason"] in uncertainty]
+    report["blockers"] = [row for row in report["blockers"] if row["reason"] not in uncertainty]
     report["counts"] = {}
     for blocker in report["blockers"]:
         reason = blocker["reason"]
@@ -906,24 +939,358 @@ async def check(conn, s3, *, max_bytes=25 * 1024 * 1024):
     return report
 
 
+NATIVE_FORMAT = "stats01-native-raw/1"
+NATIVE_INVENTORY = "stats01-native-raw-inventory/1"
+NATIVE_SOURCE_EVIDENCE = "stats01-native-raw-source/1"
+
+
+async def native_state(session):
+    """Bind inspection metadata to this database's exact job and observation rows."""
+    await session.execute(sa.text("SET LOCAL TIME ZONE 'UTC'"))
+    jobs = list((await session.scalars(sa.text("SELECT to_jsonb(j) FROM stats.ingest_job j ORDER BY id"))).all())
+    matches = list((await session.scalars(sa.text("SELECT to_jsonb(m) FROM stats.match m ORDER BY id"))).all())
+    identity = {
+        "database_name": await session.scalar(sa.text("SELECT current_database()")),
+        "revision": list(
+            (await session.scalars(sa.text("SELECT version_num FROM alembic_version ORDER BY version_num"))).all()
+        ),
+    }
+    return native_target(identity, jobs, matches), jobs, matches
+
+
+def native_target(identity, jobs, matches):
+    return {
+        **{key: identity[key] for key in ("database_name", "revision")},
+        "jobs_count": len(jobs),
+        "observations_count": len(matches),
+        "state_sha256": fingerprint({"jobs": jobs, "observations": matches}),
+    }
+
+
+def native_snapshots(jobs, matches):
+    sources = {job["id"]: job["raw_ref"] for job in jobs}
+    observations = {}
+    for match in matches:
+        key = sources.get(match["ingest_job_id"])
+        if key is not None:
+            observations.setdefault(key, []).append(match)
+    return {job["id"]: {"job": job, "observations": observations.get(job["raw_ref"], [])} for job in jobs}
+
+
+def native_inputs(target, inventory, source_evidence):
+    for value, format_name in ((inventory, NATIVE_INVENTORY), (source_evidence, NATIVE_SOURCE_EVIDENCE)):
+        if value is not None and (
+            not isinstance(value, dict) or value.get("format") != format_name or value.get("target") != target
+        ):
+            raise PreparationBlocked("native_input_target_mismatch", 0)
+    if source_evidence is not None and (
+        not isinstance(source_evidence.get("evidence"), str) or not source_evidence["evidence"].strip()
+    ):
+        raise PreparationBlocked("invalid_review_evidence", 0)
+    objects = {}
+    if inventory is not None:
+        if not isinstance(inventory.get("objects"), list):
+            raise PreparationBlocked("invalid_native_inventory", 0)
+        for obj in inventory["objects"]:
+            if (
+                not isinstance(obj, dict)
+                or not {"raw_ref", "status", "sha256", "bytes", "processable", "inspected_at"} <= obj.keys()
+                or not isinstance(obj.get("raw_ref"), str)
+                or not obj["raw_ref"]
+                or obj["raw_ref"] in objects
+                or obj.get("status") not in {"ok", "missing"}
+                or not isinstance(obj.get("inspected_at"), str)
+            ):
+                raise PreparationBlocked("invalid_native_inventory", 0)
+            stamp = datetime.fromisoformat(obj["inspected_at"].replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                raise PreparationBlocked("invalid_native_inventory", 0)
+            if obj["status"] == "ok":
+                if (
+                    not re.fullmatch(r"[0-9a-f]{64}", str(obj.get("sha256", "")))
+                    or type(obj.get("bytes")) is not int
+                    or obj["bytes"] < 0
+                    or type(obj.get("processable")) is not bool
+                ):
+                    raise PreparationBlocked("invalid_native_inventory", 0)
+            elif obj["sha256"] is not None or obj["bytes"] is not None or obj["processable"] is not False:
+                raise PreparationBlocked("invalid_native_inventory", 0)
+            objects[obj["raw_ref"]] = obj
+    return objects
+
+
+async def inspect_native_object(s3, raw_ref, row_id, max_bytes):
+    if s3 is None:
+        raise PreparationBlocked("storage_access_unavailable", row_id)
+    try:
+        raw = await s3.get_object(raw_ref)
+    except Exception:
+        raise PreparationBlocked("storage_access_unavailable", row_id) from None
+    result = {"raw_ref": raw_ref, "inspected_at": datetime.now(UTC).isoformat()}
+    if raw is None:
+        return {**result, "status": "missing", "sha256": None, "bytes": None, "processable": False}
+    try:
+        text = raw.decode("utf-8")
+        processable = bool(text.strip()) and "\x00" not in text and len(raw) <= max_bytes
+    except UnicodeDecodeError:
+        processable = False
+    return {
+        **result,
+        "status": "ok",
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "bytes": len(raw),
+        "processable": processable,
+    }
+
+
+def classify_native_raw(snapshot, obj, *, max_bytes=25 * 1024 * 1024):
+    job = snapshot["job"]
+    if len(snapshot["observations"]) > 1:
+        return "unverified", "ambiguous_shared_source"
+    if obj["status"] == "missing":
+        return "missing", "object_not_found"
+    if job["content_hash"] is not None and job["content_hash"].lower() != obj["sha256"]:
+        return "conflict", "known_hash_differs"
+    if not obj["processable"] or not 0 < obj["bytes"] <= max_bytes:
+        return "unverified", "unprocessable_raw_object"
+    return "available", "inspected_exact_bytes"
+
+
+async def verify_native_raw(session, s3, *, inventory=None, source_evidence=None, max_bytes=25 * 1024 * 1024):
+    """Dry run. Optional signed inventory uses this report's objects and exact target."""
+    target, jobs, matches = await native_state(session)
+    objects = native_inputs(target, inventory, source_evidence)
+    snapshots = native_snapshots(jobs, matches)
+    keys = {job["raw_ref"] for job in jobs}
+    if inventory is not None and set(objects) != keys:
+        raise PreparationBlocked("incomplete_native_inventory", 0)
+    report = {
+        "format": NATIVE_FORMAT,
+        "target": target,
+        "review": "",
+        "raw": [],
+        "objects": [],
+        "blockers": [],
+        "inputs": {"inventory_sha256": None, "source_evidence_sha256": None},
+    }
+    failed = set()
+    for job in jobs:
+        key, job_id = job["raw_ref"], job["id"]
+        if key not in objects and key not in failed:
+            try:
+                objects[key] = await inspect_native_object(s3, key, job_id, max_bytes)
+            except PreparationBlocked as exc:
+                failed.add(key)
+                report["blockers"].append(diagnostic(exc.reason, job_id, raw_ref=key))
+        if key in failed:
+            continue
+        snapshot, obj = snapshots[job_id], objects[key]
+        status, reason = classify_native_raw(snapshot, obj, max_bytes=max_bytes)
+        report["raw"].append(
+            {
+                "job_id": job_id,
+                "workspace_id": job["workspace_id"],
+                "snapshot": snapshot,
+                "expected": fingerprint(snapshot),
+                "raw_status": status,
+                "inspected_sha256": obj["sha256"],
+                "reason": reason,
+            }
+        )
+    report["objects"] = [objects[key] for key in sorted(objects)]
+    return report
+
+
+async def apply_native_raw(
+    session, s3, manifest, *, manifest_sha256, inventory=None, source_evidence=None, max_bytes=25 * 1024 * 1024
+):
+    """One atomic reviewed application; exact repeats do not create audit rows."""
+    from shared import models
+    from shared.repository.stats import IngestJobRepository
+    from shared.services.stats_evidence import (
+        capture_stats_evidence,
+        owner_scopes,
+        stage_stats_evidence,
+        state_equal,
+        verified_content_hash,
+    )
+
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("format") != NATIVE_FORMAT
+        or manifest.get("blockers") != []
+        or not isinstance(manifest.get("raw"), list)
+        or not isinstance(manifest.get("review"), str)
+        or not manifest["review"].strip()
+        or not re.fullmatch(r"[0-9a-f]{64}", str(manifest_sha256))
+    ):
+        raise PreparationBlocked("incomplete_native_verification", 0)
+    await session.execute(sa.text("SET LOCAL lock_timeout='5s'"))
+    # Inspection and audit must see one stable provenance/observation set. Read
+    # traffic is allowed; this operator is only run with writers drained.
+    await session.execute(sa.text("LOCK TABLE stats.ingest_job,stats.match IN SHARE ROW EXCLUSIVE MODE"))
+    target, jobs, matches = await native_state(session)
+    snapshots = native_snapshots(jobs, matches)
+    originals = {}
+    for item in manifest["raw"]:
+        if not isinstance(item, dict) or type(item.get("job_id")) is not int:
+            raise PreparationBlocked("invalid_native_manifest", 0)
+        job_id = item["job_id"]
+        original = item.get("snapshot")
+        if (
+            job_id in originals
+            or job_id not in snapshots
+            or not isinstance(original, dict)
+            or set(original) != {"job", "observations"}
+            or not isinstance(original["job"], dict)
+            or set(original["job"]) != set(snapshots[job_id]["job"])
+            or not isinstance(original["observations"], list)
+            or item.get("expected") != fingerprint(original)
+            or original["job"].get("id") != job_id
+            or original["job"].get("workspace_id") != item.get("workspace_id")
+        ):
+            raise PreparationBlocked("invalid_native_manifest", job_id)
+        expected = deepcopy(original)
+        expected["job"]["raw_status"] = item.get("raw_status")
+        expected["job"]["content_hash"] = verified_content_hash(
+            original["job"]["content_hash"], item.get("raw_status"), item.get("inspected_sha256")
+        )
+        if snapshots[job_id] != original and snapshots[job_id] != expected:
+            raise PreparationBlocked("native_target_drift", job_id)
+        originals[job_id] = original["job"]
+    if set(originals) != {job["id"] for job in jobs}:
+        raise PreparationBlocked("incomplete_native_verification", 0)
+    original_target = native_target(target, [originals[job["id"]] for job in jobs], matches)
+    if original_target != manifest.get("target"):
+        raise PreparationBlocked("native_target_drift", 0)
+    objects = native_inputs(original_target, inventory, source_evidence)
+    if inventory is not None and set(objects) != {job["raw_ref"] for job in jobs}:
+        raise PreparationBlocked("incomplete_native_inventory", 0)
+    inputs = manifest.get("inputs", {})
+    repo = IngestJobRepository()
+    applied = []
+    for item in manifest["raw"]:
+        job_id, snapshot = item["job_id"], item["snapshot"]
+        key = snapshot["job"]["raw_ref"]
+        if key not in objects:
+            objects[key] = await inspect_native_object(s3, key, job_id, max_bytes)
+        obj = objects[key]
+        if (
+            classify_native_raw(snapshot, obj, max_bytes=max_bytes)[0] != item["raw_status"]
+            or obj["sha256"] != item["inspected_sha256"]
+        ):
+            raise PreparationBlocked("native_inspection_drift", job_id)
+        scopes = owner_scopes("job", (job_id,))
+        before = await capture_stats_evidence(session, scopes=scopes)
+        await repo.verify_raw_source(
+            session,
+            job_id=job_id,
+            workspace_id=item["workspace_id"],
+            raw_status=models.RawSourceStatus(item["raw_status"]),
+            inspected_sha256=item["inspected_sha256"],
+        )
+        after = await capture_stats_evidence(session, scopes=scopes)
+        if all(state_equal(a, b) for a, b in zip(before, after, strict=True)):
+            continue
+        audit = await stage_stats_evidence(
+            session,
+            operation="stats.raw_verification",
+            before=before,
+            after=after,
+            workspace_id=item["workspace_id"],
+            entity_type="ingest_job",
+            entity_id=job_id,
+            raw_verification=[{"job_id": job_id, "raw_ref": key, "inspected_sha256": obj["sha256"]}],
+        )
+        audit.after_json = {
+            **audit.after_json,
+            "native_raw_verification": {
+                "manifest_sha256": manifest_sha256,
+                "target": original_target,
+                "review": manifest["review"],
+                "inputs": inputs,
+                "inspection": obj,
+            },
+        }
+        await session.flush()
+        applied.append(job_id)
+    return {"format": NATIVE_FORMAT, "target": original_target, "applied": applied, "blockers": []}
+
+
 def parser():
     cli = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Examples:\n  uv run python scripts/stats01_prepare.py --check --report preparation.json\n  uv run python scripts/stats01_prepare.py --apply --manifest reviewed.json --manifest-sha256 SHA256 --report applied.json\nExit: 0 no blockers; 1 blocked/failed; 2 invalid command. Stop writers and review evidence before apply.",
+        epilog="Examples:\n  uv run python scripts/stats01_prepare.py --check --report preparation.json\n  uv run python scripts/stats01_prepare.py --apply --manifest reviewed.json --manifest-sha256 SHA256 --report applied.json\n  uv run python scripts/stats01_prepare.py --verify-native-raw --report native-proposal.json\n  uv run python scripts/stats01_prepare.py --apply-native-raw --manifest native-reviewed.json --manifest-sha256 SHA256 --report native-applied.json\nExit: 0 no blockers; 1 blocked/failed; 2 invalid command. Stop writers and review evidence before apply.",
     )
     mode = cli.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="Read-only inventory (the default)")
     mode.add_argument("--apply", action="store_true", help="Apply only reviewed manifest items, one transaction each")
-    cli.add_argument("--manifest", type=Path, help="Reviewed version=1 JSON containing raw/games/members arrays")
+    mode.add_argument("--verify-native-raw", action="store_true", help="Inspect native raw bytes without writes")
+    mode.add_argument(
+        "--apply-native-raw", action="store_true", help="Atomically apply a reviewed native inspection manifest"
+    )
+    cli.add_argument("--manifest", type=Path, help="Reviewed legacy repair or native verification JSON")
     cli.add_argument("--manifest-sha256", help="Expected SHA-256 supplied independently by the reviewer")
+    cli.add_argument("--inventory", type=Path, help="Signed native object inspection JSON instead of live GET")
+    cli.add_argument("--inventory-sha256", help="Independently reviewed inventory SHA-256")
+    cli.add_argument("--source-evidence", type=Path, help="Signed supporting evidence bound to the native target")
+    cli.add_argument("--source-evidence-sha256", help="Independently reviewed source evidence SHA-256")
     cli.add_argument("--report", type=Path, help="Write JSON evidence here; default stdout")
     return cli
 
 
+async def run_native_cli(args, settings):
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+    inventory = load_signed_json(args.inventory, args.inventory_sha256) if args.inventory else None
+    evidence = load_signed_json(args.source_evidence, args.source_evidence_sha256) if args.source_evidence else None
+    manifest = load_signed_json(args.manifest, args.manifest_sha256) if args.apply_native_raw else None
+    inputs = {"inventory_sha256": args.inventory_sha256, "source_evidence_sha256": args.source_evidence_sha256}
+    if manifest is not None and (not isinstance(manifest, dict) or manifest.get("inputs") != inputs):
+        raise PreparationBlocked("native_input_digest_mismatch", 0)
+    engine = create_async_engine(settings.db_url_asyncpg, isolation_level="REPEATABLE READ", poolclass=sa.pool.NullPool)
+    s3 = None
+    try:
+        if inventory is None and settings.s3_access_key and settings.s3_secret_key and settings.s3_endpoint_url:
+            from shared.clients.s3 import S3Client
+
+            s3 = S3Client.from_settings(settings)
+            await s3.start()
+        async with AsyncSession(engine, expire_on_commit=False) as session, session.begin():
+            if args.apply_native_raw:
+                report = await apply_native_raw(
+                    session,
+                    s3,
+                    manifest,
+                    manifest_sha256=args.manifest_sha256,
+                    inventory=inventory,
+                    source_evidence=evidence,
+                    max_bytes=settings.max_match_log_bytes,
+                )
+            else:
+                await session.execute(sa.text("SET TRANSACTION READ ONLY"))
+                report = await verify_native_raw(
+                    session,
+                    s3,
+                    inventory=inventory,
+                    source_evidence=evidence,
+                    max_bytes=settings.max_match_log_bytes,
+                )
+            report["inputs"] = inputs
+            report["mode"] = "apply-native-raw" if args.apply_native_raw else "verify-native-raw"
+        return report, int(bool(report["blockers"]))
+    finally:
+        if s3 is not None:
+            await s3.close()
+        await engine.dispose()
+
+
 async def run_cli(args):
-    manifest = load_manifest(args.manifest, args.manifest_sha256) if args.apply else None
     settings = Settings()
+    if args.verify_native_raw or args.apply_native_raw:
+        return await run_native_cli(args, settings)
+    manifest = load_manifest(args.manifest, args.manifest_sha256) if args.apply else None
     engine = sa.create_engine(settings.db_url, pool_pre_ping=True)
     s3 = None
     try:
@@ -983,10 +1350,21 @@ async def run_cli(args):
 def main(argv=None):
     cli = parser()
     args = cli.parse_args(argv)
-    if args.apply and (args.manifest is None or not args.manifest_sha256):
-        cli.error("--apply requires --manifest and the reviewer's --manifest-sha256")
-    if not args.apply and (args.manifest is not None or args.manifest_sha256):
-        cli.error("manifest flags require --apply; omit them for read-only --check")
+    applying = args.apply or args.apply_native_raw
+    native = args.verify_native_raw or args.apply_native_raw
+    if applying and (args.manifest is None or not args.manifest_sha256):
+        cli.error("apply requires --manifest and the reviewer's --manifest-sha256")
+    if not applying and (args.manifest is not None or args.manifest_sha256):
+        cli.error("manifest flags require --apply or --apply-native-raw")
+    for flag in ("inventory", "source_evidence"):
+        path, digest = getattr(args, flag), getattr(args, flag + "_sha256")
+        if bool(path) != bool(digest) or ((path or digest) and not native):
+            cli.error(f"--{flag.replace('_', '-')} and its --sha256 require a native verification mode")
+    if args.report and any(
+        path and path.resolve() == args.report.resolve()
+        for path in (args.manifest, args.inventory, args.source_evidence)
+    ):
+        cli.error("--report must not overwrite an input evidence artifact")
     try:
         report, status = asyncio.run(run_cli(args))
     except PreparationBlocked as exc:

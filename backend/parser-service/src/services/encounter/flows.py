@@ -9,6 +9,7 @@ from shared.domain.pick_ban_config import pool_allows
 from shared.models.tournament.pick_ban import PickBanConfig
 from src import models
 from src.core import enums, errors
+from src.services.match_logs.log_records import reparse_observation
 
 from . import service
 
@@ -26,6 +27,7 @@ async def resolve_for_log(
         raise errors.ApiHTTPException(
             status_code=400, detail=[errors.ApiExc(code="invalid_teams", msg="A log must name two different teams")]
         )
+    linked = await reparse_observation(session, job)
     parents = sa.select(encounter).where(
         encounter.workspace_id == job.workspace_id,
         encounter.discipline == job.discipline,
@@ -33,6 +35,8 @@ async def resolve_for_log(
         encounter.slot_count == 2,
         *(sa.exists().where(team.encounter_id == encounter.id, team.team_id == tid) for tid in team_ids),
     )
+    if linked is not None:
+        parents = parents.where(encounter.id == linked.encounter_id)
     if job.hint_encounter_id is not None:
         parents = parents.where(encounter.id == job.hint_encounter_id)
     if job.hint_encounter_game_id is not None:
@@ -75,20 +79,13 @@ async def resolve_for_log(
         game.state != enums.EncounterGameState.CANCELLED,
     )
     hinted_game = job.hint_encounter_game_id
-    if hinted_game is None:
-        # A previously validated provenance link is stronger than today's
-        # ambiguous map list. It never authorizes moving an existing match.
-        linked = list(
-            await session.scalars(
-                sa.select(models.StatsMatch.encounter_game_id).where(
-                    models.StatsMatch.ingest_job_id == job.id,
-                    models.StatsMatch.workspace_id == job.workspace_id,
-                    models.StatsMatch.discipline == job.discipline,
-                )
+    if linked is not None:
+        if hinted_game is not None and hinted_game != linked.encounter_game_id:
+            raise errors.ApiHTTPException(
+                status_code=409,
+                detail=[errors.ApiExc(code="stats_reparse_binding_conflict", msg="A linked log cannot move games")],
             )
-        )
-        if len(linked) == 1:
-            hinted_game = linked[0]
+        hinted_game = linked.encounter_game_id
     if hinted_game is not None:
         query = query.where(game.id == hinted_game)
     games = list(await session.scalars(query.order_by(game.id).with_for_update(of=game)))

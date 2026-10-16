@@ -82,7 +82,7 @@ def test_download_reference_visibility_without_legacy_access(stats_parity_databa
                 ("match_other", "tournament_other", "other.csv"),
                 ("match_hidden", "tournament_hidden", "hidden.csv"),
             ):
-                raw_ref, display_name, tournament_id = await workspace_binary.resolve_match_log_ref(
+                raw_ref, display_name, tournament_id, _, _ = await workspace_binary.resolve_match_log_ref(
                     session,
                     ids[match_key],
                 )
@@ -131,9 +131,15 @@ def test_download_reference_visibility_without_legacy_access(stats_parity_databa
                     tournament_id,
                 )
 
-            for match_id in (ids["match_no_raw"], -1):
-                with pytest.raises(BaseAPIException) as missing:
-                    await workspace_binary.resolve_match_log_ref(session, match_id)
-                assert missing.value.status_code == 404
+            raw_ref, _, tournament_id, raw_status, content_hash = await workspace_binary.resolve_match_log_ref(
+                session, ids["match_no_raw"]
+            )
+            await gate_tournament(session, {}, tournament_id)
+            with pytest.raises(BaseAPIException) as missing:
+                await workspace_binary.fetch_log_bytes(raw_ref, raw_status=raw_status, content_hash=content_hash)
+            assert missing.value.status_code == 404
+            with pytest.raises(BaseAPIException) as missing:
+                await workspace_binary.resolve_match_log_ref(session, -1)
+            assert missing.value.status_code == 404
 
     asyncio.run(run())

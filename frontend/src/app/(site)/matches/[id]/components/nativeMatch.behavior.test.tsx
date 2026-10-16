@@ -3,14 +3,17 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import MatchStatsSection from "./MatchStatsSection";
 import MatchKillFeedTimeline from "./MatchKillFeedTimeline";
 import { generateMetadata } from "../page";
-import type { MatchWithStats } from "@/types/encounter.types";
+import EncounterSeriesStats from "@/app/(site)/encounters/[id]/components/EncounterSeriesStats";
+import { encounterQueryKeys } from "@/lib/encounters/query-keys";
+import type { MatchWithStats, MatchObservedPlayer, MatchParticipationWithStats } from "@/types/encounter.types";
 import type { KillFeedEntry, MatchKillFeed, MatchTimelineEvent } from "@/types/killfeed.types";
-import type { TeamWithStats } from "@/types/team.types";
 import messages from "@/i18n/messages/en.json";
+import { LogStatsName } from "@/types/stats.types";
 
 const { getMatch, getMatchKillFeed } = vi.hoisted(() => ({
   getMatch: vi.fn(),
@@ -32,22 +35,32 @@ declare global {
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let root: Root | null = null;
+let queryClient: QueryClient | null = null;
 
-function team(id: number, name: string): TeamWithStats {
+function team(id: number, name: string, players: MatchObservedPlayer[] = []): MatchParticipationWithStats {
   return {
-    id, name, created_at: new Date(0), updated_at: null, image_url: null,
-    avg_sr: 0, total_sr: 0, captain_id: 1, tournament_id: 1,
-    players: [], tournament: null, placement: null, group: null
+    id: 100 + id, name, slot: id, team_id: id, seed: null, score: 0,
+    placement: null, active: false, team: null, players
   };
 }
 
-function match(home: TeamWithStats | null, away: TeamWithStats | null): MatchWithStats {
+function player(memberId: number, eliminations: number): MatchObservedPlayer {
+  return {
+    workspace_member_id: memberId, user_id: null, name: `Observed ${memberId}#1`,
+    stats: { 0: { [LogStatsName.Eliminations]: eliminations } } as MatchObservedPlayer["stats"],
+    heroes: {}
+  };
+}
+
+function match(home: MatchParticipationWithStats, away: MatchParticipationWithStats): MatchWithStats {
   return {
     id: 7, created_at: new Date(0), updated_at: null,
-    home_team_id: home?.id ?? null, away_team_id: away?.id ?? null,
-    home_team: home, away_team: away, score: { home: 2, away: 1 },
-    time: null, encounter_id: 1, map_id: 1, map_index: 1,
-    log_name: null, map: null, encounter: null, rounds: 1
+    home_team_id: home.team_id, away_team_id: away.team_id,
+    home_team: null, away_team: null, score: { home: 2, away: 1 },
+    home_participation: home, away_participation: away,
+    time: null, encounter_id: 1, map_id: 1, map_index: null,
+    log_name: null, raw_status: "missing", raw_available: false,
+    map: null, encounter: null, rounds: 1
   };
 }
 
@@ -79,9 +92,21 @@ async function mount(node: ReactNode) {
   return container;
 }
 
-async function timeline(feed: MatchKillFeed, home: TeamWithStats | null = null, away: TeamWithStats | null = null) {
+async function timeline(feed: MatchKillFeed, home: MatchParticipationWithStats | null = null, away: MatchParticipationWithStats | null = null) {
   getMatchKillFeed.mockResolvedValue(feed);
   return mount(<MatchKillFeedTimeline matchId={7} home={home} away={away} />);
+}
+
+async function series(observations: MatchWithStats[], view: "overview" | "players") {
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  for (const observation of observations) {
+    queryClient.setQueryData(encounterQueryKeys.matchDetail(observation.id), observation);
+  }
+  return mount(
+    <QueryClientProvider client={queryClient}>
+      <EncounterSeriesStats matchIds={observations.map(({ id }) => id)} view={view} />
+    </QueryClientProvider>
+  );
 }
 
 function timestamps(container: HTMLElement): string[] {
@@ -93,6 +118,8 @@ function timestamps(container: HTMLElement): string[] {
 afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = null;
+  queryClient?.clear();
+  queryClient = null;
   document.body.innerHTML = "";
 });
 
@@ -101,26 +128,29 @@ beforeEach(() => {
   getMatchKillFeed.mockReset();
 });
 
-describe("historical match teams", () => {
-  it.each([true, false])("keeps the surviving team table when home survives: %s", (homeSurvives) => {
-    const surviving = team(2, "Survivors");
-    const value = homeSurvives ? match(surviving, null) : match(null, surviving);
+describe("historical observed participations", () => {
+  it("keeps both deleted source teams' observations and snapshot names without inventing roster rows", () => {
+    const home = { ...team(1, "Archived A", [player(41, 12)]), team_id: null };
+    const away = { ...team(2, "Archived B", [player(42, 5)]), team_id: null };
+    const value = match(home, away);
     const container = document.createElement("div");
     container.innerHTML = renderToStaticMarkup(<MatchStatsSection match={value} />);
-    expect(container.querySelector("table")?.textContent).toContain("Survivors");
-    expect(container.querySelectorAll("tbody")).toHaveLength(2);
-    expect(Array.from(container.querySelectorAll("tbody")).some((body) => body.textContent === "—")).toBe(true);
-  });
-
-  it("renders unavailable team slots without creating player rows", () => {
-    const container = document.createElement("div");
-    container.innerHTML = renderToStaticMarkup(<MatchStatsSection match={match(null, null)} />);
-    expect(Array.from(container.querySelectorAll("tbody")).map((body) => body.textContent)).toEqual(["—", "—"]);
+    const bodies = Array.from(container.querySelectorAll("tbody"));
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0].textContent).toContain("Archived A");
+    expect(bodies[1].textContent).toContain("Archived B");
+    expect(Array.from(bodies[0].querySelectorAll("td")).map((cell) => cell.textContent)).toContain("12");
+    expect(Array.from(bodies[1].querySelectorAll("td")).map((cell) => cell.textContent)).toContain("5");
     expect(container.querySelectorAll('a[href^="/users/"]')).toHaveLength(0);
+    expect(container.querySelectorAll("img")).toHaveLength(0);
+    expect(value.home_team).toBeNull();
+    expect(value.away_team).toBeNull();
   });
 
-  it("shows unavailable comparison instead of zero statistics for a deleted team", async () => {
-    const container = await mount(<MatchStatsSection match={match(null, team(2, "Survivors"))} />);
+  it("compares observed totals when both source teams and hero metadata are unavailable", async () => {
+    const home = { ...team(1, "Archived A", [player(41, 12)]), team_id: null };
+    const away = { ...team(2, "Archived B", [player(42, 5)]), team_id: null };
+    const container = await mount(<MatchStatsSection match={match(home, away)} />);
     const extended = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === messages.matches.view.extended
     )!;
@@ -133,15 +163,63 @@ describe("historical match teams", () => {
       comparison.click();
     });
     const panel = container.querySelector('[role="tabpanel"][data-state="active"]');
-    expect(panel?.textContent).toBe("—");
-    expect(panel?.querySelector("svg")).toBeNull();
+    expect(panel?.textContent).toContain("Archived A");
+    expect(panel?.textContent).toContain("Archived B");
+    expect(panel?.textContent).toContain("12");
+    expect(panel?.textContent).toContain("5");
   });
 
-  it("builds metadata without dereferencing a deleted team", async () => {
-    getMatch.mockResolvedValue(match(null, team(2, "Survivors")));
+  it("uses observed snapshot names in metadata after source teams have been deleted", async () => {
+    getMatch.mockResolvedValue(match(
+      { ...team(1, "Archived A"), team_id: null },
+      { ...team(2, "Archived B"), team_id: null }
+    ));
     const metadata = await generateMetadata({ params: Promise.resolve({ id: 7 }) });
-    expect(metadata.title).toContain("— vs Survivors");
-    expect(metadata.description).toBe("— vs Survivors");
+    expect(metadata.title).toContain("Archived A vs Archived B");
+    expect(metadata.description).toBe("Archived A vs Archived B");
+  });
+});
+
+describe("encounter participation statistics", () => {
+  it.each(["overview", "players"] as const)("keeps retired-only observations visible in %s", async (view) => {
+    const historical = match(
+      { ...team(1, "Archived A", [player(41, 12)]), team_id: null },
+      { ...team(2, "Archived B", [player(42, 5)]), team_id: null }
+    );
+    const container = await series([historical], view);
+    expect(container.textContent).toContain("Archived A");
+    expect(container.textContent).toContain("Archived B");
+    expect(container.textContent).toContain("12");
+    expect(container.textContent).toContain("5");
+    expect(container.querySelectorAll('a[href^="/users/"]')).toHaveLength(0);
+  });
+
+  it.each(["overview", "players"] as const)("keeps mixed participations separate in %s without pairing replacement seats", async (view) => {
+    const historical = match(
+      team(1, "Archived A", [player(41, 12)]),
+      team(2, "Archived B", [player(42, 5)])
+    );
+    const current = {
+      ...match(
+        { ...team(1, "Current A", [player(41, 4)]), id: 201, active: true },
+        { ...team(2, "Current B", [player(42, 3)]), id: 202, active: true }
+      ),
+      id: 8,
+      map_index: 1
+    };
+    const container = await series([historical, current], view);
+    const bodies = Array.from(container.querySelectorAll("tbody"));
+    expect(bodies).toHaveLength(4);
+    expect(bodies.map((body) => body.querySelector("tr")?.textContent)).toEqual([
+      "Archived A · Participation #101 · Historical participation",
+      "Archived B · Participation #102 · Historical participation",
+      "Current A · Participation #201",
+      "Current B · Participation #202"
+    ]);
+    expect(Array.from(bodies[0].querySelectorAll("td")).map((cell) => cell.textContent)).toContain("12");
+    expect(Array.from(bodies[2].querySelectorAll("td")).map((cell) => cell.textContent)).toContain("4");
+    expect(historical.home_participation.active).toBe(false);
+    expect(current.home_participation.active).toBe(true);
   });
 });
 
@@ -174,6 +252,18 @@ describe("native nullable timeline", () => {
     const roundHeader = row.parentElement!.previousElementSibling!;
     expect(roundHeader.textContent).toBe("—");
     expect(timestamps(container)).toEqual(["0:17"]);
+  });
+
+  it("does not infer a participation from a source team shared by both sides", async () => {
+    const container = await timeline(
+      { match_id: 7, kills: [kill({ killer_team_id: 2 })], events: [] },
+      { ...team(1, "Former side"), team_id: 2 },
+      team(2, "Other participation")
+    );
+    const clock = Array.from(container.querySelectorAll("span")).find((span) => span.textContent === "0:17")!;
+    const row = clock.parentElement!;
+    expect(row.style.borderLeft).toContain("var(--aqt-fg-muted)");
+    expect(row.parentElement!.previousElementSibling!.textContent).toBe("—");
   });
 
   it("keeps known team ownership and explicit flags when the other team is absent", async () => {

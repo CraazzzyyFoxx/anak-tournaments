@@ -10,6 +10,8 @@ the same transaction as the write.
 
 from __future__ import annotations
 
+import hashlib
+import re
 from typing import Any
 
 import sqlalchemy as sa
@@ -176,15 +178,14 @@ class WorkspaceBinaryService:
     # --- match logs ---------------------------------------------------------
 
     def _match_log_ref_query(self, match_id: int) -> sa.Select:
-        match, job, game, encounter = models.StatsMatch, models.IngestJob, models.EncounterGame, models.Encounter
+        match, job, encounter = models.StatsMatch, models.IngestJob, models.Encounter
         return (
-            sa.select(job.raw_ref, job.filename, encounter.tournament_id)
+            sa.select(job.raw_ref, job.filename, encounter.tournament_id, job.raw_status, job.content_hash)
             .select_from(match)
-            .join(game, game.id == match.encounter_game_id)
             .join(
                 encounter,
                 sa.and_(
-                    encounter.id == game.encounter_id,
+                    encounter.id == match.encounter_id,
                     encounter.workspace_id == match.workspace_id,
                     encounter.discipline == match.discipline,
                 ),
@@ -197,27 +198,43 @@ class WorkspaceBinaryService:
                     job.discipline == match.discipline,
                 ),
             )
-            .where(match.id == match_id)
+            .where(match.id == match_id, encounter.tournament_id.isnot(None))
         )
 
-    async def resolve_match_log_ref(self, session: AsyncSession, match_id: int) -> tuple[str, str, int]:
-        """The actual raw object reference, safe display filename and owning tournament."""
+    async def resolve_match_log_ref(
+        self, session: AsyncSession, match_id: int
+    ) -> tuple[str | None, str | None, int, models.RawSourceStatus | None, str | None]:
+        """Resolve owner and provenance only; availability is checked after authorization."""
         row = (await session.execute(self._match_log_ref_query(match_id))).first()
         if row is None:
             raise HTTPException(status_code=404, detail="Match not found")
-        raw_ref, display_name, tournament_id = row
-        if not raw_ref:
-            raise HTTPException(status_code=404, detail="No log available for this match")
-        filename = (display_name or raw_ref).replace("\\", "/").rsplit("/", 1)[-1]
-        if not filename or ".." in filename:
-            raise HTTPException(status_code=404, detail="No log available for this match")
-        return raw_ref, filename, tournament_id
+        raw_ref, display_name, tournament_id, raw_status, content_hash = row
+        filename = (display_name or raw_ref or "").replace("\\", "/").rsplit("/", 1)[-1]
+        return raw_ref, filename or None, tournament_id, raw_status, content_hash
 
-    async def fetch_log_bytes(self, raw_ref: str) -> bytes:
-        """Fetch only a server-resolved reference, after the caller's visibility gate."""
+    async def fetch_log_bytes(
+        self,
+        raw_ref: str | None,
+        *,
+        raw_status: models.RawSourceStatus | None,
+        content_hash: str | None,
+    ) -> bytes:
+        """Refuse unsafe provenance and verify bytes, only after the caller's visibility gate."""
+        if not raw_ref or raw_status is None:
+            raise HTTPException(status_code=404, detail="No log available for this match")
+        if raw_status == models.RawSourceStatus.MISSING:
+            raise HTTPException(status_code=404, detail="Log source is missing")
+        if raw_status == models.RawSourceStatus.CONFLICT:
+            raise HTTPException(status_code=409, detail="Log source has conflicting provenance")
+        if raw_status != models.RawSourceStatus.AVAILABLE:
+            raise HTTPException(status_code=409, detail="Log source has not been verified")
+        if content_hash is None or re.fullmatch(r"[0-9a-fA-F]{64}", content_hash) is None:
+            raise HTTPException(status_code=409, detail="Log source has no verified SHA-256")
         data_bytes = await s3_client.get_object(raw_ref)
         if data_bytes is None:
             raise HTTPException(status_code=404, detail="Log file not found")
+        if hashlib.sha256(data_bytes).hexdigest() != content_hash.lower():
+            raise HTTPException(status_code=409, detail="Log file SHA-256 does not match the preserved source hash")
         return data_bytes
 
 

@@ -39,7 +39,7 @@ from src.services.map.service import map_service
 from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.event_models import KillEvent, MatchEventRow, PlayerStatRow
 from src.services.match_logs.limits import match_log_oversize_message
-from src.services.match_logs.log_records import compute_content_hash, log_records_service
+from src.services.match_logs.log_records import compute_content_hash, log_records_service, reparse_observation
 from src.services.match_logs.objectiveless import resolve_encounter_maps
 from src.services.match_logs.roster import LogPlayer
 from src.services.team import service as team_service
@@ -986,6 +986,9 @@ class MatchLogProcessor:
         ):
             raise RuntimeError("Ingest claim was superseded before observations were written")
         self.job = job
+        linked = await reparse_observation(session, job)
+        if linked is not None and (linked.encounter_id, linked.encounter_game_id) != (encounter.id, game.id):
+            raise ValueError("A historical observation cannot move to another encounter or game")
         await self._validate_map_pool(session, encounter, match_map, pools)
         await self._preload_data(session)
         self.stat_ids = await StatDefRepository().ids(session, discipline=job.discipline)
@@ -1027,6 +1030,15 @@ class MatchLogProcessor:
             discipline=job.discipline,
             for_update=True,
         )
+        if match is not None and match.ingest_job_id != job.id:
+            previous_job = await session.get(models.IngestJob, match.ingest_job_id) if match.ingest_job_id else None
+            if (
+                previous_job is None
+                or previous_job.source_kind == "historical_reference"
+                or (previous_job.external_id or "").startswith("legacy:")
+            ):
+                raise ValueError("Another source cannot overwrite a historical observation")
+            await reparse_observation(session, previous_job)
         created = match is None
         match_id = (
             await session.scalar(sa.text("SELECT nextval(pg_get_serial_sequence('stats.match', 'id'))"))
@@ -1040,6 +1052,7 @@ class MatchLogProcessor:
                 id=match_id,
                 workspace_id=job.workspace_id,
                 discipline=job.discipline,
+                encounter_id=encounter.id,
                 encounter_game_id=game.id,
                 map_entity_id=match_map.id,
                 map_kind="map",
@@ -1092,7 +1105,7 @@ class MatchLogProcessor:
             teams=[
                 {
                     "match_id": match.id,
-                    "encounter_game_id": game.id,
+                    "encounter_id": encounter.id,
                     "encounter_team_id": self.participant_by_team[team.id],
                     "source_position": position,
                 }
@@ -1381,6 +1394,7 @@ async def process_match_log(
     await session.commit()
     processor = None
     try:
+        await reparse_observation(session, job)
         raw = await binary_match_logs.get_log(s3, job)
         if not raw:
             raise errors.ApiHTTPException(
@@ -1391,7 +1405,7 @@ async def process_match_log(
             raise errors.ApiHTTPException(
                 status_code=413, detail=[errors.ApiExc(code="match_log_too_large", msg=oversize)]
             )
-        if await asyncio.to_thread(compute_content_hash, raw) != job.content_hash:
+        if await asyncio.to_thread(compute_content_hash, raw) != job.content_hash.lower():
             raise ValueError("Stored raw bytes do not agree with the ingest job content hash")
         processor = await asyncio.to_thread(_processor_from_bytes, job, raw)
         match = await processor.start(session, claimed_attempt=attempt, claimed_started_at=started_at)

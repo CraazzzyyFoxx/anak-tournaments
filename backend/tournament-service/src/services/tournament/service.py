@@ -332,11 +332,10 @@ class TournamentService:
                 sa.func.coalesce(sa.func.sum(models.StatsMatch.duration_s), 0.0),
             )
             .select_from(models.StatsMatch)
-            .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
             .join(
                 models.Encounter,
                 sa.and_(
-                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.id == models.StatsMatch.encounter_id,
                     models.Encounter.workspace_id == models.StatsMatch.workspace_id,
                     models.Encounter.discipline == models.StatsMatch.discipline,
                 ),

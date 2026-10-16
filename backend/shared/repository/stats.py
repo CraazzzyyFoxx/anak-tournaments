@@ -170,7 +170,7 @@ def _finite(value) -> bool:
 
 
 async def _validate_match(session: AsyncSession, match: models.StatsMatch) -> None:
-    """Check authoritative persisted header as well as game/encounter scope, without flushing untrusted changes."""
+    """Check persisted direct ownership and any proven game binding without flushing untrusted changes."""
     m, game, encounter = models.StatsMatch.__table__, models.EncounterGame.__table__, models.Encounter.__table__
     row = (
         (
@@ -178,14 +178,17 @@ async def _validate_match(session: AsyncSession, match: models.StatsMatch) -> No
                 sa.select(
                     m.c.workspace_id,
                     m.c.discipline,
+                    m.c.encounter_id,
+                    m.c.source_map_index,
                     m.c.encounter_game_id,
                     m.c.map_entity_id,
                     game.c.map_id,
-                    encounter.c.workspace_id.label("game_workspace"),
-                    encounter.c.discipline.label("game_discipline"),
+                    game.c.encounter_id.label("game_encounter_id"),
+                    encounter.c.workspace_id.label("owner_workspace"),
+                    encounter.c.discipline.label("owner_discipline"),
                 )
-                .join(game, game.c.id == m.c.encounter_game_id)
-                .join(encounter, encounter.c.id == game.c.encounter_id)
+                .join(encounter, encounter.c.id == m.c.encounter_id)
+                .outerjoin(game, game.c.id == m.c.encounter_game_id)
                 .where(m.c.id == match.id)
                 .with_for_update(of=m)
             )
@@ -194,16 +197,27 @@ async def _validate_match(session: AsyncSession, match: models.StatsMatch) -> No
         .one_or_none()
     )
     if row is None or any(
-        row[key] != getattr(match, key) for key in ("workspace_id", "discipline", "encounter_game_id", "map_entity_id")
+        row[key] != getattr(match, key)
+        for key in (
+            "workspace_id",
+            "discipline",
+            "encounter_id",
+            "encounter_game_id",
+            "map_entity_id",
+            "source_map_index",
+        )
     ):
         raise ValueError("match header must agree with its persisted owner")
     if (
-        match.workspace_id != row["game_workspace"]
-        or match.discipline != row["game_discipline"]
-        or match.map_entity_id != row["map_id"]
+        match.workspace_id != row["owner_workspace"]
+        or match.discipline != row["owner_discipline"]
         or match.map_kind != "map"
     ):
-        raise ValueError("match workspace, discipline and map must agree with its game")
+        raise ValueError("match workspace and discipline must agree with its encounter")
+    if match.encounter_game_id is not None and (
+        row["game_encounter_id"] != match.encounter_id or row["map_id"] != match.map_entity_id
+    ):
+        raise ValueError("match encounter and map must agree with its game")
     entity = models.CatalogEntity.__table__
     if not await session.scalar(
         sa.select(entity.c.id).where(
@@ -242,22 +256,28 @@ async def _validate_teams_players(
         if (
             not _integer(tid)
             or tid in team_ids
-            or team["encounter_game_id"] != match.encounter_game_id
+            or team["encounter_id"] != match.encounter_id
             or not _integer(team["source_position"])
             or team["source_position"] != position
         ):
             raise ValueError("match teams must follow their positive one-based input array order")
         team_ids.add(tid)
-    game_team = models.EncounterGameTeam.__table__
+    game_team, encounter_team = models.EncounterGameTeam.__table__, models.EncounterTeam.__table__
     valid = set(
         (
             await session.execute(
-                sa.select(game_team.c.encounter_team_id).where(game_team.c.game_id == match.encounter_game_id)
+                sa.select(game_team.c.encounter_team_id)
+                .join(encounter_team, encounter_team.c.id == game_team.c.encounter_team_id)
+                .where(
+                    game_team.c.game_id == match.encounter_game_id,
+                    game_team.c.encounter_id == match.encounter_id,
+                    encounter_team.c.encounter_id == match.encounter_id,
+                )
             )
         ).scalars()
     )
     if not team_ids or not team_ids <= valid:
-        raise ValueError("match teams must participate in its game")
+        raise ValueError("match teams must participate in its encounter and game")
     member_teams = {}
     for player in players:
         member = player["workspace_member_id"]
@@ -411,14 +431,18 @@ class StatsMatchRepository:
         match, game, encounter = models.StatsMatch, models.EncounterGame, models.Encounter
         query = (
             sa.select(match)
-            .join(game, game.id == match.encounter_game_id)
-            .join(encounter, encounter.id == game.encounter_id)
+            .join(
+                game,
+                sa.and_(game.id == match.encounter_game_id, game.encounter_id == match.encounter_id),
+            )
+            .join(encounter, encounter.id == match.encounter_id)
             .where(
                 match.encounter_game_id == encounter_game_id,
                 match.workspace_id == workspace_id,
                 match.discipline == discipline,
                 encounter.workspace_id == workspace_id,
                 encounter.discipline == discipline,
+                game.map_id == match.map_entity_id,
             )
         )
         if for_update:
@@ -437,6 +461,8 @@ class StatsMatchRepository:
         events: Sequence[dict],
     ) -> None:
         """Validate the complete replacement before the first DELETE. Caller owns revision/evidence/commit."""
+        if match.encounter_game_id is None:
+            raise ValueError("new observations require a proven encounter game")
         teams = _rows(models.StatsMatchTeam, teams, match.id)
         players = _rows(models.StatsMatchPlayer, players, match.id)
         segments = _rows(models.StatsSegment, segments, match.id)
@@ -659,6 +685,45 @@ class IngestJobRepository:
     ) -> models.IngestJob | None:
         return await session.get(models.IngestJob, job_id, populate_existing=populate_existing)
 
+    async def verify_raw_source(
+        self,
+        session: AsyncSession,
+        *,
+        job_id: int,
+        workspace_id: int,
+        raw_status: models.RawSourceStatus,
+        inspected_sha256: str | None,
+    ) -> models.IngestJob:
+        """Apply an inspected source result; the caller captures/stages evidence and commits."""
+        from shared.services.stats_evidence import verified_content_hash
+
+        with session.no_autoflush:
+            job = await self.get_for_update(session, job_id, workspace_id=workspace_id)
+            if job is None:
+                raise ValueError("unknown ingest job in workspace")
+            raw_status = models.RawSourceStatus(raw_status)
+            content_hash = verified_content_hash(job.content_hash, raw_status, inspected_sha256)
+            if raw_status == models.RawSourceStatus.AVAILABLE:
+                source, match = models.IngestJob, models.StatsMatch
+                observations = (
+                    await session.scalars(
+                        sa.select(match.id)
+                        .join(source, source.id == match.ingest_job_id)
+                        .where(source.workspace_id == workspace_id, source.raw_ref == job.raw_ref)
+                        .limit(2)
+                    )
+                ).all()
+                if len(observations) > 1:
+                    raise ValueError("shared raw source has ambiguous observation provenance")
+            if job.raw_status != raw_status or job.content_hash != content_hash:
+                await session.execute(
+                    sa.update(models.IngestJob)
+                    .where(models.IngestJob.id == job_id, models.IngestJob.workspace_id == workspace_id)
+                    .values(raw_status=raw_status, content_hash=content_hash, updated_at=job.updated_at)
+                )
+        await session.flush()
+        return job
+
     async def update_hints(
         self,
         session: AsyncSession,
@@ -697,7 +762,8 @@ class IngestJobRepository:
 
         job, tournament, encounter, game = models.IngestJob, models.Tournament, models.Encounter, models.EncounterGame
         if (
-            len(content_hash) != 64
+            not isinstance(content_hash, str)
+            or len(content_hash) != 64
             or any(c not in "0123456789abcdef" for c in content_hash)
             or not raw_ref
             or len(raw_ref) > 512
@@ -792,6 +858,7 @@ class IngestJobRepository:
                 source_kind=source_kind,
                 external_id=None,
                 content_hash=content_hash,
+                raw_status=models.RawSourceStatus.AVAILABLE,
                 filename=filename,
                 raw_ref=raw_ref,
                 uploader_user_id=uploader_user_id,

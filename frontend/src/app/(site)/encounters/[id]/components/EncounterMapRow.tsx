@@ -16,10 +16,9 @@ import {
   DialogTrigger
 } from "@/components/ui/dialog";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import MatchLogIndicator from "@/components/match/MatchLogIndicator";
+import MatchLogIndicator, { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import MatchStatsSection from "@/app/(site)/matches/[id]/components/MatchStatsSection";
 import encounterService from "@/services/encounter.service";
-import type { DivisionGridVersion } from "@/types/workspace.types";
 import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
 import { formatSeriesClock, type SeriesSlot } from "@/lib/encounter/detail";
 import type { Duel } from "@/lib/encounter/seats";
@@ -32,7 +31,6 @@ interface EncounterMapRowProps {
   slot: SeriesSlot;
   names: Duel<string>;
   teams: Encounter["teams"];
-  tournamentGrid?: DivisionGridVersion | null;
   /** Localized duration unit suffixes for the playtime. */
   clockUnits: { h: string; m: string; s: string };
 }
@@ -50,7 +48,6 @@ export default function EncounterMapRow({
   slot,
   names,
   teams,
-  tournamentGrid,
   clockUnits
 }: Readonly<EncounterMapRowProps>) {
   const t = useTranslations();
@@ -183,10 +180,10 @@ export default function EncounterMapRow({
       {/* The scoreboard is the parsed log's; a position with a result but no
           log has nothing to open. */}
       <span className={styles.mapAction}>
-        {match?.log_name ? (
+        {match?.raw_available ? (
           <MatchLogIndicator
             hasLogs
-            logs={[{ matchId: match.id, label: match.map?.name ?? undefined }]}
+            logs={[{ matchId: match.id, label: match.map?.name ?? undefined, rawAvailable: match.raw_available }]}
           />
         ) : null}
         {match == null ? null : (
@@ -247,13 +244,18 @@ export default function EncounterMapRow({
                     <span className={styles.label}>{t("encounters.match.logName")}</span>
                     <span className={styles.mapFactValue}>
                       <span className={styles.mapFactText}>{match.log_name}</span>
-                      <MatchLogIndicator
-                        hasLogs
-                        logs={[{ matchId: match.id, label: match.map?.name ?? undefined }]}
-                      />
                     </span>
                   </span>
                 ) : null}
+                <span className={styles.dialogFact}>
+                  <RawLogStatus raw_status={match.raw_status} raw_available={match.raw_available} />
+                  {match.raw_available ? (
+                    <MatchLogIndicator
+                      hasLogs
+                      logs={[{ matchId: match.id, label: match.map?.name ?? undefined, rawAvailable: match.raw_available }]}
+                    />
+                  ) : null}
+                </span>
                 <Link
                   href={`/matches/${match.id}`}
                   target="_blank"
@@ -269,7 +271,7 @@ export default function EncounterMapRow({
               {matchQuery.isError ? (
                 <PageStateCard state="error" onAction={() => void matchQuery.refetch()} />
               ) : matchQuery.data ? (
-                <MatchStatsSection match={matchQuery.data} tournamentGrid={tournamentGrid} />
+                <MatchStatsSection match={matchQuery.data} />
               ) : (
                 <div className="flex flex-col gap-2" aria-busy>
                   {Array.from({ length: 8 }).map((_, index) => (

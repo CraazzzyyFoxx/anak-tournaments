@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from pydantic import BaseModel, BeforeValidator, Field
 
+from shared.models.stats import RawSourceStatus
 from shared.schemas.role import RoleRef
 from src import schemas
 from src.core import enums, pagination
@@ -200,10 +201,12 @@ class MatchReadWithUserStats(BaseModel):
     score: Score
     time: float | None
     log_name: str | None
+    raw_status: RawSourceStatus | None
+    raw_available: bool
     encounter_id: int
     map_id: int
     # Authoritative 1-based position of the bound encounter game.
-    map_index: int
+    map_index: int | None
     map: MapRead | None = None
     performance: int | None = None
     impact_rank: int | None = None

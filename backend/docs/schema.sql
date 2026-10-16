@@ -31,6 +31,7 @@ CREATE TYPE encounter.pickbankind AS ENUM ('map', 'hero');
 CREATE TYPE encounter.pickbanseedsource AS ENUM ('bracket_slot', 'standings', 'fallback_first_slot', 'admin');
 CREATE TYPE encounter.pickbansessionstatus AS ENUM ('active', 'completed', 'cancelled');
 CREATE TYPE encounter.encounterresultauditaction AS ENUM ('confirm', 'reopen', 'auto_confirm', 'auto_dispute', 'auto_pending', 'import', 'cascade_reset', 'game_confirm', 'game_correct', 'game_cancel');
+CREATE TYPE ck_ingest_job_raw_status AS ENUM ('available', 'missing', 'conflict', 'unverified');
 CREATE TYPE ck_ingest_job_status AS ENUM ('pending', 'processing', 'awaiting_link', 'done', 'failed');
 CREATE TYPE tournament.pickbanmode AS ENUM ('pool', 'slots');
 CREATE TYPE tournament.pickbanfirstpickrule AS ENUM ('higher_seed');
@@ -2727,7 +2728,8 @@ CREATE TABLE stats.ingest_job (
 	discipline VARCHAR(32) NOT NULL,
 	source_kind VARCHAR(32) NOT NULL,
 	external_id VARCHAR(128),
-	content_hash CHAR(64) NOT NULL,
+	content_hash CHAR(64),
+	raw_status VARCHAR(16) DEFAULT 'available' NOT NULL,
 	filename VARCHAR(500),
 	raw_ref VARCHAR(512) NOT NULL,
 	document_ref VARCHAR(512),
@@ -2742,8 +2744,10 @@ CREATE TABLE stats.ingest_job (
 	started_at TIMESTAMP WITH TIME ZONE,
 	finished_at TIMESTAMP WITH TIME ZONE,
 	PRIMARY KEY (id),
+	CONSTRAINT ck_ingest_job_available_hash CHECK (raw_status <> 'available' OR content_hash IS NOT NULL),
 	CONSTRAINT fk_ingest_job_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_ingest_job_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
+	CONSTRAINT ck_ingest_job_raw_status CHECK (raw_status IN ('available', 'missing', 'conflict', 'unverified')),
 	CONSTRAINT ck_ingest_job_status CHECK (status IN ('pending', 'processing', 'awaiting_link', 'done', 'failed')),
 	CONSTRAINT fk_ingest_job_uploader FOREIGN KEY(uploader_user_id) REFERENCES players."user" (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_ingest_job_api_key FOREIGN KEY(api_key_id) REFERENCES auth.api_key (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
@@ -2774,7 +2778,9 @@ CREATE TABLE stats.match (
 	updated_at TIMESTAMP WITH TIME ZONE,
 	workspace_id BIGINT NOT NULL,
 	discipline VARCHAR(32) NOT NULL,
-	encounter_game_id BIGINT NOT NULL,
+	encounter_id BIGINT NOT NULL,
+	encounter_game_id BIGINT,
+	source_map_index INTEGER,
 	ingest_job_id BIGINT,
 	revision INTEGER DEFAULT '1' NOT NULL,
 	played_at TIMESTAMP WITH TIME ZONE,
@@ -2783,12 +2789,16 @@ CREATE TABLE stats.match (
 	map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
 	PRIMARY KEY (id),
 	CONSTRAINT uq_stats_match_game UNIQUE (encounter_game_id),
+	CONSTRAINT uq_stats_match_owner UNIQUE (id, encounter_id),
 	CONSTRAINT ck_stats_match_map_kind CHECK (map_kind = 'map'),
 	CONSTRAINT fk_match_map FOREIGN KEY(map_entity_id, discipline, map_kind) REFERENCES catalog.entity (id, discipline, kind) ON DELETE RESTRICT,
 	CONSTRAINT fk_stats_match_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-	CONSTRAINT fk_stats_match_game FOREIGN KEY(encounter_game_id) REFERENCES encounter.game (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_stats_match_encounter FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_stats_match_game FOREIGN KEY(encounter_game_id) REFERENCES encounter.game (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_stats_match_ingest_job FOREIGN KEY(ingest_job_id) REFERENCES stats.ingest_job (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
 );
+
+CREATE INDEX ix_stats_match_encounter ON stats.match (encounter_id);
 
 CREATE INDEX ix_stats_match_ingest_job ON stats.match (ingest_job_id);
 
@@ -2812,17 +2822,17 @@ CREATE INDEX ix_match_player_observed_role ON stats.match_player (observed_role_
 
 CREATE TABLE stats.match_team (
 	match_id BIGINT NOT NULL,
-	encounter_game_id BIGINT NOT NULL,
+	encounter_id BIGINT NOT NULL,
 	encounter_team_id BIGINT NOT NULL,
 	source_position INTEGER NOT NULL,
 	CONSTRAINT pk_stats_match_team PRIMARY KEY (match_id, encounter_team_id),
 	CONSTRAINT ck_match_team_source_position CHECK (source_position >= 1),
 	CONSTRAINT uq_match_team_source_position UNIQUE (match_id, source_position),
-	CONSTRAINT fk_match_team_game_team FOREIGN KEY(encounter_game_id, encounter_team_id) REFERENCES encounter.game_team (game_id, encounter_team_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-	CONSTRAINT fk_match_team_match FOREIGN KEY(match_id) REFERENCES stats.match (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+	CONSTRAINT fk_match_team_match FOREIGN KEY(match_id, encounter_id) REFERENCES stats.match (id, encounter_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_match_team_encounter_team FOREIGN KEY(encounter_team_id, encounter_id) REFERENCES encounter.team (id, encounter_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE INDEX ix_match_team_game_team ON stats.match_team (encounter_game_id, encounter_team_id);
+CREATE INDEX ix_match_team_encounter_team ON stats.match_team (encounter_team_id, encounter_id);
 
 CREATE TABLE stats.segment (
 	match_id BIGINT NOT NULL,

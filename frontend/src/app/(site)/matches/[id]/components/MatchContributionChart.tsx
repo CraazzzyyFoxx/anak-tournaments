@@ -13,13 +13,12 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
-import { TeamWithStats } from "@/types/team.types";
 import { LogStatsName } from "@/types/stats.types";
-import { STAT_META, activePlayers, formatStat, playerStat } from "@/lib/match-stats";
+import { STAT_META, activePlayers, formatStat, playerStat, type MatchStatsTeam } from "@/lib/match-stats";
 
 interface MatchContributionChartProps {
-  home: TeamWithStats;
-  away: TeamWithStats;
+  home: MatchStatsTeam;
+  away: MatchStatsTeam;
   round: number;
 }
 
@@ -34,9 +33,8 @@ const METRICS: LogStatsName[] = [
 ];
 
 interface Datum {
-  /** Player row id — the cell key: `data` is re-sorted whenever the metric
-   *  changes, so a positional key would leave each bar's colour behind. */
-  id: number;
+  /** Participation/member identity survives metric re-sorting and roster changes. */
+  id: string;
   name: string;
   value: number;
   side: "home" | "away";
@@ -49,13 +47,13 @@ const MatchContributionChart = ({ home, away, round }: MatchContributionChartPro
 
   const data: Datum[] = [
     ...activePlayers(home, round).map((player) => ({
-      id: player.id,
+      id: `${home.id}:${player.workspace_member_id}`,
       name: player.name.split("#")[0],
       value: playerStat(player, round, metric),
       side: "home" as const
     })),
     ...activePlayers(away, round).map((player) => ({
-      id: player.id,
+      id: `${away.id}:${player.workspace_member_id}`,
       name: player.name.split("#")[0],
       value: playerStat(player, round, metric),
       side: "away" as const

@@ -80,6 +80,8 @@ function record(id: number, overrides: Partial<LogProcessingRecord> = {}): LogPr
     filename: `logs/round_${id}.txt`,
     status: "done",
     source: "upload",
+    raw_status: "available",
+    raw_available: true,
     uploader_name: "operator",
     error_message: null,
     attempts: 1,
@@ -359,6 +361,44 @@ describe("TournamentLogsTab", () => {
     expect(scope.textContent).toContain("Processing");
     expect(scope.querySelector('button[aria-label="Select row 17"]')).toBeNull();
     expect(scope.querySelector('button[aria-label="Actions for round_17.txt"]')).toBeNull();
+  });
+
+  it.each([
+    ["missing", "Raw log file is missing"],
+    ["conflict", "recorded hash"],
+    ["unverified", "not been verified"]
+  ] as const)("keeps %s raw history visible but disables retry and attachment", async (raw_status, explanation) => {
+    getLogHistory.mockResolvedValue({
+      items: [record(17, { status: "failed", raw_status, raw_available: false })],
+      total: 1
+    });
+    const scope = await mount(78, [PLAYOFF]);
+    expect(scope.textContent).toContain("round_17.txt");
+    expect(scope.textContent).toContain(explanation);
+    expect(button(scope, "Retry")?.disabled).toBe(true);
+    expect(scope.querySelector('button[aria-label="Select row 17"]')).toBeNull();
+    expect(scope.querySelector('button[aria-label="Actions for round_17.txt"]')).toBeNull();
+    await click(button(scope, "Retry"));
+    expect(retryLogRecord).not.toHaveBeenCalled();
+  });
+
+  it("does not present historical references or unbound parsed observations as safe to reprocess", async () => {
+    getLogHistory.mockResolvedValue({
+      items: [
+        record(17, { status: "failed", source: "historical_reference" }),
+        record(18, { status: "failed", attached_encounter_id: 6662, attached_encounter_game_id: null })
+      ],
+      total: 2
+    });
+    const scope = await mount(78, [PLAYOFF]);
+    expect(scope.textContent).toContain("Historical source reference");
+    expect(scope.textContent).toContain("Game binding is unconfirmed");
+    expect(scope.querySelectorAll('button[disabled]').length).toBeGreaterThanOrEqual(2);
+    expect(scope.querySelector('button[aria-label="Select row 17"]')).toBeNull();
+    expect(scope.querySelector('button[aria-label="Select row 18"]')).toBeNull();
+    expect(scope.querySelector('button[aria-label="Actions for round_17.txt"]')).toBeNull();
+    expect(scope.querySelector('button[aria-label="Actions for round_18.txt"]')).toBeNull();
+    expect(retryLogRecord).not.toHaveBeenCalled();
   });
 
   it("requires an actual noncancelled game when resolving two live games on the same map", async () => {

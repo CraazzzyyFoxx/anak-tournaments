@@ -19,7 +19,7 @@ from shared.services.challonge_refs import (
     resolve_tournament_challonge,
 )
 from src import models, schemas
-from src.core import config, enums, errors, pagination, utils
+from src.core import config, errors, pagination, utils
 from src.services.encounter.service import EncounterService, encounter_service
 from src.services.map.flows import MapFlowsService, map_to_read
 from src.services.map.flows import flows_service as map_flows_service
@@ -80,45 +80,12 @@ def _saved_view_to_read(saved_view: models.EncounterSavedView) -> schemas.Encoun
     )
 
 
-def create_team_with_match_stats(
-    team: schemas.TeamRead,
-    team_stats: dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]],
-) -> schemas.TeamWithMatchStats:
-    """
-    Creates a TeamWithMatchStats schema from a TeamRead schema and a dictionary of team statistics.
-
-    Parameters:
-        team (schemas.TeamRead): The team data.
-        team_stats (dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]]):
-            A dictionary where the key is the player user ID and the value is a tuple containing:
-                - A dictionary of round numbers to dictionaries of log stats names and their values.
-                - A dictionary of round numbers to lists of hero statistics.
-
-    Returns:
-        schemas.TeamWithMatchStats: The team data with match statistics included.
-    """
-    return schemas.TeamWithMatchStats(
-        **team.model_dump(exclude={"players"}),
-        players=[
-            schemas.PlayerWithMatchStats(
-                **player.model_dump(),
-                stats=team_stats[player.user_id][0],
-                heroes=team_stats[player.user_id][1],  # type: ignore
-            )
-            for player in team.players
-            if team_stats[player.user_id][1]
-        ],
-    )
-
-
 class EncounterFlowsService:
     """Read orchestration for the encounter/match public surface: ORM rows in,
     ``schemas.*Read`` out, with the batched prefetches the list and overview
     pages need so ``to_pydantic`` never fires a query per row.
 
-    Pure serialization helpers (``to_summary``, ``create_team_with_match_stats``)
-    stay module-level: they take no session and other modules import them
-    directly.
+    Pure serialization helpers stay module-level: they take no session.
     """
 
     def __init__(
@@ -397,12 +364,16 @@ class EncounterFlowsService:
             updated_at=match.match.updated_at,
             time=match.match.duration_s,
             log_name=match.display_filename,
-            encounter_id=match.game.encounter_id,
+            raw_status=match.job.raw_status if match.job is not None else None,
+            raw_available=match.job.raw_available if match.job is not None else False,
+            encounter_id=match.encounter.id,
             map_id=match.match.map_entity_id,
-            map_index=match.game.position,
+            map_index=match.game.position if match.game is not None else None,
             home_team_id=match.home_team.id if match.home_team is not None else None,
             away_team_id=match.away_team.id if match.away_team is not None else None,
             score=schemas.Score(home=match.home_score, away=match.away_score),
+            home_participation=seat_to_read(match.home_participation, home_team),
+            away_participation=seat_to_read(match.away_participation, away_team),
             home_team=home_team,
             away_team=away_team,
             encounter=encounter,
@@ -769,37 +740,22 @@ class EncounterFlowsService:
         """
         if "teams" not in entities:
             entities.append("teams")
-        if "teams.players" not in entities:
-            entities.append("teams.players")
         match = await self.get_match(session, match_id, entities, workspace_id=workspace_id)
-        max_round: int = 0
-        home_ids = [player.user_id for player in match.home_team.players] if match.home_team is not None else []
-        away_ids = [player.user_id for player in match.away_team.players] if match.away_team is not None else []
-        # One batched pair of aggregate queries for the whole roster instead of
-        # 2 queries per player (this is the hottest public read — the match page).
-        all_stats = await self.encounters.get_match_stats_for_users(session, match.id, [*home_ids, *away_ids])
-        home_team_stats: dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]] = {}
-        away_team_stats: dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]] = {}
-        for user_id in home_ids:
-            player_data = all_stats[user_id]
-            home_team_stats[user_id] = player_data
-            max_round = max(max_round, max(player_data[0].keys()) if player_data[0] else 0)
-        for user_id in away_ids:
-            player_data = all_stats[user_id]
-            away_team_stats[user_id] = player_data
-            max_round = max(max_round, max(player_data[0].keys()) if player_data[0] else 0)
-
-        home_team = (
-            create_team_with_match_stats(match.home_team, home_team_stats) if match.home_team is not None else None
-        )
-        away_team = (
-            create_team_with_match_stats(match.away_team, away_team_stats) if match.away_team is not None else None
+        players = await self.encounters.get_match_observed_players(session, match.id)
+        home_players = players.get(match.home_participation.id, [])
+        away_players = players.get(match.away_participation.id, [])
+        max_round = max(
+            (segment for side in players.values() for player in side for segment in player.stats), default=0
         )
         return schemas.MatchReadWithStats(
-            **match.model_dump(exclude={"home_team", "away_team"}),
+            **match.model_dump(exclude={"home_participation", "away_participation"}),
             rounds=max_round,
-            home_team=home_team,
-            away_team=away_team,
+            home_participation=schemas.MatchParticipationWithStats(
+                **match.home_participation.model_dump(), players=home_players
+            ),
+            away_participation=schemas.MatchParticipationWithStats(
+                **match.away_participation.model_dump(), players=away_players
+            ),
         )
 
     @cache(

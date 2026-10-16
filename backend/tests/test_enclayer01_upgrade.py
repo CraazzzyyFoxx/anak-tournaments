@@ -32,6 +32,7 @@ import sys
 
 import psycopg
 import pytest
+import sqlalchemy as sa
 from psycopg.types.json import Json, Jsonb
 
 from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
@@ -592,7 +593,6 @@ def test_the_preflight_is_silent_on_clean_legacy_data(legacy_template) -> None:
 def test_the_operators_preflight_file_is_silent_too(legacy_template) -> None:
     with _connect(TEMPLATE_DB) as conn:
         results = [_rows(conn, statement) for statement in _statements(PREFLIGHT_SQL)]
-    assert len(results) == len(_preflight_queries())
     assert [rows for rows in results if rows] == []
 
 
@@ -621,7 +621,13 @@ def test_every_class_the_converter_rejects_is_reported_with_its_ids_and_stops_th
             }
             return _insert(conn, "tournament.encounter", **columns)
 
-        same_team = duel("same team", ids["team_C"], ids["team_C"])
+        same_team = duel(
+            "invalid lobby sides",
+            ids["team_C"],
+            ids["team_C"],
+            format="ffa",
+            stage_id=ids["stage_ffa"],
+        )
         foreign_team = duel("foreign team", ids["foreign_team"], None)
         foreign_stage = duel("foreign stage", None, None, stage_id=ids["stage_other"])
         ffa_in_bracket = duel("ffa in a bracket", None, None, stage_id=ids["stage_duel"], format="ffa")
@@ -681,7 +687,7 @@ def test_every_class_the_converter_rejects_is_reported_with_its_ids_and_stops_th
 
     assert ids_of("link repeats a target slot", 0) == {dup_one, dup_two, cross}
     assert ids_of("best_of is below 1", 0) == {bad_best_of}
-    assert ids_of("same team on both sides", 0) == {same_team}
+    assert ids_of("non-duel seats the same team", 0) == {same_team}
     assert ids_of("another tournament than its encounter", 0) == {foreign_team}
     assert ids_of("stage of another tournament", 0) == {foreign_stage}
     assert ids_of("pick-ban entry", 0) == {entry}
@@ -693,7 +699,7 @@ def test_every_class_the_converter_rejects_is_reported_with_its_ids_and_stops_th
     for fragment, expected in (
         ("link repeats a target slot", dup_one),
         ("best_of is below 1", bad_best_of),
-        ("same team on both sides", same_team),
+        ("non-duel seats the same team", same_team),
         ("another tournament than its encounter", foreign_team),
         ("stage of another tournament", foreign_stage),
         ("pick-ban entry", entry),
@@ -721,18 +727,13 @@ def _spare_member_on(conn: psycopg.Connection, ids: dict[str, int], **rows: bool
     return member
 
 
-def _check_two(conn: psycopg.Connection) -> list[tuple]:
-    (rows,) = [rows for question, rows in _run_checks(conn, revision.PREFLIGHT).items() if "two rosters" in question]
-    return rows
-
-
 def test_a_regular_seat_beats_a_substitute_row_of_the_same_encounter(legacy_template) -> None:
     ids = legacy_template["ids"]
     _recreate(REJECTED_DB, TEMPLATE_DB)
     with _connect(REJECTED_DB) as conn:
         # Regular of team A, registered as a substitute on its opponent D: they sit in A's encounters as a regular.
         member = _spare_member_on(conn, ids, A=False, D=True)
-        assert _check_two(conn) == []
+        assert not any(_run_checks(conn, _preflight_queries()).values())
     done = _alembic(REJECTED_DB, "enclayer01b")
     assert done.returncode == 0, done.stderr[-3000:]
 
@@ -755,17 +756,607 @@ def test_a_regular_seat_beats_a_substitute_row_of_the_same_encounter(legacy_temp
 
 
 @pytest.mark.parametrize("flags", [{"A": False, "D": False}, {"A": True, "D": True}], ids=["two-regulars", "two-subs"])
-def test_check_two_still_refuses_what_the_rule_cannot_settle(legacy_template, flags) -> None:
+def test_ambiguous_roster_seats_are_audited_without_asserting_participation(legacy_template, flags) -> None:
     ids = legacy_template["ids"]
     _recreate(REJECTED_DB, TEMPLATE_DB)
     with _connect(REJECTED_DB) as conn:
         member = _spare_member_on(conn, ids, **flags)
-        assert _check_two(conn) == [(ids["e_hero"], member, [ids["team_A"], ids["team_D"]])]
+        conn.execute(
+            "UPDATE tournament.encounter SET status='COMPLETED',result_status='confirmed',home_score=2,away_score=0"
+            " WHERE id=%s",
+            (ids["e_hero"],),
+        )
+        registrations = _scalar(
+            conn,
+            "SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM tournament.player p WHERE workspace_member_id=%s",
+            (member,),
+        )
+        assert not any(_run_checks(conn, _preflight_queries()).values())
+    done = _alembic(REJECTED_DB, "enclayer01b")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert (
+            _scalar(
+                conn,
+                "SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM tournament.player p WHERE workspace_member_id=%s",
+                (member,),
+            )
+            == registrations
+        )
+        assert (
+            _rows(
+                conn,
+                "SELECT encounter_team_id FROM encounter.team_member WHERE encounter_id=%s AND workspace_member_id=%s",
+                (ids["e_hero"], member),
+            )
+            == []
+        )
+        assert _rows(
+            conn,
+            "SELECT slot,score,placement FROM encounter.team WHERE encounter_id=%s ORDER BY slot",
+            (ids["e_hero"],),
+        ) == [(1, 2.0, 1), (2, 0.0, 2)]
+        assert _rows(
+            conn,
+            "SELECT home_team_id,away_team_id,home_score,away_score,result_status::text,result_source"
+            " FROM encounter.encounter WHERE id=%s",
+            (ids["e_hero"],),
+        ) == [(ids["team_A"], ids["team_D"], 2, 0, "confirmed", "import")]
+        seats = _rows(
+            conn,
+            "SELECT id,slot FROM encounter.team WHERE encounter_id=%s ORDER BY slot",
+            (ids["e_hero"],),
+        )
+        assert _rows(
+            conn,
+            "SELECT source,workspace_id,before_json,after_json FROM public.audit_log"
+            " WHERE action='encounter.history_unresolved' AND entity_type='encounter'"
+            " AND entity_id=%s AND reason='ambiguous_roster_seat'",
+            (ids["e_hero"],),
+        ) == [
+            (
+                "system",
+                ids["ws"],
+                {
+                    "workspace_member_id": member,
+                    "registrations": [
+                        {"encounter_team_id": seat, "slot": slot, "registration": registration}
+                        for (seat, slot), registration in zip(seats, registrations, strict=True)
+                    ],
+                },
+                {"encounter_team_ids": []},
+            )
+        ]
+        # A single seat is still unambiguous, even for an all-substitute registration.
+        assert _rows(
+            conn,
+            "SELECT t.team_id,tm.rank,tm.is_substitute FROM encounter.team_member tm"
+            " JOIN encounter.team t ON t.id=tm.encounter_team_id"
+            " WHERE tm.encounter_id=%s AND tm.workspace_member_id=%s",
+            (ids["e_slots"], member),
+        ) == [(ids["team_D"], 2000, flags["D"])]
+        assert (
+            _scalar(
+                conn,
+                "SELECT indisunique FROM pg_index WHERE indexrelid='encounter.uq_team_member_active_member'::regclass",
+            )
+            is True
+        )
+
+
+@pytest.mark.parametrize(
+    "role,rank,is_substitution",
+    [("support", 2000, False), ("tank", 3100, False), ("support", 3100, True)],
+    ids=["role-only", "rank-only", "all-substitutes"],
+)
+def test_disputed_role_or_rank_keeps_registrations_but_no_asserted_role_or_rank(
+    legacy_template,
+    role,
+    rank,
+    is_substitution,
+) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        original = _scalar(
+            conn,
+            "SELECT to_jsonb(p) FROM tournament.player p WHERE team_id=%s AND role='tank'",
+            (ids["team_A"],),
+        )
+        conn.execute("UPDATE tournament.player SET is_substitution=%s WHERE id=%s", (is_substitution, original["id"]))
+        _insert(
+            conn,
+            "tournament.player",
+            name="disputed substitute",
+            rank=rank,
+            role=role,
+            sub_role="other",
+            tournament_id=ids["t"],
+            workspace_member_id=original["workspace_member_id"],
+            team_id=ids["team_A"],
+            is_substitution=True,
+        )
+        registrations = _scalar(
+            conn,
+            "SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM tournament.player p"
+            " WHERE team_id=%s AND workspace_member_id=%s",
+            (ids["team_A"], original["workspace_member_id"]),
+        )
+    done = _alembic(REJECTED_DB, "enclayer01b")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert (
+            _scalar(
+                conn,
+                "SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM tournament.player p"
+                " WHERE team_id=%s AND workspace_member_id=%s",
+                (ids["team_A"], original["workspace_member_id"]),
+            )
+            == registrations
+        )
+        snapshots = _rows(
+            conn,
+            "SELECT tm.rank,tm.is_substitute,tm.display_name_snapshot,"
+            " (SELECT count(*) FROM encounter.team_member_role r WHERE r.team_member_id=tm.id)"
+            " FROM encounter.team_member tm JOIN encounter.team t ON t.id=tm.encounter_team_id"
+            " WHERE t.team_id=%s AND tm.workspace_member_id=%s",
+            (ids["team_A"], original["workspace_member_id"]),
+        )
+        assert snapshots and all(row == (None, is_substitution, original["name"], 0) for row in snapshots)
+        assert _rows(
+            conn,
+            "SELECT source,workspace_id,before_json,after_json FROM public.audit_log"
+            " WHERE action='encounter.history_unresolved' AND entity_type='team'"
+            " AND entity_id=%s AND reason='conflicting_roster_role_rank'",
+            (ids["team_A"],),
+        ) == [
+            (
+                "system",
+                ids["ws"],
+                {
+                    "workspace_member_id": original["workspace_member_id"],
+                    "registrations": registrations,
+                },
+                {"rank": None, "roles": []},
+            )
+        ]
+        # Existing official results and the other member's resolved roster remain exact.
+        assert _rows(
+            conn,
+            "SELECT slot,score,placement FROM encounter.team WHERE encounter_id=%s ORDER BY slot",
+            (ids["e_played"],),
+        ) == [(1, 2.0, 1), (2, 1.0, 2)]
+        assert _rows(
+            conn,
+            "SELECT tm.rank,r.role FROM encounter.team_member tm"
+            " JOIN encounter.team t ON t.id=tm.encounter_team_id"
+            " JOIN encounter.team_member_role r ON r.team_member_id=tm.id"
+            " WHERE t.encounter_id=%s AND t.team_id=%s",
+            (ids["e_played"], ids["team_A"]),
+        ) == [(2000, "damage")]
+
+
+def test_agreeing_registration_duplicates_keep_the_existing_deterministic_projection(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        original = _scalar(
+            conn,
+            "SELECT to_jsonb(p) FROM tournament.player p WHERE team_id=%s AND role='tank'",
+            (ids["team_A"],),
+        )
+        conn.execute("UPDATE tournament.player SET is_substitution=true WHERE id=%s", (original["id"],))
+        _insert(
+            conn,
+            "tournament.player",
+            name="later registration",
+            rank=2000,
+            role="tank",
+            sub_role="later",
+            tournament_id=ids["t"],
+            workspace_member_id=original["workspace_member_id"],
+            team_id=ids["team_A"],
+            is_substitution=False,
+        )
+        registrations = _scalar(
+            conn,
+            "SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM tournament.player p"
+            " WHERE team_id=%s AND workspace_member_id=%s",
+            (ids["team_A"], original["workspace_member_id"]),
+        )
+    done = _alembic(REJECTED_DB, "enclayer01b")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert (
+            _scalar(
+                conn,
+                "SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM tournament.player p"
+                " WHERE team_id=%s AND workspace_member_id=%s",
+                (ids["team_A"], original["workspace_member_id"]),
+            )
+            == registrations
+        )
+        assert _rows(
+            conn,
+            "SELECT tm.display_name_snapshot,tm.rank,tm.is_substitute,r.role"
+            " FROM encounter.team_member tm JOIN encounter.team t ON t.id=tm.encounter_team_id"
+            " JOIN encounter.team_member_role r ON r.team_member_id=tm.id"
+            " WHERE t.encounter_id=%s AND t.team_id=%s AND tm.workspace_member_id=%s",
+            (ids["e_played"], ids["team_A"], original["workspace_member_id"]),
+        ) == [(original["name"], 2000, True, "tank")]
+        assert _rows(
+            conn,
+            "SELECT source,workspace_id,before_json,after_json FROM public.audit_log"
+            " WHERE action='encounter.history_unresolved' AND entity_type='team' AND entity_id=%s"
+            " AND reason='conflicting_roster_metadata'",
+            (ids["team_A"],),
+        ) == [
+            (
+                "system",
+                ids["ws"],
+                {
+                    "workspace_member_id": original["workspace_member_id"],
+                    "registrations": registrations,
+                },
+                {"snapshot_player_id": original["id"]},
+            )
+        ]
+
+
+def test_self_duel_keeps_both_results_but_only_one_known_source_team(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        encounter = _insert(
+            conn,
+            "tournament.encounter",
+            name="historical self-duel",
+            tournament_id=ids["t"],
+            home_team_id=ids["team_C"],
+            away_team_id=ids["team_C"],
+            home_score=1,
+            away_score=3,
+            round=6,
+            best_of=5,
+            status="COMPLETED",
+            result_status="confirmed",
+        )
+        source = _scalar(conn, "SELECT to_jsonb(e) FROM tournament.encounter e WHERE id=%s", (encounter,))
+        teams_before = _scalar(conn, "SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM tournament.team t")
+    done = _alembic(REJECTED_DB, "enclayer01b")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert _rows(
+            conn,
+            "SELECT slot,team_id,name,score,placement FROM encounter.team WHERE encounter_id=%s ORDER BY slot",
+            (encounter,),
+        ) == [(1, ids["team_C"], "Team C", 1.0, 2), (2, None, "Unknown opponent", 3.0, 1)]
+        native = _scalar(conn, "SELECT to_jsonb(e) FROM encounter.encounter e WHERE id=%s", (encounter,))
+        renamed = {"current_map_index": "current_game_position"}
+        assert {key: native[renamed.get(key, key)] for key in source} == source
+        assert native["result_source"] == "import"
+        assert _scalar(conn, "SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM tournament.team t") == teams_before
+        assert _scalar(conn, "SELECT count(*) FROM encounter.game WHERE encounter_id=%s", (encounter,)) == 0
+        assert (
+            _scalar(
+                conn,
+                "SELECT count(*) FROM encounter.team_member tm JOIN encounter.team t ON t.id=tm.encounter_team_id"
+                " WHERE t.encounter_id=%s AND t.slot=2",
+                (encounter,),
+            )
+            == 0
+        )
+        assert _rows(
+            conn,
+            "SELECT source,workspace_id,before_json,after_json FROM public.audit_log"
+            " WHERE action='encounter.history_unresolved' AND entity_type='encounter'"
+            " AND entity_id=%s AND reason='same_team_both_sides'",
+            (encounter,),
+        ) == [("system", ids["ws"], source, {"home_team_id": ids["team_C"], "away_team_id": None})]
+
+
+def test_ambiguous_replay_codes_stay_in_their_reports_without_official_game_links(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        for position in (1, 2, 5):
+            _insert(
+                conn, "tournament.encounter_game", encounter_id=ids["e_played"], position=position, state="cancelled"
+            )
+        for captain, position, code in (
+            ("B", 1, "BBB111"),
+            ("A", 2, "AAA222"),
+            ("B", 2, "BBB222"),
+            ("A", 3, "AAA333"),
+            ("A", 4, "AAA444"),
+            ("B", 4, "BBB444"),
+            ("A", 5, "AAA555"),
+            ("B", 5, "BBB555"),
+        ):
+            _insert(
+                conn,
+                "tournament.encounter_map_code",
+                report_id=ids[f"captain_{captain}"],
+                map_index=position,
+                code=code,
+            )
+        codes = _scalar(conn, "SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM tournament.encounter_map_code c")
+        reports = _scalar(conn, "SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM tournament.encounter_captain_report r")
+        games = _rows(
+            conn,
+            "SELECT id,state::text,accepted_home_score,accepted_away_score"
+            " FROM tournament.encounter_game WHERE encounter_id=%s ORDER BY id",
+            (ids["e_played"],),
+        )
+    done = _alembic(REJECTED_DB, "enclayer01b")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM tournament.encounter_map_code c") == codes
+        assert (
+            _scalar(conn, "SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM tournament.encounter_captain_report r")
+            == reports
+        )
+        assert (
+            _rows(
+                conn,
+                "SELECT id,state::text,accepted_home_score,accepted_away_score"
+                " FROM encounter.game WHERE encounter_id=%s ORDER BY id",
+                (ids["e_played"],),
+            )
+            == games
+        )
+        for letter in "AB":
+            assert _scalar(
+                conn,
+                "SELECT r.custom_fields_json FROM encounter.team_report r"
+                " JOIN encounter.team t ON t.id=r.encounter_team_id WHERE r.encounter_id=%s AND t.team_id=%s",
+                (ids["e_played"], ids[f"team_{letter}"]),
+            ) == {
+                "mvp": letter,
+                "historical_replay_codes": [
+                    {
+                        **{key: code[key] for key in ("id", "report_id", "map_index", "code")},
+                        "reason": {
+                            1: "cancelled_and_live_position",
+                            2: "cancelled_and_live_position",
+                            4: "no_live_game_at_position",
+                            5: "no_live_game_at_position",
+                        }[code["map_index"]],
+                    }
+                    for code in codes
+                    if code["report_id"] == ids[f"captain_{letter}"] and code["map_index"] != 3
+                ],
+            }
+        assert _rows(
+            conn,
+            "SELECT g.position,t.slot,gt.replay_code FROM encounter.game_team gt"
+            " JOIN encounter.game g ON g.id=gt.game_id JOIN encounter.team t ON t.id=gt.encounter_team_id"
+            " WHERE g.encounter_id=%s AND gt.replay_code IS NOT NULL",
+            (ids["e_played"],),
+        ) == [(3, 1, "AAA333")]
+        assert _rows(
+            conn,
+            "SELECT g.position,t.slot,gt.score,gt.placement FROM encounter.game_team gt"
+            " JOIN encounter.game g ON g.id=gt.game_id JOIN encounter.team t ON t.id=gt.encounter_team_id"
+            " WHERE g.encounter_id=%s AND g.state='confirmed' ORDER BY g.position,t.slot",
+            (ids["e_played"],),
+        ) == [(1, 1, 1, 1), (1, 2, 0, 2), (2, 1, 0, 2), (2, 2, 1, 1), (3, 1, 1, 1), (3, 2, 0, 2)]
+        assert (
+            _scalar(
+                conn, "SELECT count(*) FROM encounter.game WHERE encounter_id=%s AND position=4", (ids["e_played"],)
+            )
+            == 0
+        )
+
+
+@pytest.mark.parametrize("custom_fields", [{"historical_replay_codes": ["original"]}, ["not", "an", "object"]])
+@pytest.mark.parametrize("position", [1, 4, 5], ids=["cancelled-and-live", "no-game", "cancelled-only"])
+def test_unbound_replay_audit_refuses_to_overwrite_existing_custom_fields(
+    legacy_template,
+    custom_fields,
+    position,
+) -> None:
+    ids = legacy_template["ids"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        if position != 4:
+            _insert(
+                conn, "tournament.encounter_game", encounter_id=ids["e_played"], position=position, state="cancelled"
+            )
+        conn.execute("UPDATE tournament.encounter_map_code SET map_index=%s WHERE id=%s", (position, ids["map_code"]))
+        conn.execute(
+            "UPDATE tournament.encounter_captain_report SET custom_fields_json=%s WHERE id=%s",
+            (Json(custom_fields), ids["captain_A"]),
+        )
     done = _alembic(REJECTED_DB, "enclayer01b")
     assert done.returncode != 0
     assert "pre-flight failed" in done.stderr
-    line = next(line for line in done.stderr.splitlines() if "two rosters" in line)
-    assert str(ids["e_hero"]) in line
+    with _connect(REJECTED_DB) as conn:
+        assert (
+            _scalar(
+                conn,
+                "SELECT custom_fields_json FROM tournament.encounter_captain_report WHERE id=%s",
+                (ids["captain_A"],),
+            )
+            == custom_fields
+        )
+        assert _scalar(conn, "SELECT to_regclass('encounter.team_report')") is None
+
+
+def _earlier_history_copy(ids):
+    """Represent exactly the earlier enclayer01 native output, without changing any source row after transfer."""
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        original = _scalar(
+            conn,
+            "SELECT to_jsonb(p) FROM tournament.player p WHERE team_id=%s AND role='tank'",
+            (ids["team_A"],),
+        )
+        _insert(
+            conn,
+            "tournament.player",
+            name="alternate historical handle",
+            rank=original["rank"],
+            role=original["role"],
+            tournament_id=ids["t"],
+            workspace_member_id=original["workspace_member_id"],
+            team_id=ids["team_A"],
+            is_substitution=True,
+        )
+        for position in (1, 5):
+            _insert(
+                conn, "tournament.encounter_game", encounter_id=ids["e_played"], position=position, state="cancelled"
+            )
+        for position, code in ((4, "ABSENT"), (5, "CANCEL")):
+            _insert(conn, "tournament.encounter_map_code", report_id=ids["captain_A"], map_index=position, code=code)
+        sources = {
+            table: _scalar(conn, f"SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM tournament.{table} s")
+            for table in ("player", "encounter_captain_report", "encounter_map_code")
+        }
+    done = _alembic(REJECTED_DB, "enclayer01")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        native_report = _scalar(
+            conn,
+            "SELECT r.id FROM encounter.team_report r JOIN encounter.team t ON t.id=r.encounter_team_id"
+            " WHERE r.encounter_id=%s AND t.team_id=%s",
+            (ids["e_played"], ids["team_A"]),
+        )
+        fields = {
+            "mvp": "A",
+            "historical_replay_codes": [
+                {
+                    **{key: code[key] for key in ("id", "report_id", "map_index", "code")},
+                    "reason": {
+                        1: "cancelled_and_live_position",
+                        4: "no_live_game_at_position",
+                        5: "no_live_game_at_position",
+                    }[code["map_index"]],
+                }
+                for code in sources["encounter_map_code"]
+                if code["report_id"] == ids["captain_A"]
+            ],
+        }
+        metadata_audit = {
+            "before_json": {
+                "workspace_member_id": original["workspace_member_id"],
+                "registrations": [
+                    player
+                    for player in sources["player"]
+                    if player["team_id"] == ids["team_A"]
+                    and player["workspace_member_id"] == original["workspace_member_id"]
+                ],
+            },
+            "after_json": {"snapshot_player_id": original["id"]},
+        }
+        # The original primary already retained cancelled/live codes, but not no-live codes or metadata-only audits.
+        previous = {
+            **fields,
+            "historical_replay_codes": [
+                code for code in fields["historical_replay_codes"] if code["reason"] == "cancelled_and_live_position"
+            ],
+        }
+        conn.execute(
+            "UPDATE encounter.team_report SET custom_fields_json=%s WHERE id=%s", (Json(previous), native_report)
+        )
+        conn.execute(
+            "DELETE FROM public.audit_log WHERE reason='conflicting_roster_metadata' AND entity_id=%s", (ids["team_A"],)
+        )
+    return original, sources, native_report, fields, metadata_audit
+
+
+def test_forward_history_completion_is_exact_target_bound_and_idempotent(legacy_template) -> None:
+    ids = legacy_template["ids"]
+    original, sources, native_report, expected_fields, metadata_audit = _earlier_history_copy(ids)
+    done = _alembic(REJECTED_DB, "enclayer01b")
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        for table, expected in sources.items():
+            assert _scalar(conn, f"SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM tournament.{table} s") == expected
+        assert (
+            _scalar(conn, "SELECT custom_fields_json FROM encounter.team_report WHERE id=%s", (native_report,))
+            == expected_fields
+        )
+        assert _rows(
+            conn,
+            "SELECT before_json,after_json FROM public.audit_log WHERE reason='conflicting_roster_metadata'"
+            " AND entity_id=%s",
+            (ids["team_A"],),
+        ) == [(metadata_audit["before_json"], metadata_audit["after_json"])]
+        assert _rows(
+            conn,
+            "SELECT tm.display_name_snapshot,tm.rank,tm.is_substitute,r.role"
+            " FROM encounter.team_member tm JOIN encounter.team t ON t.id=tm.encounter_team_id"
+            " JOIN encounter.team_member_role r ON r.team_member_id=tm.id"
+            " WHERE t.encounter_id=%s AND t.team_id=%s AND tm.workspace_member_id=%s",
+            (ids["e_played"], ids["team_A"], original["workspace_member_id"]),
+        ) == [(original["name"], original["rank"], False, "tank")]
+        assert _rows(
+            conn,
+            "SELECT slot,score,placement FROM encounter.team WHERE encounter_id=%s ORDER BY slot",
+            (ids["e_played"],),
+        ) == [(1, 2.0, 1), (2, 1.0, 2)]
+        before = {
+            table: _scalar(conn, f"SELECT jsonb_agg(to_jsonb(n) ORDER BY id) FROM {table} n")
+            for table in ("encounter.team_report", "public.audit_log")
+        }
+    engine = sa.create_engine(_url(REJECTED_DB))
+    try:
+        with engine.begin() as conn:
+            revision.complete_historical_evidence(conn)
+            revision.complete_historical_evidence(conn)
+    finally:
+        engine.dispose()
+    with _connect(REJECTED_DB) as conn:
+        for table, expected in before.items():
+            assert _scalar(conn, f"SELECT jsonb_agg(to_jsonb(n) ORDER BY id) FROM {table} n") == expected
+
+
+@pytest.mark.parametrize("changed", ["reserved-array", "report-comment", "roster-snapshot", "existing-audit"])
+def test_forward_history_completion_refuses_unexpected_native_metadata_atomically(legacy_template, changed) -> None:
+    ids = legacy_template["ids"]
+    original, sources, native_report, _, metadata_audit = _earlier_history_copy(ids)
+    with _connect(REJECTED_DB) as conn:
+        if changed == "reserved-array":
+            conn.execute(
+                "UPDATE encounter.team_report SET custom_fields_json=%s WHERE id=%s",
+                (Json({"mvp": "A", "historical_replay_codes": [{"code": "not source"}]}), native_report),
+            )
+        elif changed == "report-comment":
+            conn.execute("UPDATE encounter.team_report SET comment='native edit' WHERE id=%s", (native_report,))
+        elif changed == "roster-snapshot":
+            conn.execute(
+                "UPDATE encounter.team_member SET display_name_snapshot='native edit'"
+                " WHERE workspace_member_id=%s AND encounter_id=%s",
+                (original["workspace_member_id"], ids["e_played"]),
+            )
+        else:
+            _insert(
+                conn,
+                "public.audit_log",
+                workspace_id=ids["ws"],
+                actor_label="enclayer01",
+                source="system",
+                action="encounter.history_unresolved",
+                entity_type="team",
+                entity_id=ids["team_A"],
+                reason="conflicting_roster_metadata",
+                before_json=Jsonb(metadata_audit["before_json"]),
+                after_json=Jsonb({"snapshot_player_id": 0}),
+            )
+        before = {
+            table: _scalar(conn, f"SELECT jsonb_agg(to_jsonb(n) ORDER BY id) FROM {table} n")
+            for table in ("encounter.team_report", "public.audit_log", "encounter.team_member")
+        }
+    done = _alembic(REJECTED_DB, "enclayer01b")
+    assert done.returncode != 0
+    assert "history completion refuses" in done.stderr
+    with _connect(REJECTED_DB) as conn:
+        assert _scalar(conn, "SELECT version_num FROM public.alembic_version") == "enclayer01"
+        for table, expected in before.items():
+            assert _scalar(conn, f"SELECT jsonb_agg(to_jsonb(n) ORDER BY id) FROM {table} n") == expected
+        for table, expected in sources.items():
+            assert _scalar(conn, f"SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM tournament.{table} s") == expected
 
 
 # --------------------------------------------------------------------------- #

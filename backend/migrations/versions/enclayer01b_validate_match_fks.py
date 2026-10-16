@@ -16,11 +16,17 @@ and runs each statement on its own, so a failure here (or an operator's Ctrl-C
 mid-scan) leaves ``enclayer01`` applied and this revision to be re-run.
 Idempotent: validating a validated constraint is a no-op.
 
+Before that boundary, finish exact source-bound historical report/registration
+evidence left by an earlier enclayer01. The shared completion is transactional
+and idempotent; changed native metadata is refused, never overwritten.
+
 Revision ID: enclayer01b
 Revises: enclayer01
 """
 
+import importlib.util
 from collections.abc import Sequence
+from pathlib import Path
 
 import sqlalchemy as sa
 from alembic import op
@@ -54,6 +60,13 @@ _NOT_VALID_FKS_ON = """
 
 
 def upgrade() -> None:
+    spec = importlib.util.spec_from_file_location(
+        "enclayer01_history_source", Path(__file__).with_name("enclayer01_encounter_layer.py")
+    )
+    assert spec is not None and spec.loader is not None
+    source = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(source)
+    source.complete_historical_evidence(op.get_bind())
     with op.get_context().autocommit_block():
         for table, column in _MATCH_TEAM_FKS:
             rows = op.get_bind().execute(sa.text(_NOT_VALID_FKS_ON), {"table": table, "columns": [column]})

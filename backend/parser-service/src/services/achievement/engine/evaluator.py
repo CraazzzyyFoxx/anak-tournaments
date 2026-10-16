@@ -17,6 +17,7 @@ from typing import Any
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.models.achievements.achievement import AchievementGrain
 from src.domain.achievement_validation import GRAIN_ARITY, infer_grain, leaf_grain
 
 from .context import EvalContext
@@ -34,13 +35,28 @@ async def evaluate(
     condition: dict[str, Any],
     context: EvalContext,
 ) -> ResultSet:
-    """Evaluate a condition tree node and return qualifying tuples."""
+    """Evaluate one rule; uncertain series stay unknown even under NOT/OR."""
+    context.deferred_encounter_ids.clear()
+    results = await _evaluate(session, condition, context)
+    if context.deferred_encounter_ids:
+        if infer_grain(condition) is not AchievementGrain.user_encounter:
+            raise GrainMismatchError("Deferred series chronology requires user_encounter grain")
+        return {key for key in results if key[2] not in context.deferred_encounter_ids}
+    return results
+
+
+async def _evaluate(
+    session: AsyncSession,
+    condition: dict[str, Any],
+    context: EvalContext,
+) -> ResultSet:
+    """Evaluate a node without resetting the enclosing rule's chronology holds."""
 
     if "AND" in condition:
         children = condition["AND"]
         if not children:
             return set()
-        sets = [await evaluate(session, child, context) for child in children]
+        sets = [await _evaluate(session, child, context) for child in children]
         _require_uniform_arity(sets, "AND")
         return reduce(set.intersection, sets)
 
@@ -48,14 +64,14 @@ async def evaluate(
         children = condition["OR"]
         if not children:
             return set()
-        sets = [await evaluate(session, child, context) for child in children]
+        sets = [await _evaluate(session, child, context) for child in children]
         _require_uniform_arity(sets, "OR")
         return reduce(set.union, sets)
 
     if "NOT" in condition:
         from .conditions import get_eligible_keys
 
-        matching = await evaluate(session, condition["NOT"], context)
+        matching = await _evaluate(session, condition["NOT"], context)
         grain = infer_grain(condition["NOT"])
         universe = await get_eligible_keys(session, context, grain)
         _require_uniform_arity([matching, universe], "NOT")

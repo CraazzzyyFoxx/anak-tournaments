@@ -4,9 +4,7 @@ import { roleOf, subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 
 /**
  * Fields `sortTeamPlayers` actually reads. Display-only roster fields
- * (`heroes`, `avg_mvp`, …) are intentionally excluded so callers whose row
- * type reuses the `heroes` name for a different shape (e.g. `PlayerWithStats`
- * with `heroes: Record<number, Hero[]>`) still satisfy the sort constraint.
+ * (`heroes`, `avg_mvp`, …) are intentionally excluded from the sort constraint.
  */
 export interface SortableRosterPlayer {
   id: number;

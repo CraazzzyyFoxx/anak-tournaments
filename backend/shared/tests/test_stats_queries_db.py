@@ -83,6 +83,12 @@ async def _player_grain(stats_parity_database):
                 .values(active=False)
             )
             assert {row.match_id: (row.value, row.source_position) for row in await session.execute(query)} == rows
+            await session.execute(
+                sa.update(models.StatsMatch)
+                .where(models.StatsMatch.encounter_id == ids["encounter"])
+                .values(encounter_game_id=None)
+            )
+            assert {row.match_id: (row.value, row.source_position) for row in await session.execute(query)} == rows
             foreign = player_facts(discipline="lol")
             assert (
                 await session.scalar(
@@ -126,10 +132,24 @@ async def _score_orientation(stats_parity_database):
             )
             assert official == {ids["encounter_team_home"]: 9, ids["encounter_team_away"]: 7}
             context = match_context(discipline="overwatch")
-            row = (await session.execute(sa.select(context).where(context.c.id == ids["match_reversed"]))).one()
-            assert (row.encounter_game_id, row.position, row.encounter_id, row.tournament_id, row.workspace_id) == (
+            bound = (await session.execute(sa.select(context).where(context.c.id == ids["match_reversed"]))).one()
+            assert (bound.encounter_game_id, bound.position, bound.encounter_id) == (
                 ids["game_reversed"],
                 2,
+                ids["encounter"],
+            )
+            await session.execute(
+                sa.update(models.StatsMatch)
+                .where(models.StatsMatch.id == ids["match_reversed"])
+                .values(encounter_game_id=None)
+            )
+            unbound = (await session.execute(sa.select(scores).where(scores.c.match_id == ids["match_reversed"]))).all()
+            assert set(unbound) == set(rows)
+            context = match_context(discipline="overwatch")
+            row = (await session.execute(sa.select(context).where(context.c.id == ids["match_reversed"]))).one()
+            assert (row.encounter_game_id, row.position, row.encounter_id, row.tournament_id, row.workspace_id) == (
+                None,
+                None,
                 ids["encounter"],
                 ids["tournament"],
                 ids["workspace"],
@@ -190,6 +210,11 @@ async def _encounter_deletion(stats_parity_database):
     engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
     try:
         async with AsyncSession(engine) as session:
+            await session.execute(
+                sa.update(models.StatsMatch)
+                .where(models.StatsMatch.encounter_id == ids["encounter"])
+                .values(encounter_game_id=None)
+            )
             encounter = await session.scalar(
                 sa.select(models.Encounter)
                 .where(

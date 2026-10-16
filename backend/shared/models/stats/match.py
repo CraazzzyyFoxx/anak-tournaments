@@ -8,7 +8,6 @@ from sqlalchemy.orm import Mapped, column_property, mapped_column
 
 from shared.core import db
 from shared.models.encounter.encounter import Encounter
-from shared.models.encounter.game import EncounterGame
 
 __all__ = (
     "StatsMatch",
@@ -38,6 +37,7 @@ class StatsMatch(db.TimeStampIntegerMixin):
     __tablename__ = "match"
     __table_args__ = (
         sa.UniqueConstraint("encounter_game_id", name="uq_stats_match_game"),
+        sa.UniqueConstraint("id", "encounter_id", name="uq_stats_match_owner"),
         sa.CheckConstraint("map_kind = 'map'", name="ck_stats_match_map_kind"),
         sa.ForeignKeyConstraint(
             ["map_entity_id", "discipline", "map_kind"],
@@ -47,6 +47,7 @@ class StatsMatch(db.TimeStampIntegerMixin):
         ),
         sa.Index("ix_stats_match_ingest_job", "ingest_job_id"),
         sa.Index("ix_stats_match_workspace", "workspace_id"),
+        sa.Index("ix_stats_match_encounter", "encounter_id"),
         {"schema": "stats"},
     )
 
@@ -56,11 +57,22 @@ class StatsMatch(db.TimeStampIntegerMixin):
         )
     )
     discipline: Mapped[str] = mapped_column(sa.String(32))
-    encounter_game_id: Mapped[int] = mapped_column(
+    encounter_id: Mapped[int] = mapped_column(
         sa.ForeignKey(
-            "encounter.game.id", name="fk_stats_match_game", ondelete="CASCADE", deferrable=True, initially="DEFERRED"
+            "encounter.encounter.id",
+            name="fk_stats_match_encounter",
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
         )
     )
+    encounter_game_id: Mapped[int | None] = mapped_column(
+        sa.ForeignKey(
+            "encounter.game.id", name="fk_stats_match_game", ondelete="SET NULL", deferrable=True, initially="DEFERRED"
+        ),
+        nullable=True,
+    )
+    source_map_index: Mapped[int | None] = mapped_column(sa.Integer(), nullable=True)
     ingest_job_id: Mapped[int | None] = mapped_column(
         sa.ForeignKey(
             "stats.ingest_job.id",
@@ -78,18 +90,17 @@ class StatsMatch(db.TimeStampIntegerMixin):
     map_kind: Mapped[str] = mapped_column(sa.String(16), default="map", server_default="map")
 
 
-# Computed in the encounter SELECT: deleting its last observed game clears the badge.
+# Observation ownership survives an unknown or removed official game binding.
 Encounter.has_logs = column_property(
     sa.exists(
         sa.select(1)
         .select_from(StatsMatch)
-        .join(EncounterGame, EncounterGame.id == StatsMatch.encounter_game_id)
         .where(
-            EncounterGame.encounter_id == Encounter.id,
+            StatsMatch.encounter_id == Encounter.id,
             StatsMatch.workspace_id == Encounter.workspace_id,
             StatsMatch.discipline == Encounter.discipline,
         )
-        .correlate_except(StatsMatch, EncounterGame)
+        .correlate_except(StatsMatch)
     )
 )
 
@@ -101,23 +112,27 @@ class StatsMatchTeam(db.Base):
         sa.CheckConstraint("source_position >= 1", name="ck_match_team_source_position"),
         sa.UniqueConstraint("match_id", "source_position", name="uq_match_team_source_position"),
         sa.ForeignKeyConstraint(
-            ["encounter_game_id", "encounter_team_id"],
-            ["encounter.game_team.game_id", "encounter.game_team.encounter_team_id"],
-            name="fk_match_team_game_team",
+            ["match_id", "encounter_id"],
+            ["stats.match.id", "stats.match.encounter_id"],
+            name="fk_match_team_match",
             ondelete="CASCADE",
             deferrable=True,
             initially="DEFERRED",
         ),
-        sa.Index("ix_match_team_game_team", "encounter_game_id", "encounter_team_id"),
+        sa.ForeignKeyConstraint(
+            ["encounter_team_id", "encounter_id"],
+            ["encounter.team.id", "encounter.team.encounter_id"],
+            name="fk_match_team_encounter_team",
+            ondelete="CASCADE",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        sa.Index("ix_match_team_encounter_team", "encounter_team_id", "encounter_id"),
         {"schema": "stats"},
     )
 
-    match_id: Mapped[int] = mapped_column(
-        sa.ForeignKey(
-            "stats.match.id", name="fk_match_team_match", ondelete="CASCADE", deferrable=True, initially="DEFERRED"
-        )
-    )
-    encounter_game_id: Mapped[int] = mapped_column(sa.BigInteger())
+    match_id: Mapped[int] = mapped_column(sa.BigInteger())
+    encounter_id: Mapped[int] = mapped_column(sa.BigInteger())
     encounter_team_id: Mapped[int] = mapped_column(sa.BigInteger())
     source_position: Mapped[int] = mapped_column(sa.Integer())
 

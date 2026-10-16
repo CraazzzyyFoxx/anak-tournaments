@@ -1,7 +1,7 @@
-"""Real P3 reader capture and immutable native parity, using the shared DB seed.
+"""Immutable P3 reader parity and native historical-consumer regressions.
 
-Main invokes collect_outputs against frozen P3 imports before changing readers.
-Normal tests only read GOLDEN; they never capture or update expected output.
+The golden was captured before native cutover. Tests only read it; intentional
+wire/identity changes are projected without changing its numeric expectations.
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ async def _uncached(method: Any, *args: Any, **kwargs: Any) -> Any:
 
 
 def _normalize(value: Any, participants: dict[int, int]) -> Any:
-    """Keep every field except removed match source/code; canonicalize sides."""
+    """Project native observed identities onto the immutable P3 representation."""
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="python")
     if isinstance(value, Enum):
@@ -88,18 +88,53 @@ def _normalize(value: Any, participants: dict[int, int]) -> Any:
         for side in ("home", "away"):
             team = row.pop(f"{side}_team")
             team_id = row.pop(f"{side}_team_id") if public_match else team["id"]
+            participation = row.pop(f"{side}_participation", None)
+            if participation is not None and "players" in participation:
+                # Only this frozen wire projection uses real source-roster metadata.
+                # Production never filters observations through that roster.
+                observed = {player["user_id"]: player for player in participation["players"]}
+                assert len(observed) == len(participation["players"])
+                roster_ids = {player["user_id"] for player in team["players"]}
+                assert all(
+                    player["user_id"] in roster_ids or not (player["stats"] or player["heroes"])
+                    for player in participation["players"]
+                )
+                team["players"] = [
+                    {
+                        **player,
+                        "stats": observed[player["user_id"]]["stats"],
+                        # The old nested DTO used HeroRead; direct stats retained timestamps.
+                        "heroes": {
+                            segment: [{key: hero[key] for key in schemas.HeroRead.model_fields} for hero in heroes]
+                            for segment, heroes in observed[player["user_id"]]["heroes"].items()
+                        },
+                    }
+                    for player in team["players"]
+                    if player["user_id"] in observed and observed[player["user_id"]]["heroes"]
+                ]
             participant_id = str(participants[team_id])
             row["scores_by_participant"][participant_id] = scores[side] if public_match else row.pop(f"{side}_score")
             row["teams_by_participant"][participant_id] = team
             row["team_ids_by_participant"][participant_id] = team_id
         row.pop("source", None)
         row.pop("code", None)
+        if public_match:
+            # New capability metadata has separate behavior coverage; the frozen
+            # P3 oracle continues to guard every historical ID, score and fact.
+            row.pop("raw_status", None)
+            row.pop("raw_available", None)
 
     # These are unordered relationship/JSON aggregates, not ranked result lists.
     if isinstance(row.get("matches"), list):
         row["matches"].sort(key=lambda match: (match["map_index"] is None, match["map_index"] or 0, match["id"]))
     if isinstance(row.get("players"), list):
-        row["players"].sort(key=lambda player: (player["user_id"], player["id"]))
+        row["players"].sort(
+            key=lambda player: (
+                player["user_id"] is None,
+                player["user_id"],
+                player.get("workspace_member_id", player.get("id")),
+            )
+        )
     if isinstance(row.get("heroes"), dict):
         for heroes in row["heroes"].values():
             heroes.sort(key=lambda hero: hero["id"])
@@ -121,7 +156,7 @@ async def _not_found(operation: Any) -> dict:
 
 
 async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
-    """Capture real reader outputs; compatible with frozen P3 production imports."""
+    """Project native reader outputs onto the frozen P3 numeric and metadata oracle."""
     participants = {
         ids[key.removeprefix("encounter_")]: value for key, value in ids.items() if key.startswith("encounter_team_")
     }
@@ -232,15 +267,17 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
 
     outputs["single_user_stats"] = {}
     outputs["batch_user_stats"] = {}
-    user_ids = [ids[name] for name in _USER_KEYS]
     for match in _MATCH_KEYS:
+        observed = await encounter_service.get_match_observed_players(session, ids[match])
+        players = [player for side in observed.values() for player in side]
+        by_user = {player.user_id: (player.stats, player.heroes) for player in players}
+        assert len(by_user) == len(players)
         outputs["single_user_stats"][match] = {
-            user: _stats_result(await encounter_service.get_match_stats_for_user(session, ids[match], ids[user]))
-            for user in _USER_KEYS
+            user: _stats_result(by_user.get(ids[user], ({}, {}))) for user in _USER_KEYS
         }
-        batch = await encounter_service.get_match_stats_for_users(session, ids[match], user_ids)
-        outputs["batch_user_stats"][match] = {user_id: _stats_result(stats) for user_id, stats in batch.items()}
-    outputs["empty_user_batch"] = await encounter_service.get_match_stats_for_users(session, ids["match"], [])
+        outputs["batch_user_stats"][match] = {
+            ids[user]: _stats_result(by_user.get(ids[user], ({}, {}))) for user in _USER_KEYS
+        }
 
     # The old admin DTO requires non-null time/log_name. Use its real provenance
     # filter for row pages; unfiltered count still includes the no-raw match.
@@ -311,6 +348,8 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
 def assert_tournament_golden(actual: dict) -> None:
     def comparable(payload):
         payload = deepcopy(payload)
+        # The removed roster/user-batch API's empty-input shape has no facts.
+        payload.pop("empty_user_batch", None)
         page = payload["match_pages"]["duration_desc"]
         # SQL orders only by duration. Preserve every group and its position;
         # incidental order inside equal-duration groups is not a reader contract.
@@ -412,10 +451,7 @@ def test_native_ow_readers_reject_foreign_discipline(stats_parity_database):
                     await admin.update_match(session, ids["match"], schemas.MatchUpdate(map_id=ids["map_lol"]))
                 assert caught.value.status_code == 409
                 await _not_found(admin.update_match(session, foreign.id, schemas.MatchUpdate(time=10)))
-                assert await encounter_service.get_match_stats_for_user(session, foreign.id, ids["player"]) == ({}, {})
-                assert await encounter_service.get_match_stats_for_users(session, foreign.id, [ids["player"]]) == {
-                    ids["player"]: ({}, {}),
-                }
+                assert await encounter_service.get_match_observed_players(session, foreign.id) == {}
                 await _not_found(encounters.get_match(session, foreign.id, [], workspace_id=ids["workspace"]))
                 await _not_found(
                     _uncached(
@@ -467,10 +503,24 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
                             )
                             .values(active=False)
                         )
+                        session.add_all(
+                            [
+                                models.EncounterTeam(
+                                    encounter_id=ids["encounter"],
+                                    tournament_id=ids["tournament"],
+                                    slot=slot,
+                                    team_id=ids[f"team_{side}"],
+                                    name=f"Replacement {side}",
+                                )
+                                for slot, side in ((1, "home"), (2, "away"))
+                            ]
+                        )
+                        await session.flush()
+                        session.expire_all()
                     seats = (
                         await session.execute(
                             sa.select(
-                                StatsMatchTeam.encounter_game_id,
+                                StatsMatchTeam.encounter_id,
                                 StatsMatchTeam.encounter_team_id,
                                 StatsMatchTeam.source_position,
                                 models.EncounterTeam.slot,
@@ -481,8 +531,8 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
                         )
                     ).all()
                     assert seats == [
-                        (ids["game_reversed"], ids["encounter_team_home"], 2, 1),
-                        (ids["game_reversed"], ids["encounter_team_away"], 1, 2),
+                        (ids["encounter"], ids["encounter_team_home"], 2, 1),
+                        (ids["encounter"], ids["encounter_team_away"], 1, 2),
                     ]
                     page = await encounters.get_all_matches(
                         session,
@@ -490,6 +540,11 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
                         workspace_id=ids["workspace"],
                     )
                     detail = await encounters.get_encounter(session, ids["encounter"], ["matches", "matches.teams"])
+                    assert all(seat.active for seat in detail.teams)
+                    if retired:
+                        assert {seat.id for seat in detail.teams}.isdisjoint(
+                            {ids["encounter_team_home"], ids["encounter_team_away"]}
+                        )
                     for name in ("match", "match_reversed", "match_no_raw"):
                         golden = expected["match_details"][name]
                         direct = await encounters.get_match(
@@ -510,6 +565,10 @@ def test_native_slots_preserve_observed_scores_for_retired_participants(stats_pa
                         for match in (direct, with_stats, listed, nested):
                             assert (match.home_team_id, match.away_team_id) == (ids["team_home"], ids["team_away"])
                             assert (match.home_team.id, match.away_team.id) == (ids["team_home"], ids["team_away"])
+                            assert match.home_participation.id == ids["encounter_team_home"]
+                            assert match.away_participation.id == ids["encounter_team_away"]
+                            assert match.home_participation.active is not retired
+                            assert match.away_participation.active is not retired
                             assert match.score.home == golden["scores_by_participant"][str(ids["encounter_team_home"])]
                             assert match.score.away == golden["scores_by_participant"][str(ids["encounter_team_away"])]
                             assert isinstance(match.score.home, int) and isinstance(match.score.away, int)
@@ -799,7 +858,7 @@ def test_native_owner_delete_and_evidence_roll_back_together(stats_parity_databa
 
 def test_native_nullable_events_and_historical_source_teams_are_not_dropped(stats_parity_database):
     async def exercise():
-        from shared.models import EncounterTeam, StatsEvent
+        from shared.models import EncounterTeam, StatsEvent, StatsMatchPlayer, Team
 
         url, ids = stats_parity_database
         engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
@@ -842,12 +901,18 @@ def test_native_nullable_events_and_historical_source_teams_are_not_dropped(stat
                         value is None for key, value in row.model_dump().items() if key not in {"round", "time", "name"}
                     )
                 await session.execute(
-                    sa.update(EncounterTeam)
+                    sa.update(StatsMatchPlayer)
                     .where(
-                        EncounterTeam.encounter_id == ids["encounter"],
+                        StatsMatchPlayer.match_id == ids["match"],
+                        StatsMatchPlayer.workspace_member_id == ids["member"],
                     )
-                    .values(team_id=None)
+                    .values(handle_snapshot="HistoricalHandle#1234")
                 )
+                await session.execute(
+                    sa.update(EncounterTeam).where(EncounterTeam.encounter_id == ids["encounter"]).values(active=False)
+                )
+                await session.execute(sa.delete(Team).where(Team.id.in_([ids["team_home"], ids["team_away"]])))
+                session.expire_all()
                 detail = await _uncached(
                     encounters.get_match_with_stats,
                     session,
@@ -858,6 +923,298 @@ def test_native_nullable_events_and_historical_source_teams_are_not_dropped(stat
                 assert detail.home_team_id is None and detail.away_team_id is None
                 assert detail.home_team is None and detail.away_team is None
                 assert (detail.score.home, detail.score.away) == (2, 1)
+                assert detail.rounds == 2
+                golden = json.loads(GOLDEN.read_text(encoding="utf-8"))["batch_user_stats"]["match"]
+                for side in ("home", "away"):
+                    participation = getattr(detail, f"{side}_participation")
+                    assert participation.id == ids[f"encounter_team_{side}"]
+                    assert not participation.active
+                    assert participation.team_id is None and participation.team is None
+                    for player in participation.players:
+                        assert _normalize(player.stats, {}) == golden[str(player.user_id)]["statistics"]
+                        assert (
+                            _normalize({"heroes": player.heroes}, {})["heroes"] == golden[str(player.user_id)]["heroes"]
+                        )
+                        assert {"id", "rank", "role", "team_id"}.isdisjoint(player.model_dump())
+                home = next(p for p in detail.home_participation.players if p.workspace_member_id == ids["member"])
+                away = next(p for p in detail.away_participation.players if p.workspace_member_id == ids["member_away"])
+                assert home.name == "HistoricalHandle#1234"
+                assert home.stats[0]["hero_damage_dealt"] == 18000
+                assert away.stats[0]["hero_damage_dealt"] == 36000
+                event_only = next(
+                    p for p in detail.home_participation.players if p.workspace_member_id == ids["member_event_only"]
+                )
+                assert event_only.stats == {} and event_only.heroes == {}
+                current = await encounters.get_encounter(session, ids["encounter"], ["teams"])
+                assert current.teams == []
+        finally:
+            await engine.dispose()
+
+    asyncio.run(exercise())
+
+
+def test_parsed_non_roster_member_keeps_snapshot_and_side_scoped_numbers(stats_parity_database):
+    async def exercise():
+        from shared.models import EncounterTeamMember, Player, StatDef, StatsFact, StatsMatchPlayer, WorkspaceMember
+
+        url, ids = stats_parity_database
+        engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                await session.execute(
+                    sa.delete(EncounterTeamMember).where(
+                        EncounterTeamMember.encounter_id == ids["encounter"],
+                        EncounterTeamMember.workspace_member_id == ids["member"],
+                    )
+                )
+                await session.execute(
+                    sa.delete(Player).where(
+                        Player.tournament_id == ids["tournament"],
+                        Player.workspace_member_id == ids["member"],
+                    )
+                )
+                await session.execute(
+                    sa.update(StatsMatchPlayer)
+                    .where(
+                        StatsMatchPlayer.match_id == ids["match"],
+                        StatsMatchPlayer.workspace_member_id == ids["member"],
+                    )
+                    .values(handle_snapshot="ParsedNonRoster#1234")
+                )
+                detail = await _uncached(
+                    encounters.get_match_with_stats,
+                    session,
+                    ids["match"],
+                    ["teams", "teams.players"],
+                    workspace_id=ids["workspace"],
+                )
+                player = next(p for p in detail.home_participation.players if p.workspace_member_id == ids["member"])
+                assert player.name == "ParsedNonRoster#1234"
+                assert player.user_id == ids["player"]
+                assert player.stats[0]["hero_damage_dealt"] == 18000
+                assert player.stats[1]["hero_damage_dealt"] == 9000
+                assert {hero.id for hero in player.heroes[0]} == {ids["hero"], ids["hero_other"]}
+                assert all(p.user_id != ids["player"] for p in detail.home_team.players)
+                assert {"id", "rank", "role", "team_id"}.isdisjoint(player.model_dump())
+
+                # Changing linked global identities must not move native numbers
+                # between the observed sides or replace their handle snapshots.
+                await session.execute(
+                    sa.update(WorkspaceMember)
+                    .where(WorkspaceMember.id == ids["member"])
+                    .values(player_id=ids["player_no_member"])
+                )
+                await session.execute(
+                    sa.update(WorkspaceMember)
+                    .where(WorkspaceMember.id == ids["member_away"])
+                    .values(player_id=ids["player"])
+                )
+                await session.execute(
+                    sa.update(WorkspaceMember)
+                    .where(WorkspaceMember.id == ids["member"])
+                    .values(player_id=ids["player_away"])
+                )
+                await session.execute(
+                    sa.update(StatsFact)
+                    .where(
+                        StatsFact.match_id == ids["match"],
+                        StatsFact.workspace_member_id == ids["member"],
+                        StatsFact.entity_id.is_not(None),
+                        StatsFact.stat_id.in_(
+                            sa.select(StatDef.id).where(
+                                StatDef.discipline == "overwatch", StatDef.code == "hero_time_played"
+                            )
+                        ),
+                    )
+                    .values(value=30)
+                )
+                session.expire_all()
+                changed = await _uncached(
+                    encounters.get_match_with_stats,
+                    session,
+                    ids["match"],
+                    [],
+                    workspace_id=ids["workspace"],
+                )
+                home = next(p for p in changed.home_participation.players if p.workspace_member_id == ids["member"])
+                away = next(
+                    p for p in changed.away_participation.players if p.workspace_member_id == ids["member_away"]
+                )
+                assert home.user_id == ids["player_away"] and away.user_id == ids["player"]
+                assert home.name == "ParsedNonRoster#1234"
+                assert home.stats == player.stats and home.heroes == {}
+                assert away.stats[0]["hero_damage_dealt"] == 36000
+        finally:
+            await engine.dispose()
+
+    asyncio.run(exercise())
+
+
+def test_unbound_history_preserves_complete_reader_outputs_and_visibility(stats_parity_database):
+    async def exercise():
+        from shared.models import IngestJob, RawSourceStatus, StatsMatch, Workspace
+
+        url, ids = stats_parity_database
+        engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                before = await collect_outputs(session, ids)
+                assert_tournament_golden(before)
+                unbound_ids = {ids[name] for name in _MATCH_KEYS}
+                await session.execute(
+                    sa.update(StatsMatch)
+                    .where(StatsMatch.id.in_([ids[name] for name in _MATCH_KEYS]))
+                    .values(encounter_game_id=None, source_map_index=99, updated_at=StatsMatch.updated_at)
+                )
+                session.expire_all()
+                after = await collect_outputs(session, ids)
+
+                def without_proven_order(value):
+                    if isinstance(value, list):
+                        return [without_proven_order(item) for item in value]
+                    if not isinstance(value, dict):
+                        return value
+                    result = {key: without_proven_order(item) for key, item in value.items()}
+                    if result.get("id") in unbound_ids and "map_index" in result:
+                        result["map_index"] = None
+                    if isinstance(result.get("matches"), list):
+                        result["matches"].sort(
+                            key=lambda match: (match["map_index"] is None, match["map_index"] or 0, match["id"])
+                        )
+                    return result
+
+                expected = without_proven_order(before)
+                # Explicit map-index sorting has a stable ID tie-break only for
+                # presentation; none of these IDs is exposed as official order.
+                expected["match_pages"]["tournament"]["results"].sort(
+                    key=lambda match: (match["map_index"] is None, match["map_index"] or 0, match["id"])
+                )
+                assert after == expected
+                assert all(
+                    row["map_index"] is None
+                    for row in after["match_pages"]["platform"]["results"]
+                    if row["id"] in unbound_ids
+                )
+                await session.execute(
+                    sa.update(StatsMatch)
+                    .where(StatsMatch.id == ids["match_no_raw"])
+                    .values(encounter_game_id=ids["game_no_raw"])
+                )
+                bound_history = [
+                    (row["id"], row["map_index"])
+                    for row in before["match_pages"]["tournament"]["results"]
+                    if row["id"] not in unbound_ids
+                ]
+                for order in ("asc", "desc"):
+                    page = await encounters.get_all_matches(
+                        session,
+                        schemas.MatchSearchParams(tournament_id=ids["tournament"], sort="map_index", order=order),
+                        workspace_id=ids["workspace"],
+                    )
+                    bound = sorted(
+                        [(ids["match_no_raw"], 3), *bound_history], key=lambda row: row[1], reverse=order == "desc"
+                    )
+                    assert [(row.id, row.map_index) for row in page.results] == bound + [
+                        (ids["match"], None),
+                        (ids["match_reversed"], None),
+                    ]
+                await session.execute(
+                    sa.update(IngestJob).where(IngestJob.id == ids["record"]).values(raw_status=RawSourceStatus.MISSING)
+                )
+                detail = await encounters.get_match(session, ids["match"], [], workspace_id=ids["workspace"])
+                assert detail.raw_status == RawSourceStatus.MISSING
+                assert detail.raw_available is False
+                assert detail.log_name == before["match_details"]["match"]["log_name"]
+
+                # An unbound source remains linked to its job; unlinked_only
+                # continues to mean no ingestion record, not no official game.
+                unlinked = await matches_service.list_admin_matches(
+                    session,
+                    workspace_id=ids["workspace"],
+                    params=schemas.AdminMatchesSearchParams(unlinked_only=True),
+                )
+                expected_recordless = set(
+                    (
+                        await session.execute(
+                            sa.text("""SELECT m.id FROM matches.match m
+                                JOIN encounter.encounter e ON e.id=m.encounter_id
+                                WHERE e.workspace_id=:workspace AND m.log_record_id IS NULL"""),
+                            {"workspace": ids["workspace"]},
+                        )
+                    ).scalars()
+                )
+                assert {row.id for row in unlinked.results} == expected_recordless
+                await session.execute(
+                    sa.update(Workspace).where(Workspace.id == ids["workspace"]).values(is_hidden=True)
+                )
+                owner = await visibility.tournament_id_for_match(session, ids["match"])
+                assert owner == ids["tournament"]
+                await _not_found(ensure_tournament_viewable(session, None, owner))
+                page = await encounters.get_all_matches(session, schemas.MatchSearchParams(per_page=-1))
+                assert ids["match"] not in {row.id for row in page.results}
+        finally:
+            await engine.dispose()
+
+    asyncio.run(exercise())
+
+
+def test_unbound_match_update_rpc_audits_direct_owner_without_changing_official_results(stats_parity_database):
+    async def exercise():
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from shared.models import AuditLog, EncounterGameTeam, StatsMatch
+        from src.rpc import _helpers, admin_misc
+        from src.services.admin.encounter import encounter_service as admin
+        from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
+
+        url, ids = stats_parity_database
+        engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                await session.execute(
+                    sa.update(StatsMatch).where(StatsMatch.id == ids["match"]).values(encounter_game_id=None)
+                )
+                official_query = (
+                    sa.select(EncounterGameTeam.__table__)
+                    .where(EncounterGameTeam.game_id == ids["game"])
+                    .order_by(EncounterGameTeam.encounter_team_id)
+                )
+                official = (await session.execute(official_query)).all()
+                with pytest.raises(BaseAPIException) as caught:
+                    await admin.update_match(session, ids["match"], schemas.MatchUpdate(map_id=ids["map_other"]))
+                assert caught.value.status_code == 409
+
+                broker = CapturingBroker()
+                admin_misc.register(broker, SimpleNamespace(exception=lambda *args, **kwargs: None))
+                identity = make_identity(user_id=ids["auth_user"], is_superuser=True)
+                with patch.object(_helpers.db, "async_session_maker", FakeSessionMaker(session)):
+                    result = await broker.handlers["rpc.tournament.encounter_update_match"](
+                        {
+                            "identity": identity,
+                            "id": ids["match"],
+                            "payload": {"map_id": ids["map"], "home_score": 9, "away_score": 8, "time": 123.5},
+                        },
+                        None,
+                    )
+                assert result["ok"] is True, result
+                assert result["data"]["encounter_id"] == ids["encounter"]
+                assert (result["data"]["home_score"], result["data"]["away_score"], result["data"]["time"]) == (
+                    9,
+                    8,
+                    123.5,
+                )
+                audit = (
+                    await session.scalars(sa.select(AuditLog).where(AuditLog.action == "encounter.update_match"))
+                ).one()
+                assert (audit.entity_type, audit.entity_id, audit.workspace_id) == (
+                    "encounter",
+                    ids["encounter"],
+                    ids["workspace"],
+                )
+                assert (await session.execute(official_query)).all() == official
+                detail = await encounters.get_match(session, ids["match"], [])
+                assert (detail.encounter_id, detail.map_index) == (ids["encounter"], None)
         finally:
             await engine.dispose()
 

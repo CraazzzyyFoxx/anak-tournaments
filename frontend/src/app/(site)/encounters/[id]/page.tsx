@@ -22,6 +22,7 @@ import { getEncounterState } from "@/lib/encounter/status";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import EncounterHeader, { type EncounterHeaderFact } from "./components/EncounterHeader";
 import EncounterMapRow from "./components/EncounterMapRow";
+import EncounterHistory from "./components/EncounterHistory";
 import EncounterRosterPanel from "@/components/match/EncounterRosterPanel";
 import EncounterSeriesStats from "./components/EncounterSeriesStats";
 import EncounterCaptainReports from "./components/EncounterCaptainReports";
@@ -140,6 +141,8 @@ const EncounterPage = async (props: {
   const stageLabel =
     encounter.stage_item?.name ?? encounter.stage?.name ?? t("common.unassignedStage");
 
+  const observations = encounter.matches ?? [];
+  const hasUnboundHistory = observations.some((match) => match.map_index == null);
   const slots = buildSeriesSlots(encounter);
   // A position counts as played once it has a RESULT or a parsed log: a scrim
   // writes no `Match` rows at all, and a log can land before the captains
@@ -161,21 +164,20 @@ const EncounterPage = async (props: {
   const seriesSeconds = getSeriesSeconds(encounter);
   const seriesClock = formatSeriesClock(seriesSeconds, clockUnits);
   const averageClock =
-    seriesSeconds != null && playedSlots.length > 0
-      ? formatSeriesClock(seriesSeconds / playedSlots.length, clockUnits)
+    seriesSeconds != null && observations.length > 0
+      ? formatSeriesClock(seriesSeconds / observations.length, clockUnits)
       : null;
   const closeness = formatCloseness(encounter.closeness);
-  const logs = playedSlots
-    .filter((slot) => slot.match?.log_name)
-    .map((slot) => ({
-      matchId: slot.match!.id,
-      label: slot.match!.map?.name ?? undefined
-    }));
-  const withStats = encounter.has_logs && playedSlots.some((slot) => slot.match != null);
+  const logs = observations.map((match) => ({
+    matchId: match.id,
+    label: `${match.map?.name ?? t("encounters.match.mapAlt")} · #${match.id}`,
+    rawAvailable: match.raw_available
+  }));
+  const withStats = observations.length > 0;
 
   const visible: Record<EncounterTab, boolean> = {
-    overview: listedSlots.length > 0,
-    players: seatOne?.team != null || seatTwo?.team != null,
+    overview: listedSlots.length > 0 || hasUnboundHistory,
+    players: withStats || seatOne?.team != null || seatTwo?.team != null,
     pregame: hasPregame
   };
   const tabs = TABS.filter((tab) => visible[tab]);
@@ -203,11 +205,11 @@ const EncounterPage = async (props: {
   );
   // A stat with nothing to say is left out rather than printed as a dash.
   const facts: EncounterHeaderFact[] = [
-    ...(playedSlots.length > 0
+    ...(playedSlots.length > 0 || withStats
       ? [
           {
-            label: t("encounters.detail.statMaps"),
-            value: String(playedSlots.length),
+            label: t(hasUnboundHistory ? "encounters.detail.statObservations" : "encounters.detail.statMaps"),
+            value: String(hasUnboundHistory ? observations.length : playedSlots.length),
             sub: t("encounters.detail.statMapsSub", {
               format: t("encounters.bestOfShort", { count: encounter.best_of }),
               one: mapWins.one,
@@ -338,19 +340,20 @@ const EncounterPage = async (props: {
                     slot={slot}
                     names={names}
                     teams={encounter.teams}
-                    tournamentGrid={tournamentGrid}
                     clockUnits={clockUnits}
                   />
                 ))}
                 {unplayedCount > 0 ? (
                   <p className={styles.mapRowNote}>
-                    {t("encounters.detail.mapsUnplayed", { count: unplayedCount })}
+                    {t(hasUnboundHistory ? "encounters.history.slotsWithoutBinding" : "encounters.detail.mapsUnplayed", { count: unplayedCount })}
                   </p>
                 ) : null}
               </div>
             </section>
 
-            {playedSlots.length > 0 ? (
+            <EncounterHistory matches={observations} />
+
+            {playedSlots.length > 0 || withStats ? (
               <section aria-label={t("encounters.detail.seriesStats")}>
                 <div className={styles.sectionHead}>
                   <h2 className={styles.sectionTitle}>{t("encounters.detail.seriesStats")}</h2>
@@ -358,9 +361,7 @@ const EncounterPage = async (props: {
                 {withStats ? (
                   <EncounterSeriesStats
                     view="overview"
-                    matchIds={playedSlots.flatMap((slot) => (slot.match ? [slot.match.id] : []))}
-                    teams={encounter.teams}
-                    tournamentGrid={tournamentGrid}
+                    matchIds={observations.map((match) => match.id)}
                   />
                 ) : (
                   <div className={styles.card}>
@@ -379,9 +380,7 @@ const EncounterPage = async (props: {
             <section aria-label={t("encounters.detail.tabs.players")}>
               <EncounterSeriesStats
                 view="players"
-                matchIds={playedSlots.flatMap((slot) => (slot.match ? [slot.match.id] : []))}
-                teams={encounter.teams}
-                tournamentGrid={tournamentGrid}
+                matchIds={observations.map((match) => match.id)}
               />
             </section>
           ) : (
@@ -530,6 +529,7 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
           )}
         </div>
       </section>
+      <EncounterHistory matches={encounter.matches ?? []} />
     </div>
   );
 };

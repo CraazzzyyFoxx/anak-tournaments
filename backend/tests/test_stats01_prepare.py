@@ -595,3 +595,224 @@ def test_record_verification_preserves_existing_bytes_and_reference_prefix(seede
     assert result["after"]["record"]["filename"] == "logs/preparation.csv"
     assert result["after"]["raw_ref"] == f"logs/{row['tournament_id']}/preparation.csv"
     assert result["official_before"] == result["official_after"]
+
+
+def native_run(url, action):
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+    async def execute():
+        engine = create_async_engine(sa.make_url(url).set(drivername="postgresql+asyncpg"), poolclass=sa.pool.NullPool)
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session, session.begin():
+                return await action(session)
+        finally:
+            await engine.dispose()
+
+    return run(execute())
+
+
+def test_native_verification_is_audited_lossless_and_repeatable(stats01_database, tmp_path):
+    from scripts import stats01_reconcile as reconcile
+
+    url, ids = stats01_database
+    engine = sa.create_engine(url)
+    revision = reconcile.revision_module()
+    receipt = tmp_path / "native-before"
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.text("UPDATE log_processing.record SET content_hash=NULL WHERE id=:record"), ids)
+            conn.execute(sa.text("UPDATE stats.ingest_job SET content_hash=NULL WHERE id=:record"), ids)
+        with reconcile.readonly_snapshot(engine, revision) as conn:
+            reconcile.capture_receipt(conn, receipt, revision)
+        with engine.connect() as conn:
+            before = conn.execute(sa.text("SELECT to_jsonb(j) FROM stats.ingest_job j ORDER BY id")).scalars().all()
+            facts = conn.scalar(sa.text("SELECT count(*) FROM stats.fact"))
+            official = (
+                conn.execute(
+                    sa.text("SELECT to_jsonb(g) FROM encounter.game_team g ORDER BY game_id,encounter_team_id")
+                )
+                .scalars()
+                .all()
+            )
+        store = ObjectStore(raw_objects(ids))
+        report = native_run(url, lambda session: prep.verify_native_raw(session, store))
+        assert report["blockers"] == []
+        assert next(item for item in report["raw"] if item["job_id"] == ids["record"])["raw_status"] == "available"
+        with engine.connect() as conn:
+            assert (
+                conn.execute(sa.text("SELECT to_jsonb(j) FROM stats.ingest_job j ORDER BY id")).scalars().all()
+                == before
+            )
+        report["review"] = "Reviewed actual isolated native fixture bytes and target"
+        first = native_run(url, lambda session: prep.apply_native_raw(session, store, report, manifest_sha256="a" * 64))
+        second = native_run(
+            url, lambda session: prep.apply_native_raw(session, store, report, manifest_sha256="a" * 64)
+        )
+        assert first["applied"] and second["applied"] == []
+        with engine.connect() as conn:
+            after = conn.execute(sa.text("SELECT to_jsonb(j) FROM stats.ingest_job j ORDER BY id")).scalars().all()
+            for old, new in zip(before, after, strict=True):
+                assert {k: v for k, v in old.items() if k not in {"raw_status", "content_hash"}} == {
+                    k: v for k, v in new.items() if k not in {"raw_status", "content_hash"}
+                }
+                if old["content_hash"] is not None:
+                    assert new["content_hash"] == old["content_hash"]
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.fact")) == facts
+            assert (
+                conn.execute(
+                    sa.text("SELECT to_jsonb(g) FROM encounter.game_team g ORDER BY game_id,encounter_team_id")
+                )
+                .scalars()
+                .all()
+                == official
+            )
+            assert conn.scalar(sa.text("SELECT count(*) FROM audit_log WHERE action='stats.raw_verification'")) == len(
+                first["applied"]
+            )
+        with reconcile.readonly_snapshot(engine, revision, receipt_dir=receipt) as conn:
+            assert reconcile.check_receipt(conn, receipt, revision)["exit_code"] == 2
+    finally:
+        engine.dispose()
+
+
+def test_native_missing_conflict_and_shared_sources_never_invent_hashes(stats01_database):
+    url, ids = stats01_database
+    engine = sa.create_engine(url)
+    store = ObjectStore(raw_objects(ids))
+    try:
+        with engine.begin() as conn:
+            key = conn.scalar(sa.text("SELECT raw_ref FROM stats.ingest_job WHERE id=:record"), ids)
+            conn.execute(
+                sa.text("UPDATE stats.ingest_job SET content_hash=:hash WHERE id=:record"), {**ids, "hash": "0" * 64}
+            )
+        report = native_run(url, lambda session: prep.verify_native_raw(session, store))
+        item = next(item for item in report["raw"] if item["job_id"] == ids["record"])
+        assert (
+            item["raw_status"] == "conflict"
+            and item["inspected_sha256"] == hashlib.sha256(store.objects[key]).hexdigest()
+        )
+        report["review"] = "Known immutable source hash differs from inspected bytes"
+        native_run(url, lambda session: prep.apply_native_raw(session, store, report, manifest_sha256="b" * 64))
+        with engine.connect() as conn:
+            assert conn.execute(
+                sa.text("SELECT raw_status,content_hash FROM stats.ingest_job WHERE id=:record"), ids
+            ).one() == ("conflict", "0" * 64)
+        store.objects.pop(key)
+        missing = native_run(url, lambda session: prep.verify_native_raw(session, store))
+        item = next(item for item in missing["raw"] if item["job_id"] == ids["record"])
+        assert item["raw_status"] == "missing" and item["inspected_sha256"] is None
+        missing["review"] = "Actual object store reports not found, not access denied"
+        native_run(url, lambda session: prep.apply_native_raw(session, store, missing, manifest_sha256="b" * 64))
+        with engine.connect() as conn:
+            assert conn.execute(
+                sa.text("SELECT raw_status,content_hash FROM stats.ingest_job WHERE id=:record"), ids
+            ).one() == ("missing", "0" * 64)
+        with engine.begin() as conn:
+            conn.execute(sa.text("UPDATE stats.match SET ingest_job_id=:record WHERE id=:match_no_raw"), ids)
+        store.objects[key] = RAW
+        shared = native_run(url, lambda session: prep.verify_native_raw(session, store))
+        assert next(item for item in shared["raw"] if item["job_id"] == ids["record"])["raw_status"] == "unverified"
+        shared["review"] = "Shared observations have no unique original parse provenance"
+        native_run(url, lambda session: prep.apply_native_raw(session, store, shared, manifest_sha256="b" * 64))
+        with engine.connect() as conn:
+            assert conn.execute(
+                sa.text("SELECT raw_status,content_hash FROM stats.ingest_job WHERE id=:record"), ids
+            ).one() == ("unverified", "0" * 64)
+    finally:
+        engine.dispose()
+
+
+def test_native_access_errors_are_not_missing_evidence(stats01_database):
+    url, _ = stats01_database
+
+    class Denied:
+        async def get_object(self, key):
+            raise PermissionError("not an object absence")
+
+    report = native_run(url, lambda session: prep.verify_native_raw(session, Denied()))
+    assert report["blockers"] and report["raw"] == []
+    assert {row["reason"] for row in report["blockers"]} == {"storage_access_unavailable"}
+    report["review"] = "Cannot approve failed inspection"
+    with pytest.raises(prep.PreparationBlocked, match="incomplete_native_verification"):
+        native_run(url, lambda session: prep.apply_native_raw(session, Denied(), report, manifest_sha256="c" * 64))
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "UPDATE stats.ingest_job SET attempts=attempts+1 WHERE id=:record",
+        "UPDATE stats.match SET revision=revision+1 WHERE id=:match",
+    ),
+)
+def test_native_apply_rejects_changed_target_without_partial_classification(stats01_database, mutation):
+    url, ids = stats01_database
+    store = ObjectStore(raw_objects(ids))
+    report = native_run(url, lambda session: prep.verify_native_raw(session, store))
+    report["review"] = "Reviewed before target drift"
+    engine = sa.create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.text(mutation), ids)
+        with pytest.raises(prep.PreparationBlocked, match="native_target_drift"):
+            native_run(url, lambda session: prep.apply_native_raw(session, store, report, manifest_sha256="d" * 64))
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT count(*) FROM audit_log WHERE action='stats.raw_verification'")) == 0
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.ingest_job WHERE raw_status<>'unverified'")) == 0
+    finally:
+        engine.dispose()
+
+
+def test_native_inventory_requires_exact_target_and_signed_bytes(stats01_database, tmp_path):
+    url, ids = stats01_database
+    report = native_run(url, lambda session: prep.verify_native_raw(session, ObjectStore(raw_objects(ids))))
+    inventory = {"format": prep.NATIVE_INVENTORY, "target": report["target"], "objects": report["objects"]}
+    path = tmp_path / "inventory.json"
+    path.write_text(json.dumps(inventory), encoding="utf-8")
+    with pytest.raises(prep.PreparationBlocked, match="manifest_sha256_mismatch"):
+        prep.load_signed_json(path, "0" * 64)
+    loaded = prep.load_signed_json(path, hashlib.sha256(path.read_bytes()).hexdigest())
+    accepted = native_run(url, lambda session: prep.verify_native_raw(session, None, inventory=loaded))
+    assert [item["raw_status"] for item in accepted["raw"]] == [item["raw_status"] for item in report["raw"]]
+    loaded["target"] = {**loaded["target"], "database_name": "a-different-dump"}
+    with pytest.raises(prep.PreparationBlocked, match="native_input_target_mismatch"):
+        native_run(url, lambda session: prep.verify_native_raw(session, None, inventory=loaded))
+
+
+def test_native_changed_bytes_roll_back_the_whole_reviewed_application(stats01_database):
+    url, ids = stats01_database
+    store = ObjectStore(raw_objects(ids))
+    report = native_run(url, lambda session: prep.verify_native_raw(session, store))
+    report["review"] = "Exact original bytes reviewed"
+    last = report["raw"][-1]["snapshot"]["job"]["raw_ref"]
+    store.objects[last] += b"\nchanged after review"
+    with pytest.raises(prep.PreparationBlocked, match="native_inspection_drift"):
+        native_run(url, lambda session: prep.apply_native_raw(session, store, report, manifest_sha256="e" * 64))
+    engine = sa.create_engine(url)
+    try:
+        with engine.connect() as conn:
+            assert conn.scalar(sa.text("SELECT count(*) FROM audit_log WHERE action='stats.raw_verification'")) == 0
+            assert conn.scalar(sa.text("SELECT count(*) FROM stats.ingest_job WHERE raw_status<>'unverified'")) == 0
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "flags",
+    (
+        ["--apply-native-raw"],
+        ["--verify-native-raw", "--inventory", "unchecked.json"],
+        ["--check", "--source-evidence", "unchecked.json", "--source-evidence-sha256", "0" * 64],
+    ),
+)
+def test_native_cli_refuses_unsigned_inputs_before_database_access(flags):
+    with pytest.raises(SystemExit) as exc:
+        prep.main(flags)
+    assert exc.value.code == 2
+
+
+def test_legacy_inventory_does_not_require_raw_recovery_or_new_official_games(seeded):
+    conn, _, _, ids = seeded
+    conn.execute(sa.text("UPDATE encounter.game SET state='cancelled' WHERE encounter_id=:encounter"), ids)
+    report = run(prep.check(conn, ObjectStore({})))
+    assert report["blockers"] == []
+    assert {"missing_raw_object", "unresolved_game"} <= {row["reason"] for row in report["warnings"]}

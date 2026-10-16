@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.core import db
 
-__all__ = ("IngestJob", "IngestJobStatus")
+__all__ = ("IngestJob", "IngestJobStatus", "RawSourceStatus")
 
 
 class IngestJobStatus(StrEnum):
@@ -19,9 +19,19 @@ class IngestJobStatus(StrEnum):
     FAILED = "failed"
 
 
+class RawSourceStatus(StrEnum):
+    AVAILABLE = "available"
+    MISSING = "missing"
+    CONFLICT = "conflict"
+    UNVERIFIED = "unverified"
+
+
 class IngestJob(db.TimeStampIntegerMixin):
     __tablename__ = "ingest_job"
     __table_args__ = (
+        sa.CheckConstraint(
+            "raw_status <> 'available' OR content_hash IS NOT NULL", name="ck_ingest_job_available_hash"
+        ),
         sa.Index(
             "uq_ingest_job_external",
             "workspace_id",
@@ -56,7 +66,19 @@ class IngestJob(db.TimeStampIntegerMixin):
     )
     source_kind: Mapped[str] = mapped_column(sa.String(32))
     external_id: Mapped[str | None] = mapped_column(sa.String(128), nullable=True)
-    content_hash: Mapped[str] = mapped_column(sa.CHAR(64))
+    content_hash: Mapped[str | None] = mapped_column(sa.CHAR(64), nullable=True)
+    raw_status: Mapped[RawSourceStatus] = mapped_column(
+        sa.Enum(
+            RawSourceStatus,
+            values_callable=lambda enum: [item.value for item in enum],
+            native_enum=False,
+            create_constraint=True,
+            name="ck_ingest_job_raw_status",
+            length=16,
+        ),
+        default=RawSourceStatus.AVAILABLE,
+        server_default="available",
+    )
     filename: Mapped[str | None] = mapped_column(sa.String(500), nullable=True)
     raw_ref: Mapped[str] = mapped_column(sa.String(512))
     document_ref: Mapped[str | None] = mapped_column(sa.String(512), nullable=True)
@@ -112,3 +134,7 @@ class IngestJob(db.TimeStampIntegerMixin):
     )
     started_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+
+    @property
+    def raw_available(self) -> bool:
+        return self.raw_status == RawSourceStatus.AVAILABLE and self.content_hash is not None

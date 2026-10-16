@@ -29,6 +29,8 @@ class EvalContext:
     #: context the same dict, so N per-hero rules cost one query, not N. Only
     #: read-only telemetry belongs here: a run never writes what it caches.
     leaf_cache: dict[tuple, Any] = field(default_factory=dict, repr=False, compare=False)
+    #: Rule-local chronology holds, never shared through the run's leaf cache.
+    deferred_encounter_ids: set[int] = field(default_factory=set, repr=False, compare=False)
 
     def record_evidence(self, key: tuple[int, ...], **values: object) -> None:
         """Attach measured values to one result key."""

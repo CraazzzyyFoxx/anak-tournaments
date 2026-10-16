@@ -376,14 +376,14 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
                 "UPDATE encounter.encounter SET home_team_id = :team0, away_team_id = :team2 WHERE id = :e"
             )
             await self._execute(
-                "INSERT INTO stats.match (workspace_id, discipline, encounter_game_id, map_entity_id)"
-                " VALUES (:ws, 'overwatch', :g, :map_id)",
+                "INSERT INTO stats.match (workspace_id, discipline, encounter_id, encounter_game_id, map_entity_id)"
+                " VALUES (:ws, 'overwatch', :e, :g, :map_id)",
                 map_id=map_id,
             )
             await self._execute(
-                "INSERT INTO stats.match_team (match_id, encounter_game_id, encounter_team_id, source_position)"
-                " SELECT id, :g, :p1, 1 FROM stats.match WHERE encounter_game_id = :g"
-                " UNION ALL SELECT id, :g, :p2, 2 FROM stats.match WHERE encounter_game_id = :g"
+                "INSERT INTO stats.match_team (match_id, encounter_id, encounter_team_id, source_position)"
+                " SELECT id, :e, :p1, 1 FROM stats.match WHERE encounter_game_id = :g"
+                " UNION ALL SELECT id, :e, :p2, 2 FROM stats.match WHERE encounter_game_id = :g"
             )
 
             await self._execute("DELETE FROM tournament.team WHERE id = :team0")
@@ -397,9 +397,7 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
                     self.assertEqual(
                         1, await self._scalar(f"SELECT count(*) FROM {table} WHERE {column} = :owner", owner=owner)
                     )
-            self.assertEqual(
-                2, await self._scalar("SELECT count(*) FROM stats.match_team WHERE encounter_game_id = :g")
-            )
+            self.assertEqual(2, await self._scalar("SELECT count(*) FROM stats.match_team WHERE encounter_id = :e"))
             self.assertIsNone(await self._scalar("SELECT team_id FROM encounter.team WHERE id = :p1"))
         finally:
             await self._execute("DELETE FROM stats.match WHERE encounter_game_id = :g")

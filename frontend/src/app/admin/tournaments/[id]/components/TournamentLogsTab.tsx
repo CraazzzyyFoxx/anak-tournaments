@@ -22,6 +22,7 @@ import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { columnMeta, createKebabColumn, DataTable } from "@/components/data-table";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { type Tone } from "@/components/kit/tone";
+import { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,10 +81,11 @@ const STATUS_META: Record<LogProcessingStatus, { key: "queued" | "processing" | 
 /** Chip order is scan order: the states that need action come first. */
 const LOG_FILTERS: LogFilter[] = ["failed", "awaiting_link", "processing", "pending", "done"];
 
-const SOURCE_LABELS: Partial<Record<string, "sourceUpload" | "sourceDiscord" | "sourceManual">> = {
+const SOURCE_LABELS: Partial<Record<string, "sourceUpload" | "sourceDiscord" | "sourceManual" | "sourceHistoricalReference">> = {
   upload: "sourceUpload",
   discord: "sourceDiscord",
-  manual: "sourceManual"
+  manual: "sourceManual",
+  historical_reference: "sourceHistoricalReference"
 };
 
 interface TournamentLogsTabProps {
@@ -96,6 +98,15 @@ interface TournamentLogsTabProps {
 
 function getLogFileName(filename: string) {
   return filename.split(/[\\/]/).at(-1) ?? filename;
+}
+
+function getRetryRefusal(record: LogProcessingRecord): "retryRawUnavailable" | "retryHistorical" | "retryUnbound" | null {
+  if (!record.raw_available) return "retryRawUnavailable";
+  if (record.source === "historical_reference") return "retryHistorical";
+  if (record.status !== "awaiting_link" && record.attached_encounter_id != null && record.attached_encounter_game_id == null) {
+    return "retryUnbound";
+  }
+  return null;
 }
 
 function formatDuration(record: LogProcessingRecord) {
@@ -402,12 +413,19 @@ export function TournamentLogsTab({
         const record = row.original;
         const sourceLabel = Object.hasOwn(SOURCE_LABELS, record.source) ? SOURCE_LABELS[record.source] : undefined;
         return (
+          <div className="space-y-1">
           <p
             className="max-w-[22rem] truncate font-mono text-xs"
-            title={tx("titleHint", { filename: record.filename, source: sourceLabel ? t(sourceLabel) : record.source, uploader: record.uploader_name ?? t("unknownUploader"), attempts: record.attempts > 1 ? record.attempts : 0 })}
+            title={record.source === "historical_reference"
+              ? `${record.filename}\n${t("sourceHistoricalReference")}`
+              : tx("titleHint", { filename: record.filename, source: sourceLabel ? t(sourceLabel) : record.source, uploader: record.uploader_name ?? t("unknownUploader"), attempts: record.attempts > 1 ? record.attempts : 0 })}
           >
             {getLogFileName(record.filename)}
           </p>
+            {record.source === "historical_reference" ? (
+              <p className="text-xs text-muted-foreground">{t("sourceHistoricalReference")}</p>
+            ) : null}
+          </div>
         );
       }
     },
@@ -428,16 +446,35 @@ export function TournamentLogsTab({
       accessorFn: (record) => t(STATUS_META[record.status].key),
       size: 136,
       enableSorting: false,
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1.5">
-          <LogStatusBadge status={row.original.status} />
-          {row.original.attempts > 1 ? (
-            <span className="text-xs tabular-nums text-muted-foreground">
-              ×{row.original.attempts}
-            </span>
-          ) : null}
-        </div>
-      )
+      cell: ({ row }) => {
+        const record = row.original;
+        const refusal = getRetryRefusal(record);
+        return (
+          <div className="max-w-[22rem] space-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <LogStatusBadge status={record.status} />
+              {record.attempts > 1 ? (
+                <span className="text-xs tabular-nums text-muted-foreground">×{record.attempts}</span>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              <RawLogStatus raw_status={record.raw_status} raw_available={record.raw_available} />
+            </p>
+            {refusal ? (
+              <>
+                <p id={`log-retry-refusal-${record.id}`} className="text-xs text-muted-foreground">
+                  {tx(refusal)}
+                </p>
+                {record.status !== "done" && record.status !== "processing" ? (
+                  <Button type="button" variant="outline" size="sm" disabled aria-describedby={`log-retry-refusal-${record.id}`}>
+                    {t("retry")}
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        );
+      }
     },
     {
       id: "error",
@@ -499,16 +536,20 @@ export function TournamentLogsTab({
         {
           label: record.status === "failed" ? tx("retryLog") : tx("requeueLog"),
           icon: RotateCcw,
-          hidden: record.status === "done" || record.status === "processing",
-          onSelect: () => retryMutation.mutate([record.id])
+          hidden: record.status === "done" || record.status === "processing" || getRetryRefusal(record) != null,
+          onSelect: () => {
+            if (getRetryRefusal(record) == null) retryMutation.mutate([record.id]);
+          }
         },
         // A processed log already filed its match; only an unfinished one can
         // be re-filed. The workspace-wide console holds no encounter list.
         {
           label: t("attachTo"),
           icon: Link2,
-          hidden: record.status === "done" || record.status === "processing" || encounters.length === 0,
-          onSelect: () => setAttachTarget(record)
+          hidden: record.status === "done" || record.status === "processing" || encounters.length === 0 || getRetryRefusal(record) != null,
+          onSelect: () => {
+            if (getRetryRefusal(record) == null) setAttachTarget(record);
+          }
         }
       ],
       { rowLabel: (record) => getLogFileName(record.filename) }
@@ -578,19 +619,22 @@ export function TournamentLogsTab({
             });
             return { results: response.items, total: response.total, page, per_page: pageSize };
           }}
-          enableRowSelection={(row) => row.original.status !== "done" && row.original.status !== "processing"}
+          enableRowSelection={(row) => row.original.status !== "done" && row.original.status !== "processing" && getRetryRefusal(row.original) == null}
           bulkActions={(selected, clearSelection) => (
             <Button
               variant="outline"
               size="sm"
               className="h-8"
-              disabled={retryMutation.isPending}
-              onClick={() =>
-                retryMutation.mutate(
-                  selected.map((record) => record.id),
-                  { onSuccess: clearSelection }
-                )
-              }
+              disabled={retryMutation.isPending || !selected.some((record) => getRetryRefusal(record) == null)}
+              onClick={() => {
+                const retryable = selected.filter((record) => getRetryRefusal(record) == null);
+                if (retryable.length > 0) {
+                  retryMutation.mutate(
+                    retryable.map((record) => record.id),
+                    { onSuccess: clearSelection }
+                  );
+                }
+              }}
             >
               {retryMutation.isPending ? <Spinner /> : <RotateCcw aria-hidden />}
               {t("retry")} {selected.length}

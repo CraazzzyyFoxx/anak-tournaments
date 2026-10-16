@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`discipline01c`** (118 revisions in `backend/migrations/versions/`).
+Alembic head: **`discipline01c`** (119 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -2576,7 +2576,8 @@ erDiagram
         varchar(32) discipline FK
         varchar(32) source_kind
         varchar(128) external_id "nullable"
-        char(64) content_hash
+        char(64) content_hash "nullable"
+        ck_ingest_job_raw_status raw_status
         varchar(500) filename "nullable"
         varchar(512) raw_ref
         varchar(512) document_ref "nullable"
@@ -2597,7 +2598,9 @@ erDiagram
         timestamptz updated_at "nullable"
         bigint workspace_id FK
         varchar(32) discipline FK
-        bigint encounter_game_id FK,UK
+        bigint encounter_id FK
+        bigint encounter_game_id FK,UK "nullable"
+        int source_map_index "nullable"
         bigint ingest_job_id FK "nullable"
         int revision
         timestamptz played_at "nullable"
@@ -2614,7 +2617,7 @@ erDiagram
     }
     STATS_MATCH_TEAM {
         bigint match_id PK,FK
-        bigint encounter_game_id FK
+        bigint encounter_id FK
         bigint encounter_team_id PK,FK
         int source_position
     }
@@ -2662,10 +2665,11 @@ erDiagram
     CATALOG_ROLE |o--o{ STATS_MATCH_PLAYER : "observed_role_id"
     CATALOG_ROLE ||--o{ STATS_STAT_BASELINE : "role_id"
     ENCOUNTER_ENCOUNTER |o--o{ STATS_INGEST_JOB : "hint_encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ STATS_MATCH : "encounter_id"
     ENCOUNTER_GAME |o--o{ STATS_INGEST_JOB : "hint_encounter_game_id"
-    ENCOUNTER_GAME ||--o| STATS_MATCH : "encounter_game_id"
-    ENCOUNTER_GAME_TEAM ||--o{ STATS_MATCH_TEAM : "encounter_game_id"
-    ENCOUNTER_GAME_TEAM ||--o| STATS_MATCH_TEAM : "encounter_team_id"
+    ENCOUNTER_GAME |o--o| STATS_MATCH : "encounter_game_id"
+    ENCOUNTER_TEAM ||--o{ STATS_MATCH_TEAM : "encounter_id"
+    ENCOUNTER_TEAM ||--o| STATS_MATCH_TEAM : "encounter_team_id"
     PLAYERS_USER |o--o{ STATS_INGEST_JOB : "uploader_user_id"
     PUBLIC_WORKSPACE ||--o{ STATS_INGEST_JOB : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ STATS_MATCH : "workspace_id"
@@ -2673,6 +2677,7 @@ erDiagram
     STATS_EVENT_TYPE ||--o{ STATS_EVENT : "type_id"
     STATS_INGEST_JOB |o--o{ STATS_MATCH : "ingest_job_id"
     STATS_MATCH ||--o{ STATS_EVENT : "match_id"
+    STATS_MATCH ||--o{ STATS_MATCH_TEAM : "encounter_id"
     STATS_MATCH ||--o| STATS_MATCH_TEAM : "match_id"
     STATS_MATCH ||--o| STATS_SEGMENT : "match_id"
     STATS_MATCH_PLAYER |o--o{ STATS_EVENT : "actor_member_id"
@@ -2697,6 +2702,7 @@ Composite unique keys:
 
 - `STATS_EVENT_TYPE` unique on (`discipline`, `code`)
 - `STATS_FACT` unique on (`match_id`, `segment`, `encounter_team_id`, `workspace_member_id`, `entity_id`, `stat_id`)
+- `STATS_MATCH` unique on (`id`, `encounter_id`)
 - `STATS_MATCH_TEAM` unique on (`match_id`, `source_position`)
 - `STATS_STAT_BASELINE` unique on (`formula_version`, `role_id`, `rank_bucket`, `stat_id`)
 - `STATS_STAT_DEF` unique on (`discipline`, `code`)

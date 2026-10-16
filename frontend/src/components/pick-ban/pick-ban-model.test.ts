@@ -605,22 +605,26 @@ describe("seriesMatchesByPosition", () => {
     ]);
   });
 
-  it("adopts a positionless row for the earliest play that has no exact one", () => {
-    // A parsed log carries no position, and neither does any row written before
-    // `Match.map_index` existed: the second play HAS its own row, so the
-    // positionless one belongs to the first.
-    const rows = [row(21, null, "log"), row(21, 2, "second")];
+  it("does not adopt an unbound observation into a same-map game", () => {
+    const rows = [row(21, null, "history"), row(21, 2, "second")];
     expect(seriesMatchesByPosition(rows, [21, 21]).map((match) => match?.tag)).toEqual([
-      "log",
+      undefined,
       "second"
     ]);
   });
 
-  it("never hands one row to two positions", () => {
-    const rows = [row(21, null, "log")];
+  it("leaves multiple same-map historical observations out of every official slot", () => {
+    const rows = [row(21, null, "history-a"), row(21, null, "history-b")];
     expect(seriesMatchesByPosition(rows, [21, 21]).map((match) => match?.tag)).toEqual([
-      "log",
+      undefined,
       undefined
+    ]);
+  });
+
+  it("keeps an explicit position when the game's map is not expanded", () => {
+    expect(seriesMatchesByPosition([row(21, 2, "second")], [null, null])).toEqual([
+      null,
+      { map_id: 21, map_index: 2, tag: "second" }
     ]);
   });
 });

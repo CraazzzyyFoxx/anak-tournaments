@@ -1655,3 +1655,126 @@ def test_initial_semantic_proof_preserves_float_signed_zero(native, tmp_path):
         conn.execute(sa.text(native_update), {**native[1], "value": "0"})
     with pytest.raises(reconcile.EvidenceError):
         _capture(native, tmp_path / "positive-zero")
+
+
+@pytest.mark.parametrize("directory", ("receipt", "prior"))
+@pytest.mark.parametrize("filename", ("manifest.json", "owners.jsonl", "handles.jsonl"))
+@pytest.mark.parametrize("alias", (False, True), ids=("direct", "hardlink"))
+def test_report_preserves_both_receipts_before_verification(tmp_path, directory, filename, alias):
+    originals = {}
+    for name in ("receipt", "prior"):
+        root = tmp_path / name
+        root.mkdir()
+        for artifact in ("manifest.json", "owners.jsonl", "handles.jsonl"):
+            path = root / artifact
+            originals[path] = f"immutable {name}/{artifact}\n".encode()
+            path.write_bytes(originals[path])
+    report = tmp_path / directory / filename
+    if alias:
+        link = tmp_path / "report.json"
+        os.link(report, link)
+        report = link
+    assert (
+        reconcile.main(
+            [
+                "--mode",
+                "capture",
+                "--receipt-dir",
+                str(tmp_path / "receipt"),
+                "--prior-receipt-dir",
+                str(tmp_path / "prior"),
+                "--report",
+                str(report),
+            ]
+        )
+        == 1
+    )
+    assert {path: path.read_bytes() for path in originals} == originals
+
+
+@pytest.mark.parametrize("deleted", ("encounter", "max_record"))
+def test_historical_reference_receipt_keeps_survivor_ids_after_cascade(stats01_legacy_database, tmp_path, deleted):
+    url, ids = stats01_legacy_database
+    engine = sa.create_engine(url, poolclass=sa.pool.NullPool)
+    native = engine, ids, url
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                sa.text("UPDATE matches.match SET log_record_id=NULL WHERE id IN (:match_other,:match_hidden)"),
+                ids,
+            )
+            max_record = conn.scalar(sa.text("SELECT max(id) FROM log_processing.record"))
+            assert max_record == ids["record_unlinked"]
+        upgraded = upgrade_database(url, "stats01a")
+        assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
+        ids["historical_other"], ids["historical_hidden"] = max_record + 1, max_record + 2
+        with engine.begin() as conn:
+            conn.execute(sa.text("UPDATE stats.match SET ingest_job_id=:historical_other WHERE id=:match_hidden"), ids)
+        with pytest.raises(EvidenceError):
+            _capture(native, tmp_path / "wrong-native-mapping")
+        with engine.begin() as conn:
+            conn.execute(sa.text("UPDATE stats.match SET ingest_job_id=:historical_hidden WHERE id=:match_hidden"), ids)
+        receipt = _capture(native, tmp_path / "receipt")
+        originals = {path: path.read_bytes() for path in receipt.iterdir()}
+        if deleted == "encounter":
+            _mutate(
+                native,
+                [
+                    ("match", (ids["match_other"],)),
+                    ("job", (ids["record_other"],)),
+                    ("job", (ids["historical_other"],)),
+                ],
+                "stats.owner_delete",
+                ["DELETE FROM encounter.encounter WHERE id=:encounter_other"],
+            )
+        else:
+            _mutate(
+                native,
+                [("job", (ids["record_unlinked"],))],
+                "stats.owner_delete",
+                [
+                    "DELETE FROM stats.ingest_job WHERE id=:record_unlinked",
+                    "DELETE FROM log_processing.record WHERE id=:record_unlinked",
+                ],
+            )
+        _refresh(native)
+        revision = reconcile.revision_module()
+        owners = []
+        with reconcile.readonly_snapshot(engine, revision, receipt_dir=receipt) as conn:
+            result = reconcile.check_receipt(conn, receipt, revision, owner_sink=owners.append)
+            assert (
+                conn.scalar(sa.text("SELECT ingest_job_id FROM stats.match WHERE id=:match_hidden"), ids)
+                == ids["historical_hidden"]
+            )
+        assert result["exit_code"] == 2, (result, owners)
+        survivors = [
+            row
+            for row in owners
+            if (row.get("owner_kind"), tuple(row.get("owner_key", ())))
+            in {("match", (ids["match_hidden"],)), ("job", (ids["historical_hidden"],))}
+        ]
+        assert survivors and all(row["status"] == row["legacy_status"] == "unchanged" for row in survivors)
+        assert {path: path.read_bytes() for path in originals} == originals
+        with engine.begin() as conn:
+            conn.execute(sa.text("UPDATE stats.match SET ingest_job_id=:historical_other WHERE id=:match_hidden"), ids)
+        assert _check(native, receipt)["exit_code"] == 1
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("damage", ("missing", "boolean", "wrong_job"))
+def test_receipt_missing_or_invalid_historical_mapping_fails_closed(native, tmp_path, damage):
+    receipt = _capture(native, tmp_path / "receipt")
+    rows = [json.loads(line) for line in (receipt / "owners.jsonl").read_bytes().splitlines()]
+    match = next(row for row in rows if row["owner_kind"] == "match")
+    if damage == "missing":
+        match.pop("historical_reference_id", None)
+    else:
+        match["historical_reference_id"] = True if damage == "boolean" else native[1]["record_unlinked"]
+    raw = b"".join(json.dumps(row).encode() + b"\n" for row in rows)
+    (receipt / "owners.jsonl").write_bytes(raw)
+    manifest = json.loads((receipt / "manifest.json").read_bytes())
+    manifest["owners_sha256"] = hashlib.sha256(raw).hexdigest()
+    (receipt / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(EvidenceError, match="historical reference"):
+        _check(native, receipt)

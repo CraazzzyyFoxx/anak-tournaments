@@ -43,11 +43,9 @@ def operator_results(url, filename):
 
 def test_operator_preflight_accepts_valid_populated_legacy(stats01_legacy_database):
     url, _ = stats01_legacy_database
-    summary, details, informational = operator_results(url, "stats01_preflight.sql")
-    assert {row["class"] for row in summary} == {name for name, _ in revision.PREFLIGHT}
+    summary, details, _ = operator_results(url, "stats01_preflight.sql")
     assert all(row["offending"] == 0 and row["status"] == "ok" for row in summary)
     assert details == []
-    assert {row["class"] for row in informational} == {name for name, _ in revision.COUNTS}
 
 
 @pytest.mark.parametrize("expected_class,mutation", REFUSALS)

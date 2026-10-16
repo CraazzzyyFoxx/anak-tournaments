@@ -2,8 +2,8 @@
 
 Run with all writers drained for capture. Receipt files are immutable release
 artifacts, not runtime storage. Exit 0=unchanged, 2=review required, 1=blocking.
-Receipt v2 requires streamed per-observation handles.jsonl as well as owners.jsonl;
-neither today's roster nor a global account name can reconstruct that evidence.
+Receipt v2 requires streamed per-observation handles.jsonl and original generated
+provenance IDs in owners.jsonl; surviving source rows cannot reconstruct either.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import json
 import os
 import sys
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -36,6 +37,7 @@ from shared.services.stats_evidence import (
     empty_state,
     encode_value,
     owner_scopes,
+    projection,
     scope_key,
     semantic_bytes,
     semantic_digest,
@@ -76,6 +78,91 @@ def _dump(value) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
+def _codec_digest(scope, rows, *, codec=CODEC, encoded=False):
+    if codec == CODEC:
+        return semantic_digest(scope, rows, encoded=encoded)
+    if codec != "stats01-semantic/1":
+        raise EvidenceError("unsupported original receipt codec")
+    digest = hashlib.sha256()
+    raw = semantic_bytes([codec, scope[0], list(scope[1]), scope[2]])
+    digest.update(len(raw).to_bytes(8, "big"))
+    digest.update(raw)
+    count = 0
+    for row in rows:
+        raw = _dump(list(row)) if encoded else semantic_bytes(list(row))
+        digest.update(len(raw).to_bytes(8, "big"))
+        digest.update(raw)
+        count += 1
+    return count, digest.hexdigest()
+
+
+def _verify_prior_receipt(conn, receipt_dir, revision):
+    """One-time original receipt proof, never a legacy runtime/lifecycle fallback."""
+    codec = "stats01-semantic/1"
+    manifest = load_manifest(receipt_dir, codec=codec)
+    if conn.scalar(sa.text("SELECT current_database()")) != manifest["database_name"]:
+        raise EvidenceError("original receipt belongs to a different database")
+    audit = (
+        conn.execute(
+            sa.text("""SELECT id,before_json,after_json FROM audit_log
+        WHERE action='stats.history_upgrade'""")
+        )
+        .mappings()
+        .all()
+    )
+    if len(audit) != 1 or not audit[0]["after_json"].get("original_oracle_retained"):
+        raise EvidenceError("original receipt requires a proved stats01a upgrade")
+    if conn.scalar(
+        sa.text("""SELECT EXISTS(SELECT 1 FROM audit_log WHERE id>:highwater
+        AND id<>:upgrade AND (action LIKE 'stats.%' OR before_json ? 'stats_evidence'
+          OR after_json ? 'stats_evidence'))"""),
+        {"highwater": manifest["audit_highwater"]["audit_log_id"], "upgrade": audit[0]["id"]},
+    ):
+        raise EvidenceError("original receipt has lifecycle changes; original chain must be proved before upgrade")
+    actual_owners = current_owners(conn)
+    owner_count = 0
+    for owner, states in saved_owners(receipt_dir, codec=codec):
+        current = next(actual_owners, None)
+        if current is None or current[0] != owner:
+            raise EvidenceError("original receipt omits or invents an owner")
+        for state in states:
+            scope = state_scope(state)
+            query, params = projection(scope)
+            columns = query.columns
+            if scope[0] == "match" and scope[2] == "header":
+                columns = columns[:-2]
+            elif scope[0] == "match" and scope[2] == "teams":
+                columns = (columns[0], ("m.encounter_game_id", "scalar"), *columns[2:])
+            elif scope[0] == "job" and scope[2] == "identity":
+                columns = columns[:-1]
+            query = replace(query, columns=columns)
+            with conn.execute(sa.text(query.sql()).execution_options(yield_per=ROW_BATCH), params) as cursor:
+                digest = _codec_digest(scope, cursor, codec=codec)
+            if digest != (state["row_count"], state["sha256"]):
+                raise EvidenceError(f"original receipt differs from proved pre-upgrade rows: {scope}")
+            owner_count += 1
+    if next(actual_owners, None) is not None or owner_count != manifest["owners_count"]:
+        raise EvidenceError("original receipt owner set is incomplete")
+    original_handles = iter(saved_handles(receipt_dir))
+    with conn.execute(
+        sa.text(
+            "SELECT match_id,player_id,team_id,handle_snapshot FROM stats01_handles ORDER BY match_id,player_id,team_id"
+        )
+    ) as cursor:
+        for row in cursor.mappings():
+            if dict(row) != next(original_handles, None):
+                raise EvidenceError("original observation handle evidence differs")
+    if next(original_handles, None) is not None:
+        raise EvidenceError("original receipt contains extra observation handles")
+    return {
+        "manifest_sha256": hashlib.sha256((receipt_dir / "manifest.json").read_bytes()).hexdigest(),
+        "owners_sha256": manifest["owners_sha256"],
+        "handles_sha256": manifest["handles_sha256"],
+        "codec": codec,
+        "history_upgrade_audit_id": audit[0]["id"],
+    }
+
+
 def _owner_sort(owner):
     return scope_key((owner[0], tuple(owner[1]), ""))[:2]
 
@@ -87,14 +174,14 @@ def _publish(temp: Path, target: Path):
     temp.unlink()
 
 
-def load_manifest(receipt_dir: Path, revision=None) -> dict:
+def load_manifest(receipt_dir: Path, revision=None, *, codec=CODEC) -> dict:
     try:
         manifest = _json((receipt_dir / "manifest.json").read_bytes())
         if (
             not isinstance(manifest, dict)
             or manifest.get("format") != FORMAT
             or manifest.get("revision") != "stats01"
-            or manifest.get("codec") != CODEC
+            or manifest.get("codec") != codec
             or manifest.get("owners_file") != "owners.jsonl"
             or manifest.get("handles_file") != "handles.jsonl"
         ):
@@ -192,7 +279,7 @@ def load_manifest(receipt_dir: Path, revision=None) -> dict:
             if count != manifest[f"{name}_count"] or digest.hexdigest() != manifest[f"{name}_sha256"]:
                 raise EvidenceError(f"receipt {name} file digest/count mismatch")
         # Validate every partition, even when a later check only queries one owner.
-        for _ in saved_owners(receipt_dir):
+        for _ in saved_owners(receipt_dir, codec=codec):
             pass
         for _ in saved_handles(receipt_dir):
             pass
@@ -203,7 +290,7 @@ def load_manifest(receipt_dir: Path, revision=None) -> dict:
         raise EvidenceError("missing or malformed receipt") from exc
 
 
-def saved_owners(receipt_dir: Path):
+def saved_owners(receipt_dir: Path, *, codec=CODEC):
     previous = None
     current_owner = None
     rows = []
@@ -226,7 +313,10 @@ def saved_owners(receipt_dir: Path):
             if "workspace_id" not in state or "discipline" not in state:
                 raise EvidenceError("receipt owner lacks authority fields")
             if "values" in state:
-                if semantic_digest(scope, state["values"], encoded=True) != (state["row_count"], state["sha256"]):
+                if _codec_digest(scope, state["values"], codec=codec, encoded=True) != (
+                    state["row_count"],
+                    state["sha256"],
+                ):
                     raise EvidenceError("receipt named values contradict owner digest")
             rows.append(state)
         if current_owner is not None:
@@ -257,7 +347,7 @@ def saved_handles(receipt_dir: Path):
 def _authority(conn, kind: str, key: tuple) -> dict:
     result = {"workspace_id": None, "discipline": None}
     queries = {
-        "match": "SELECT m.workspace_id,m.discipline,e.tournament_id,e.id AS encounter_id,m.encounter_game_id AS game_id FROM stats.match m JOIN encounter.game g ON g.id=m.encounter_game_id JOIN encounter.encounter e ON e.id=g.encounter_id WHERE m.id=:id",
+        "match": "SELECT m.workspace_id,m.discipline,e.tournament_id,e.id AS encounter_id,m.encounter_game_id AS game_id FROM stats.match m JOIN encounter.encounter e ON e.id=m.encounter_id WHERE m.id=:id",
         "job": "SELECT workspace_id,discipline,hint_tournament_id AS tournament_id,hint_encounter_id AS encounter_id,hint_encounter_game_id AS game_id FROM stats.ingest_job WHERE id=:id",
         "member": "SELECT workspace_id,player_id FROM workspace_member WHERE id=:id",
         "channel": "SELECT t.workspace_id,t.discipline,c.tournament_id FROM stats.discord_channel c JOIN tournament.tournament t ON t.id=c.tournament_id WHERE c.id=:id",
@@ -369,13 +459,17 @@ def prepare_connection(conn, revision, *, receipt_dir: Path | None = None):
         )
         conn.execute(
             sa.text(
-                "CREATE TEMP TABLE stats01_receipt_team AS SELECT match_id,game_id,team_id,encounter_team_id FROM stats01_team WITH NO DATA"
+                "CREATE TEMP TABLE stats01_receipt_team AS SELECT match_id,encounter_id,team_id,encounter_team_id FROM stats01_team WITH NO DATA"
             )
         )
         conn.execute(
             sa.text(
                 "CREATE TEMP TABLE stats01_receipt_handles AS SELECT match_id,player_id,team_id,handle_snapshot FROM stats01_handles WITH NO DATA"
             )
+        )
+        conn.execute(
+            sa.text("""CREATE TEMP TABLE stats01_receipt_historical_reference(
+                source_match_id bigint PRIMARY KEY,id bigint UNIQUE NOT NULL)""")
         )
         conn.execute(sa.text("CREATE TEMP TABLE stats01_receipt_owners(kind text,key jsonb,PRIMARY KEY(kind,key))"))
         for (kind, key), states in saved_owners(receipt_dir):
@@ -392,10 +486,23 @@ def prepare_connection(conn, revision, *, receipt_dir: Path | None = None):
                     ),
                     params,
                 )
+                historical_id = row.get("historical_reference_id")
+                if "historical_reference_id" not in row or (
+                    historical_id is not None and (type(historical_id) is not int or historical_id <= 0)
+                ):
+                    raise EvidenceError("receipt lacks a valid original historical reference mapping")
+                if historical_id is not None:
+                    legacy = next((proof for proof in row.get("legacy_proof", []) if proof["class"] == "matches"), None)
+                    if legacy is None or legacy.get("references") != {"ingest_job_id": historical_id}:
+                        raise EvidenceError("receipt historical reference contradicts original source proof")
+                    conn.execute(
+                        sa.text("INSERT INTO stats01_receipt_historical_reference VALUES(:match_id,:id)"),
+                        {"match_id": key[0], "id": historical_id},
+                    )
                 for team in row["legacy_teams"]:
                     conn.execute(
                         sa.text(
-                            "INSERT INTO stats01_receipt_team VALUES(:match_id,:game_id,:team_id,:encounter_team_id)"
+                            "INSERT INTO stats01_receipt_team VALUES(:match_id,:encounter_id,:team_id,:encounter_team_id)"
                         ),
                         {**params, **team},
                     )
@@ -412,8 +519,9 @@ def prepare_connection(conn, revision, *, receipt_dir: Path | None = None):
         for name, columns in (
             ("match", "match_id,game_id,workspace_id,discipline,tournament_id,encounter_id"),
             ("member", "workspace_id,player_id,id"),
-            ("team", "match_id,game_id,team_id,encounter_team_id"),
+            ("team", "match_id,encounter_id,team_id,encounter_team_id"),
             ("handles", "match_id,player_id,team_id,handle_snapshot"),
+            ("historical_reference", "source_match_id,id"),
         ):
             conn.execute(
                 sa.text(f"CREATE OR REPLACE TEMP VIEW stats01_{name} AS SELECT {columns} FROM stats01_receipt_{name}")
@@ -431,10 +539,11 @@ def prepare_connection(conn, revision, *, receipt_dir: Path | None = None):
 @contextmanager
 def readonly_snapshot(engine, revision, *, receipt_dir: Path | None = None):
     with engine.connect() as conn:
+        # Committed pg_temp setup belongs to this snapshot, not the next pool borrower.
+        conn.detach()
         prepare_connection(conn, revision, receipt_dir=receipt_dir)
-        conn = conn.execution_options(isolation_level="REPEATABLE READ")
         with conn.begin():
-            conn.execute(sa.text("SET TRANSACTION READ ONLY"))
+            conn.execute(sa.text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
             conn.execute(sa.text("SET LOCAL TIME ZONE 'UTC'"))
             conn.execute(sa.text("SET LOCAL extra_float_digits=3"))
             yield conn
@@ -448,11 +557,12 @@ def _require_snapshot(conn):
         raise EvidenceError("receipt operations require one repeatable-read read-only snapshot")
 
 
-def capture_receipt(conn, receipt_dir: Path, revision) -> dict:
+def capture_receipt(conn, receipt_dir: Path, revision, *, prior_receipt_dir: Path | None = None) -> dict:
     _require_snapshot(conn)
     if any((receipt_dir / name).exists() for name in ("manifest.json", "owners.jsonl", "handles.jsonl")):
         raise EvidenceError("receipt already exists; refusing overwrite")
     proof = _initial_proof(conn, revision)
+    prior = _verify_prior_receipt(conn, prior_receipt_dir, revision) if prior_receipt_dir is not None else None
     receipt_dir.mkdir(parents=True, exist_ok=True)
     nonce = uuid4().hex
     owner_temp = receipt_dir / f".owners.{nonce}.tmp"
@@ -483,6 +593,11 @@ def capture_receipt(conn, receipt_dir: Path, revision) -> dict:
             for (kind, key), _ in current_owners(conn):
                 states = capture_native(conn, scopes=owner_scopes(kind, key))
                 authority = _authority(conn, kind, key)
+                if kind == "match":
+                    authority["historical_reference_id"] = conn.scalar(
+                        sa.text("SELECT id FROM stats01_historical_reference WHERE source_match_id=:id"),
+                        {"id": key[0]},
+                    )
                 legacy = _legacy_digests(conn, revision, (kind, key), compare_native=True)
                 values = {state_scope(row): row["rows"] for row in states.values}
                 for index, state in enumerate(states):
@@ -519,6 +634,10 @@ def capture_receipt(conn, receipt_dir: Path, revision) -> dict:
             "handles_file": "handles.jsonl",
             "handles_count": handles_count,
             "handles_sha256": handles_digest.hexdigest(),
+            "prior_receipt": prior,
+            "history_upgrade_audit_id": conn.scalar(
+                sa.text("SELECT max(id) FROM audit_log WHERE action='stats.history_upgrade'")
+            ),
         }
         with manifest_temp.open("xb") as stream:
             stream.write(_dump(manifest) + b"\n")
@@ -544,17 +663,22 @@ def _audit_payload(row):
     if (
         not isinstance(before, dict)
         or not isinstance(after, dict)
-        or before.get("version") != 1
-        or after.get("version") != 1
+        or before.get("version") != 2
+        or after.get("version") != 2
     ):
         raise EvidenceError("unsupported/missing audit evidence version")
-    if before.get("operation") != after.get("operation") or before.get("identity_map") != after.get("identity_map"):
+    if (
+        before.get("operation") != after.get("operation")
+        or before.get("identity_map") != after.get("identity_map")
+        or before.get("raw_verification") != after.get("raw_verification")
+    ):
         raise EvidenceError("contradictory audit envelope")
     if not validate_transition(
         after["operation"],
         before["states"],
         after["states"],
         identity_map=after["identity_map"],
+        raw_verification=after.get("raw_verification", []),
         before_values=before_json.get("stats_values", []),
         after_values=after_json.get("stats_values", []),
     ):
@@ -1036,10 +1160,25 @@ def main(argv=None) -> int:
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--audit-source", choices=("database",), default="database")
     parser.add_argument("--export-audit", type=Path)
+    parser.add_argument(
+        "--prior-receipt-dir", type=Path, help="Original codec/1 receipt to prove before fresh history receipt capture"
+    )
     args = parser.parse_args(argv)
-    protected = {(args.receipt_dir / name).resolve() for name in ("manifest.json", "owners.jsonl", "handles.jsonl")}
-    if args.report.resolve() in protected:
-        print("blocking: report output cannot overwrite immutable receipt files", file=sys.stderr)
+    if args.prior_receipt_dir is not None and args.mode != "capture":
+        parser.error("--prior-receipt-dir requires --mode capture")
+    protected = {
+        (directory / name).resolve()
+        for directory in (args.receipt_dir, args.prior_receipt_dir)
+        if directory is not None
+        for name in ("manifest.json", "owners.jsonl", "handles.jsonl")
+    }
+    outputs = [path for path in (args.report, args.export_audit) if path is not None]
+    if any(
+        output.resolve() in protected
+        or (output.exists() and any(path.exists() and output.samefile(path) for path in protected))
+        for output in outputs
+    ):
+        print("blocking: output cannot overwrite immutable receipt files", file=sys.stderr)
         return 1
     export = None
     engine = None
@@ -1067,7 +1206,7 @@ def main(argv=None) -> int:
             engine, revision, receipt_dir=args.receipt_dir if args.mode == "check" else None
         ) as conn:
             report = (
-                capture_receipt(conn, args.receipt_dir, revision)
+                capture_receipt(conn, args.receipt_dir, revision, prior_receipt_dir=args.prior_receipt_dir)
                 if args.mode == "capture"
                 else check_receipt(conn, args.receipt_dir, revision, export=export, owner_sink=emit_owner)
             )

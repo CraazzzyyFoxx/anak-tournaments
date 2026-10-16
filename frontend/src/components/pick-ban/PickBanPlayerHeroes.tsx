@@ -21,10 +21,23 @@ export function PickBanPlayerHeroes({
   });
   const heroes = useMemo(() => {
     const match = history.data;
-    const player = [match?.home_team, match?.away_team]
+    // The target id is a tournament registration, not an observed member/user.
+    const userId = [match?.home_team, match?.away_team]
       .flatMap((team) => team?.players ?? [])
-      .find((candidate) => candidate.id === playerId);
-    return [...new Map(Object.values(player?.heroes ?? {}).flat().map((hero) => [hero.id, hero])).values()];
+      .find((candidate) => candidate.id === playerId)?.user_id;
+    const player =
+      userId == null
+        ? undefined
+        : [match?.home_participation, match?.away_participation]
+            .flatMap((participation) => participation?.players ?? [])
+            .find((candidate) => candidate.user_id === userId);
+    return [
+      ...new Map(
+        Object.values(player?.heroes ?? {})
+          .flat()
+          .map((hero) => [hero.id, hero])
+      ).values()
+    ];
   }, [history.data, playerId]);
 
   return (

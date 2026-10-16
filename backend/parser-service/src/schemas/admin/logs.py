@@ -11,6 +11,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from shared.models import RawSourceStatus
+
 __all__ = (
     "QueueDepth",
     "LogRecordRead",
@@ -47,6 +49,8 @@ class LogRecordRead(BaseModel):
     filename: str
     status: str
     source: str
+    raw_status: RawSourceStatus
+    raw_available: bool
     uploader_name: str | None
     error_message: str | None
     # Times the record entered processing; >1 means the stall reaper requeued it.

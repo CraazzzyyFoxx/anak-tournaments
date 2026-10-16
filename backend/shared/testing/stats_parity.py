@@ -1100,6 +1100,52 @@ def seed_legacy(conn: Connection) -> dict[str, int]:
     return ids
 
 
+def original_stats01_shape(conn: Connection) -> None:
+    """Reproduce the original bound-head DDL on the isolated, fully proven seed.
+
+    The old three-table shapes/constraints are frozen from ffd3a56f5; facts,
+    observation IDs and the actual initial oracle are never regenerated.
+    This is a test fixture, not an operational downgrade.
+    """
+    from scripts.stats01_reconcile import revision_module
+
+    _owned_url(conn.engine.url)
+    if conn.scalar(
+        sa.text("""SELECT EXISTS(SELECT 1 FROM stats.match WHERE encounter_game_id IS NULL)
+        OR EXISTS(SELECT 1 FROM stats.ingest_job WHERE content_hash IS NULL OR source_kind='historical_reference')""")
+    ):
+        raise ValueError("original bound-head fixture requires proven games and original real hashes")
+    source = revision_module()
+    old_mv = source.NATIVE_MV_SELECT.replace("m.encounter_id", "g.encounter_id").replace(
+        "JOIN encounter.encounter enc ON enc.id=g.encounter_id",
+        "JOIN encounter.game g ON g.id=m.encounter_game_id JOIN encounter.encounter enc ON enc.id=g.encounter_id",
+    )
+    statements = (
+        "SET CONSTRAINTS ALL IMMEDIATE",
+        "DROP MATERIALIZED VIEW stats.mv_entity_global_stats",
+        "ALTER TABLE stats.match_team ADD COLUMN encounter_game_id BIGINT",
+        "UPDATE stats.match_team t SET encounter_game_id=m.encounter_game_id FROM stats.match m WHERE m.id=t.match_id",
+        """ALTER TABLE stats.match_team DROP CONSTRAINT fk_match_team_match,
+            DROP CONSTRAINT fk_match_team_encounter_team, DROP COLUMN encounter_id,
+            ALTER COLUMN encounter_game_id SET NOT NULL,
+            ADD CONSTRAINT match_team_match_id_fkey FOREIGN KEY(match_id) REFERENCES stats.match(id)
+              ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+            ADD CONSTRAINT fk_match_team_game_team FOREIGN KEY(encounter_game_id,encounter_team_id)
+              REFERENCES encounter.game_team(game_id,encounter_team_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED""",
+        """ALTER TABLE stats.match DROP CONSTRAINT fk_stats_match_encounter, DROP CONSTRAINT uq_stats_match_owner,
+            DROP CONSTRAINT fk_stats_match_game, DROP COLUMN encounter_id, DROP COLUMN source_map_index,
+            ALTER COLUMN encounter_game_id SET NOT NULL,
+            ADD CONSTRAINT match_encounter_game_id_fkey FOREIGN KEY(encounter_game_id)
+              REFERENCES encounter.game(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED""",
+        "ALTER TABLE stats.ingest_job DROP COLUMN raw_status, ALTER COLUMN content_hash SET NOT NULL",
+        f"CREATE MATERIALIZED VIEW stats.mv_entity_global_stats AS {old_mv}",
+        "CREATE UNIQUE INDEX uq_mv_entity_global_stats ON stats.mv_entity_global_stats(discipline,stat_id,entity_id)",
+        "SET CONSTRAINTS ALL DEFERRED",
+    )
+    for statement in statements:
+        conn.execute(sa.text(statement))
+
+
 def _owned_url(url: str) -> URL:
     parsed = make_url(url)
     env = postgres_env()
@@ -1381,6 +1427,8 @@ def seed_native_sentinel(conn: Connection, ids: dict[str, int]) -> None:
         id=ids["match_lol"],
         workspace_id=ids["workspace"],
         discipline="lol",
+        encounter_id=ids["encounter_lol"],
+        source_map_index=1,
         encounter_game_id=ids["game_lol"],
         map_entity_id=ids["map_lol"],
         duration_s=600.0,
@@ -1392,7 +1440,7 @@ def seed_native_sentinel(conn: Connection, ids: dict[str, int]) -> None:
             conn,
             "stats.match_team",
             match_id=ids["match_lol"],
-            encounter_game_id=ids["game_lol"],
+            encounter_id=ids["encounter_lol"],
             encounter_team_id=seat,
             source_position=slot,
         )

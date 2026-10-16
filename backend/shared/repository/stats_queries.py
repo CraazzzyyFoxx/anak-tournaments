@@ -10,7 +10,7 @@ __all__ = ("player_facts", "team_scores", "match_context")
 def player_facts(*, discipline: str) -> sa.Subquery:
     """Player facts at their original segment/entity grain, including historical members."""
     f, m, d = models.StatsFact, models.StatsMatch, models.StatDef
-    wm, g, e, et = models.WorkspaceMember, models.EncounterGame, models.Encounter, models.EncounterTeam
+    wm, e, et = models.WorkspaceMember, models.Encounter, models.EncounterTeam
     mt = models.StatsMatchTeam
     return (
         sa.select(
@@ -20,7 +20,7 @@ def player_facts(*, discipline: str) -> sa.Subquery:
             m.discipline,
             wm.player_id,
             et.team_id.label("tournament_team_id"),
-            g.encounter_id,
+            m.encounter_id,
             e.tournament_id,
             m.duration_s,
             m.map_entity_id,
@@ -35,11 +35,10 @@ def player_facts(*, discipline: str) -> sa.Subquery:
             sa.and_(
                 mt.match_id == f.match_id,
                 mt.encounter_team_id == f.encounter_team_id,
-                mt.encounter_game_id == m.encounter_game_id,
+                mt.encounter_id == m.encounter_id,
             ),
         )
-        .join(g, g.id == m.encounter_game_id)
-        .join(e, sa.and_(e.id == g.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
+        .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
         .join(et, sa.and_(et.id == f.encounter_team_id, et.encounter_id == e.id))
         .where(m.discipline == discipline, f.workspace_member_id.is_not(None))
         .subquery()
@@ -49,7 +48,7 @@ def player_facts(*, discipline: str) -> sa.Subquery:
 def team_scores(*, discipline: str, stat_code: str) -> sa.Subquery:
     """Observed whole-match team values, never the game's official result."""
     f, m, d, mt = models.StatsFact, models.StatsMatch, models.StatDef, models.StatsMatchTeam
-    g, e, et = models.EncounterGame, models.Encounter, models.EncounterTeam
+    e, et = models.Encounter, models.EncounterTeam
     return (
         sa.select(
             f.match_id,
@@ -67,11 +66,10 @@ def team_scores(*, discipline: str, stat_code: str) -> sa.Subquery:
             sa.and_(
                 mt.match_id == f.match_id,
                 mt.encounter_team_id == f.encounter_team_id,
-                mt.encounter_game_id == m.encounter_game_id,
+                mt.encounter_id == m.encounter_id,
             ),
         )
-        .join(g, g.id == m.encounter_game_id)
-        .join(e, sa.and_(e.id == g.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
+        .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
         .join(et, sa.and_(et.id == f.encounter_team_id, et.encounter_id == e.id))
         .where(
             m.discipline == discipline,
@@ -88,10 +86,13 @@ def match_context(*, discipline: str) -> sa.Subquery:
     """Match headers with their real game position and encounter owner."""
     m, g, e = models.StatsMatch, models.EncounterGame, models.Encounter
     return (
-        sa.select(*m.__table__.c, g.position, g.encounter_id, e.tournament_id, e.custom_game_id)
+        sa.select(*m.__table__.c, g.position, e.tournament_id, e.custom_game_id)
         .select_from(m)
-        .join(g, g.id == m.encounter_game_id)
-        .join(e, sa.and_(e.id == g.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
-        .where(m.discipline == discipline)
+        .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
+        .outerjoin(
+            g,
+            sa.and_(g.id == m.encounter_game_id, g.encounter_id == m.encounter_id, g.map_id == m.map_entity_id),
+        )
+        .where(m.discipline == discipline, sa.or_(m.encounter_game_id.is_(None), g.id.is_not(None)))
         .subquery()
     )

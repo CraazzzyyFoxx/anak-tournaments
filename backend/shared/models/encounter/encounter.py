@@ -201,9 +201,8 @@ class Encounter(db.TimeStampIntegerMixin):
     )
     matches: Mapped[list[StatsMatch]] = relationship(
         "StatsMatch",
-        secondary="encounter.game",
-        primaryjoin="Encounter.id == EncounterGame.encounter_id",
-        secondaryjoin="StatsMatch.encounter_game_id == EncounterGame.id",
+        primaryjoin="Encounter.id == StatsMatch.encounter_id",
+        foreign_keys="[StatsMatch.encounter_id]",
         viewonly=True,
-        order_by="EncounterGame.position",
+        order_by="StatsMatch.id",
     )

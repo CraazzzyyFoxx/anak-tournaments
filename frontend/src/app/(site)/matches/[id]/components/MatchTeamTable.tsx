@@ -2,33 +2,30 @@
 
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { PlayerWithStats, TeamWithStats } from "@/types/team.types";
 import { LogStatsName } from "@/types/stats.types";
 import { TableBody, TableCell, TableHead, TableRow } from "@/components/ui/table";
-import { sortTeamPlayers } from "@/lib/player";
-import { RosterPlayer, RosterRank, RosterRole } from "@/components/TournamentTeamCard";
+import PlayerName from "@/components/PlayerName";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { TeamLogo } from "@/components/TeamName";
-import type { DivisionGridVersion } from "@/types/workspace.types";
 import {
   STAT_META,
   GROUP_COLOR,
   formatStat,
   playerStat,
   activePlayers,
-  resolveMatchMvpPlacement
+  resolveMatchMvpPlacement,
+  type MatchStatsTeam
 } from "@/lib/match-stats";
 
 interface MatchTeamTableProps {
-  team: TeamWithStats | null;
+  team: MatchStatsTeam;
   isHome: boolean;
   matchRound: number;
   /** Dynamic stat columns to render (from the active preset). */
   columns: LogStatsName[];
   /** Per-column max across both teams — scales the inline magnitude bars. */
   columnMax: Record<string, number>;
-  tournamentGrid?: DivisionGridVersion | null;
 }
 
 const StatCell = ({ name, value, max }: { name: LogStatsName; value: number; max: number }) => {
@@ -66,28 +63,13 @@ const MatchTeamTable = ({
   isHome,
   matchRound,
   columns,
-  columnMax,
-  tournamentGrid
+  columnMax
 }: MatchTeamTableProps) => {
   const t = useTranslations<never>();
   const format = useFormatter();
   const teamAccent = isHome ? "var(--aqt-teal)" : "var(--aqt-rose)";
 
-  if (team == null) {
-    return (
-      <TableBody>
-        <TableRow>
-          <TableCell colSpan={columns.length + 4} className="text-center text-muted-foreground">
-            —
-          </TableCell>
-        </TableRow>
-      </TableBody>
-    );
-  }
-
-  const sortedPlayers = sortTeamPlayers(team.players);
-  const activeIds = new Set(activePlayers(team, matchRound).map((player) => player.id));
-  const players: PlayerWithStats[] = sortedPlayers.filter((player) => activeIds.has(player.id));
+  const players = activePlayers(team, matchRound);
 
   return (
     <TableBody className={isHome ? undefined : "border-t border-[color:var(--aqt-border)]"}>
@@ -100,12 +82,9 @@ const MatchTeamTable = ({
           }}
         >
           <span className="inline-flex items-center gap-2">
-            <TeamLogo team={team} size="xs" />
+            <TeamLogo team={team.team} size="xs" />
             {t("matches.teamLabel", { name: team.name })}
           </span>
-        </TableHead>
-        <TableHead scope="col" className="text-center">
-          {t("teams.roster.rank")}
         </TableHead>
         <TableHead scope="col" className="text-center">
           {t("common.heroes")}
@@ -134,25 +113,18 @@ const MatchTeamTable = ({
       {players.map((player) => {
         const heroes = player.heroes[matchRound] ?? [];
         return (
-          <TableRow key={player.id} className="hover:bg-[color:var(--aqt-overlay-1)]">
+          <TableRow key={player.workspace_member_id} className="hover:bg-[color:var(--aqt-overlay-1)]">
             <TableCell
               className="flex flex-row items-center gap-2 min-w-[220px] sticky left-0 z-10"
               style={{
                 background: `linear-gradient(to right, color-mix(in srgb, ${teamAccent} 22%, var(--aqt-card)), var(--aqt-card) 60%)`
               }}
             >
-              {/* One map lists only who played it, so there is no substitution branch. */}
-              <RosterRole role={player.role} />
-              <RosterPlayer player={player} captainUserId={team.captain_id} />
-            </TableCell>
-            <TableCell>
-              <RosterRank
-                division={player.division}
-                rank={player.rank}
-                tournamentGrid={tournamentGrid}
-                discipline="overwatch"
-                className="justify-center"
-              />
+              {player.user_id != null ? (
+                <PlayerName player={player} includeSpecialization={false} />
+              ) : (
+                <span title={player.name}>{player.name}</span>
+              )}
             </TableCell>
             <TableCell>
               <div className="flex justify-center">

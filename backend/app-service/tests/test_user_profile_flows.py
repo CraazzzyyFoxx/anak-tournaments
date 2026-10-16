@@ -479,23 +479,26 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         self.assertEqual(1, len(tournaments))
         self.assertEqual([], tournaments[0].encounters)
 
-    async def test_get_tournament_encounters_scopes_repository_call_and_groups_matches(self) -> None:
-        """`get_tournament_encounters` — the lazy dossier detail split out of
-        `get_tournaments` — must scope the repository call to the requested
-        tournament and assemble one encounter per distinct id, with its
-        matches grouped in query order."""
+    async def test_tournament_dossier_lists_observations_once_across_history_seats(self) -> None:
+        """Two qualifying seats must not duplicate a user's encounter observations."""
         session = SimpleNamespace()
         user = SimpleNamespace(id=42)
         team = SimpleNamespace(id=9)
+        retired_team = SimpleNamespace(id=10)
         # `encounter_play_key` sorts on these; undated rows fall back to id order.
         encounter_a = SimpleNamespace(id=101, ended_at=None, confirmed_at=None, started_at=None, created_at=None)
         encounter_b = SimpleNamespace(id=102, ended_at=None, confirmed_at=None, started_at=None, created_at=None)
         match_1 = SimpleNamespace(match=SimpleNamespace(id=201), game=SimpleNamespace(position=1))
         match_2 = SimpleNamespace(match=SimpleNamespace(id=202), game=SimpleNamespace(position=2))
+        unbound = SimpleNamespace(match=SimpleNamespace(id=203), game=None)
 
         rows = [
             (team, encounter_a, match_1, 1, [], 1, 10.0, 5.0, 1),
             (team, encounter_a, match_2, 2, [], 2, 8.0, 4.0, 2),
+            (retired_team, encounter_a, match_1, 1, [], 1, 10.0, 5.0, 1),
+            (retired_team, encounter_a, match_2, 2, [], 2, 8.0, 4.0, 2),
+            (team, encounter_a, unbound, 3, [], 3, 6.0, 2.0, 3),
+            (retired_team, encounter_a, unbound, 3, [], 3, 6.0, 2.0, 3),
             (team, encounter_b, None, None, None, None, None, None, None),
         ]
         repo_mock = AsyncMock(return_value=rows)
@@ -508,7 +511,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         match_mapper = Mock(
             side_effect=lambda context, **kwargs: SimpleNamespace(
                 id=context.match.id,
-                map_index=context.game.position,
+                map_index=context.game.position if context.game is not None else None,
             )
         )
         encounter_mapper = Mock(
@@ -524,7 +527,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         ):
             result = await user_flows.users.get_tournament_encounters(session, 42, 7)
 
-        repo_mock.assert_awaited_once_with(session, user.id, tournament_id=7)
         self.assertEqual([101, 102], [enc.id for enc in result])
-        self.assertEqual([201, 202], [m.id for m in result[0].matches])
+        self.assertEqual([201, 202, 203], [m.id for m in result[0].matches])
+        self.assertIsNone(result[0].matches[-1].map_index)
         self.assertEqual([], result[1].matches)

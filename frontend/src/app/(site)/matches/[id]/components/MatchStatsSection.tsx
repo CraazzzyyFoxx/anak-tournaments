@@ -4,7 +4,6 @@ import React, { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { MatchWithStats } from "@/types/encounter.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -37,7 +36,6 @@ const MatchContributionChart = dynamic(
 
 interface MatchStatsSectionProps {
   match: MatchWithStats;
-  tournamentGrid?: DivisionGridVersion | null;
 }
 
 type ViewMode = "simple" | "extended";
@@ -49,10 +47,10 @@ const ControlLabel = ({ children }: { children: React.ReactNode }) => (
   </span>
 );
 
-const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) => {
+const MatchStatsSection = ({ match }: MatchStatsSectionProps) => {
   const t = useTranslations<never>();
-  const home = match.home_team;
-  const away = match.away_team;
+  const home = match.home_participation;
+  const away = match.away_participation;
 
   const rounds = useMemo(() => availableRounds(home, away), [home, away]);
   const [mode, setMode] = useState<ViewMode>("simple");
@@ -105,7 +103,6 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
             matchRound={activeRound}
             columns={columns}
             columnMax={columnMax}
-            tournamentGrid={tournamentGrid}
           />
           <MatchTeamTable
             team={away}
@@ -113,7 +110,6 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
             matchRound={activeRound}
             columns={columns}
             columnMax={columnMax}
-            tournamentGrid={tournamentGrid}
           />
         </table>
       </div>
@@ -167,17 +163,11 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
           </TabsContent>
 
           <TabsContent value="comparison" className="flex flex-col gap-5">
-            {home != null && away != null ? (
-              <>
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-                  <MatchTeamComparison home={home} away={away} round={activeRound} />
-                  <MatchContributionChart home={home} away={away} round={activeRound} />
-                </div>
-                <MatchLeaders home={home} away={away} round={activeRound} />
-              </>
-            ) : (
-              <p className="text-center text-muted-foreground">—</p>
-            )}
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              <MatchTeamComparison home={home} away={away} round={activeRound} />
+              <MatchContributionChart home={home} away={away} round={activeRound} />
+            </div>
+            <MatchLeaders home={home} away={away} round={activeRound} />
           </TabsContent>
 
           <TabsContent value="timeline">

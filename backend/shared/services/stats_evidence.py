@@ -23,7 +23,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.models.platform.audit import AuditLog
 from shared.services.audit import AuditSource, record_audit
 
-CODEC = "stats01-semantic/1"
+CODEC = "stats01-semantic/2"
 OWNER_BATCH = 100
 ROW_BATCH = 1000
 DERIVED_CODES = (
@@ -66,6 +66,7 @@ OPERATIONS = {
     "stats.reparse": {"match": set(PARTITIONS["match"]) - {"header"}},
     "stats.job_transition": {"job": {"lifecycle"}},
     "stats.job_hint": {"job": {"hints"}},
+    "stats.raw_verification": {"job": {"identity"}},
     "stats.derived_backfill": {"match": {*(f"derived/{code}" for code in DERIVED_CODES), "event_fight"}},
     "stats.score_edit": {"match": {"team_scores"}},
     "stats.match_edit": {"match": {"duration", "updated_at"}},
@@ -87,6 +88,37 @@ Scope = tuple[str, tuple[int | str, ...], str]
 
 class EvidenceError(ValueError):
     """Missing or contradictory evidence; never a timestamp-based exemption."""
+
+
+def verified_content_hash(content_hash: str | None, raw_status: str, inspected_sha256: str | None) -> str | None:
+    """Validate an actual inspection result without rewriting a known source hash."""
+    if raw_status not in {"available", "missing", "conflict", "unverified"}:
+        raise EvidenceError("unknown raw source status")
+    if inspected_sha256 is not None and (
+        not isinstance(inspected_sha256, str)
+        or len(inspected_sha256) != 64
+        or any(c not in "0123456789abcdef" for c in inspected_sha256)
+    ):
+        raise EvidenceError("inspection requires a real SHA-256 digest")
+    if raw_status == "missing" and inspected_sha256 is not None:
+        raise EvidenceError("missing raw source cannot have inspected bytes")
+    if raw_status in {"available", "conflict"}:
+        if inspected_sha256 is None:
+            raise EvidenceError("raw verification requires inspected bytes")
+        if content_hash is not None and (
+            not isinstance(content_hash, str)
+            or len(content_hash) != 64
+            or any(c not in "0123456789abcdefABCDEF" for c in content_hash)
+        ):
+            raise EvidenceError("known source hash is not SHA-256")
+        matches = content_hash is not None and content_hash.lower() == inspected_sha256
+        if raw_status == "available":
+            if content_hash is not None and not matches:
+                raise EvidenceError("known source hash is immutable")
+            return content_hash if content_hash is not None else inspected_sha256
+        if content_hash is None or matches:
+            raise EvidenceError("conflict requires different bytes from a known source hash")
+    return content_hash
 
 
 def encode_value(value: Any) -> Any:
@@ -276,7 +308,8 @@ def projection(scope: Scope, identity_map: Sequence[dict] = ()) -> tuple[Project
         where = "m.id=:k0"
         headers = {
             "header": _cols(
-                "m.id m.created_at m.workspace_id m.discipline m.encounter_game_id m.map_entity_id m.map_kind",
+                "m.id m.created_at m.workspace_id m.discipline m.encounter_game_id m.map_entity_id m.map_kind "
+                "m.encounter_id m.source_map_index",
                 text=("m.discipline", "m.map_kind"),
             ),
             "lifecycle": _cols("m.revision m.ingest_job_id"),
@@ -289,7 +322,7 @@ def projection(scope: Scope, identity_map: Sequence[dict] = ()) -> tuple[Project
             return Projection(
                 "stats.match_team r JOIN stats.match m ON m.id=r.match_id",
                 where,
-                _cols("r.match_id r.encounter_game_id r.encounter_team_id r.source_position"),
+                _cols("r.match_id r.encounter_id r.encounter_team_id r.source_position"),
             ), params
         if subset == "players":
             cols = (
@@ -348,8 +381,17 @@ def projection(scope: Scope, identity_map: Sequence[dict] = ()) -> tuple[Project
     if kind == "job":
         cols = {
             "identity": _cols(
-                "j.id j.created_at j.workspace_id j.discipline j.source_kind j.external_id j.content_hash j.filename j.raw_ref j.api_key_id",
-                text=("j.discipline", "j.source_kind", "j.external_id", "j.content_hash", "j.filename", "j.raw_ref"),
+                "j.id j.created_at j.workspace_id j.discipline j.source_kind j.external_id j.content_hash "
+                "j.filename j.raw_ref j.api_key_id j.raw_status",
+                text=(
+                    "j.discipline",
+                    "j.source_kind",
+                    "j.external_id",
+                    "j.content_hash",
+                    "j.filename",
+                    "j.raw_ref",
+                    "j.raw_status",
+                ),
             ),
             "hints": ((mapped("j.uploader_user_id", player=True, workspace="j.workspace_id"), "scalar"),)
             + _cols("j.hint_tournament_id j.hint_encounter_id j.hint_encounter_game_id"),
@@ -633,6 +675,7 @@ def validate_transition(
     identity_map: Sequence[dict] = (),
     before_values: Sequence[dict] = (),
     after_values: Sequence[dict] = (),
+    raw_verification: Sequence[dict] = (),
 ) -> bool:
     if operation not in OPERATIONS:
         raise EvidenceError("unsupported stats operation")
@@ -646,6 +689,23 @@ def validate_transition(
     if mapping and not member_mapping and any(scope[0] != "job" for scope in old):
         raise EvidenceError("player-only merge mapping authorizes job uploader hints only")
     old_values, new_values = _values(before_values, old), _values(after_values, new)
+    inspections = {}
+    for inspection in raw_verification:
+        if (
+            not isinstance(inspection, dict)
+            or set(inspection) != {"job_id", "raw_ref", "inspected_sha256"}
+            or type(inspection["job_id"]) is not int
+            or inspection["job_id"] <= 0
+            or inspection["job_id"] in inspections
+            or not isinstance(inspection["raw_ref"], str)
+            or not inspection["raw_ref"]
+        ):
+            raise EvidenceError("invalid raw inspection evidence")
+        inspections[inspection["job_id"]] = inspection
+    if bool(inspections) != (operation == "stats.raw_verification"):
+        raise EvidenceError("raw inspection evidence is required only for raw verification")
+    if inspections and set(inspections) != {key[0] for kind, key, _ in old if kind == "job"}:
+        raise EvidenceError("raw inspection evidence does not cover the job owners")
 
     def scalar(scope, side):
         values = old_values if side == "before" else new_values
@@ -665,6 +725,22 @@ def validate_transition(
             prior.get("identity_sha256") is not None or current.get("identity_sha256") is not None
         ):
             raise EvidenceError("unexpected identity invariant")
+        if operation == "stats.raw_verification" and subset == "identity":
+            a, b = scalar(scope, "before"), scalar(scope, "after")
+            if (
+                len(a) != 1
+                or len(b) != 1
+                or len(a[0]) != 11
+                or len(b[0]) != 11
+                or any(x != y for i, (x, y) in enumerate(zip(a[0], b[0], strict=True)) if i not in {6, 10})
+            ):
+                raise EvidenceError("raw verification changed source identity")
+            inspection = inspections[key[0]]
+            if inspection["raw_ref"] != a[0][8]:
+                raise EvidenceError("raw inspection names another source")
+            expected_hash = verified_content_hash(a[0][6], b[0][10], inspection["inspected_sha256"])
+            if b[0][6] != expected_hash:
+                raise EvidenceError("raw verification changed a known hash or invented bytes")
         if not difference:
             continue
         created = not prior["owner_exists"] and current["owner_exists"]
@@ -698,6 +774,7 @@ def validate_transition(
             scalar(scope, "after")
         if operation == "stats.owner_delete" and not deleted:
             allowed_nulls = {
+                ("match", "header"): {4},
                 ("match", "lifecycle"): {1},
                 ("job", "identity"): {9},
                 ("job", "hints"): {0, 1, 2, 3},
@@ -768,6 +845,7 @@ async def stage_stats_evidence(
     actor: AuthUser | None = None,
     audit: AuditLog | None = None,
     identity_map: Sequence[dict] = (),
+    raw_verification: Sequence[dict] = (),
 ) -> AuditLog:
     if not isinstance(before, CapturedEvidence) or not isinstance(after, CapturedEvidence):
         raise EvidenceError("stage requires captures from this transaction")
@@ -777,7 +855,13 @@ async def stage_stats_evidence(
         if captured.sealed != semantic_bytes([captured, captured.values]):
             raise EvidenceError("capture was modified after reading native rows")
     changed = validate_transition(
-        operation, before, after, identity_map=identity_map, before_values=before.values, after_values=after.values
+        operation,
+        before,
+        after,
+        identity_map=identity_map,
+        before_values=before.values,
+        after_values=after.values,
+        raw_verification=raw_verification,
     )
     if not changed:
         raise EvidenceError("true no-op must not stage an audit row")
@@ -800,12 +884,24 @@ async def stage_stats_evidence(
     mapping = list(_mapping(identity_map))
     audit.before_json = {
         **(audit.before_json or {}),
-        "stats_evidence": {"version": 1, "operation": operation, "states": list(before), "identity_map": mapping},
+        "stats_evidence": {
+            "version": 2,
+            "operation": operation,
+            "states": list(before),
+            "identity_map": mapping,
+            "raw_verification": list(raw_verification),
+        },
         "stats_values": before.values,
     }
     audit.after_json = {
         **(audit.after_json or {}),
-        "stats_evidence": {"version": 1, "operation": operation, "states": list(after), "identity_map": mapping},
+        "stats_evidence": {
+            "version": 2,
+            "operation": operation,
+            "states": list(after),
+            "identity_map": mapping,
+            "raw_verification": list(raw_verification),
+        },
         "stats_values": after.values,
     }
     await session.flush()

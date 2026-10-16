@@ -1,13 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { LogStatsName } from "@/types/stats.types";
 import { formatStat, resolveMatchMvpPlacement, type StatNumberFormatter } from "@/lib/match-stats";
-import type { PlayerWithStats } from "@/types/team.types";
 
-const playerWith = (stats: Partial<Record<LogStatsName, number>>): PlayerWithStats =>
-  ({
-    stats: { 0: stats as Record<LogStatsName, number> },
-    heroes: {}
-  }) as PlayerWithStats;
+const playerWith = (stats: Partial<Record<LogStatsName, number>>) => ({
+  stats: { 0: stats as Record<LogStatsName, number> }
+});
 
 /**
  * Stands in for `useFormatter()` / `getFormatter()`. The locale is explicit here

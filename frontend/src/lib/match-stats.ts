@@ -1,7 +1,10 @@
 import type { NumberFormatOptions } from "next-intl";
 
 import { LogStatsName } from "@/types/stats.types";
-import type { PlayerWithStats, TeamWithStats } from "@/types/team.types";
+import type { MatchWithStats } from "@/types/encounter.types";
+
+export type MatchStatsTeam = MatchWithStats["home_participation"];
+export type MatchStatsPlayer = MatchStatsTeam["players"][number];
 
 /**
  * Single source of truth for the match-statistics surface.
@@ -286,7 +289,7 @@ export const LEADER_STATS: LogStatsName[] = [
 
 // ── Aggregation helpers ───────────────────────────────────────────────────────
 
-export function playerStat(player: PlayerWithStats, round: number, name: LogStatsName): number {
+export function playerStat(player: Pick<MatchStatsPlayer, "stats">, round: number, name: LogStatsName): number {
   const value = player.stats?.[round]?.[name];
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -296,7 +299,7 @@ export function playerStat(player: PlayerWithStats, round: number, name: LogStat
  * `resolveMvpPlacement` in `components/match/cells.tsx` (used by the Users →
  * Matches tab for the same two `LogStatsName` columns) so a player's MVP badge
  * agrees everywhere it appears. */
-export function resolveMatchMvpPlacement(player: PlayerWithStats, round: number): number | null {
+export function resolveMatchMvpPlacement(player: Pick<MatchStatsPlayer, "stats">, round: number): number | null {
   const row = player.stats?.[round];
   const impactRank = row?.[LogStatsName.ImpactRank];
   if (typeof impactRank === "number" && Number.isFinite(impactRank)) return impactRank;
@@ -304,12 +307,14 @@ export function resolveMatchMvpPlacement(player: PlayerWithStats, round: number)
   return typeof performance === "number" && Number.isFinite(performance) ? performance : null;
 }
 
-/** Players who actually fielded a hero in the given round (played the round). */
-export function activePlayers(team: TeamWithStats | null, round: number): PlayerWithStats[] {
-  return team?.players.filter((player) => (player.heroes?.[round]?.length ?? 0) > 0) ?? [];
+/** Native observed players, including stat-only rows with no resolved hero. */
+export function activePlayers(team: Pick<MatchStatsTeam, "players"> | null, round: number): MatchStatsPlayer[] {
+  return team?.players.filter(
+    (player) => round === 0 || player.stats?.[round] != null || (player.heroes?.[round]?.length ?? 0) > 0
+  ) ?? [];
 }
 
-export function teamTotal(team: TeamWithStats, round: number, name: LogStatsName): number {
+export function teamTotal(team: Pick<MatchStatsTeam, "players">, round: number, name: LogStatsName): number {
   return activePlayers(team, round).reduce((sum, player) => sum + playerStat(player, round, name), 0);
 }
 
@@ -318,8 +323,8 @@ export function teamTotal(team: TeamWithStats, round: number, name: LogStatsName
  * inline magnitude micro-bars consistently home vs away.
  */
 export function columnMaxima(
-  home: TeamWithStats | null,
-  away: TeamWithStats | null,
+  home: Pick<MatchStatsTeam, "players"> | null,
+  away: Pick<MatchStatsTeam, "players"> | null,
   round: number,
   names: LogStatsName[]
 ): Record<string, number> {
@@ -336,20 +341,20 @@ export function columnMaxima(
 }
 
 export interface StatLeader {
-  player: PlayerWithStats;
+  player: MatchStatsPlayer;
   side: "home" | "away";
   value: number;
 }
 
 /** The single best player (highest value) across both teams for a stat. */
 export function findLeader(
-  home: TeamWithStats,
-  away: TeamWithStats,
+  home: MatchStatsTeam,
+  away: MatchStatsTeam,
   round: number,
   name: LogStatsName
 ): StatLeader | null {
   let best: StatLeader | null = null;
-  const consider = (player: PlayerWithStats, side: "home" | "away") => {
+  const consider = (player: MatchStatsPlayer, side: "home" | "away") => {
     const value = playerStat(player, round, name);
     if (value <= 0) return;
     if (!best || value > best.value) best = { player, side, value };
@@ -360,7 +365,7 @@ export function findLeader(
 }
 
 /** Round keys present in the match data (0 = whole match, then per-round). */
-export function availableRounds(home: TeamWithStats | null, away: TeamWithStats | null): number[] {
+export function availableRounds(home: MatchStatsTeam | null, away: MatchStatsTeam | null): number[] {
   const rounds = new Set<number>();
   for (const team of [home, away]) {
     if (team == null) continue;

@@ -495,6 +495,7 @@ class _Fixture:
             id=match_id,
             workspace_id=encounter.workspace_id,
             discipline="overwatch",
+            encounter_id=encounter_id,
             encounter_game_id=game_id,
             map_entity_id=map_id,
             duration_s=time if time is not None else 0,
@@ -511,7 +512,7 @@ class _Fixture:
             self.insert(
                 models.StatsMatchTeam.__table__,
                 match_id=match_id,
-                encounter_game_id=game_id,
+                encounter_id=encounter_id,
                 encounter_team_id=seat,
                 source_position=source_position,
             )
@@ -527,9 +528,8 @@ class _Fixture:
 
     def observed_player(self, match_id: int, user_id: int, team_id: int) -> tuple[int, int]:
         match = self.session.get(models.StatsMatch, match_id)
-        game = self.session.get(models.EncounterGame, match.encounter_game_id)
         member_id = self.member(user_id, workspace_id=match.workspace_id)
-        seat = self.seat(game.encounter_id, team_id)
+        seat = self.seat(match.encounter_id, team_id)
         player = models.StatsMatchPlayer.__table__
         if not self.session.scalar(
             sa.select(player.c.workspace_member_id).where(

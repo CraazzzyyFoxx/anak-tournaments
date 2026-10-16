@@ -17,7 +17,7 @@ import asyncio
 
 import httpx
 from loguru import logger
-from sqlalchemy import ColumnElement, exists, or_, select
+from sqlalchemy import ColumnElement, and_, case, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
@@ -71,32 +71,58 @@ async def _fetch_queue_depths() -> list[schemas.QueueDepth]:
 
 
 def history_query():
-    job = models.IngestJob
+    job, match, encounter = models.IngestJob, models.StatsMatch, models.Encounter
+    linked = (
+        select(
+            match.ingest_job_id,
+            func.count().label("observations"),
+            func.count(func.distinct(match.encounter_id)).label("owners"),
+            func.min(match.encounter_id).label("encounter_id"),
+            func.count(func.distinct(encounter.tournament_id)).label("tournaments"),
+            func.min(encounter.tournament_id).label("tournament_id"),
+            func.min(match.encounter_game_id).label("game_id"),
+        )
+        .join(encounter, encounter.id == match.encounter_id)
+        .where(match.ingest_job_id.is_not(None))
+        .group_by(match.ingest_job_id)
+        .subquery()
+    )
+    tournament_id = case(
+        (linked.c.tournaments == 1, linked.c.tournament_id),
+        (linked.c.observations.is_(None), job.hint_tournament_id),
+    )
+    encounter_id = case(
+        (linked.c.owners == 1, linked.c.encounter_id),
+        (linked.c.observations.is_(None), job.hint_encounter_id),
+    )
+    game_id = case(
+        (linked.c.observations == 1, linked.c.game_id),
+        (linked.c.observations.is_(None), job.hint_encounter_game_id),
+    )
     return (
-        select(job, models.Tournament.name, models.Encounter.name, models.User.name)
-        .outerjoin(
-            models.Tournament,
-            models.Tournament.id == job.hint_tournament_id,
-        )
-        .outerjoin(models.Encounter, models.Encounter.id == job.hint_encounter_id)
-        .outerjoin(
-            models.User,
-            models.User.id == job.uploader_user_id,
-        )
+        select(job, models.Tournament.name, encounter.name, models.User.name, tournament_id, encounter_id, game_id)
+        .outerjoin(linked, linked.c.ingest_job_id == job.id)
+        .outerjoin(models.Tournament, models.Tournament.id == tournament_id)
+        .outerjoin(encounter, encounter.id == encounter_id)
+        .outerjoin(models.User, models.User.id == job.uploader_user_id)
     )
 
 
-def _record_to_dict(record: models.IngestJob, tournament_name=None, encounter_name=None, uploader_name=None) -> dict:
+def _record_to_dict(
+    record: models.IngestJob, tournament_name, encounter_name, uploader_name, tournament_id, encounter_id, game_id
+) -> dict:
     return {
         "id": record.id,
-        "tournament_id": record.hint_tournament_id,
+        "tournament_id": tournament_id,
         "tournament_name": tournament_name,
-        "attached_encounter_id": record.hint_encounter_id,
-        "attached_encounter_game_id": record.hint_encounter_game_id,
+        "attached_encounter_id": encounter_id,
+        "attached_encounter_game_id": game_id,
         "attached_encounter_name": encounter_name,
         "filename": record.filename,
         "status": record.status.value,
         "source": record.source_kind,
+        "raw_status": record.raw_status,
+        "raw_available": record.raw_available,
         "uploader_name": uploader_name,
         "error_message": record.error_message,
         "attempts": record.attempts or 0,
@@ -112,12 +138,30 @@ def history_scope_conditions(
     encounter_id: int | None,
     workspace_id: int | None,
 ) -> list[ColumnElement[bool]]:
-    """Native workspace ownership remains available even when a hint is cleared."""
+    """Linked observations own their scope; only an unlinked upload uses hints."""
+    job, match, encounter = models.IngestJob, models.StatsMatch, models.Encounter
+    linked = exists().where(match.ingest_job_id == job.id).correlate(job)
+    owned = (
+        select(match.id)
+        .join(encounter, encounter.id == match.encounter_id)
+        .where(match.ingest_job_id == job.id, match.workspace_id == job.workspace_id)
+        .correlate(job)
+    )
     conditions: list[ColumnElement[bool]] = []
     if tournament_id is not None:
-        conditions.append(models.IngestJob.hint_tournament_id == tournament_id)
+        conditions.append(
+            or_(
+                owned.where(encounter.tournament_id == tournament_id).exists(),
+                and_(~linked, job.hint_tournament_id == tournament_id),
+            )
+        )
     if encounter_id is not None:
-        conditions.append(models.IngestJob.hint_encounter_id == encounter_id)
+        conditions.append(
+            or_(
+                owned.where(match.encounter_id == encounter_id).exists(),
+                and_(~linked, job.hint_encounter_id == encounter_id),
+            )
+        )
     if workspace_id is not None:
         conditions.append(models.IngestJob.workspace_id == workspace_id)
     return conditions
@@ -143,11 +187,24 @@ def history_search_condition(search: str | None) -> ColumnElement[bool] | None:
         exists()
         .where(models.User.id == models.IngestJob.uploader_user_id, models.User.name.ilike(pattern, escape="\\"))
         .correlate(models.IngestJob),
-        exists()
+        select(models.StatsMatch.id)
+        .join(models.Encounter, models.Encounter.id == models.StatsMatch.encounter_id)
         .where(
-            models.Encounter.id == models.IngestJob.hint_encounter_id, models.Encounter.name.ilike(pattern, escape="\\")
+            models.StatsMatch.ingest_job_id == models.IngestJob.id,
+            models.StatsMatch.workspace_id == models.IngestJob.workspace_id,
+            models.Encounter.name.ilike(pattern, escape="\\"),
         )
-        .correlate(models.IngestJob),
+        .correlate(models.IngestJob)
+        .exists(),
+        and_(
+            ~exists().where(models.StatsMatch.ingest_job_id == models.IngestJob.id).correlate(models.IngestJob),
+            exists()
+            .where(
+                models.Encounter.id == models.IngestJob.hint_encounter_id,
+                models.Encounter.name.ilike(pattern, escape="\\"),
+            )
+            .correlate(models.IngestJob),
+        ),
     )
 
 

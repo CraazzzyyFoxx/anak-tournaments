@@ -15,13 +15,13 @@ bind every new row immediately and are validated at the end of this same
 revision, after the data half has run. ``downgrade()`` refuses: the move is
 forward-fix only.
 
-The data half (§13.8) runs in the same transaction: the pre-flight checks that
-stop the revision rather than guess, then the backfill of every column added
-here, then ``SET NOT NULL`` / ``VALIDATE CONSTRAINT``. Its converters are pure
-and golden-tested from ``backend/tests/test_enclayer01_convert.py``, which is why
-this module imports nothing from ``shared``: a migration has to keep meaning what
-it meant on the day it ran. Lobby scores are NOT written here -- the level-2
-formula runs in Python, in ``backend/scripts/enclayer01_recompute_lobbies.py``.
+The data half (§13.8) runs in the same transaction: unrepresentable data stops
+at pre-flight; disputed history is preserved in ``audit_log`` or the report's
+``historical_replay_codes`` without asserting a role, opponent or game link.
+Then every added column is backfilled and constraints are validated. Converters
+are golden-tested in ``backend/tests/test_enclayer01_convert.py``; this frozen
+migration imports nothing from ``shared``. Lobby scores are written separately
+by ``backend/scripts/enclayer01_recompute_lobbies.py``.
 
 Revision ID: enclayer01
 Revises: apikeysu01
@@ -720,49 +720,11 @@ _EXTERNAL = (
 # 7. Pre-flight checks (§13.8)
 # --------------------------------------------------------------------------- #
 
-#: The four questions the data has to answer before anything moves. Every one of
-#: them is a decision the migration must NOT make by row order -- which role the
-#: player really had, which team they played for, which game a replay code
-#: belongs to -- so a non-empty answer stops the revision and a human resolves
-#: the rows. ``PREFLIGHT`` and ``GUARDS`` live, query for query, in
-#: ``backend/scripts/enclayer01_preflight.sql`` so an operator can run them days
-#: before the deploy window; they are written against the PRE-move names on
-#: purpose and run before the first DDL statement.
+#: Only data that cannot be represented without overwriting source evidence
+#: stops the transfer. Historical uncertainty is projected below, never settled
+#: by row order. These checks also live in ``enclayer01_preflight.sql`` and use
+#: PRE-move names so operators can run them before the deploy window.
 PREFLIGHT: tuple[tuple[str, str], ...] = (
-    (
-        "tournament.player rows of one workspace member in one team disagree on role or rank",
-        """
-        SELECT p.team_id, p.workspace_member_id, array_agg(p.id ORDER BY p.id) AS player_ids
-          FROM tournament.player p
-         GROUP BY p.team_id, p.workspace_member_id
-        HAVING count(DISTINCT (p.role, p.rank)) > 1
-         ORDER BY p.team_id, p.workspace_member_id
-        """,
-    ),
-    (
-        "one workspace member sits in two rosters of the same encounter",
-        """
-        WITH seat AS (
-            SELECT id AS encounter_id, home_team_id AS team_id
-              FROM tournament.encounter WHERE home_team_id IS NOT NULL
-             UNION ALL
-            SELECT id, away_team_id FROM tournament.encounter WHERE away_team_id IS NOT NULL
-             UNION ALL
-            SELECT encounter_id, team_id FROM tournament.encounter_participant
-        ),
-        member_seat AS (
-            SELECT seat.encounter_id, p.workspace_member_id, seat.team_id,
-                   bool_or(NOT p.is_substitution) AS regular
-              FROM seat JOIN tournament.player p ON p.team_id = seat.team_id
-             GROUP BY seat.encounter_id, p.workspace_member_id, seat.team_id
-        )
-        SELECT encounter_id, workspace_member_id, array_agg(team_id ORDER BY team_id) AS team_ids
-          FROM member_seat
-         GROUP BY encounter_id, workspace_member_id
-        HAVING count(*) > 1 AND count(*) FILTER (WHERE regular) <> 1
-         ORDER BY encounter_id, workspace_member_id
-        """,
-    ),
     (
         "encounter result status disagrees with encounter status",
         """
@@ -773,24 +735,26 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        "replay code names a position holding both a cancelled and a live game",
+        "ambiguous replay report custom fields cannot preserve historical_replay_codes without overwrite",
         """
-        SELECT c.id AS map_code_id, r.encounter_id, c.map_index
+        SELECT r.id AS report_id, r.encounter_id, c.id AS map_code_id, c.map_index
           FROM tournament.encounter_map_code c
           JOIN tournament.encounter_captain_report r ON r.id = c.report_id
-         WHERE EXISTS (SELECT 1 FROM tournament.encounter_game g
-                        WHERE g.encounter_id = r.encounter_id AND g.position = c.map_index
-                          AND g.state = 'cancelled')
-           AND EXISTS (SELECT 1 FROM tournament.encounter_game g
-                        WHERE g.encounter_id = r.encounter_id AND g.position = c.map_index
-                          AND g.state <> 'cancelled')
+         WHERE (EXISTS (SELECT 1 FROM tournament.encounter_game g
+                         WHERE g.encounter_id = r.encounter_id AND g.position = c.map_index
+                           AND g.state = 'cancelled')
+                OR NOT EXISTS (SELECT 1 FROM tournament.encounter_game g
+                                WHERE g.encounter_id = r.encounter_id AND g.position = c.map_index
+                                  AND g.state <> 'cancelled'))
+           AND (jsonb_typeof(r.custom_fields_json::jsonb) IS DISTINCT FROM 'object'
+                OR r.custom_fields_json::jsonb ? 'historical_replay_codes')
          ORDER BY c.id
         """,
     ),
 )
 
-#: Further questions, beyond §13.8's four. Not transfer decisions: each is a
-#: state a validated legacy CHECK or a column default already forbids
+#: Further invalid-data and ownership guards. These are not transfer decisions:
+#: each is a state a validated legacy CHECK or a column default already forbids
 #: (``ck_encounter_game_result_placement``, ``encounter_game_result.stats NOT
 #: NULL``), that the data model has no answer for, or that one of this
 #: revision's immediate constraints (a link's unique target slot, a seat's
@@ -798,8 +762,7 @@ PREFLIGHT: tuple[tuple[str, str], ...] = (
 #: ``ck_pick_ban_entry_picked_by``) or the lobby recompute would reject later.
 #: They are here because the cost is one cheap query and the alternative is the
 #: backfill aborting halfway through the ACCESS EXCLUSIVE window on a row the
-#: operator could have seen days earlier. Like the four above, they stop the
-#: revision with the ids.
+#: operator could have seen days earlier. They stop the revision with the ids.
 GUARDS: tuple[tuple[str, str], ...] = (
     (
         "game result placement is below 1, which encounter.game_team cannot store",
@@ -846,11 +809,11 @@ GUARDS: tuple[tuple[str, str], ...] = (
         """,
     ),
     (
-        "duel seats the same team on both sides",
+        "non-duel seats the same team on both sides",
         """
         SELECT id AS encounter_id, home_team_id AS team_id
           FROM tournament.encounter
-         WHERE home_team_id = away_team_id
+         WHERE home_team_id = away_team_id AND format <> 'duel'
          ORDER BY id
         """,
     ),
@@ -1167,6 +1130,32 @@ _DISCIPLINE = (
     "UPDATE tournament.tournament SET discipline = 'overwatch' WHERE discipline IS DISTINCT FROM 'overwatch'",
 )
 
+# Capture original rows before any DDL/backfill changes their shape.
+_HISTORY_SOURCE_AUDITS = (
+    """
+    INSERT INTO public.audit_log
+           (workspace_id, actor_label, source, action, entity_type, entity_id, before_json, after_json, reason)
+    SELECT t.workspace_id, 'enclayer01', 'system', 'encounter.history_unresolved', 'team', p.team_id,
+           jsonb_build_object('workspace_member_id', p.workspace_member_id,
+                              'registrations', jsonb_agg(to_jsonb(p) ORDER BY p.id)),
+           jsonb_build_object('rank', NULL, 'roles', '[]'::jsonb), 'conflicting_roster_role_rank'
+      FROM tournament.player p
+      JOIN tournament.tournament t ON t.id = p.tournament_id
+     GROUP BY t.workspace_id, p.team_id, p.workspace_member_id
+    HAVING count(DISTINCT (p.role, p.rank)) > 1
+    """,
+    """
+    INSERT INTO public.audit_log
+           (workspace_id, actor_label, source, action, entity_type, entity_id, before_json, after_json, reason)
+    SELECT t.workspace_id, 'enclayer01', 'system', 'encounter.history_unresolved', 'encounter', e.id,
+           to_jsonb(e), jsonb_build_object('home_team_id', e.home_team_id, 'away_team_id', NULL),
+           'same_team_both_sides'
+      FROM tournament.encounter e
+      JOIN tournament.tournament t ON t.id = e.tournament_id
+     WHERE e.format = 'duel' AND e.home_team_id = e.away_team_id
+    """,
+)
+
 _ENCOUNTER_COLUMNS = (
     """
     UPDATE encounter.encounter e SET workspace_id = t.workspace_id, discipline = t.discipline
@@ -1207,10 +1196,8 @@ _FFA_PARTICIPATIONS = """
     ON CONFLICT (encounter_id, slot) WHERE active DO NOTHING
 """
 
-#: A member who is a regular of one seat of the encounter and only a substitute
-#: on another seat played for the regular seat: legacy rows cannot say which
-#: team a substitute registration was used for, and the statistics agree with
-#: the regular seat. Pre-flight check 2 refuses what this cannot settle.
+#: Preserve the existing uniquely-regular-seat rule. A member with multiple
+#: seats and no uniquely regular seat gets audit evidence, not a guessed roster.
 _SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT = """
        AND NOT (p.is_substitution AND EXISTS (
                 SELECT 1 FROM encounter.team ot
@@ -1219,20 +1206,59 @@ _SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT = """
                    AND q.workspace_member_id = p.workspace_member_id AND NOT q.is_substitution))
 """
 
+_UNRESOLVED_ROSTER_MEMBERS = """
+    WITH member_seat AS (
+        SELECT et.encounter_id, et.id, p.workspace_member_id, bool_or(NOT p.is_substitution) AS regular
+          FROM encounter.team et
+          JOIN tournament.player p ON p.team_id = et.team_id
+         GROUP BY et.encounter_id, et.id, p.workspace_member_id
+    )
+    SELECT encounter_id, workspace_member_id
+      FROM member_seat
+     GROUP BY encounter_id, workspace_member_id
+    HAVING count(*) > 1 AND count(*) FILTER (WHERE regular) <> 1
+"""
+
 _ROSTERS = (
-    # The whole roster of the seat's team, substitutes included (D40) -- except
-    # a substitute row of a member who is a regular on another seat of the same
-    # encounter. Rows of one member that agree collapse here; rows that
-    # disagree were stopped by pre-flight check 1, so ``DISTINCT ON`` only ever
-    # picks between equals.
+    # Every unresolved registration/seat claim survives independently of the
+    # source tables and of the strict one-active-seat constraint.
     f"""
+    INSERT INTO public.audit_log
+           (workspace_id, actor_label, source, action, entity_type, entity_id, before_json, after_json, reason)
+    SELECT e.workspace_id, 'enclayer01', 'system', 'encounter.history_unresolved', 'encounter', e.id,
+           jsonb_build_object('workspace_member_id', u.workspace_member_id,
+               'registrations', jsonb_agg(jsonb_build_object(
+                   'encounter_team_id', et.id, 'slot', et.slot, 'registration', to_jsonb(p))
+                   ORDER BY et.slot, p.id)),
+           jsonb_build_object('encounter_team_ids', '[]'::jsonb), 'ambiguous_roster_seat'
+      FROM ({_UNRESOLVED_ROSTER_MEMBERS}) u
+      JOIN encounter.encounter e ON e.id = u.encounter_id
+      JOIN encounter.team et ON et.encounter_id = e.id
+      JOIN tournament.player p ON p.team_id = et.team_id AND p.workspace_member_id = u.workspace_member_id
+     GROUP BY e.workspace_id, e.id, u.workspace_member_id
+    """,
+    # Existing deterministic display identity stays; a disputed pair supplies
+    # neither rank nor roles. Only its substitute flag can be conservative.
+    f"""
+    WITH unresolved AS ({_UNRESOLVED_ROSTER_MEMBERS}),
+    registration AS (
+        SELECT team_id, workspace_member_id, count(DISTINCT (role, rank)) > 1 AS disputed,
+               bool_and(is_substitution) AS is_substitute
+          FROM tournament.player
+         GROUP BY team_id, workspace_member_id
+    )
     INSERT INTO encounter.team_member
            (encounter_id, encounter_team_id, active, workspace_member_id, display_name_snapshot, rank, is_substitute)
     SELECT DISTINCT ON (et.id, p.workspace_member_id)
-           et.encounter_id, et.id, et.active, p.workspace_member_id, left(p.name, 255), p.rank, p.is_substitution
+           et.encounter_id, et.id, et.active, p.workspace_member_id, left(p.name, 255),
+           CASE WHEN r.disputed THEN NULL ELSE p.rank END,
+           CASE WHEN r.disputed THEN r.is_substitute ELSE p.is_substitution END
       FROM encounter.team et
       JOIN tournament.player p ON p.team_id = et.team_id
+      JOIN registration r ON r.team_id = p.team_id AND r.workspace_member_id = p.workspace_member_id
      WHERE et.team_id IS NOT NULL {_SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT}
+       AND NOT EXISTS (SELECT 1 FROM unresolved u
+                        WHERE u.encounter_id = et.encounter_id AND u.workspace_member_id = p.workspace_member_id)
      ORDER BY et.id, p.workspace_member_id, p.id
     ON CONFLICT (encounter_team_id, workspace_member_id) DO NOTHING
     """,
@@ -1245,6 +1271,9 @@ _ROSTERS = (
           FROM encounter.team et
           JOIN tournament.player p ON p.team_id = et.team_id
          WHERE et.team_id IS NOT NULL {_SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT}
+           AND NOT EXISTS (SELECT 1 FROM tournament.player q
+                            WHERE q.team_id = p.team_id AND q.workspace_member_id = p.workspace_member_id
+                              AND (q.role, q.rank) IS DISTINCT FROM (p.role, p.rank))
          ORDER BY et.id, p.workspace_member_id, p.id
     )
     INSERT INTO encounter.team_member_role (team_member_id, dimension, role)
@@ -1282,8 +1311,8 @@ _GAME_RESULTS = (
       JOIN encounter.team et ON et.encounter_id = r.encounter_id AND et.team_id = r.team_id
      WHERE gt.game_id = r.game_id AND gt.encounter_team_id = et.id
     """,
-    # The code was filed against a report's team and a map index; the position
-    # it names has exactly one live game (pre-flight check 4).
+    # A cancelled/live position has no trustworthy game link. Its codes are
+    # carried in the report below, not attached to either official game.
     """
     UPDATE encounter.game_team gt SET replay_code = c.code
       FROM tournament.encounter_map_code c
@@ -1292,6 +1321,9 @@ _GAME_RESULTS = (
       JOIN encounter.game g ON g.encounter_id = r.encounter_id AND g.position = c.map_index
                            AND g.state <> 'cancelled'
      WHERE gt.game_id = g.id AND gt.encounter_team_id = et.id AND gt.replay_code IS NULL
+       AND NOT EXISTS (SELECT 1 FROM encounter.game cancelled
+                        WHERE cancelled.encounter_id = g.encounter_id AND cancelled.position = g.position
+                          AND cancelled.state = 'cancelled')
     """,
 )
 
@@ -1633,6 +1665,8 @@ def _participations(bind) -> None:
         for slot, team_id, name, score, placement in seats:
             if team_id is None:
                 continue
+            if slot == 2 and team_id == duel["home_team_id"]:
+                team_id, name = None, "Unknown opponent"
             rows.append(
                 {
                     "encounter_id": duel["id"],
@@ -1911,6 +1945,147 @@ def _result_source(bind) -> None:
     _write_many(bind, "UPDATE encounter.encounter SET result_source = :result_source WHERE id = :id", rows)
 
 
+def complete_historical_evidence(bind) -> None:
+    """Finish only source-bound report/registration evidence, safely on either
+    a fresh transfer or an earlier enclayer01. Never rewrite a native claim."""
+    bind.execute(
+        sa.text(
+            "LOCK TABLE tournament.encounter_captain_report, tournament.encounter_map_code, tournament.player,"
+            " encounter.game, encounter.game_team, encounter.team, encounter.team_report,"
+            " encounter.team_member, encounter.team_member_role, public.audit_log IN SHARE ROW EXCLUSIVE MODE"
+        )
+    )
+    reports = (
+        bind.execute(
+            sa.text("""
+        SELECT cr.id AS source_id, tr.id, cr.custom_fields_json AS source_fields,
+               tr.custom_fields_json AS native_fields, historical.codes,
+               (tr.created_at, tr.updated_at, tr.reporter_user_id, tr.closeness, tr.comment,
+                tr.basis_version, tr.games_played) IS NOT DISTINCT FROM
+               (cr.created_at, cr.updated_at, cr.reporter_user_id, cr.closeness, cr.comment, 0::bigint, NULL::int)
+                   AS unchanged
+          FROM tournament.encounter_captain_report cr
+          LEFT JOIN encounter.team et ON et.encounter_id = cr.encounter_id AND et.team_id = cr.team_id AND et.active
+          LEFT JOIN encounter.team_report tr ON tr.encounter_id = cr.encounter_id AND tr.encounter_team_id = et.id
+          JOIN LATERAL (
+              SELECT jsonb_agg(jsonb_build_object(
+                         'id', c.id, 'report_id', c.report_id, 'map_index', c.map_index, 'code', c.code,
+                         'reason', CASE WHEN EXISTS (
+                             SELECT 1 FROM encounter.game g
+                              WHERE g.encounter_id = cr.encounter_id AND g.position = c.map_index
+                                AND g.state <> 'cancelled')
+                             THEN 'cancelled_and_live_position' ELSE 'no_live_game_at_position' END)
+                         ORDER BY c.id) AS codes
+                FROM tournament.encounter_map_code c
+               WHERE c.report_id = cr.id
+                 AND (EXISTS (SELECT 1 FROM encounter.game g
+                               WHERE g.encounter_id = cr.encounter_id AND g.position = c.map_index
+                                 AND g.state = 'cancelled')
+                      OR NOT EXISTS (SELECT 1 FROM encounter.game g
+                                      WHERE g.encounter_id = cr.encounter_id AND g.position = c.map_index
+                                        AND g.state <> 'cancelled'))
+          ) historical ON historical.codes IS NOT NULL
+         ORDER BY cr.id
+    """)
+        )
+        .mappings()
+        .all()
+    )
+    for report in reports:
+        source = report["source_fields"]
+        if (
+            report["id"] is None
+            or not report["unchanged"]
+            or not isinstance(source, dict)
+            or "historical_replay_codes" in source
+        ):
+            raise RuntimeError(f"enclayer01 history completion refuses changed or missing report {report['source_id']}")
+        expected = {**source, "historical_replay_codes": report["codes"]}
+        previous_codes = [code for code in report["codes"] if code["reason"] == "cancelled_and_live_position"]
+        previous = {**source, "historical_replay_codes": previous_codes} if previous_codes else source
+        if report["native_fields"] == expected:
+            continue
+        if report["native_fields"] != source and report["native_fields"] != previous:
+            raise RuntimeError(f"enclayer01 history completion refuses existing report metadata {report['source_id']}")
+        bind.execute(
+            sa.text("UPDATE encounter.team_report SET custom_fields_json=CAST(:fields AS json) WHERE id=:id"),
+            {"id": report["id"], "fields": json.dumps(expected)},
+        )
+
+    groups = (
+        bind.execute(
+            sa.text("""
+        SELECT t.workspace_id, p.team_id, p.workspace_member_id, min(p.id) AS snapshot_player_id,
+               jsonb_agg(to_jsonb(p) ORDER BY p.id) AS registrations
+          FROM tournament.player p JOIN tournament.tournament t ON t.id = p.tournament_id
+         GROUP BY t.workspace_id, p.team_id, p.workspace_member_id
+        HAVING count(DISTINCT (p.role, p.rank)) = 1
+           AND count(DISTINCT (p.sub_role, p.is_substitution, p.name)) > 1
+    """)
+        )
+        .mappings()
+        .all()
+    )
+    for group in groups:
+        params = dict(group)
+        expected = bind.execute(
+            sa.text(f"""
+            SELECT DISTINCT ON (et.id) et.id, left(p.name,255), p.rank, p.is_substitution, et.active,
+                   ARRAY(SELECT DISTINCT 'player_role:' || code
+                           FROM (VALUES (p.role::text), (p.sub_role)) AS v(code)
+                          WHERE code IS NOT NULL ORDER BY 1)
+              FROM encounter.team et JOIN tournament.player p ON p.team_id = et.team_id
+             WHERE p.team_id = :team_id AND p.workspace_member_id = :workspace_member_id
+                   {_SUBSTITUTE_ON_A_REGULARS_OTHER_SEAT}
+               AND NOT EXISTS (SELECT 1 FROM ({_UNRESOLVED_ROSTER_MEMBERS}) u
+                                WHERE u.encounter_id = et.encounter_id
+                                  AND u.workspace_member_id = p.workspace_member_id)
+             ORDER BY et.id, p.id
+        """),
+            params,
+        ).all()
+        actual = bind.execute(
+            sa.text("""
+            SELECT et.id, tm.display_name_snapshot, tm.rank, tm.is_substitute, tm.active,
+                   ARRAY(SELECT r.dimension || ':' || r.role FROM encounter.team_member_role r
+                          WHERE r.team_member_id = tm.id ORDER BY 1)
+              FROM encounter.team et JOIN encounter.team_member tm ON tm.encounter_team_id = et.id
+             WHERE et.team_id = :team_id AND tm.workspace_member_id = :workspace_member_id ORDER BY et.id
+        """),
+            params,
+        ).all()
+        if actual != expected:
+            raise RuntimeError(
+                f"enclayer01 history completion refuses changed roster {group['team_id']}/{group['workspace_member_id']}"
+            )
+        before = {"workspace_member_id": group["workspace_member_id"], "registrations": group["registrations"]}
+        after = {"snapshot_player_id": group["snapshot_player_id"]}
+        existing = bind.execute(
+            sa.text("""
+            SELECT workspace_id, source, actor_label, before_json, after_json FROM public.audit_log
+             WHERE action = 'encounter.history_unresolved' AND entity_type = 'team'
+               AND entity_id IS NOT DISTINCT FROM :team_id AND reason = 'conflicting_roster_metadata'
+               AND before_json->>'workspace_member_id' = CAST(:workspace_member_id AS text)
+        """),
+            params,
+        ).all()
+        if existing:
+            if existing != [(group["workspace_id"], "system", "enclayer01", before, after)]:
+                raise RuntimeError(
+                    f"enclayer01 history completion refuses existing roster audit {group['team_id']}/{group['workspace_member_id']}"
+                )
+            continue
+        bind.execute(
+            sa.text("""
+            INSERT INTO public.audit_log
+                   (workspace_id, actor_label, source, action, entity_type, entity_id, before_json, after_json, reason)
+            VALUES (:workspace_id, 'enclayer01', 'system', 'encounter.history_unresolved', 'team', :team_id,
+                    CAST(:before AS jsonb), CAST(:after AS jsonb), 'conflicting_roster_metadata')
+        """),
+            {**params, "before": json.dumps(before), "after": json.dumps(after)},
+        )
+
+
 def _backfill() -> None:
     """§13.8, row by row: owner keys, rules, seats, rosters, results, journal."""
     bind = op.get_bind()
@@ -1934,6 +2109,7 @@ def _backfill() -> None:
     _rulesets(bind)
     _notifications(bind)
     _audit(bind)
+    complete_historical_evidence(bind)
     for statement in _FINALIZE:
         op.execute(statement)
 
@@ -1941,6 +2117,8 @@ def _backfill() -> None:
 def upgrade() -> None:
     _take_locks()
     _preflight()
+    for statement in _HISTORY_SOURCE_AUDITS:
+        op.execute(statement)
     for statement in (*_SCHEMAS_AND_TYPES, *_MOVE_TABLES, *_OWNER_KEYS, *_NEW_TABLES, *_RESHAPE, *_EXTERNAL):
         if isinstance(statement, str):
             op.execute(statement)

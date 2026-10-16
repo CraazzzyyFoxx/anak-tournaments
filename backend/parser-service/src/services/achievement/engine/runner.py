@@ -308,6 +308,15 @@ class AchievementEvaluationRunnerService:
                             raise GrainMismatchError(
                                 f"rule '{rule.slug}' grain {rule.grain} expected keys of length {expected_arity}"
                             )
+                        if context.deferred_encounter_ids:
+                            # The evaluator removed unknown keys after composition.
+                            # Keep their exact stored awards outside reconciliation.
+                            rule_existing = {
+                                key: row_id
+                                for key, row_id in rule_existing.items()
+                                if key[2] not in context.deferred_encounter_ids
+                            }
+                            failures.setdefault("Incomplete series chronology; awards preserved", []).append(rule.slug)
                         diff = await diff_and_apply(
                             session,
                             rule,

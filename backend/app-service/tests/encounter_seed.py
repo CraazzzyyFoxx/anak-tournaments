@@ -198,6 +198,7 @@ def add_observed_game(
         id=match_id,
         workspace_id=encounter.workspace_id,
         discipline=encounter.discipline,
+        encounter_id=encounter_id,
         encounter_game_id=game.id,
         map_entity_id=map_entity_id,
         duration_s=duration_s,
@@ -208,7 +209,7 @@ def add_observed_game(
     db.add_all(
         models.StatsMatchTeam(
             match_id=match_id,
-            encounter_game_id=game.id,
+            encounter_id=encounter_id,
             encounter_team_id=seat.id,
             source_position=seat.slot,
         )

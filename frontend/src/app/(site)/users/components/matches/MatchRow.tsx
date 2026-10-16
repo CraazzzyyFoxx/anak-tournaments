@@ -97,9 +97,10 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
           hasLogs={enc.has_logs}
           logs={
             enc.has_logs
-              ? (enc.matches ?? []).map((m, i) => ({
+              ? (enc.matches ?? []).map((m) => ({
                   matchId: m.id,
-                  label: m.map?.name ?? t("users.matches.mapLabel", { number: String(i + 1) })
+                  rawAvailable: m.raw_available,
+                  label: `${m.map?.name ?? t("encounters.match.mapAlt")} · #${m.id}`
                 }))
               : undefined
           }

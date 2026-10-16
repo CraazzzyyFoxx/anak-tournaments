@@ -5,15 +5,16 @@ from typing import Literal
 import sqlalchemy as sa
 from pydantic import BaseModel, Field
 
-from src.core import db, pagination
+from shared.models.stats.ingest import RawSourceStatus
+from src.core import db, enums, pagination
 from src.schemas import (
     BaseRead,
+    HeroRead,
     MapRead,
     Score,
     StageItemSummaryRead,
     StageSummaryRead,
     TeamRead,
-    TeamWithMatchStats,
     TournamentRead,
 )
 
@@ -38,6 +39,9 @@ __all__ = (
     "EncounterTeamRead",
     "MatchRead",
     "MatchReadWithStats",
+    "MatchObservedHeroRead",
+    "MatchObservedPlayerRead",
+    "MatchParticipationWithStats",
     "EncounterSearchParams",
     "EncounterSearchQueryParams",
     "MatchSearchParams",
@@ -46,7 +50,7 @@ __all__ = (
 
 
 class EncounterTeamRead(BaseModel):
-    """One live seat of an encounter (``encounter.team``), in slot order.
+    """One live or historical participation of an encounter (``encounter.team``).
 
     ``id`` is the participation id every write addresses -- a claim, a report
     and an admin result all name it, never a slot and never a side. ``team_id``
@@ -179,22 +183,45 @@ class MatchRead(BaseRead):
     score: Score
     time: float | None
     log_name: str | None
+    raw_status: RawSourceStatus | None
+    raw_available: bool
 
     encounter_id: int
     map_id: int
-    # The real 1-based position of the bound encounter game.
-    map_index: int
+    # Only a proven game's position; a source claim is not official order.
+    map_index: int | None
 
+    home_participation: EncounterTeamRead
+    away_participation: EncounterTeamRead
     home_team: TeamRead | None
     away_team: TeamRead | None
     encounter: EncounterRead | None
     map: MapRead | None
 
 
+class MatchObservedHeroRead(HeroRead):
+    created_at: datetime
+    updated_at: datetime | None
+
+
+class MatchObservedPlayerRead(BaseModel):
+    """A parsed identity, independent of a current tournament or encounter roster."""
+
+    workspace_member_id: int
+    user_id: int | None
+    name: str
+    stats: dict[int, dict[enums.LogStatsName, float]]
+    heroes: dict[int, list[MatchObservedHeroRead]]
+
+
+class MatchParticipationWithStats(EncounterTeamRead):
+    players: list[MatchObservedPlayerRead]
+
+
 class MatchReadWithStats(MatchRead):
     rounds: int
-    home_team: TeamWithMatchStats | None
-    away_team: TeamWithMatchStats | None
+    home_participation: MatchParticipationWithStats
+    away_participation: MatchParticipationWithStats
 
 
 class EncounterFiltersRead(BaseModel):

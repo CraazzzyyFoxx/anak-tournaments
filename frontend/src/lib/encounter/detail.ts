@@ -5,7 +5,7 @@ import type {
   MatchWithStats
 } from "@/types/encounter.types";
 import { acceptedScore, seriesMatchesByPosition } from "@/components/pick-ban/pick-ban-model";
-import type { PlayerWithStats, TeamWithStats } from "@/types/team.types";
+import type { Hero } from "@/types/hero.types";
 import { LogStatsName } from "@/types/stats.types";
 import { duelSeats, duelWinner, type Duel, type DuelSlot } from "@/lib/encounter/seats";
 import { getEncounterWinner, isEncounterCompleted } from "@/lib/encounter/status";
@@ -47,7 +47,7 @@ export function encounterSeatScore(
 export interface SeriesSlot {
   /** 1-based position in the series. */
   index: number;
-  /** The encounter's own result for this position; null on a pre-games payload. */
+  /** The encounter's own result for this position, when present. */
   game: EncounterGameWithMap | null;
   match: Match | null;
   /** The parsed log's score, in the encounter's seat order. */
@@ -60,37 +60,19 @@ export interface SeriesSlot {
 export function buildSeriesSlots(encounter: Encounter): SeriesSlot[] {
   const matches = encounter.matches ?? [];
   const games = encounter.games ?? [];
-  // `best_of` is the ceiling, but a series can carry more positions than its
-  // format (re-plays, organizer fixes), so never truncate the real ones.
-  const slotCount = Math.max(encounter.best_of || 0, games.length, matches.length);
+  // Only proven positions extend the format; unbound history creates no slots.
+  const slotCount = Math.max(
+    encounter.best_of || 0,
+    ...games.map((game) => game.position),
+    ...matches.map((match) => match.map_index ?? 0)
+  );
   const live = isEncounterCompleted(encounter) ? null : encounter.current_map_index;
   const positions = Array.from({ length: slotCount }, (_, index) => index + 1);
 
-  // Before the games backfill an encounter carries matches only; index them
-  // positionally, the way the page did when a Match row WAS the result.
-  if (games.length === 0) {
-    return positions.map((position) => {
-      const match = matches[position - 1] ?? null;
-      const parsedScore = match ? encounterSeatScore(match, encounter) : null;
-      return {
-        index: position,
-        game: null,
-        match,
-        parsedScore,
-        winner: parsedScore ? duelWinner(parsedScore) : null,
-        isLive: live != null && live === position - 1
-      };
-    });
-  }
-
-  // The parsed log belongs to the position it names (`map_index`), never to
-  // the map alone: a series may play one map twice. A positionless row (every
-  // parsed log) is adopted by the earliest position holding its map that has
-  // no exact row of its own.
   const gameAt = (position: number) => games.find((game) => game.position === position) ?? null;
   const byPosition = seriesMatchesByPosition(
     matches,
-    positions.map((position) => gameAt(position)?.map_id ?? -1)
+    positions.map((position) => gameAt(position)?.map_id ?? null)
   );
 
   return positions.map((position, index) => {
@@ -354,21 +336,25 @@ function deriveStatRow(row: StatRow): void {
 }
 
 interface SeriesPlayerMeta {
-  /** Maps the player actually fielded a hero on. */
+  /** Observations this participation's player appears in, even without a hero fact. */
   mapsPlayed: number;
   /** 1-based series MVP placement by summed performance points. */
   seriesPlacement: number | null;
 }
 
-export interface SeriesAggregate {
-  /** Slot 1's team, folded over the series. */
-  one: TeamWithStats;
-  two: TeamWithStats;
-  /** Keyed by player id, for both sides. */
+type ObservedParticipation = MatchWithStats["home_participation"];
+type ObservedPlayer = ObservedParticipation["players"][number];
+
+export interface SeriesParticipation extends ObservedParticipation {
+  /** Player metadata is scoped to this participation, not the source roster. */
   meta: Record<number, SeriesPlayerMeta>;
-  /** Maps whose stats were folded in. */
+}
+
+export interface SeriesAggregate {
+  /** Observed participations, including retired ones; never current roster seats. */
+  participations: SeriesParticipation[];
   mapsCounted: number;
-  /** The round key the synthetic teams expose (always the whole-series row). */
+  /** The round key the folded observations expose. */
   round: number;
 }
 
@@ -379,16 +365,16 @@ function heroKey(hero: { id: number }): number {
 function foldPlayer(
   accumulator: Map<
     number,
-    { player: PlayerWithStats; stats: StatRow; heroes: Map<number, unknown>; maps: number }
+    { player: ObservedPlayer; stats: StatRow; heroes: Map<number, Hero>; maps: number }
   >,
-  player: PlayerWithStats
+  player: ObservedPlayer
 ): void {
   const heroesThisMap = player.heroes?.[WHOLE_MAP_ROUND] ?? [];
-  const existing = accumulator.get(player.id);
+  const existing = accumulator.get(player.workspace_member_id);
   const entry = existing ?? {
     player,
     stats: {} as StatRow,
-    heroes: new Map<number, unknown>(),
+    heroes: new Map<number, Hero>(),
     maps: 0
   };
 
@@ -396,109 +382,95 @@ function foldPlayer(
   for (const hero of heroesThisMap) {
     if (!entry.heroes.has(heroKey(hero))) entry.heroes.set(heroKey(hero), hero);
   }
-  if (heroesThisMap.length > 0) entry.maps += 1;
+  entry.maps += 1;
 
-  if (!existing) accumulator.set(player.id, entry);
+  if (!existing) accumulator.set(player.workspace_member_id, entry);
 }
 
-function buildSide(
-  base: TeamWithStats,
+function buildParticipation(
+  base: ObservedParticipation,
   accumulator: Map<
     number,
-    { player: PlayerWithStats; stats: StatRow; heroes: Map<number, unknown>; maps: number }
+    { player: ObservedPlayer; stats: StatRow; heroes: Map<number, Hero>; maps: number }
   >
-): { team: TeamWithStats; rows: { id: number; points: number; maps: number }[] } {
-  const players: PlayerWithStats[] = [];
-  const rows: { id: number; points: number; maps: number }[] = [];
+): { participation: SeriesParticipation; rows: { id: number; points: number; maps: number; hasStats: boolean }[] } {
+  const players: ObservedPlayer[] = [];
+  const rows: { id: number; points: number; maps: number; hasStats: boolean }[] = [];
 
   for (const entry of accumulator.values()) {
-    deriveStatRow(entry.stats);
+    const hasStats = Object.keys(entry.stats).length > 0;
+    if (hasStats) deriveStatRow(entry.stats);
     players.push({
       ...entry.player,
-      stats: { [WHOLE_MAP_ROUND]: entry.stats } as PlayerWithStats["stats"],
-      heroes: {
-        [WHOLE_MAP_ROUND]: Array.from(entry.heroes.values())
-      } as PlayerWithStats["heroes"]
+      stats: { [WHOLE_MAP_ROUND]: entry.stats } as ObservedPlayer["stats"],
+      heroes: { [WHOLE_MAP_ROUND]: Array.from(entry.heroes.values()) }
     });
     rows.push({
-      id: entry.player.id,
+      id: entry.player.workspace_member_id,
       points: entry.stats[LogStatsName.PerformancePoints] ?? 0,
-      maps: entry.maps
+      maps: entry.maps,
+      hasStats
     });
   }
 
-  return { team: { ...base, players }, rows };
+  return { participation: { ...base, players, meta: {} }, rows };
 }
 
 /**
- * Fold every loaded map of the series into one synthetic pair of teams whose
- * round-`0` row describes the whole series. The shape is exactly what the
- * per-map stat components already consume, so the series view reuses them
- * instead of growing a parallel set of charts.
- *
- * Sides are resolved by team id against the encounter's seats, not by each
- * map's own `home_team_id` (V4), so a map recorded with the sides flipped still
- * lands on the correct series seat.
+ * Fold every observation by its native participation and workspace-member
+ * identity. Source teams, current slots and game order do not decide which
+ * facts count; the participation snapshot remains the statistics heading.
  */
-export function aggregateSeriesStats(
-  matches: MatchWithStats[],
-  encounter: Pick<Encounter, "teams">
-): SeriesAggregate | null {
-  const oneAcc = new Map<
+export function aggregateSeriesStats(matches: MatchWithStats[]): SeriesAggregate | null {
+  const groups = new Map<
     number,
-    { player: PlayerWithStats; stats: StatRow; heroes: Map<number, unknown>; maps: number }
+    {
+      base: ObservedParticipation;
+      players: Map<
+        number,
+        { player: ObservedPlayer; stats: StatRow; heroes: Map<number, Hero>; maps: number }
+      >;
+    }
   >();
-  const twoAcc = new Map<
-    number,
-    { player: PlayerWithStats; stats: StatRow; heroes: Map<number, unknown>; maps: number }
-  >();
-  let oneBase: TeamWithStats | null = null;
-  let twoBase: TeamWithStats | null = null;
-  const [seatOne, seatTwo] = duelSeats(encounter.teams);
-  let mapsCounted = 0;
 
   for (const match of matches) {
-    for (const team of [match.home_team, match.away_team]) {
-      if (!team) continue;
-      const isOne = team.id === seatOne?.team_id;
-      const isTwo = team.id === seatTwo?.team_id;
-      if (!isOne && !isTwo) continue;
-      if (isOne) oneBase ??= team;
-      else twoBase ??= team;
-      const accumulator = isOne ? oneAcc : twoAcc;
-      for (const player of team.players ?? []) foldPlayer(accumulator, player);
+    for (const participation of [match.home_participation, match.away_participation]) {
+      let group = groups.get(participation.id);
+      if (!group) {
+        group = { base: participation, players: new Map() };
+        groups.set(participation.id, group);
+      }
+      for (const player of participation.players) foldPlayer(group.players, player);
     }
-    mapsCounted += 1;
   }
 
-  if (!oneBase || !twoBase) return null;
+  if (groups.size === 0) return null;
 
-  const one = buildSide(oneBase, oneAcc);
-  const two = buildSide(twoBase, twoAcc);
-
-  // Series MVP order spans both rosters, matching the per-map ranking.
-  const ranked = [...one.rows, ...two.rows]
-    .filter((row) => row.maps > 0)
+  const folded = Array.from(groups.values(), ({ base, players }) => buildParticipation(base, players));
+  const ranked = folded
+    .flatMap(({ rows }) => rows)
+    .filter((row) => row.hasStats)
     .sort((a, b) => b.points - a.points);
-  const meta: Record<number, SeriesPlayerMeta> = {};
-  for (const row of [...one.rows, ...two.rows]) {
-    const position = ranked.findIndex((candidate) => candidate.id === row.id);
-    meta[row.id] = {
-      mapsPlayed: row.maps,
-      seriesPlacement: position >= 0 ? position + 1 : null
-    };
-  }
 
-  // `performance` drives the shared MVP badge, so publish the series placement
-  // under the same key the per-map rows use.
-  for (const team of [one.team, two.team]) {
-    for (const player of team.players) {
-      const placement = meta[player.id]?.seriesPlacement;
+  for (const { participation, rows } of folded) {
+    for (const row of rows) {
+      const position = ranked.indexOf(row);
+      participation.meta[row.id] = {
+        mapsPlayed: row.maps,
+        seriesPlacement: position >= 0 ? position + 1 : null
+      };
+    }
+    for (const player of participation.players) {
+      const placement = participation.meta[player.workspace_member_id]?.seriesPlacement;
       const row = player.stats[WHOLE_MAP_ROUND] as StatRow;
       if (placement != null) row[LogStatsName.Performance] = placement;
       else delete row[LogStatsName.Performance];
     }
   }
 
-  return { one: one.team, two: two.team, meta, mapsCounted, round: WHOLE_MAP_ROUND };
+  return {
+    participations: folded.map(({ participation }) => participation),
+    mapsCounted: matches.length,
+    round: WHOLE_MAP_ROUND
+  };
 }

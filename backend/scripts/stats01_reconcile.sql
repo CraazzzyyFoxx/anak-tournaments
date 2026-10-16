@@ -1,10 +1,10 @@
--- Frozen stats01 initial proof. Later lifecycle proof requires stats01_reconcile.py and its receipt.
--- Only old/new MV averages allow abs<=1e-12; native derivation and all other values remain exact.
--- Only session-local setup is written; comparisons share a read-only repeatable-read snapshot.
--- Handles preserve each observation's scoped roster or primary identity, never a site display name.
+-- Generated from migrations/versions/stats01_stats.py; initial full proof before native lifecycle changes.
 BEGIN;
+
 SET LOCAL timezone = 'UTC';
+
 SET LOCAL extra_float_digits = 3;
+
 CREATE TEMP VIEW stats01_stat_names(legacy_name,code) AS VALUES ('Eliminations','eliminations'),
 ('FinalBlows','final_blows'),
 ('Deaths','deaths'),
@@ -53,6 +53,7 @@ CREATE TEMP VIEW stats01_stat_names(legacy_name,code) AS VALUES ('Eliminations',
 ('ImpactPoints','impact_points'),
 ('ImpactRank','impact_rank'),
 ('OverperformanceScore','overperformance_score');
+
 CREATE TEMP VIEW stats01_event_names(legacy_name,code) AS VALUES ('OffensiveAssist','offensive_assist'),
 ('DefensiveAssist','defensive_assist'),
 ('UltimateCharged','ultimate_charged'),
@@ -62,6 +63,7 @@ CREATE TEMP VIEW stats01_event_names(legacy_name,code) AS VALUES ('OffensiveAssi
 ('MercyRez','mercy_rez'),
 ('EchoDuplicateStart','echo_duplicate_start'),
 ('EchoDuplicateEnd','echo_duplicate_end');
+
 CREATE TEMP VIEW stats01_ability_values(legacy_name,value) AS VALUES ('PrimaryFire','Primary Fire'),
 ('SecondaryFire','Secondary Fire'),
 ('Ability1','Ability 1'),
@@ -69,21 +71,38 @@ CREATE TEMP VIEW stats01_ability_values(legacy_name,value) AS VALUES ('PrimaryFi
 ('Ultimate','Ultimate'),
 ('Melee','Melee'),
 ('Crouch','Crouch');
+
 CREATE TEMP VIEW stats01_dependency_names(old_name,new_name) AS VALUES ('matches.statistics','stats.fact'),
 ('matches.match','stats.match'),
 ('matches.kill_feed','stats.event'),
 ('matches.event','stats.event'),
 ('matches.stat_baselines','stats.stat_baseline'),
 ('log_processing.record','stats.ingest_job');
+
 CREATE TEMP VIEW stats01_match AS
-SELECT m.id AS match_id,
- coalesce((SELECT g.id FROM encounter.game g WHERE g.encounter_id=m.encounter_id
-            AND g.position=m.map_index AND g.state<>'cancelled'),
-          (SELECT min(g.id) FROM encounter.game g WHERE g.encounter_id=m.encounter_id
-            AND g.map_id=m.map_id AND g.state<>'cancelled' HAVING count(*)=1)) AS game_id,
- e.workspace_id, e.discipline, e.tournament_id, e.id AS encounter_id
-FROM matches.match m JOIN encounter.encounter e ON e.id=m.encounter_id
+WITH candidates AS (
+ SELECT m.id AS match_id,e.workspace_id,e.discipline,e.tournament_id,e.id AS encounter_id,
+   CASE WHEN EXISTS(SELECT 1 FROM encounter.game g WHERE g.encounter_id=e.id
+                     AND g.position=m.map_index AND g.state<>'cancelled')
+        THEN (SELECT min(g.id) FROM encounter.game g WHERE g.encounter_id=e.id
+               AND g.position=m.map_index AND g.state<>'cancelled' AND g.map_id=m.map_id HAVING count(*)=1)
+        ELSE (SELECT min(g.id) FROM encounter.game g WHERE g.encounter_id=e.id
+               AND g.map_id=m.map_id AND g.state<>'cancelled' HAVING count(*)=1) END AS candidate_id
+ FROM matches.match m JOIN encounter.encounter e ON e.id=m.encounter_id
+), claims AS (
+ SELECT c.*,count(*) OVER(PARTITION BY candidate_id) AS claim_count FROM candidates c
+)
+SELECT c.match_id,
+ CASE WHEN c.claim_count=1
+   AND (SELECT count(*) FROM encounter.game_team gt WHERE gt.game_id=c.candidate_id)=2
+   AND (SELECT count(*) FROM encounter.game_team gt JOIN encounter.team et ON et.id=gt.encounter_team_id
+         WHERE gt.game_id=c.candidate_id AND et.encounter_id=c.encounter_id
+           AND et.team_id IN (m.home_team_id,m.away_team_id))=2
+ THEN c.candidate_id END AS game_id,
+ c.workspace_id,c.discipline,c.tournament_id,c.encounter_id
+FROM claims c JOIN matches.match m ON m.id=c.match_id
 ;
+
 CREATE TEMP VIEW stats01_endpoints AS
 SELECT match_id,user_id,team_id FROM matches.statistics
 UNION ALL SELECT match_id,killer_id,killer_team_id FROM matches.kill_feed
@@ -91,16 +110,19 @@ UNION ALL SELECT match_id,victim_id,victim_team_id FROM matches.kill_feed
 UNION ALL SELECT match_id,user_id,team_id FROM matches.event
 UNION ALL SELECT match_id,related_user_id,related_team_id FROM matches.event
 ;
+
 CREATE TEMP VIEW stats01_source_teams AS
 SELECT match_id,team_id FROM stats01_endpoints WHERE team_id IS NOT NULL
 UNION ALL SELECT id,home_team_id FROM matches.match
 UNION ALL SELECT id,away_team_id FROM matches.match
 ;
+
 CREATE TEMP VIEW stats01_team AS
-       SELECT x.match_id,x.game_id,et.team_id,gt.encounter_team_id
-       FROM stats01_match x JOIN encounter.game_team gt ON gt.game_id=x.game_id
-       JOIN encounter.team et ON et.id=gt.encounter_team_id AND et.encounter_id=x.encounter_id;
+       SELECT x.match_id,x.encounter_id,et.team_id,et.id AS encounter_team_id
+       FROM stats01_match x JOIN encounter.team et ON et.encounter_id=x.encounter_id;
+
 CREATE TEMP VIEW stats01_member AS SELECT workspace_id,player_id,id FROM workspace_member;
+
 CREATE TEMP VIEW stats01_handles AS
        SELECT p.match_id,p.user_id AS player_id,p.team_id,coalesce(
  (SELECT CASE WHEN btrim(r.name)<>'' THEN r.name END FROM tournament.player r
@@ -112,60 +134,150 @@ CREATE TEMP VIEW stats01_handles AS
        FROM (SELECT DISTINCT match_id,user_id,team_id FROM stats01_endpoints WHERE user_id IS NOT NULL) p
        JOIN stats01_match x ON x.match_id=p.match_id
        LEFT JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=p.user_id;
+
 CREATE TEMP VIEW stats01_roles AS
        SELECT r.id, r.code FROM catalog.role r JOIN catalog.role_dimension d ON d.id=r.dimension_id
        WHERE d.discipline='overwatch' AND d.code='player_role' AND d.rated
          AND r.workspace_id IS NULL AND r.parent_role_id IS NULL AND r.code IN ('tank','damage','support');
+
 CREATE TEMP VIEW stats01_stat_ids AS SELECT n.legacy_name,d.discipline,d.code,d.id
        FROM stats01_stat_names n JOIN stats.stat_def d ON d.discipline='overwatch' AND d.code=n.code;
+
 CREATE TEMP VIEW stats01_event_ids AS SELECT n.legacy_name,d.discipline,d.code,d.id
        FROM stats01_event_names n JOIN stats.event_type d ON d.discipline='overwatch' AND d.code=n.code;
+
 CREATE TEMP VIEW stats01_oracle_records AS
        SELECT id,after_json->'stats01_oracle' AS p FROM audit_log WHERE action='stats.initial_transfer';
+
 CREATE TEMP VIEW stats01_oracle_manifest AS
        SELECT v->>'class' AS class,(v->>'count')::bigint AS count,(v->>'chunks')::bigint AS chunks,v->>'sha256' AS sha256
        FROM stats01_oracle_records CROSS JOIN LATERAL jsonb_array_elements(p->'classes') v WHERE p->>'kind'='manifest';
+
 CREATE TEMP VIEW stats01_oracle_chunks AS
        SELECT id,p->>'class' AS class,(p->>'chunk')::bigint AS chunk,p->'rows' AS rows,p->>'sha256' AS sha256
        FROM stats01_oracle_records WHERE p->>'kind'='chunk';
+
 CREATE TEMP VIEW stats01_oracle_rows AS
        SELECT c.id,c.class,c.chunk,v.ordinality,v.value->'key' AS key,v.value->>'sha256' AS sha256
        FROM stats01_oracle_chunks c CROSS JOIN LATERAL jsonb_array_elements(c.rows) WITH ORDINALITY v(value,ordinality);
+
 CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
-      FROM ((SELECT id FROM log_processing.record) EXCEPT ALL (SELECT id FROM stats.ingest_job)) p
+      FROM ((SELECT id FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
+ r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
+ NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
+ r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) j) EXCEPT ALL (SELECT id FROM stats.ingest_job)) p
       UNION ALL SELECT 'job_owners'::text,'unexpected_or_changed'::text,to_jsonb(p)
-      FROM ((SELECT id FROM stats.ingest_job) EXCEPT ALL (SELECT id FROM log_processing.record)) p UNION ALL SELECT 'match_owners'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
+      FROM ((SELECT id FROM stats.ingest_job) EXCEPT ALL (SELECT id FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
+ r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
+ NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
+ r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) j)) p UNION ALL SELECT 'match_owners'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
       FROM ((SELECT id FROM matches.match) EXCEPT ALL (SELECT id FROM stats.match)) p
       UNION ALL SELECT 'match_owners'::text,'unexpected_or_changed'::text,to_jsonb(p)
       FROM ((SELECT id FROM stats.match) EXCEPT ALL (SELECT id FROM matches.match)) p UNION ALL SELECT 'jobs'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
       FROM ((SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
  r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
- r.content_hash::char(64),r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
  r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
- FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id) EXCEPT ALL (SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job WHERE id IN (SELECT id FROM log_processing.record))) p
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) EXCEPT ALL (SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job)) p
       UNION ALL SELECT 'jobs'::text,'unexpected_or_changed'::text,to_jsonb(p)
-      FROM ((SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job WHERE id IN (SELECT id FROM log_processing.record)) EXCEPT ALL (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
+      FROM ((SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job) EXCEPT ALL (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
  r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
- r.content_hash::char(64),r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
  r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
- FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id)) p UNION ALL SELECT 'matches'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
-      FROM ((SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,x.game_id AS encounter_game_id,
- m.log_record_id AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
- m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id) EXCEPT ALL (SELECT id,created_at,updated_at,workspace_id,discipline,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match))) p
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h)) p UNION ALL SELECT 'matches'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
+      FROM ((SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
+ x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
+ coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
+ m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ LEFT JOIN (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) EXCEPT ALL (SELECT id,created_at,updated_at,workspace_id,discipline,encounter_id,source_map_index,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match))) p
       UNION ALL SELECT 'matches'::text,'unexpected_or_changed'::text,to_jsonb(p)
-      FROM ((SELECT id,created_at,updated_at,workspace_id,discipline,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match)) EXCEPT ALL (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,x.game_id AS encounter_game_id,
- m.log_record_id AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
- m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id)) p UNION ALL SELECT 'teams'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
-      FROM ((SELECT m.id AS match_id,x.game_id AS encounter_game_id,t.encounter_team_id,s.position AS source_position
+      FROM ((SELECT id,created_at,updated_at,workspace_id,discipline,encounter_id,source_map_index,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match)) EXCEPT ALL (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
+ x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
+ coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
+ m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ LEFT JOIN (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id)) p UNION ALL SELECT 'teams'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
+      FROM ((SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
- JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id) EXCEPT ALL (SELECT match_id,encounter_game_id,encounter_team_id,source_position FROM stats.match_team WHERE match_id IN (SELECT id FROM matches.match))) p
+ JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id) EXCEPT ALL (SELECT match_id,encounter_id,encounter_team_id,source_position FROM stats.match_team WHERE match_id IN (SELECT id FROM matches.match))) p
       UNION ALL SELECT 'teams'::text,'unexpected_or_changed'::text,to_jsonb(p)
-      FROM ((SELECT match_id,encounter_game_id,encounter_team_id,source_position FROM stats.match_team WHERE match_id IN (SELECT id FROM matches.match)) EXCEPT ALL (SELECT m.id AS match_id,x.game_id AS encounter_game_id,t.encounter_team_id,s.position AS source_position
+      FROM ((SELECT match_id,encounter_id,encounter_team_id,source_position FROM stats.match_team WHERE match_id IN (SELECT id FROM matches.match)) EXCEPT ALL (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
  JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id)) p UNION ALL SELECT 'players'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
@@ -459,12 +571,11 @@ WITH qualified AS (
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
  THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
 ), best AS (
- SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,g.encounter_id,mp.name map_name,
+ SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
  FROM ranked r JOIN stats.match m ON m.id=r.match_id
  JOIN catalog.entity mp ON mp.id=m.map_entity_id AND mp.kind='map' AND mp.discipline=m.discipline
- JOIN encounter.game g ON g.id=m.encounter_game_id
- JOIN encounter.encounter enc ON enc.id=g.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
+ JOIN encounter.encounter enc ON enc.id=m.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
  JOIN tournament.tournament t ON t.id=enc.tournament_id
  JOIN workspace_member wm ON wm.id=r.workspace_member_id AND wm.workspace_id=m.workspace_id
  JOIN players."user" u ON u.id=wm.player_id WHERE r.rn=1
@@ -501,12 +612,11 @@ WITH qualified AS (
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
  THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
 ), best AS (
- SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,g.encounter_id,mp.name map_name,
+ SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
  FROM ranked r JOIN stats.match m ON m.id=r.match_id
  JOIN catalog.entity mp ON mp.id=m.map_entity_id AND mp.kind='map' AND mp.discipline=m.discipline
- JOIN encounter.game g ON g.id=m.encounter_game_id
- JOIN encounter.encounter enc ON enc.id=g.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
+ JOIN encounter.encounter enc ON enc.id=m.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
  JOIN tournament.tournament t ON t.id=enc.tournament_id
  JOIN workspace_member wm ON wm.id=r.workspace_member_id AND wm.workspace_id=m.workspace_id
  JOIN players."user" u ON u.id=wm.player_id WHERE r.rn=1
@@ -674,15 +784,39 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
       encode(sha256(convert_to(jsonb_build_array(id,o.payload_json::jsonb->'changed_tables')::text,'UTF8')),'hex') AS sha256
       FROM event_outbox o WHERE (o.event_type='achievement_evaluate' OR o.payload_json::jsonb->>'event_type'='achievement_evaluate')
  AND o.status IN ('pending','failed')) EXCEPT ALL (SELECT key,sha256 FROM stats01_oracle_rows WHERE class='outbox_dependency')) p UNION ALL SELECT 'source_cardinality'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
-      FROM ((SELECT 'jobs'::text AS relation,(SELECT count(*) FROM log_processing.record) AS count UNION ALL SELECT 'matches'::text AS relation,(SELECT count(*) FROM matches.match) AS count UNION ALL SELECT 'teams'::text AS relation,(SELECT 2*count(*) FROM matches.match) AS count UNION ALL SELECT 'players'::text AS relation,(SELECT count(*) FROM (SELECT DISTINCT match_id,user_id,team_id FROM stats01_endpoints WHERE user_id IS NOT NULL) p) AS count UNION ALL SELECT 'facts'::text AS relation,(SELECT count(*) FROM matches.statistics) AS count UNION ALL SELECT 'events'::text AS relation,(SELECT (SELECT count(*) FROM matches.kill_feed)+(SELECT count(*) FROM matches.event)) AS count UNION ALL SELECT 'baselines'::text AS relation,(SELECT count(*) FROM matches.stat_baselines) AS count) EXCEPT ALL (SELECT 'jobs'::text AS relation,count(*) AS count FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
+      FROM ((SELECT 'jobs'::text AS relation,(SELECT (SELECT count(*) FROM log_processing.record)+(SELECT count(*) FROM matches.match WHERE log_record_id IS NULL AND log_name IS NOT NULL)) AS count UNION ALL SELECT 'matches'::text AS relation,(SELECT count(*) FROM matches.match) AS count UNION ALL SELECT 'teams'::text AS relation,(SELECT 2*count(*) FROM matches.match) AS count UNION ALL SELECT 'players'::text AS relation,(SELECT count(*) FROM (SELECT DISTINCT match_id,user_id,team_id FROM stats01_endpoints WHERE user_id IS NOT NULL) p) AS count UNION ALL SELECT 'facts'::text AS relation,(SELECT count(*) FROM matches.statistics) AS count UNION ALL SELECT 'events'::text AS relation,(SELECT (SELECT count(*) FROM matches.kill_feed)+(SELECT count(*) FROM matches.event)) AS count UNION ALL SELECT 'baselines'::text AS relation,(SELECT count(*) FROM matches.stat_baselines) AS count) EXCEPT ALL (SELECT 'jobs'::text AS relation,count(*) AS count FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
  r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
- r.content_hash::char(64),r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
  r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
- FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,x.game_id AS encounter_game_id,
- m.log_record_id AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
- m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.game_id AS encounter_game_id,t.encounter_team_id,s.position AS source_position
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
+ x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
+ coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
+ m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ LEFT JOIN (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
  JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id) p UNION ALL SELECT 'players'::text AS relation,count(*) AS count FROM (SELECT DISTINCT p.match_id,t.encounter_team_id,w.id AS workspace_member_id,
@@ -722,13 +856,37 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
       UNION ALL SELECT 'source_cardinality'::text,'unexpected_or_changed'::text,to_jsonb(p)
       FROM ((SELECT 'jobs'::text AS relation,count(*) AS count FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
  r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
- r.content_hash::char(64),r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
  r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
- FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,x.game_id AS encounter_game_id,
- m.log_record_id AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
- m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.game_id AS encounter_game_id,t.encounter_team_id,s.position AS source_position
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
+ x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
+ coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
+ m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ LEFT JOIN (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
  JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id) p UNION ALL SELECT 'players'::text AS relation,count(*) AS count FROM (SELECT DISTINCT p.match_id,t.encounter_team_id,w.id AS workspace_member_id,
@@ -764,32 +922,70 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  LEFT JOIN stats01_member aw ON aw.workspace_id=x.workspace_id AND aw.player_id=e.user_id
  LEFT JOIN stats01_member tw ON tw.workspace_id=x.workspace_id AND tw.player_id=e.related_user_id) e) p UNION ALL SELECT 'baselines'::text AS relation,count(*) AS count FROM (SELECT b.id,b.formula_version,r.id AS role_id,b.rank_bucket,d.id AS stat_id,b.mean,b.std,b.meta,b.computed_at
  FROM matches.stat_baselines b JOIN stats01_roles r ON r.code=lower(b.role::text)
- JOIN stats01_stat_ids d ON d.discipline='overwatch' AND d.legacy_name=b.stat::text) p) EXCEPT ALL (SELECT 'jobs'::text AS relation,(SELECT count(*) FROM log_processing.record) AS count UNION ALL SELECT 'matches'::text AS relation,(SELECT count(*) FROM matches.match) AS count UNION ALL SELECT 'teams'::text AS relation,(SELECT 2*count(*) FROM matches.match) AS count UNION ALL SELECT 'players'::text AS relation,(SELECT count(*) FROM (SELECT DISTINCT match_id,user_id,team_id FROM stats01_endpoints WHERE user_id IS NOT NULL) p) AS count UNION ALL SELECT 'facts'::text AS relation,(SELECT count(*) FROM matches.statistics) AS count UNION ALL SELECT 'events'::text AS relation,(SELECT (SELECT count(*) FROM matches.kill_feed)+(SELECT count(*) FROM matches.event)) AS count UNION ALL SELECT 'baselines'::text AS relation,(SELECT count(*) FROM matches.stat_baselines) AS count)) p;
-COMMIT;
-BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
-SET LOCAL timezone = 'UTC';
-SET LOCAL extra_float_digits = 3;
-SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM log_processing.record) p) AS legacy,
+ JOIN stats01_stat_ids d ON d.discipline='overwatch' AND d.legacy_name=b.stat::text) p) EXCEPT ALL (SELECT 'jobs'::text AS relation,(SELECT (SELECT count(*) FROM log_processing.record)+(SELECT count(*) FROM matches.match WHERE log_record_id IS NULL AND log_name IS NOT NULL)) AS count UNION ALL SELECT 'matches'::text AS relation,(SELECT count(*) FROM matches.match) AS count UNION ALL SELECT 'teams'::text AS relation,(SELECT 2*count(*) FROM matches.match) AS count UNION ALL SELECT 'players'::text AS relation,(SELECT count(*) FROM (SELECT DISTINCT match_id,user_id,team_id FROM stats01_endpoints WHERE user_id IS NOT NULL) p) AS count UNION ALL SELECT 'facts'::text AS relation,(SELECT count(*) FROM matches.statistics) AS count UNION ALL SELECT 'events'::text AS relation,(SELECT (SELECT count(*) FROM matches.kill_feed)+(SELECT count(*) FROM matches.event)) AS count UNION ALL SELECT 'baselines'::text AS relation,(SELECT count(*) FROM matches.stat_baselines) AS count)) p;
+
+SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
+ r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
+ NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
+ r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) j) p) AS legacy,
       (SELECT count(*) FROM (SELECT id FROM stats.ingest_job) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='job_owners') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'match_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM matches.match) p) AS legacy,
       (SELECT count(*) FROM (SELECT id FROM stats.match) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='match_owners') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'jobs'::text AS class,(SELECT count(*) FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
  r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
- r.content_hash::char(64),r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
  r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
- FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id) p) AS legacy,
-      (SELECT count(*) FROM (SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job WHERE id IN (SELECT id FROM log_processing.record)) p) AS migrated,
-      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='jobs') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'matches'::text AS class,(SELECT count(*) FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,x.game_id AS encounter_game_id,
- m.log_record_id AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
- m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id) p) AS legacy,
-      (SELECT count(*) FROM (SELECT id,created_at,updated_at,workspace_id,discipline,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match)) p) AS migrated,
-      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='matches') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'teams'::text AS class,(SELECT count(*) FROM (SELECT m.id AS match_id,x.game_id AS encounter_game_id,t.encounter_team_id,s.position AS source_position
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p) AS legacy,
+      (SELECT count(*) FROM (SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job) p) AS migrated,
+      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='jobs') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'matches'::text AS class,(SELECT count(*) FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
+ x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
+ coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
+ m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ LEFT JOIN (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p) AS legacy,
+      (SELECT count(*) FROM (SELECT id,created_at,updated_at,workspace_id,discipline,encounter_id,source_map_index,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match)) p) AS migrated,
+      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='matches') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'teams'::text AS class,(SELECT count(*) FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
  JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id) p) AS legacy,
-      (SELECT count(*) FROM (SELECT match_id,encounter_game_id,encounter_team_id,source_position FROM stats.match_team WHERE match_id IN (SELECT id FROM matches.match)) p) AS migrated,
+      (SELECT count(*) FROM (SELECT match_id,encounter_id,encounter_team_id,source_position FROM stats.match_team WHERE match_id IN (SELECT id FROM matches.match)) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='teams') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'players'::text AS class,(SELECT count(*) FROM (SELECT DISTINCT p.match_id,t.encounter_team_id,w.id AS workspace_member_id,
  h.handle_snapshot,NULL::bigint AS observed_role_id
  FROM stats01_endpoints p JOIN stats01_match x ON x.match_id=p.match_id
@@ -960,12 +1156,11 @@ WITH qualified AS (
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
  THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
 ), best AS (
- SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,g.encounter_id,mp.name map_name,
+ SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
  FROM ranked r JOIN stats.match m ON m.id=r.match_id
  JOIN catalog.entity mp ON mp.id=m.map_entity_id AND mp.kind='map' AND mp.discipline=m.discipline
- JOIN encounter.game g ON g.id=m.encounter_game_id
- JOIN encounter.encounter enc ON enc.id=g.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
+ JOIN encounter.encounter enc ON enc.id=m.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
  JOIN tournament.tournament t ON t.id=enc.tournament_id
  JOIN workspace_member wm ON wm.id=r.workspace_member_id AND wm.workspace_id=m.workspace_id
  JOIN players."user" u ON u.id=wm.player_id WHERE r.rn=1
@@ -1060,16 +1255,40 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
       encode(sha256(convert_to(jsonb_build_array(id,o.payload_json::jsonb->'changed_tables')::text,'UTF8')),'hex') AS sha256
       FROM event_outbox o WHERE (o.event_type='achievement_evaluate' OR o.payload_json::jsonb->>'event_type'='achievement_evaluate')
  AND o.status IN ('pending','failed')) p) AS migrated,
-      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='outbox_dependency') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'source_cardinality'::text AS class,(SELECT count(*) FROM (SELECT 'jobs'::text AS relation,(SELECT count(*) FROM log_processing.record) AS count UNION ALL SELECT 'matches'::text AS relation,(SELECT count(*) FROM matches.match) AS count UNION ALL SELECT 'teams'::text AS relation,(SELECT 2*count(*) FROM matches.match) AS count UNION ALL SELECT 'players'::text AS relation,(SELECT count(*) FROM (SELECT DISTINCT match_id,user_id,team_id FROM stats01_endpoints WHERE user_id IS NOT NULL) p) AS count UNION ALL SELECT 'facts'::text AS relation,(SELECT count(*) FROM matches.statistics) AS count UNION ALL SELECT 'events'::text AS relation,(SELECT (SELECT count(*) FROM matches.kill_feed)+(SELECT count(*) FROM matches.event)) AS count UNION ALL SELECT 'baselines'::text AS relation,(SELECT count(*) FROM matches.stat_baselines) AS count) p) AS legacy,
+      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='outbox_dependency') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'source_cardinality'::text AS class,(SELECT count(*) FROM (SELECT 'jobs'::text AS relation,(SELECT (SELECT count(*) FROM log_processing.record)+(SELECT count(*) FROM matches.match WHERE log_record_id IS NULL AND log_name IS NOT NULL)) AS count UNION ALL SELECT 'matches'::text AS relation,(SELECT count(*) FROM matches.match) AS count UNION ALL SELECT 'teams'::text AS relation,(SELECT 2*count(*) FROM matches.match) AS count UNION ALL SELECT 'players'::text AS relation,(SELECT count(*) FROM (SELECT DISTINCT match_id,user_id,team_id FROM stats01_endpoints WHERE user_id IS NOT NULL) p) AS count UNION ALL SELECT 'facts'::text AS relation,(SELECT count(*) FROM matches.statistics) AS count UNION ALL SELECT 'events'::text AS relation,(SELECT (SELECT count(*) FROM matches.kill_feed)+(SELECT count(*) FROM matches.event)) AS count UNION ALL SELECT 'baselines'::text AS relation,(SELECT count(*) FROM matches.stat_baselines) AS count) p) AS legacy,
       (SELECT count(*) FROM (SELECT 'jobs'::text AS relation,count(*) AS count FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
  r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
- r.content_hash::char(64),r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,('logs/'||r.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),'logs/') THEN substr((CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END),6) ELSE (CASE WHEN starts_with(r.filename,('logs/'||r.tournament_id::text||'/')) THEN substr(r.filename,length(('logs/'||r.tournament_id::text||'/'))+1) ELSE r.filename END) END) AS raw_ref,NULL::varchar(512) AS document_ref,
  r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
- FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,x.game_id AS encounter_game_id,
- m.log_record_id AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
- m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.game_id AS encounter_game_id,t.encounter_team_id,s.position AS source_position
+ FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
+ x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
+ coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
+ m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ LEFT JOIN (SELECT
+ (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,('logs/'||x.tournament_id::text||'/')||(CASE WHEN starts_with((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),'logs/') THEN substr((CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END),6) ELSE (CASE WHEN starts_with(m.log_name,('logs/'||x.tournament_id::text||'/')) THEN substr(m.log_name,length(('logs/'||x.tournament_id::text||'/'))+1) ELSE m.log_name END) END) AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
  JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id) p UNION ALL SELECT 'players'::text AS relation,count(*) AS count FROM (SELECT DISTINCT p.match_id,t.encounter_team_id,w.id AS workspace_member_id,
@@ -1107,5 +1326,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  FROM matches.stat_baselines b JOIN stats01_roles r ON r.code=lower(b.role::text)
  JOIN stats01_stat_ids d ON d.discipline='overwatch' AND d.legacy_name=b.stat::text) p) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='source_cardinality') THEN 'blocking' ELSE 'ok' END AS status;
+
 SELECT class,direction,row FROM stats01_reconcile ORDER BY class,direction,row::text LIMIT 20;
+
 COMMIT;

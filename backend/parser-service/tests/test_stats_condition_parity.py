@@ -849,6 +849,127 @@ def test_native_diff_resolves_global_identity_to_one_scoped_member(stats_parity_
         sync_engine.dispose()
 
 
+def test_runner_preserves_unknown_series_awards_without_freezing_other_rules(stats_parity_database):
+    """Unknown chronology cannot grant/revoke awards, even after NOT composition."""
+    url, ids = stats_parity_database
+
+    async def exercise() -> None:
+        engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+        try:
+            async with async_sessionmaker(engine, expire_on_commit=False)() as session:
+                rules = []
+                for slug, tree in (
+                    ("history-comeback", _leaf("encounter_comeback", min_deficit=1)),
+                    ("history-not-comeback", {"NOT": _leaf("encounter_comeback", min_deficit=1)}),
+                    ("history-winner", _leaf("encounter_result", outcome="win")),
+                ):
+                    rules.append(
+                        await AchievementRuleService().create_rule(
+                            session,
+                            workspace_id=ids["workspace"],
+                            rule_data={
+                                "slug": slug,
+                                "name": slug,
+                                "description_ru": "RU",
+                                "description_en": "EN",
+                                "discipline": "overwatch",
+                                "category": "tournament",
+                                "scope": "tournament",
+                                "grain": "user_encounter",
+                                "enabled": True,
+                                "condition_tree": tree,
+                            },
+                        )
+                    )
+                comeback, negated, ordinary = rules
+                runner = AchievementEvaluationRunnerService()
+                run = await runner.run_evaluation(
+                    session,
+                    ids["workspace"],
+                    EvaluationRunTrigger.parse_complete,
+                    rule_ids=[rule.id for rule in rules],
+                )
+                assert run.status == "done"
+                table = AchievementEvaluationResult.__table__
+
+                async def awards(rule_id, encounter_id):
+                    return [
+                        dict(row)
+                        for row in (
+                            await session.execute(
+                                sa.select(table)
+                                .where(
+                                    table.c.achievement_rule_id == rule_id,
+                                    table.c.encounter_id == encounter_id,
+                                )
+                                .order_by(table.c.id)
+                            )
+                        ).mappings()
+                    ]
+
+                preserved = await awards(comeback.id, ids["encounter"])
+                assert len(preserved) == 1
+                assert preserved[0]["workspace_member_id"] == ids["member_away"]
+                assert preserved[0]["evidence_json"]["max_deficit"] == 3
+                # This different, fully bound series has a one-map deficit.
+                assert len(await awards(comeback.id, ids["encounter_hidden"])) == 1
+                assert await awards(negated.id, ids["encounter"])
+                assert await awards(ordinary.id, ids["encounter"])
+                await session.execute(
+                    sa.update(models.StatsMatch)
+                    .where(models.StatsMatch.id == ids["match"])
+                    .values(encounter_game_id=None)
+                )
+                # No prior NOT award must not become a new award on missing order.
+                # The ordinary winner must still be awarded in this same run.
+                await session.execute(
+                    sa.delete(table).where(
+                        table.c.achievement_rule_id.in_([negated.id, ordinary.id]),
+                        table.c.encounter_id == ids["encounter"],
+                    )
+                )
+                comeback.condition_tree = _leaf("encounter_comeback", min_deficit=2)
+                await session.commit()
+
+                run = await runner.run_evaluation(
+                    session,
+                    ids["workspace"],
+                    EvaluationRunTrigger.parse_complete,
+                    rule_ids=[rule.id for rule in rules],
+                )
+                assert run.status == "partial"
+                assert run.rules_evaluated == 3
+                # Includes id, qualified_at, original run_id, version and evidence.
+                assert await awards(comeback.id, ids["encounter"]) == preserved
+                assert await awards(negated.id, ids["encounter"]) == []
+                ordinary_awards = await awards(ordinary.id, ids["encounter"])
+                assert len(ordinary_awards) == 1
+                assert ordinary_awards[0]["workspace_member_id"] == ids["member_away"]
+                assert ordinary_awards[0]["run_id"] == run.id
+                assert await awards(comeback.id, ids["encounter_hidden"]) == []
+
+                # A later known-order evaluation reconciles the held row normally.
+                await session.execute(
+                    sa.update(models.StatsMatch)
+                    .where(models.StatsMatch.id == ids["match"])
+                    .values(encounter_game_id=ids["game"])
+                )
+                comeback.condition_tree = _leaf("encounter_comeback", min_deficit=100)
+                await session.commit()
+                run = await runner.run_evaluation(
+                    session,
+                    ids["workspace"],
+                    EvaluationRunTrigger.parse_complete,
+                    rule_ids=[comeback.id],
+                )
+                assert run.status == "done"
+                assert await awards(comeback.id, ids["encounter"]) == []
+        finally:
+            await engine.dispose()
+
+    asyncio.run(exercise())
+
+
 def test_weighted_rank_reduction_is_stable_across_scopes_and_join_plans(stats_parity_database):
     """The native arithmetic order comes from immutable observations, not a query plan."""
     from collections import defaultdict

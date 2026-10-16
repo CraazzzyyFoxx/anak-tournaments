@@ -153,6 +153,9 @@ match is a parsed log; captain reports and replay codes are separate game/report
 Other players' heroes are excluded. The first map, a missing previous log, or a response
 without enough position information shows no history rather than falling back to older maps
 or account-wide statistics. Long hero lists scroll within the row.
+Targets are tournament registration IDs: source roster metadata resolves each target's linked
+user, then heroes are read from either observed participation by that user identity. Missing
+roster linkage shows no history; registration/member IDs and display names are never substitutes.
 The board reuses the match-detail cache; room refreshes invalidate parsed match details.
 Displaying history does not change ban eligibility.
 

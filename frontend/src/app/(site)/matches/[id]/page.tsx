@@ -5,6 +5,7 @@ import MatchStatsSection from "@/app/(site)/matches/[id]/components/MatchStatsSe
 import { Card, CardHeader } from "@/components/ui/card";
 import TeamName from "@/components/TeamName";
 import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
+import { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import { getTranslations } from "next-intl/server";
 import { SITE_NAME, SITE_URL } from "@/config/site";
 
@@ -18,12 +19,12 @@ export async function generateMetadata(props: {
   const t = await getTranslations();
 
   const matchTitle = t("matches.meta.matchTitle", {
-    home: match.home_team?.name ?? "—",
-    away: match.away_team?.name ?? "—"
+    home: match.home_participation.name,
+    away: match.away_participation.name
   });
   const matchDescription = t("matches.meta.matchDescription", {
-    home: match.home_team?.name ?? "—",
-    away: match.away_team?.name ?? "—",
+    home: match.home_participation.name,
+    away: match.away_participation.name,
     siteName: SITE_NAME
   });
 
@@ -53,8 +54,6 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   const match = await encounterService.getMatch(params.id);
   const t = await getTranslations();
 
-  const tournamentGrid = match.encounter?.tournament?.division_grid_version ?? null;
-
   const tournament_name = match?.encounter?.tournament.name;
   const stageLabel =
     match?.encounter?.stage_item?.name ??
@@ -79,7 +78,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
             <div className="flex flex-row gap-4">
               <div className="flex flex-col text-right">
                 <TeamName
-                  team={match.home_team}
+                  team={{ name: match.home_participation.name, image_url: match.home_team?.image_url }}
                   size="sm"
                   className="justify-end"
                   nameClassName="leading-7 text-[color:var(--aqt-teal)]"
@@ -93,7 +92,7 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
               </div>
               <div className="flex flex-col text-left">
                 <TeamName
-                  team={match.away_team}
+                  team={{ name: match.away_participation.name, image_url: match.away_team?.image_url }}
                   size="sm"
                   nameClassName="leading-7 text-[color:var(--aqt-rose)]"
                 />
@@ -127,8 +126,12 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
             </div>
           </div>
         </CardHeader>
+        <div className="space-y-2 px-6 pb-6 text-sm text-muted-foreground">
+          {match.map_index == null ? <p>{t("encounters.history.unconfirmed")}</p> : null}
+          <p><RawLogStatus raw_status={match.raw_status} raw_available={match.raw_available} /></p>
+        </div>
       </Card>
-      <MatchStatsSection match={match} tournamentGrid={tournamentGrid} />
+      <MatchStatsSection match={match} />
     </div>
   );
 };

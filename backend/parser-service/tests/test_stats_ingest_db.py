@@ -530,6 +530,140 @@ def test_awaiting_link_is_not_success_and_explicit_game_retry_resolves_ambiguity
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("refusal", ["missing", "conflict", "unverified", "unbound", "shared"])
+def test_historical_retry_and_worker_preserve_observations(stats_parity_database, monkeypatch, refusal):
+    async def run():
+        async with environment(stats_parity_database, monkeypatch) as env:
+            job = await upload(env)
+            assert await process(env, job.id) == STATUS.DONE
+            match = await match_for_game(env)
+            async with env.sf() as session:
+                current = await session.get(models.IngestJob, job.id)
+                current.external_id = f"legacy:log_processing.record:{job.id}"
+                if refusal in {"missing", "conflict", "unverified"}:
+                    current.raw_status = models.RawSourceStatus(refusal)
+                if refusal == "unbound":
+                    await session.execute(
+                        sa.update(models.StatsMatch)
+                        .where(models.StatsMatch.id == match.id)
+                        .values(encounter_game_id=None)
+                    )
+                if refusal == "shared":
+                    session.add(
+                        models.StatsMatch(
+                            workspace_id=env.workspace,
+                            discipline="overwatch",
+                            encounter_id=env.encounter,
+                            encounter_game_id=None,
+                            map_entity_id=env.map,
+                            ingest_job_id=job.id,
+                            revision=7,
+                        )
+                    )
+                await session.commit()
+            before = await snapshot(env, match.id)
+            async with env.sf() as session:
+                with pytest.raises(BaseAPIException):
+                    await log_records_service.retry(session, job.id, workspace_id=env.workspace)
+            assert await snapshot(env, match.id) == before
+            async with env.sf() as session:
+                assert job.id not in await log_records_service.requeue_tournament(session, env.tournament)
+                assert (await session.get(models.IngestJob, job.id)).status == STATUS.DONE
+                # An already queued delivery must enforce the same guard as retry.
+                current = await session.get(models.IngestJob, job.id)
+                await log_records_service.transition(session, current, STATUS.PENDING)
+                await session.commit()
+            assert await process(env, job.id) == STATUS.FAILED
+            assert await snapshot(env, match.id) == before
+            async with env.sf() as session:
+                preserved = await session.get(models.StatsMatch, match.id)
+                assert (preserved.revision, preserved.ingest_job_id) == (1, job.id)
+                count = await session.scalar(
+                    sa.select(sa.func.count())
+                    .select_from(models.StatsMatch)
+                    .where(models.StatsMatch.ingest_job_id == job.id)
+                )
+                assert count == (2 if refusal == "shared" else 1)
+
+    asyncio.run(run())
+
+
+def test_historical_binding_is_reparsed_only_by_its_own_available_source(stats_parity_database, monkeypatch):
+    async def run():
+        async with environment(stats_parity_database, monkeypatch) as env:
+            original = await upload(env)
+            assert await process(env, original.id) == STATUS.DONE
+            match = await match_for_game(env)
+            async with env.sf() as session:
+                job = await session.get(models.IngestJob, original.id)
+                job.external_id = f"legacy:log_processing.record:{job.id}"
+                # Historical hashes keep their exact spelling.
+                job.content_hash = job.content_hash.upper()
+                await session.commit()
+            before = await snapshot(env, match.id)
+            replacement = await upload(env, workshop(eliminations=99))
+            assert await process(env, replacement.id) == STATUS.FAILED
+            assert await snapshot(env, match.id) == before
+            async with env.sf() as session:
+                await log_records_service.retry(session, original.id, workspace_id=env.workspace)
+            assert await process(env, original.id) == STATUS.DONE
+            preserved = await match_for_game(env)
+            assert (preserved.id, preserved.encounter_id, preserved.revision, preserved.ingest_job_id) == (
+                match.id,
+                env.encounter,
+                2,
+                original.id,
+            )
+            async with env.sf() as session:
+                assert (await session.get(models.IngestJob, original.id)).content_hash == original.content_hash.upper()
+
+    asyncio.run(run())
+
+
+def test_history_reports_real_owner_binding_and_raw_state_for_historical_reference(stats_parity_database, monkeypatch):
+    from src.schemas.admin.logs import LogRecordRead
+
+    async def run():
+        async with environment(stats_parity_database, monkeypatch) as env:
+            uploaded = await upload(env)
+            assert await process(env, uploaded.id) == STATUS.DONE
+            match = await match_for_game(env)
+            async with env.sf() as session:
+                job = await session.get(models.IngestJob, uploaded.id)
+                job.source_kind = "historical_reference"
+                job.external_id = f"legacy:matches.match:{match.id}"
+                job.raw_status = models.RawSourceStatus.MISSING
+                job.content_hash = None
+                job.uploader_user_id = None
+                job.attempts = 0
+                job.started_at = job.finished_at = None
+                job.hint_encounter_id = None
+                job.hint_encounter_game_id = env.game
+                await session.execute(
+                    sa.update(models.StatsMatch).where(models.StatsMatch.id == match.id).values(encounter_game_id=None)
+                )
+                await session.commit()
+                rows = (
+                    await session.execute(
+                        admin_reads.history_query().where(
+                            models.IngestJob.id == job.id,
+                            *admin_reads.history_scope_conditions(
+                                workspace_id=env.workspace, tournament_id=env.tournament, encounter_id=env.encounter
+                            ),
+                        )
+                    )
+                ).all()
+                assert len(rows) == 1
+                item = LogRecordRead.model_validate(admin_reads._record_to_dict(*rows[0]))
+                assert item.source == "historical_reference"
+                assert item.raw_status == models.RawSourceStatus.MISSING and not item.raw_available
+                assert (item.attached_encounter_id, item.attached_encounter_game_id) == (env.encounter, None)
+                assert item.attempts == 0 and item.uploader_name is None
+                assert item.started_at is None and item.finished_at is None
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("failure", ["fact_insert", "job_success"])
 def test_reparse_failure_rolls_back_observations_success_outbox_and_evidence(
     stats_parity_database, monkeypatch, failure

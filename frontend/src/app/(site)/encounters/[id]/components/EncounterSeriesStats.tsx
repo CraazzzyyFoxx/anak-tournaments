@@ -7,13 +7,7 @@ import { useFormatter } from "@/lib/datetime/client";
 
 import { cn } from "@/lib/utils";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import {
-  RosterPlayer,
-  RosterRank,
-  RosterRole,
-  isReplaced,
-  rosterSlots
-} from "@/components/TournamentTeamCard";
+import PlayerName from "@/components/PlayerName";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
 import TeamName from "@/components/TeamName";
 import { HeroStrip } from "@/components/hero/HeroImage";
@@ -21,9 +15,7 @@ import MatchTeamComparison from "@/app/(site)/matches/[id]/components/MatchTeamC
 import MatchLeaders from "@/app/(site)/matches/[id]/components/MatchLeaders";
 import { Skeleton } from "@/components/ui/skeleton";
 import encounterService from "@/services/encounter.service";
-import type { Encounter, MatchWithStats } from "@/types/encounter.types";
-import type { PlayerWithStats } from "@/types/team.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { MatchWithStats } from "@/types/encounter.types";
 import { LogStatsName } from "@/types/stats.types";
 import {
   COLUMN_PRESETS,
@@ -31,7 +23,8 @@ import {
   formatStat,
   playerStat,
   columnMaxima,
-  GROUP_COLOR
+  GROUP_COLOR,
+  type MatchStatsPlayer
 } from "@/lib/match-stats";
 import { aggregateSeriesStats, type SeriesAggregate } from "@/lib/encounter/detail";
 import styles from "@/components/match/EncounterDetail.module.css";
@@ -47,29 +40,12 @@ const MatchContributionChart = dynamic(
 
 interface EncounterSeriesStatsProps {
   matchIds: number[];
-  teams: Encounter["teams"];
-  tournamentGrid?: DivisionGridVersion | null;
-  /** `overview`: the teams compared and the leaders. `players`: every player's totals and contribution. */
+  /** `overview`: compare observed sides; `players`: totals grouped by participation. */
   view: "overview" | "players";
 }
 
-/**
- * Series-wide statistics: the whole encounter as one scoreboard.
- *
- * Nothing like this existed before — stats were reachable only one map at a
- * time, inside a modal, so "who carried the series" was a question the page
- * could not answer. Each map is fetched under the same `["match-detail", id]`
- * key the per-map dialogs use, so opening a map afterwards costs nothing.
- *
- * The panels are the existing per-map components fed synthetic whole-series
- * teams (see `aggregateSeriesStats`), rather than a parallel set of charts
- * that could drift from them. Both tabs read the same per-map queries, so
- * switching tabs refetches nothing.
- */
 export default function EncounterSeriesStats({
   matchIds,
-  teams,
-  tournamentGrid,
   view
 }: Readonly<EncounterSeriesStatsProps>) {
   const t = useTranslations();
@@ -91,7 +67,7 @@ export default function EncounterSeriesStats({
   // Folded on every render rather than memoized: `useQueries` hands back a new
   // array each time, so a manual `useMemo` could not be keyed on it without
   // defeating the React Compiler — and the fold is a few thousand additions.
-  const aggregate = loaded.length > 0 ? aggregateSeriesStats(loaded, { teams }) : null;
+  const aggregate = aggregateSeriesStats(loaded);
 
   if (failedAll) {
     return (
@@ -107,6 +83,8 @@ export default function EncounterSeriesStats({
   }
 
   const partial = loaded.length < matchIds.length;
+  const [home, away] = aggregate.participations;
+  const isDuel = aggregate.participations.length === 2;
 
   return (
     <div className={styles.statsStack}>
@@ -119,24 +97,22 @@ export default function EncounterSeriesStats({
         </output>
       ) : null}
 
-      {view === "overview" ? (
+      {view === "overview" && isDuel ? (
         <div className={styles.statsGrid}>
-          <MatchTeamComparison home={aggregate.one} away={aggregate.two} round={aggregate.round} />
+          <MatchTeamComparison home={home} away={away} round={aggregate.round} />
           <MatchLeaders
-            home={aggregate.one}
-            away={aggregate.two}
+            home={home}
+            away={away}
             round={aggregate.round}
             gridClassName="sm:grid-cols-3 xl:grid-cols-2"
           />
         </div>
       ) : (
         <>
-          <SeriesPlayerTable aggregate={aggregate} tournamentGrid={tournamentGrid} />
-          <MatchContributionChart
-            home={aggregate.one}
-            away={aggregate.two}
-            round={aggregate.round}
-          />
+          <SeriesPlayerTable aggregate={aggregate} />
+          {isDuel ? (
+            <MatchContributionChart home={home} away={away} round={aggregate.round} />
+          ) : null}
         </>
       )}
     </div>
@@ -148,15 +124,18 @@ export default function EncounterSeriesStats({
  * per-map tables so a reader moving between the two compares like with like.
  */
 function SeriesPlayerTable({
-  aggregate,
-  tournamentGrid
+  aggregate
 }: Readonly<{
   aggregate: SeriesAggregate;
-  tournamentGrid?: DivisionGridVersion | null;
 }>) {
   const t = useTranslations();
   const columns = COLUMN_PRESETS.overview;
-  const maxima = columnMaxima(aggregate.one, aggregate.two, aggregate.round, columns);
+  const maxima = columnMaxima(
+    { players: aggregate.participations.flatMap((participation) => participation.players) },
+    null,
+    aggregate.round,
+    columns
+  );
 
   return (
     <div className={styles.card}>
@@ -174,7 +153,6 @@ function SeriesPlayerTable({
           <thead>
             <tr>
               <th scope="col">{t("encounters.team.colName")}</th>
-              <th scope="col">{t("teams.roster.rank")}</th>
               <th scope="col">{t("common.heroes")}</th>
               <th scope="col" title={t("encounters.detail.colMapsTitle")}>
                 {t("encounters.detail.colMaps")}
@@ -195,32 +173,30 @@ function SeriesPlayerTable({
               })}
             </tr>
           </thead>
-          {[
-            { slot: 1 as const, team: aggregate.one },
-            { slot: 2 as const, team: aggregate.two }
-          ].map(({ slot: seat, team }) => (
-            <tbody key={seat} className={seat === 1 ? styles.slotOne : styles.slotTwo}>
+          {aggregate.participations.map((participation) => (
+            <tbody key={participation.id}>
               <tr className={styles.seriesSideHead}>
-                <td colSpan={5 + columns.length}>
-                  <TeamName team={team} size="xs" />
+                <td colSpan={4 + columns.length}>
+                  <TeamName
+                    team={{ name: participation.name, image_url: participation.team?.image_url }}
+                    size="xs"
+                  />
+                  <span className={styles.cardSub}>
+                    {" · "}{t("encounters.history.participation", { id: participation.id })}
+                    {!participation.active ? ` · ${t("encounters.history.retiredParticipation")}` : null}
+                  </span>
                 </td>
               </tr>
-              {rosterSlots(team.players).flatMap((slot) =>
-                slot.map((player, index) => (
-                  <SeriesPlayerRow
-                    key={player.id}
-                    player={player}
-                    slot={slot}
-                    index={index}
-                    captainUserId={team.captain_id}
-                    round={aggregate.round}
-                    columns={columns}
-                    maxima={maxima}
-                    mapsPlayed={aggregate.meta[player.id]?.mapsPlayed ?? 0}
-                    tournamentGrid={tournamentGrid}
-                  />
-                ))
-              )}
+              {participation.players.map((player) => (
+                <SeriesPlayerRow
+                  key={player.workspace_member_id}
+                  player={player}
+                  round={aggregate.round}
+                  columns={columns}
+                  maxima={maxima}
+                  mapsPlayed={participation.meta[player.workspace_member_id]?.mapsPlayed ?? 0}
+                />
+              ))}
             </tbody>
           ))}
         </table>
@@ -231,48 +207,28 @@ function SeriesPlayerTable({
 
 function SeriesPlayerRow({
   player,
-  slot,
-  index,
-  captainUserId,
   round,
   columns,
   maxima,
-  mapsPlayed,
-  tournamentGrid
+  mapsPlayed
 }: Readonly<{
-  player: PlayerWithStats;
-  /** The player's roster slot (them plus their subs), for the substitution branch. */
-  slot: PlayerWithStats[];
-  index: number;
-  captainUserId: number;
+  player: MatchStatsPlayer;
   round: number;
   columns: LogStatsName[];
   maxima: Record<string, number>;
   mapsPlayed: number;
-  tournamentGrid?: DivisionGridVersion | null;
 }>) {
   const heroes = player.heroes?.[round] ?? [];
   const placement = player.stats?.[round]?.[LogStatsName.Performance];
-  const position = { slot, index };
-  const dimmed = isReplaced(position);
 
   return (
     <tr>
       <td className={styles.seriesPlayerCell}>
-        <span className={styles.seriesPlayer}>
-          <RosterRole role={player.role} position={position} inline />
-          <RosterPlayer player={player} captainUserId={captainUserId} dimmed={dimmed} />
-        </span>
-      </td>
-      <td>
-        <RosterRank
-          division={player.division}
-          rank={player.rank}
-          tournamentGrid={tournamentGrid}
-          discipline="overwatch"
-          dimmed={dimmed}
-          className="justify-end"
-        />
+        {player.user_id != null ? (
+          <PlayerName player={player} includeSpecialization={false} />
+        ) : (
+          <span title={player.name}>{player.name}</span>
+        )}
       </td>
       <td>
         <span className={styles.rosterCell}>

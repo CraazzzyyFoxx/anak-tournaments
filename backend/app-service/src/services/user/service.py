@@ -1493,6 +1493,7 @@ class UserService:
         encounter_ids = [encounter.id for encounter in encounters]
         contexts = await self.encounters.get_encounter_contexts(session, encounter_ids)
         matches: dict[int, list[schemas.MatchReadWithUserStats]] = {encounter_id: [] for encounter_id in encounter_ids}
+        seen_matches: set[int] = set()
         for (
             encounter_id,
             match,
@@ -1503,6 +1504,11 @@ class UserService:
             overperformance_score,
             overperf_pos,
         ) in match_rows:
+            # Historical seats can qualify the same observation more than once.
+            match_id = match.match.id
+            if match_id in seen_matches:
+                continue
+            seen_matches.add(match_id)
             matches[encounter_id].append(
                 _mappers.to_match_with_user_stats(
                     match,

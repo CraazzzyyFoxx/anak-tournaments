@@ -22,6 +22,26 @@ def compute_content_hash(raw_bytes: bytes) -> str:
     return hashlib.sha256(raw_bytes).hexdigest()
 
 
+async def reparse_observation(session: AsyncSession, job: models.IngestJob) -> models.StatsMatch | None:
+    """Refuse uncertain provenance before retry or any observation replacement."""
+    if not job.raw_available:
+        raise BaseAPIException(status_code=409, detail=f"stats_raw_unavailable:{job.raw_status}")
+    linked = list(
+        await session.scalars(sa.select(models.StatsMatch).where(models.StatsMatch.ingest_job_id == job.id).limit(2))
+    )
+    if len(linked) > 1:
+        raise BaseAPIException(status_code=409, detail="stats_reparse_shared_observations")
+    observation = linked[0] if linked else None
+    if observation is not None:
+        if observation.encounter_game_id is None:
+            raise BaseAPIException(status_code=409, detail="stats_reparse_unbound_observation")
+        if observation.workspace_id != job.workspace_id or observation.discipline != job.discipline:
+            raise BaseAPIException(status_code=409, detail="stats_reparse_owner_conflict")
+    elif job.source_kind == "historical_reference":
+        raise BaseAPIException(status_code=409, detail="stats_reparse_unbound_observation")
+    return observation
+
+
 class LogRecordsService:
     def __init__(self, *, repo: IngestJobRepository = IngestJobRepository()) -> None:
         self._repo = repo
@@ -137,6 +157,7 @@ class LogRecordsService:
             raise BaseAPIException(status_code=404, detail="Ingest job not found")
         if job.status == models.IngestJobStatus.PROCESSING:
             raise BaseAPIException(status_code=409, detail="Ingest job is already processing")
+        linked = await reparse_observation(session, job)
         next_encounter = encounter_id if encounter_id is not None else job.hint_encounter_id
         next_game = (
             encounter_game_id
@@ -155,7 +176,7 @@ class LogRecordsService:
                 raise BaseAPIException(status_code=422, detail="stats_upload_hint_conflict")
             next_encounter = game.encounter_id
         if (next_encounter, next_game) != (job.hint_encounter_id, job.hint_encounter_game_id):
-            if await session.scalar(sa.select(models.StatsMatch.id).where(models.StatsMatch.ingest_job_id == job.id)):
+            if linked is not None:
                 raise BaseAPIException(status_code=409, detail="A linked log cannot be re-attached")
             encounter = await EncounterRepository().get(session, next_encounter)
             if (
@@ -209,6 +230,10 @@ class LogRecordsService:
             for job in jobs:
                 cursor = job.id
                 if job.status == models.IngestJobStatus.PROCESSING:
+                    continue
+                try:
+                    await reparse_observation(session, job)
+                except BaseAPIException:
                     continue
                 await self.transition(session, job, models.IngestJobStatus.PENDING, reset_attempts=True)
                 ids.append(job.id)

@@ -124,6 +124,7 @@ async def _seed(session: Any) -> tuple[int, int]:
             StatsMatch(
                 workspace_id=workspace.id,
                 discipline="overwatch",
+                encounter_id=encounter.id,
                 encounter_game_id=game.id,
                 duration_s=seconds,
                 map_entity_id=map_id,

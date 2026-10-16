@@ -135,9 +135,15 @@ def register(broker: Any, logger: Any) -> None:
     async def _match_log(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             match_id = c.require_id(data)
-            raw_ref, filename, tournament_id = await workspace_binary.resolve_match_log_ref(session, match_id)
+            raw_ref, filename, tournament_id, raw_status, content_hash = await workspace_binary.resolve_match_log_ref(
+                session, match_id
+            )
             await c.gate_tournament(session, data, tournament_id)
-            data_bytes = await workspace_binary.fetch_log_bytes(raw_ref)
+            if not filename or ".." in filename:
+                raise HTTPException(status_code=404, detail="No log available for this match")
+            data_bytes = await workspace_binary.fetch_log_bytes(
+                raw_ref, raw_status=raw_status, content_hash=content_hash
+            )
             return {
                 "content_b64": base64.b64encode(data_bytes).decode("ascii"),
                 "media_type": "application/octet-stream",

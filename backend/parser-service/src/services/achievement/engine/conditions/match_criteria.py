@@ -130,7 +130,7 @@ async def _execute_match_field(
             models.StatsMatchTeam,
             sa.and_(
                 models.StatsMatchTeam.match_id == match.c.id,
-                models.StatsMatchTeam.encounter_game_id == match.c.encounter_game_id,
+                models.StatsMatchTeam.encounter_id == match.c.encounter_id,
             ),
         )
         .join(

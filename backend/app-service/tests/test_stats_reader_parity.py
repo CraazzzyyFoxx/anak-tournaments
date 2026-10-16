@@ -62,6 +62,9 @@ def _json(value: Any) -> Any:
             # Retain every team's identity, score and optional expanded metadata.
             result.pop("code", None)
             result.pop("source", None)
+            # Raw capability is new provenance, not a change to frozen numerical facts.
+            result.pop("raw_status", None)
+            result.pop("raw_available", None)
             score = result.pop("score")
             participants = []
             for side in ("home", "away"):
@@ -951,6 +954,94 @@ def test_native_match_expansions_keep_inactive_game_participants(
             assert profile.map_index == 2
             assert (achievement.home_team.id, achievement.away_team.id) == (ids["team_home"], ids["team_away"])
             assert (achievement.score.home, achievement.score.away) == (4, 3)
+            await session.rollback()
+
+    asyncio.run(run())
+
+
+def test_unbound_history_survives_retired_seats_and_roster_changes(stats_parity_database) -> None:
+    """A missing game or today's roster must not remove observed dossier facts."""
+    from shared.models import EncounterTeam, IngestJob, Player, StatsMatch
+
+    url, ids = stats_parity_database
+
+    async def run() -> None:
+        configure_test_cache()
+        async with _database_session(url) as session:
+            before = _hero_stat_rows(
+                await users.profile.get_statistics_by_heroes(session, ids["player"], workspace_id=ids["workspace"])
+            )
+            await session.execute(
+                sa.update(StatsMatch)
+                .where(StatsMatch.id == ids["match_reversed"])
+                .values(encounter_game_id=None, source_map_index=99)
+            )
+            assert (
+                _hero_stat_rows(
+                    await users.profile.get_statistics_by_heroes(session, ids["player"], workspace_id=ids["workspace"])
+                )
+                == before
+            )
+            job_id = await session.scalar(
+                sa.select(StatsMatch.ingest_job_id).where(StatsMatch.id == ids["match_reversed"])
+            )
+            await session.execute(sa.update(IngestJob).where(IngestJob.id == job_id).values(raw_status="missing"))
+            await session.execute(
+                sa.update(EncounterTeam)
+                .where(EncounterTeam.id.in_([ids["encounter_team_home"], ids["encounter_team_away"]]))
+                .values(active=False)
+            )
+            await session.execute(
+                sa.update(Player)
+                .where(
+                    Player.workspace_member.has(models.WorkspaceMember.player_id == ids["player"]),
+                    Player.tournament_id == ids["tournament"],
+                )
+                .values(is_substitution=True)
+            )
+            dossier = await _uncached(users.get_tournament_encounters, session, ids["player"], ids["tournament"])
+            history = next(encounter for encounter in dossier if encounter.id == ids["encounter"])
+            assert len({match.id for match in history.matches}) == len(history.matches)
+            match = next(match for match in history.matches if match.id == ids["match_reversed"])
+            assert match.encounter_id == ids["encounter"]
+            assert match.map_index is None  # source_map_index is never official order.
+            assert (match.home_team_id, match.away_team_id) == (ids["team_home"], ids["team_away"])
+            assert (match.score.home, match.score.away) == (4, 3)
+            assert history.teams == []  # Historical observations do not resurrect live seats.
+            assert match.raw_status == "missing"
+            assert match.raw_available is False
+            earned = await achievements.get_user_achievements(
+                session, ids["player_away"], ["matches", "tournaments"], workspace_id=ids["workspace"]
+            )
+            link = next(match for match in earned[0].matches if match.id == ids["match_reversed"])
+            assert link.encounter_id == ids["encounter"]
+            assert (link.home_team.id, link.away_team.id) == (ids["team_home"], ids["team_away"])
+            assert (link.score.home, link.score.away) == (4, 3)
+            page = await _uncached(
+                users.get_encounters_by_user,
+                session,
+                ids["player"],
+                pagination.PaginationSortParams(per_page=100, sort="played_at"),
+                workspace_id=ids["workspace"],
+            )
+            historical = [encounter for encounter in page.results if encounter.id == ids["encounter"]]
+            assert len(historical) == 1
+            assert ids["match_reversed"] in {match.id for match in historical[0].matches}
+            foreign, _ = await users.encounters.get_user_encounters_paginated(
+                session,
+                ids["player"],
+                pagination.PaginationSortParams(per_page=100, sort="played_at"),
+                workspace_id=ids["workspace_other"],
+            )
+            assert all(encounter.id != ids["encounter"] for encounter, *_ in foreign)
+            wins, _ = await users.encounters.get_user_encounters_paginated(
+                session,
+                ids["player"],
+                pagination.PaginationSortParams(per_page=100, sort="played_at"),
+                workspace_id=ids["workspace"],
+                result="win",
+            )
+            assert all(encounter.id != ids["encounter"] for encounter, *_ in wins)
             await session.rollback()
 
     asyncio.run(run())

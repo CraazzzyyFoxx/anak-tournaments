@@ -12,7 +12,7 @@ from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from shared import models
 from shared.repository.stats_queries import match_context, team_scores
@@ -21,9 +21,9 @@ __all__ = ("MatchReadContext", "duel_matches", "get_match_reads")
 
 
 def duel_matches(*, discipline: str) -> sa.Subquery:
-    """Native headers and observed scores in the bound game's historical slots."""
+    """Native headers and observed scores in the owner's historical participation slots."""
     context = match_context(discipline=discipline)
-    mt, gt, et = models.StatsMatchTeam, models.EncounterGameTeam, models.EncounterTeam
+    mt, et = models.StatsMatchTeam, models.EncounterTeam
     participants = (
         sa.select(
             mt.match_id,
@@ -33,9 +33,8 @@ def duel_matches(*, discipline: str) -> sa.Subquery:
             sa.func.max(et.team_id).filter(et.slot == 2).label("away_tournament_team_id"),
         )
         .select_from(mt)
-        .join(context, sa.and_(context.c.id == mt.match_id, context.c.encounter_game_id == mt.encounter_game_id))
-        .join(gt, sa.and_(gt.game_id == mt.encounter_game_id, gt.encounter_team_id == mt.encounter_team_id))
-        .join(et, sa.and_(et.id == gt.encounter_team_id, et.encounter_id == context.c.encounter_id))
+        .join(context, sa.and_(context.c.id == mt.match_id, context.c.encounter_id == mt.encounter_id))
+        .join(et, sa.and_(et.id == mt.encounter_team_id, et.encounter_id == mt.encounter_id))
         .group_by(mt.match_id)
         .having(sa.func.count() == 2, sa.func.min(et.slot) == 1, sa.func.max(et.slot) == 2)
         .subquery()
@@ -62,14 +61,6 @@ def duel_matches(*, discipline: str) -> sa.Subquery:
             away,
             sa.and_(away.c.match_id == context.c.id, away.c.encounter_team_id == participants.c.away_encounter_team_id),
         )
-        .where(
-            sa.select(sa.func.count())
-            .select_from(gt)
-            .where(gt.game_id == context.c.encounter_game_id)
-            .correlate(context)
-            .scalar_subquery()
-            == 2
-        )
         .subquery()
     )
 
@@ -77,12 +68,12 @@ def duel_matches(*, discipline: str) -> sa.Subquery:
 @dataclass(frozen=True, slots=True)
 class MatchReadContext:
     match: models.StatsMatch
-    game: models.EncounterGame
+    game: models.EncounterGame | None
     encounter: models.Encounter
     map: models.CatalogEntity
     job: models.IngestJob | None
-    home_participant_id: int
-    away_participant_id: int
+    home_participation: models.EncounterTeam
+    away_participation: models.EncounterTeam
     home_team: models.Team | None
     away_team: models.Team | None
     home_score: int
@@ -109,6 +100,8 @@ async def get_match_reads(
         models.CatalogEntity,
         models.IngestJob,
     )
+    home = aliased(models.EncounterTeam, name="home_observed_participation")
+    away = aliased(models.EncounterTeam, name="away_observed_participation")
     rows = (
         (
             await session.execute(
@@ -118,17 +111,17 @@ async def get_match_reads(
                     e,
                     entity,
                     job,
-                    d.c.home_encounter_team_id,
-                    d.c.away_encounter_team_id,
-                    d.c.home_tournament_team_id,
-                    d.c.away_tournament_team_id,
+                    home,
+                    away,
                     d.c.home_score,
                     d.c.away_score,
                 )
                 .select_from(d)
                 .join(m, m.id == d.c.id)
-                .join(g, g.id == d.c.encounter_game_id)
+                .outerjoin(g, g.id == d.c.encounter_game_id)
                 .join(e, e.id == d.c.encounter_id)
+                .join(home, home.id == d.c.home_encounter_team_id)
+                .join(away, away.id == d.c.away_encounter_team_id)
                 .join(
                     entity,
                     sa.and_(entity.id == m.map_entity_id, entity.discipline == m.discipline, entity.kind == "map"),
@@ -146,7 +139,7 @@ async def get_match_reads(
         .unique()
         .all()
     )
-    team_ids = {team_id for row in rows for team_id in (row[7], row[8]) if team_id is not None}
+    team_ids = {seat.team_id for row in rows for seat in (row[5], row[6]) if seat.team_id is not None}
     teams = (
         {
             team.id: team
@@ -164,10 +157,8 @@ async def get_match_reads(
         encounter,
         map_entity,
         ingest_job,
-        home_id,
-        away_id,
-        home_team_id,
-        away_team_id,
+        home_participation,
+        away_participation,
         home_score,
         away_score,
     ) in rows:
@@ -185,10 +176,10 @@ async def get_match_reads(
             encounter=encounter,
             map=map_entity,
             job=ingest_job,
-            home_participant_id=home_id,
-            away_participant_id=away_id,
-            home_team=teams.get(home_team_id),
-            away_team=teams.get(away_team_id),
+            home_participation=home_participation,
+            away_participation=away_participation,
+            home_team=teams.get(home_participation.team_id),
+            away_team=teams.get(away_participation.team_id),
             home_score=int(home_score),
             away_score=int(away_score),
             display_filename=ingest_job.filename if ingest_job is not None else None,

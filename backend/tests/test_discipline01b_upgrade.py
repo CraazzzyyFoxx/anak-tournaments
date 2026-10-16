@@ -882,6 +882,42 @@ def test_an_encounter_roster_holds_one_leaf_per_member_and_keeps_the_legacy_rows
     )
 
 
+@pytest.mark.parametrize("role", ("damage", "support"))
+def test_flex_marker_preserves_the_known_roster_role(legacy_template, role) -> None:
+    member = legacy_template["ids"]["tm_plain"]
+    _recreate(REJECTED_DB, TEMPLATE_DB)
+    with _connect(REJECTED_DB) as conn:
+        conn.execute("DELETE FROM encounter.team_member_role WHERE team_member_id=%s", (member,))
+        for value in (role, "flex"):
+            conn.execute(
+                "INSERT INTO encounter.team_member_role(team_member_id,dimension,role) VALUES(%s,'player_role',%s)",
+                (member, value),
+            )
+        original = _rows(
+            conn,
+            "SELECT team_member_id,dimension,role FROM encounter.team_member_role WHERE team_member_id=%s ORDER BY role",
+            (member,),
+        )
+    done = _alembic(REJECTED_DB, TARGET)
+    assert done.returncode == 0, done.stderr[-3000:]
+    with _connect(REJECTED_DB) as conn:
+        assert _rows(
+            conn,
+            "SELECT r.code FROM encounter.team_member_role a JOIN catalog.role r ON r.id=a.role_id"
+            " WHERE a.team_member_id=%s",
+            (member,),
+        ) == [(role,)]
+        assert (
+            _rows(
+                conn,
+                "SELECT team_member_id,dimension,role FROM encounter.team_member_role_legacy"
+                " WHERE team_member_id=%s ORDER BY role",
+                (member,),
+            )
+            == original
+        )
+
+
 def test_a_roster_role_outside_player_role_stops_the_revision(legacy_template) -> None:
     done = _rejected(
         "INSERT INTO encounter.team_member_role (team_member_id, dimension, role) VALUES (%s, 'position', 'mid')",

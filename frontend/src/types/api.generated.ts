@@ -12593,7 +12593,7 @@ export interface components {
             /** Map Id */
             map_id: number;
             /** Map Index */
-            map_index: number;
+            map_index: number | null;
             /**
              * Overperformance Badge
              * @default false
@@ -12609,6 +12609,9 @@ export interface components {
              * @default null
              */
             performance: number | null;
+            /** Raw Available */
+            raw_available: boolean;
+            raw_status: components["schemas"]["app.RawSourceStatus"] | null;
             score: components["schemas"]["app.Score"];
             /** Time */
             time: number | null;
@@ -12933,6 +12936,11 @@ export interface components {
             /** Value */
             value: number;
         };
+        /**
+         * RawSourceStatus
+         * @enum {string}
+         */
+        "app.RawSourceStatus": AppRawSourceStatus;
         /**
          * RoleRef
          * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
@@ -16987,7 +16995,7 @@ export interface components {
         };
         /**
          * EncounterTeamRead
-         * @description One live seat of an encounter (``encounter.team``), in slot order.
+         * @description One live or historical participation of an encounter (``encounter.team``).
          *
          *     ``id`` is the participation id every write addresses -- a claim, a report
          *     and an admin result all name it, never a slot and never a side. ``team_id``
@@ -17280,8 +17288,91 @@ export interface components {
             /** Match Id */
             match_id: number;
         };
+        /** MatchObservedHeroRead */
+        "tournament.MatchObservedHeroRead": {
+            /** Color */
+            color: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /** Image Path */
+            image_path: string;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /** Type */
+            type: string;
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * MatchObservedPlayerRead
+         * @description A parsed identity, independent of a current tournament or encounter roster.
+         */
+        "tournament.MatchObservedPlayerRead": {
+            /** Heroes */
+            heroes: {
+                [key: string]: components["schemas"]["tournament.MatchObservedHeroRead"][];
+            };
+            /** Name */
+            name: string;
+            /** Stats */
+            stats: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            /** User Id */
+            user_id: number | null;
+            /** Workspace Member Id */
+            workspace_member_id: number;
+        };
+        /** MatchParticipationWithStats */
+        "tournament.MatchParticipationWithStats": {
+            /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /** Players */
+            players: components["schemas"]["tournament.MatchObservedPlayerRead"][];
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /**
+             * Seed
+             * @default null
+             */
+            seed: number | null;
+            /** Slot */
+            slot: number;
+            /** @default null */
+            team: components["schemas"]["tournament.TeamRead"] | null;
+            /**
+             * Team Id
+             * @default null
+             */
+            team_id: number | null;
+        };
         /** MatchRead */
         "tournament.MatchRead": {
+            away_participation: components["schemas"]["tournament.EncounterTeamRead"];
             away_team: components["schemas"]["tournament.TeamRead"] | null;
             /**
              * Away Team Id
@@ -17291,6 +17382,7 @@ export interface components {
             encounter: components["schemas"]["tournament.EncounterRead"] | null;
             /** Encounter Id */
             encounter_id: number;
+            home_participation: components["schemas"]["tournament.EncounterTeamRead"];
             home_team: components["schemas"]["tournament.TeamRead"] | null;
             /**
              * Home Team Id
@@ -17305,14 +17397,18 @@ export interface components {
             /** Map Id */
             map_id: number;
             /** Map Index */
-            map_index: number;
+            map_index: number | null;
+            /** Raw Available */
+            raw_available: boolean;
+            raw_status: components["schemas"]["tournament.RawSourceStatus"] | null;
             score: components["schemas"]["tournament.Score"];
             /** Time */
             time: number | null;
         };
         /** MatchReadWithStats */
         "tournament.MatchReadWithStats": {
-            away_team: components["schemas"]["tournament.TeamWithMatchStats"] | null;
+            away_participation: components["schemas"]["tournament.MatchParticipationWithStats"];
+            away_team: components["schemas"]["tournament.TeamRead"] | null;
             /**
              * Away Team Id
              * @default null
@@ -17321,7 +17417,8 @@ export interface components {
             encounter: components["schemas"]["tournament.EncounterRead"] | null;
             /** Encounter Id */
             encounter_id: number;
-            home_team: components["schemas"]["tournament.TeamWithMatchStats"] | null;
+            home_participation: components["schemas"]["tournament.MatchParticipationWithStats"];
+            home_team: components["schemas"]["tournament.TeamRead"] | null;
             /**
              * Home Team Id
              * @default null
@@ -17335,7 +17432,10 @@ export interface components {
             /** Map Id */
             map_id: number;
             /** Map Index */
-            map_index: number;
+            map_index: number | null;
+            /** Raw Available */
+            raw_available: boolean;
+            raw_status: components["schemas"]["tournament.RawSourceStatus"] | null;
             /** Rounds */
             rounds: number;
             score: components["schemas"]["tournament.Score"];
@@ -17520,46 +17620,11 @@ export interface components {
             /** User Id */
             user_id: number;
         };
-        /** PlayerWithMatchStats */
-        "tournament.PlayerWithMatchStats": {
-            /** Division */
-            division: number;
-            /** Heroes */
-            heroes: {
-                [key: string]: components["schemas"]["tournament.HeroRead"][];
-            };
-            /** Id */
-            id: number;
-            /** Is Newcomer */
-            is_newcomer: boolean;
-            /** Is Newcomer Role */
-            is_newcomer_role: boolean;
-            /** Is Substitution */
-            is_substitution: boolean;
-            /** Name */
-            name: string;
-            /** Rank */
-            rank: number;
-            /** Related Player Id */
-            related_player_id: number | null;
-            /** @default null */
-            role: components["schemas"]["tournament.RoleRef"] | null;
-            /** Stats */
-            stats: {
-                [key: string]: {
-                    [key: string]: number;
-                };
-            };
-            team: components["schemas"]["tournament.TeamRead"] | null;
-            /** Team Id */
-            team_id: number;
-            tournament: components["schemas"]["tournament.TournamentRead"] | null;
-            /** Tournament Id */
-            tournament_id: number;
-            user: components["schemas"]["tournament.UserRead"] | null;
-            /** User Id */
-            user_id: number;
-        };
+        /**
+         * RawSourceStatus
+         * @enum {string}
+         */
+        "tournament.RawSourceStatus": TournamentRawSourceStatus;
         /** RegistrationFreeAgentListResponse */
         "tournament.RegistrationFreeAgentListResponse": {
             /** Items */
@@ -19149,33 +19214,6 @@ export interface components {
              * @default null
              */
             wins: number | null;
-        };
-        /** TeamWithMatchStats */
-        "tournament.TeamWithMatchStats": {
-            /** Avg Sr */
-            avg_sr: number;
-            captain: components["schemas"]["tournament.UserRead"] | null;
-            /** Captain Id */
-            captain_id: number | null;
-            group: components["schemas"]["tournament.TeamGroupRead"] | null;
-            /** Id */
-            id: number;
-            /**
-             * Image Url
-             * @default null
-             */
-            image_url: string | null;
-            /** Name */
-            name: string;
-            /** Placement */
-            placement: number | null;
-            /** Players */
-            players: components["schemas"]["tournament.PlayerWithMatchStats"][];
-            /** Total Sr */
-            total_sr: number;
-            tournament: components["schemas"]["tournament.TournamentRead"] | null;
-            /** Tournament Id */
-            tournament_id: number;
         };
         /**
          * TournamentFacets
@@ -22308,6 +22346,9 @@ export interface components {
             finished_at: string | null;
             /** Id */
             id: number;
+            /** Raw Available */
+            raw_available: boolean;
+            raw_status: components["schemas"]["parser.RawSourceStatus"];
             /** Source */
             source: string;
             /** Started At */
@@ -22548,6 +22589,11 @@ export interface components {
              */
             rate_limited: number;
         };
+        /**
+         * RawSourceStatus
+         * @enum {string}
+         */
+        "parser.RawSourceStatus": ParserRawSourceStatus;
         /** ReenableDisabledRequest */
         "parser.ReenableDisabledRequest": {
             /**
@@ -73275,6 +73321,12 @@ export enum AppLogStatsName {
     impact_rank = "impact_rank",
     overperformance_score = "overperformance_score"
 }
+export enum AppRawSourceStatus {
+    available = "available",
+    missing = "missing",
+    conflict = "conflict",
+    unverified = "unverified"
+}
 export enum AppSortOrder {
     asc = "asc",
     desc = "desc"
@@ -73522,6 +73574,12 @@ export enum TournamentPickBanKind {
     map = "map",
     hero = "hero"
 }
+export enum TournamentRawSourceStatus {
+    available = "available",
+    missing = "missing",
+    conflict = "conflict",
+    unverified = "unverified"
+}
 export enum TournamentRequirementVerdictReadStage {
     registration = "registration",
     check_in = "check_in"
@@ -73702,6 +73760,12 @@ export enum BalancerWorkspaceRankerReadVariant {
 export enum BalancerWorkspaceRankerUpsertVariant {
     reference = "reference",
     corrected = "corrected"
+}
+export enum ParserRawSourceStatus {
+    available = "available",
+    missing = "missing",
+    conflict = "conflict",
+    unverified = "unverified"
 }
 export enum ParserSortOrder {
     asc = "asc",

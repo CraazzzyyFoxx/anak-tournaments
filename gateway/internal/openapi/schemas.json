@@ -15471,8 +15471,15 @@
           "type": "integer"
         },
         "map_index": {
-          "title": "Map Index",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Map Index"
         },
         "overperformance_badge": {
           "default": false,
@@ -15503,6 +15510,20 @@
           "default": null,
           "title": "Performance"
         },
+        "raw_available": {
+          "title": "Raw Available",
+          "type": "boolean"
+        },
+        "raw_status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.RawSourceStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "score": {
           "$ref": "#/components/schemas/app.Score"
         },
@@ -15523,6 +15544,8 @@
         "score",
         "time",
         "log_name",
+        "raw_status",
+        "raw_available",
         "encounter_id",
         "map_id",
         "map_index"
@@ -17591,6 +17614,16 @@
       },
       "title": "QuotaUsageRead",
       "type": "object"
+    },
+    "app.RawSourceStatus": {
+      "enum": [
+        "available",
+        "missing",
+        "conflict",
+        "unverified"
+      ],
+      "title": "RawSourceStatus",
+      "type": "string"
     },
     "app.RoleRef": {
       "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
@@ -32561,6 +32594,13 @@
           "title": "Id",
           "type": "integer"
         },
+        "raw_available": {
+          "title": "Raw Available",
+          "type": "boolean"
+        },
+        "raw_status": {
+          "$ref": "#/components/schemas/parser.RawSourceStatus"
+        },
         "source": {
           "title": "Source",
           "type": "string"
@@ -32625,6 +32665,8 @@
         "filename",
         "status",
         "source",
+        "raw_status",
+        "raw_available",
         "uploader_name",
         "error_message",
         "created_at",
@@ -33316,6 +33358,16 @@
       },
       "title": "RankStatusCounts",
       "type": "object"
+    },
+    "parser.RawSourceStatus": {
+      "enum": [
+        "available",
+        "missing",
+        "conflict",
+        "unverified"
+      ],
+      "title": "RawSourceStatus",
+      "type": "string"
     },
     "parser.ReenableDisabledRequest": {
       "properties": {
@@ -41599,7 +41651,7 @@
       "type": "object"
     },
     "tournament.EncounterTeamRead": {
-      "description": "One live seat of an encounter (``encounter.team``), in slot order.\n\n``id`` is the participation id every write addresses -- a claim, a report\nand an admin result all name it, never a slot and never a side. ``team_id``\nis the source ``tournament.team`` and goes NULL when that team is deleted;\n``name`` is the snapshot that outlives it.",
+      "description": "One live or historical participation of an encounter (``encounter.team``).\n\n``id`` is the participation id every write addresses -- a claim, a report\nand an admin result all name it, never a slot and never a side. ``team_id``\nis the source ``tournament.team`` and goes NULL when that team is deleted;\n``name`` is the snapshot that outlives it.",
       "properties": {
         "active": {
           "default": true,
@@ -43538,8 +43590,212 @@
       "title": "MatchKillFeedRead",
       "type": "object"
     },
+    "tournament.MatchObservedHeroRead": {
+      "properties": {
+        "color": {
+          "title": "Color",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "image_path": {
+          "title": "Image Path",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Updated At"
+        }
+      },
+      "required": [
+        "id",
+        "slug",
+        "name",
+        "image_path",
+        "type",
+        "color",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "MatchObservedHeroRead",
+      "type": "object"
+    },
+    "tournament.MatchObservedPlayerRead": {
+      "description": "A parsed identity, independent of a current tournament or encounter roster.",
+      "properties": {
+        "heroes": {
+          "additionalProperties": {
+            "items": {
+              "$ref": "#/components/schemas/tournament.MatchObservedHeroRead"
+            },
+            "type": "array"
+          },
+          "title": "Heroes",
+          "type": "object"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "stats": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/tournament.LogStatsName"
+            },
+            "type": "object"
+          },
+          "title": "Stats",
+          "type": "object"
+        },
+        "user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Id"
+        },
+        "workspace_member_id": {
+          "title": "Workspace Member Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspace_member_id",
+        "user_id",
+        "name",
+        "stats",
+        "heroes"
+      ],
+      "title": "MatchObservedPlayerRead",
+      "type": "object"
+    },
+    "tournament.MatchParticipationWithStats": {
+      "properties": {
+        "active": {
+          "default": true,
+          "title": "Active",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "placement": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Placement"
+        },
+        "players": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.MatchObservedPlayerRead"
+          },
+          "title": "Players",
+          "type": "array"
+        },
+        "score": {
+          "default": 0.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "slot": {
+          "title": "Slot",
+          "type": "integer"
+        },
+        "team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.TeamRead"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "team_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Team Id"
+        }
+      },
+      "required": [
+        "id",
+        "slot",
+        "name",
+        "players"
+      ],
+      "title": "MatchParticipationWithStats",
+      "type": "object"
+    },
     "tournament.MatchRead": {
       "properties": {
+        "away_participation": {
+          "$ref": "#/components/schemas/tournament.EncounterTeamRead"
+        },
         "away_team": {
           "anyOf": [
             {
@@ -43575,6 +43831,9 @@
         "encounter_id": {
           "title": "Encounter Id",
           "type": "integer"
+        },
+        "home_participation": {
+          "$ref": "#/components/schemas/tournament.EncounterTeamRead"
         },
         "home_team": {
           "anyOf": [
@@ -43628,8 +43887,29 @@
           "type": "integer"
         },
         "map_index": {
-          "title": "Map Index",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Map Index"
+        },
+        "raw_available": {
+          "title": "Raw Available",
+          "type": "boolean"
+        },
+        "raw_status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.RawSourceStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
@@ -43651,9 +43931,13 @@
         "score",
         "time",
         "log_name",
+        "raw_status",
+        "raw_available",
         "encounter_id",
         "map_id",
         "map_index",
+        "home_participation",
+        "away_participation",
         "home_team",
         "away_team",
         "encounter",
@@ -43664,10 +43948,13 @@
     },
     "tournament.MatchReadWithStats": {
       "properties": {
+        "away_participation": {
+          "$ref": "#/components/schemas/tournament.MatchParticipationWithStats"
+        },
         "away_team": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/tournament.TeamWithMatchStats"
+              "$ref": "#/components/schemas/tournament.TeamRead"
             },
             {
               "type": "null"
@@ -43700,10 +43987,13 @@
           "title": "Encounter Id",
           "type": "integer"
         },
+        "home_participation": {
+          "$ref": "#/components/schemas/tournament.MatchParticipationWithStats"
+        },
         "home_team": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/tournament.TeamWithMatchStats"
+              "$ref": "#/components/schemas/tournament.TeamRead"
             },
             {
               "type": "null"
@@ -43752,8 +44042,29 @@
           "type": "integer"
         },
         "map_index": {
-          "title": "Map Index",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Map Index"
+        },
+        "raw_available": {
+          "title": "Raw Available",
+          "type": "boolean"
+        },
+        "raw_status": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.RawSourceStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "rounds": {
           "title": "Rounds",
@@ -43779,9 +44090,13 @@
         "score",
         "time",
         "log_name",
+        "raw_status",
+        "raw_available",
         "encounter_id",
         "map_id",
         "map_index",
+        "home_participation",
+        "away_participation",
         "home_team",
         "away_team",
         "encounter",
@@ -45206,145 +45521,6 @@
       "title": "PlayerUpdate",
       "type": "object"
     },
-    "tournament.PlayerWithMatchStats": {
-      "properties": {
-        "division": {
-          "title": "Division",
-          "type": "integer"
-        },
-        "heroes": {
-          "additionalProperties": {
-            "items": {
-              "$ref": "#/components/schemas/tournament.HeroRead"
-            },
-            "type": "array"
-          },
-          "title": "Heroes",
-          "type": "object"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "is_newcomer": {
-          "title": "Is Newcomer",
-          "type": "boolean"
-        },
-        "is_newcomer_role": {
-          "title": "Is Newcomer Role",
-          "type": "boolean"
-        },
-        "is_substitution": {
-          "title": "Is Substitution",
-          "type": "boolean"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "rank": {
-          "title": "Rank",
-          "type": "integer"
-        },
-        "related_player_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Related Player Id"
-        },
-        "role": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.RoleRef"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "stats": {
-          "additionalProperties": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "propertyNames": {
-              "$ref": "#/components/schemas/tournament.LogStatsName"
-            },
-            "type": "object"
-          },
-          "title": "Stats",
-          "type": "object"
-        },
-        "team": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.TeamRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "team_id": {
-          "title": "Team Id",
-          "type": "integer"
-        },
-        "tournament": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.TournamentRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
-        },
-        "user": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.UserRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "user_id": {
-          "title": "User Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "rank",
-        "division",
-        "tournament_id",
-        "user_id",
-        "team_id",
-        "is_newcomer",
-        "is_newcomer_role",
-        "is_substitution",
-        "related_player_id",
-        "tournament",
-        "team",
-        "user",
-        "stats",
-        "heroes"
-      ],
-      "title": "PlayerWithMatchStats",
-      "type": "object"
-    },
     "tournament.PregameGamesSummary": {
       "description": "The series' positions by state. Cancelled positions are history and are\ncounted nowhere -- a replayed map would otherwise read as two.",
       "properties": {
@@ -45861,6 +46037,16 @@
       ],
       "title": "PregameRoomsRead",
       "type": "object"
+    },
+    "tournament.RawSourceStatus": {
+      "enum": [
+        "available",
+        "missing",
+        "conflict",
+        "unverified"
+      ],
+      "title": "RawSourceStatus",
+      "type": "string"
     },
     "tournament.RegistrationFormRead": {
       "properties": {
@@ -51422,116 +51608,6 @@
         }
       },
       "title": "TeamUpdate",
-      "type": "object"
-    },
-    "tournament.TeamWithMatchStats": {
-      "properties": {
-        "avg_sr": {
-          "title": "Avg Sr",
-          "type": "number"
-        },
-        "captain": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.UserRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "captain_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Captain Id"
-        },
-        "group": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.TeamGroupRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "image_url": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Image Url"
-        },
-        "name": {
-          "title": "Name",
-          "type": "string"
-        },
-        "placement": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Placement"
-        },
-        "players": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.PlayerWithMatchStats"
-          },
-          "title": "Players",
-          "type": "array"
-        },
-        "total_sr": {
-          "title": "Total Sr",
-          "type": "integer"
-        },
-        "tournament": {
-          "anyOf": [
-            {
-              "$ref": "#/components/schemas/tournament.TournamentRead"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "avg_sr",
-        "total_sr",
-        "tournament_id",
-        "captain_id",
-        "tournament",
-        "players",
-        "captain",
-        "placement",
-        "group"
-      ],
-      "title": "TeamWithMatchStats",
       "type": "object"
     },
     "tournament.TemplateMatch": {

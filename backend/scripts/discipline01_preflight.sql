@@ -202,7 +202,7 @@ SELECT count(*) AS flex_rows_with_a_sub_role
           FROM encounter.team_member_role r
          WHERE r.dimension = 'player_role'
          GROUP BY r.team_member_id
-        HAVING count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support', 'flex')) > 1
+        HAVING count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support')) > 1
             OR count(*) FILTER (WHERE r.role NOT IN ('tank', 'damage', 'support', 'flex')) > 1
             OR (count(*) FILTER (WHERE r.role NOT IN ('tank', 'damage', 'support', 'flex')) = 1
                 AND count(*) FILTER (WHERE r.role IN ('tank', 'damage', 'support', 'flex')) = 0)

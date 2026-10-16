@@ -155,7 +155,7 @@ async def execute_encounter_comeback(
             winners.c.tournament_team_id.label("map_winner"),
         )
         .select_from(match)
-        .join(winners, winners.c.match_id == match.c.id)
+        .outerjoin(winners, winners.c.match_id == match.c.id)
         .join(models.Encounter, models.Encounter.id == match.c.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
     ).where(
@@ -174,12 +174,17 @@ async def execute_encounter_comeback(
     # encounter_id -> (tournament_id, winning_team_id, max_deficit, winner_score, loser_score)
     qualifying: dict[int, tuple[int, int, int, int, int]] = {}
     for encounter_id, rows in series.items():
+        positions = {row.position for row in rows}
+        if None in positions or len(positions) != len(rows):
+            # Never infer a deficit from only the ordered subset of a series.
+            context.deferred_encounter_ids.add(encounter_id)
+            continue
         first = rows[0]
         winner_team_id, loser_team_id = first.winner_team_id, first.loser_team_id
 
         won = lost = 0
         max_deficit = 0
-        for row in sorted(rows, key=lambda r: (r.position, r.match_id)):
+        for row in sorted(rows, key=lambda r: r.position):
             map_winner = row.map_winner
             if map_winner == winner_team_id:
                 won += 1

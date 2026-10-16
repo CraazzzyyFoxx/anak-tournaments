@@ -447,19 +447,18 @@ class EncounterService:
         # sequential round trips per cache miss).
         completed = models.Encounter.status == enums.EncounterStatus.COMPLETED
         duration_by_encounter = (
-            sa.select(models.EncounterGame.encounter_id, sa.func.sum(models.StatsMatch.duration_s).label("seconds"))
+            sa.select(models.StatsMatch.encounter_id, sa.func.sum(models.StatsMatch.duration_s).label("seconds"))
             .select_from(models.StatsMatch)
-            .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
             .join(
                 models.Encounter,
                 sa.and_(
-                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.id == models.StatsMatch.encounter_id,
                     models.Encounter.workspace_id == models.StatsMatch.workspace_id,
                     models.Encounter.discipline == models.StatsMatch.discipline,
                 ),
             )
-            .join(base_ids, base_ids.c.id == models.EncounterGame.encounter_id)
-            .group_by(models.EncounterGame.encounter_id)
+            .join(base_ids, base_ids.c.id == models.StatsMatch.encounter_id)
+            .group_by(models.StatsMatch.encounter_id)
             .subquery()
         )
         avg_series_seconds_sq = sa.select(sa.func.avg(duration_by_encounter.c.seconds)).scalar_subquery()
@@ -652,16 +651,15 @@ class EncounterService:
         hot_map_rows = await session.execute(
             sa.select(models.CatalogEntity.name, sa.func.count(models.StatsMatch.id))
             .select_from(models.StatsMatch)
-            .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
             .join(
                 models.Encounter,
                 sa.and_(
-                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.id == models.StatsMatch.encounter_id,
                     models.Encounter.workspace_id == models.StatsMatch.workspace_id,
                     models.Encounter.discipline == models.StatsMatch.discipline,
                 ),
             )
-            .join(base_ids, base_ids.c.id == models.EncounterGame.encounter_id)
+            .join(base_ids, base_ids.c.id == models.StatsMatch.encounter_id)
             .join(
                 models.CatalogEntity,
                 sa.and_(
@@ -740,31 +738,43 @@ class EncounterService:
             },
         }
 
-    async def get_match_stats_for_user(
+    async def get_match_observed_players(
         self,
         session: AsyncSession,
         match_id: int,
-        user_id: int,
-    ) -> tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]:
-        return (await self.get_match_stats_for_users(session, match_id, [user_id]))[user_id]
-
-    async def get_match_stats_for_users(
-        self,
-        session: AsyncSession,
-        match_id: int,
-        user_ids: list[int],
-    ) -> dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]]:
-        out = {user_id: ({}, {}) for user_id in user_ids}
-        if not user_ids:
-            return out
+    ) -> dict[int, list[schemas.MatchObservedPlayerRead]]:
+        """Read every parsed identity, scoped by match, participation and member."""
+        player, member, match = models.StatsMatchPlayer, models.WorkspaceMember, models.StatsMatch
+        observed = (
+            sa.select(player, member.player_id)
+            .join(match, match.id == player.match_id)
+            .outerjoin(
+                member, sa.and_(member.id == player.workspace_member_id, member.workspace_id == match.workspace_id)
+            )
+            .where(match.id == match_id, match.discipline == "overwatch")
+            .order_by(player.encounter_team_id, player.workspace_member_id)
+        )
+        by_identity = {
+            (row.encounter_team_id, row.workspace_member_id): schemas.MatchObservedPlayerRead(
+                workspace_member_id=row.workspace_member_id,
+                user_id=user_id,
+                name=row.handle_snapshot,
+                stats={},
+                heroes={},
+            )
+            for row, user_id in (await session.execute(observed)).all()
+        }
+        if not by_identity:
+            return {}
         facts = player_facts(discipline="overwatch").c
+        identity = (facts.encounter_team_id, facts.workspace_member_id)
         query = (
-            sa.select(facts.player_id, facts.segment, facts.stat_code, sa.func.sum(facts.value).cast(sa.Numeric(10, 2)))
-            .where(facts.match_id == match_id, facts.player_id.in_(user_ids), facts.entity_id.is_(None))
-            .group_by(facts.player_id, facts.segment, facts.stat_code)
+            sa.select(*identity, facts.segment, facts.stat_code, sa.func.sum(facts.value).cast(sa.Numeric(10, 2)))
+            .where(facts.match_id == match_id, facts.entity_id.is_(None))
+            .group_by(*identity, facts.segment, facts.stat_code)
         )
         heroes = (
-            sa.select(facts.player_id, facts.segment, sa.func.jsonb_agg(hero_jsonb_object))
+            sa.select(*identity, facts.segment, sa.func.jsonb_agg(hero_jsonb_object))
             .join(
                 models.CatalogEntity,
                 sa.and_(
@@ -775,17 +785,23 @@ class EncounterService:
             )
             .where(
                 facts.match_id == match_id,
-                facts.player_id.in_(user_ids),
                 facts.stat_code == enums.LogStatsName.HeroTimePlayed.value,
                 facts.value > 60,
             )
-            .group_by(facts.player_id, facts.segment)
+            .group_by(*identity, facts.segment)
         )
-        for user_id, segment, code, value in (await session.execute(query)).all():
-            out[user_id][0].setdefault(segment, {})[enums.LogStatsName(code)] = value
-        for user_id, segment, values in (await session.execute(heroes)).all():
-            out[user_id][1][segment] = values
-        return out
+        for participation_id, member_id, segment, code, value in (await session.execute(query)).all():
+            by_identity[participation_id, member_id].stats.setdefault(segment, {})[enums.LogStatsName(code)] = float(
+                value
+            )
+        for participation_id, member_id, segment, values in (await session.execute(heroes)).all():
+            by_identity[participation_id, member_id].heroes[segment] = [
+                schemas.MatchObservedHeroRead.model_validate(value) for value in values
+            ]
+        output: dict[int, list[schemas.MatchObservedPlayerRead]] = {}
+        for (participation_id, _), observed_player in by_identity.items():
+            output.setdefault(participation_id, []).append(observed_player)
+        return output
 
     async def get_match_kill_feed(
         self,
@@ -814,11 +830,10 @@ class EncounterService:
             )
             .select_from(event)
             .join(match, match.id == event.match_id)
-            .join(models.EncounterGame, models.EncounterGame.id == match.encounter_game_id)
             .join(
                 models.Encounter,
                 sa.and_(
-                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.id == match.encounter_id,
                     models.Encounter.workspace_id == match.workspace_id,
                     models.Encounter.discipline == match.discipline,
                 ),
@@ -998,7 +1013,9 @@ class EncounterService:
         if params.sort.startswith("similarity:"):
             order_column = sa.func.word_similarity(order_column, params.query)
         descending = params.order == "desc" or getattr(params.order, "value", None) == "desc"
-        query = params.apply_pagination(query.order_by(order_column.desc() if descending else order_column.asc()))
+        order = order_column.desc() if descending else order_column.asc()
+        query = query.order_by(order.nullslast(), d.c.id) if field == "map_index" else query.order_by(order)
+        query = params.apply_pagination(query)
         ids = list((await session.scalars(query)).all())
         reads = await self.get_match_bulk(session, ids, params.entities)
         by_id = {read.match.id: read for read in reads}

@@ -798,6 +798,7 @@
 }
 
 .seriesTable {
+  --ed-side: var(--ed-dim);
   width: 100%;
   min-width: 52rem;
   border-collapse: collapse;

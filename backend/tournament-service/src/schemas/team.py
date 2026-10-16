@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from pydantic import UUID4, BaseModel, Field
 
 from shared.schemas.role import RoleRef
-from src.core import enums, pagination
-from src.schemas import BaseRead, HeroRead
+from src.core import pagination
+from src.schemas import BaseRead
 from src.schemas.tournament import TournamentRead
 from src.schemas.user_base import UserRead
 
@@ -18,8 +18,6 @@ __all__ = (
     "TeamFilterParams",
     "PlayerFilterQueryParams",
     "PlayerFilterParams",
-    "PlayerWithMatchStats",
-    "TeamWithMatchStats",
 )
 
 
@@ -100,24 +98,11 @@ class PlayerFilterParams(pagination.PaginationSortParams):
     team_id: int | None = None
 
 
-class PlayerWithMatchStats(PlayerRead):
-    stats: dict[int, dict[enums.LogStatsName, float]]
-    heroes: dict[int, list[HeroRead]]
-
-
-class TeamWithMatchStats(TeamRead):
-    players: list[PlayerWithMatchStats]
-
-
 # PlayerRead.team is a forward reference to TeamRead, which is defined below it.
 # Pydantic leaves such a model's serializer as a MockValSer placeholder and only
 # tries to materialise it lazily on first use — and that lazy path fails with
 # "'MockValSer' object cannot be converted to 'SchemaSerializer'" when the first
 # use is a model_dump() reached through a cached/nested value rather than through
-# validation. Rebuilding at import time makes it deterministic. Subclasses
-# (PlayerWithMatchStats/TeamWithMatchStats) inherit the incomplete core schema,
-# so they need it too.
+# validation. Rebuilding at import time makes it deterministic.
 PlayerRead.model_rebuild()
 TeamRead.model_rebuild()
-PlayerWithMatchStats.model_rebuild()
-TeamWithMatchStats.model_rebuild()

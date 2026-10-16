@@ -150,9 +150,7 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "match", "result")
             body = schemas.MatchUpdate.model_validate(_payload(data))
             encounter_id = await session.scalar(
-                sa.select(models.EncounterGame.encounter_id)
-                .join(models.StatsMatch, models.StatsMatch.encounter_game_id == models.EncounterGame.id)
-                .where(models.StatsMatch.id == match_id)
+                sa.select(models.StatsMatch.encounter_id).where(models.StatsMatch.id == match_id)
             )
             await record_admin_audit(
                 session,
@@ -161,14 +159,14 @@ def register(broker: Any, logger: Any) -> None:
                 data=data,
                 workspace_id=ws_id,
                 entity_type="encounter",
-                entity_id=encounter_id or match_id,
+                entity_id=encounter_id,
                 after={"match_id": match_id, **body.model_dump(mode="json", exclude_unset=True)},
             )
             # update_match commits internally; route returns a custom dict.
             match = await enc_service.encounter_service.update_match(session, match_id, body, actor=user)
             return {
                 "id": match.match.id,
-                "encounter_id": match.game.encounter_id,
+                "encounter_id": match.encounter.id,
                 "home_team_id": match.home_team.id if match.home_team is not None else None,
                 "away_team_id": match.away_team.id if match.away_team is not None else None,
                 "home_score": match.home_score,

@@ -274,6 +274,7 @@ class _Fixture:
             id=match_id,
             workspace_id=WORKSPACE_ID,
             discipline="overwatch",
+            encounter_id=encounter_id,
             encounter_game_id=match_id,
             map_entity_id=1,
         )
@@ -287,7 +288,7 @@ class _Fixture:
             self.insert(
                 models.StatsMatchTeam.__table__,
                 match_id=match_id,
-                encounter_game_id=match_id,
+                encounter_id=encounter_id,
                 encounter_team_id=seat_id,
                 source_position=position,
             )

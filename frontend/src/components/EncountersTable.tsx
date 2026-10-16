@@ -497,9 +497,10 @@ export function EncountersDataTable({
                 hasLogs={encounter.has_logs}
                 logs={
                   encounter.has_logs
-                    ? (encounter.matches ?? []).map((match, index) => ({
+                    ? (encounter.matches ?? []).map((match) => ({
                         matchId: match.id,
-                        label: match.map?.name ?? `${index + 1}`
+                        rawAvailable: match.raw_available,
+                        label: `${match.map?.name ?? t("encounters.match.mapAlt")} · #${match.id}`
                       }))
                     : undefined
                 }

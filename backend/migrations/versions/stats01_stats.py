@@ -114,13 +114,27 @@ def _values(rows):
 
 
 RESOLVED_GAMES = """
-SELECT m.id AS match_id,
- coalesce((SELECT g.id FROM encounter.game g WHERE g.encounter_id=m.encounter_id
-            AND g.position=m.map_index AND g.state<>'cancelled'),
-          (SELECT min(g.id) FROM encounter.game g WHERE g.encounter_id=m.encounter_id
-            AND g.map_id=m.map_id AND g.state<>'cancelled' HAVING count(*)=1)) AS game_id,
- e.workspace_id, e.discipline, e.tournament_id, e.id AS encounter_id
-FROM matches.match m JOIN encounter.encounter e ON e.id=m.encounter_id
+WITH candidates AS (
+ SELECT m.id AS match_id,e.workspace_id,e.discipline,e.tournament_id,e.id AS encounter_id,
+   CASE WHEN EXISTS(SELECT 1 FROM encounter.game g WHERE g.encounter_id=e.id
+                     AND g.position=m.map_index AND g.state<>'cancelled')
+        THEN (SELECT min(g.id) FROM encounter.game g WHERE g.encounter_id=e.id
+               AND g.position=m.map_index AND g.state<>'cancelled' AND g.map_id=m.map_id HAVING count(*)=1)
+        ELSE (SELECT min(g.id) FROM encounter.game g WHERE g.encounter_id=e.id
+               AND g.map_id=m.map_id AND g.state<>'cancelled' HAVING count(*)=1) END AS candidate_id
+ FROM matches.match m JOIN encounter.encounter e ON e.id=m.encounter_id
+), claims AS (
+ SELECT c.*,count(*) OVER(PARTITION BY candidate_id) AS claim_count FROM candidates c
+)
+SELECT c.match_id,
+ CASE WHEN c.claim_count=1
+   AND (SELECT count(*) FROM encounter.game_team gt WHERE gt.game_id=c.candidate_id)=2
+   AND (SELECT count(*) FROM encounter.game_team gt JOIN encounter.team et ON et.id=gt.encounter_team_id
+         WHERE gt.game_id=c.candidate_id AND et.encounter_id=c.encounter_id
+           AND et.team_id IN (m.home_team_id,m.away_team_id))=2
+ THEN c.candidate_id END AS game_id,
+ c.workspace_id,c.discipline,c.tournament_id,c.encounter_id
+FROM claims c JOIN matches.match m ON m.id=c.match_id
 """
 SOURCE_ENDPOINTS = """
 SELECT match_id,user_id,team_id FROM matches.statistics
@@ -165,12 +179,16 @@ PREFLIGHT_SETUP = (
     f"CREATE TEMP VIEW stats01_ability_values(legacy_name,value) AS VALUES {_values(ABILITY_VALUES)}",
     f"CREATE TEMP VIEW stats01_dependency_names(old_name,new_name) AS VALUES {_values(DEPENDENCY_RENAMES)}",
     f"CREATE TEMP VIEW stats01_match AS {RESOLVED_GAMES}",
+    """CREATE TEMP VIEW stats01_historical_reference AS
+       SELECT m.id AS source_match_id,
+         (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id
+       FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+       WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL""",
     f"CREATE TEMP VIEW stats01_endpoints AS {SOURCE_ENDPOINTS}",
     f"CREATE TEMP VIEW stats01_source_teams AS {SOURCE_TEAMS}",
     """CREATE TEMP VIEW stats01_team AS
-       SELECT x.match_id,x.game_id,et.team_id,gt.encounter_team_id
-       FROM stats01_match x JOIN encounter.game_team gt ON gt.game_id=x.game_id
-       JOIN encounter.team et ON et.id=gt.encounter_team_id AND et.encounter_id=x.encounter_id""",
+       SELECT x.match_id,x.encounter_id,et.team_id,et.id AS encounter_team_id
+       FROM stats01_match x JOIN encounter.team et ON et.encounter_id=x.encounter_id""",
     "CREATE TEMP VIEW stats01_member AS SELECT workspace_id,player_id,id FROM workspace_member",
     f"""CREATE TEMP VIEW stats01_handles AS
        SELECT p.match_id,p.user_id AS player_id,p.team_id,{HANDLE} AS handle_snapshot
@@ -188,11 +206,8 @@ PREFLIGHT = [
     (
         "1_game_binding",
         """
-      SELECT m.id,'no_unique_live_game' reason FROM matches.match m LEFT JOIN stats01_match x ON x.match_id=m.id WHERE x.game_id IS NULL
-      UNION ALL SELECT match_id,'duplicate_game_claim' FROM stats01_match WHERE game_id IN
-        (SELECT game_id FROM stats01_match GROUP BY game_id HAVING count(*)>1)
-      UNION ALL SELECT m.id,'explicit_position_map_mismatch' FROM matches.match m JOIN encounter.game g
-        ON g.encounter_id=m.encounter_id AND g.position=m.map_index AND g.state<>'cancelled' WHERE g.map_id IS DISTINCT FROM m.map_id
+      SELECT m.id,'missing_encounter_owner' reason FROM matches.match m
+      LEFT JOIN encounter.encounter e ON e.id=m.encounter_id WHERE e.id IS NULL
     """,
     ),
     (
@@ -208,11 +223,17 @@ PREFLIGHT = [
     (
         "3_team_binding",
         """
-      SELECT DISTINCT s.match_id id,'missing_or_ambiguous_participation' reason FROM stats01_source_teams s
-      WHERE (SELECT count(*) FROM stats01_team t WHERE t.match_id=s.match_id AND t.team_id=s.team_id)<>1
+      WITH source_teams AS MATERIALIZED (
+        SELECT DISTINCT match_id,team_id FROM stats01_source_teams
+      ), participation_counts AS MATERIALIZED (
+        SELECT match_id,team_id,count(*) AS participation_count FROM stats01_team GROUP BY match_id,team_id
+      )
+      SELECT DISTINCT s.match_id id,'missing_or_ambiguous_participation' reason FROM source_teams s
+      LEFT JOIN participation_counts t ON t.match_id=s.match_id AND t.team_id=s.team_id
+      WHERE coalesce(t.participation_count,0)<>1
       UNION ALL SELECT id,'same_team_both_sides' FROM matches.match WHERE home_team_id=away_team_id
       UNION ALL SELECT DISTINCT match_id,'player_without_team' FROM stats01_endpoints WHERE user_id IS NOT NULL AND team_id IS NULL
-      UNION ALL SELECT DISTINCT s.match_id,'team_not_observed_side' FROM stats01_source_teams s JOIN matches.match m ON m.id=s.match_id
+      UNION ALL SELECT DISTINCT s.match_id,'team_not_observed_side' FROM source_teams s JOIN matches.match m ON m.id=s.match_id
         WHERE s.team_id NOT IN (m.home_team_id,m.away_team_id)
     """,
     ),
@@ -268,14 +289,15 @@ PREFLIGHT = [
         "8_raw_provenance",
         f"""
       SELECT r.id,'invalid_real_hash' reason FROM log_processing.record r
-        WHERE r.content_hash IS NULL OR r.content_hash !~ '^[0-9a-fA-F]{{64}}$'
+        WHERE r.content_hash IS NOT NULL AND r.content_hash !~ '^[0-9a-fA-F]{{64}}$'
       UNION ALL SELECT r.id,'unsafe_raw_key' FROM log_processing.record r
         WHERE {RECORD_BARE} IS NULL OR {RECORD_BARE}='' OR starts_with({RECORD_BARE},'/')
            OR strpos({RECORD_BARE},'..')>0 OR length({RECORD_RAW})>512
-      UNION ALL SELECT m.id,'raw_match_without_record_or_key_conflict' FROM matches.match m
+      UNION ALL SELECT m.id,'unsafe_match_raw_key_or_conflict' FROM matches.match m
         JOIN stats01_match x ON x.match_id=m.id LEFT JOIN log_processing.record r ON r.id=m.log_record_id
-        WHERE m.log_name IS NOT NULL AND (r.id IS NULL OR {MATCH_BARE}='' OR starts_with({MATCH_BARE},'/')
-          OR strpos({MATCH_BARE},'..')>0 OR length({MATCH_RAW})>512 OR ({MATCH_RAW}) IS DISTINCT FROM ({RECORD_RAW}))
+        WHERE m.log_name IS NOT NULL AND ({MATCH_BARE}='' OR starts_with({MATCH_BARE},'/')
+          OR strpos({MATCH_BARE},'..')>0 OR length({MATCH_RAW})>512 OR length(m.log_name)>500
+          OR (r.id IS NOT NULL AND ({MATCH_RAW}) IS DISTINCT FROM ({RECORD_RAW})))
     """,
     ),
     (
@@ -415,7 +437,10 @@ DDL = (
       id BIGSERIAL PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ,
       workspace_id BIGINT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
       discipline VARCHAR(32) NOT NULL REFERENCES catalog.discipline(code),
-      source_kind VARCHAR(32) NOT NULL,external_id VARCHAR(128),content_hash CHAR(64) NOT NULL,
+      source_kind VARCHAR(32) NOT NULL,external_id VARCHAR(128),content_hash CHAR(64),
+      raw_status VARCHAR(16) NOT NULL DEFAULT 'available'
+        CONSTRAINT ck_ingest_job_raw_status CHECK(raw_status IN ('available','missing','conflict','unverified')),
+      CONSTRAINT ck_ingest_job_available_hash CHECK(raw_status<>'available' OR content_hash IS NOT NULL),
       filename VARCHAR(500),raw_ref VARCHAR(512) NOT NULL,document_ref VARCHAR(512),
       status VARCHAR(16) NOT NULL CHECK(status IN ('pending','processing','awaiting_link','done','failed')),
       attempts INTEGER NOT NULL DEFAULT 0,error_message TEXT,
@@ -429,19 +454,23 @@ DDL = (
       id BIGSERIAL PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),updated_at TIMESTAMPTZ,
       workspace_id BIGINT NOT NULL REFERENCES workspace(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
       discipline VARCHAR(32) NOT NULL,
-      encounter_game_id BIGINT NOT NULL UNIQUE REFERENCES encounter.game(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+      encounter_id BIGINT NOT NULL CONSTRAINT fk_stats_match_encounter REFERENCES encounter.encounter(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+      source_map_index INTEGER,
+      encounter_game_id BIGINT CONSTRAINT uq_stats_match_game UNIQUE CONSTRAINT fk_stats_match_game REFERENCES encounter.game(id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
       ingest_job_id BIGINT REFERENCES stats.ingest_job(id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
       revision INTEGER NOT NULL DEFAULT 1,played_at TIMESTAMPTZ,duration_s FLOAT8,map_entity_id BIGINT NOT NULL,
       map_kind VARCHAR(16) NOT NULL DEFAULT 'map' CHECK(map_kind='map'),
+      CONSTRAINT uq_stats_match_owner UNIQUE(id,encounter_id),
       CONSTRAINT fk_match_map FOREIGN KEY(map_entity_id,discipline,map_kind)
         REFERENCES catalog.entity(id,discipline,kind) ON DELETE RESTRICT)""",
     """CREATE TABLE stats.match_team (
-      match_id BIGINT NOT NULL REFERENCES stats.match(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-      encounter_game_id BIGINT NOT NULL,encounter_team_id BIGINT NOT NULL,
+      match_id BIGINT NOT NULL,encounter_id BIGINT NOT NULL,encounter_team_id BIGINT NOT NULL,
       source_position INTEGER NOT NULL CONSTRAINT ck_match_team_source_position CHECK(source_position>=1),
       PRIMARY KEY(match_id,encounter_team_id),CONSTRAINT uq_match_team_source_position UNIQUE(match_id,source_position),
-      CONSTRAINT fk_match_team_game_team FOREIGN KEY(encounter_game_id,encounter_team_id)
-        REFERENCES encounter.game_team(game_id,encounter_team_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED)""",
+      CONSTRAINT fk_match_team_match FOREIGN KEY(match_id,encounter_id)
+        REFERENCES stats.match(id,encounter_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+      CONSTRAINT fk_match_team_encounter_team FOREIGN KEY(encounter_team_id,encounter_id)
+        REFERENCES encounter.team(id,encounter_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED)""",
     """CREATE TABLE stats.match_player (
       match_id BIGINT NOT NULL,encounter_team_id BIGINT NOT NULL,
       workspace_member_id BIGINT NOT NULL REFERENCES workspace_member(id) DEFERRABLE INITIALLY DEFERRED,
@@ -505,7 +534,8 @@ INDEXES = (
     "CREATE INDEX ix_ingest_job_game ON stats.ingest_job(hint_encounter_game_id)",
     "CREATE INDEX ix_match_ingest_job ON stats.match(ingest_job_id)",
     "CREATE INDEX ix_match_workspace ON stats.match(workspace_id)",
-    "CREATE INDEX ix_match_team_game_team ON stats.match_team(encounter_game_id,encounter_team_id)",
+    "CREATE INDEX ix_stats_match_encounter ON stats.match(encounter_id)",
+    "CREATE INDEX ix_match_team_encounter_team ON stats.match_team(encounter_team_id,encounter_id)",
     "CREATE INDEX ix_match_player_member ON stats.match_player(workspace_member_id)",
     "CREATE INDEX ix_match_player_role ON stats.match_player(observed_role_id)",
     "CREATE INDEX ix_fact_member_stat_total ON stats.fact(workspace_member_id,stat_id) WHERE segment=0 AND entity_id IS NULL",
@@ -516,9 +546,9 @@ INDEXES = (
     "CREATE INDEX ix_stat_baseline_version ON stats.stat_baseline(formula_version)",
 )
 
-JOB_COLUMNS = "id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at"
-MATCH_COLUMNS = "id,created_at,updated_at,workspace_id,discipline,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind"
-TEAM_COLUMNS = "match_id,encounter_game_id,encounter_team_id,source_position"
+JOB_COLUMNS = "id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at"
+MATCH_COLUMNS = "id,created_at,updated_at,workspace_id,discipline,encounter_id,source_map_index,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind"
+TEAM_COLUMNS = "match_id,encounter_id,encounter_team_id,source_position"
 PLAYER_COLUMNS = "match_id,encounter_team_id,workspace_member_id,handle_snapshot,observed_role_id"
 FACT_COLUMNS = "match_id,segment,encounter_team_id,workspace_member_id,entity_id,entity_kind,stat_id,value"
 EVENT_COLUMNS = "match_id,segment,t,type_id,actor_member_id,actor_team_id,target_member_id,target_team_id,entity_id,related_entity_id,entity_kind,data"
@@ -527,15 +557,31 @@ BASELINE_COLUMNS = "id,formula_version,role_id,rank_bucket,stat_id,mean,std,meta
 
 EXPECTED_JOBS = f"""SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
  r.source::text AS source_kind,'legacy:log_processing.record:'||r.id::text AS external_id,
- r.content_hash::char(64),r.filename,{RECORD_RAW} AS raw_ref,NULL::varchar(512) AS document_ref,
+ r.content_hash::char(64),'unverified'::varchar AS raw_status,r.filename,{RECORD_RAW} AS raw_ref,NULL::varchar(512) AS document_ref,
  r.status::text AS status,r.attempts,r.error_message,r.uploader_id AS uploader_user_id,
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id"""
-EXPECTED_MATCHES = """SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,x.game_id AS encounter_game_id,
- m.log_record_id AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
- m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id"""
-EXPECTED_TEAMS = """SELECT m.id AS match_id,x.game_id AS encounter_game_id,t.encounter_team_id,s.position AS source_position
+HISTORICAL_REFERENCES = f"""SELECT
+ h.id,
+ (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
+ NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
+ 'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
+ 'unverified'::varchar AS raw_status,m.log_name AS filename,{MATCH_RAW} AS raw_ref,
+ NULL::varchar(512) AS document_ref,'done'::varchar AS status,0 AS attempts,NULL::text AS error_message,
+ NULL::bigint AS uploader_user_id,NULL::bigint AS api_key_id,x.tournament_id AS hint_tournament_id,
+ x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
+ NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
+ FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
+ WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL"""
+EXPECTED_JOBS = f"{EXPECTED_JOBS} UNION ALL SELECT {JOB_COLUMNS} FROM ({HISTORICAL_REFERENCES}) h"
+EXPECTED_MATCHES = f"""SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
+ x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
+ coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
+ m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ LEFT JOIN ({HISTORICAL_REFERENCES}) h ON h.source_match_id=m.id"""
+EXPECTED_TEAMS = """SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
  JOIN stats01_team t ON t.match_id=m.id AND t.team_id=s.team_id"""
@@ -551,7 +597,7 @@ EXPECTED_FACTS = """SELECT s.match_id,s.round::smallint AS segment,t.encounter_t
  FROM matches.statistics s JOIN stats01_match x ON x.match_id=s.match_id
  JOIN stats01_team t ON t.match_id=s.match_id AND t.team_id=s.team_id
  JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=s.user_id
- JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name=s.name::text"""
+ JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name::logstatsname=s.name"""
 EXPECTED_SCORES = """SELECT m.id AS match_id,0::smallint AS segment,t.encounter_team_id,
  NULL::bigint AS workspace_member_id,NULL::bigint AS entity_id,'character'::varchar AS entity_kind,
  d.id AS stat_id,s.score::float8 AS value FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
@@ -770,12 +816,11 @@ WITH qualified AS (
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
  THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
 ), best AS (
- SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,g.encounter_id,mp.name map_name,
+ SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
  FROM ranked r JOIN stats.match m ON m.id=r.match_id
  JOIN catalog.entity mp ON mp.id=m.map_entity_id AND mp.kind='map' AND mp.discipline=m.discipline
- JOIN encounter.game g ON g.id=m.encounter_game_id
- JOIN encounter.encounter enc ON enc.id=g.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
+ JOIN encounter.encounter enc ON enc.id=m.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
  JOIN tournament.tournament t ON t.id=enc.tournament_id
  JOIN workspace_member wm ON wm.id=r.workspace_member_id AND wm.workspace_id=m.workspace_id
  JOIN players."user" u ON u.id=wm.player_id WHERE r.rn=1
@@ -798,8 +843,8 @@ FROM ({EXPECTED_MV_SELECT}) e JOIN ({RESIDENT_MV_SELECT}) a USING(discipline,sta
 
 
 def _mv_bits(query):
-    return f"""SELECT discipline,stat_id,entity_id,float8send(best_value) AS best_value_bits,
-      float8send(avg) AS avg_bits,metadata FROM ({query}) p"""
+    return f"""SELECT discipline,stat_id,entity_id,encode(float8send(best_value),'hex') AS best_value_bits,
+      encode(float8send(avg),'hex') AS avg_bits,metadata FROM ({query}) p"""
 
 
 def _dependency_projection(expression):
@@ -1025,12 +1070,12 @@ VOCABULARY_SETUP = (
 )
 RECONCILE_SETUP = PREFLIGHT_SETUP + VOCABULARY_SETUP + ORACLE_SETUP
 RECONCILE_CLASSES = (
-    ("job_owners", "SELECT id FROM log_processing.record", "SELECT id FROM stats.ingest_job"),
+    ("job_owners", f"SELECT id FROM ({EXPECTED_JOBS}) j", "SELECT id FROM stats.ingest_job"),
     ("match_owners", "SELECT id FROM matches.match", "SELECT id FROM stats.match"),
     (
         "jobs",
         EXPECTED_JOBS,
-        f"SELECT {JOB_COLUMNS} FROM stats.ingest_job WHERE id IN (SELECT id FROM log_processing.record)",
+        f"SELECT {JOB_COLUMNS} FROM stats.ingest_job",
     ),
     (
         "matches",
@@ -1092,7 +1137,11 @@ RECONCILE_CLASSES = (
 # Separate source cardinalities prevent an unmappable source row disappearing at
 # an INNER JOIN from turning into an apparently successful multiset comparison.
 SOURCE_CARDINALITIES = (
-    ("jobs", "SELECT count(*) FROM log_processing.record", EXPECTED_JOBS),
+    (
+        "jobs",
+        "SELECT (SELECT count(*) FROM log_processing.record)+(SELECT count(*) FROM matches.match WHERE log_record_id IS NULL AND log_name IS NOT NULL)",
+        EXPECTED_JOBS,
+    ),
     ("matches", "SELECT count(*) FROM matches.match", EXPECTED_MATCHES),
     ("teams", "SELECT 2*count(*) FROM matches.match", EXPECTED_TEAMS),
     (
@@ -1221,14 +1270,17 @@ def upgrade():
     for statement in VOCABULARY_SETUP:
         bind.execute(sa.text(statement))
     # Standalone proof keeps snapshot-evaluated views. Only the migration
-    # materializes and indexes the small owner/vocabulary lookup maps.
+    # materializes small identity/handle lookups, never the full fact stream.
     for name, index_columns in (
         ("match", "match_id"),
         ("team", "match_id,team_id"),
+        ("endpoints", "match_id,user_id,team_id"),
+        ("handles", "match_id,player_id,team_id"),
         ("stat_ids", "discipline,legacy_name"),
         ("event_ids", "discipline,legacy_name"),
     ):
-        bind.execute(sa.text(f"CREATE TEMP TABLE stats01_{name}_indexed AS SELECT * FROM stats01_{name}"))
+        distinct = "DISTINCT " if name == "endpoints" else ""
+        bind.execute(sa.text(f"CREATE TEMP TABLE stats01_{name}_indexed AS SELECT {distinct}* FROM stats01_{name}"))
         bind.execute(sa.text(f"CREATE INDEX ON stats01_{name}_indexed({index_columns})"))
         bind.execute(sa.text(f"CREATE OR REPLACE TEMP VIEW stats01_{name} AS SELECT * FROM stats01_{name}_indexed"))
         bind.execute(sa.text(f"ANALYZE stats01_{name}_indexed"))
@@ -1236,6 +1288,8 @@ def upgrade():
     for statement in BULK_CONSTRAINTS + INDEXES:
         bind.execute(sa.text(statement))
     _repoint_external_references()
+    # Fresh bulk-loaded tables have no column statistics until this transaction commits.
+    bind.execute(sa.text("ANALYZE stats.stat_def,stats.match,stats.fact"))
     bind.execute(sa.text(f"CREATE MATERIALIZED VIEW stats.mv_entity_global_stats AS {NATIVE_MV_SELECT} WITH NO DATA"))
     bind.execute(
         sa.text(

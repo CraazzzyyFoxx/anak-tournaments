@@ -306,3 +306,63 @@ class EncounterComebackTests(_SeriesCase):
             await self.context(REAL_TOURNAMENT_ID),
         )
         self.assertEqual({(REAL_HOME_USER, REAL_TOURNAMENT_ID, encounter)}, result)
+
+    async def test_unknown_map_order_defers_the_whole_series_through_not_and_composites(self) -> None:
+        self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
+        home, away = self.two_teams(REAL_TOURNAMENT_ID)
+        known = self._reverse_sweep(home, away)
+        uncertain = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=1)
+        self.db.match(uncertain, home, away, home_score=0, away_score=1, map_index=1)
+        self.db.match(uncertain, home, away, home_score=1, away_score=0, map_index=2)
+        # A no-winner observation must not disappear before chronology is checked.
+        unbound = self.db.match(uncertain, home, away, home_score=0, away_score=0, map_index=3)
+        self.db.session.execute(
+            sa.update(models.StatsMatch).where(models.StatsMatch.id == unbound).values(encounter_game_id=None)
+        )
+        self.db.session.commit()
+        comeback = {"type": "encounter_comeback", "params": {"min_deficit": 1}}
+        win = {"type": "encounter_result", "params": {"outcome": "win"}}
+        context = await self.context(REAL_TOURNAMENT_ID)
+        for tree, expected in (
+            (comeback, {(REAL_HOME_USER, REAL_TOURNAMENT_ID, known)}),
+            ({"NOT": comeback}, {(REAL_AWAY_USER, REAL_TOURNAMENT_ID, known)}),
+            ({"OR": [win, comeback]}, {(REAL_HOME_USER, REAL_TOURNAMENT_ID, known)}),
+            ({"AND": [win, {"NOT": {"NOT": comeback}}]}, {(REAL_HOME_USER, REAL_TOURNAMENT_ID, known)}),
+        ):
+            with self.subTest(tree=tree):
+                result = await evaluator.evaluate(self.db.shim, tree, context)
+                self.assertEqual(expected, result)
+                self.assertEqual({uncertain}, context.deferred_encounter_ids)
+        # Reusing a preview context must not defer a later non-order rule.
+        result = await evaluator.evaluate(self.db.shim, win, context)
+        self.assertEqual(
+            {(REAL_HOME_USER, REAL_TOURNAMENT_ID, known), (REAL_HOME_USER, REAL_TOURNAMENT_ID, uncertain)}, result
+        )
+        self.assertEqual(set(), context.deferred_encounter_ids)
+
+    async def test_unbound_observation_still_qualifies_ordinary_map_conditions(self) -> None:
+        self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
+        home, away = self.two_teams(REAL_TOURNAMENT_ID)
+        encounter = self.db.encounter(REAL_TOURNAMENT_ID, home, away)
+        observation = self.db.match(encounter, home, away, home_score=1, away_score=0)
+        self.db.session.execute(
+            sa.update(models.StatsMatch).where(models.StatsMatch.id == observation).values(encounter_game_id=None)
+        )
+        self.db.session.commit()
+        context = await self.context(REAL_TOURNAMENT_ID)
+        self.assertEqual(
+            {(REAL_HOME_USER, REAL_TOURNAMENT_ID, observation)},
+            await evaluator.evaluate(self.db.shim, {"type": "match_win"}, context),
+        )
+        self.assertEqual(
+            {(REAL_AWAY_USER, REAL_TOURNAMENT_ID, observation)},
+            await evaluator.evaluate(self.db.shim, {"NOT": {"type": "match_win"}}, context),
+        )
+        self.assertEqual(
+            {(REAL_HOME_USER, REAL_TOURNAMENT_ID, observation), (REAL_AWAY_USER, REAL_TOURNAMENT_ID, observation)},
+            await evaluator.evaluate(
+                self.db.shim,
+                {"type": "match_criteria", "params": {"field": "match_time", "op": ">=", "value": 0}},
+                context,
+            ),
+        )

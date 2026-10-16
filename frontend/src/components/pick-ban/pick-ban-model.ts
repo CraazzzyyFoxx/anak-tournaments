@@ -73,38 +73,19 @@ export interface SeriesMatchLike {
 }
 
 /**
- * One `Match` row per position of the series, 1-based, aligned with `mapIds`
- * (the settled maps in play order — `pickedItemsInOrder`). `null` where nothing
- * has been written for that position yet.
- *
- * The POSITION identifies the row, not the map: a series can play the same map
- * twice, and matching on `map_id` alone printed one play's score on both. A row
- * with no position (every parsed log, and every row written before
- * `Match.map_index` existed) is adopted by the earliest position holding its map
- * that has no exact row — resolved in a second pass, so an exact row is never
- * stolen by an earlier position, and never by two positions at once.
+ * One proven `Match` row per 1-based position. A null map ID means the
+ * game's map was not expanded; the row must still name its exact position.
+ * Unbound observations remain separate history, even on the same map.
  */
 export function seriesMatchesByPosition<T extends SeriesMatchLike>(
   matches: T[],
-  mapIds: number[]
+  mapIds: (number | null)[]
 ): (T | null)[] {
-  const claimed = new Set<T>();
-  const byPosition = mapIds.map((mapId, index) => {
-    const exact = matches.find(
-      (match) => !claimed.has(match) && match.map_id === mapId && match.map_index === index + 1
-    );
-    if (exact != null) claimed.add(exact);
-    return exact ?? null;
-  });
-  return byPosition.map((match, index) => {
-    if (match != null) return match;
-    const adopted = matches.find(
-      (candidate) =>
-        !claimed.has(candidate) && candidate.map_id === mapIds[index] && candidate.map_index == null
-    );
-    if (adopted != null) claimed.add(adopted);
-    return adopted ?? null;
-  });
+  return mapIds.map((mapId, index) =>
+    matches.find(
+      (match) => match.map_index === index + 1 && (mapId == null || match.map_id === mapId)
+    ) ?? null
+  );
 }
 
 /**

@@ -26,7 +26,7 @@ def _team_ref(team: models.Team | None) -> schemas.AchievementMatchTeamRef | Non
 def to_match_link(context: MatchReadContext) -> schemas.AchievementMatchLink:
     return schemas.AchievementMatchLink(
         id=context.match.id,
-        encounter_id=context.game.encounter_id,
+        encounter_id=context.encounter.id,
         map_id=context.match.map_entity_id,
         score=Score(home=context.home_score, away=context.away_score),
         log_name=context.display_filename,

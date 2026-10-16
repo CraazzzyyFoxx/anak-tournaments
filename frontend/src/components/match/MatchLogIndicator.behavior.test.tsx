@@ -22,13 +22,13 @@ vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 let authStatus = "anonymous";
 vi.mock("@/hooks/useAuthProfile", () => ({ useAuthProfile: () => ({ status: authStatus }) }));
 
-function render(status: string) {
+function render(status: string, rawAvailable = true) {
   authStatus = status;
   const host = document.createElement("div");
   document.body.appendChild(host);
   act(() => {
     createRoot(host).render(
-      <MatchLogIndicator hasLogs logs={[{ matchId: 7, label: "Ilios" }]} />
+      <MatchLogIndicator hasLogs logs={[{ matchId: 7, label: "Ilios", rawAvailable }]} />
     );
   });
   return host;
@@ -45,6 +45,15 @@ describe("MatchLogIndicator", () => {
     const link = host.querySelector("a");
     expect(link?.getAttribute("href")).toBe("/api/v1/matches/7/log");
     expect(link?.hasAttribute("download")).toBe(true);
+  });
+
+  it("never offers raw download when the server says it is unavailable", () => {
+    const host = render("authenticated", false);
+    expect(host.querySelector("a")).toBeNull();
+    expect(host.querySelector("button")).toBeNull();
+    expect(host.querySelector("[role='img']")?.getAttribute("aria-label")).toBe(
+      "common.matchLogs.rawUnavailable"
+    );
   });
 
   it.each(["anonymous", "idle", "loading", "error"])(

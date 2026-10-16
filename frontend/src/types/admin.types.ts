@@ -1,6 +1,6 @@
 // Admin CRUD Types
 
-import type { CaptainReport, ReplayCode } from "@/types/encounter.types";
+import type { CaptainReport, RawSourceStatus, ReplayCode } from "@/types/encounter.types";
 import type { RoleRef } from "@/lib/roster/role-ref";
 
 // ─── Global Settings (parser.*) ───────────────────────────────────────────────
@@ -1637,6 +1637,8 @@ export interface LogProcessingRecord {
   filename: string;
   status: LogProcessingStatus;
   source: string;
+  raw_status: RawSourceStatus;
+  raw_available: boolean;
   uploader_name: string | null;
   error_message: string | null;
   /** Times the record entered processing; >1 means the stall reaper requeued it. */

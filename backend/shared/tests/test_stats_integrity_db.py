@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import hashlib
 import itertools
 import os
 import sys
@@ -17,7 +18,11 @@ from shared import models
 from shared.core import enums
 from shared.disciplines import DimensionSpec, DisciplineSpec, EventTypeSpec, RoleSpec, StatDefSpec
 from shared.repository import CatalogRoleRepository
-from shared.repository.stats import EventTypeRepository, StatDefRepository, StatsMatchRepository
+from shared.repository.stats import EventTypeRepository, IngestJobRepository, StatDefRepository, StatsMatchRepository
+from shared.repository.stats_queries import match_context, player_facts, team_scores
+from shared.repository.stats_reads import get_match_reads
+from shared.services.stats_evidence import EvidenceError, capture_stats_evidence, owner_scopes, stage_stats_evidence
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 
@@ -80,7 +85,11 @@ async def seed_native_stats(session, tag: str, *, spec: DisciplineSpec | None = 
         ]
     )
     match = models.StatsMatch(
-        workspace_id=ws.id, discipline=spec.code, encounter_game_id=game.id, map_entity_id=catalog[0].id
+        workspace_id=ws.id,
+        discipline=spec.code,
+        encounter_id=encounter.id,
+        encounter_game_id=game.id,
+        map_entity_id=catalog[0].id,
     )
     session.add(match)
     await session.flush()
@@ -91,7 +100,7 @@ async def seed_native_stats(session, tag: str, *, spec: DisciplineSpec | None = 
     )
     observations = {
         "teams": [
-            {"match_id": match.id, "encounter_game_id": game.id, "encounter_team_id": team.id, "source_position": i + 1}
+            {"match_id": match.id, "encounter_id": encounter.id, "encounter_team_id": team.id, "source_position": i + 1}
             for i, team in enumerate(participants)
         ],
         "players": [
@@ -202,6 +211,7 @@ class StatsIntegrityTests(IsolatedAsyncioTestCase):
                 {
                     "workspace_id": self.mine["workspace"].id,
                     "discipline": self.mine["spec"].code,
+                    "encounter_id": self.mine["encounter"].id,
                     "encounter_game_id": self.mine["game"].id,
                     "map_entity_id": self.mine["catalog"][0].id,
                 },
@@ -227,7 +237,7 @@ class StatsIntegrityTests(IsolatedAsyncioTestCase):
         before = await self._snapshot()
         foreign = self.foreign
         changes = [
-            ("teams", "encounter_game_id", foreign["game"].id),
+            ("teams", "encounter_id", foreign["encounter"].id),
             ("teams", "encounter_team_id", foreign["participants"][0].id),
             ("teams", "source_position", 2),
             ("players", "workspace_member_id", foreign["members"][0].id),
@@ -252,6 +262,8 @@ class StatsIntegrityTests(IsolatedAsyncioTestCase):
         for field, value in (
             ("workspace_id", foreign["workspace"].id),
             ("discipline", foreign["spec"].code),
+            ("encounter_id", foreign["encounter"].id),
+            ("encounter_game_id", foreign["game"].id),
             ("map_entity_id", foreign["catalog"][0].id),
         ):
             match = self.mine["match"]
@@ -604,3 +616,307 @@ class StatsIntegrityTests(IsolatedAsyncioTestCase):
                 sa.select(event.c.data.is_(None)).where(event.c.match_id == self.mine["match"].id)
             )
         )
+
+    async def test_game_deletion_preserves_unbound_reads_and_owner_deletion_captures_them(self) -> None:
+        match = self.mine["match"]
+        first, second = [team.id for team in self.mine["participants"]]
+        await self.repo.set_team_scores(
+            self.session, match_id=match.id, discipline=match.discipline, scores={first: 3.0, second: 1.0}
+        )
+        match.source_map_index = 19
+        await self.session.execute(
+            sa.update(models.EncounterTeam)
+            .where(models.EncounterTeam.encounter_id == match.encounter_id)
+            .values(active=False)
+        )
+        await self.session.flush()
+        before = await self._snapshot()
+        captures = await capture_owner_delete(self.session, game_id=match.encounter_game_id)
+        game_id = match.encounter_game_id
+        await self.session.execute(sa.delete(models.EncounterGame).where(models.EncounterGame.id == game_id))
+        audits = await stage_owner_delete(
+            self.session, captures, workspace_id=match.workspace_id, entity_type="encounter_game", entity_id=game_id
+        )
+        self.assertTrue(audits)
+        await self.session.refresh(match)
+        self.assertIsNone(match.encounter_game_id)
+        self.assertEqual(before, await self._snapshot())
+        context = match_context(discipline=match.discipline)
+        header = (await self.session.execute(sa.select(context).where(context.c.id == match.id))).mappings().one()
+        self.assertEqual(
+            (match.encounter_id, None, 19), (header["encounter_id"], header["position"], header["source_map_index"])
+        )
+        facts = player_facts(discipline=match.discipline)
+        self.assertEqual(
+            [(match.encounter_id, 17.5)],
+            (
+                await self.session.execute(
+                    sa.select(facts.c.encounter_id, facts.c.value).where(facts.c.match_id == match.id)
+                )
+            ).all(),
+        )
+        scores = team_scores(discipline=match.discipline, stat_code="score")
+        self.assertEqual(
+            {first: 3.0, second: 1.0},
+            dict(
+                (
+                    await self.session.execute(
+                        sa.select(scores.c.encounter_team_id, scores.c.value).where(scores.c.match_id == match.id)
+                    )
+                ).all()
+            ),
+        )
+        read = (await get_match_reads(self.session, match_ids=[match.id], discipline=match.discipline))[match.id]
+        self.assertIsNone(read.game)
+        self.assertEqual(match.encounter_id, read.encounter.id)
+        self.assertEqual((3, 1), (read.home_score, read.away_score))
+        with self.assertRaises(ValueError):
+            await self.repo.replace_observations(self.session, match=match, **self.mine["observations"])
+        self.assertEqual(before, await self._snapshot())
+        await self.repo.set_team_scores(
+            self.session, match_id=match.id, discipline=match.discipline, scores={first: 4.5}
+        )
+        with self.assertRaisesRegex(ValueError, "observed duel scores"):
+            await get_match_reads(self.session, match_ids=[match.id], discipline=match.discipline)
+        for model, root, root_id in (
+            (models.Encounter, "encounter_id", match.encounter_id),
+            (models.Tournament, "tournament_id", self.mine["tournament"].id),
+        ):
+            nested = await self.session.begin_nested()
+            try:
+                captures = await capture_owner_delete(self.session, **{root: root_id})
+                self.assertTrue(
+                    any(
+                        state["owner_kind"] == "match" and state["owner_key"] == [match.id]
+                        for capture in captures
+                        for state in capture
+                    )
+                )
+                await self.session.execute(sa.delete(model).where(model.id == root_id))
+                self.assertTrue(
+                    await stage_owner_delete(
+                        self.session, captures, workspace_id=match.workspace_id, entity_type=root, entity_id=root_id
+                    )
+                )
+                self.assertIsNone(
+                    await self.session.scalar(sa.select(models.StatsMatch.id).where(models.StatsMatch.id == match.id))
+                )
+                self.assertTrue(all(not rows for rows in (await self._snapshot()).values()))
+            finally:
+                await nested.rollback()
+
+    async def test_raw_verification_preserves_known_hash_and_rejects_unaudited_metadata_changes(self) -> None:
+        digest = hashlib.sha256(b"actually inspected fixture bytes").hexdigest()
+        job = models.IngestJob(
+            workspace_id=self.mine["workspace"].id,
+            discipline=self.mine["spec"].code,
+            source_kind="historical_reference",
+            external_id=f"legacy:matches.match:{self.mine['match'].id}",
+            raw_ref="fixture/history",
+            content_hash=None,
+            raw_status=models.RawSourceStatus.UNVERIFIED,
+            status=models.IngestJobStatus.DONE,
+        )
+        self.session.add(job)
+        await self.session.flush()
+        repo = IngestJobRepository()
+        scopes = owner_scopes("job", (job.id,))
+        for status, inspected in (
+            (models.RawSourceStatus.AVAILABLE, None),
+            (models.RawSourceStatus.MISSING, digest),
+            (models.RawSourceStatus.CONFLICT, digest),
+        ):
+            with self.assertRaises(ValueError):
+                await repo.verify_raw_source(
+                    self.session,
+                    job_id=job.id,
+                    workspace_id=job.workspace_id,
+                    raw_status=status,
+                    inspected_sha256=inspected,
+                )
+        self.assertFalse(job.raw_available)
+        with self.assertRaises(ValueError):
+            await repo.verify_raw_source(
+                self.session,
+                job_id=job.id,
+                workspace_id=self.foreign["workspace"].id,
+                raw_status=models.RawSourceStatus.AVAILABLE,
+                inspected_sha256=digest,
+            )
+        before = await capture_stats_evidence(self.session, scopes=scopes)
+        original = dict(
+            (await self.session.execute(sa.select(models.IngestJob.__table__).where(models.IngestJob.id == job.id)))
+            .mappings()
+            .one()
+        )
+        await repo.verify_raw_source(
+            self.session,
+            job_id=job.id,
+            workspace_id=job.workspace_id,
+            raw_status=models.RawSourceStatus.AVAILABLE,
+            inspected_sha256=digest,
+        )
+        self.assertTrue(job.raw_available)
+        self.assertEqual(digest, job.content_hash)
+        after = await capture_stats_evidence(self.session, scopes=scopes)
+        with self.assertRaises(EvidenceError):
+            await stage_stats_evidence(
+                self.session,
+                operation="stats.raw_verification",
+                before=before,
+                after=after,
+                workspace_id=job.workspace_id,
+                entity_type="ingest_job",
+                entity_id=job.id,
+            )
+        evidence = [{"job_id": job.id, "raw_ref": job.raw_ref, "inspected_sha256": digest}]
+        audit = await stage_stats_evidence(
+            self.session,
+            operation="stats.raw_verification",
+            before=before,
+            after=after,
+            workspace_id=job.workspace_id,
+            entity_type="ingest_job",
+            entity_id=job.id,
+            raw_verification=evidence,
+        )
+        self.assertEqual(evidence, audit.after_json["stats_evidence"]["raw_verification"])
+        persisted = dict(
+            (await self.session.execute(sa.select(models.IngestJob.__table__).where(models.IngestJob.id == job.id)))
+            .mappings()
+            .one()
+        )
+        self.assertEqual(
+            {k: v for k, v in original.items() if k not in {"content_hash", "raw_status"}},
+            {k: v for k, v in persisted.items() if k not in {"content_hash", "raw_status"}},
+        )
+        before = after
+        await repo.verify_raw_source(
+            self.session,
+            job_id=job.id,
+            workspace_id=job.workspace_id,
+            raw_status=models.RawSourceStatus.AVAILABLE,
+            inspected_sha256=digest,
+        )
+        self.assertEqual(before, await capture_stats_evidence(self.session, scopes=scopes))
+        conflicting = hashlib.sha256(b"different inspected bytes").hexdigest()
+        with self.assertRaises(ValueError):
+            await repo.verify_raw_source(
+                self.session,
+                job_id=job.id,
+                workspace_id=job.workspace_id,
+                raw_status=models.RawSourceStatus.AVAILABLE,
+                inspected_sha256=conflicting,
+            )
+        for status, inspected in (
+            (models.RawSourceStatus.CONFLICT, conflicting),
+            (models.RawSourceStatus.MISSING, None),
+            (models.RawSourceStatus.UNVERIFIED, digest),
+        ):
+            await repo.verify_raw_source(
+                self.session,
+                job_id=job.id,
+                workspace_id=job.workspace_id,
+                raw_status=status,
+                inspected_sha256=inspected,
+            )
+            self.assertFalse(job.raw_available)
+            self.assertEqual(digest, job.content_hash)
+            after = await capture_stats_evidence(self.session, scopes=scopes)
+            await stage_stats_evidence(
+                self.session,
+                operation="stats.raw_verification",
+                before=before,
+                after=after,
+                workspace_id=job.workspace_id,
+                entity_type="ingest_job",
+                entity_id=job.id,
+                raw_verification=[{"job_id": job.id, "raw_ref": job.raw_ref, "inspected_sha256": inspected}],
+            )
+            before = after
+        await self.session.execute(
+            sa.update(models.IngestJob)
+            .where(models.IngestJob.id == job.id)
+            .values(filename="unauthorized.txt", updated_at=job.updated_at)
+        )
+        after = await capture_stats_evidence(self.session, scopes=scopes)
+        with self.assertRaises(EvidenceError):
+            await stage_stats_evidence(
+                self.session,
+                operation="stats.raw_verification",
+                before=before,
+                after=after,
+                workspace_id=job.workspace_id,
+                entity_type="ingest_job",
+                entity_id=job.id,
+                raw_verification=evidence,
+            )
+
+    async def test_raw_verification_preserves_hash_case_and_refuses_shared_source_availability(self) -> None:
+        digest = hashlib.sha256(b"inspected shared fixture").hexdigest()
+        jobs = [
+            models.IngestJob(
+                workspace_id=self.mine["workspace"].id,
+                discipline=self.mine["spec"].code,
+                source_kind="historical_reference",
+                external_id=f"fixture:{i}",
+                raw_ref="fixture/shared",
+                content_hash=digest.upper() if i == 0 else None,
+                raw_status=models.RawSourceStatus.UNVERIFIED,
+                status=models.IngestJobStatus.DONE,
+            )
+            for i in range(2)
+        ]
+        self.session.add_all(jobs)
+        await self.session.flush()
+        repo = IngestJobRepository()
+        before = await capture_stats_evidence(self.session, scopes=owner_scopes("job", (jobs[0].id,)))
+        await repo.verify_raw_source(
+            self.session,
+            job_id=jobs[0].id,
+            workspace_id=jobs[0].workspace_id,
+            raw_status=models.RawSourceStatus.AVAILABLE,
+            inspected_sha256=digest,
+        )
+        after = await capture_stats_evidence(self.session, scopes=owner_scopes("job", (jobs[0].id,)))
+        await stage_stats_evidence(
+            self.session,
+            operation="stats.raw_verification",
+            before=before,
+            after=after,
+            workspace_id=jobs[0].workspace_id,
+            entity_type="ingest_job",
+            entity_id=jobs[0].id,
+            raw_verification=[{"job_id": jobs[0].id, "raw_ref": jobs[0].raw_ref, "inspected_sha256": digest}],
+        )
+        self.assertEqual(digest.upper(), jobs[0].content_hash)
+        self.mine["match"].ingest_job_id = jobs[0].id
+        self.session.add(
+            models.StatsMatch(
+                workspace_id=self.mine["workspace"].id,
+                discipline=self.mine["spec"].code,
+                encounter_id=self.mine["encounter"].id,
+                map_entity_id=self.mine["catalog"][0].id,
+                ingest_job_id=jobs[1].id,
+            )
+        )
+        await self.session.flush()
+        for job in jobs:
+            with self.assertRaisesRegex(ValueError, "ambiguous"):
+                await repo.verify_raw_source(
+                    self.session,
+                    job_id=job.id,
+                    workspace_id=job.workspace_id,
+                    raw_status=models.RawSourceStatus.AVAILABLE,
+                    inspected_sha256=digest,
+                )
+            await repo.verify_raw_source(
+                self.session,
+                job_id=job.id,
+                workspace_id=job.workspace_id,
+                raw_status=models.RawSourceStatus.UNVERIFIED,
+                inspected_sha256=digest,
+            )
+            self.assertFalse(job.raw_available)
+        self.assertEqual(digest.upper(), jobs[0].content_hash)
+        self.assertIsNone(jobs[1].content_hash)

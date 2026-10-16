@@ -135,8 +135,8 @@ def to_match_with_user_stats(
     ``overperf_pos`` is the viewer's rank (1 = best) among all match
     participants by OverperformanceScore (match-wide window, not scoped to the
     viewer) — used only to compute ``overperformance_badge`` and not exposed
-    on the schema itself. Scores and team ids follow the bound game's historical
-    slots 1 and 2, never the live encounter seats or the log's source order.
+    on the schema itself. Scores and team ids follow the observation's historical
+    encounter slots 1 and 2, never the live seats or the log's source order.
     """
     match = context.match
     map_read = schemas.MapRead.from_entity(context.map, with_gamemode=True) if context.map is not None else None
@@ -148,9 +148,11 @@ def to_match_with_user_stats(
         score=Score(home=context.home_score, away=context.away_score),
         time=match.duration_s,
         log_name=context.display_filename,
-        encounter_id=context.game.encounter_id,
+        raw_status=context.job.raw_status if context.job is not None else None,
+        raw_available=context.job.raw_available if context.job is not None else False,
+        encounter_id=context.encounter.id,
         map_id=match.map_entity_id,
-        map_index=context.game.position,
+        map_index=context.game.position if context.game is not None else None,
         map=map_read,
         performance=performance,
         impact_rank=int(impact_rank) if impact_rank is not None else None,
@@ -299,5 +301,5 @@ def encounter_play_key(encounter: models.Encounter) -> tuple[datetime, int]:
 def sort_user_matches(
     matches: list[schemas.MatchReadWithUserStats],
 ) -> list[schemas.MatchReadWithUserStats]:
-    """Bound game position is authoritative, including repeated maps."""
-    return sorted(matches, key=lambda match: (match.map_index, match.id))
+    """Proven positions first; unknown positions stay unset, with stable display order."""
+    return sorted(matches, key=lambda match: (match.map_index is None, match.map_index, match.id))

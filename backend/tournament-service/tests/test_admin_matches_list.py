@@ -7,7 +7,7 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest import TestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -17,6 +17,8 @@ os.environ["DEBUG"] = "true"
 svc = importlib.import_module("src.services.admin.matches")
 schemas = importlib.import_module("src.schemas")
 IngestJobStatus = importlib.import_module("shared.models.stats.ingest").IngestJobStatus
+RawSourceStatus = importlib.import_module("shared.models.stats.ingest").RawSourceStatus
+encounters = importlib.import_module("src.services.encounter.flows").flows_service
 build_query_model = importlib.import_module("shared.rpc.query").build_query_model
 
 
@@ -43,6 +45,7 @@ def _read(*, job=None, **kw):
         **{
             "match": svc.models.StatsMatch(
                 id=100,
+                encounter_id=10,
                 map_entity_id=8,
                 duration_s=612.5,
                 created_at=datetime(2026, 5, 1, tzinfo=UTC),
@@ -56,8 +59,12 @@ def _read(*, job=None, **kw):
             ),
             "map": svc.models.CatalogEntity(id=8, name="Ilios"),
             "job": job,
-            "home_participant_id": 21,
-            "away_participant_id": 22,
+            "home_participation": svc.models.EncounterTeam(
+                id=21, encounter_id=10, slot=1, team_id=1, name="Observed A", active=False, score=4
+            ),
+            "away_participation": svc.models.EncounterTeam(
+                id=22, encounter_id=10, slot=2, team_id=2, name="Observed B", active=True, score=3
+            ),
             "home_team": svc.models.Team(id=1, name="A"),
             "away_team": svc.models.Team(id=2, name="B"),
             "home_score": 2,
@@ -91,6 +98,39 @@ class RowDerivation(TestCase):
         self.assertIsNone(row.log_name)
         self.assertIsNone(row.home_team)
         self.assertIsNone(row.away_team)
+
+
+class PublicHistorySerialization(IsolatedAsyncioTestCase):
+    async def test_unbound_observation_has_owner_but_no_official_position_or_raw(self):
+        context = _read(game=None)
+        context.match.source_map_index = 99
+        row = await encounters.to_pydantic_match(None, context, [])
+
+        self.assertEqual((100, 10, 8, 612.5), (row.id, row.encounter_id, row.map_id, row.time))
+        self.assertEqual((2, 1), (row.score.home, row.score.away))
+        self.assertIsNone(row.map_index)
+        self.assertIsNone(row.raw_status)
+        self.assertFalse(row.raw_available)
+        self.assertEqual((21, 22), (row.home_participation.id, row.away_participation.id))
+        self.assertEqual("Observed A", row.home_participation.name)
+        self.assertFalse(row.home_participation.active)
+        self.assertEqual(4, row.home_participation.score)
+
+    async def test_raw_capability_comes_from_source_state_not_filename_or_binding(self):
+        for raw_status, content_hash, filename, available in (
+            (RawSourceStatus.AVAILABLE, "a" * 64, None, True),
+            (RawSourceStatus.MISSING, None, "logs/match.txt", False),
+            (RawSourceStatus.CONFLICT, "b" * 64, "logs/match.txt", False),
+            (RawSourceStatus.UNVERIFIED, None, "logs/match.txt", False),
+        ):
+            with self.subTest(raw_status=raw_status):
+                job = _job(raw_status=raw_status, content_hash=content_hash, filename=filename)
+                row = await encounters.to_pydantic_match(None, _read(job=job, game=None), [])
+
+                self.assertEqual(raw_status.value, row.model_dump(mode="json")["raw_status"])
+                self.assertEqual(available, row.raw_available)
+                self.assertEqual(filename, row.log_name)
+                self.assertIsNone(row.map_index)
 
 
 class QueryStringRoundTrip(TestCase):
