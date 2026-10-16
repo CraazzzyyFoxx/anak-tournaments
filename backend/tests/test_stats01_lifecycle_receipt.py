@@ -247,16 +247,88 @@ def test_receipt_roundtrip_complete_owners_and_immutable_publication(native, tmp
     assert (receipt / "manifest.json").read_bytes() == original
 
 
-def test_initial_receipt_records_bounded_average_deltas_and_rejects_policy_tampering(native, tmp_path):
+def test_initial_receipt_records_raw_average_deltas_and_rejects_policy_tampering(native, tmp_path):
     receipt = _capture(native, tmp_path / "receipt")
     manifest = reconcile.load_manifest(receipt, reconcile.revision_module())
     mv = next(proof for proof in manifest["proof"] if proof["class"] == "mv")
-    assert 0 < mv["avg_comparison"]["max_abs_delta"] <= 1e-12
-    assert mv["non_avg_semantic_sha256"] != mv["native_semantic_sha256"]
-    mv["avg_comparison"]["absolute_tolerance"] = 1.0
+    assert mv["avg_comparison"]["policy"] == "canonical_source_bit_exact"
+    assert mv["avg_comparison"]["max_abs_delta"] > 0
+    assert mv["semantic_sha256"] == mv["native_semantic_sha256"]
+    mv["avg_comparison"]["policy"] = "absolute_tolerance"
     (receipt / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(EvidenceError, match="invalid initial MV average policy"):
         reconcile.load_manifest(receipt, reconcile.revision_module())
+
+
+def test_canonical_mv_upgrade_preserves_operands_and_reports_large_raw_average_drift(stats01_legacy_database, tmp_path):
+    url, ids = stats01_legacy_database
+    engine = sa.create_engine(url, poolclass=sa.pool.NullPool)
+    revision = reconcile.revision_module()
+    source_queries = (
+        """SELECT to_jsonb(s)-'value',encode(float8send(value),'hex')
+        FROM matches.statistics s ORDER BY id""",
+        "SELECT id,encode(float8send(\"time\"),'hex') FROM matches.match ORDER BY id",
+        "SELECT to_jsonb(g) FROM encounter.game g ORDER BY id",
+        "SELECT to_jsonb(t) FROM encounter.game_team t ORDER BY game_id,encounter_team_id",
+    )
+    try:
+        with engine.begin() as conn:
+            # Power-of-two scaling introduces no operand rounding and magnifies
+            # the seed's existing reduction-order drift. Qualification and every
+            # duration stay unchanged; no golden or shared seed changes.
+            assert (
+                conn.execute(
+                    sa.text("""UPDATE matches.statistics SET value=value*1099511627776.0
+                WHERE name::text<>'HeroTimePlayed'""")
+                ).rowcount
+                > 0
+            )
+            original = [conn.execute(sa.text(query)).all() for query in source_queries]
+        result = upgrade_database(url, "stats01a")
+        assert result.returncode == 0, result.stdout + result.stderr
+        native = (engine, ids, url)
+        receipt = _capture(native, tmp_path / "receipt")
+        manifest = reconcile.load_manifest(receipt, revision)
+        mv = next(proof for proof in manifest["proof"] if proof["class"] == "mv")
+        with reconcile.readonly_snapshot(engine, revision, receipt_dir=receipt) as conn:
+            assert [conn.execute(sa.text(query)).all() for query in source_queries] == original
+            native_averages = {
+                (row.stat_id, row.entity_id): row.avg
+                for row in conn.execute(sa.text("SELECT stat_id,entity_id,avg FROM stats.mv_entity_global_stats"))
+            }
+        averages = mv["avg_comparison"]
+        assert averages["policy"] == "canonical_source_bit_exact"
+        # The unordered reference may choose another plan after the cutover.
+        # Its actual captured values and deltas, not a pre-upgrade row count,
+        # must survive in the immutable report.
+        assert averages["max_abs_delta"] > 1e-12
+        assert averages["changed_rows"] == len(averages["rows"])
+        assert averages["max_abs_delta"] == max(abs(row["delta"]) for row in averages["rows"])
+        for row in averages["rows"]:
+            assert row["canonical_avg"] == native_averages[row["stat_id"], row["entity_id"]]
+            assert row["delta"] == row["canonical_avg"] - row["legacy_avg"]
+            assert row["legacy_bits"] != row["canonical_bits"]
+        assert mv["semantic_sha256"] == mv["native_semantic_sha256"]
+        assert _check(native, receipt)["exit_code"] == 0
+        immutable = {path.name: path.read_bytes() for path in receipt.iterdir()}
+        with engine.begin() as conn:
+            assert (
+                conn.execute(
+                    sa.text("""UPDATE stats.fact SET value=value*1.0000000000000002
+                WHERE match_id=:match AND workspace_member_id=:member AND entity_id=:hero AND segment=0
+                AND stat_id=(SELECT id FROM stats.stat_def WHERE discipline='overwatch' AND code='all_damage_dealt')"""),
+                    ids,
+                ).rowcount
+                == 1
+            )
+            conn.execute(sa.text("REFRESH MATERIALIZED VIEW stats.mv_entity_global_stats"))
+        assert _check(native, receipt)["exit_code"] == 1
+        with pytest.raises(EvidenceError):
+            _capture(native, tmp_path / "corrupt-receipt")
+        assert not (tmp_path / "corrupt-receipt" / "manifest.json").exists()
+        assert {path.name: path.read_bytes() for path in receipt.iterdir()} == immutable
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize("damage", ["missing_manifest", "missing_owners", "byte_tamper", "missing_partition"])

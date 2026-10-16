@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 from scripts.stats01_reconcile import _projection_digest
+from shared.services.stats_evidence import encode_value
 
 revision = "stats01a"
 down_revision = "stats01"
@@ -30,6 +31,19 @@ def transfer_revision():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def original_mv_projection(source, query):
+    """Retain an old winner only when its entire metadata is source-proven co-best."""
+    return f"""WITH e AS MATERIALIZED ({query}),
+      holders AS MATERIALIZED ({source.EXPECTED_MV_TIED_HOLDERS_SELECT})
+      SELECT e.discipline,e.stat_id,e.entity_id,e.best_value,e.avg,
+        CASE WHEN EXISTS (
+          SELECT 1 FROM holders h WHERE h.discipline=e.discipline AND h.stat_id=e.stat_id
+            AND h.entity_id=e.entity_id AND float8send(h.best_value)=float8send(e.best_value)
+            AND h.metadata=a.metadata
+        ) THEN a.metadata ELSE e.metadata END AS metadata
+      FROM e LEFT JOIN ({source.RESIDENT_MV_SELECT}) a USING(discipline,stat_id,entity_id)"""
 
 
 def original_classes(source):
@@ -52,7 +66,11 @@ def original_classes(source):
             old_teams,
             "SELECT match_id,encounter_game_id,encounter_team_id,source_position FROM stats.match_team",
         ),
-        "mv_derivation": (source._mv_bits(old_mv), source._mv_bits(source.RESIDENT_MV_SELECT)),
+        "mv": (original_mv_projection(source, source.EXPECTED_MV_SELECT), source.RESIDENT_MV_SELECT),
+        "mv_derivation": (
+            source._mv_bits(original_mv_projection(source, old_mv)),
+            source._mv_bits(source.RESIDENT_MV_SELECT),
+        ),
     }
     return tuple(
         (name, *replacements.get(name, (expected, actual))) for name, expected, actual in source.RECONCILE_CLASSES
@@ -68,14 +86,8 @@ def assert_proof(bind, source, classes):
             sample = bind.execute(sa.text(f"SELECT * FROM ({difference}) d LIMIT 20")).all()
             raise RuntimeError(f"stats01a refuses unexplained {name} differences: count={count}, sample={sample!r}")
         # Use the receipt's typed, ordered codec: EXCEPT ALL equates signed zero.
-        # Only legacy MV averages retain the already-approved relational tolerance.
-        queries = (expected, actual)
-        if name == "mv":
-            queries = tuple(
-                f"SELECT discipline,stat_id,entity_id,best_value,metadata FROM ({query}) p" for query in queries
-            )
         scope = ("migration", ("stats01a",), name)
-        expected_digest, actual_digest = (_projection_digest(bind, query, scope) for query in queries)
+        expected_digest, actual_digest = (_projection_digest(bind, query, scope) for query in (expected, actual))
         if expected_digest != actual_digest:
             raise RuntimeError(f"stats01a refuses unexplained {name} semantic differences")
         proof.append(
@@ -83,7 +95,7 @@ def assert_proof(bind, source, classes):
                 "class": name,
                 "legacy": expected_digest[0],
                 "migrated": actual_digest[0],
-                "non_avg_semantic_sha256" if name == "mv" else "semantic_sha256": expected_digest[1],
+                "semantic_sha256": expected_digest[1],
                 "status": "ok",
             }
         )
@@ -119,6 +131,7 @@ def upgrade():
     for statement in source.RECONCILE_SETUP:
         bind.execute(sa.text(statement))
     before = assert_proof(bind, source, original_classes(source))
+    old_mv = {tuple(row[:3]): encode_value(tuple(row)) for row in bind.execute(sa.text(source.RESIDENT_MV_SELECT))}
     # Record a real creation time for native provenance, not an invented old upload.
     audit_id = bind.scalar(
         sa.text("""INSERT INTO audit_log(source,action,entity_type,before_json,after_json)
@@ -188,9 +201,28 @@ def upgrade():
     )
     bind.execute(sa.text("SET CONSTRAINTS ALL IMMEDIATE"))
     after = assert_proof(bind, source, source.RECONCILE_CLASSES)
+    mv_changes = []
+    for row in bind.execute(sa.text(source.RESIDENT_MV_SELECT + " ORDER BY discipline,stat_id,entity_id")):
+        prior, current = old_mv[tuple(row[:3])], encode_value(tuple(row))
+        if prior != current:
+            mv_changes.append({"owner_key": list(row[:3]), "before": prior, "after": current})
     bind.execute(
         sa.text("UPDATE audit_log SET after_json=after_json||CAST(:proof AS jsonb) WHERE id=:id"),
-        {"id": audit_id, "proof": json.dumps({"proof": after, "original_oracle_retained": True})},
+        {
+            "id": audit_id,
+            "proof": json.dumps(
+                {
+                    "proof": after,
+                    "original_oracle_retained": True,
+                    "mv_best_tie_policy": "best_value_latest_match_min_member",
+                    "mv_changes": mv_changes,
+                    "avg_comparison": {
+                        "policy": "canonical_source_bit_exact",
+                        **dict(bind.execute(sa.text(source.MV_AVG_DIFFERENCES)).mappings().one()),
+                    },
+                }
+            ),
+        },
     )
     bind.execute(sa.text("SET CONSTRAINTS ALL DEFERRED"))
 

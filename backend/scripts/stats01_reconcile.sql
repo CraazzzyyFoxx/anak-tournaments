@@ -5,6 +5,10 @@ SET LOCAL timezone = 'UTC';
 
 SET LOCAL extra_float_digits = 3;
 
+SET LOCAL timezone = 'UTC';
+
+SET LOCAL extra_float_digits = 3;
+
 CREATE TEMP VIEW stats01_stat_names(legacy_name,code) AS VALUES ('Eliminations','eliminations'),
 ('FinalBlows','final_blows'),
 ('Deaths','deaths'),
@@ -103,6 +107,12 @@ SELECT c.match_id,
 FROM claims c JOIN matches.match m ON m.id=c.match_id
 ;
 
+CREATE TEMP VIEW stats01_historical_reference AS
+       SELECT m.id AS source_match_id,
+         (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id
+       FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+       WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL;
+
 CREATE TEMP VIEW stats01_endpoints AS
 SELECT match_id,user_id,team_id FROM matches.statistics
 UNION ALL SELECT match_id,killer_id,killer_team_id FROM matches.kill_feed
@@ -169,7 +179,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -179,6 +189,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) j) EXCEPT ALL (SELECT id FROM stats.ingest_job)) p
       UNION ALL SELECT 'job_owners'::text,'unexpected_or_changed'::text,to_jsonb(p)
       FROM ((SELECT id FROM stats.ingest_job) EXCEPT ALL (SELECT id FROM (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
@@ -188,7 +199,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -198,6 +209,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) j)) p UNION ALL SELECT 'match_owners'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
       FROM ((SELECT id FROM matches.match) EXCEPT ALL (SELECT id FROM stats.match)) p
       UNION ALL SELECT 'match_owners'::text,'unexpected_or_changed'::text,to_jsonb(p)
@@ -209,7 +221,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -219,6 +231,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) EXCEPT ALL (SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job)) p
       UNION ALL SELECT 'jobs'::text,'unexpected_or_changed'::text,to_jsonb(p)
       FROM ((SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job) EXCEPT ALL (SELECT r.id,r.created_at,r.updated_at,t.workspace_id,t.discipline,
@@ -228,7 +241,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -238,13 +251,14 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h)) p UNION ALL SELECT 'matches'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
       FROM ((SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
  x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
  coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
  m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  LEFT JOIN (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -254,6 +268,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) EXCEPT ALL (SELECT id,created_at,updated_at,workspace_id,discipline,encounter_id,source_map_index,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match))) p
       UNION ALL SELECT 'matches'::text,'unexpected_or_changed'::text,to_jsonb(p)
       FROM ((SELECT id,created_at,updated_at,workspace_id,discipline,encounter_id,source_map_index,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match)) EXCEPT ALL (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
@@ -261,7 +276,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
  m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  LEFT JOIN (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -271,6 +286,7 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id)) p UNION ALL SELECT 'teams'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
       FROM ((SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
@@ -301,14 +317,14 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
  FROM matches.statistics s JOIN stats01_match x ON x.match_id=s.match_id
  JOIN stats01_team t ON t.match_id=s.match_id AND t.team_id=s.team_id
  JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=s.user_id
- JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name=s.name::text) EXCEPT ALL (SELECT match_id,segment,encounter_team_id,workspace_member_id,entity_id,entity_kind,stat_id,value FROM stats.fact WHERE match_id IN (SELECT id FROM matches.match) AND workspace_member_id IS NOT NULL)) p
+ JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name::logstatsname=s.name) EXCEPT ALL (SELECT match_id,segment,encounter_team_id,workspace_member_id,entity_id,entity_kind,stat_id,value FROM stats.fact WHERE match_id IN (SELECT id FROM matches.match) AND workspace_member_id IS NOT NULL)) p
       UNION ALL SELECT 'facts'::text,'unexpected_or_changed'::text,to_jsonb(p)
       FROM ((SELECT match_id,segment,encounter_team_id,workspace_member_id,entity_id,entity_kind,stat_id,value FROM stats.fact WHERE match_id IN (SELECT id FROM matches.match) AND workspace_member_id IS NOT NULL) EXCEPT ALL (SELECT s.match_id,s.round::smallint AS segment,t.encounter_team_id,
  w.id AS workspace_member_id,s.hero_id AS entity_id,'character'::varchar AS entity_kind,d.id AS stat_id,s.value
  FROM matches.statistics s JOIN stats01_match x ON x.match_id=s.match_id
  JOIN stats01_team t ON t.match_id=s.match_id AND t.team_id=s.team_id
  JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=s.user_id
- JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name=s.name::text)) p UNION ALL SELECT 'team_scores'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
+ JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name::logstatsname=s.name)) p UNION ALL SELECT 'team_scores'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
       FROM ((SELECT m.id AS match_id,0::smallint AS segment,t.encounter_team_id,
  NULL::bigint AS workspace_member_id,NULL::bigint AS entity_id,'character'::varchar AS entity_kind,
  d.id AS stat_id,s.score::float8 AS value FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
@@ -506,22 +522,26 @@ CREATE TEMP VIEW stats01_reconcile AS SELECT 'job_owners'::text AS class,'missin
 ('echo_duplicate_start','Echo duplicate start'),
 ('echo_duplicate_end','Echo duplicate end')) v(code,name))) p UNION ALL SELECT 'mv'::text AS class,d.direction,d.row FROM (
           WITH e AS MATERIALIZED (SELECT d.discipline,d.id AS stat_id,l.hero_id AS entity_id,l.best_value,l.avg,l.metadata
- FROM (
+      FROM (
 WITH qualified AS (
  SELECT DISTINCT s.match_id,s.user_id,s.hero_id FROM matches.statistics s
  WHERE s.round=0 AND s.name='HeroTimePlayed' AND s.value>60
 ), eligible AS (
- SELECT st.match_id,st.user_id,st.hero_id,st.name,st.value FROM matches.statistics st
+ SELECT st.match_id,st.user_id,st.hero_id,st.name,st.value,w.id AS workspace_member_id
+ FROM matches.statistics st
  JOIN qualified q ON q.match_id=st.match_id AND q.user_id=st.user_id AND q.hero_id=st.hero_id
+ JOIN stats01_match x ON x.match_id=st.match_id
+ JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=st.user_id
  WHERE st.round=0 AND st.hero_id IS NOT NULL
 ), agg AS (
- SELECT e.hero_id,e.name,sum(e.value) sum_value,sum(m."time") sum_time FROM eligible e
- JOIN matches.match m ON m.id=e.match_id GROUP BY e.hero_id,e.name
+ SELECT e.hero_id,e.name,
+ sum(e.value ORDER BY e.match_id,e.workspace_member_id) sum_value,
+ sum(m."time" ORDER BY e.match_id,e.workspace_member_id) sum_time
+ FROM eligible e JOIN matches.match m ON m.id=e.match_id GROUP BY e.hero_id,e.name
 ), ranked AS (
- SELECT e.hero_id,e.name,e.match_id,e.user_id,e.value,
- row_number() OVER (PARTITION BY e.hero_id,e.name ORDER BY e.value *
+ SELECT e.*,row_number() OVER (PARTITION BY e.hero_id,e.name ORDER BY e.value *
  CASE WHEN e.name IN ('Deaths','DamageTaken','EnvironmentalDeaths','ShotsMissed','DamageFB','Performance')
- THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC,e.workspace_member_id ASC) rn FROM eligible e
 ), best AS (
  SELECT r.hero_id,r.name,r.value best_value,m.encounter_id,mp.name map_name,mp.image_path map_image_path,
  t.name tournament_name,u.name username FROM ranked r JOIN matches.match m ON m.id=r.match_id
@@ -533,22 +553,20 @@ SELECT a.name,a.hero_id,b.best_value,(a.sum_value/nullif(a.sum_time,0))*600 AS a
  'tournament_name',b.tournament_name,'username',b.username) AS metadata
 FROM agg a JOIN best b ON b.hero_id=a.hero_id AND b.name=a.name
 ) l JOIN stats01_stat_names n ON n.legacy_name=l.name::text
- JOIN stats.stat_def d ON d.discipline='overwatch' AND d.code=n.code),a AS MATERIALIZED (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats)
+      JOIN stats.stat_def d ON d.discipline='overwatch' AND d.code=n.code),a AS MATERIALIZED (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats)
           SELECT CASE WHEN e.stat_id IS NOT NULL THEN to_jsonb(e) END AS expected_row,
             CASE WHEN a.stat_id IS NOT NULL THEN to_jsonb(a) END AS actual_row
           FROM e FULL JOIN a USING(discipline,stat_id,entity_id)
           WHERE e.stat_id IS NULL OR a.stat_id IS NULL
             OR float8send(e.best_value) IS DISTINCT FROM float8send(a.best_value)
             OR e.metadata IS DISTINCT FROM a.metadata
-            OR (e.avg IS NULL) <> (a.avg IS NULL)
-            OR (e.avg IS NOT NULL AND a.avg IS NOT NULL
-                AND NOT abs(e.avg-a.avg) <= 1e-12)
+            OR float8send(e.avg) IS DISTINCT FROM float8send(a.avg)
         ) p CROSS JOIN LATERAL (VALUES
           ('missing_or_changed'::text,p.expected_row),
           ('unexpected_or_changed'::text,p.actual_row)
         ) d(direction,row) WHERE d.row IS NOT NULL UNION ALL SELECT 'mv_derivation'::text AS class,'missing_or_changed'::text AS direction,to_jsonb(p) AS row
-      FROM ((SELECT discipline,stat_id,entity_id,float8send(best_value) AS best_value_bits,
-      float8send(avg) AS avg_bits,metadata FROM (
+      FROM ((SELECT discipline,stat_id,entity_id,encode(float8send(best_value),'hex') AS best_value_bits,
+      encode(float8send(avg),'hex') AS avg_bits,metadata FROM (
 WITH qualified AS (
  SELECT DISTINCT f.match_id,f.workspace_member_id,f.entity_id FROM stats.fact f
  JOIN stats.match m ON m.id=f.match_id
@@ -569,7 +587,7 @@ WITH qualified AS (
 ), ranked AS (
  SELECT e.*,row_number() OVER (PARTITION BY e.discipline,e.entity_id,e.stat_id ORDER BY e.value *
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
- THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC,e.workspace_member_id ASC) rn FROM eligible e
 ), best AS (
  SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
@@ -584,12 +602,12 @@ SELECT a.discipline,a.stat_id,a.entity_id,b.best_value,(a.sum_value/nullif(a.sum
  jsonb_build_object('encounter_id',b.encounter_id,'map_name',b.map_name,'map_image_path',b.map_image_path,
  'tournament_name',b.tournament_name,'username',b.username) AS metadata
 FROM agg a JOIN best b ON b.discipline=a.discipline AND b.entity_id=a.entity_id AND b.stat_id=a.stat_id
-) p) EXCEPT ALL (SELECT discipline,stat_id,entity_id,float8send(best_value) AS best_value_bits,
-      float8send(avg) AS avg_bits,metadata FROM (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats) p)) p
+) p) EXCEPT ALL (SELECT discipline,stat_id,entity_id,encode(float8send(best_value),'hex') AS best_value_bits,
+      encode(float8send(avg),'hex') AS avg_bits,metadata FROM (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats) p)) p
       UNION ALL SELECT 'mv_derivation'::text,'unexpected_or_changed'::text,to_jsonb(p)
-      FROM ((SELECT discipline,stat_id,entity_id,float8send(best_value) AS best_value_bits,
-      float8send(avg) AS avg_bits,metadata FROM (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats) p) EXCEPT ALL (SELECT discipline,stat_id,entity_id,float8send(best_value) AS best_value_bits,
-      float8send(avg) AS avg_bits,metadata FROM (
+      FROM ((SELECT discipline,stat_id,entity_id,encode(float8send(best_value),'hex') AS best_value_bits,
+      encode(float8send(avg),'hex') AS avg_bits,metadata FROM (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats) p) EXCEPT ALL (SELECT discipline,stat_id,entity_id,encode(float8send(best_value),'hex') AS best_value_bits,
+      encode(float8send(avg),'hex') AS avg_bits,metadata FROM (
 WITH qualified AS (
  SELECT DISTINCT f.match_id,f.workspace_member_id,f.entity_id FROM stats.fact f
  JOIN stats.match m ON m.id=f.match_id
@@ -610,7 +628,7 @@ WITH qualified AS (
 ), ranked AS (
  SELECT e.*,row_number() OVER (PARTITION BY e.discipline,e.entity_id,e.stat_id ORDER BY e.value *
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
- THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC,e.workspace_member_id ASC) rn FROM eligible e
 ), best AS (
  SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
@@ -791,7 +809,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -801,12 +819,13 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
  x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
  coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
  m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  LEFT JOIN (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -816,6 +835,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
@@ -830,7 +850,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  FROM matches.statistics s JOIN stats01_match x ON x.match_id=s.match_id
  JOIN stats01_team t ON t.match_id=s.match_id AND t.team_id=s.team_id
  JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=s.user_id
- JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name=s.name::text) p UNION ALL SELECT 'events'::text AS relation,count(*) AS count FROM (SELECT match_id,segment,t,type_id,actor_member_id,actor_team_id,target_member_id,target_team_id,entity_id,related_entity_id,entity_kind,data FROM (SELECT k.match_id,k.round::smallint AS segment,k.time AS t,d.id AS type_id,
+ JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name::logstatsname=s.name) p UNION ALL SELECT 'events'::text AS relation,count(*) AS count FROM (SELECT match_id,segment,t,type_id,actor_member_id,actor_team_id,target_member_id,target_team_id,entity_id,related_entity_id,entity_kind,data FROM (SELECT k.match_id,k.round::smallint AS segment,k.time AS t,d.id AS type_id,
  aw.id AS actor_member_id,at.encounter_team_id AS actor_team_id,tw.id AS target_member_id,
  tt.encounter_team_id AS target_team_id,k.killer_hero_id AS entity_id,k.victim_hero_id AS related_entity_id,
  'character'::varchar AS entity_kind,jsonb_build_object('ability',a.value,'damage',k.damage,'fight',k.fight,
@@ -861,7 +881,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -871,12 +891,13 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
  x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
  coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
  m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  LEFT JOIN (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -886,6 +907,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
@@ -900,7 +922,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  FROM matches.statistics s JOIN stats01_match x ON x.match_id=s.match_id
  JOIN stats01_team t ON t.match_id=s.match_id AND t.team_id=s.team_id
  JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=s.user_id
- JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name=s.name::text) p UNION ALL SELECT 'events'::text AS relation,count(*) AS count FROM (SELECT match_id,segment,t,type_id,actor_member_id,actor_team_id,target_member_id,target_team_id,entity_id,related_entity_id,entity_kind,data FROM (SELECT k.match_id,k.round::smallint AS segment,k.time AS t,d.id AS type_id,
+ JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name::logstatsname=s.name) p UNION ALL SELECT 'events'::text AS relation,count(*) AS count FROM (SELECT match_id,segment,t,type_id,actor_member_id,actor_team_id,target_member_id,target_team_id,entity_id,related_entity_id,entity_kind,data FROM (SELECT k.match_id,k.round::smallint AS segment,k.time AS t,d.id AS type_id,
  aw.id AS actor_member_id,at.encounter_team_id AS actor_team_id,tw.id AS target_member_id,
  tt.encounter_team_id AS target_team_id,k.killer_hero_id AS entity_id,k.victim_hero_id AS related_entity_id,
  'character'::varchar AS entity_kind,jsonb_build_object('ability',a.value,'damage',k.damage,'fight',k.fight,
@@ -931,7 +953,7 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -941,6 +963,7 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) j) p) AS legacy,
       (SELECT count(*) FROM (SELECT id FROM stats.ingest_job) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='job_owners') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'match_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM matches.match) p) AS legacy,
@@ -952,7 +975,7 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -962,6 +985,7 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p) AS legacy,
       (SELECT count(*) FROM (SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM stats.ingest_job) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='jobs') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'matches'::text AS class,(SELECT count(*) FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
@@ -969,7 +993,7 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
  coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
  m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  LEFT JOIN (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -979,6 +1003,7 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p) AS legacy,
       (SELECT count(*) FROM (SELECT id,created_at,updated_at,workspace_id,discipline,encounter_id,source_map_index,encounter_game_id,ingest_job_id,revision,played_at,duration_s,map_entity_id,map_kind FROM stats.match WHERE id IN (SELECT id FROM matches.match)) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='matches') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'teams'::text AS class,(SELECT count(*) FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
@@ -999,7 +1024,7 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
  FROM matches.statistics s JOIN stats01_match x ON x.match_id=s.match_id
  JOIN stats01_team t ON t.match_id=s.match_id AND t.team_id=s.team_id
  JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=s.user_id
- JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name=s.name::text) p) AS legacy,
+ JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name::logstatsname=s.name) p) AS legacy,
       (SELECT count(*) FROM (SELECT match_id,segment,encounter_team_id,workspace_member_id,entity_id,entity_kind,stat_id,value FROM stats.fact WHERE match_id IN (SELECT id FROM matches.match) AND workspace_member_id IS NOT NULL) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='facts') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'team_scores'::text AS class,(SELECT count(*) FROM (SELECT m.id AS match_id,0::smallint AS segment,t.encounter_team_id,
  NULL::bigint AS workspace_member_id,NULL::bigint AS entity_id,'character'::varchar AS entity_kind,
@@ -1103,22 +1128,26 @@ SELECT 'job_owners'::text AS class,(SELECT count(*) FROM (SELECT id FROM (SELECT
 ('echo_duplicate_end','Echo duplicate end')) v(code,name)) p) AS legacy,
       (SELECT count(*) FROM (SELECT discipline,code,name,active FROM stats.event_type WHERE discipline='overwatch') p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='event_type') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'mv'::text AS class,(SELECT count(*) FROM (SELECT d.discipline,d.id AS stat_id,l.hero_id AS entity_id,l.best_value,l.avg,l.metadata
- FROM (
+      FROM (
 WITH qualified AS (
  SELECT DISTINCT s.match_id,s.user_id,s.hero_id FROM matches.statistics s
  WHERE s.round=0 AND s.name='HeroTimePlayed' AND s.value>60
 ), eligible AS (
- SELECT st.match_id,st.user_id,st.hero_id,st.name,st.value FROM matches.statistics st
+ SELECT st.match_id,st.user_id,st.hero_id,st.name,st.value,w.id AS workspace_member_id
+ FROM matches.statistics st
  JOIN qualified q ON q.match_id=st.match_id AND q.user_id=st.user_id AND q.hero_id=st.hero_id
+ JOIN stats01_match x ON x.match_id=st.match_id
+ JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=st.user_id
  WHERE st.round=0 AND st.hero_id IS NOT NULL
 ), agg AS (
- SELECT e.hero_id,e.name,sum(e.value) sum_value,sum(m."time") sum_time FROM eligible e
- JOIN matches.match m ON m.id=e.match_id GROUP BY e.hero_id,e.name
+ SELECT e.hero_id,e.name,
+ sum(e.value ORDER BY e.match_id,e.workspace_member_id) sum_value,
+ sum(m."time" ORDER BY e.match_id,e.workspace_member_id) sum_time
+ FROM eligible e JOIN matches.match m ON m.id=e.match_id GROUP BY e.hero_id,e.name
 ), ranked AS (
- SELECT e.hero_id,e.name,e.match_id,e.user_id,e.value,
- row_number() OVER (PARTITION BY e.hero_id,e.name ORDER BY e.value *
+ SELECT e.*,row_number() OVER (PARTITION BY e.hero_id,e.name ORDER BY e.value *
  CASE WHEN e.name IN ('Deaths','DamageTaken','EnvironmentalDeaths','ShotsMissed','DamageFB','Performance')
- THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC,e.workspace_member_id ASC) rn FROM eligible e
 ), best AS (
  SELECT r.hero_id,r.name,r.value best_value,m.encounter_id,mp.name map_name,mp.image_path map_image_path,
  t.name tournament_name,u.name username FROM ranked r JOIN matches.match m ON m.id=r.match_id
@@ -1130,10 +1159,10 @@ SELECT a.name,a.hero_id,b.best_value,(a.sum_value/nullif(a.sum_time,0))*600 AS a
  'tournament_name',b.tournament_name,'username',b.username) AS metadata
 FROM agg a JOIN best b ON b.hero_id=a.hero_id AND b.name=a.name
 ) l JOIN stats01_stat_names n ON n.legacy_name=l.name::text
- JOIN stats.stat_def d ON d.discipline='overwatch' AND d.code=n.code) p) AS legacy,
+      JOIN stats.stat_def d ON d.discipline='overwatch' AND d.code=n.code) p) AS legacy,
       (SELECT count(*) FROM (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats) p) AS migrated,
-      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='mv') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'mv_derivation'::text AS class,(SELECT count(*) FROM (SELECT discipline,stat_id,entity_id,float8send(best_value) AS best_value_bits,
-      float8send(avg) AS avg_bits,metadata FROM (
+      CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='mv') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'mv_derivation'::text AS class,(SELECT count(*) FROM (SELECT discipline,stat_id,entity_id,encode(float8send(best_value),'hex') AS best_value_bits,
+      encode(float8send(avg),'hex') AS avg_bits,metadata FROM (
 WITH qualified AS (
  SELECT DISTINCT f.match_id,f.workspace_member_id,f.entity_id FROM stats.fact f
  JOIN stats.match m ON m.id=f.match_id
@@ -1154,7 +1183,7 @@ WITH qualified AS (
 ), ranked AS (
  SELECT e.*,row_number() OVER (PARTITION BY e.discipline,e.entity_id,e.stat_id ORDER BY e.value *
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
- THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC,e.workspace_member_id ASC) rn FROM eligible e
 ), best AS (
  SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
@@ -1170,8 +1199,8 @@ SELECT a.discipline,a.stat_id,a.entity_id,b.best_value,(a.sum_value/nullif(a.sum
  'tournament_name',b.tournament_name,'username',b.username) AS metadata
 FROM agg a JOIN best b ON b.discipline=a.discipline AND b.entity_id=a.entity_id AND b.stat_id=a.stat_id
 ) p) p) AS legacy,
-      (SELECT count(*) FROM (SELECT discipline,stat_id,entity_id,float8send(best_value) AS best_value_bits,
-      float8send(avg) AS avg_bits,metadata FROM (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats) p) p) AS migrated,
+      (SELECT count(*) FROM (SELECT discipline,stat_id,entity_id,encode(float8send(best_value),'hex') AS best_value_bits,
+      encode(float8send(avg),'hex') AS avg_bits,metadata FROM (SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats) p) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class='mv_derivation') THEN 'blocking' ELSE 'ok' END AS status UNION ALL SELECT 'external_constraints'::text AS class,(SELECT count(*) FROM (SELECT * FROM (VALUES
  ('achievements.evaluation_result','match_id','stats.match','c',true,true),
  ('achievements.override','match_id','stats.match','c',true,true),
@@ -1263,7 +1292,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  NULL::bigint AS api_key_id,r.tournament_id AS hint_tournament_id,
  r.attached_encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,r.started_at,r.finished_at
  FROM log_processing.record r JOIN tournament.tournament t ON t.id=r.tournament_id UNION ALL SELECT id,created_at,updated_at,workspace_id,discipline,source_kind,external_id,content_hash,raw_status,filename,raw_ref,document_ref,status,attempts,error_message,uploader_user_id,api_key_id,hint_tournament_id,hint_encounter_id,hint_encounter_game_id,started_at,finished_at FROM (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -1273,12 +1302,13 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h) p UNION ALL SELECT 'matches'::text AS relation,count(*) AS count FROM (SELECT m.id,m.created_at,m.updated_at,x.workspace_id,x.discipline,
  x.encounter_id,m.map_index AS source_map_index,x.game_id AS encounter_game_id,
  coalesce(m.log_record_id,h.id) AS ingest_job_id,1 AS revision,NULL::timestamptz AS played_at,m.time AS duration_s,
  m.map_id AS map_entity_id,'map'::varchar AS map_kind FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  LEFT JOIN (SELECT
- (SELECT coalesce(max(id),0) FROM log_processing.record)+row_number() OVER(ORDER BY m.id) AS id,
+ h.id,
  (SELECT min(created_at) FROM audit_log WHERE action='stats.initial_transfer') AS created_at,
  NULL::timestamptz AS updated_at,x.workspace_id,x.discipline,'historical_reference'::varchar AS source_kind,
  'legacy:matches.match:'||m.id::text AS external_id,NULL::char(64) AS content_hash,
@@ -1288,6 +1318,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  x.encounter_id AS hint_encounter_id,NULL::bigint AS hint_encounter_game_id,
  NULL::timestamptz AS started_at,NULL::timestamptz AS finished_at,m.id AS source_match_id
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
+ JOIN stats01_historical_reference h ON h.source_match_id=m.id
  WHERE m.log_record_id IS NULL AND m.log_name IS NOT NULL) h ON h.source_match_id=m.id) p UNION ALL SELECT 'teams'::text AS relation,count(*) AS count FROM (SELECT m.id AS match_id,x.encounter_id,t.encounter_team_id,s.position AS source_position
  FROM matches.match m JOIN stats01_match x ON x.match_id=m.id
  CROSS JOIN LATERAL (VALUES(m.home_team_id,1),(m.away_team_id,2)) s(team_id,position)
@@ -1302,7 +1333,7 @@ WHERE c.contype='f' AND ((c.conrelid IN ('achievements.evaluation_result'::regcl
  FROM matches.statistics s JOIN stats01_match x ON x.match_id=s.match_id
  JOIN stats01_team t ON t.match_id=s.match_id AND t.team_id=s.team_id
  JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=s.user_id
- JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name=s.name::text) p UNION ALL SELECT 'events'::text AS relation,count(*) AS count FROM (SELECT match_id,segment,t,type_id,actor_member_id,actor_team_id,target_member_id,target_team_id,entity_id,related_entity_id,entity_kind,data FROM (SELECT k.match_id,k.round::smallint AS segment,k.time AS t,d.id AS type_id,
+ JOIN stats01_stat_ids d ON d.discipline=x.discipline AND d.legacy_name::logstatsname=s.name) p UNION ALL SELECT 'events'::text AS relation,count(*) AS count FROM (SELECT match_id,segment,t,type_id,actor_member_id,actor_team_id,target_member_id,target_team_id,entity_id,related_entity_id,entity_kind,data FROM (SELECT k.match_id,k.round::smallint AS segment,k.time AS t,d.id AS type_id,
  aw.id AS actor_member_id,at.encounter_team_id AS actor_team_id,tw.id AS target_member_id,
  tt.encounter_team_id AS target_team_id,k.killer_hero_id AS entity_id,k.victim_hero_id AS related_entity_id,
  'character'::varchar AS entity_kind,jsonb_build_object('ability',a.value,'damage',k.damage,'fight',k.fight,

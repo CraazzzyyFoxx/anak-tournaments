@@ -790,9 +790,54 @@ SELECT a.name,a.hero_id,b.best_value,(a.sum_value/nullif(a.sum_time,0))*600 AS a
  'tournament_name',b.tournament_name,'username',b.username) AS metadata
 FROM agg a JOIN best b ON b.hero_id=a.hero_id AND b.name=a.name
 """
-EXPECTED_MV_SELECT = f"""SELECT d.discipline,d.id AS stat_id,l.hero_id AS entity_id,l.best_value,l.avg,l.metadata
- FROM ({LEGACY_MV_SELECT}) l JOIN stats01_stat_names n ON n.legacy_name=l.name::text
- JOIN stats.stat_def d ON d.discipline='overwatch' AND d.code=n.code"""
+
+# Independent source operands, mapped only through the frozen migration identity
+# views. FLOAT8 reduction order and the final best-holder tie are now explicit.
+CANONICAL_LEGACY_MV_SELECT = """
+WITH qualified AS (
+ SELECT DISTINCT s.match_id,s.user_id,s.hero_id FROM matches.statistics s
+ WHERE s.round=0 AND s.name='HeroTimePlayed' AND s.value>60
+), eligible AS (
+ SELECT st.match_id,st.user_id,st.hero_id,st.name,st.value,w.id AS workspace_member_id
+ FROM matches.statistics st
+ JOIN qualified q ON q.match_id=st.match_id AND q.user_id=st.user_id AND q.hero_id=st.hero_id
+ JOIN stats01_match x ON x.match_id=st.match_id
+ JOIN stats01_member w ON w.workspace_id=x.workspace_id AND w.player_id=st.user_id
+ WHERE st.round=0 AND st.hero_id IS NOT NULL
+), agg AS (
+ SELECT e.hero_id,e.name,
+ sum(e.value ORDER BY e.match_id,e.workspace_member_id) sum_value,
+ sum(m."time" ORDER BY e.match_id,e.workspace_member_id) sum_time
+ FROM eligible e JOIN matches.match m ON m.id=e.match_id GROUP BY e.hero_id,e.name
+), ranked AS (
+ SELECT e.*,row_number() OVER (PARTITION BY e.hero_id,e.name ORDER BY e.value *
+ CASE WHEN e.name IN ('Deaths','DamageTaken','EnvironmentalDeaths','ShotsMissed','DamageFB','Performance')
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC,e.workspace_member_id ASC) rn FROM eligible e
+), best AS (
+ SELECT r.hero_id,r.name,r.value best_value,m.encounter_id,mp.name map_name,mp.image_path map_image_path,
+ t.name tournament_name,u.name username FROM ranked r JOIN matches.match m ON m.id=r.match_id
+ JOIN catalog.entity mp ON mp.id=m.map_id JOIN encounter.encounter enc ON enc.id=m.encounter_id
+ JOIN tournament.tournament t ON t.id=enc.tournament_id JOIN players."user" u ON u.id=r.user_id WHERE r.rn=1
+)
+SELECT a.name,a.hero_id,b.best_value,(a.sum_value/nullif(a.sum_time,0))*600 AS avg,
+ jsonb_build_object('encounter_id',b.encounter_id,'map_name',b.map_name,'map_image_path',b.map_image_path,
+ 'tournament_name',b.tournament_name,'username',b.username) AS metadata
+FROM agg a JOIN best b ON b.hero_id=a.hero_id AND b.name=a.name
+"""
+
+
+def _mapped_legacy_mv(query):
+    return f"""SELECT d.discipline,d.id AS stat_id,l.hero_id AS entity_id,l.best_value,l.avg,l.metadata
+      FROM ({query}) l JOIN stats01_stat_names n ON n.legacy_name=l.name::text
+      JOIN stats.stat_def d ON d.discipline='overwatch' AND d.code=n.code"""
+
+
+EXPECTED_MV_SELECT = _mapped_legacy_mv(CANONICAL_LEGACY_MV_SELECT)
+# Only the pre-stats01a proof may accept another holder at the identical best
+# value AND latest match. Every metadata field still comes from that source row.
+EXPECTED_MV_TIED_HOLDERS_SELECT = _mapped_legacy_mv(
+    CANONICAL_LEGACY_MV_SELECT.replace("row_number()", "rank()").replace(",e.workspace_member_id ASC", "")
+)
 NATIVE_MV_SELECT = """
 WITH qualified AS (
  SELECT DISTINCT f.match_id,f.workspace_member_id,f.entity_id FROM stats.fact f
@@ -814,7 +859,7 @@ WITH qualified AS (
 ), ranked AS (
  SELECT e.*,row_number() OVER (PARTITION BY e.discipline,e.entity_id,e.stat_id ORDER BY e.value *
  CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
- THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC,e.workspace_member_id ASC) rn FROM eligible e
 ), best AS (
  SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,m.encounter_id,mp.name map_name,
  mp.image_path map_image_path,t.name tournament_name,u.name username
@@ -831,14 +876,20 @@ SELECT a.discipline,a.stat_id,a.entity_id,b.best_value,(a.sum_value/nullif(a.sum
 FROM agg a JOIN best b ON b.discipline=a.discipline AND b.entity_id=a.entity_id AND b.stat_id=a.stat_id
 """
 
-# Only cross-model computed averages tolerate the legacy unordered FLOAT8 sum.
-# Stored values are never rounded; native derivation is independently bit-exact.
-MV_AVG_ABS_TOLERANCE = 1e-12
+# Report the original unordered result independently; it is not the proof oracle.
 RESIDENT_MV_SELECT = "SELECT discipline,stat_id,entity_id,best_value,avg,metadata FROM stats.mv_entity_global_stats"
 MV_AVG_DIFFERENCES = f"""
+WITH original AS MATERIALIZED ({LEGACY_MV_SELECT})
 SELECT count(*) FILTER (WHERE float8send(e.avg) IS DISTINCT FROM float8send(a.avg)) AS changed_rows,
- coalesce(max(abs(e.avg-a.avg)),0) AS max_abs_delta
-FROM ({EXPECTED_MV_SELECT}) e JOIN ({RESIDENT_MV_SELECT}) a USING(discipline,stat_id,entity_id)
+ coalesce(max(abs(e.avg-a.avg)),0) AS max_abs_delta,
+ coalesce(jsonb_agg(jsonb_build_object(
+   'discipline',e.discipline,'stat_id',e.stat_id,'entity_id',e.entity_id,
+   'legacy_avg',e.avg,'canonical_avg',a.avg,'delta',a.avg-e.avg,
+   'legacy_bits',encode(float8send(e.avg),'hex'),'canonical_bits',encode(float8send(a.avg),'hex')
+ ) ORDER BY e.discipline,e.stat_id,e.entity_id)
+ FILTER (WHERE float8send(e.avg) IS DISTINCT FROM float8send(a.avg)),'[]'::jsonb) AS rows
+FROM ({_mapped_legacy_mv("SELECT * FROM original")}) e
+JOIN ({RESIDENT_MV_SELECT}) a USING(discipline,stat_id,entity_id)
 """
 
 
@@ -1201,9 +1252,7 @@ def _reconcile_class(name, expected, actual):
           WHERE e.stat_id IS NULL OR a.stat_id IS NULL
             OR float8send(e.best_value) IS DISTINCT FROM float8send(a.best_value)
             OR e.metadata IS DISTINCT FROM a.metadata
-            OR (e.avg IS NULL) <> (a.avg IS NULL)
-            OR (e.avg IS NOT NULL AND a.avg IS NOT NULL
-                AND NOT abs(e.avg-a.avg) <= {MV_AVG_ABS_TOLERANCE})
+            OR float8send(e.avg) IS DISTINCT FROM float8send(a.avg)
         ) p CROSS JOIN LATERAL (VALUES
           ('missing_or_changed'::text,p.expected_row),
           ('unexpected_or_changed'::text,p.actual_row)
@@ -1228,14 +1277,18 @@ RECONCILE_SUMMARY = " UNION ALL ".join(
 def _assert_reconciled():
     bind = op.get_bind()
     bind.execute(sa.text(RECONCILE_VIEW))
-    count = bind.scalar(sa.text("SELECT count(*) FROM stats01_reconcile"))
+    class_counts = dict(
+        bind.execute(sa.text("SELECT class,count(*) FROM stats01_reconcile GROUP BY class ORDER BY class")).all()
+    )
+    count = sum(class_counts.values())
     if count:
         sample = bind.execute(
             sa.text(
-                f"SELECT class,direction,row FROM stats01_reconcile ORDER BY class,direction LIMIT {PREFLIGHT_SAMPLE}"
-            )
+                "SELECT class,direction,row FROM stats01_reconcile WHERE class=:class ORDER BY direction LIMIT :limit"
+            ),
+            {"class": next(iter(class_counts)), "limit": PREFLIGHT_SAMPLE},
         ).all()
-        raise RuntimeError(f"stats01 reconcile refused: count={count}, sample={sample!r}")
+        raise RuntimeError(f"stats01 reconcile refused: count={count}, classes={class_counts!r}, sample={sample!r}")
 
 
 def upgrade():

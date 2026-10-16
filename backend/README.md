@@ -177,7 +177,8 @@ uv run python scripts/stats01_reconcile.py --mode capture --receipt-dir p4-recei
 Keep all three immutable receipt files together: `manifest.json`, `owners.jsonl` and
 `handles.jsonl`. Format `stats01-receipt/2` freezes handles per match/player/team,
 with streamed row counts and digests; later checks never reconstruct historical handles
-from renamed current rosters or social profiles. Older or incomplete receipts are refused.
+from renamed current rosters or social profiles. Incomplete receipts are refused. Original codec1
+receipts remain supported as immutable `--prior-receipt-dir` inputs; their original proof is not repinned.
 Codec2 match-owner metadata also requires nullable `historical_reference_id`, frozen from the
 independent source mapping. Later deletions cannot renumber surviving provenance; incomplete
 experimental codec2 evidence is refused. Report paths cannot overwrite either the new receipt
@@ -192,9 +193,22 @@ uv run python scripts/stats01_reconcile.py --mode check --receipt-dir p4-receipt
 ```
 
 Exit codes: `0` unchanged, `2` valid changes requiring release review, `1` blocking discrepancy.
-Receipts never authorize legacy-table deletion automatically. Old/native MV averages alone permit
-absolute delta `1e-12`; facts, events, identities, best values and metadata remain exact. The resident
-native MV must exactly match its native defining query, including float bits.
+Receipts never authorize legacy-table deletion automatically. MV averages are proved from the
+exact original source operands and match durations, reduced in the same fixed
+`(match_id, workspace_member_id)` order as native data; the canonical result must match bit-for-bit.
+Reports retain each changed unordered legacy average, its FLOAT8 bits, the canonical value and bits,
+and its actual delta, plus the changed-row count and maximum absolute delta. That raw drift is
+diagnostic evidence, not a numeric tolerance or permission to change stored facts. Facts, events,
+identities, hashes, official results
+and best values remain exact; the resident MV must also match its native defining query, including
+both float bit patterns.
+
+Best-holder ranking keeps the existing best-value direction and latest-match criteria, then chooses
+the lowest `workspace_member_id` in a full tie. An original bound-head MV may have selected the other
+legitimate tied holder: forward upgrade accepts that metadata only when it exactly matches an
+independently proven source candidate with the same best value and latest match. The upgrade records
+the exact derived row before and after applying the stable tie-break, without rewriting facts,
+official results or prior receipts. A different username or other metadata is never a blanket waiver.
 
 Historical sources initially have `raw_status=unverified`; this is independent of processing status.
 After initial receipt capture, inspect actual bytes and review the resulting proposal:

@@ -116,12 +116,54 @@ Tear down with `make prod-down`; the database survives it.
 
 ## Refreshing the data
 
-The database is a restore of the production dump ([`backup-rustfs.md`](./backup-rustfs.md)),
-not a live replica: drop and recreate the dev database, then `pg_restore --no-owner --no-acl`
-the latest production dump into it.
+Restore the latest production dump into a **new isolated database**, not over the currently
+running dev database. For P4 the staged database is `owt_dev`; retain `anak_dev` for rollback.
+Check the dump's revision before choosing migration checkpoints:
+`pg_restore -a -t alembic_version -f - <dump>`.
 
-Check where a dump sits in the chain before restoring — `pg_restore -a -t alembic_version -f -
-<dump>` prints its revision, and that decides how many migrations `upgrade head` will run.
+With all writers to the staged database absent, apply the pinned migration source, complete
+the source/native reconciliation and publish the immutable receipt described in
+[`backend/README.md`](../backend/README.md#p4-statistics-cutover-stats01--stats01a).
+Keep the source dump/checksum, code revision, receipt, verification report and a final backup
+whose complete payload has been decoded successfully with `pg_restore --file=/dev/null`.
+Equal table counts alone are not a losslessness proof.
+
+### Isolate the dataset before activation
+
+- Use a new Compose project generation (`owt-dev-p4` for this cutover). Its project-owned
+  Redis/RabbitMQ volumes and network must be new, not external/shared. This retires old
+  cache payloads and ID-bearing queue/DLQ messages together without deleting them.
+  Keep the old project stopped, not removed; never attach its broker to the new database.
+- Give the new deployment its own S3 bucket (`owt-dev-p4-20261017` for this cutover), including
+  a public URL for that bucket. Reuse `scripts/configure_s3_policies.py`: only `avatars/*`
+  and `assets/*` are public. Verify an actual raw-object round trip and denied anonymous read.
+  Parser retention can delete objects; a separate database alone does not protect shared S3.
+  Historical raw references remain `unverified` until actual copied bytes are inspected.
+- Rotate the **dev-only** `JWT_SECRET_KEY` consistently for identity and gateway. Recreate
+  gateway too: it has an in-memory identity cache. Missing SQL sessions do not invalidate
+  otherwise valid access JWTs; old Redis refresh/RBAC responses cannot be reused.
+  A fresh project avoids flushing shared cache namespaces or deleting SID revocation flags.
+- Keep `discord-worker` stopped unless its restored outbox/destinations are separately reviewed;
+  a dev bot token is not a destination allowlist. Keep stream Twitch credentials absent.
+  `ENVIRONMENT=staging` is not a delivery sandbox. Disable automatic Challonge sync and
+  historical log reaping for this activation; these switches do not disable every scheduler.
+- Inventory all restored pending/failed `event_outbox` types, including delayed retries,
+  without exposing payloads. Do not falsely mark messages published or delete history to pass
+  a gate. After activation, normal dev schedulers may create legitimate audited changes.
+
+Only after proof and isolation: stop the old project, atomically install the paired database,
+S3, project and signing configuration, verify effective overrides, and start the explicitly
+selected new services. Do not use an unqualified `up` that also starts the Discord worker.
+Preserve the existing dev scale of one app/identity/tournament/frontend replica.
+
+Record the actual source commit, built/running image IDs, effective database/head, Compose
+project, bucket, backup SHA and receipt identity. Set backend `GIT_SHA` to the verified build
+revision; a floating `:dev` tag or the service's static version is not release evidence.
+Exercise real API and browser paths after readiness checks.
+
+Rollback is paired: stop the new project, restore the protected old environment files, then
+start the retained old containers against their old database, broker and cache volumes.
+Do not recreate them using the new dataset configuration.
 
 ## Verify
 

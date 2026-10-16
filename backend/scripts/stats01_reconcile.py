@@ -14,6 +14,7 @@ import heapq
 import importlib.util
 import itertools
 import json
+import math
 import os
 import sys
 from contextlib import contextmanager
@@ -119,6 +120,25 @@ def _verify_prior_receipt(conn, receipt_dir, revision):
         {"highwater": manifest["audit_highwater"]["audit_log_id"], "upgrade": audit[0]["id"]},
     ):
         raise EvidenceError("original receipt has lifecycle changes; original chain must be proved before upgrade")
+    mv_changes = {}
+    for change in audit[0]["after_json"].get("mv_changes", []):
+        if (
+            not isinstance(change, dict)
+            or not isinstance(change.get("owner_key"), list)
+            or len(change["owner_key"]) != 3
+            or not isinstance(change.get("before"), list)
+            or not isinstance(change.get("after"), list)
+            or len(change["before"]) != 6
+            or len(change["after"]) != 6
+            or change["before"][:3] != change["owner_key"]
+            or change["after"][:3] != change["owner_key"]
+            or change["before"][:5] != change["after"][:5]
+        ):
+            raise EvidenceError("invalid proved old MV tie change")
+        key = tuple(change["owner_key"])
+        if key in mv_changes:
+            raise EvidenceError("duplicate proved old MV tie change")
+        mv_changes[key] = change
     actual_owners = current_owners(conn)
     owner_count = 0
     for owner, states in saved_owners(receipt_dir, codec=codec):
@@ -137,11 +157,17 @@ def _verify_prior_receipt(conn, receipt_dir, revision):
                 columns = columns[:-1]
             query = replace(query, columns=columns)
             with conn.execute(sa.text(query.sql()).execution_options(yield_per=ROW_BATCH), params) as cursor:
-                digest = _codec_digest(scope, cursor, codec=codec)
+                change = mv_changes.pop(scope[1], None) if scope[0] == "mv" else None
+                if change is None:
+                    digest = _codec_digest(scope, cursor, codec=codec)
+                else:
+                    if [encode_value(tuple(row)) for row in cursor] != [change["after"]]:
+                        raise EvidenceError("native MV differs from proved post-upgrade tie change")
+                    digest = _codec_digest(scope, [change["before"]], codec=codec, encoded=True)
             if digest != (state["row_count"], state["sha256"]):
                 raise EvidenceError(f"original receipt differs from proved pre-upgrade rows: {scope}")
             owner_count += 1
-    if next(actual_owners, None) is not None or owner_count != manifest["owners_count"]:
+    if mv_changes or next(actual_owners, None) is not None or owner_count != manifest["owners_count"]:
         raise EvidenceError("original receipt owner set is incomplete")
     original_handles = iter(saved_handles(receipt_dir))
     with conn.execute(
@@ -234,7 +260,9 @@ def load_manifest(receipt_dir: Path, revision=None, *, codec=CODEC) -> dict:
             ):
                 raise EvidenceError("invalid initial proof class")
             if proof["class"] == "mv":
-                for field in ("non_avg_semantic_sha256", "native_semantic_sha256"):
+                original = codec == "stats01-semantic/1"
+                semantic_field = "non_avg_semantic_sha256" if original else "semantic_sha256"
+                for field in (semantic_field, "native_semantic_sha256"):
                     semantic = proof.get(field)
                     if (
                         not isinstance(semantic, str)
@@ -242,21 +270,37 @@ def load_manifest(receipt_dir: Path, revision=None, *, codec=CODEC) -> dict:
                         or any(char not in "0123456789abcdef" for char in semantic)
                     ):
                         raise EvidenceError("missing initial MV semantic proof")
+                if not original and proof[semantic_field] != proof["native_semantic_sha256"]:
+                    raise EvidenceError("initial canonical MV semantic proof differs")
                 averages = proof.get("avg_comparison")
-                tolerance = revision.MV_AVG_ABS_TOLERANCE if revision is not None else 1e-12
-                if not isinstance(averages, dict) or set(averages) != {
-                    "absolute_tolerance",
-                    "changed_rows",
-                    "max_abs_delta",
-                }:
+                policy_field = "absolute_tolerance" if original else "policy"
+                average_fields = {policy_field, "changed_rows", "max_abs_delta"}
+                if not original:
+                    average_fields.add("rows")
+                if not isinstance(averages, dict) or set(averages) != average_fields:
                     raise EvidenceError("missing initial MV average policy")
                 if (
-                    type(averages["absolute_tolerance"]) is not float
-                    or averages["absolute_tolerance"] != tolerance
-                    or type(averages["changed_rows"]) is not int
+                    type(averages["changed_rows"]) is not int
                     or not 0 <= averages["changed_rows"] <= proof["legacy"]
                     or type(averages["max_abs_delta"]) not in (int, float)
-                    or not 0 <= averages["max_abs_delta"] <= tolerance
+                    or not math.isfinite(averages["max_abs_delta"])
+                    or averages["max_abs_delta"] < 0
+                    or (
+                        original
+                        and (
+                            type(averages["absolute_tolerance"]) is not float
+                            or averages["absolute_tolerance"] != 1e-12
+                            or averages["max_abs_delta"] > 1e-12
+                        )
+                    )
+                    or (
+                        not original
+                        and (
+                            averages["policy"] != "canonical_source_bit_exact"
+                            or not isinstance(averages["rows"], list)
+                            or len(averages["rows"]) != averages["changed_rows"]
+                        )
+                    )
                 ):
                     raise EvidenceError("invalid initial MV average policy")
             classes.add(proof["class"])
@@ -409,7 +453,8 @@ def _initial_proof(conn, revision) -> list[dict]:
         details = [
             encode_value(dict(row))
             for row in conn.execute(
-                sa.text("SELECT class,direction,row FROM stats01_reconcile LIMIT :limit"), {"limit": DETAIL_LIMIT}
+                sa.text("SELECT class,direction,row FROM stats01_reconcile WHERE class=:class LIMIT :limit"),
+                {"class": failures[0]["class"], "limit": DETAIL_LIMIT},
             ).mappings()
         ]
         raise EvidenceError(
@@ -418,22 +463,18 @@ def _initial_proof(conn, revision) -> list[dict]:
                 ensure_ascii=False,
             )
         )
-    # FLOAT8/JSON types and signed zero remain exact outside the one approved
-    # legacy-average exception. mv_derivation separately checks both float bit
-    # patterns against the deterministic native SELECT.
+    # The independently mapped source and native reduction must agree bit-for-bit,
+    # including averages, JSON types and signed zero.
     _, expected, actual = next(item for item in revision.RECONCILE_CLASSES if item[0] == "mv")
     scope = ("mv", ("initial_projection", 0, 0), "derived_row")
-    queries = (
-        f"SELECT discipline,stat_id,entity_id,best_value,metadata FROM ({query}) p" for query in (expected, actual)
-    )
-    expected_digest, actual_digest = (_projection_digest(conn, query, scope) for query in queries)
+    expected_digest, actual_digest = (_projection_digest(conn, query, scope) for query in (expected, actual))
     if expected_digest != actual_digest:
-        raise EvidenceError("initial MV non-average semantic projection differs")
+        raise EvidenceError("initial canonical MV semantic projection differs")
     mv = next(row for row in proof if row["class"] == "mv")
-    mv["non_avg_semantic_sha256"] = expected_digest[1]
-    mv["native_semantic_sha256"] = _projection_digest(conn, actual, scope)[1]
+    mv["semantic_sha256"] = expected_digest[1]
+    mv["native_semantic_sha256"] = actual_digest[1]
     mv["avg_comparison"] = {
-        "absolute_tolerance": revision.MV_AVG_ABS_TOLERANCE,
+        "policy": "canonical_source_bit_exact",
         **dict(conn.execute(sa.text(revision.MV_AVG_DIFFERENCES)).mappings().one()),
     }
     return proof

@@ -1107,19 +1107,51 @@ def original_stats01_shape(conn: Connection) -> None:
     observation IDs and the actual initial oracle are never regenerated.
     This is a test fixture, not an operational downgrade.
     """
-    from scripts.stats01_reconcile import revision_module
-
     _owned_url(conn.engine.url)
     if conn.scalar(
         sa.text("""SELECT EXISTS(SELECT 1 FROM stats.match WHERE encounter_game_id IS NULL)
         OR EXISTS(SELECT 1 FROM stats.ingest_job WHERE content_hash IS NULL OR source_kind='historical_reference')""")
     ):
         raise ValueError("original bound-head fixture requires proven games and original real hashes")
-    source = revision_module()
-    old_mv = source.NATIVE_MV_SELECT.replace("m.encounter_id", "g.encounter_id").replace(
-        "JOIN encounter.encounter enc ON enc.id=g.encounter_id",
-        "JOIN encounter.game g ON g.id=m.encounter_game_id JOIN encounter.encounter enc ON enc.id=g.encounter_id",
-    )
+    # Frozen ffd3a56f5 defining query: ordered averages, but no member-id best tie-break.
+    old_mv = """
+WITH qualified AS (
+ SELECT DISTINCT f.match_id,f.workspace_member_id,f.entity_id FROM stats.fact f
+ JOIN stats.match m ON m.id=f.match_id
+ JOIN stats.stat_def d ON d.id=f.stat_id AND d.discipline=m.discipline AND d.code='hero_time_played'
+ WHERE f.segment=0 AND f.value>60
+), eligible AS (
+ SELECT f.match_id,f.workspace_member_id,f.entity_id,f.stat_id,f.value,m.discipline,d.code
+ FROM stats.fact f JOIN qualified q ON q.match_id=f.match_id AND q.workspace_member_id=f.workspace_member_id
+ AND q.entity_id=f.entity_id JOIN stats.match m ON m.id=f.match_id
+ JOIN stats.stat_def d ON d.id=f.stat_id AND d.discipline=m.discipline
+ JOIN catalog.entity ce ON ce.id=f.entity_id AND ce.kind='character' AND ce.discipline=m.discipline
+ WHERE f.segment=0 AND f.entity_id IS NOT NULL
+), agg AS (
+ SELECT e.discipline,e.entity_id,e.stat_id,
+ sum(e.value ORDER BY e.match_id,e.workspace_member_id) sum_value,
+ sum(m.duration_s ORDER BY e.match_id,e.workspace_member_id) sum_time
+ FROM eligible e JOIN stats.match m ON m.id=e.match_id GROUP BY e.discipline,e.entity_id,e.stat_id
+), ranked AS (
+ SELECT e.*,row_number() OVER (PARTITION BY e.discipline,e.entity_id,e.stat_id ORDER BY e.value *
+ CASE WHEN e.code IN ('deaths','damage_taken','environmental_deaths','shots_missed','damage_fb','performance')
+ THEN -1.0 ELSE 1.0 END DESC,e.match_id DESC) rn FROM eligible e
+), best AS (
+ SELECT r.discipline,r.entity_id,r.stat_id,r.value best_value,g.encounter_id,mp.name map_name,
+ mp.image_path map_image_path,t.name tournament_name,u.name username
+ FROM ranked r JOIN stats.match m ON m.id=r.match_id
+ JOIN catalog.entity mp ON mp.id=m.map_entity_id AND mp.kind='map' AND mp.discipline=m.discipline
+ JOIN encounter.game g ON g.id=m.encounter_game_id
+ JOIN encounter.encounter enc ON enc.id=g.encounter_id AND enc.workspace_id=m.workspace_id AND enc.discipline=m.discipline
+ JOIN tournament.tournament t ON t.id=enc.tournament_id
+ JOIN workspace_member wm ON wm.id=r.workspace_member_id AND wm.workspace_id=m.workspace_id
+ JOIN players."user" u ON u.id=wm.player_id WHERE r.rn=1
+)
+SELECT a.discipline,a.stat_id,a.entity_id,b.best_value,(a.sum_value/nullif(a.sum_time,0))*600 AS avg,
+ jsonb_build_object('encounter_id',b.encounter_id,'map_name',b.map_name,'map_image_path',b.map_image_path,
+ 'tournament_name',b.tournament_name,'username',b.username) AS metadata
+FROM agg a JOIN best b ON b.discipline=a.discipline AND b.entity_id=a.entity_id AND b.stat_id=a.stat_id
+"""
     statements = (
         "SET CONSTRAINTS ALL IMMEDIATE",
         "DROP MATERIALIZED VIEW stats.mv_entity_global_stats",

@@ -321,14 +321,17 @@ def test_populated_copy_preserves_orientation_members_and_event_multiplicity(sta
 @pytest.mark.parametrize(
     "column,delta,expected_classes",
     [
-        ("avg", 5e-13, {"mv_derivation"}),
+        ("avg", 5e-13, {"mv", "mv_derivation"}),
         ("avg", 2e-12, {"mv", "mv_derivation"}),
         ("best_value", 5e-13, {"mv", "mv_derivation"}),
     ],
+    ids=("sub_tolerance_avg", "larger_avg", "best_value"),
 )
-def test_mv_average_tolerance_never_waives_native_derivation(stats01_database, column, delta, expected_classes):
+def test_mv_canonical_average_never_waives_native_derivation(
+    stats01_database, tmp_path, column, delta, expected_classes
+):
     url, _ = stats01_database
-    engine = sa.create_engine(url)
+    engine = sa.create_engine(url, poolclass=sa.pool.NullPool)
     try:
         with engine.begin() as conn:
             conn.execute(sa.text("ALTER MATERIALIZED VIEW stats.mv_entity_global_stats RENAME TO original_mv"))
@@ -343,6 +346,10 @@ def test_mv_average_tolerance_never_waives_native_derivation(stats01_database, c
             )
             prepare_proof(conn)
             assert {row[0] for row in mismatches(conn)} == expected_classes
+        with reconcile.readonly_snapshot(engine, revision) as conn:
+            with pytest.raises(EvidenceError):
+                reconcile.capture_receipt(conn, tmp_path / "receipt", revision)
+        assert not (tmp_path / "receipt" / "manifest.json").exists()
     finally:
         engine.dispose()
 
@@ -1044,5 +1051,126 @@ def test_original_bound_head_preserves_exact_signed_zero_outside_mv(stats01_data
                 sa.text("""SELECT count(*) FROM information_schema.columns
                 WHERE table_schema='stats' AND column_name IN ('raw_status','source_map_index')""")
             ) == (2 if native_value == "-0" else 0)
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "resident_metadata,allowed",
+    (
+        ({"username": "P4 Bravo"}, True),
+        ({"username": "P4 Substitute"}, False),
+        ({"username": "P4 Bravo", "map_name": "Not the source map"}, False),
+    ),
+    ids=("legitimate_co_best", "non_holder_username", "foreign_metadata"),
+)
+def test_original_bound_head_accepts_only_proven_co_best_metadata(stats01_legacy_database, resident_metadata, allowed):
+    from shared.testing.stats_parity import original_stats01_shape
+
+    url, ids = stats01_legacy_database
+    engine = sa.create_engine(url, poolclass=sa.pool.NullPool)
+    best_query = """SELECT best_value,metadata->>'username' FROM stats.mv_entity_global_stats
+        WHERE entity_id=:hero AND stat_id=(SELECT id FROM stats.stat_def
+        WHERE discipline='overwatch' AND code='all_damage_dealt')"""
+    preserved_queries = (
+        """SELECT to_jsonb(f)-'value',encode(float8send(value),'hex') FROM stats.fact f
+        ORDER BY match_id,segment,workspace_member_id,entity_id,stat_id,encounter_team_id""",
+        "SELECT id,encode(float8send(duration_s),'hex') FROM stats.match ORDER BY id",
+        """SELECT to_jsonb(s)-'value',encode(float8send(value),'hex')
+        FROM matches.statistics s ORDER BY id""",
+        "SELECT to_jsonb(g) FROM encounter.game g ORDER BY id",
+        "SELECT to_jsonb(t) FROM encounter.game_team t ORDER BY game_id,encounter_team_id",
+        "SELECT to_jsonb(t) FROM encounter.team t ORDER BY id",
+        "SELECT id,after_json FROM audit_log WHERE action='stats.initial_transfer' ORDER BY id",
+    )
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                sa.text("""UPDATE matches.statistics SET hero_id=:hero,
+                value=CASE WHEN name='AllDamageDealt' THEN 1000000000000.0 ELSE value END
+                WHERE match_id=:match_hidden AND round=0 AND hero_id IS NOT NULL"""),
+                ids,
+            )
+            candidates = conn.execute(
+                sa.text("""SELECT wm.id,u.name,s.value,s.match_id FROM matches.statistics s
+                JOIN matches.match m ON m.id=s.match_id
+                JOIN encounter.encounter enc ON enc.id=m.encounter_id
+                JOIN workspace_member wm ON wm.workspace_id=enc.workspace_id AND wm.player_id=s.user_id
+                JOIN players."user" u ON u.id=s.user_id
+                WHERE s.round=0 AND s.hero_id=:hero AND s.name='AllDamageDealt'
+                AND EXISTS(SELECT 1 FROM matches.statistics q WHERE q.match_id=s.match_id
+                  AND q.user_id=s.user_id AND q.hero_id=s.hero_id AND q.round=0
+                  AND q.name='HeroTimePlayed' AND q.value>60)
+                ORDER BY s.value DESC,s.match_id DESC,wm.id"""),
+                ids,
+            ).all()
+            assert ids["member"] < ids["member_away"]
+            assert candidates[:2] == [
+                (ids["member"], "P4 Alpha", 1e12, ids["match_hidden"]),
+                (ids["member_away"], "P4 Bravo", 1e12, ids["match_hidden"]),
+            ]
+            assert all(row.value < 1e12 for row in candidates[2:])
+        result = upgrade_database(url, "stats01")
+        assert result.returncode == 0, result.stdout + result.stderr
+        with engine.begin() as conn:
+            assert conn.execute(sa.text(best_query), ids).one() == (1e12, "P4 Alpha")
+            original_stats01_shape(conn)
+            # The old sort left full ties unspecified. Freeze the other legal
+            # outcome explicitly instead of depending on PostgreSQL's tie order.
+            conn.execute(sa.text("ALTER MATERIALIZED VIEW stats.mv_entity_global_stats RENAME TO old_bound_mv"))
+            conn.execute(sa.text("ALTER INDEX stats.uq_mv_entity_global_stats RENAME TO uq_old_bound_mv"))
+            patch = sa.literal(json.dumps(resident_metadata)).compile(
+                dialect=conn.dialect, compile_kwargs={"literal_binds": True}
+            )
+            conn.execute(
+                sa.text(f"""CREATE MATERIALIZED VIEW stats.mv_entity_global_stats AS
+                SELECT discipline,stat_id,entity_id,best_value,avg,
+                CASE WHEN entity_id={ids["hero"]} AND stat_id=(SELECT id FROM stats.stat_def
+                  WHERE discipline='overwatch' AND code='all_damage_dealt')
+                THEN metadata||CAST({patch} AS jsonb) ELSE metadata END AS metadata
+                FROM stats.old_bound_mv""")
+            )
+            original = [conn.execute(sa.text(query)).all() for query in preserved_queries]
+            assert conn.execute(sa.text(best_query), ids).one() == (1e12, resident_metadata["username"])
+        result = upgrade_database(url, "stats01a")
+        if allowed:
+            assert result.returncode == 0, result.stdout + result.stderr
+        else:
+            assert result.returncode != 0
+            assert "stats01a refuses unexplained" in result.stdout + result.stderr
+        with engine.connect() as conn:
+            assert [conn.execute(sa.text(query)).all() for query in preserved_queries] == original
+            assert conn.scalar(sa.text("SELECT version_num FROM alembic_version")) == (
+                "stats01a" if allowed else "stats01"
+            )
+            assert conn.execute(sa.text(best_query), ids).one() == (
+                1e12,
+                "P4 Alpha" if allowed else resident_metadata["username"],
+            )
+            histories = (
+                conn.execute(sa.text("SELECT after_json FROM audit_log WHERE action='stats.history_upgrade'"))
+                .scalars()
+                .all()
+            )
+            assert len(histories) == int(allowed)
+            if allowed:
+                changes = [
+                    change
+                    for change in histories[0]["mv_changes"]
+                    if change["owner_key"][2] == ids["hero"]
+                    and change["before"][-1]["username"] == "P4 Bravo"
+                    and change["after"][-1]["username"] == "P4 Alpha"
+                ]
+                assert len(changes) == 1
+                prepare_proof(conn)
+                assert mismatches(conn) == []
+            else:
+                assert (
+                    conn.scalar(
+                        sa.text("""SELECT count(*) FROM information_schema.columns
+                WHERE table_schema='stats' AND column_name IN ('raw_status','source_map_index')""")
+                    )
+                    == 0
+                )
     finally:
         engine.dispose()
