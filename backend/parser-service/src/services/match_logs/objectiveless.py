@@ -1,10 +1,4 @@
-"""Fill in the Push/Clash map scores the match log cannot carry.
-
-Load and apply around ``shared.domain.objectiveless_maps.resolve_scores``, which
-owns the rules. Runs whenever the evidence can change: a log of the encounter
-was parsed (``MatchLogProcessor.start``) or the encounter completed
-(``serve.process_tournament_encounter_completed``).
-"""
+"""Resolve Push/Clash observed score facts without changing accepted results."""
 
 from __future__ import annotations
 
@@ -19,6 +13,9 @@ from shared.domain.objectiveless_maps import (
     Series,
     resolve_scores,
 )
+from shared.repository.stats import StatsMatchRepository
+from shared.repository.stats_queries import team_scores
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src import models
 from src.core import enums
 
@@ -26,73 +23,156 @@ __all__ = ("resolve_encounter_maps",)
 
 
 async def resolve_encounter_maps(session: AsyncSession, encounter_id: int) -> bool:
-    """Rewrite the encounter's Push/Clash match scores; ``True`` if any changed.
+    """Flush score-only changes and evidence; the caller owns the existing commit.
 
-    Flushes nothing and commits nothing: the caller owns the transaction.
+    Ingest calls this after staging its reparse, with the same encounter lock
+    already held. Standalone calls take that lock before any match locks too.
     """
-    # Analytical: the gamemode slug rides along with each match row.
+    encounter = await session.scalar(
+        sa.select(models.Encounter)
+        .where(
+            models.Encounter.id == encounter_id,
+            models.Encounter.discipline == "overwatch",
+        )
+        .with_for_update()
+    )
+    if encounter is None:
+        return False
     mode = aliased(models.CatalogEntity, name="mode")
+    match, game, entity = models.StatsMatch, models.EncounterGame, models.CatalogEntity
     rows = (
         await session.execute(
-            sa.select(models.Match, mode.slug)
-            .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
-            .join(mode, mode.id == models.CatalogEntity.parent_id)
-            .where(models.Match.encounter_id == encounter_id)
+            sa.select(match, mode.slug)
+            .join(
+                game,
+                game.id == match.encounter_game_id,
+            )
+            .join(
+                entity,
+                sa.and_(entity.id == match.map_entity_id, entity.discipline == match.discipline, entity.kind == "map"),
+            )
+            .join(
+                mode,
+                sa.and_(
+                    mode.id == entity.parent_id,
+                    mode.discipline == match.discipline,
+                    mode.kind == "mode",
+                ),
+            )
+            .where(
+                game.encounter_id == encounter_id,
+                match.workspace_id == encounter.workspace_id,
+                match.discipline == "overwatch",
+            )
+            .order_by(match.id)
+            .with_for_update(of=match)
         )
     ).all()
     if not any(slug in OBJECTIVELESS_GAMEMODES for _, slug in rows):
         return False
 
-    encounter = await session.get(models.Encounter, encounter_id)
-    if encounter is None:
-        return False
-    seats = (
-        await session.scalars(
-            sa.select(models.EncounterTeam).where(
-                models.EncounterTeam.encounter_id == encounter_id, models.EncounterTeam.active.is_(True)
-            )
-        )
-    ).all()
-    games = (
-        await session.scalars(
-            sa.select(models.EncounterGame)
+    scores_relation = team_scores(discipline="overwatch", stat_code="score")
+    observed = (
+        await session.execute(
+            sa.select(scores_relation)
             .where(
-                models.EncounterGame.encounter_id == encounter_id,
-                models.EncounterGame.state == enums.EncounterGameState.CONFIRMED,
+                scores_relation.c.match_id.in_([row.id for row, _ in rows]),
             )
-            .order_by(models.EncounterGame.position)
+            .order_by(scores_relation.c.match_id, scores_relation.c.slot)
         )
     ).all()
-    game_scores: dict[int, dict[int, int | None]] = {game.id: {} for game in games}
+    by_match = {}
+    for score in observed:
+        by_match.setdefault(score.match_id, []).append(score)
+    seat_ids = {score.encounter_team_id for score in observed}
+    seats = {
+        seat.id: seat
+        for seat in await session.scalars(
+            sa.select(models.EncounterTeam).where(
+                models.EncounterTeam.encounter_id == encounter_id,
+                models.EncounterTeam.id.in_(seat_ids),
+            )
+        )
+    }
+    games = list(
+        await session.scalars(
+            sa.select(game)
+            .where(
+                game.encounter_id == encounter_id,
+                game.state == enums.EncounterGameState.CONFIRMED,
+            )
+            .order_by(game.position)
+        )
+    )
+    game_scores = {row.id: {} for row in games}
     for line in await session.scalars(
-        sa.select(models.EncounterGameTeam).where(models.EncounterGameTeam.game_id.in_(list(game_scores)))
+        sa.select(models.EncounterGameTeam).where(
+            models.EncounterGameTeam.game_id.in_(game_scores),
+        )
     ):
         game_scores[line.game_id][line.encounter_team_id] = line.score
 
-    scores = resolve_scores(
-        Series(
-            teams={seat.id: seat.team_id for seat in seats},
-            completed=encounter.status == enums.EncounterStatus.COMPLETED,
-            scores={seat.id: seat.score for seat in seats},
-        ),
-        [
+    # Use each bound game's historical participants, not today's active seats.
+    groups = {}
+    for row, slug in rows:
+        sides = by_match.get(row.id, [])
+        if len(sides) != 2 or {side.slot for side in sides} != {1, 2}:
+            continue  # The OW duel resolver cannot infer an incomplete/N-team observation.
+        key = tuple(sorted(side.encounter_team_id for side in sides))
+        groups.setdefault(key, []).append(
             LoggedMap(
-                match_id=match.id,
-                map_id=match.map_id,
-                home_team_id=match.home_team_id,
-                home_score=match.home_score,
-                away_score=match.away_score,
+                match_id=row.id,
+                map_id=row.map_entity_id,
+                home_team_id=sides[0].tournament_team_id,
+                home_score=sides[0].value,
+                away_score=sides[1].value,
                 objectiveless=slug in OBJECTIVELESS_GAMEMODES,
             )
-            for match, slug in rows
-        ],
-        [AcceptedGame(map_id=game.map_id, scores=game_scores[game.id]) for game in games],
-    )
+        )
+    resolved = {}
+    for pair, logged in groups.items():
+        resolved.update(
+            resolve_scores(
+                Series(
+                    teams={key: seats[key].team_id for key in pair},
+                    completed=encounter.status == enums.EncounterStatus.COMPLETED,
+                    scores={key: seats[key].score for key in pair},
+                ),
+                logged,
+                [
+                    AcceptedGame(map_id=row.map_id, scores=game_scores[row.id])
+                    for row in games
+                    if set(game_scores[row.id]) == set(pair)
+                ],
+            )
+        )
 
     changed = False
-    for match, _slug in rows:
-        score = scores.get(match.id)
-        if score is not None and (match.home_score, match.away_score) != score:
-            match.home_score, match.away_score = score
-            changed = True
+    repository = StatsMatchRepository()
+    for row, _ in rows:
+        score = resolved.get(row.id)
+        if score is None:
+            continue
+        sides = by_match[row.id]
+        if (sides[0].value, sides[1].value) == score:
+            continue
+        scopes = owner_scopes("match", (row.id,))
+        before = await capture_stats_evidence(session, scopes=scopes)
+        await repository.set_team_scores(
+            session,
+            match_id=row.id,
+            discipline="overwatch",
+            scores={side.encounter_team_id: value for side, value in zip(sides, score, strict=True)},
+        )
+        after = await capture_stats_evidence(session, scopes=scopes)
+        await stage_stats_evidence(
+            session,
+            operation="stats.score_edit",
+            before=before,
+            after=after,
+            workspace_id=row.workspace_id,
+            entity_type="stats_match",
+            entity_id=row.id,
+        )
+        changed = True
     return changed

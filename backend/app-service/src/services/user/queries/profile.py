@@ -3,13 +3,15 @@
 import typing
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core.social import SocialProvider, normalize_social_handle
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid, division_case_expr
-from shared.models import mv_hero_global_stats
+from shared.models.stats.match import mv_entity_global_stats
+from shared.repository.stats_queries import match_context, player_facts
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src import models
@@ -23,6 +25,9 @@ from ._scope import (
     team_has_played_encounter,
     user_entities,
 )
+
+_facts = player_facts(discipline="overwatch")
+_matches = match_context(discipline="overwatch")
 
 
 class UserProfileQueries:
@@ -421,7 +426,7 @@ class UserProfileQueries:
 
         seat = Seat(name="playtime_seat")
         playtime_query = (
-            sa.select(models.MatchStatistics.value.label("value"))
+            sa.select(_facts.c.value, _facts.c.match_id, _facts.c.workspace_member_id)
             .select_from(models.Player)
             .join(models.Team, models.Team.id == models.Player.team_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
@@ -429,19 +434,26 @@ class UserProfileQueries:
                 models.WorkspaceMember.player_id == user_id,
                 models.Player.is_substitution.is_(False),
                 models.Team.tournament_id == tournament.id,
-                models.MatchStatistics.user_id == models.WorkspaceMember.player_id,
-                models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                models.MatchStatistics.hero_id.is_(None),
-                models.MatchStatistics.round == 0,
+                _facts.c.player_id == models.WorkspaceMember.player_id,
+                _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                _facts.c.entity_id.is_(None),
+                _facts.c.segment == 0,
             )
         )
         playtime_query = (
             seat.join(playtime_query, models.Team.id, duel=False)
-            .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-            .join(models.MatchStatistics, models.MatchStatistics.match_id == models.Match.id)
+            .join(_matches, _matches.c.encounter_id == models.Encounter.id)
+            .join(_facts, _facts.c.match_id == _matches.c.id)
         )
+        playtime_rows = playtime_query.subquery("profile_playtime_sides")
         playtime_subquery = sa.select(
-            sa.func.sum(playtime_query.subquery("profile_playtime_sides").c.value)
+            sa.func.sum(
+                aggregate_order_by(
+                    playtime_rows.c.value,
+                    playtime_rows.c.match_id,
+                    playtime_rows.c.workspace_member_id,
+                )
+            )
         ).scalar_subquery()
 
         maps_seat = Seat(name="maps_seat")
@@ -485,14 +497,8 @@ class UserProfileQueries:
     ) -> sa.Select:
         """Build the per-(hero, stat) totals + best-performance query for one user.
 
-        Uses the deferred-metadata-join rewrite (same shape as the precomputed
-        ``matches.mv_hero_global_stats`` view; see migration ``herostatmv01``): rank
-        the slim eligible set with a bare window function, then join the four
-        metadata tables (match/map/encounter/tournament) only for the
-        ~(#heroes x #stats) winning rows. The previous form joined those tables
-        *into* the window CTE, so ``row_number()`` ranked the full eligible set
-        already fanned out across four tables — which blew past ``statement_timeout``
-        for heavy users (e.g. an unfiltered workspace-wide read).
+        Rank the slim eligible native facts before hydrating the winning row's
+        map and tournament metadata; match duration remains the per-10 denominator.
         """
         eligible_stats = _build_eligible_hero_stats_cte(
             user_id=user_id,
@@ -501,37 +507,36 @@ class UserProfileQueries:
             tournament_id=tournament_id,
             workspace_id=workspace_id,
         )
-        direction_score = _hero_direction_score(eligible_stats.c.value, eligible_stats.c.name)
+        direction_score = _hero_direction_score(eligible_stats.c.value, eligible_stats.c.stat_code)
 
-        # Totals per (hero, stat). Joins matches.match only for playtime (the
-        # per-10min average denominator); no metadata tables, no window function.
+        # One match duration per eligible stat row, not character playtime.
+        # Match/member order is the native MV contract; never depend on heap/group-sort ties.
+        reduction_order = (eligible_stats.c.match_id, eligible_stats.c.workspace_member_id)
         agg_cte = (
             sa.select(
-                eligible_stats.c.hero_id,
-                eligible_stats.c.name,
-                sa.func.sum(eligible_stats.c.value).label("total_value"),
-                sa.func.sum(models.Match.time).label("total_time"),
+                eligible_stats.c.entity_id,
+                eligible_stats.c.stat_code,
+                sa.func.sum(aggregate_order_by(eligible_stats.c.value, *reduction_order)).label("total_value"),
+                sa.func.sum(aggregate_order_by(_matches.c.duration_s, *reduction_order)).label("total_time"),
             )
             .select_from(eligible_stats)
-            .join(models.Match, models.Match.id == eligible_stats.c.match_id)
-            .group_by(eligible_stats.c.hero_id, eligible_stats.c.name)
+            .join(_matches, _matches.c.id == eligible_stats.c.match_id)
+            .group_by(eligible_stats.c.entity_id, eligible_stats.c.stat_code)
             .cte("hero_stats_agg")
         )
 
-        # Rank eligible rows per (hero, stat) on the slim set alone. The tiebreaker
-        # is the match id, which equals ``eligible.match_id``, so no join is needed
-        # here (the old form joined matches.match purely for ``match.id``).
+        # Best-value ties prefer the newer match id.
         ranked_cte = (
             sa.select(
-                eligible_stats.c.hero_id,
-                eligible_stats.c.name,
+                eligible_stats.c.entity_id,
+                eligible_stats.c.stat_code,
                 eligible_stats.c.match_id,
                 eligible_stats.c.value,
                 sa.func.row_number()
                 .over(
                     partition_by=[
-                        eligible_stats.c.hero_id,
-                        eligible_stats.c.name,
+                        eligible_stats.c.entity_id,
+                        eligible_stats.c.stat_code,
                     ],
                     order_by=[direction_score.desc(), eligible_stats.c.match_id.desc()],
                 )
@@ -544,18 +549,25 @@ class UserProfileQueries:
         # Hydrate map/tournament metadata only for the winning row per (hero, stat).
         best_result_cte = (
             sa.select(
-                ranked_cte.c.hero_id,
-                ranked_cte.c.name,
+                ranked_cte.c.entity_id,
+                ranked_cte.c.stat_code,
                 ranked_cte.c.value.label("best_value"),
-                models.Match.encounter_id,
+                _matches.c.encounter_id,
                 models.CatalogEntity.name.label("map_name"),
                 models.CatalogEntity.image_path.label("map_link"),
                 models.Tournament.name.label("tournament_name"),
             )
             .select_from(ranked_cte)
-            .join(models.Match, models.Match.id == ranked_cte.c.match_id)
-            .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            .join(_matches, _matches.c.id == ranked_cte.c.match_id)
+            .join(
+                models.CatalogEntity,
+                sa.and_(
+                    models.CatalogEntity.id == _matches.c.map_entity_id,
+                    models.CatalogEntity.kind == "map",
+                    models.CatalogEntity.discipline == "overwatch",
+                ),
+            )
+            .join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
             .where(ranked_cte.c.row_num == 1)
             .cte("best_result_cte")
@@ -563,7 +575,7 @@ class UserProfileQueries:
 
         return (
             sa.select(
-                agg_cte.c.name,
+                agg_cte.c.stat_code,
                 models.CatalogEntity,
                 agg_cte.c.total_value.label("total_value"),
                 best_result_cte.c.best_value.label("best_value"),
@@ -580,12 +592,12 @@ class UserProfileQueries:
                 ).label("best_metadata"),
             )
             .select_from(agg_cte)
-            .join(models.CatalogEntity, models.CatalogEntity.id == agg_cte.c.hero_id)
+            .join(models.CatalogEntity, models.CatalogEntity.id == agg_cte.c.entity_id)
             .join(
                 best_result_cte,
                 sa.and_(
-                    best_result_cte.c.hero_id == agg_cte.c.hero_id,
-                    best_result_cte.c.name == agg_cte.c.name,
+                    best_result_cte.c.entity_id == agg_cte.c.entity_id,
+                    best_result_cte.c.stat_code == agg_cte.c.stat_code,
                 ),
             )
             .where(models.CatalogEntity.kind == "character", models.CatalogEntity.discipline == "overwatch")
@@ -612,29 +624,32 @@ class UserProfileQueries:
             workspace_id=workspace_id,
         )
         result = await session.execute(query)
-        return result.all()
+        return [(enums.LogStatsName(code), *values) for code, *values in result.all()]
 
     def _read_hero_global_stats_query(self, stats: list[enums.LogStatsName] | None) -> sa.Select:
-        """Read precomputed global per-(hero, stat) records from the materialized
-        view ``matches.mv_hero_global_stats``.
-
-        The heavy aggregation that used to run here on every cache miss (a window
-        function over the whole eligible set joined to 5 tables) blew past
-        ``statement_timeout``. It now lives in the view body and is refreshed
-        out-of-band by the app-worker (see ``hero_stats_refresh``); reads are a
-        cheap indexed scan, so the per-request cache is no longer needed.
-        """
-        mv = mv_hero_global_stats
-        query = sa.select(
-            mv.c.name,
-            mv.c.hero_id,
-            mv.c.best_value,
-            mv.c["avg"],
-            mv.c["metadata"],
+        """Global OW records from the native MV; workspace reads use scoped facts."""
+        mv = mv_entity_global_stats
+        query = (
+            sa.select(
+                models.StatDef.code,
+                mv.c.entity_id,
+                mv.c.best_value,
+                mv.c["avg"],
+                mv.c["metadata"],
+            )
+            .select_from(mv)
+            .join(
+                models.StatDef,
+                sa.and_(
+                    models.StatDef.id == mv.c.stat_id,
+                    models.StatDef.discipline == mv.c.discipline,
+                ),
+            )
+            .where(mv.c.discipline == "overwatch")
         )
         if stats:
-            query = query.where(mv.c.name.in_(stats))
-        return query.order_by(mv.c.hero_id)
+            query = query.where(models.StatDef.code.in_([stat.value for stat in stats]))
+        return query.order_by(mv.c.entity_id)
 
     async def get_statistics_by_heroes_all_values(
         self,
@@ -643,13 +658,11 @@ class UserProfileQueries:
     ) -> typing.Sequence[tuple[enums.LogStatsName, int, float, float, dict]]:
         """Best value (+ metadata) and global per-10min average for every (hero, stat).
 
-        Served from the precomputed ``matches.mv_hero_global_stats`` view. Returns an
-        empty sequence until the view's first refresh has populated it, so callers
-        degrade gracefully (per-user stats render without the global comparison).
-        ``stats=None`` reads every stat; a non-empty list narrows the view scan.
+        An unpopulated native MV is an operational error, not an empty result.
+        ``stats=None`` reads every OW stat; a non-empty list narrows the view scan.
         """
         result = await session.execute(self._read_hero_global_stats_query(stats))
-        return result.all()  # type: ignore[return-value]
+        return [(enums.LogStatsName(code), *values) for code, *values in result.all()]
 
     async def get_best_teammates(
         self,
@@ -729,31 +742,25 @@ class UserProfileQueries:
         stats_per_match = (
             sa.select(
                 shared_teams.c.teammate_id.label("user_id"),
-                models.MatchStatistics.match_id.label("match_id"),
-                sa.func.max(
-                    sa.case(
-                        (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
-                    )
-                ).label("impact_rank"),
-                sa.func.max(
-                    sa.case(
-                        (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
-                    )
-                ).label("performance"),
-                sa.func.max(
-                    sa.case((models.MatchStatistics.name == enums.LogStatsName.KDA, models.MatchStatistics.value))
-                ).label("kda"),
+                _facts.c.match_id.label("match_id"),
+                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.ImpactRank, _facts.c.value))).label(
+                    "impact_rank"
+                ),
+                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.Performance, _facts.c.value))).label(
+                    "performance"
+                ),
+                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.KDA, _facts.c.value))).label("kda"),
             )
             .select_from(shared_teams)
             .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id)
             .outerjoin(
-                models.MatchStatistics,
+                _facts,
                 sa.and_(
-                    models.MatchStatistics.team_id == shared_teams.c.team_id,
-                    models.MatchStatistics.user_id == shared_teams.c.teammate_id,
-                    models.MatchStatistics.round == 0,
-                    models.MatchStatistics.hero_id.is_(None),
-                    models.MatchStatistics.name.in_(
+                    _facts.c.tournament_team_id == shared_teams.c.team_id,
+                    _facts.c.player_id == shared_teams.c.teammate_id,
+                    _facts.c.segment == 0,
+                    _facts.c.entity_id.is_(None),
+                    _facts.c.stat_code.in_(
                         [
                             enums.LogStatsName.ImpactRank,
                             enums.LogStatsName.Performance,
@@ -762,15 +769,15 @@ class UserProfileQueries:
                     ),
                 ),
             )
-            .group_by(shared_teams.c.teammate_id, models.MatchStatistics.match_id)
+            .group_by(shared_teams.c.teammate_id, _facts.c.match_id)
         ).cte("teammate_stats_per_match")
 
         mvp_placement = sa.func.coalesce(stats_per_match.c.impact_rank, stats_per_match.c.performance)
         stats_query = (
             sa.select(
                 stats_per_match.c.user_id,
-                sa.func.avg(mvp_placement).label("performance"),
-                sa.func.avg(stats_per_match.c.kda).label("kda"),
+                sa.func.avg(aggregate_order_by(mvp_placement, stats_per_match.c.match_id)).label("performance"),
+                sa.func.avg(aggregate_order_by(stats_per_match.c.kda, stats_per_match.c.match_id)).label("kda"),
             ).group_by(stats_per_match.c.user_id)
         ).cte("stats_query")
 
@@ -781,14 +788,14 @@ class UserProfileQueries:
             map_seat.join(
                 sa.select(
                     shared_teams.c.teammate_id.label("user_id"),
-                    models.Match.map_id.label("map_id"),
+                    _matches.c.map_entity_id.label("map_id"),
                 )
                 .select_from(shared_teams)
                 .join(teammates_query, teammates_query.c.user_id == shared_teams.c.teammate_id),
                 shared_teams.c.team_id,
                 duel=False,
             )
-            .outerjoin(models.Match, models.Match.encounter_id == models.Encounter.id)
+            .outerjoin(_matches, _matches.c.encounter_id == models.Encounter.id)
             .subquery("teammate_map_sides")
         )
         maps_query = (

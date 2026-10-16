@@ -15,6 +15,7 @@ apply_test_env_defaults()
 import pytest  # noqa: E402
 
 from shared.testing import configure_test_cache, db_session  # noqa: E402,F401
+from shared.testing.stats_parity import stats_parity_database, stats_parity_template  # noqa: E402,F401
 
 
 @pytest.fixture(autouse=True, scope="session")

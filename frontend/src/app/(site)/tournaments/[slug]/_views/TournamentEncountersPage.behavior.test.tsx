@@ -194,8 +194,6 @@ function mapRow(id: number, encounterId: number, home: Team, away: Team): Match 
     map_id: 52,
     map_index: 1,
     log_name: "log.txt",
-    source: "log_parser",
-    code: null,
     map: null,
     home_team: null,
     away_team: null,

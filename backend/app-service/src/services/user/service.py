@@ -1488,8 +1488,7 @@ class UserService:
         its matches (``match_rows``: ``(encounter_id, match, performance, heroes, impact_rank,
         impact_points, overperformance_score, overperf_pos)``) in play order.
 
-        The matches are oriented to the encounter's slots 1 and 2, so the seats are
-        read before any of them is mapped.
+        Each match carries its historical game's slots independently of live encounter seats.
         """
         encounter_ids = [encounter.id for encounter in encounters]
         contexts = await self.encounters.get_encounter_contexts(session, encounter_ids)
@@ -1507,7 +1506,6 @@ class UserService:
             matches[encounter_id].append(
                 _mappers.to_match_with_user_stats(
                     match,
-                    seats=contexts[encounter_id].participations,
                     performance=performance,
                     heroes=heroes,
                     impact_rank=impact_rank,
@@ -1517,12 +1515,11 @@ class UserService:
                 )
             )
 
-        pool_ids = await self.encounters.get_settled_map_ids(session, encounter_ids)
         return [
             _mappers.to_encounter_with_user_stats(
                 encounter,
                 contexts[encounter.id],
-                matches=_mappers.sort_user_matches(matches[encounter.id], pool_ids.get(encounter.id)),
+                matches=_mappers.sort_user_matches(matches[encounter.id]),
                 viewer_user_id=viewer_user_id,
             )
             for encounter in encounters

@@ -319,17 +319,11 @@ export function PickBanPanel({
                   discipline={encounter.tournament.discipline}
                   previousMatchId={
                     encounter.games?.length
-                      ? (buildSeriesSlots({
-                          ...encounter,
-                          matches: (encounter.matches ?? []).filter(
-                            (match) => match.source === "log_parser"
-                          )
-                        }).find(
+                      ? (buildSeriesSlots(encounter).find(
                           (slot) => slot.index === (state.current_round ?? step?.round ?? 1) - 1
                         )?.match?.id ?? null)
                       : ((encounter.matches ?? []).find(
                           (match) =>
-                            match.source === "log_parser" &&
                             match.map_index === (state.current_round ?? step?.round ?? 1) - 1
                         )?.id ?? null)
                   }

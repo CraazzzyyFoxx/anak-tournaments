@@ -116,7 +116,7 @@ async def execute_captain_report_activity(
     description="Match logs the player uploaded",
     required=("op", "value"),
     optional=("scope", "status"),
-    depends_on=("log_processing.record",),
+    depends_on=("stats.ingest_job",),
     grain_for=lambda params: (
         AchievementGrain.user_tournament if params.get("scope") == "tournament" else AchievementGrain.user
     ),
@@ -133,27 +133,36 @@ async def execute_log_upload_count(
     status = params.get("status", "done")
     op_fn = OPERATORS[op]
 
-    group_cols = [models.LogProcessingRecord.uploader_id]
+    job = models.IngestJob
+    group_cols = [job.uploader_user_id]
     if scope == "tournament":
-        group_cols.append(models.LogProcessingRecord.tournament_id)
+        group_cols.append(job.hint_tournament_id)
 
-    count_expr = sa.func.count(sa.distinct(models.LogProcessingRecord.id))
+    count_expr = sa.func.count(sa.distinct(job.id))
     query = (
         sa.select(*group_cols, count_expr)
-        .join(models.Tournament, models.Tournament.id == models.LogProcessingRecord.tournament_id)
+        .join(
+            models.Tournament,
+            sa.and_(
+                models.Tournament.id == job.hint_tournament_id,
+                models.Tournament.workspace_id == job.workspace_id,
+                models.Tournament.discipline == job.discipline,
+            ),
+        )
         .where(
-            models.LogProcessingRecord.uploader_id.isnot(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            job.uploader_user_id.is_not(None),
+            job.workspace_id == context.workspace_id,
+            job.discipline == "overwatch",
         )
         .group_by(*group_cols)
         .having(op_fn(count_expr, value))
     )
 
     if status != "any":
-        query = query.where(models.LogProcessingRecord.status == models.LogProcessingStatus(status))
+        query = query.where(job.status == models.IngestJobStatus(status))
 
     if context.tournament and scope == "tournament":
-        query = query.where(models.LogProcessingRecord.tournament_id == context.tournament.id)
+        query = query.where(job.hint_tournament_id == context.tournament.id)
 
     result = await session.execute(query)
     keys: ResultSet = set()

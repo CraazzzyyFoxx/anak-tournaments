@@ -3,10 +3,12 @@
 import typing
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from shared.division_grid import DivisionGrid, division_filter_predicates
+from shared.repository.stats_queries import match_context, player_facts
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models
@@ -18,6 +20,9 @@ from ._scope import (
     _hero_compare_stat_visibility_condition,
     player_role_filter,
 )
+
+_facts = player_facts(discipline="overwatch")
+_matches = match_context(discipline="overwatch")
 
 DEFAULT_HERO_COMPARE_STATS: tuple[enums.LogStatsName, ...] = tuple(
     stat for stat in enums.LogStatsName if stat != enums.LogStatsName.HeroTimePlayed
@@ -316,7 +321,7 @@ class UserCompareQueries:
             user_ids=cohort_scope,
             name="compare_effective_achievement_rows_v2",
         )
-        achievement_match = aliased(models.Match)
+        achievement_match = _matches.alias()
         achievement_encounter = aliased(models.Encounter)
         achievements_query = (
             sa.select(
@@ -330,11 +335,11 @@ class UserCompareQueries:
             achievements_query = (
                 achievements_query.outerjoin(
                     achievement_match,
-                    achievement_match.id == effective_achievements.c.match_id,
+                    achievement_match.c.id == effective_achievements.c.match_id,
                 )
                 .outerjoin(
                     achievement_encounter,
-                    achievement_encounter.id == achievement_match.encounter_id,
+                    achievement_encounter.id == achievement_match.c.encounter_id,
                 )
                 .join(
                     scoped_players,
@@ -361,62 +366,91 @@ class UserCompareQueries:
             (enums.LogStatsName.HeroDamageDealt, "hero_damage_dealt_avg_10"),
             (enums.LogStatsName.HealingDealt, "healing_dealt_avg_10"),
         )
-        stat = models.MatchStatistics
         hero_match_stats = (
             sa.select(
-                stat.user_id,
-                stat.match_id,
+                _facts.c.player_id.label("user_id"),
+                _facts.c.match_id,
+                _facts.c.workspace_member_id,
+                _facts.c.entity_id,
                 *[
                     column
                     for name, label in per_10_metrics
                     for column in (
-                        sa.func.sum(stat.value).filter(stat.name == name).label(f"{label}_value"),
-                        # Rows, not seconds: `match.time` is applied once per stat row
-                        # below, exactly as summing it over the joined rows did.
-                        sa.func.count().filter(stat.name == name).label(f"{label}_rows"),
+                        sa.func.sum(
+                            aggregate_order_by(
+                                _facts.c.value,
+                                _facts.c.match_id,
+                                _facts.c.workspace_member_id,
+                                _facts.c.entity_id,
+                            )
+                        )
+                        .filter(_facts.c.stat_code == name.value)
+                        .label(f"{label}_value"),
+                        sa.func.count().filter(_facts.c.stat_code == name.value).label(f"{label}_rows"),
                     )
                 ],
             )
-            .select_from(stat)
+            .select_from(_facts)
             .where(
-                stat.round == 0,
-                stat.hero_id.isnot(None),
-                stat.name.in_([*(name for name, _label in per_10_metrics), enums.LogStatsName.HeroTimePlayed]),
-                stat.user_id.in_(sa.select(candidates.c.id)),
+                _facts.c.segment == 0,
+                _facts.c.entity_id.isnot(None),
+                _facts.c.stat_code.in_(
+                    [*(name.value for name, _label in per_10_metrics), enums.LogStatsName.HeroTimePlayed.value]
+                ),
+                _facts.c.player_id.in_(sa.select(candidates.c.id)),
             )
         )
         if has_roster_filter:
             hero_match_stats = hero_match_stats.join(
                 stat_scoped_players,
                 sa.and_(
-                    stat_scoped_players.c.user_id == stat.user_id,
-                    stat_scoped_players.c.team_id == stat.team_id,
+                    stat_scoped_players.c.user_id == _facts.c.player_id,
+                    stat_scoped_players.c.team_id == _facts.c.tournament_team_id,
                 ),
             )
         hero_match_stats = (
-            hero_match_stats.group_by(stat.match_id, stat.user_id, stat.hero_id)
-            .having(sa.func.bool_or(sa.and_(stat.name == enums.LogStatsName.HeroTimePlayed, stat.value > 60)))
+            hero_match_stats.group_by(
+                _facts.c.match_id, _facts.c.workspace_member_id, _facts.c.player_id, _facts.c.entity_id
+            )
+            .having(
+                sa.func.bool_or(
+                    sa.and_(_facts.c.stat_code == enums.LogStatsName.HeroTimePlayed.value, _facts.c.value > 60)
+                )
+            )
             .cte("compare_hero_match_stats")
+        )
+        reduction_order = (
+            hero_match_stats.c.match_id,
+            hero_match_stats.c.workspace_member_id,
+            hero_match_stats.c.entity_id,
         )
         per_10_stats = (
             sa.select(
                 hero_match_stats.c.user_id,
                 *[
                     (
-                        sa.func.sum(hero_match_stats.c[f"{label}_value"])
-                        / sa.func.nullif(sa.func.sum(models.Match.time * hero_match_stats.c[f"{label}_rows"]), 0)
+                        sa.func.sum(aggregate_order_by(hero_match_stats.c[f"{label}_value"], *reduction_order))
+                        / sa.func.nullif(
+                            sa.func.sum(
+                                aggregate_order_by(
+                                    _matches.c.duration_s * hero_match_stats.c[f"{label}_rows"],
+                                    *reduction_order,
+                                )
+                            ),
+                            0,
+                        )
                         * 600
                     ).label(label)
                     for _name, label in per_10_metrics
                 ],
             )
             .select_from(hero_match_stats)
-            .join(models.Match, models.Match.id == hero_match_stats.c.match_id)
+            .join(_matches, _matches.c.id == hero_match_stats.c.match_id)
         )
         if tournament_id is not None:
             per_10_stats = per_10_stats.join(
                 models.Encounter,
-                models.Encounter.id == models.Match.encounter_id,
+                models.Encounter.id == _matches.c.encounter_id,
             ).where(models.Encounter.tournament_id == tournament_id)
         per_10_stats = per_10_stats.group_by(hero_match_stats.c.user_id).cte("compare_match_stats")
 
@@ -428,50 +462,44 @@ class UserCompareQueries:
         # average the coalesced placement per user.
         mvp_per_match = (
             sa.select(
-                models.MatchStatistics.user_id.label("user_id"),
-                models.MatchStatistics.match_id.label("match_id"),
-                sa.func.max(
-                    sa.case(
-                        (models.MatchStatistics.name == enums.LogStatsName.ImpactRank, models.MatchStatistics.value)
-                    )
-                ).label("impact_rank"),
-                sa.func.max(
-                    sa.case(
-                        (models.MatchStatistics.name == enums.LogStatsName.Performance, models.MatchStatistics.value)
-                    )
-                ).label("performance"),
+                _facts.c.player_id.label("user_id"),
+                _facts.c.match_id.label("match_id"),
+                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.ImpactRank, _facts.c.value))).label(
+                    "impact_rank"
+                ),
+                sa.func.max(sa.case((_facts.c.stat_code == enums.LogStatsName.Performance, _facts.c.value))).label(
+                    "performance"
+                ),
             )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(candidates, candidates.c.id == models.MatchStatistics.user_id)
+            .select_from(_facts)
+            .join(_matches, _matches.c.id == _facts.c.match_id)
+            .join(candidates, candidates.c.id == _facts.c.player_id)
             .where(
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.hero_id.is_(None),
-                models.MatchStatistics.name.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
+                _facts.c.segment == 0,
+                _facts.c.entity_id.is_(None),
+                _facts.c.stat_code.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
             )
         )
         if has_roster_filter:
             mvp_per_match = mvp_per_match.join(
                 stat_scoped_players,
                 sa.and_(
-                    stat_scoped_players.c.user_id == models.MatchStatistics.user_id,
-                    stat_scoped_players.c.team_id == models.MatchStatistics.team_id,
+                    stat_scoped_players.c.user_id == _facts.c.player_id,
+                    stat_scoped_players.c.team_id == _facts.c.tournament_team_id,
                 ),
             )
         if tournament_id is not None:
             mvp_per_match = mvp_per_match.join(
                 models.Encounter,
-                models.Encounter.id == models.Match.encounter_id,
+                models.Encounter.id == _matches.c.encounter_id,
             ).where(models.Encounter.tournament_id == tournament_id)
-        mvp_per_match = mvp_per_match.group_by(models.MatchStatistics.user_id, models.MatchStatistics.match_id).cte(
-            "compare_mvp_per_match"
-        )
+        mvp_per_match = mvp_per_match.group_by(_facts.c.player_id, _facts.c.match_id).cte("compare_mvp_per_match")
 
         mvp_placement = sa.func.coalesce(mvp_per_match.c.impact_rank, mvp_per_match.c.performance)
         mvp_stats = (
             sa.select(
                 mvp_per_match.c.user_id,
-                sa.func.avg(mvp_placement).label("mvp_score_avg"),
+                sa.func.avg(aggregate_order_by(mvp_placement, mvp_per_match.c.match_id)).label("mvp_score_avg"),
             )
             .where(mvp_placement.isnot(None))
             .group_by(mvp_per_match.c.user_id)
@@ -693,70 +721,81 @@ class UserCompareQueries:
         # Same reasoning as ``_compare_metrics_query_v2``: the workspace narrows which
         # roster rows — and therefore which stat rows — belong to the baseline.
         has_roster_filter = role is not None or div_min is not None or div_max is not None or workspace_id is not None
+        reduction_order = (_facts.c.match_id, _facts.c.workspace_member_id, _facts.c.entity_id)
 
         playtime_query = (
             sa.select(
-                models.MatchStatistics.user_id,
-                sa.func.coalesce(sa.func.sum(models.MatchStatistics.value), 0.0).label("playtime_seconds"),
+                _facts.c.player_id.label("user_id"),
+                sa.func.coalesce(
+                    sa.func.sum(
+                        aggregate_order_by(
+                            _facts.c.value,
+                            *reduction_order,
+                        )
+                    ),
+                    0.0,
+                ).label("playtime_seconds"),
             )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(candidates, candidates.c.user_id == models.MatchStatistics.user_id)
+            .select_from(_facts)
+            .join(_matches, _matches.c.id == _facts.c.match_id)
+            .join(candidates, candidates.c.user_id == _facts.c.player_id)
             .where(
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                models.MatchStatistics.hero_id.isnot(None),
+                _facts.c.segment == 0,
+                _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                _facts.c.entity_id.isnot(None),
             )
         )
         if has_roster_filter:
             playtime_query = playtime_query.join(
                 scoped_players,
                 sa.and_(
-                    scoped_players.c.user_id == models.MatchStatistics.user_id,
-                    scoped_players.c.team_id == models.MatchStatistics.team_id,
+                    scoped_players.c.user_id == _facts.c.player_id,
+                    scoped_players.c.team_id == _facts.c.tournament_team_id,
                 ),
             )
         if tournament_id is not None:
             playtime_query = playtime_query.join(
                 models.Encounter,
-                models.Encounter.id == models.Match.encounter_id,
+                models.Encounter.id == _matches.c.encounter_id,
             ).where(models.Encounter.tournament_id == tournament_id)
         if hero_id is not None:
-            playtime_query = playtime_query.where(models.MatchStatistics.hero_id == hero_id)
+            playtime_query = playtime_query.where(_facts.c.entity_id == hero_id)
         if map_id is not None:
-            playtime_query = playtime_query.where(models.Match.map_id == map_id)
-        playtime = playtime_query.group_by(models.MatchStatistics.user_id).cte("compare_hero_playtime")
+            playtime_query = playtime_query.where(_matches.c.map_entity_id == map_id)
+        playtime = playtime_query.group_by(_facts.c.player_id).cte("compare_hero_playtime")
 
-        eligible_hero_time = aliased(models.MatchStatistics)
+        eligible_hero_time = _facts.alias()
         stats_query = (
             sa.select(
-                models.MatchStatistics.user_id,
-                models.MatchStatistics.name,
+                _facts.c.player_id.label("user_id"),
+                _facts.c.stat_code.label("name"),
                 (
-                    sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600
+                    sa.func.sum(aggregate_order_by(_facts.c.value, *reduction_order))
+                    / sa.func.nullif(sa.func.sum(aggregate_order_by(_matches.c.duration_s, *reduction_order)), 0)
+                    * 600
                 ).label("avg_10"),
             )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(candidates, candidates.c.user_id == models.MatchStatistics.user_id)
+            .select_from(_facts)
+            .join(_matches, _matches.c.id == _facts.c.match_id)
+            .join(candidates, candidates.c.user_id == _facts.c.player_id)
             .where(
-                models.MatchStatistics.round == 0,
+                _facts.c.segment == 0,
                 _hero_compare_stat_visibility_condition(
-                    models.MatchStatistics.name,
-                    models.MatchStatistics.hero_id,
+                    _facts.c.stat_code,
+                    _facts.c.entity_id,
                     hero_id=hero_id,
                 ),
-                models.MatchStatistics.name.in_(requested_stats),
+                _facts.c.stat_code.in_(requested_stats),
                 sa.exists(
                     sa.select(1)
                     .select_from(eligible_hero_time)
                     .where(
-                        eligible_hero_time.match_id == models.MatchStatistics.match_id,
-                        eligible_hero_time.user_id == models.MatchStatistics.user_id,
-                        eligible_hero_time.hero_id == models.MatchStatistics.hero_id,
-                        eligible_hero_time.name == enums.LogStatsName.HeroTimePlayed,
-                        eligible_hero_time.round == 0,
-                        eligible_hero_time.value > 60,
+                        eligible_hero_time.c.match_id == _facts.c.match_id,
+                        eligible_hero_time.c.workspace_member_id == _facts.c.workspace_member_id,
+                        eligible_hero_time.c.entity_id == _facts.c.entity_id,
+                        eligible_hero_time.c.stat_code == enums.LogStatsName.HeroTimePlayed.value,
+                        eligible_hero_time.c.segment == 0,
+                        eligible_hero_time.c.value > 60,
                     )
                 ),
             )
@@ -765,20 +804,20 @@ class UserCompareQueries:
             stats_query = stats_query.join(
                 scoped_players,
                 sa.and_(
-                    scoped_players.c.user_id == models.MatchStatistics.user_id,
-                    scoped_players.c.team_id == models.MatchStatistics.team_id,
+                    scoped_players.c.user_id == _facts.c.player_id,
+                    scoped_players.c.team_id == _facts.c.tournament_team_id,
                 ),
             )
         if tournament_id is not None:
             stats_query = stats_query.join(
                 models.Encounter,
-                models.Encounter.id == models.Match.encounter_id,
+                models.Encounter.id == _matches.c.encounter_id,
             ).where(models.Encounter.tournament_id == tournament_id)
         if map_id is not None:
-            stats_query = stats_query.where(models.Match.map_id == map_id)
+            stats_query = stats_query.where(_matches.c.map_entity_id == map_id)
         hero_stats = stats_query.group_by(
-            models.MatchStatistics.user_id,
-            models.MatchStatistics.name,
+            _facts.c.player_id,
+            _facts.c.stat_code,
         ).cte("compare_hero_stats")
 
         return (
@@ -834,7 +873,7 @@ class UserCompareQueries:
             resolved_user_id = int(user_id)
             playtime_payload[resolved_user_id] = float(playtime_seconds or 0.0)
             if stat_name is not None and avg_10 is not None:
-                stats_payload[(resolved_user_id, stat_name)] = float(avg_10)
+                stats_payload[(resolved_user_id, enums.LogStatsName(stat_name))] = float(avg_10)
 
         return playtime_payload, stats_payload
 

@@ -688,4 +688,4 @@ class DiscordRabbitGateway:
             except ValidationError as e:
                 logger.error(f"❌ Invalid match_log_processed payload: {e}")
                 return
-            self._result_waiter.resolve(event.tournament_id, event.filename, event.status == "done")
+            self._result_waiter.resolve(event)

@@ -20,14 +20,13 @@ from shared.core.enums import LogStatsName
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import match_context
 from src import models
 from src.domain.achievement_duel import active_seat
 
-# PostgreSQL enum stores PascalCase names (e.g. 'Performance'),
-# while Python StrEnum has lowercase values (e.g. 'performance').
-# We need to resolve both formats to the DB-stored PascalCase name.
-_LOWERCASE_TO_NAME: dict[str, str] = {m.value: m.name for m in LogStatsName}
-_VALID_STAT_NAMES: frozenset[str] = frozenset(m.name for m in LogStatsName)
+# The DSL accepts enum member names and codes; native vocabulary stores codes.
+_STAT_CODES: dict[str, str] = {m.name: m.value for m in LogStatsName}
+_VALID_STAT_CODES: frozenset[str] = frozenset(m.value for m in LogStatsName)
 _LEGACY_STAT_ALIASES: dict[str, str] = {
     # Legacy seeded rule value renamed on 2026-04-19.
     "CriticalHitKills": "ScopedCriticalHitKills",
@@ -35,19 +34,8 @@ _LEGACY_STAT_ALIASES: dict[str, str] = {
 
 
 def resolve_stat_name(raw: str) -> str:
-    """Resolve a stat name to the PascalCase format stored in PostgreSQL.
-
-    Accepts both 'Performance' (PascalCase) and 'performance' (lowercase).
-    Returns the PascalCase name that matches the DB enum value.
-    """
-    alias = _LEGACY_STAT_ALIASES.get(raw)
-    if alias is not None:
-        return alias
-    # If it's already PascalCase (a member name), return as-is
-    if raw in _VALID_STAT_NAMES:
-        return raw
-    # If it's lowercase (a value), map to PascalCase name
-    return _LOWERCASE_TO_NAME.get(raw, raw)
+    """Resolve an existing DSL stat spelling to its native vocabulary code."""
+    return _STAT_CODES.get(_LEGACY_STAT_ALIASES.get(raw, raw), raw)
 
 
 def validate_stat_name(raw: str) -> str | None:
@@ -55,7 +43,7 @@ def validate_stat_name(raw: str) -> str | None:
     alias = _LEGACY_STAT_ALIASES.get(raw)
     if alias is not None:
         return f"legacy stat alias '{raw}' is no longer supported; use '{alias}'"
-    if raw in _VALID_STAT_NAMES or raw in _LOWERCASE_TO_NAME:
+    if raw in _STAT_CODES or raw in _VALID_STAT_CODES:
         return None
     return f"unknown stat '{raw}'"
 
@@ -244,40 +232,49 @@ async def get_eligible_keys(
         result = await session.execute(query)
         return {(row[0], row[1], row[2]) for row in result}
 
+    match = match_context(discipline="overwatch")
     query = (
         sa.select(
             models.WorkspaceMember.player_id,
-            models.Encounter.tournament_id,
-            models.Match.id.label("match_id"),
+            match.c.tournament_id,
+            match.c.id.label("match_id"),
         )
-        .select_from(models.Match)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .select_from(match)
         .join(
-            models.Team,
-            sa.or_(
-                models.Team.id == models.Match.home_team_id,
-                models.Team.id == models.Match.away_team_id,
+            models.StatsMatchTeam,
+            sa.and_(
+                models.StatsMatchTeam.match_id == match.c.id,
+                models.StatsMatchTeam.encounter_game_id == match.c.encounter_game_id,
+            ),
+        )
+        .join(
+            models.EncounterTeam,
+            sa.and_(
+                models.EncounterTeam.id == models.StatsMatchTeam.encounter_team_id,
+                models.EncounterTeam.encounter_id == match.c.encounter_id,
             ),
         )
         .join(
             models.Player,
             sa.and_(
-                models.Player.team_id == models.Team.id,
-                models.Player.tournament_id == models.Encounter.tournament_id,
+                models.Player.team_id == models.EncounterTeam.team_id,
+                models.Player.tournament_id == match.c.tournament_id,
             ),
         )
         .join(
             models.WorkspaceMember,
-            models.WorkspaceMember.id == models.Player.workspace_member_id,
+            sa.and_(
+                models.WorkspaceMember.id == models.Player.workspace_member_id,
+                models.WorkspaceMember.workspace_id == match.c.workspace_id,
+            ),
         )
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            match.c.workspace_id == context.workspace_id,
             models.Player.is_substitution.is_(False),
         )
     )
     if context.tournament:
-        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+        query = query.where(match.c.tournament_id == context.tournament.id)
     result = await session.execute(query)
     return {(row[0], row[1], row[2]) for row in result}
 

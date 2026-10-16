@@ -129,3 +129,76 @@ $ alembic revision --autogenerate -m "Add column last_name to User model"
 ```
 
 * Commit the generated files in the `migrations/` directory, then apply with `make migrate`.
+
+### P4 statistics cutover (`stats01`)
+
+This is a maintenance cutover, not an online migration. Drain every writer before preparation,
+upgrade and initial receipt capture. Do not run the ordinary rolling deployment with old writers
+still serving. Preparation verifies real raw objects and content hashes outside Alembic; reviewed
+game/member mappings must exist before migration. Missing objects, ambiguous games or orphan
+references block the upgrade rather than producing invented data or cleared references.
+
+The migration copies at most 100 matches per statement inside one transaction, moves Discord
+channels, repoints alias/achievement references, rewrites stored dependencies, refreshes the native
+MV and reconciles the full transfer. Failed upgrades roll back. Reversing a committed cutover
+requires a restore-proven backup, not an Alembic downgrade.
+
+With writers still drained, publish the immutable receipt:
+
+```console
+uv run python scripts/stats01_reconcile.py --mode capture --receipt-dir p4-receipt --report p4-initial.json
+```
+
+Keep all three immutable receipt files together: `manifest.json`, `owners.jsonl` and
+`handles.jsonl`. Format `stats01-receipt/2` freezes handles per match/player/team,
+with streamed row counts and digests; later checks never reconstruct historical handles
+from renamed current rosters or social profiles. Older or incomplete receipts are refused.
+
+Later, validate current data and the actual native mutation audit chains:
+
+```console
+uv run python scripts/stats01_reconcile.py --mode check --receipt-dir p4-receipt --audit-source database --export-audit p4-lifecycle-audit.jsonl --report p4-current.json
+```
+
+Exit codes: `0` unchanged, `2` valid changes requiring release review, `1` blocking discrepancy.
+Receipts never authorize legacy-table deletion automatically. Old/native MV averages alone permit
+absolute delta `1e-12`; facts, events, identities, best values and metadata remain exact. The resident
+native MV must exactly match its native defining query, including float bits.
+
+App profile/compare aggregates use deterministic native observation order. Their compatibility
+proof preserves the old goldens and verifies operand bits, denominators and bounded binary64
+reduction error; a hundredth-place display change must follow the unchanged rounding of that
+proven aggregate. This is not a general numeric tolerance or permission to change stored facts,
+rank/threshold outcomes, best values/owners or metadata.
+The four captured achievement weighted-rate metrics use a separate exact-operand proof for the
+same deterministic reduction; condition eligibility, ranks, thresholds, evidence and awards
+still require exact parity.
+Baseline inputs use stable `(match_id, global user_id)` order. Their original golden is retained;
+a SHA-pinned frozen-source capture independently supplies only the canonical-order mean/std and
+direct impact/overperformance differences. Native outputs must match that reference exactly,
+including float bits; there is no additional baseline/score tolerance.
+
+Bulk achievement-result insertion records only IDs returned by PostgreSQL. Reserved IDs discarded
+by `ON CONFLICT DO NOTHING` never become receipt owners; their absence is not creation evidence.
+
+Wire/runtime changes:
+
+- Parsed matches now belong to `stats.match` through an authoritative `encounter.game`.
+  Obsolete match `source` and `code` fields are removed; replay codes and official result sources remain.
+- Public home/away fields follow historical encounter slots, not log array order. The measured
+  source has 3,691 reversed observations out of 7,348. Analytics retains original `source_position`;
+  observed scores never replace official results. Game position determines map ordering.
+- Admin writes reject obsolete fields, arbitrary team rebinding and maps conflicting with the game.
+  New uploads use real content hashes and stored object references; unresolved valid uploads remain
+  `awaiting_link`, not falsely successful. Downloads use the exact stored key.
+- A member merge with overlapping observations in the same match returns a conflict, not summed or
+  deduplicated data. Audit counts are `stats_matches`, `stats_players`, `stats_facts`, `stats_events`.
+  Rule/outbox dependencies use native `stats.*` names.
+- Creation, ingestion, backfill, edits, merges and deletes stage bounded before/after evidence in
+  the existing transaction. New workspace-member identities use creation-only evidence; reuse or
+  revival does not authorize an identity change.
+
+Deployment is still gated: the measured home/dev data needs 7,240 game mappings, one membership,
+221 actual content hashes and verification/preparation of 6,252 recordless raw references. No
+historical repair, object verification or restore rehearsal is implied by local tests. Retained
+legacy storage is removed only by the later reviewed release gate.

@@ -1,7 +1,6 @@
 """Performance Rating v2 — per-role LGBMRegressor with quantile confidence.
 
-Replaces the v1 primitive
-``avg(MatchStatistics.value WHERE name = PerformancePoints AND round = 0)``.
+Replaces the v1 primitive average of whole-match ``performance_points`` facts.
 
 **Target construction**
 

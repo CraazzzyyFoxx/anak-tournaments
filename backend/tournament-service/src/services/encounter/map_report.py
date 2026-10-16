@@ -12,7 +12,7 @@ claim filed against a superseded result is stale, not a competing truth, so it
 is refused (``stale_state``) instead of overwriting the correction that moved
 the game underneath it.
 
-No ``matches.match`` row is written here, and none is read: that table records
+No ``stats.match`` row is written here, and none is read: that table records
 what a parsed log OBSERVED, while an ``EncounterGame`` records what the
 tournament DECIDED
 (docs/plans/2026-09-20-pregame-results-statistics-separation.md §5.1/§5.2).

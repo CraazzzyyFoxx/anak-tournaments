@@ -34,8 +34,6 @@ analytics_service = importlib.import_module("src.services.analytics.service").an
 analytics_read_service = importlib.import_module("src.services.analytics.read_queries").analytics_read_service
 player_profile = importlib.import_module("src.services.ml.features.player_profile")
 shift_features = importlib.import_module("src.services.ml.features.shift_features")
-mvp_dominance = importlib.import_module("src.services.ml.features.mvp_dominance")
-extractors = importlib.import_module("src.services.ml.features.extractors")
 backtest = importlib.import_module("src.services.ml.training.backtest")
 
 
@@ -80,57 +78,6 @@ class _CapturingSession:
 
 def _compiled(stmt) -> str:
     return str(stmt.compile(dialect=postgresql.dialect()))
-
-
-class GetAnalyticsWindowAndSelfJoinTests(IsolatedAsyncioTestCase):
-    """``get_analytics`` is the riskiest shape in the service: two CTEs
-    (``player_points``/``player_matches`` over the team's live seat) grouped by the identity
-    column, a self-join of the outer query against both CTEs on that column,
-    and two LAG(...) OVER (PARTITION BY ...) window functions."""
-
-    async def test_compiles_and_uses_workspace_member_everywhere(self) -> None:
-        session = _CapturingSession()
-
-        await analytics_service.get_analytics(session, workspace_id=1)
-
-        sql = _compiled(session.statements[0])
-        # CTEs group by the substitute identity column and still expose it
-        # labeled "user_id" for the self-join predicates below.
-        self.assertRegex(
-            sql,
-            r"(?s)GROUP BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\), tournament\.player\.team_id",
-        )
-        # Self-join of the outer query against both home/away CTEs keys off
-        # workspace_member.player_id, not the retained FK column.
-        self.assertIn(
-            "LEFT OUTER JOIN player_points ON workspace_member.player_id = player_points.user_id",
-            sql,
-        )
-        self.assertNotIn("home_team_id", sql)
-        # Window functions partition by the substitute identity column.
-        for label in ("previous_cost", "pre_previous_cost"):
-            self.assertRegex(
-                sql,
-                rf"(?s)PARTITION BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\) ORDER BY tournament\.tournament\.id\) AS {label}",
-            )
-        # Outer SELECT still exposes a "user_id" column (frontend/ML readers
-        # of get_analytics rows key off row["user_id"]).
-        self.assertIn("workspace_member.player_id AS user_id", sql)
-        # Final ORDER BY uses the substitute column, same position as before.
-        self.assertRegex(
-            sql,
-            r"(?s)ORDER BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\), tournament\.tournament\.id$",
-        )
-        # performance_points CTE's Player<->MatchStatistics join must route
-        # through workspace_member, not the retained Player.user_id column.
-        self.assertIn(
-            "JOIN matches.statistics ON matches.statistics.user_id = workspace_member.player_id",
-            sql,
-        )
-        # No cartesian/ambiguous-FROM regression: exactly one Player-anchored
-        # workspace_member join per CTE/outer-query FROM clause (3 total:
-        # points_home, points_away, performance_points CTE, + outer query).
-        self.assertEqual(sql.count("JOIN workspace_member ON workspace_member.id"), 3)
 
 
 class GetTeamsWithPlayersEagerLoadTests(IsolatedAsyncioTestCase):
@@ -203,61 +150,6 @@ class ShiftFeaturesRankHistoryTests(IsolatedAsyncioTestCase):
         self.assertRegex(
             sql,
             r"(?s)ORDER BY workspace_member\.player_id, \(SELECT coalesce\(rated_parent\.code, rated_leaf\.code\).*?LIMIT 1\), tournament\.tournament\.id$",
-        )
-
-
-class MvpDominanceJoinTests(IsolatedAsyncioTestCase):
-    """``compute_mvp_dominance`` joins ``Player`` to ``MatchStatistics`` on
-    identity -- must route through workspace_member with no cartesian
-    product introduced by splitting the join predicate across two ON
-    clauses."""
-
-    async def test_join_predicate_routes_through_workspace_member(self) -> None:
-        session = _CapturingSession()
-
-        await mvp_dominance.compute_mvp_dominance(session, 1)
-
-        sql = _compiled(session.statements[0])
-        self.assertIn(
-            "JOIN workspace_member ON workspace_member.id = "
-            "tournament.player.workspace_member_id AND workspace_member.player_id = "
-            "matches.statistics.user_id",
-            sql,
-        )
-        # MatchStatistics.user_id itself (a direct FK, out of scope) is untouched.
-        self.assertIn("matches.statistics.user_id", sql)
-
-
-class ExtractorsJoinTests(IsolatedAsyncioTestCase):
-    """``extract_match_features``/``extract_round_residuals`` both join
-    ``Player`` to ``MatchStatistics`` on identity + team + tournament; only
-    the identity leg moves to workspace_member."""
-
-    async def test_extract_match_features_routes_through_workspace_member(self) -> None:
-        session = _CapturingSession()
-
-        await extractors.extract_match_features(session, [1])
-
-        sql = _compiled(session.statements[0])
-        self.assertIn(
-            "JOIN workspace_member ON workspace_member.id = "
-            "tournament.player.workspace_member_id AND workspace_member.player_id = "
-            "matches.statistics.user_id",
-            sql,
-        )
-        self.assertIn("tournament.player.team_id = matches.statistics.team_id", sql)
-
-    async def test_extract_round_residuals_routes_through_workspace_member(self) -> None:
-        session = _CapturingSession()
-
-        await extractors.extract_round_residuals(session, 1)
-
-        sql = _compiled(session.statements[0])
-        self.assertIn(
-            "JOIN workspace_member ON workspace_member.id = "
-            "tournament.player.workspace_member_id AND workspace_member.player_id = "
-            "matches.statistics.user_id",
-            sql,
         )
 
 

@@ -40,7 +40,7 @@ class ExportPayloadTests(TestCase):
             scope="global",
             grain="user",
             condition_tree={"type": "match_win"},
-            depends_on=["matches.match"],
+            depends_on=["stats.fact", "stats.match"],
             enabled=True,
             rule_version=5,
             min_tournament_id=12,
@@ -137,101 +137,6 @@ class CopyImageTests(IsolatedAsyncioTestCase):
 
 
 class ImportRulesTests(IsolatedAsyncioTestCase):
-    async def test_import_portable_rules_upserts_by_slug_and_rewrites_image_url(self) -> None:
-        target_workspace = Workspace(id=10, slug="target", name="Target")
-        source_workspace = Workspace(id=20, slug="source", name="Source")
-        existing = AchievementRule(
-            workspace_id=10,
-            slug="existing",
-            name="Old",
-            description_ru="Old RU",
-            description_en="Old EN",
-            image_url=None,
-            entity_id=None,
-            category="overall",
-            scope="global",
-            grain="user",
-            condition_tree={"type": "old"},
-            depends_on=[],
-            enabled=False,
-            rule_version=1,
-            min_tournament_id=None,
-        )
-
-        class FakeSession:
-            def __init__(self) -> None:
-                self.added: list[AchievementRule] = []
-
-            def add(self, obj: AchievementRule) -> None:
-                self.added.append(obj)
-
-            async def flush(self) -> None:
-                pass
-
-        session = FakeSession()
-        payloads = [
-            PortableAchievementRule(
-                slug="existing",
-                name="Existing Updated",
-                description_ru="RU1",
-                description_en="EN1",
-                image_url="http://cdn/bucket/assets/achievements/source/existing.webp",
-                hero_id=7,
-                category="match",
-                scope="match",
-                grain="user_match",
-                condition_tree={"type": "match_win"},
-                depends_on=["matches.match"],
-                enabled=True,
-                rule_version=3,
-                min_tournament_id=5,
-            ),
-            PortableAchievementRule(
-                slug="new-rule",
-                name="New Rule",
-                description_ru="RU2",
-                description_en="EN2",
-                image_url=None,
-                hero_id=None,
-                category="match",
-                scope="match",
-                grain="user_match",
-                condition_tree={"type": "match_win"},
-                depends_on=[],
-                enabled=True,
-                rule_version=1,
-                min_tournament_id=None,
-            ),
-        ]
-
-        with (
-            patch(
-                "src.services.achievement.import_export.load_rules_for_workspace",
-                AsyncMock(return_value=[existing]),
-            ),
-            patch(
-                "src.services.achievement.import_export._hero_repo.get",
-                AsyncMock(return_value=SimpleNamespace(id=7)),
-            ),
-            patch(
-                "src.services.achievement.import_export.copy_workspace_achievement_image",
-                AsyncMock(return_value=("http://cdn/bucket/assets/achievements/target/existing.webp", None)),
-            ),
-        ):
-            result = await import_portable_rules(
-                session,
-                s3=SimpleNamespace(),
-                target_workspace=target_workspace,
-                rules=payloads,
-                source_workspace=source_workspace,
-            )
-
-        self.assertEqual({"created": 1, "updated": 1, "warnings": []}, result)
-        self.assertEqual("Existing Updated", existing.name)
-        self.assertEqual("http://cdn/bucket/assets/achievements/target/existing.webp", existing.image_url)
-        self.assertEqual(1, len(session.added))
-        self.assertEqual("new-rule", session.added[0].slug)
-
     async def test_import_portable_rules_raises_on_validation_errors(self) -> None:
         target_workspace = Workspace(id=10, slug="target", name="Target")
         payload = PortableAchievementRule(

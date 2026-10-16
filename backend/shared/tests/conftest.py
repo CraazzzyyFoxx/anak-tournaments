@@ -15,3 +15,5 @@ from shared.testing import apply_test_env_defaults
 # conftest.py always imports first in its own directory. Process env and a
 # local ``.env`` win; committed ``shared/testing/test.env`` fills the rest.
 apply_test_env_defaults()
+
+from shared.testing.stats_parity import stats_parity_database, stats_parity_template  # noqa: E402,F401

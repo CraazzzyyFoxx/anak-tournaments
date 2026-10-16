@@ -45,7 +45,7 @@ __all__ = (
     "get_encounter_workspace_id",
     "get_match_workspace_id",
     "get_standing_workspace_id",
-    "get_log_record_workspace_id",
+    "get_ingest_job_workspace_id",
     "get_registration_workspace_id",
     "get_tournament_link_workspace_id",
     "require_tournament_id_permission",
@@ -184,10 +184,7 @@ async def get_encounter_workspace_id(session: AsyncSession, encounter_id: int) -
 
 async def get_match_workspace_id(session: AsyncSession, match_id: int) -> int:
     workspace_id = await session.scalar(
-        sa.select(models.Tournament.workspace_id)
-        .join(models.Encounter, models.Encounter.tournament_id == models.Tournament.id)
-        .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-        .where(models.Match.id == match_id)
+        sa.select(models.StatsMatch.workspace_id).where(models.StatsMatch.id == match_id)
     )
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
@@ -205,14 +202,10 @@ async def get_standing_workspace_id(session: AsyncSession, standing_id: int) -> 
     return int(workspace_id)
 
 
-async def get_log_record_workspace_id(session: AsyncSession, record_id: int) -> int:
-    workspace_id = await session.scalar(
-        sa.select(models.Tournament.workspace_id)
-        .join(models.LogProcessingRecord, models.LogProcessingRecord.tournament_id == models.Tournament.id)
-        .where(models.LogProcessingRecord.id == record_id)
-    )
+async def get_ingest_job_workspace_id(session: AsyncSession, job_id: int) -> int:
+    workspace_id = await session.scalar(sa.select(models.IngestJob.workspace_id).where(models.IngestJob.id == job_id))
     if workspace_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Log processing record not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ingest job not found")
     return int(workspace_id)
 
 

@@ -26,25 +26,29 @@ SUPPORT = enums.HeroClass.support
 def _kill(
     match_id=1, time=0.0, rnd=1, fight=1, killer=10, victim=20, killer_hero=1, victim_hero=2, ability=None, env=False
 ):
-    return models.MatchKillFeed(
+    return models.StatsEvent(
         match_id=match_id,
-        time=time,
-        round=rnd,
-        fight=fight,
-        killer_id=killer,
-        killer_hero_id=killer_hero,
-        killer_team_id=1,
-        victim_id=victim,
-        victim_hero_id=victim_hero,
-        victim_team_id=2,
-        ability=ability,
-        damage=100.0,
-        is_critical_hit=False,
-        is_environmental=env,
+        t=time,
+        segment=rnd,
+        type_id=1,
+        actor_member_id=killer + 1000,
+        actor_team_id=1,
+        entity_id=killer_hero,
+        target_member_id=victim + 1000,
+        target_team_id=2,
+        related_entity_id=victim_hero,
+        data={
+            "fight": fight,
+            "ability": ability.value if ability else None,
+            "damage": 100.0,
+            "is_critical_hit": False,
+            "is_environmental": env,
+        },
     )
 
 
 HERO_TYPES = {1: DAMAGE, 2: SUPPORT, 3: TANK}
+MEMBER_USERS = {1010: 10, 1020: 20}
 
 
 class TestAssignFights:
@@ -57,22 +61,30 @@ class TestAssignFights:
             _kill(time=31.0, rnd=2),  # same fight
         ]
         impact.assign_fights(feed)
-        assert [k.fight for k in feed] == [1, 1, 2, 3, 3]
+        assert [k.data["fight"] for k in feed] == [1, 1, 2, 3, 3]
 
     def test_round_change_within_gap_still_splits(self):
         # <15s apart but different rounds → still a hard fight boundary.
         feed = [_kill(time=100.0, rnd=1), _kill(time=105.0, rnd=2)]
         impact.assign_fights(feed)
-        assert [k.fight for k in feed] == [1, 2]
+        assert [k.data["fight"] for k in feed] == [1, 2]
 
     def test_orders_by_time_before_assigning(self):
         later = _kill(time=30.0, rnd=1)
         earlier = _kill(time=1.0, rnd=1)
         impact.assign_fights([later, earlier])  # unsorted input
-        assert earlier.fight == 1 and later.fight == 2  # 29s gap → two fights
+        assert earlier.data["fight"] == 1 and later.data["fight"] == 2
 
     def test_empty_feed_is_noop(self):
         impact.assign_fights([])  # must not raise
+
+    def test_fight_assignment_replaces_json_without_changing_event_body(self):
+        kill = _kill(fight=99, env=True)
+        original = kill.data
+        impact.assign_fights([kill])
+        assert kill.data is not original
+        assert kill.data == {**original, "fight": 1}
+        assert original["fight"] == 99
 
 
 class TestBuildEventCounts:
@@ -82,7 +94,7 @@ class TestBuildEventCounts:
             _kill(time=3.0, fight=1, killer=20, victim=10),  # not first
             _kill(time=40.0, fight=2, killer=20, victim=10),
         ]
-        df = impact.build_event_counts(feed, HERO_TYPES)
+        df = impact.build_event_counts(feed, HERO_TYPES, member_user_ids=MEMBER_USERS)
         row10 = df[df.user_id == 10].iloc[0]
         row20 = df[df.user_id == 20].iloc[0]
         assert row10.FirstPicks == 1 and row10.FirstDeaths == 1
@@ -90,7 +102,7 @@ class TestBuildEventCounts:
 
     def test_self_kill_gives_first_death_but_not_first_pick(self):
         feed = [_kill(time=1.0, fight=1, killer=10, victim=10)]
-        df = impact.build_event_counts(feed, HERO_TYPES)
+        df = impact.build_event_counts(feed, HERO_TYPES, member_user_ids=MEMBER_USERS)
         row = df[df.user_id == 10].iloc[0]
         assert row.FirstPicks == 0 and row.FirstDeaths == 1
 
@@ -99,13 +111,13 @@ class TestBuildEventCounts:
             _kill(time=1.0, killer=10, victim=20, victim_hero=2, ability=enums.AbilityEvent.Ultimate),
             _kill(time=2.0, killer=10, victim=20, victim_hero=3),  # tank victim
         ]
-        df = impact.build_event_counts(feed, HERO_TYPES)
+        df = impact.build_event_counts(feed, HERO_TYPES, member_user_ids=MEMBER_USERS)
         row = df[df.user_id == 10].iloc[0]
         assert row.UltimateKills == 1
         assert row.SupportKills == 1  # only the hero-2 (support) victim
 
     def test_empty_feed_returns_empty_frame(self):
-        df = impact.build_event_counts([], HERO_TYPES)
+        df = impact.build_event_counts([], HERO_TYPES, member_user_ids=MEMBER_USERS)
         assert df.empty
 
 

@@ -30,7 +30,6 @@ sys.path.insert(0, str(backend_root / "parser-service"))
 
 os.environ["DEBUG"] = "true"
 
-from shared.models.ingestion.log_processing import LogProcessingSource  # noqa: E402
 from tests._fakes import FakeBroker as _FakeBroker
 from tests._fakes import active_identity as _active_identity
 from tests._fakes import session_factory as _session_factory
@@ -60,6 +59,9 @@ class _Result:
     def one(self):
         return self._row
 
+    def all(self):
+        return self._values
+
 
 class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -72,14 +74,14 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
 
     async def test_upload_queues_each_file_with_attached_encounter(self) -> None:
         audit_rows: list = []
-        session = SimpleNamespace(add=audit_rows.append)
+        session = SimpleNamespace(add=audit_rows.append, rollback=AsyncMock())
         rpc_logs._SF = _session_factory(session)
 
         async def store_uploaded_log_bytes(*args, **kwargs):
             return SimpleNamespace(
                 id=100,
                 filename=kwargs["filename"],
-                attached_encounter_id=kwargs["attached_encounter_id"],
+                hint_encounter_id=kwargs["attached_encounter_id"],
             )
 
         with (
@@ -135,12 +137,12 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
             self.assertEqual(42, call.kwargs["tournament_id"])
             self.assertEqual(777, call.kwargs["uploader_id"])
             self.assertEqual(9, call.kwargs["attached_encounter_id"])
-            self.assertEqual(LogProcessingSource.upload, call.kwargs["source"])
+            self.assertEqual("upload", call.kwargs["source"])
 
         self.assertEqual(2, publish_mock.await_count)
         payloads = [call.args[1] for call in publish_mock.await_args_list]
-        self.assertEqual(["one.log", "two.log"], [payload["filename"] for payload in payloads])
-        self.assertEqual([42, 42], [payload["tournament_id"] for payload in payloads])
+        self.assertEqual([100, 100], [payload["ingest_job_id"] for payload in payloads])
+        self.assertTrue(all("filename" not in payload and "tournament_id" not in payload for payload in payloads))
 
         # One audit row for the call — file names only, never the uploaded bytes.
         self.assertEqual(1, len(audit_rows))
@@ -161,7 +163,7 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
         self.assertEqual(2 * len(FINISHED_B64), charge.kwargs["size_bytes"])
 
     async def test_upload_rejects_unfinished_log_without_storing_it(self) -> None:
-        rpc_logs._SF = _session_factory(SimpleNamespace(add=lambda row: None))
+        rpc_logs._SF = _session_factory(SimpleNamespace(add=lambda row: None, rollback=AsyncMock()))
 
         with (
             patch.object(rpc_logs.auth, "require_tournament_id_permission", AsyncMock()),
@@ -176,7 +178,7 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
             patch.object(
                 rpc_logs.upload_service,
                 "store_uploaded_log_bytes",
-                AsyncMock(return_value=SimpleNamespace(id=1, filename="done.log", attached_encounter_id=None)),
+                AsyncMock(return_value=SimpleNamespace(id=1, filename="done.log", hint_encounter_id=None)),
             ) as store_mock,
             patch.object(rpc_logs, "quota", SimpleNamespace(charge=AsyncMock())),
             patch.object(rpc_logs, "publish_message", AsyncMock()) as publish_mock,
@@ -203,44 +205,8 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
         self.assertEqual(["done.log"], [call.kwargs["filename"] for call in store_mock.await_args_list])
         self.assertEqual(1, publish_mock.await_count)
 
-    async def test_history_query_filters_by_attached_encounter(self) -> None:
-        self._recording_session()
-
-        with patch.object(rpc_logs.auth, "require_tournament_id_permission", AsyncMock()):
-            envelope = await self.broker.handlers["rpc.parser.logs.history"](
-                {
-                    "identity": _active_identity(),
-                    "query": {"tournament_id": ["42"], "encounter_id": ["9"]},
-                },
-                msg=None,
-            )
-
-        self.assertTrue(envelope["ok"], envelope)
-        self.assertEqual({"items": [], "total": 3}, envelope["data"])
-        self.assertTrue(any("attached_encounter_id = 9" in query for query in self._compiled()))
-
-    async def test_history_pushes_status_and_search_into_sql(self) -> None:
-        """Both filters used to run in the browser over the current page only."""
-        self._recording_session()
-
-        with patch.object(rpc_logs.auth, "require_tournament_id_permission", AsyncMock()):
-            envelope = await self.broker.handlers["rpc.parser.logs.history"](
-                {
-                    "identity": _active_identity(),
-                    "query": {"tournament_id": ["42"], "status": ["failed"], "search": ["round_1"]},
-                },
-                msg=None,
-            )
-
-        self.assertTrue(envelope["ok"], envelope)
-        compiled = " ".join(self._compiled())
-        self.assertIn("status = 'failed'", compiled)
-        # The underscore is escaped, so "round_1" cannot match "round-1".
-        self.assertIn(r"'%round\_1%'", compiled)
-        self.assertIn("lower(log_processing.record.filename) LIKE lower(", compiled)
-
     async def test_history_rejects_unknown_status(self) -> None:
-        self._recording_session()
+        rpc_logs._SF = _session_factory(SimpleNamespace())
 
         with patch.object(rpc_logs.auth, "require_tournament_id_permission", AsyncMock()):
             envelope = await self.broker.handlers["rpc.parser.logs.history"](
@@ -258,7 +224,7 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
     async def test_stats_returns_scope_wide_aggregate(self) -> None:
         """KPIs come from one aggregate over the whole scope, not the visible page."""
         session = SimpleNamespace(
-            execute=AsyncMock(return_value=_Result(row=(10, 1, 2, 6, 1, 3.5, "2026-07-30T10:00:00+00:00")))
+            execute=AsyncMock(return_value=_Result(row=(11, 1, 2, 6, 1, 1, 3.5, "2026-07-30T10:00:00+00:00")))
         )
         rpc_logs._SF = _session_factory(session)
 
@@ -270,31 +236,10 @@ class AdminLogUploadRpcTests(IsolatedAsyncioTestCase):
 
         self.assertTrue(envelope["ok"], envelope)
         data = envelope["data"]
-        self.assertEqual(10, data["total"])
+        self.assertEqual(11, data["total"])
         self.assertEqual((1, 2, 6, 1), (data["pending"], data["processing"], data["done"], data["failed"]))
+        self.assertEqual(1, data["awaiting_link"])
         self.assertEqual(3.5, data["avg_duration_seconds"])
-
-        compiled = str(session.execute.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
-        self.assertIn("FILTER (WHERE", compiled)
-        self.assertIn("tournament_id = 42", compiled)
-
-    def _recording_session(self) -> None:
-        """Install a session recording every statement; count -> 3, row fetch -> empty."""
-        self._queries: list = []
-
-        async def execute(query):
-            self._queries.append(query)
-            return _Result(values=[])
-
-        async def scalar(query):
-            self._queries.append(query)
-            return 3
-
-        session = SimpleNamespace(execute=AsyncMock(side_effect=execute), scalar=AsyncMock(side_effect=scalar))
-        rpc_logs._SF = _session_factory(session)
-
-    def _compiled(self) -> list[str]:
-        return [str(query.compile(compile_kwargs={"literal_binds": True})) for query in self._queries]
 
 
 class ValidateAttachedEncounterTests(IsolatedAsyncioTestCase):

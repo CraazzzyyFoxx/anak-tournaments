@@ -5,10 +5,11 @@ from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.platform.outbox import EventOutbox
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 
 PENDING_STATUSES = ("pending", "failed")
 
@@ -48,8 +49,24 @@ async def enqueue_outbox_event(
         status="pending",
         attempts=0,
     )
+    before = None
+    if "changed_tables" in payload:
+        row.id = await session.scalar(text("SELECT nextval(pg_get_serial_sequence('event_outbox', 'id'))"))
+        scopes = owner_scopes("outbox", (row.id,))
+        before = await capture_stats_evidence(session, scopes=scopes)
     session.add(row)
     await session.flush()
+    if before is not None:
+        after = await capture_stats_evidence(session, scopes=scopes)
+        await stage_stats_evidence(
+            session,
+            operation="stats.reference_update",
+            before=before,
+            after=after,
+            workspace_id=payload.get("workspace_id"),
+            entity_type="event_outbox",
+            entity_id=row.id,
+        )
     return row
 
 

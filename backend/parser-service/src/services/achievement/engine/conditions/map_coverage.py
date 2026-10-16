@@ -4,11 +4,9 @@ Participation is telemetry, not a roster: a player counts for a map when they
 have a round-0 ``HeroTimePlayed`` row on it, so substitutes who never played are
 absent by construction and no ``is_substitution`` filter is needed.
 
-One row per (match, player, hero) rather than every stat row: ``statistics``
-carries ~3,700 rows per match, and grouping all of them to count distinct maps
-sorted 24M rows to disk on the production workspace (10.7 s). The playtime rows
-are ~30 per match and served by ``ix_match_statistics_playtime_r0`` (0.26 s,
-identical results on that workspace).
+Participation reads only whole-match playtime facts, not every statistic.
+Wins compare the participant's observed score with its opponent, not the
+official game result.
 
 Grains: ``map_coverage`` is user (user_tournament with ``scope="tournament"``),
 ``map_winrate`` is user.
@@ -22,12 +20,13 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from shared.core.enums import LogStatsName
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import player_facts
 from src import models
 
 from ..context import EvalContext
 from . import ResultSet, register
+from .match_win import winning_teams
 
 OPERATORS = {
     "==": lambda col, val: col == val,
@@ -38,24 +37,18 @@ OPERATORS = {
     "<": lambda col, val: col < val,
 }
 
-#: The player's side (``MatchStatistics.team_id``) is the map winner. A map that
-#: ended level counts as neither side's win.
-_PLAYER_WON_MAP = sa.or_(
-    sa.and_(
-        models.MatchStatistics.team_id == models.Match.home_team_id,
-        models.Match.home_score > models.Match.away_score,
-    ),
-    sa.and_(
-        models.MatchStatistics.team_id == models.Match.away_team_id,
-        models.Match.away_score > models.Match.home_score,
-    ),
+_FACTS = player_facts(discipline="overwatch")
+_WINNERS = winning_teams()
+_PLAYER_WON_MAP = sa.exists(
+    sa.select(1)
+    .select_from(_WINNERS)
+    .where(
+        _WINNERS.c.match_id == _FACTS.c.match_id,
+        _WINNERS.c.encounter_team_id == _FACTS.c.encounter_team_id,
+    )
+    .correlate(_FACTS)
 )
-
-#: The participation rows: one per hero a player was on the field with.
-_PLAYED_MAP = sa.and_(
-    models.MatchStatistics.round == 0,
-    models.MatchStatistics.name == LogStatsName.HeroTimePlayed,
-)
+_PLAYED_MAP = sa.and_(_FACTS.c.segment == 0, _FACTS.c.stat_code == "hero_time_played")
 
 
 @register(
@@ -64,7 +57,7 @@ _PLAYED_MAP = sa.and_(
     description="Distinct maps or gamemodes the player has played or won on",
     required=("field", "op", "value"),
     optional=("gamemode", "outcome", "scope"),
-    depends_on=("matches.match", "matches.statistics", "tournament.encounter"),
+    depends_on=("stats.match", "stats.fact", "tournament.encounter"),
     grain_for=lambda params: (
         AchievementGrain.user_tournament if params.get("scope") == "tournament" else AchievementGrain.user
     ),
@@ -82,7 +75,7 @@ async def execute_map_coverage(
     scope = params.get("scope", "global")
 
     if field == "map":
-        distinct_col = models.Match.map_id
+        distinct_col = _FACTS.c.map_entity_id
     elif field == "gamemode":
         distinct_col = models.CatalogEntity.parent_id
     else:
@@ -94,18 +87,20 @@ async def execute_map_coverage(
     op_fn = OPERATORS[op]
     count_expr = sa.func.count(sa.distinct(distinct_col))
 
-    group_cols: list[Any] = [models.MatchStatistics.user_id]
+    group_cols: list[Any] = [_FACTS.c.player_id]
     if scope == "tournament":
-        group_cols.append(models.Encounter.tournament_id)
+        group_cols.append(_FACTS.c.tournament_id)
 
     query = (
         sa.select(*group_cols, count_expr.label("measured"))
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(models.Tournament.workspace_id == context.workspace_id, _PLAYED_MAP)
+        .select_from(_FACTS)
+        .join(models.CatalogEntity, models.CatalogEntity.id == _FACTS.c.map_entity_id)
+        .where(
+            _FACTS.c.workspace_id == context.workspace_id,
+            models.CatalogEntity.kind == "map",
+            models.CatalogEntity.discipline == "overwatch",
+            _PLAYED_MAP,
+        )
         .group_by(*group_cols)
         .having(op_fn(count_expr, value))
     )
@@ -115,10 +110,12 @@ async def execute_map_coverage(
 
     if gamemode:
         mode = aliased(models.CatalogEntity, name="mode")
-        query = query.join(mode, mode.id == models.CatalogEntity.parent_id).where(mode.name == gamemode)
+        query = query.join(mode, mode.id == models.CatalogEntity.parent_id).where(
+            mode.name == gamemode, mode.kind == "mode", mode.discipline == "overwatch"
+        )
 
     if context.tournament and scope == "tournament":
-        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+        query = query.where(_FACTS.c.tournament_id == context.tournament.id)
 
     result = await session.execute(query)
     keys: ResultSet = set()
@@ -136,7 +133,7 @@ async def execute_map_coverage(
     description="Career winrate on a single map over a minimum sample",
     required=("op", "value"),
     optional=("map_name", "min_matches"),
-    depends_on=("matches.match", "matches.statistics", "tournament.encounter"),
+    depends_on=("stats.match", "stats.fact", "tournament.encounter"),
 )
 async def execute_map_winrate(
     session: AsyncSession,
@@ -155,25 +152,27 @@ async def execute_map_winrate(
     min_matches = params.get("min_matches", 5)
 
     op_fn = OPERATORS[op]
-    played_expr = sa.func.count(sa.distinct(models.MatchStatistics.match_id))
-    won_expr = sa.func.count(sa.distinct(sa.case((_PLAYER_WON_MAP, models.MatchStatistics.match_id))))
+    played_expr = sa.func.count(sa.distinct(_FACTS.c.match_id))
+    won_expr = sa.func.count(sa.distinct(sa.case((_PLAYER_WON_MAP, _FACTS.c.match_id))))
     winrate_expr = sa.cast(won_expr, sa.Float) / played_expr
 
     query = (
         sa.select(
-            models.MatchStatistics.user_id,
+            _FACTS.c.player_id.label("user_id"),
             models.CatalogEntity.name.label("map_name"),
             won_expr.label("wins"),
             played_expr.label("played"),
             winrate_expr.label("winrate"),
         )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.CatalogEntity, models.CatalogEntity.id == models.Match.map_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .where(models.Tournament.workspace_id == context.workspace_id, _PLAYED_MAP)
-        .group_by(models.MatchStatistics.user_id, models.CatalogEntity.id, models.CatalogEntity.name)
+        .select_from(_FACTS)
+        .join(models.CatalogEntity, models.CatalogEntity.id == _FACTS.c.map_entity_id)
+        .where(
+            _FACTS.c.workspace_id == context.workspace_id,
+            models.CatalogEntity.kind == "map",
+            models.CatalogEntity.discipline == "overwatch",
+            _PLAYED_MAP,
+        )
+        .group_by(_FACTS.c.player_id, models.CatalogEntity.id, models.CatalogEntity.name)
         .having(played_expr >= min_matches, op_fn(winrate_expr, value))
     )
 

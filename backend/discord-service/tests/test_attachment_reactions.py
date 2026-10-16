@@ -21,7 +21,6 @@ from src.services.attachment_processor import AttachmentProcessor  # noqa: E402
 def _processor(client: MagicMock) -> AttachmentProcessor:
     return AttachmentProcessor(
         client=client,
-        session_maker=MagicMock(),
         parser_clients=MagicMock(),
         result_waiter=MagicMock(),
     )

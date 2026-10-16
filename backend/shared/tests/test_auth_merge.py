@@ -120,8 +120,6 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
         for secret in ("donor-secret", "survivor-secret", "oauth-access-secret", "oauth-refresh-secret"):
             self.assertNotIn(secret, encoded)
         result = await self.apply(preview)
-        await self.session.delete(self.source)
-        await self.session.flush()
         await self.session.refresh(self.connection)
         self.assertEqual(self.survivor.id, self.connection.auth_user_id)
         self.assertEqual("oauth-access-secret", self.connection.access_token)
@@ -135,13 +133,8 @@ class AuthMergeTests(IsolatedAsyncioTestCase):
             .all()
         )
         self.assertEqual({2345, 3456}, {row["rank_value"] for row in ranks})
-        target_member = await self.session.scalar(
-            sa.select(models.WorkspaceMember).where(
-                models.WorkspaceMember.workspace_id == self.workspace.id,
-                models.WorkspaceMember.player_id == self.target.id,
-            )
-        )
-        self.assertTrue(all(row["workspace_member_id"] == target_member.id for row in ranks))
+        self.assertEqual(self.source.id, member.player_id)
+        self.assertTrue(all(row["workspace_member_id"] == member.id for row in ranks))
         self.assertEqual(
             self.survivor.id, next(row for row in ranks if row["role_id"] == self.roles["damage"].id)["author_user_id"]
         )

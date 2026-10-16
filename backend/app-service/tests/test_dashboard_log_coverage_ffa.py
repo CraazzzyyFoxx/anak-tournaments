@@ -1,7 +1,7 @@
 """An FFA lobby is not a series that is missing its logs (real-DB integration).
 
 A lobby never produces a match log — its results live in the participations'
-``encounter.game_team`` rows, not in ``matches.match`` — so counting it as "missing logs" would permanently drag
+``encounter.game_team`` rows, not in ``stats.match`` — so counting it as "missing logs" would permanently drag
 the dashboard's log coverage down for a tournament that is actually complete::
 
     uv run pytest app-service/tests/test_dashboard_log_coverage_ffa.py -v

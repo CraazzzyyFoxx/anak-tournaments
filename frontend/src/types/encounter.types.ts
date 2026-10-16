@@ -192,22 +192,19 @@ export interface Match {
   id: number;
   created_at: Date;
   updated_at: Date | null;
-  home_team_id: number;
-  away_team_id: number;
+  home_team_id: number | null;
+  away_team_id: number | null;
   score: Score;
   time: number | null;
   encounter_id: number;
   map_id: number;
   /**
-   * Which map OF THE SERIES this row is, 1-based in play order. Null when
-   * unknown — every parsed log, and every row written before the column
-   * existed. It, not `map_id`, is what identifies a played map: a series may
-   * play the same map twice (see `seriesMatchesByPosition`).
+   * Bound game's 1-based series position. It, not `map_id`, identifies a
+   * played map: a series may play the same map twice. Null means the response
+   * has no position information (see `seriesMatchesByPosition`).
    */
   map_index: number | null;
   log_name: string | null;
-  source: "log_parser" | "captain_report";
-  code: string | null;
 
   map: MapRead | null;
   home_team: Team | null;
@@ -217,8 +214,8 @@ export interface Match {
 
 export interface MatchWithStats extends Match {
   rounds: number;
-  home_team: TeamWithStats;
-  away_team: TeamWithStats;
+  home_team: TeamWithStats | null;
+  away_team: TeamWithStats | null;
 }
 
 type EncounterScope = "all" | "my_team";

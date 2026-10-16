@@ -639,10 +639,12 @@ Two registrations or two tags for the same `player_id` in the same workspace con
 
 `UserMergeService` repoints references from source to target:
 
-- `workspace_member` is repointed per workspace (the target workspace may already have a member, or one may need to be created).
+- In each workspace, an existing target member survives; if none exists, the source member keeps its ID and changes `player_id`. A merge does not fabricate a replacement membership.
 - `tournament.player`, achievements, and `balancer.registration` move through `workspace_member_id`, not through the old `user_id`.
-- Direct FKs to `players.user` (statistics, kill feed, captain, …) go through `REFERENCE_CONFIG`.
-- Audited in `user_merge_audit`.
+- Direct global references are the team captain and `stats.ingest_job.uploader_user_id`. Native observations use workspace-member identities, not legacy statistics/kill-feed user columns.
+- Before mutation, overlapping `stats.match_player` history is reported in preview and refused with HTTP 409 `stats_member_history_conflict`; facts are never summed or deduplicated. Disjoint history inserts target match-player rows, repoints facts and both event endpoints, then removes source match-player rows, preserving historical handles, roles, teams and values.
+- `UserMergeAudit.preview_snapshot_json.stats_evidence` preserves the original source/target global IDs, the complete retain/move member map, and stable stats audit IDs. An uploader-only merge has an empty member map and retains its global identity pair; it creates no membership. Match/member/job evidence is chunked to at most 100 owners and staged before the source-user deletion and transaction commit.
+  Member chunks keep each retain pair together; match chunks include only mappings for their actual workspaces, and job chunks use the global uploader pair. Each chunk bounds both owners and mappings to 100 without truncating the complete original merge map.
 
 Both profiles may have an auth account. The superuser previews an explicit `auth_policy`:
 
@@ -656,6 +658,8 @@ Both profiles may have an auth account. The superuser previews an explicit `auth
 Execute rechecks a fingerprint of the auth/resource state under ordered locks. Player references, auth ownership, resource transfers and `UserMergeAudit` commit in one PostgreSQL transaction. The audit records the reviewed policy, acknowledgements, affected auth IDs and revoked session IDs; secret credentials and session IDs are not returned by the public merge DTO.
 
 Before commit, app-service requires identity-service to blacklist both accounts’ existing session IDs for the access-token lifetime and invalidate their RBAC caches using a strict Redis transaction. An unavailable identity/Redis finalizer rolls back the database merge. A later database commit failure may still leave old sessions revoked; the accounts must sign in again. Refresh tokens and API keys for both accounts are deleted, never transferred. App-service clears RBAC/profile caches again after commit. Authorization propagation remains bounded by the gateway’s existing short credential cache; subsequent Redis outages retain the platform’s existing fail-soft token-validation policy.
+
+The identity threat boundary remains server-side: only a superuser can execute a merge, the preview is revalidated under locks, and every native member rewrite stays within its original workspace. Failure—including history overlap or unavailable identity finalization—rolls back observations and their evidence together. Ordinary user deletion does not bypass the played-member foreign-key guard. Raw downloads resolve the stored ingest job's `raw_ref`, authorize the bound encounter's tournament before accessing storage, and use the sanitized filename only for presentation, never to reconstruct an object key.
 
 This is the only legitimate way to say "these two people turned out to be one". Auto-link and identity collapse on registration **deliberately** do not do this.
 
@@ -678,6 +682,22 @@ The access token still returns `linked_players` as an array of length 0 or 1 (`L
 ### 9.3. Public player (app-service)
 
 `UserRead` = `players.user` plus social accounts (plus visibility in the admin UI). This is the `/users/:id` page, not the account.
+
+Profile, hero, map and tournament-stat readers consume native `stats.fact` observations through the match's
+workspace member and bound encounter game. Removed memberships and inactive historical game participants retain
+their observations; no current-roster activation is required to read a recorded fact. OW statistics explicitly
+select the Overwatch discipline, and workspace-scoped aggregates cannot combine another membership's facts.
+Existing endpoint-specific hidden-tournament policies remain unchanged; the overview's has-logs indicator is
+explicitly global over its scoped candidate players.
+
+Hero qualification remains strictly over 60 seconds per match/member/character. Profile and comparison per-10
+rates use match duration, while hero leaderboards use character playtime and require at least 600 seconds.
+MVP placement prefers ImpactRank and falls back to Performance. Global hero records read
+`stats.mv_entity_global_stats`; an unpopulated view is an operational error, not an empty profile.
+
+Public profile and achievement match expansions derive home/away teams and observed scores from the historical
+game's slots 1/2, not today's encounter seats or the log's source order. `map_index` is the bound game's position.
+Match `source`/`code` fields are removed; replay codes remain a separate encounter-game feature.
 
 ### 9.4. Gateway
 

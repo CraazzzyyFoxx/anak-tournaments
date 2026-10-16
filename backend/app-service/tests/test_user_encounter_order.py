@@ -4,14 +4,13 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from src.services.user._mappers import (
-    encounter_oriented_score,
     encounter_play_key,
-    settled_map_ids,
     sort_user_matches,
+    to_match_with_user_stats,
 )
 
 
-def _match(id_: int, map_id: int, map_index: int | None = None):
+def _match(id_: int, map_id: int, map_index: int):
     return SimpleNamespace(id=id_, map_id=map_id, map_index=map_index)
 
 
@@ -52,49 +51,33 @@ def test_encounter_play_key_uses_confirmed_at_not_insert_order():
 
 
 def test_sort_user_matches_uses_map_index():
-    matches = [_match(3, 15, None), _match(1, 31, 2), _match(2, 44, 1)]
+    matches = [_match(3, 15, 3), _match(1, 31, 2), _match(2, 44, 1)]
     assert [m.id for m in sort_user_matches(matches)] == [2, 1, 3]
 
 
-def test_sort_user_matches_restores_unindexed_from_pool():
-    matches = [_match(10, 31, 1), _match(12, 40, None), _match(11, 44, None)]
-    ordered = sort_user_matches(matches, [31, 44, 40])
-    assert [m.map_id for m in ordered] == [31, 44, 40]
+def test_sort_user_matches_keeps_repeated_maps_and_stable_position_ties():
+    matches = [_match(12, 31, 3), _match(11, 31, 2), _match(10, 31, 2)]
+    assert [m.id for m in sort_user_matches(matches)] == [10, 11, 12]
 
 
-def test_settled_map_ids_ignores_bans_and_sorts_by_action_index():
-    rows = [
-        (26, "banned", 1, 0),
-        (15, "played", 11, 1),
-        (31, "played", 2, 1),
-        (44, "picked", 5, 1),
-    ]
-    assert settled_map_ids(rows) == [31, 44, 15]
+def test_sort_user_matches_accepts_no_observed_games():
+    assert sort_user_matches([]) == []
 
 
-def _seats(first: int | None, second: int | None) -> list[SimpleNamespace]:
-    return [SimpleNamespace(slot=1, team_id=first), SimpleNamespace(slot=2, team_id=second)]
-
-
-def test_encounter_oriented_score_flips_swapped_log():
-    match = SimpleNamespace(
-        home_team_id=2152,
-        away_team_id=2155,
-        home_score=0,
-        away_score=3,
+def test_match_mapper_uses_historical_game_context():
+    context = SimpleNamespace(
+        match=SimpleNamespace(id=17, duration_s=600, map_entity_id=31),
+        game=SimpleNamespace(encounter_id=9, position=2),
+        home_team=SimpleNamespace(id=2155),
+        away_team=SimpleNamespace(id=2152),
+        home_score=3,
+        away_score=0,
+        display_filename="observed-match.txt",
+        map=None,
     )
-    score = encounter_oriented_score(match, _seats(2155, 2152))
-    assert score.home == 3
-    assert score.away == 0
-
-
-def test_encounter_oriented_score_keeps_aligned_log():
-    match = SimpleNamespace(
-        home_team_id=2155,
-        away_team_id=2152,
-        home_score=2,
-        away_score=1,
-    )
-    score = encounter_oriented_score(match, _seats(2155, 2152))
-    assert score.home == 2
-    assert score.away == 1
+    result = to_match_with_user_stats(context, performance=None, heroes=None)
+    assert (result.home_team_id, result.away_team_id) == (2155, 2152)
+    assert (result.score.home, result.score.away) == (3, 0)
+    assert (result.encounter_id, result.map_index, result.time) == (9, 2, 600)
+    assert result.log_name == "observed-match.txt"
+    assert "code" not in result.model_dump()

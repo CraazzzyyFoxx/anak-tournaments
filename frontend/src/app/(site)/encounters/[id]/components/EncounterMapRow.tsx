@@ -242,12 +242,6 @@ export default function EncounterMapRow({
                     </span>
                   </span>
                 ) : null}
-                {match.code ? (
-                  <span className={styles.dialogFact}>
-                    <span className={styles.label}>{t("encounters.match.code")}</span>
-                    <span className={styles.mapFactValue}>{match.code}</span>
-                  </span>
-                ) : null}
                 {match.log_name ? (
                   <span className={styles.dialogFact}>
                     <span className={styles.label}>{t("encounters.match.logName")}</span>

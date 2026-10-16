@@ -9,11 +9,9 @@ be decided exactly stays 0:0; nothing is guessed.
 
 The tournament side speaks participations: a map's accepted numbers are
 ``encounter.game_team.score`` per ``encounter_team_id``, and the series total is
-``encounter.team.score``. The log side still speaks ``matches.match``'s
-``home_team_id``/``home_score``/``away_score`` columns, which are a log's own
-orientation and are not changing -- so the answer is returned in that
-orientation, and the mapping between the two is the participation's source
-``team_id``.
+``encounter.team.score``. The log side uses observed native teams ordered by
+``source_position`` and their score facts. The answer retains that source
+orientation, mapped to tournament participations through their source ``team_id``.
 
 Exclusion is a two-sided argument ("the wins left over must land somewhere"),
 so an encounter that does not seat exactly two participations decides nothing.
@@ -53,7 +51,7 @@ class Series:
 
 @dataclass(frozen=True)
 class LoggedMap:
-    """One ``matches.match`` row; scores in the row's own (log) orientation."""
+    """One observed match; scores retain the log's own orientation."""
 
     match_id: int
     map_id: int

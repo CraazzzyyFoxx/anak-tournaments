@@ -1,8 +1,7 @@
 """Node tests for the map/gamemode and in-match-event condition leaves.
 
-``match_event_count`` reads ``matches.event`` (written by the log parser and,
-until now, read by nothing); ``map_coverage`` / ``map_winrate`` read
-``catalog.entity`` maps and their parent modes through ``Match.map_id``.
+``match_event_count`` reads native events; ``map_coverage`` / ``map_winrate``
+read catalog maps/modes through native player facts and observed scores.
 """
 
 from __future__ import annotations
@@ -104,29 +103,6 @@ class _MapFixture(_scrim._Fixture):
         )
         return hero_id
 
-    def match(  # noqa: D102 — same contract as the base builder, plus map/score control
-        self,
-        encounter_id: int,
-        home_team_id: int,
-        away_team_id: int,
-        *,
-        map_id: int = 1,
-        home_score: int = 2,
-        away_score: int = 1,
-    ) -> int:
-        match_id = self._id()
-        self.insert(
-            models.Match.__table__,
-            id=match_id,
-            encounter_id=encounter_id,
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=home_score,
-            away_score=away_score,
-            map_id=map_id,
-        )
-        return match_id
-
     def statistics(
         self,
         match_id: int,
@@ -136,17 +112,7 @@ class _MapFixture(_scrim._Fixture):
         value: float = 1.0,
         name: LogStatsName = LogStatsName.HeroTimePlayed,
     ) -> None:
-        self.insert(
-            models.MatchStatistics.__table__,
-            id=self._id(),
-            match_id=match_id,
-            user_id=user_id,
-            team_id=team_id,
-            name=name,
-            value=value,
-            round=0,
-            hero_id=None,
-        )
+        self.fact(match_id, user_id, team_id, name, value)
 
     def event(
         self,
@@ -158,17 +124,18 @@ class _MapFixture(_scrim._Fixture):
         hero_id: int | None = None,
         count: int = 1,
     ) -> None:
+        member_id, seat = self.observed_player(match_id, user_id, team_id)
         for index in range(count):
             self.insert(
-                models.MatchEvent.__table__,
+                models.StatsEvent.__table__,
                 id=self._id(),
                 match_id=match_id,
-                time=float(index + 1),
-                round=1,
-                team_id=team_id,
-                user_id=user_id,
-                hero_id=hero_id,
-                name=name,
+                t=float(index + 1),
+                segment=1,
+                actor_team_id=seat,
+                actor_member_id=member_id,
+                entity_id=hero_id,
+                type_id=self.event_ids[name.value],
             )
 
 

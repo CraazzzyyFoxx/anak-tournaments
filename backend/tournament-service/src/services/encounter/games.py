@@ -1,7 +1,7 @@
 """The encounter's games: one row per position, and what each participation did
 in it.
 
-A ``Match`` (``matches.match``) is what a parsed log OBSERVED; an
+A ``StatsMatch`` (``stats.match``) is what a parsed log OBSERVED; an
 ``EncounterGame`` is what the tournament DECIDED for one position. This service
 owns that decision end to end -- opening positions (from the map pick-ban, or
 one at a time in freeplay), accepting a result, cancelling -- for a duel and a

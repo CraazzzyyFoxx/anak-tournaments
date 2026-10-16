@@ -50,31 +50,6 @@ CLIMB_GRID = DivisionGrid(
 
 
 class _NodeFixture(_scrim._Fixture):
-    def match(
-        self,
-        encounter_id: int,
-        home_team_id: int,
-        away_team_id: int,
-        *,
-        time: float | None = None,
-        home_score: int = 2,
-        away_score: int = 1,
-    ) -> int:
-        match_id = self._id()
-        values = {
-            "id": match_id,
-            "encounter_id": encounter_id,
-            "home_team_id": home_team_id,
-            "away_team_id": away_team_id,
-            "home_score": home_score,
-            "away_score": away_score,
-            "map_id": 1,
-        }
-        if time is not None:
-            values["time"] = time
-        self.insert(models.Match.__table__, **values)
-        return match_id
-
     def stage(self, tournament_id: int, *, name: str, stage_type: object, order: int) -> int:
         stage_id = self._id()
         self.insert(
@@ -127,17 +102,7 @@ class _NodeFixture(_scrim._Fixture):
         round_no: int = 0,
         hero_id: int | None = None,
     ) -> None:
-        self.insert(
-            models.MatchStatistics.__table__,
-            id=self._id(),
-            match_id=match_id,
-            user_id=user_id,
-            team_id=team_id,
-            name=name,
-            value=value,
-            round=round_no,
-            hero_id=hero_id,
-        )
+        self.fact(match_id, user_id, team_id, name, value, segment=round_no, entity_id=hero_id)
 
 
 class _NodeCase(_EngineTestCase):

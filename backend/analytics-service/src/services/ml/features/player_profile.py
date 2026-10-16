@@ -7,6 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import LogStatsName
+from shared.repository.stats_queries import player_facts
 from src import models
 from src.core.workspace import workspace_filter
 
@@ -55,19 +56,20 @@ async def load_player_signal_profile(
         return base_df
 
     user_ids = [int(u) for u in base_df["user_id"].unique().tolist() if u is not None]
+    facts = player_facts(discipline="overwatch")
     stats_query = (
         sa.select(
-            models.MatchStatistics.user_id.label("user_id"),
+            facts.c.player_id.label("user_id"),
             sa.func.coalesce(
-                sa.func.avg(sa.case((models.MatchStatistics.name == LogStatsName.KD, models.MatchStatistics.value))),
+                sa.func.avg(sa.case((facts.c.stat_code == LogStatsName.KD.value, facts.c.value))),
                 0.0,
             ).label("kd"),
             sa.func.coalesce(
                 sa.func.avg(
                     sa.case(
                         (
-                            models.MatchStatistics.name == LogStatsName.WeaponAccuracy,
-                            models.MatchStatistics.value,
+                            facts.c.stat_code == LogStatsName.WeaponAccuracy.value,
+                            facts.c.value,
                         )
                     )
                 ),
@@ -77,23 +79,22 @@ async def load_player_signal_profile(
                 sa.func.avg(
                     sa.case(
                         (
-                            models.MatchStatistics.name == LogStatsName.FinalBlows,
-                            models.MatchStatistics.value,
+                            facts.c.stat_code == LogStatsName.FinalBlows.value,
+                            facts.c.value,
                         )
                     )
                 ),
                 0.0,
             ).label("final_blows_p10"),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+        .select_from(facts)
         .where(
-            models.Encounter.tournament_id == tournament_id,
-            models.MatchStatistics.user_id.in_(user_ids),
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
+            facts.c.tournament_id == tournament_id,
+            facts.c.player_id.in_(user_ids),
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
         )
-        .group_by(models.MatchStatistics.user_id)
+        .group_by(facts.c.player_id)
     )
     stats_df = pd.DataFrame((await session.execute(stats_query)).mappings().all())
     if not stats_df.empty:

@@ -75,8 +75,10 @@ TABLES = (
     models.WorkspaceMember.__table__,
     models.Encounter.__table__,
     models.EncounterTeam.__table__,
-    models.Match.__table__,
-    models.MatchStatistics.__table__,
+    models.StatsMatch.__table__,
+    models.StatsMatchTeam.__table__,
+    models.StatsFact.__table__,
+    models.StatDef.__table__,
     models.Standing.__table__,
 )
 
@@ -154,6 +156,15 @@ class _Fixture:
             rated=True,
         )
         self.insert(CatalogRole.__table__, id=1, dimension_id=1, code="damage", name="Damage", attrs={})
+        self.insert(
+            models.StatDef.__table__,
+            id=1,
+            discipline="overwatch",
+            code=PERFORMANCE_POINTS.value,
+            name="Performance points",
+            value_format="decimal",
+            aggregation="avg",
+        )
 
     def close(self) -> None:
         self.session.close()
@@ -254,28 +265,57 @@ class _Fixture:
 
     def match(self, encounter_id: int, home_team_id: int, away_team_id: int) -> int:
         match_id = self._id()
-        self.insert(
-            models.Match.__table__,
-            id=match_id,
-            encounter_id=encounter_id,
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=2,
-            away_score=1,
-            map_id=1,
+        self.session.execute(
+            sa.text("INSERT INTO encounter.game (id,encounter_id,state) VALUES (:id,:encounter,'scheduled')"),
+            {"id": match_id, "encounter": encounter_id},
         )
+        self.insert(
+            models.StatsMatch.__table__,
+            id=match_id,
+            workspace_id=WORKSPACE_ID,
+            discipline="overwatch",
+            encounter_game_id=match_id,
+            map_entity_id=1,
+        )
+        for position, team_id in enumerate((home_team_id, away_team_id), 1):
+            seat_id = self.session.scalar(
+                sa.select(models.EncounterTeam.id).where(
+                    models.EncounterTeam.encounter_id == encounter_id,
+                    models.EncounterTeam.team_id == team_id,
+                )
+            )
+            self.insert(
+                models.StatsMatchTeam.__table__,
+                match_id=match_id,
+                encounter_game_id=match_id,
+                encounter_team_id=seat_id,
+                source_position=position,
+            )
         return match_id
 
     def performance_points(self, match_id: int, team_id: int, user_id: int, value: float) -> None:
+        member_id = self.session.scalar(
+            sa.select(models.WorkspaceMember.id).where(
+                models.WorkspaceMember.player_id == user_id,
+                models.WorkspaceMember.workspace_id == WORKSPACE_ID,
+            )
+        )
+        seat_id = self.session.scalar(
+            sa.select(models.StatsMatchTeam.encounter_team_id)
+            .join(
+                models.EncounterTeam,
+                models.EncounterTeam.id == models.StatsMatchTeam.encounter_team_id,
+            )
+            .where(models.StatsMatchTeam.match_id == match_id, models.EncounterTeam.team_id == team_id)
+        )
         self.insert(
-            models.MatchStatistics.__table__,
-            id=self._id(),
+            models.StatsFact.__table__,
             match_id=match_id,
-            team_id=team_id,
-            user_id=user_id,
-            round=0,
-            hero_id=None,
-            name=PERFORMANCE_POINTS,
+            encounter_team_id=seat_id,
+            workspace_member_id=member_id,
+            segment=0,
+            entity_id=None,
+            stat_id=1,
             value=value,
         )
 

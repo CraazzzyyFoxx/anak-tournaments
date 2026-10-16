@@ -11,6 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import match_context, player_facts
 from src import models
 
 from ..context import EvalContext
@@ -23,7 +24,7 @@ from .stat_threshold import OPERATORS
     grain=AchievementGrain.user_match,
     description="Best value of a stat among the map's players",
     optional=("op", "sort_order", "stat", "top_n", "value"),
-    depends_on=("matches.statistics",),
+    depends_on=("stats.fact",),
 )
 async def execute(
     session: AsyncSession,
@@ -55,31 +56,29 @@ async def execute(
     op_fn = OPERATORS[op]
 
     # Step 1: Per-match per-player aggregated stat
+    facts = player_facts(discipline="overwatch")
     player_stats = (
         sa.select(
-            models.MatchStatistics.match_id,
-            models.MatchStatistics.user_id,
-            models.MatchStatistics.team_id,
-            sa.func.sum(models.MatchStatistics.value).label("stat_value"),
+            facts.c.match_id,
+            facts.c.workspace_member_id,
+            facts.c.encounter_team_id,
+            sa.func.sum(facts.c.value).label("stat_value"),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(
-            models.MatchStatistics.name == stat,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            facts.c.stat_code == stat,
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
+            facts.c.workspace_id == context.workspace_id,
         )
         .group_by(
-            models.MatchStatistics.match_id,
-            models.MatchStatistics.user_id,
-            models.MatchStatistics.team_id,
+            facts.c.match_id,
+            facts.c.workspace_member_id,
+            facts.c.encounter_team_id,
         )
     )
 
     if context.tournament:
-        player_stats = player_stats.where(models.Encounter.tournament_id == context.tournament.id)
+        player_stats = player_stats.where(facts.c.tournament_id == context.tournament.id)
 
     ps = player_stats.subquery("ps")
 
@@ -90,8 +89,8 @@ async def execute(
         from shared.core.enums import is_ascending_stat
 
         try:
-            _use_asc = is_ascending_stat(_LSN[stat])
-        except KeyError:
+            _use_asc = is_ascending_stat(_LSN(stat))
+        except ValueError:
             _use_asc = False
     else:
         _use_asc = sort_order == "asc"
@@ -101,8 +100,8 @@ async def execute(
     ranked = (
         sa.select(
             ps.c.match_id,
-            ps.c.user_id,
-            ps.c.team_id,
+            ps.c.workspace_member_id,
+            ps.c.encounter_team_id,
             sa.func.row_number()
             .over(
                 partition_by=ps.c.match_id,
@@ -116,11 +115,11 @@ async def execute(
     team_top_count = (
         sa.select(
             ranked.c.match_id,
-            ranked.c.team_id,
+            ranked.c.encounter_team_id,
             sa.func.count().label("in_top"),
         )
         .where(ranked.c.rank <= top_n)
-        .group_by(ranked.c.match_id, ranked.c.team_id)
+        .group_by(ranked.c.match_id, ranked.c.encounter_team_id)
     ).subquery("team_top")
 
     # Step 4: Also need teams that have 0 players in top — they won't appear in team_top.
@@ -128,54 +127,61 @@ async def execute(
     all_teams = (
         sa.select(
             ps.c.match_id,
-            ps.c.team_id,
-        ).group_by(ps.c.match_id, ps.c.team_id)
+            ps.c.encounter_team_id,
+        ).group_by(ps.c.match_id, ps.c.encounter_team_id)
     ).subquery("all_teams")
 
     # Left join to get in_top count (0 if not in team_top)
     teams_with_count = (
         sa.select(
             all_teams.c.match_id,
-            all_teams.c.team_id,
+            all_teams.c.encounter_team_id,
             sa.func.coalesce(team_top_count.c.in_top, 0).label("in_top"),
         )
         .outerjoin(
             team_top_count,
             sa.and_(
                 all_teams.c.match_id == team_top_count.c.match_id,
-                all_teams.c.team_id == team_top_count.c.team_id,
+                all_teams.c.encounter_team_id == team_top_count.c.encounter_team_id,
             ),
         )
         .where(op_fn(sa.func.coalesce(team_top_count.c.in_top, 0), value))
     ).subquery("filtered_teams")
 
     # Step 5: Get tournament_id and all players on qualifying teams
+    match = match_context(discipline="overwatch")
     query = (
         sa.select(
             models.WorkspaceMember.player_id,
-            models.Encounter.tournament_id,
+            match.c.tournament_id,
             teams_with_count.c.match_id,
         )
-        .select_from(models.Player)
+        .select_from(teams_with_count)
+        .join(match, match.c.id == teams_with_count.c.match_id)
         .join(
-            teams_with_count,
-            models.Player.team_id == teams_with_count.c.team_id,
+            models.EncounterTeam,
+            sa.and_(
+                models.EncounterTeam.id == teams_with_count.c.encounter_team_id,
+                models.EncounterTeam.encounter_id == match.c.encounter_id,
+            ),
         )
         .join(
-            models.Match,
-            models.Match.id == teams_with_count.c.match_id,
+            models.Player,
+            sa.and_(
+                models.Player.team_id == models.EncounterTeam.team_id,
+                models.Player.tournament_id == match.c.tournament_id,
+            ),
         )
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
         .join(
             models.WorkspaceMember,
-            models.WorkspaceMember.id == models.Player.workspace_member_id,
+            sa.and_(
+                models.WorkspaceMember.id == models.Player.workspace_member_id,
+                models.WorkspaceMember.workspace_id == match.c.workspace_id,
+            ),
         )
         .where(
             models.Player.is_substitution.is_(False),
-            sa.or_(
-                models.Match.home_team_id == teams_with_count.c.team_id,
-                models.Match.away_team_id == teams_with_count.c.team_id,
-            ),
+            match.c.workspace_id == context.workspace_id,
         )
     )
 

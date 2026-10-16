@@ -1,7 +1,7 @@
 """RPC-handler tests for the MVP impact fields on user match reads (task 8).
 
 Mirrors the fixture style of ``test_user.py`` (same ``rpc: RpcHarness`` /
-``db: Session`` fixtures, fixed-id idempotent setup via ``models.MatchStatistics``)
+``db: Session`` fixtures, fixed-id idempotent setup via native observed games)
 but exercises the NEW ``impact_rank`` / ``impact_points`` / ``overperformance_score``
 / ``overperformance_badge`` fields on ``GET /users/{id}/encounters`` ->
 ``rpc.app.users.encounters``.
@@ -19,7 +19,7 @@ from shared.core.impact import BADGE_THRESHOLD
 from src import models
 from src.core import enums
 from tests.conftest import RpcHarness, build_query
-from tests.encounter_seed import add_duel
+from tests.encounter_seed import add_duel, add_observed_game
 
 _IMPACT_FIXTURE_IDS = {
     "user_a": 9_400_000_001,
@@ -37,15 +37,6 @@ _IMPACT_FIXTURE_IDS = {
     "match_with_impact": 9_400_000_060,
     "match_without_impact": 9_400_000_061,
     "match_below_threshold": 9_400_000_062,
-    "stat_a_impact_rank_m1": 9_400_000_101,
-    "stat_a_impact_points_m1": 9_400_000_102,
-    "stat_a_overperf_m1": 9_400_000_103,
-    "stat_b_impact_rank_m1": 9_400_000_104,
-    "stat_b_impact_points_m1": 9_400_000_105,
-    "stat_b_overperf_m1": 9_400_000_106,
-    "stat_a_impact_rank_m3": 9_400_000_110,
-    "stat_a_impact_points_m3": 9_400_000_111,
-    "stat_a_overperf_m3": 9_400_000_112,
 }
 
 # Scores derived from BADGE_THRESHOLD so the fixture keeps testing the
@@ -157,144 +148,48 @@ def _ensure_impact_badge_fixture(db: Session) -> dict[str, int]:
         name="Impact Badge Encounter",
         seats=[(ids["team_home"], 2), (ids["team_away"], 1)],
     )
-    db.add_all(
-        [
-            models.Match(
-                id=ids["match_with_impact"],
-                home_team_id=ids["team_home"],
-                away_team_id=ids["team_away"],
-                home_score=1,
-                away_score=0,
-                time=600,
-                log_name="impact-badge-match-with-impact",
-                encounter_id=ids["encounter"],
-                map_id=map_id,
-            ),
-            models.Match(
-                id=ids["match_without_impact"],
-                home_team_id=ids["team_home"],
-                away_team_id=ids["team_away"],
-                home_score=1,
-                away_score=0,
-                time=600,
-                log_name="impact-badge-match-without-impact",
-                encounter_id=ids["encounter"],
-                map_id=map_id,
-            ),
-            models.Match(
-                id=ids["match_below_threshold"],
-                home_team_id=ids["team_home"],
-                away_team_id=ids["team_away"],
-                home_score=0,
-                away_score=1,
-                time=600,
-                log_name="impact-badge-match-below-threshold",
-                encounter_id=ids["encounter"],
-                map_id=map_id,
-            ),
-        ]
+    a, b = ids["workspace_member_a"], ids["workspace_member_b"]
+    add_observed_game(
+        db,
+        match_id=ids["match_with_impact"],
+        encounter_id=ids["encounter"],
+        map_entity_id=map_id,
+        position=1,
+        duration_s=600,
+        scores=(1, 0),
+        observations=[
+            (a, 1, None, enums.LogStatsName.ImpactRank, 1),
+            (a, 1, None, enums.LogStatsName.ImpactPoints, 3.4),
+            (a, 1, None, enums.LogStatsName.OverperformanceScore, _OVERPERF_A_TOP),
+            (b, 2, None, enums.LogStatsName.ImpactRank, 2),
+            (b, 2, None, enums.LogStatsName.ImpactPoints, 1.1),
+            (b, 2, None, enums.LogStatsName.OverperformanceScore, _OVERPERF_B_SECOND),
+        ],
     )
-    # Matches before their statistics: the rows share no relationship to order them by.
-    db.flush()
-    db.add_all(
-        [
-            # match_with_impact: A tops the match -> badge True.
-            models.MatchStatistics(
-                id=ids["stat_a_impact_rank_m1"],
-                match_id=ids["match_with_impact"],
-                round=0,
-                team_id=ids["team_home"],
-                user_id=ids["user_a"],
-                hero_id=None,
-                name=enums.LogStatsName.ImpactRank,
-                value=1,
-            ),
-            models.MatchStatistics(
-                id=ids["stat_a_impact_points_m1"],
-                match_id=ids["match_with_impact"],
-                round=0,
-                team_id=ids["team_home"],
-                user_id=ids["user_a"],
-                hero_id=None,
-                name=enums.LogStatsName.ImpactPoints,
-                value=3.4,
-            ),
-            models.MatchStatistics(
-                id=ids["stat_a_overperf_m1"],
-                match_id=ids["match_with_impact"],
-                round=0,
-                team_id=ids["team_home"],
-                user_id=ids["user_a"],
-                hero_id=None,
-                name=enums.LogStatsName.OverperformanceScore,
-                value=_OVERPERF_A_TOP,
-            ),
-            # match_with_impact: B is 2nd -> not top-1 -> badge False.
-            models.MatchStatistics(
-                id=ids["stat_b_impact_rank_m1"],
-                match_id=ids["match_with_impact"],
-                round=0,
-                team_id=ids["team_away"],
-                user_id=ids["user_b"],
-                hero_id=None,
-                name=enums.LogStatsName.ImpactRank,
-                value=2,
-            ),
-            models.MatchStatistics(
-                id=ids["stat_b_impact_points_m1"],
-                match_id=ids["match_with_impact"],
-                round=0,
-                team_id=ids["team_away"],
-                user_id=ids["user_b"],
-                hero_id=None,
-                name=enums.LogStatsName.ImpactPoints,
-                value=1.1,
-            ),
-            models.MatchStatistics(
-                id=ids["stat_b_overperf_m1"],
-                match_id=ids["match_with_impact"],
-                round=0,
-                team_id=ids["team_away"],
-                user_id=ids["user_b"],
-                hero_id=None,
-                name=enums.LogStatsName.OverperformanceScore,
-                value=_OVERPERF_B_SECOND,
-            ),
-            # match_below_threshold: only A has a score row; the match-wide
-            # rank() window trivially ranks a solo row 1st, but the value is
-            # below BADGE_THRESHOLD -> badge False despite pos == 1.
-            models.MatchStatistics(
-                id=ids["stat_a_impact_rank_m3"],
-                match_id=ids["match_below_threshold"],
-                round=0,
-                team_id=ids["team_home"],
-                user_id=ids["user_a"],
-                hero_id=None,
-                name=enums.LogStatsName.ImpactRank,
-                value=1,
-            ),
-            models.MatchStatistics(
-                id=ids["stat_a_impact_points_m3"],
-                match_id=ids["match_below_threshold"],
-                round=0,
-                team_id=ids["team_home"],
-                user_id=ids["user_a"],
-                hero_id=None,
-                name=enums.LogStatsName.ImpactPoints,
-                value=0.9,
-            ),
-            models.MatchStatistics(
-                id=ids["stat_a_overperf_m3"],
-                match_id=ids["match_below_threshold"],
-                round=0,
-                team_id=ids["team_home"],
-                user_id=ids["user_a"],
-                hero_id=None,
-                name=enums.LogStatsName.OverperformanceScore,
-                value=_OVERPERF_A_BELOW_THRESHOLD,
-            ),
-            # match_without_impact intentionally carries no impact/overperformance rows.
-        ]
+    add_observed_game(
+        db,
+        match_id=ids["match_without_impact"],
+        encounter_id=ids["encounter"],
+        map_entity_id=map_id,
+        position=2,
+        duration_s=600,
+        scores=(1, 0),
+        observations=[],
+    )
+    # A is first by the window rank, but below the badge threshold.
+    add_observed_game(
+        db,
+        match_id=ids["match_below_threshold"],
+        encounter_id=ids["encounter"],
+        map_entity_id=map_id,
+        position=3,
+        duration_s=600,
+        scores=(0, 1),
+        observations=[
+            (a, 1, None, enums.LogStatsName.ImpactRank, 1),
+            (a, 1, None, enums.LogStatsName.ImpactPoints, 0.9),
+            (a, 1, None, enums.LogStatsName.OverperformanceScore, _OVERPERF_A_BELOW_THRESHOLD),
+        ],
     )
     db.commit()
 

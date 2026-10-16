@@ -186,7 +186,7 @@ class AchievementService:
             unique_match_ids = sorted({mid for achievement in cache.values() for mid in achievement.matches_ids})
             if unique_match_ids:
                 matches = await self.queries.get_matches_bulk(session, unique_match_ids)
-                matches_map = {m.id: _mappers.to_match_link(m) for m in matches}
+                matches_map = {m.match.id: _mappers.to_match_link(m) for m in matches}
                 for achievement in cache.values():
                     achievement.matches = [matches_map[mid] for mid in achievement.matches_ids if mid in matches_map]
 
@@ -215,7 +215,7 @@ class AchievementService:
         matches = await self.queries.get_matches_bulk(session, matches_to_fetch)
 
         tournaments_map = {t.id: t for t in tournaments}
-        matches_map = {m.id: m for m in matches}
+        matches_map = {m.match.id: m for m in matches}
 
         for user, count, last_tournament_id, last_match_id in users:
             last_tournament = tournaments_map.get(last_tournament_id) if last_tournament_id else None

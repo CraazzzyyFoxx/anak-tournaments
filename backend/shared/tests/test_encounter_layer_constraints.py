@@ -370,44 +370,39 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
                     {"mode": mode, "tag": tag},
                 )
             ).scalar_one()
-            # The match was played by two OTHER teams: a team that still has a
-            # match cannot be deleted at all (deferred NO ACTION), which is the
-            # history-protecting half and not what is under test here.
-            others = [
-                (
-                    await s.execute(
-                        sa.text(
-                            "INSERT INTO tournament.team (tournament_id, name, balancer_name)"
-                            " VALUES (:t, 'O', 'O') RETURNING id"
-                        ),
-                        self.ids,
-                    )
-                ).scalar_one()
-                for _ in range(2)
-            ]
             await s.commit()
         try:
             await self._execute(
                 "UPDATE encounter.encounter SET home_team_id = :team0, away_team_id = :team2 WHERE id = :e"
             )
             await self._execute(
-                "INSERT INTO matches.match (home_team_id, away_team_id, home_score, away_score, encounter_id, map_id)"
-                " VALUES (:o0, :o1, 1, 0, :e, :map_id)",
-                o0=others[0],
-                o1=others[1],
+                "INSERT INTO stats.match (workspace_id, discipline, encounter_game_id, map_entity_id)"
+                " VALUES (:ws, 'overwatch', :g, :map_id)",
                 map_id=map_id,
+            )
+            await self._execute(
+                "INSERT INTO stats.match_team (match_id, encounter_game_id, encounter_team_id, source_position)"
+                " SELECT id, :g, :p1, 1 FROM stats.match WHERE encounter_game_id = :g"
+                " UNION ALL SELECT id, :g, :p2, 2 FROM stats.match WHERE encounter_game_id = :g"
             )
 
             await self._execute("DELETE FROM tournament.team WHERE id = :team0")
 
-            for table, column in (
-                ("encounter.encounter", "id"),
-                ("encounter.game", "encounter_id"),
-                ("matches.match", "encounter_id"),
+            for table, column, owner in (
+                ("encounter.encounter", "id", self.ids["e"]),
+                ("encounter.game", "encounter_id", self.ids["e"]),
+                ("stats.match", "encounter_game_id", self.ids["g"]),
             ):
                 with self.subTest(table=table):
-                    self.assertEqual(1, await self._scalar(f"SELECT count(*) FROM {table} WHERE {column} = :e"))
+                    self.assertEqual(
+                        1, await self._scalar(f"SELECT count(*) FROM {table} WHERE {column} = :owner", owner=owner)
+                    )
+            self.assertEqual(
+                2, await self._scalar("SELECT count(*) FROM stats.match_team WHERE encounter_game_id = :g")
+            )
+            self.assertIsNone(await self._scalar("SELECT team_id FROM encounter.team WHERE id = :p1"))
         finally:
+            await self._execute("DELETE FROM stats.match WHERE encounter_game_id = :g")
             await self._execute("DELETE FROM catalog.entity WHERE id = :map_id", map_id=map_id)
             await self._execute("DELETE FROM catalog.entity WHERE id = :mode", mode=mode)
 

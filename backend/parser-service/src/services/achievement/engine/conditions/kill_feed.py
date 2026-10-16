@@ -1,7 +1,7 @@
-"""kill_feed — conditions read straight off the parsed kill feed.
+"""Kill conditions over native events.
 
-``matches.kill_feed`` stores one row per kill, already keyed by
-``players.user.id`` on both sides. A *fight* is ``(match_id, round, fight)``.
+Actor/target workspace members are resolved to global result keys explicitly.
+A fight is ``(match_id, segment, data.fight)``; event multiplicity is preserved.
 
 Grains: ``fight_multikill`` is user_match; ``duel_dominance`` is user, or
 user_tournament when ``scope="tournament"``.
@@ -15,11 +15,16 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import match_context
 from src import models
 
 from ..context import EvalContext
 from . import ResultSet, register
 from .stat_threshold import OPERATORS
+
+_MATCHES = match_context(discipline="overwatch")
+_ACTOR = sa.orm.aliased(models.WorkspaceMember, name="kill_actor")
+_TARGET = sa.orm.aliased(models.WorkspaceMember, name="kill_target")
 
 
 def _scoped_kills(
@@ -34,17 +39,37 @@ def _scoped_kills(
     """
     query = (
         sa.select(*columns)
-        .select_from(models.MatchKillFeed)
-        .join(models.Match, models.Match.id == models.MatchKillFeed.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .select_from(models.StatsEvent)
+        .join(_MATCHES, _MATCHES.c.id == models.StatsEvent.match_id)
+        .join(
+            models.EventType,
+            sa.and_(
+                models.EventType.id == models.StatsEvent.type_id,
+                models.EventType.discipline == _MATCHES.c.discipline,
+            ),
+        )
+        .join(
+            _ACTOR,
+            sa.and_(
+                _ACTOR.id == models.StatsEvent.actor_member_id,
+                _ACTOR.workspace_id == _MATCHES.c.workspace_id,
+            ),
+        )
+        .join(
+            _TARGET,
+            sa.and_(
+                _TARGET.id == models.StatsEvent.target_member_id,
+                _TARGET.workspace_id == _MATCHES.c.workspace_id,
+            ),
+        )
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
-            models.MatchKillFeed.killer_id != models.MatchKillFeed.victim_id,
+            _MATCHES.c.workspace_id == context.workspace_id,
+            models.EventType.code == "kill",
+            models.StatsEvent.actor_member_id != models.StatsEvent.target_member_id,
         )
     )
     if narrow_to_tournament and context.tournament:
-        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+        query = query.where(_MATCHES.c.tournament_id == context.tournament.id)
     return query
 
 
@@ -53,7 +78,7 @@ def _scoped_kills(
     grain=AchievementGrain.user_match,
     description="Killed several enemies inside a single fight",
     optional=("min_kills", "op", "value"),
-    depends_on=("matches.kill_feed", "matches.match", "tournament.encounter"),
+    depends_on=("stats.event", "stats.match", "tournament.encounter"),
 )
 async def execute_fight_multikill(
     session: AsyncSession,
@@ -69,18 +94,18 @@ async def execute_fight_multikill(
     per_fight = (
         _scoped_kills(
             context,
-            models.MatchKillFeed.killer_id.label("user_id"),
-            models.MatchKillFeed.match_id.label("match_id"),
-            models.Encounter.tournament_id.label("tournament_id"),
+            _ACTOR.player_id.label("user_id"),
+            models.StatsEvent.match_id,
+            _MATCHES.c.tournament_id,
             sa.func.count().label("kills"),
             narrow_to_tournament=True,
         )
         .group_by(
-            models.MatchKillFeed.killer_id,
-            models.MatchKillFeed.match_id,
-            models.Encounter.tournament_id,
-            models.MatchKillFeed.round,
-            models.MatchKillFeed.fight,
+            _ACTOR.player_id,
+            models.StatsEvent.match_id,
+            _MATCHES.c.tournament_id,
+            models.StatsEvent.segment,
+            models.StatsEvent.data["fight"].as_integer(),
         )
         .subquery()
     )
@@ -117,7 +142,7 @@ async def execute_fight_multikill(
     grain=AchievementGrain.user,
     description="Dominated one specific opponent across their meetings",
     optional=("min_diff", "min_kills", "op", "scope", "value"),
-    depends_on=("matches.kill_feed", "matches.match", "tournament.encounter"),
+    depends_on=("stats.event", "stats.match", "tournament.encounter"),
     grain_for=lambda params: (
         AchievementGrain.user_tournament if params.get("scope") == "tournament" else AchievementGrain.user
     ),
@@ -137,11 +162,11 @@ async def execute_duel_dominance(
     per_tournament = scope == "tournament"
 
     pair_cols = [
-        models.MatchKillFeed.killer_id.label("user_id"),
-        models.MatchKillFeed.victim_id.label("opponent_id"),
+        _ACTOR.player_id.label("user_id"),
+        _TARGET.player_id.label("opponent_id"),
     ]
     if per_tournament:
-        pair_cols.append(models.Encounter.tournament_id.label("tournament_id"))
+        pair_cols.append(_MATCHES.c.tournament_id)
 
     pairs = (
         _scoped_kills(

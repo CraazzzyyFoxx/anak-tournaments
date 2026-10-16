@@ -39,7 +39,7 @@ def ident(name: str) -> str:
 
 
 def compile_default(col) -> str | None:
-    if col.server_default is None:
+    if col.server_default is None or col.identity is not None:
         return None
     arg = col.server_default.arg
     raw = str(arg.text) if isinstance(arg, TextClause) else str(arg)
@@ -157,6 +157,9 @@ def emit_dbml(tables) -> str:
     out: list[str] = [
         "// Anak Tournaments — PostgreSQL schema dumped from SQLAlchemy metadata.",
         "// Open in VS Code (DBML extension) or paste into https://dbdiagram.io",
+        "// Runtime mappings only, not a complete physical-database dump.",
+        "// Retained/unused pending P9: matches.{match,statistics,event,kill_feed,stat_baselines,mv_hero_global_stats},",
+        "// log_processing.record and legacy overwatch/casual storage. stats01 does not drop them.",
         f"// Tables: {len(tables)}",
         "",
         "Project anak_tournaments {",
@@ -205,6 +208,9 @@ def emit_sql(tables) -> str:
     out = [
         "-- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.",
         "-- Open in any SQL editor (DataGrip, DBeaver, VS Code).",
+        "-- Runtime mappings only, not a complete physical-database dump.",
+        "-- Retained/unused pending P9: matches.{match,statistics,event,kill_feed,stat_baselines,mv_hero_global_stats},",
+        "-- log_processing.record and legacy overwatch/casual storage. stats01 does not drop them.",
         f"-- Tables: {len(tables)}",
         "-- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py",
         "",

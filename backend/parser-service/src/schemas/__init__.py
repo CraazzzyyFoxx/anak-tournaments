@@ -1,7 +1,6 @@
 from .achievement import *
 from .base import *
 from .division_grid import *
-from .encounter import *
 from .gamemode import *
 from .hero import *
 from .logs_parser import *

@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 #
 # We INTENTIONALLY exclude ``home_avg_perf`` / ``away_avg_perf`` / ``perf_gap``
 # from the model inputs: those are derived from Performance v2 of the SAME
-# tournament being predicted (post-hoc residual from MatchStatistics) and
+# tournament being predicted (post-hoc residual from player facts) and
 # therefore leak the very outcome we're trying to forecast. All remaining
 # features are strictly pre-tournament (player ranks at registration time +
 # OpenSkill mu snapshotted before the tournament).

@@ -5,7 +5,7 @@ import typing
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -14,6 +14,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 from shared import models
 from shared.core import enums
 from shared.repository.base import BaseRepository
+from shared.repository.stats_queries import player_facts
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 
 
@@ -139,66 +140,66 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
         The caller is responsible for any sorting/pagination on the result —
         the dataset is intrinsically small (at most one row per hero).
         """
-        narrow_to_user = user_id is not None and user_id != "all"
-
+        if self.discipline is None:
+            raise ValueError("Character playtime requires an explicit discipline")
+        facts = player_facts(discipline=self.discipline)
         playtime_filters = [
-            models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-            models.MatchStatistics.value > 60,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.isnot(None),
+            facts.c.stat_code == enums.LogStatsName.HeroTimePlayed.value,
+            facts.c.value > 60,
+            facts.c.segment == 0,
+            facts.c.entity_id.isnot(None),
         ]
-        if narrow_to_user:
-            playtime_filters.append(models.MatchStatistics.user_id == user_id)
+        if user_id is not None and user_id != "all":
+            playtime_filters.append(facts.c.player_id == user_id)
         if tournament_id is None:
-            # Cross-tournament aggregate: exclude hidden tournaments' stats (issue
-            # #115). A specific tournament_id is authorized by the caller's gate.
-            playtime_filters.append(
-                models.MatchStatistics.match_id.in_(
-                    sa.select(models.Match.id)
-                    .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-                    .where(models.Encounter.tournament_id.in_(visible_tournament_ids_subquery(None)))
-                )
-            )
-
+            playtime_filters.append(facts.c.tournament_id.in_(visible_tournament_ids_subquery(None)))
+        else:
+            playtime_filters.append(facts.c.tournament_id == tournament_id)
+        if workspace_id is not None:
+            playtime_filters.append(facts.c.workspace_id == workspace_id)
         playtime_cte = (
             sa.select(
-                models.MatchStatistics.hero_id,
-                sa.func.sum(models.MatchStatistics.value).label("playtime"),
+                facts.c.entity_id,
+                sa.func.sum(
+                    aggregate_order_by(
+                        facts.c.value,
+                        facts.c.match_id,
+                        facts.c.workspace_member_id,
+                    )
+                ).label("playtime"),
             )
-            .where(sa.and_(*playtime_filters))
-            .group_by(models.MatchStatistics.hero_id)
+            .where(*playtime_filters)
+            .group_by(facts.c.entity_id)
+            .cte("playtime_cte")
         )
 
-        if tournament_id is not None:
-            playtime_cte = (
-                playtime_cte.join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-                .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-                .where(models.Encounter.tournament_id == tournament_id)
-            )
-
-        if workspace_id is not None:
-            if tournament_id is None:
-                playtime_cte = playtime_cte.join(models.Match, models.Match.id == models.MatchStatistics.match_id).join(
-                    models.Encounter, models.Encounter.id == models.Match.encounter_id
-                )
-            playtime_cte = playtime_cte.join(
-                models.Tournament, models.Tournament.id == models.Encounter.tournament_id
-            ).where(models.Tournament.workspace_id == workspace_id)
-
-        playtime_cte = playtime_cte.cte("playtime_cte")
-
         overall_playtime = (
-            sa.select(sa.func.sum(playtime_cte.c.playtime).label("total_playtime")).select_from(playtime_cte)
+            sa.select(
+                sa.func.sum(
+                    aggregate_order_by(
+                        playtime_cte.c.playtime,
+                        playtime_cte.c.entity_id,
+                    )
+                ).label("total_playtime")
+            ).select_from(playtime_cte)
         ).scalar_subquery()
 
         query = (
             sa.select(
                 models.CatalogEntity,
-                (sa.func.sum(playtime_cte.c.playtime) / overall_playtime).label("playtime"),
+                (
+                    sa.func.sum(
+                        aggregate_order_by(
+                            playtime_cte.c.playtime,
+                            playtime_cte.c.entity_id,
+                        )
+                    )
+                    / overall_playtime
+                ).label("playtime"),
             )
             .select_from(models.CatalogEntity)
-            .join(playtime_cte, models.CatalogEntity.id == playtime_cte.c.hero_id)
-            .where(*self._scope())
+            .join(playtime_cte, models.CatalogEntity.id == playtime_cte.c.entity_id)
+            .where(*self._scope(), models.CatalogEntity.kind == "character")
             .group_by(models.CatalogEntity.id)
         )
 
@@ -214,6 +215,10 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
 
     def __init__(self) -> None:
         super().__init__(models.CatalogAliasMiss)
+
+    async def clear_ingest_job_references(self, session: AsyncSession, ids: Sequence[int]) -> None:
+        if ids:
+            await session.execute(sa.update(self.model).where(self.model.id.in_(ids)).values(last_ingest_job_id=None))
 
     async def resolve_by_raw_name(self, session: AsyncSession, *, discipline: str, kind: str, raw_name: str) -> None:
         """Close a miss, which may legitimately be absent (an alias attached before any log missed on it)."""
@@ -232,12 +237,14 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
         *,
         ingest_job_id: int | None = None,
         name_max_length: int = 128,
+        ids: typing.Mapping[str, int] | None = None,
     ):
         """The upsert statement, so SQL can be asserted without a database."""
-        names = sorted({name.strip() for name in raw_names if name and name.strip()})
+        names = sorted({name.strip()[:name_max_length] for name in raw_names if name and name.strip()})
         statement = pg_insert(self.model).values(
             [
                 {
+                    **({"id": ids[name]} if ids is not None else {}),
                     "discipline": discipline,
                     "kind": kind,
                     "raw_name": name[:name_max_length],
@@ -266,12 +273,59 @@ class CatalogAliasMissRepository(BaseRepository[models.CatalogAliasMiss]):
         ingest_job_id: int | None = None,
         name_max_length: int = 128,
     ) -> None:
-        """Upsert one occurrence-tracked row per cleaned name; reappearing names reopen dismissed misses."""
-        names = sorted({name.strip() for name in raw_names if name and name.strip()})
-        if not names:
-            return
-        await session.execute(
-            self.build_miss_upsert(
-                discipline, kind, names, ingest_job_id=ingest_job_id, name_max_length=name_max_length
+        """Upsert bounded breadcrumb owners with their before/after evidence."""
+        from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
+
+        names = sorted({name.strip()[:name_max_length] for name in raw_names if name and name.strip()})
+        for offset in range(0, len(names), 100):
+            batch = names[offset : offset + 100]
+            ids = {}
+            for name in batch:
+                await session.execute(
+                    sa.text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+                    {
+                        "key": f"catalog.alias_miss:{discipline}:{kind}:{name}",
+                    },
+                )
+                row_id = await session.scalar(
+                    sa.select(self.model.id)
+                    .where(
+                        self.model.discipline == discipline,
+                        self.model.kind == kind,
+                        self.model.raw_name == name,
+                    )
+                    .with_for_update()
+                )
+                ids[name] = (
+                    row_id
+                    if row_id is not None
+                    else await session.scalar(
+                        sa.text(
+                            "SELECT nextval(pg_get_serial_sequence('catalog.alias_miss', 'id'))",
+                        )
+                    )
+                )
+            scopes = [scope for row_id in ids.values() for scope in owner_scopes("alias", (row_id,))]
+            before = await capture_stats_evidence(session, scopes=scopes)
+            await session.execute(
+                self.build_miss_upsert(
+                    discipline,
+                    kind,
+                    batch,
+                    ingest_job_id=ingest_job_id,
+                    name_max_length=name_max_length,
+                    ids=ids,
+                )
             )
-        )
+            await session.flush()
+            after = await capture_stats_evidence(session, scopes=scopes)
+            if before != after:
+                await stage_stats_evidence(
+                    session,
+                    operation="stats.reference_update",
+                    before=before,
+                    after=after,
+                    workspace_id=None,
+                    entity_type="catalog_alias_miss",
+                    entity_id=next(iter(ids.values())),
+                )

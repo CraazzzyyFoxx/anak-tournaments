@@ -15,7 +15,7 @@ from shared.disciplines import DISCIPLINES
 from shared.domain.player_sub_roles import normalize_role, workspace_sub_role_code
 from shared.domain.roles import UnknownRole
 from shared.domain.roster_shape import FLEX_SLOT_CODE
-from shared.repository import CatalogRoleRepository, WorkspaceRepository
+from shared.repository import CatalogRoleRepository, EventTypeRepository, StatDefRepository, WorkspaceRepository
 from shared.schemas.role import RoleRef
 
 __all__ = (
@@ -29,12 +29,16 @@ __all__ = (
 )
 
 _roles = CatalogRoleRepository()
+_stats = StatDefRepository()
+_events = EventTypeRepository()
 
 
 async def project_disciplines(session: AsyncSession) -> None:
-    """Every registered module into ``catalog.*``; the caller commits."""
+    """Every registered module into ``catalog.*`` and ``stats.*``; the caller commits."""
     for spec in DISCIPLINES.values():
         await _roles.project_module(session, spec)
+        await _stats.project_module(session, spec)
+        await _events.project_module(session, spec)
 
 
 def assert_discipline_enabled(workspace: Any, discipline: str) -> None:

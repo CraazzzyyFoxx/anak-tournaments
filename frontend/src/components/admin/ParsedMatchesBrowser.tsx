@@ -31,6 +31,7 @@ const PAGE_SIZE = 25;
 const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
   pending: "neutral",
   processing: "info",
+  awaiting_link: "neutral",
   done: "success",
   failed: "danger"
 };
@@ -38,13 +39,13 @@ const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
 /**
  * Every ingestion status a provenance cell can print.
  *
- * `unresolved` is deliberately absent. It is not a status but the absence of an
- * ingestion record, and the endpoint selects it with `unlinked_only` — a
- * different query parameter, which is why it is a chip of its own below.
+ * A missing raw log is not an ingestion status. The endpoint selects matches
+ * without a linked job through the separate `unlinked_only` filter.
  */
-const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: string }[] = [
+const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: LogProcessingStatus }[] = [
   { value: "pending", label: "pending" },
   { value: "processing", label: "processing" },
+  { value: "awaiting_link", label: "awaiting_link" },
   { value: "done", label: "done" },
   { value: "failed", label: "failed" }
 ];
@@ -129,13 +130,11 @@ export function ParsedMatchesBrowser({
         kind: "multi",
         options: LOG_STATUS_OPTIONS.map((option) => ({
           ...option,
-          label: t(option.label as "pending" | "processing" | "done" | "failed")
+          label: t(option.label)
         }))
       },
-      // Not a status: this selects maps with no ingestion record at all, which
-      // is most of the archive, while `failed` selects the ones whose ingestion
-      // actually broke. Merging them would drown the real failures.
-      { key: "unlinked_only", label: t("provenanceUnresolved"), kind: "toggle" }
+      // No linked raw log, not an ingestion failure.
+      { key: "unlinked_only", label: t("noRawLog"), kind: "toggle" }
     );
     return list;
   }, [tournamentId, tournamentsQuery.data, mapsQuery.data, t]);
@@ -198,9 +197,9 @@ export function ParsedMatchesBrowser({
         cell: ({ row }) => (
           <p
             className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground"
-            title={row.original.log_name}
+            title={row.original.log_name ?? undefined}
           >
-            {row.original.log_name}
+            {row.original.log_name ?? "—"}
           </p>
         )
       },
@@ -215,9 +214,7 @@ export function ParsedMatchesBrowser({
               {row.original.log_record.status}
             </StatusPill>
           ) : (
-            // Never "failed": no record is unknown provenance, and the word
-            // carries the whole meaning so the state survives greyscale.
-            <StatusPill tone="neutral">{t("unresolved")}</StatusPill>
+            <StatusPill tone="neutral">{t("noRawLog")}</StatusPill>
           )
       }
     ],
@@ -263,7 +260,7 @@ export function ParsedMatchesBrowser({
             }
             emptyMessage={
               unlinkedOnly
-                ? t("emptyUnresolved")
+                ? t("emptyNoRawLog")
                 : t("empty")
             }
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
@@ -277,7 +274,7 @@ export function ParsedMatchesBrowser({
                   </span>
                 </p>
                 <p className="truncate font-mono text-xs text-muted-foreground">
-                  {row.original.log_record?.status ?? t("unresolved")}
+                  {row.original.log_record?.status ?? t("noRawLog")}
                 </p>
               </div>
             )}
@@ -286,7 +283,7 @@ export function ParsedMatchesBrowser({
               {
                 workspaceId,
                 tournamentId: scopeTournamentId,
-                chip: unlinkedOnly ? "unresolved" : "all",
+                chip: unlinkedOnly ? "no-raw-log" : "all",
                 page,
                 search,
                 pageSize,

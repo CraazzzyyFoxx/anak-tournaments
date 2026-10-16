@@ -3,8 +3,9 @@
 A single PostgreSQL database shared by every Python service in the monorepo. The ORM models
 (SQLAlchemy) live in `backend/shared/models/<package>/`; the tables themselves are split across
 **Postgres schemas**, which double as domain boundaries. A package name does not always match a
-schema name — `ranks/` writes to `overwatch_rank` and `ingestion/` to `log_processing`;
-`catalog/` writes only to `catalog`, while `custom_game` and `registration` write into `balancer`.
+schema name — `ranks/` writes to `overwatch_rank`; native parsed observations, ingestion jobs,
+baselines and Discord channels live in `stats/`. `catalog/` writes only to `catalog`, while
+`custom_game` and `registration` write into `balancer`.
 
 > **Every entity diagram in this document is generated** from `Base.metadata` by
 > `backend/scripts/export_erd.py`, one diagram per model package. The prose around them is
@@ -12,7 +13,7 @@ schema name — `ranks/` writes to `overwatch_rank` and `ingestion/` to `log_pro
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`discipline01c`** (117 revisions in `backend/migrations/versions/`).
+Alembic head: **`discipline01c`** (118 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -40,13 +41,14 @@ Alembic head: **`discipline01c`** (117 revisions in `backend/migrations/versions
   `balancer.draft_session.current_pick_id` ↔ `balancer.draft_pick.session_id` (declared with
   `use_alter`), `public.division_grid_version.created_from_version_id`,
   `public.division_grid.source_grid_id`, `tournament.player.related_player_id`.
-- Only tables in `Base.metadata` are drawn. `matches.mv_hero_global_stats` is a materialized
+- Only tables in `Base.metadata` are drawn. `stats.mv_entity_global_stats` is a materialized
   view refreshed out of band and does not appear. Append-only journals carry their
   `workspace_id` / `tournament_id` / actor ids as plain `BigInteger` with no FK, so they appear
   unconnected — see [platform](#platform--public-realtime).
   The SQL/DBML snapshots are also ORM-derived, not a complete physical migration inventory:
-  unmapped legacy role columns, the old workspace grid pointer, and migration audit tables retained
-  until P9's `discipline02` are deliberately absent.
+  unmapped legacy role columns, the old workspace grid pointer, migration audit tables, and retained
+  `matches` / `log_processing` cutover sources are deliberately absent. Physical removal is gated,
+  not implied by their removal from ORM metadata.
 
 ## Postgres schemas
 
@@ -62,11 +64,11 @@ Alembic head: **`discipline01c`** (117 revisions in `backend/migrations/versions
 | `catalog` | Disciplines (`overwatch`, `lol`), entities, role dimensions/module roles/workspace sub-roles, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin/ontology projection), parser-service (entity sync/misses); migration seeds the initial projection |
 | `roster` | Workspace team-format templates, tournament-owned copies and frozen mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
-| `matches` | Parsed match logs and derived statistics | parser-service |
+| `stats` | Native parsed matches, observed participants/facts/events, ingestion jobs, baselines and Discord channels | parser-service / analytics-service / app-service / discord-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
 | `achievements` | Achievement rules, evaluations and overrides | parser-service / app-service |
 | `analytics` | Analytics signals and ML model registry | analytics-service |
-| `log_processing` | Match-log upload and parse records | parser-service / discord-service |
+| `matches`, `log_processing` | Retained legacy statistics/ingestion transfer source; no runtime ORM or service access after P4 | — (release-gated removal) |
 | `realtime` | Realtime event journal used for WebSocket replay | gateway (Go) |
 | `subscriptions` | Subscription providers, requirements and entitlements | tournament-service / parser-service |
 | `quota` | Per-principal quota plans, operation costs and overrides | every service, via `shared.quota` |
@@ -599,8 +601,8 @@ from a later sync are not deleted or deactivated.
 Unresolved log names land in `catalog.alias_miss`, the admin alias worklist keyed by
 `(discipline, kind, raw_name)`, with an `occurrences` counter. Attaching an alias or dismissing
 the miss stamps `resolved_at`; seeing the name again clears it. `last_ingest_job_id` is a
-nullable breadcrumb, currently a `log_processing.record` id without a foreign key. P4's
-`stats01` must remap or clear it before adding the `stats.ingest_job` FK.
+nullable FK to `stats.ingest_job`. `stats01` preserves every non-null legacy breadcrumb through
+the copied job id and refuses orphan references; it never clears one to make migration pass.
 
 `discipline01` copies the old catalog into new entity ids above every id `overwatch.*` ever
 issued. It rewrites existing references, including `matches.*` in place and pick/ban ids in
@@ -623,7 +625,7 @@ erDiagram
         int occurrences
         timestamptz first_seen_at
         timestamptz last_seen_at
-        bigint last_ingest_job_id "nullable"
+        bigint last_ingest_job_id FK "nullable"
         timestamptz resolved_at "nullable"
     }
     CATALOG_DISCIPLINE {
@@ -686,6 +688,7 @@ erDiagram
     CATALOG_ROLE ||--o{ CATALOG_ROLE : "dimension_id"
     CATALOG_ROLE_DIMENSION ||--o{ CATALOG_ROLE : "dimension_id"
     PUBLIC_WORKSPACE |o--o{ CATALOG_ROLE : "workspace_id"
+    STATS_INGEST_JOB |o--o{ CATALOG_ALIAS_MISS : "last_ingest_job_id"
 ```
 
 Composite unique keys:
@@ -2488,153 +2491,43 @@ Composite unique keys:
 - `BALANCER_CUSTOM_GAME_PLAYER_ROLE` unique on (`custom_game_player_id`, `priority`)
 <!-- /ERD:auto -->
 
-## matches — `matches`
+## stats — `stats`
 
-Parsed match logs: one row per played map, per-round statistics, the kill feed, assists, and the
-statistical baselines derived from them.
+Native observations and ingestion provenance share this package. `match` belongs to one
+`encounter.game`, workspace and discipline; the game's position is authoritative.
+`match_team.source_position` preserves the log's team order, independently of the encounter
+slots used by public home/away responses. Observed scores are team facts, not substitutions
+for official `encounter.game_team.score` results.
 
-A `match` row is one played map inside an encounter, not the encounter itself; `map_index` is
-its 1-based position in the series and is nullable for logs parsed before that column existed.
-`log_record_id` is the provenance link back to the uploaded file and is nullable, so pruning
-ingestion records never deletes parsed matches.
+`match_player` anchors every statistics player and non-null event endpoint on a real
+`workspace_member`, including removed historical members and event-only participants.
+The imported handle snapshot comes from the correctly scoped tournament roster, then the
+primary game-provider identity; a site display name is not a missing-handle fallback.
 
-`matches.match` still carries `home_team_id` / `away_team_id`, and `matches.statistics`,
-`kill_feed` and `event` a `team_id`, all pointing at `tournament.team`. They are the one place
-home/away survives, until the statistics rework (V4); the parsed log is the only thing that
-writes them. The result of the map is not here: it is the `encounter.game` and its
-`game_team` rows.
+`fact` stores one numeric observation per natural key, with NULL-equal uniqueness.
+Segment zero means the whole match; positive rounds have `segment` rows. Character and
+team facts retain their own grain. `event` preserves nullable endpoints, equal-time
+multiplicity and type-specific payloads, with discipline-local smallint vocabulary ids.
+`stat_baseline` stores discipline/formula/role/rank-bucket/stat aggregates.
+`stats.mv_entity_global_stats` is a separately refreshed materialized view, not an ORM table.
 
-`statistics` is long-format — one row per `(match, round, team, player, hero, stat name)` with a
-single float — which is why it is by far the largest table in the database. `kill_feed` and
-`event` both record two sides of an interaction (killer/victim, actor/related) with team and
-hero on each side, so a query never has to infer who was on the other end.
+`ingest_job` retains exact raw references and SHA-256 hashes of actual stored bytes.
+New uploads are content-keyed; imported external ids preserve distinct historical jobs.
+`awaiting_link` is neither failure nor completion: an administrator must select an eligible
+game before retry. An active claim is identified by its attempt and start timestamp.
+Linked match provenance is retained; deleting an eligible orphan records its native
+owner effects in the same transaction. `discord_channel` keeps its channel/tournament
+uniqueness while moving into this schema.
 
-`stat_baselines` holds the precomputed mean and standard deviation per
-`(formula_version, role, rank_bucket, stat)`; it is what turns a raw stat into a comparable
-score without re-scanning `statistics`. The global per-hero records are served from
-`matches.mv_hero_global_stats`, a materialized view refreshed concurrently out of band — it is
-not a model, so it is not on the diagram.
+Legacy `matches.*`, `log_processing.record`, their enums and the legacy hero MV remain
+physical transfer sources without runtime mappings. Their removal is a separate P9 gate,
+requiring the original receipt, its `handles.jsonl`, complete owner chains and reviewed
+preparation/rehearsal evidence.
 
-<!-- ERD:auto matches -->
+<!-- ERD:auto stats -->
 ```mermaid
 erDiagram
-    MATCHES_EVENT {
-        bigint id PK
-        bigint match_id FK
-        float time
-        int round
-        bigint team_id FK
-        bigint user_id FK
-        bigint hero_id FK "nullable"
-        bigint related_team_id FK "nullable"
-        bigint related_user_id FK "nullable"
-        bigint related_hero_id FK "nullable"
-        matchevent name
-    }
-    MATCHES_KILL_FEED {
-        bigint id PK
-        bigint match_id FK
-        float time
-        int round
-        int fight
-        abilityevent ability "nullable"
-        bigint killer_id FK
-        bigint killer_hero_id FK
-        bigint killer_team_id FK
-        bigint victim_id FK
-        bigint victim_team_id FK
-        bigint victim_hero_id FK
-        float damage
-        boolean is_critical_hit
-        boolean is_environmental
-    }
-    MATCHES_MATCH {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint home_team_id FK
-        bigint away_team_id FK
-        int home_score
-        int away_score
-        float time "nullable"
-        varchar log_name "nullable"
-        varchar code "nullable"
-        bigint log_record_id FK "nullable"
-        matchsource source
-        bigint encounter_id FK
-        bigint map_id FK
-        int map_index "nullable"
-    }
-    MATCHES_STAT_BASELINES {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        varchar(64) formula_version
-        heroclass role
-        smallint rank_bucket
-        logstatsname stat
-        float mean
-        float std
-        jsonb meta "nullable"
-        timestamptz computed_at
-    }
-    MATCHES_STATISTICS {
-        bigint id PK
-        bigint match_id FK
-        int round
-        bigint team_id FK
-        bigint user_id FK
-        bigint hero_id FK "nullable"
-        logstatsname name
-        float value
-    }
-
-    CATALOG_ENTITY |o--o{ MATCHES_EVENT : "hero_id"
-    CATALOG_ENTITY |o--o{ MATCHES_EVENT : "related_hero_id"
-    CATALOG_ENTITY |o--o{ MATCHES_STATISTICS : "hero_id"
-    CATALOG_ENTITY ||--o{ MATCHES_KILL_FEED : "killer_hero_id"
-    CATALOG_ENTITY ||--o{ MATCHES_KILL_FEED : "victim_hero_id"
-    CATALOG_ENTITY ||--o{ MATCHES_MATCH : "map_id"
-    ENCOUNTER_ENCOUNTER ||--o{ MATCHES_MATCH : "encounter_id"
-    LOG_PROCESSING_RECORD |o--o{ MATCHES_MATCH : "log_record_id"
-    MATCHES_MATCH ||--o{ MATCHES_EVENT : "match_id"
-    MATCHES_MATCH ||--o{ MATCHES_KILL_FEED : "match_id"
-    MATCHES_MATCH ||--o{ MATCHES_STATISTICS : "match_id"
-    PLAYERS_USER |o--o{ MATCHES_EVENT : "related_user_id"
-    PLAYERS_USER ||--o{ MATCHES_EVENT : "user_id"
-    PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "killer_id"
-    PLAYERS_USER ||--o{ MATCHES_KILL_FEED : "victim_id"
-    PLAYERS_USER ||--o{ MATCHES_STATISTICS : "user_id"
-    TOURNAMENT_TEAM |o--o{ MATCHES_EVENT : "related_team_id"
-    TOURNAMENT_TEAM ||--o{ MATCHES_EVENT : "team_id"
-    TOURNAMENT_TEAM ||--o{ MATCHES_KILL_FEED : "killer_team_id"
-    TOURNAMENT_TEAM ||--o{ MATCHES_KILL_FEED : "victim_team_id"
-    TOURNAMENT_TEAM ||--o{ MATCHES_MATCH : "away_team_id"
-    TOURNAMENT_TEAM ||--o{ MATCHES_MATCH : "home_team_id"
-    TOURNAMENT_TEAM ||--o{ MATCHES_STATISTICS : "team_id"
-```
-
-Composite unique keys:
-
-- `MATCHES_STAT_BASELINES` unique on (`formula_version`, `role`, `rank_bucket`, `stat`)
-<!-- /ERD:auto -->
-
-## ingestion — `log_processing`
-
-The upload and parse pipeline: the record of each processed log file, and the Discord channels
-logs arrive from.
-
-`record` is the unit of work and the retry state at once: `content_hash` rejects a re-upload of
-the same file, `status` and `source` say where it is and where it came from, and `attempts` is
-the retry budget carried on the row so a reaper can resume work without any external queue
-state. `uploader_id` and `attached_encounter_id` are both nullable — a log can arrive from a
-Discord channel with no uploader, and before anyone has bound it to an encounter.
-`discord_channel` binds one channel to one tournament (UNIQUE on both sides).
-
-<!-- ERD:auto ingestion -->
-```mermaid
-erDiagram
-    LOG_PROCESSING_DISCORD_CHANNEL {
+    STATS_DISCORD_CHANNEL {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2643,28 +2536,170 @@ erDiagram
         varchar(100) channel_name "nullable"
         boolean is_active
     }
-    LOG_PROCESSING_RECORD {
+    STATS_EVENT {
+        bigint id PK
+        bigint match_id FK
+        smallint segment
+        float8 t
+        smallint type_id FK
+        bigint actor_member_id FK "nullable"
+        bigint actor_team_id FK "nullable"
+        bigint target_member_id FK "nullable"
+        bigint target_team_id FK "nullable"
+        bigint entity_id FK "nullable"
+        bigint related_entity_id FK "nullable"
+        varchar(16) entity_kind FK
+        jsonb data "nullable"
+    }
+    STATS_EVENT_TYPE {
+        smallint id PK
+        varchar(32) discipline FK
+        varchar(64) code
+        varchar(128) name
+        boolean active
+    }
+    STATS_FACT {
+        bigint match_id FK
+        smallint segment
+        bigint encounter_team_id FK
+        bigint workspace_member_id FK "nullable"
+        bigint entity_id FK "nullable"
+        varchar(16) entity_kind FK
+        smallint stat_id FK
+        float8 value
+    }
+    STATS_INGEST_JOB {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
-        bigint tournament_id FK
-        varchar(500) filename
-        log_processing_status status
-        log_processing_source source
-        bigint uploader_id FK "nullable"
-        bigint attached_encounter_id FK "nullable"
+        bigint workspace_id FK
+        varchar(32) discipline FK
+        varchar(32) source_kind
+        varchar(128) external_id "nullable"
+        char(64) content_hash
+        varchar(500) filename "nullable"
+        varchar(512) raw_ref
+        varchar(512) document_ref "nullable"
+        ck_ingest_job_status status
+        int attempts
         text error_message "nullable"
+        bigint uploader_user_id FK "nullable"
+        bigint api_key_id FK "nullable"
+        bigint hint_tournament_id FK "nullable"
+        bigint hint_encounter_id FK "nullable"
+        bigint hint_encounter_game_id FK "nullable"
         timestamptz started_at "nullable"
         timestamptz finished_at "nullable"
-        varchar(64) content_hash "nullable"
-        int attempts
+    }
+    STATS_MATCH {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(32) discipline FK
+        bigint encounter_game_id FK,UK
+        bigint ingest_job_id FK "nullable"
+        int revision
+        timestamptz played_at "nullable"
+        float8 duration_s "nullable"
+        bigint map_entity_id FK
+        varchar(16) map_kind FK
+    }
+    STATS_MATCH_PLAYER {
+        bigint match_id PK,FK
+        bigint encounter_team_id FK
+        bigint workspace_member_id PK,FK
+        varchar(255) handle_snapshot
+        bigint observed_role_id FK "nullable"
+    }
+    STATS_MATCH_TEAM {
+        bigint match_id PK,FK
+        bigint encounter_game_id FK
+        bigint encounter_team_id PK,FK
+        int source_position
+    }
+    STATS_SEGMENT {
+        bigint match_id PK,FK
+        smallint segment PK
+        varchar(16) kind
+        jsonb attrs
+    }
+    STATS_STAT_BASELINE {
+        bigint id PK
+        varchar(64) formula_version
+        bigint role_id FK
+        smallint rank_bucket
+        smallint stat_id FK
+        float8 mean
+        float8 std
+        jsonb meta "nullable"
+        timestamptz computed_at
+    }
+    STATS_STAT_DEF {
+        smallint id PK
+        varchar(32) discipline FK
+        varchar(64) code
+        varchar(128) name
+        varchar(16) value_format
+        varchar(8) aggregation
+        varchar(32) stat_group "nullable"
+        boolean active
+        int sort_order
     }
 
-    ENCOUNTER_ENCOUNTER |o--o{ LOG_PROCESSING_RECORD : "attached_encounter_id"
-    PLAYERS_USER |o--o{ LOG_PROCESSING_RECORD : "uploader_id"
-    TOURNAMENT_TOURNAMENT ||--o{ LOG_PROCESSING_RECORD : "tournament_id"
-    TOURNAMENT_TOURNAMENT ||--o| LOG_PROCESSING_DISCORD_CHANNEL : "tournament_id"
+    AUTH_API_KEY |o--o{ STATS_INGEST_JOB : "api_key_id"
+    CATALOG_DISCIPLINE ||--o{ STATS_EVENT_TYPE : "discipline"
+    CATALOG_DISCIPLINE ||--o{ STATS_INGEST_JOB : "discipline"
+    CATALOG_DISCIPLINE ||--o{ STATS_STAT_DEF : "discipline"
+    CATALOG_ENTITY |o--o{ STATS_EVENT : "entity_id"
+    CATALOG_ENTITY |o--o{ STATS_EVENT : "related_entity_id"
+    CATALOG_ENTITY |o--o{ STATS_FACT : "entity_id"
+    CATALOG_ENTITY ||--o{ STATS_EVENT : "entity_kind"
+    CATALOG_ENTITY ||--o{ STATS_FACT : "entity_kind"
+    CATALOG_ENTITY ||--o{ STATS_MATCH : "discipline"
+    CATALOG_ENTITY ||--o{ STATS_MATCH : "map_entity_id"
+    CATALOG_ENTITY ||--o{ STATS_MATCH : "map_kind"
+    CATALOG_ROLE |o--o{ STATS_MATCH_PLAYER : "observed_role_id"
+    CATALOG_ROLE ||--o{ STATS_STAT_BASELINE : "role_id"
+    ENCOUNTER_ENCOUNTER |o--o{ STATS_INGEST_JOB : "hint_encounter_id"
+    ENCOUNTER_GAME |o--o{ STATS_INGEST_JOB : "hint_encounter_game_id"
+    ENCOUNTER_GAME ||--o| STATS_MATCH : "encounter_game_id"
+    ENCOUNTER_GAME_TEAM ||--o{ STATS_MATCH_TEAM : "encounter_game_id"
+    ENCOUNTER_GAME_TEAM ||--o| STATS_MATCH_TEAM : "encounter_team_id"
+    PLAYERS_USER |o--o{ STATS_INGEST_JOB : "uploader_user_id"
+    PUBLIC_WORKSPACE ||--o{ STATS_INGEST_JOB : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ STATS_MATCH : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o| STATS_MATCH_PLAYER : "workspace_member_id"
+    STATS_EVENT_TYPE ||--o{ STATS_EVENT : "type_id"
+    STATS_INGEST_JOB |o--o{ STATS_MATCH : "ingest_job_id"
+    STATS_MATCH ||--o{ STATS_EVENT : "match_id"
+    STATS_MATCH ||--o| STATS_MATCH_TEAM : "match_id"
+    STATS_MATCH ||--o| STATS_SEGMENT : "match_id"
+    STATS_MATCH_PLAYER |o--o{ STATS_EVENT : "actor_member_id"
+    STATS_MATCH_PLAYER |o--o{ STATS_EVENT : "target_member_id"
+    STATS_MATCH_PLAYER |o--o{ STATS_FACT : "workspace_member_id"
+    STATS_MATCH_PLAYER ||--o{ STATS_EVENT : "match_id"
+    STATS_MATCH_PLAYER ||--o{ STATS_FACT : "match_id"
+    STATS_MATCH_TEAM |o--o{ STATS_EVENT : "actor_team_id"
+    STATS_MATCH_TEAM |o--o{ STATS_EVENT : "target_team_id"
+    STATS_MATCH_TEAM ||--o{ STATS_EVENT : "match_id"
+    STATS_MATCH_TEAM ||--o{ STATS_FACT : "encounter_team_id"
+    STATS_MATCH_TEAM ||--o{ STATS_FACT : "match_id"
+    STATS_MATCH_TEAM ||--o{ STATS_MATCH_PLAYER : "encounter_team_id"
+    STATS_MATCH_TEAM ||--o| STATS_MATCH_PLAYER : "match_id"
+    STATS_STAT_DEF ||--o{ STATS_FACT : "stat_id"
+    STATS_STAT_DEF ||--o{ STATS_STAT_BASELINE : "stat_id"
+    TOURNAMENT_TOURNAMENT |o--o{ STATS_INGEST_JOB : "hint_tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| STATS_DISCORD_CHANNEL : "tournament_id"
 ```
+
+Composite unique keys:
+
+- `STATS_EVENT_TYPE` unique on (`discipline`, `code`)
+- `STATS_FACT` unique on (`match_id`, `segment`, `encounter_team_id`, `workspace_member_id`, `entity_id`, `stat_id`)
+- `STATS_MATCH_TEAM` unique on (`match_id`, `source_position`)
+- `STATS_STAT_BASELINE` unique on (`formula_version`, `role_id`, `rank_bucket`, `stat_id`)
+- `STATS_STAT_DEF` unique on (`discipline`, `code`)
 <!-- /ERD:auto -->
 
 ## achievements — `achievements`
@@ -2762,12 +2797,12 @@ erDiagram
     CATALOG_ENTITY ||--o{ ACHIEVEMENTS_RULE : "discipline"
     CATALOG_ENTITY ||--o{ ACHIEVEMENTS_RULE : "entity_kind"
     ENCOUNTER_ENCOUNTER |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "encounter_id"
-    MATCHES_MATCH |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "match_id"
-    MATCHES_MATCH |o--o{ ACHIEVEMENTS_OVERRIDE : "match_id"
     PUBLIC_WORKSPACE ||--o{ ACHIEVEMENTS_EVALUATION_RUN : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ ACHIEVEMENTS_RULE : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ ACHIEVEMENTS_EVALUATION_RESULT : "workspace_member_id"
     PUBLIC_WORKSPACE_MEMBER ||--o{ ACHIEVEMENTS_OVERRIDE : "workspace_member_id"
+    STATS_MATCH |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "match_id"
+    STATS_MATCH |o--o{ ACHIEVEMENTS_OVERRIDE : "match_id"
     TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_EVALUATION_RESULT : "tournament_id"
     TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_EVALUATION_RUN : "tournament_id"
     TOURNAMENT_TOURNAMENT |o--o{ ACHIEVEMENTS_OVERRIDE : "tournament_id"

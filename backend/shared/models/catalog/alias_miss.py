@@ -12,7 +12,7 @@ the same name reappears, so "dismissed but it keeps coming back" stays visible.
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from shared.core import db
@@ -25,6 +25,7 @@ class CatalogAliasMiss(db.TimeStampIntegerMixin):
     __table_args__ = (
         CheckConstraint("kind IN ('character', 'map', 'mode')", name="ck_alias_miss_kind"),
         UniqueConstraint("discipline", "kind", "raw_name", name="uq_alias_miss"),
+        Index("ix_alias_miss_ingest_job", "last_ingest_job_id"),
         {"schema": "catalog"},
     )
 
@@ -40,9 +41,17 @@ class CatalogAliasMiss(db.TimeStampIntegerMixin):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=db.func.now()
     )
-    # Breadcrumb for triage, not a dependency. Until P4 it holds the ``log_processing.record`` id; ``stats01`` maps it
-    # onto ``stats.ingest_job`` and adds the FK (spec §14.2).
-    last_ingest_job_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    last_ingest_job_id: Mapped[int | None] = mapped_column(
+        BigInteger(),
+        ForeignKey(
+            "stats.ingest_job.id",
+            name="fk_alias_miss_ingest_job",
+            ondelete="SET NULL",
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        nullable=True,
+    )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:

@@ -325,16 +325,22 @@ class TournamentService:
             .where(models.Encounter.status == enums.EncounterStatus.COMPLETED, *tournament_scope)
         )
 
-        # Maps and played time come off the same join, so they come off the same
-        # statement. ``time`` is NULL on the legacy logless rows: coalesce, so a
-        # single one of them cannot NULL the whole sum.
+        # Generic played volume includes every discipline owned by the tournament.
         maps_and_time_query = (
             sa.select(
-                sa.func.count(models.Match.id),
-                sa.func.coalesce(sa.func.sum(models.Match.time), 0.0),
+                sa.func.count(models.StatsMatch.id),
+                sa.func.coalesce(sa.func.sum(models.StatsMatch.duration_s), 0.0),
             )
-            .select_from(models.Match)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            .select_from(models.StatsMatch)
+            .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
+            .join(
+                models.Encounter,
+                sa.and_(
+                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.workspace_id == models.StatsMatch.workspace_id,
+                    models.Encounter.discipline == models.StatsMatch.discipline,
+                ),
+            )
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
             .where(*tournament_scope)
         )

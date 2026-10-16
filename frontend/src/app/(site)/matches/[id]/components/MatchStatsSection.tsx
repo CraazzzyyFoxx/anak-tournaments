@@ -167,11 +167,17 @@ const MatchStatsSection = ({ match, tournamentGrid }: MatchStatsSectionProps) =>
           </TabsContent>
 
           <TabsContent value="comparison" className="flex flex-col gap-5">
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              <MatchTeamComparison home={home} away={away} round={activeRound} />
-              <MatchContributionChart home={home} away={away} round={activeRound} />
-            </div>
-            <MatchLeaders home={home} away={away} round={activeRound} />
+            {home != null && away != null ? (
+              <>
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+                  <MatchTeamComparison home={home} away={away} round={activeRound} />
+                  <MatchContributionChart home={home} away={away} round={activeRound} />
+                </div>
+                <MatchLeaders home={home} away={away} round={activeRound} />
+              </>
+            ) : (
+              <p className="text-center text-muted-foreground">—</p>
+            )}
           </TabsContent>
 
           <TabsContent value="timeline">

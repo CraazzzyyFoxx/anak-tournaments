@@ -11,7 +11,7 @@ from shared.rbac.workspace_lookup import (
     get_encounter_workspace_id as _get_encounter_workspace_id,
 )
 from shared.rbac.workspace_lookup import (
-    get_log_record_workspace_id as _get_log_record_workspace_id,
+    get_ingest_job_workspace_id as _get_ingest_job_workspace_id,
 )
 from shared.rbac.workspace_lookup import (
     get_tournament_workspace_id as _get_tournament_workspace_id,
@@ -27,6 +27,6 @@ __all__ = (
     "_require_workspace_permission",
     "_get_tournament_workspace_id",
     "_get_encounter_workspace_id",
-    "_get_log_record_workspace_id",
+    "_get_ingest_job_workspace_id",
     "require_tournament_id_permission",
 )

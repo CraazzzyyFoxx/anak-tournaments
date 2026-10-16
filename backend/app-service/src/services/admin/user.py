@@ -26,6 +26,7 @@ from shared.services.social_identity import (
 from shared.services.social_identity import (
     social_identity_service as socials,
 )
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import models, schemas
 
 __all__ = ("UserAdminService", "users")
@@ -185,7 +186,16 @@ class UserAdminService:
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+        captures = await capture_owner_delete(session, user_id=user_id)
         await self.players.delete(session, user)
+        await stage_owner_delete(
+            session,
+            captures,
+            workspace_id=None,
+            entity_type="user",
+            entity_id=user_id,
+            source="admin",
+        )
         await session.commit()
 
     # ─── Social identities ───────────────────────────────────────────────────

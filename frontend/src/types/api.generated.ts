@@ -5917,7 +5917,7 @@ export interface paths {
         head?: never;
         /**
          * Update match
-         * @description Permission: workspace `match.result` on the workspace resolved from the match. Edits one played map of an encounter (teams, score, map, lobby code, time, log name) and answers the match's own columns.
+         * @description Permission: workspace `match.result` on the workspace resolved from the match. Edits observed home/away scores in historical game-slot order and nullable duration. The map must equal the bound game's existing map (409 otherwise). Team IDs, source, code, log_name and other unsupported fields are rejected with 422. Official game scores remain unchanged; score and duration changes carry separate native evidence records in the same transaction as the existing recalculation outbox.
          *
          *     RPC subject: `rpc.tournament.encounter_update_match`
          */
@@ -6489,7 +6489,7 @@ export interface paths {
         };
         /**
          * List parsed matches
-         * @description Permission: workspace `match.read` on the workspace named by `workspace_id`. Every played map the log parser produced, across the workspace. One row is one map, not one encounter. `log_record` is the ingestion record the map was parsed from and is null when provenance is unresolved — the normal state for matches that predate the ingestion table, not an error. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over log name, match code and team names. An empty `log_status` filters nothing, so unlinked matches stay visible.
+         * @description Permission: workspace `match.read` on the workspace named by `workspace_id`. Every native Overwatch observed duel map across the workspace, not one encounter. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.
          *
          *     RPC subject: `rpc.tournament.admin_matches_list`
          */
@@ -12565,11 +12565,6 @@ export interface components {
              * @default null
              */
             away_team_id: number | null;
-            /**
-             * Code
-             * @default null
-             */
-            code: string | null;
             /** Encounter Id */
             encounter_id: number;
             /** Heroes */
@@ -12597,11 +12592,8 @@ export interface components {
             map: components["schemas"]["app.MapRead"] | null;
             /** Map Id */
             map_id: number;
-            /**
-             * Map Index
-             * @default null
-             */
-            map_index: number | null;
+            /** Map Index */
+            map_index: number;
             /**
              * Overperformance Badge
              * @default false
@@ -17223,27 +17215,27 @@ export interface components {
             /** Ability */
             ability: string | null;
             /** Damage */
-            damage: number;
+            damage: number | null;
             /** Fight */
-            fight: number;
+            fight: number | null;
             /** Is Critical Hit */
-            is_critical_hit: boolean;
+            is_critical_hit: boolean | null;
             /** Is Environmental */
-            is_environmental: boolean;
-            killer_hero: components["schemas"]["tournament.HeroRead"];
+            is_environmental: boolean | null;
+            killer_hero: components["schemas"]["tournament.HeroRead"] | null;
             /** Killer Team Id */
-            killer_team_id: number;
+            killer_team_id: number | null;
             /** Killer User Id */
-            killer_user_id: number;
+            killer_user_id: number | null;
             /** Round */
             round: number;
             /** Time */
             time: number;
-            victim_hero: components["schemas"]["tournament.HeroRead"];
+            victim_hero: components["schemas"]["tournament.HeroRead"] | null;
             /** Victim Team Id */
-            victim_team_id: number;
+            victim_team_id: number | null;
             /** Victim User Id */
-            victim_user_id: number;
+            victim_user_id: number | null;
         };
         /**
          * LogStatsName
@@ -17296,11 +17288,6 @@ export interface components {
              * @default null
              */
             away_team_id: number | null;
-            /**
-             * Code
-             * @default null
-             */
-            code: string | null;
             encounter: components["schemas"]["tournament.EncounterRead"] | null;
             /** Encounter Id */
             encounter_id: number;
@@ -17317,34 +17304,24 @@ export interface components {
             map: components["schemas"]["tournament.MapRead"] | null;
             /** Map Id */
             map_id: number;
-            /**
-             * Map Index
-             * @default null
-             */
-            map_index: number | null;
+            /** Map Index */
+            map_index: number;
             score: components["schemas"]["tournament.Score"];
-            /** Source */
-            source: string;
             /** Time */
             time: number | null;
         };
         /** MatchReadWithStats */
         "tournament.MatchReadWithStats": {
-            away_team: components["schemas"]["tournament.TeamWithMatchStats"];
+            away_team: components["schemas"]["tournament.TeamWithMatchStats"] | null;
             /**
              * Away Team Id
              * @default null
              */
             away_team_id: number | null;
-            /**
-             * Code
-             * @default null
-             */
-            code: string | null;
             encounter: components["schemas"]["tournament.EncounterRead"] | null;
             /** Encounter Id */
             encounter_id: number;
-            home_team: components["schemas"]["tournament.TeamWithMatchStats"];
+            home_team: components["schemas"]["tournament.TeamWithMatchStats"] | null;
             /**
              * Home Team Id
              * @default null
@@ -17357,16 +17334,11 @@ export interface components {
             map: components["schemas"]["tournament.MapRead"] | null;
             /** Map Id */
             map_id: number;
-            /**
-             * Map Index
-             * @default null
-             */
-            map_index: number | null;
+            /** Map Index */
+            map_index: number;
             /** Rounds */
             rounds: number;
             score: components["schemas"]["tournament.Score"];
-            /** Source */
-            source: string;
             /** Time */
             time: number | null;
         };
@@ -17385,11 +17357,11 @@ export interface components {
             /** Round */
             round: number;
             /** Team Id */
-            team_id: number;
+            team_id: number | null;
             /** Time */
             time: number;
             /** User Id */
-            user_id: number;
+            user_id: number | null;
         };
         /** OverallStatistics */
         "tournament.OverallStatistics": {
@@ -20342,6 +20314,10 @@ export interface components {
              * @default false
              */
             has_auth_conflict: boolean;
+            /** Stats Member History Conflicts */
+            stats_member_history_conflicts?: {
+                [key: string]: number;
+            }[];
             /**
              * Summary
              * @default null
@@ -22308,6 +22284,8 @@ export interface components {
         };
         /** LogRecordRead */
         "parser.LogRecordRead": {
+            /** Attached Encounter Game Id */
+            attached_encounter_game_id: number | null;
             /** Attached Encounter Id */
             attached_encounter_id: number | null;
             /** Attached Encounter Name */
@@ -22337,7 +22315,7 @@ export interface components {
             /** Status */
             status: string;
             /** Tournament Id */
-            tournament_id: number;
+            tournament_id: number | null;
             /** Tournament Name */
             tournament_name: string | null;
             /** Uploader Name */
@@ -22345,6 +22323,11 @@ export interface components {
         };
         /** LogRetryRequest */
         "parser.LogRetryRequest": {
+            /**
+             * Encounter Game Id
+             * @default null
+             */
+            encounter_game_id: number | null;
             /**
              * Encounter Id
              * @default null
@@ -22361,6 +22344,8 @@ export interface components {
         "parser.LogStatsRead": {
             /** Avg Duration Seconds */
             avg_duration_seconds: number | null;
+            /** Awaiting Link */
+            awaiting_link: number;
             /** Done */
             done: number;
             /** Failed */
@@ -22969,18 +22954,12 @@ export interface components {
         };
         /**
          * AdminMatchDetail
-         * @description A single match with the per-match aggregates the list omits.
-         *
-         *     NFR 3: ``matches.statistics`` / ``kill_feed`` / ``assists`` are the hot,
-         *     high-volume tables. Counting them per row would put three aggregate scans
-         *     behind every page of the list, so they live here — one row at a time.
+         * @description Detail-only player fact and event volumes; no team-score facts counted.
          */
         "tournament.AdminMatchDetail": {
             /** Away Score */
             away_score: number;
-            away_team: components["schemas"]["tournament.EncounterTeamRef"];
-            /** Code */
-            code: string | null;
+            away_team: components["schemas"]["tournament.EncounterTeamRef"] | null;
             /**
              * Created At
              * Format: date-time
@@ -22994,13 +22973,13 @@ export interface components {
             event_count: number;
             /** Home Score */
             home_score: number;
-            home_team: components["schemas"]["tournament.EncounterTeamRef"];
+            home_team: components["schemas"]["tournament.EncounterTeamRef"] | null;
             /** Id */
             id: number;
             /** Kill Feed Count */
             kill_feed_count: number;
             /** Log Name */
-            log_name: string;
+            log_name: string | null;
             log_record: components["schemas"]["tournament.LogRecordRef"] | null;
             /** Map Id */
             map_id: number;
@@ -23011,7 +22990,7 @@ export interface components {
             /** Statistics Count */
             statistics_count: number;
             /** Time */
-            time: number;
+            time: number | null;
             /** Tournament Id */
             tournament_id: number;
             /** Tournament Name */
@@ -23019,18 +22998,12 @@ export interface components {
         };
         /**
          * AdminMatchRow
-         * @description One parsed match — a single played map — as the log parser produced it.
-         *
-         *     Only ``log_record`` is optional. Everything else hangs off a NOT NULL foreign
-         *     key, so a row that cannot name its encounter, tournament, map or either team
-         *     is a broken invariant and should surface as one rather than as empty cells.
+         * @description One observed map. Deleted source teams and absent raw provenance stay null.
          */
         "tournament.AdminMatchRow": {
             /** Away Score */
             away_score: number;
-            away_team: components["schemas"]["tournament.EncounterTeamRef"];
-            /** Code */
-            code: string | null;
+            away_team: components["schemas"]["tournament.EncounterTeamRef"] | null;
             /**
              * Created At
              * Format: date-time
@@ -23042,18 +23015,18 @@ export interface components {
             encounter_name: string;
             /** Home Score */
             home_score: number;
-            home_team: components["schemas"]["tournament.EncounterTeamRef"];
+            home_team: components["schemas"]["tournament.EncounterTeamRef"] | null;
             /** Id */
             id: number;
             /** Log Name */
-            log_name: string;
+            log_name: string | null;
             log_record: components["schemas"]["tournament.LogRecordRef"] | null;
             /** Map Id */
             map_id: number;
             /** Map Name */
             map_name: string;
             /** Time */
-            time: number;
+            time: number | null;
             /** Tournament Id */
             tournament_id: number;
             /** Tournament Name */
@@ -25425,6 +25398,11 @@ export interface components {
             role: components["schemas"]["tournament.RoleRef"];
         };
         /**
+         * IngestJobStatus
+         * @enum {string}
+         */
+        "tournament.IngestJobStatus": TournamentIngestJobStatus;
+        /**
          * LastResolutionRead
          * @description The newest audit row for the encounter, flattened for the list row.
          */
@@ -25440,16 +25418,6 @@ export interface components {
              */
             created_at: string;
         };
-        /**
-         * LogProcessingSource
-         * @enum {string}
-         */
-        "tournament.LogProcessingSource": TournamentLogProcessingSource;
-        /**
-         * LogProcessingStatus
-         * @enum {string}
-         */
-        "tournament.LogProcessingStatus": TournamentLogProcessingStatus;
         /**
          * LogRecordRef
          * @description The ingestion record a match was parsed from.
@@ -25467,15 +25435,16 @@ export interface components {
             /** Error Message */
             error_message: string | null;
             /** Filename */
-            filename: string;
+            filename: string | null;
             /** Finished At */
             finished_at: string | null;
             /** Id */
             id: number;
-            source: components["schemas"]["tournament.LogProcessingSource"] | null;
+            /** Source */
+            source: string | null;
             /** Started At */
             started_at: string | null;
-            status: components["schemas"]["tournament.LogProcessingStatus"];
+            status: components["schemas"]["tournament.IngestJobStatus"];
             /** Uploader Id */
             uploader_id: number | null;
         };
@@ -25604,10 +25573,7 @@ export interface components {
         };
         /**
          * MatchUpdate
-         * @description Partial update for a single match (map) within an encounter.
-         *
-         *     ``matches.match`` is what a parsed LOG observed, and a V4 log names two
-         *     sides; that is why this one shape still does.
+         * @description Edit observations without rebinding their game, participants or provenance.
          */
         "tournament.MatchUpdate": {
             /**
@@ -25616,25 +25582,10 @@ export interface components {
              */
             away_score: number | null;
             /**
-             * Away Team Id
-             * @default null
-             */
-            away_team_id: number | null;
-            /**
-             * Code
-             * @default null
-             */
-            code: string | null;
-            /**
              * Home Score
              * @default null
              */
             home_score: number | null;
-            /**
-             * Home Team Id
-             * @default null
-             */
-            home_team_id: number | null;
             /**
              * Map Id
              * @default null
@@ -51410,7 +51361,7 @@ export interface operations {
                 tournament_id?: number | null;
                 encounter_id?: number | null;
                 map_id?: number | null;
-                log_status?: components["schemas"]["tournament.LogProcessingStatus"][];
+                log_status?: components["schemas"]["tournament.IngestJobStatus"][];
                 unlinked_only?: boolean;
             };
             header?: never;
@@ -73905,14 +73856,10 @@ export enum TournamentFormatDimensionWireMode {
     preference = "preference",
     enforced = "enforced"
 }
-export enum TournamentLogProcessingSource {
-    upload = "upload",
-    discord = "discord",
-    manual = "manual"
-}
-export enum TournamentLogProcessingStatus {
+export enum TournamentIngestJobStatus {
     pending = "pending",
     processing = "processing",
+    awaiting_link = "awaiting_link",
     done = "done",
     failed = "failed"
 }

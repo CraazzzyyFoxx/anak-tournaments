@@ -135,7 +135,7 @@ async def enqueue_encounter_completed(
     This event has exactly one consumer: parser-service republishes it as an
     ``AchievementEvaluateEvent``. For a scrim that evaluation is verifiably
     empty — every achievement condition reaches its users through an inner join
-    on ``Player`` or through ``MatchStatistics``, and a scrim room has neither
+    on ``Player`` or through native player facts, and a scrim room has neither
     (docs/plans/2026-08-12-scrim-rooms.md §4.1, §5). It is not free though: it
     costs an outbox row, a queue round trip, an ``EvaluationRun`` audit row and
     one full query per encounter-dependent rule, per scrim result. Not

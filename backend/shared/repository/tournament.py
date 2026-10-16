@@ -579,37 +579,6 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         )
 
 
-class MatchRepository(BaseRepository[models.Match]):
-    def __init__(self) -> None:
-        super().__init__(models.Match)
-
-    async def list_by_encounter(self, session: AsyncSession, encounter_id: int) -> Sequence[models.Match]:
-        result = await session.execute(
-            sa.select(models.Match).where(models.Match.encounter_id == encounter_id).order_by(models.Match.id.asc())
-        )
-        return result.scalars().all()
-
-    async def list_for_encounter_map(
-        self,
-        session: AsyncSession,
-        *,
-        encounter_id: int,
-        map_id: int,
-    ) -> Sequence[models.Match]:
-        """Every match row for one (encounter, map) pair.
-
-        Returns all of them, unordered by design — the caller picks among duplicates
-        itself, and a `LIMIT 1` here would hide the duplicate case it exists to handle.
-        """
-        result = await session.execute(
-            self.select().where(
-                models.Match.encounter_id == encounter_id,
-                models.Match.map_id == map_id,
-            )
-        )
-        return result.scalars().all()
-
-
 class StandingRepository(BaseRepository[models.Standing]):
     def __init__(self) -> None:
         super().__init__(models.Standing)

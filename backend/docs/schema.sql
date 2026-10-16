@@ -1,6 +1,9 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
--- Tables: 160
+-- Runtime mappings only, not a complete physical-database dump.
+-- Retained/unused pending P9: matches.{match,statistics,event,kill_feed,stat_baselines,mv_hero_global_stats},
+-- log_processing.record and legacy overwatch/casual storage. stats01 does not drop them.
+-- Tables: 164
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -9,13 +12,12 @@ CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS balancer;
 CREATE SCHEMA IF NOT EXISTS catalog;
 CREATE SCHEMA IF NOT EXISTS encounter;
-CREATE SCHEMA IF NOT EXISTS log_processing;
-CREATE SCHEMA IF NOT EXISTS matches;
 CREATE SCHEMA IF NOT EXISTS overwatch_rank;
 CREATE SCHEMA IF NOT EXISTS players;
 CREATE SCHEMA IF NOT EXISTS quota;
 CREATE SCHEMA IF NOT EXISTS realtime;
 CREATE SCHEMA IF NOT EXISTS roster;
+CREATE SCHEMA IF NOT EXISTS stats;
 CREATE SCHEMA IF NOT EXISTS subscriptions;
 CREATE SCHEMA IF NOT EXISTS tournament;
 
@@ -29,13 +31,7 @@ CREATE TYPE encounter.pickbankind AS ENUM ('map', 'hero');
 CREATE TYPE encounter.pickbanseedsource AS ENUM ('bracket_slot', 'standings', 'fallback_first_slot', 'admin');
 CREATE TYPE encounter.pickbansessionstatus AS ENUM ('active', 'completed', 'cancelled');
 CREATE TYPE encounter.encounterresultauditaction AS ENUM ('confirm', 'reopen', 'auto_confirm', 'auto_dispute', 'auto_pending', 'import', 'cascade_reset', 'game_confirm', 'game_correct', 'game_cancel');
-CREATE TYPE log_processing_status AS ENUM ('pending', 'processing', 'done', 'failed');
-CREATE TYPE log_processing_source AS ENUM ('upload', 'discord', 'manual');
-CREATE TYPE matchevent AS ENUM ('OffensiveAssist', 'DefensiveAssist', 'UltimateCharged', 'UltimateStart', 'UltimateEnd', 'HeroSwap', 'MercyRez', 'EchoDuplicateStart', 'EchoDuplicateEnd');
-CREATE TYPE abilityevent AS ENUM ('PrimaryFire', 'SecondaryFire', 'Ability1', 'Ability2', 'Ultimate', 'Melee', 'Crouch');
-CREATE TYPE matches.matchsource AS ENUM ('log_parser', 'captain_report');
-CREATE TYPE heroclass AS ENUM ('tank', 'damage', 'support', 'flex');
-CREATE TYPE logstatsname AS ENUM ('Eliminations', 'FinalBlows', 'Deaths', 'AllDamageDealt', 'BarrierDamageDealt', 'HeroDamageDealt', 'HealingDealt', 'HealingReceived', 'SelfHealing', 'DamageTaken', 'DamageBlocked', 'DefensiveAssists', 'OffensiveAssists', 'UltimatesEarned', 'UltimatesUsed', 'MultikillBest', 'Multikills', 'SoloKills', 'ObjectiveKills', 'EnvironmentalKills', 'EnvironmentalDeaths', 'CriticalHits', 'CriticalHitAccuracy', 'ScopedAccuracy', 'ScopedCriticalHitAccuracy', 'ScopedCriticalHitKills', 'ShotsFired', 'ShotsHit', 'ShotsMissed', 'ScopedShotsFired', 'ScopedShotsHit', 'WeaponAccuracy', 'HeroTimePlayed', 'FirstPicks', 'FirstDeaths', 'UltimateKills', 'SupportKills', 'Performance', 'PerformancePoints', 'KD', 'KDA', 'DamageDelta', 'FBE', 'DamageFB', 'Assists', 'ImpactPoints', 'ImpactRank', 'OverperformanceScore');
+CREATE TYPE ck_ingest_job_status AS ENUM ('pending', 'processing', 'awaiting_link', 'done', 'failed');
 CREATE TYPE tournament.pickbanmode AS ENUM ('pool', 'slots');
 CREATE TYPE tournament.pickbanfirstpickrule AS ENUM ('higher_seed');
 CREATE TYPE tournament.pickbanrotation AS ENUM ('fixed', 'alternate', 'result_winner_first', 'result_loser_first', 'result_loser_choice');
@@ -63,7 +59,7 @@ CREATE TABLE achievements.evaluation_result (
 	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE CASCADE,
 	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
 	FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE,
-	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
+	FOREIGN KEY(match_id) REFERENCES stats.match (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(run_id) REFERENCES achievements.evaluation_run (id) ON DELETE SET NULL
 );
 
@@ -117,7 +113,7 @@ CREATE TABLE achievements.override (
 	FOREIGN KEY(achievement_rule_id) REFERENCES achievements.rule (id) ON DELETE CASCADE,
 	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE CASCADE,
 	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
-	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
+	FOREIGN KEY(match_id) REFERENCES stats.match (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
 	FOREIGN KEY(granted_by) REFERENCES auth."user" (id) ON DELETE SET NULL
 );
 
@@ -1425,8 +1421,11 @@ CREATE TABLE catalog.alias_miss (
 	PRIMARY KEY (id),
 	CONSTRAINT ck_alias_miss_kind CHECK (kind IN ('character', 'map', 'mode')),
 	CONSTRAINT uq_alias_miss UNIQUE (discipline, kind, raw_name),
-	CONSTRAINT fk_alias_miss_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
+	CONSTRAINT fk_alias_miss_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
+	CONSTRAINT fk_alias_miss_ingest_job FOREIGN KEY(last_ingest_job_id) REFERENCES stats.ingest_job (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
 );
+
+CREATE INDEX ix_alias_miss_ingest_job ON catalog.alias_miss (last_ingest_job_id);
 
 CREATE TABLE catalog.discipline (
 	code VARCHAR(32) NOT NULL,
@@ -1905,210 +1904,6 @@ CREATE TABLE encounter.team_report_result (
 	CONSTRAINT ck_report_result_placement CHECK (placement IS NULL OR placement >= 1),
 	CONSTRAINT ck_report_result_wins CHECK (wins IS NULL OR wins >= 0)
 );
-
-CREATE TABLE log_processing.discord_channel (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	tournament_id BIGINT NOT NULL,
-	channel_id BIGINT NOT NULL,
-	channel_name VARCHAR(100),
-	is_active BOOLEAN NOT NULL,
-	PRIMARY KEY (id),
-	UNIQUE (tournament_id),
-	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE
-);
-
-CREATE UNIQUE INDEX ix_log_processing_discord_channel_channel_id ON log_processing.discord_channel (channel_id);
-
-CREATE TABLE log_processing.record (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	tournament_id BIGINT NOT NULL,
-	filename VARCHAR(500) NOT NULL,
-	status log_processing_status NOT NULL,
-	source log_processing_source NOT NULL,
-	uploader_id BIGINT,
-	attached_encounter_id BIGINT,
-	error_message TEXT,
-	started_at TIMESTAMP WITH TIME ZONE,
-	finished_at TIMESTAMP WITH TIME ZONE,
-	content_hash VARCHAR(64),
-	attempts INTEGER DEFAULT '0' NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
-	FOREIGN KEY(uploader_id) REFERENCES players."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(attached_encounter_id) REFERENCES encounter.encounter (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_log_processing_record_attached_encounter_id ON log_processing.record (attached_encounter_id);
-
-CREATE INDEX ix_log_processing_record_content_hash ON log_processing.record (content_hash);
-
-CREATE INDEX ix_log_processing_record_status_created ON log_processing.record (status, created_at);
-
-CREATE INDEX ix_log_processing_record_tournament_id ON log_processing.record (tournament_id);
-
-CREATE INDEX ix_log_processing_record_uploader_id ON log_processing.record (uploader_id);
-
-CREATE TABLE matches.event (
-	id BIGSERIAL NOT NULL,
-	match_id BIGINT NOT NULL,
-	time FLOAT NOT NULL,
-	round INTEGER NOT NULL,
-	team_id BIGINT NOT NULL,
-	user_id BIGINT NOT NULL,
-	hero_id BIGINT,
-	related_team_id BIGINT,
-	related_user_id BIGINT,
-	related_hero_id BIGINT,
-	name matchevent NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
-	FOREIGN KEY(team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE,
-	FOREIGN KEY(related_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(related_user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(related_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_matches_assists_hero_id ON matches.event (hero_id);
-
-CREATE INDEX ix_matches_assists_related_hero_id ON matches.event (related_hero_id);
-
-CREATE INDEX ix_matches_assists_related_team_id ON matches.event (related_team_id);
-
-CREATE INDEX ix_matches_assists_related_user_id ON matches.event (related_user_id);
-
-CREATE INDEX ix_matches_event_match_id ON matches.event (match_id);
-
-CREATE INDEX ix_matches_event_team_id ON matches.event (team_id);
-
-CREATE INDEX ix_matches_event_user_id ON matches.event (user_id);
-
-CREATE TABLE matches.kill_feed (
-	id BIGSERIAL NOT NULL,
-	match_id BIGINT NOT NULL,
-	time FLOAT NOT NULL,
-	round INTEGER NOT NULL,
-	fight INTEGER NOT NULL,
-	ability abilityevent,
-	killer_id BIGINT NOT NULL,
-	killer_hero_id BIGINT NOT NULL,
-	killer_team_id BIGINT NOT NULL,
-	victim_id BIGINT NOT NULL,
-	victim_team_id BIGINT NOT NULL,
-	victim_hero_id BIGINT NOT NULL,
-	damage FLOAT NOT NULL,
-	is_critical_hit BOOLEAN NOT NULL,
-	is_environmental BOOLEAN NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
-	FOREIGN KEY(killer_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(killer_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE,
-	FOREIGN KEY(killer_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(victim_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(victim_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(victim_hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_matches_kill_feed_killer_hero_id ON matches.kill_feed (killer_hero_id);
-
-CREATE INDEX ix_matches_kill_feed_killer_id ON matches.kill_feed (killer_id);
-
-CREATE INDEX ix_matches_kill_feed_killer_team_id ON matches.kill_feed (killer_team_id);
-
-CREATE INDEX ix_matches_kill_feed_match_id ON matches.kill_feed (match_id);
-
-CREATE INDEX ix_matches_kill_feed_victim_hero_id ON matches.kill_feed (victim_hero_id);
-
-CREATE INDEX ix_matches_kill_feed_victim_id ON matches.kill_feed (victim_id);
-
-CREATE INDEX ix_matches_kill_feed_victim_team_id ON matches.kill_feed (victim_team_id);
-
-CREATE TABLE matches.match (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	home_team_id BIGINT NOT NULL,
-	away_team_id BIGINT NOT NULL,
-	home_score INTEGER NOT NULL,
-	away_score INTEGER NOT NULL,
-	time FLOAT,
-	log_name VARCHAR,
-	code VARCHAR,
-	log_record_id BIGINT,
-	source matches.matchsource DEFAULT 'log_parser' NOT NULL,
-	encounter_id BIGINT NOT NULL,
-	map_id BIGINT NOT NULL,
-	map_index INTEGER,
-	PRIMARY KEY (id),
-	FOREIGN KEY(home_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(away_team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(log_record_id) REFERENCES log_processing.record (id) ON DELETE SET NULL,
-	FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE,
-	FOREIGN KEY(map_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_matches_match_away_team_id ON matches.match (away_team_id);
-
-CREATE INDEX ix_matches_match_encounter_id ON matches.match (encounter_id);
-
-CREATE INDEX ix_matches_match_home_team_id ON matches.match (home_team_id);
-
-CREATE INDEX ix_matches_match_log_record_id ON matches.match (log_record_id);
-
-CREATE INDEX ix_matches_match_map_id ON matches.match (map_id);
-
-CREATE TABLE matches.stat_baselines (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	formula_version VARCHAR(64) NOT NULL,
-	role heroclass NOT NULL,
-	rank_bucket SMALLINT DEFAULT '-1' NOT NULL,
-	stat logstatsname NOT NULL,
-	mean FLOAT NOT NULL,
-	std FLOAT NOT NULL,
-	meta JSONB,
-	computed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_stat_baselines_key UNIQUE (formula_version, role, rank_bucket, stat)
-);
-
-CREATE INDEX ix_stat_baselines_version ON matches.stat_baselines (formula_version);
-
-CREATE TABLE matches.statistics (
-	id BIGSERIAL NOT NULL,
-	match_id BIGINT NOT NULL,
-	round INTEGER NOT NULL,
-	team_id BIGINT NOT NULL,
-	user_id BIGINT NOT NULL,
-	hero_id BIGINT,
-	name logstatsname NOT NULL,
-	value FLOAT NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(match_id) REFERENCES matches.match (id) ON DELETE CASCADE,
-	FOREIGN KEY(team_id) REFERENCES tournament.team (id) ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(hero_id) REFERENCES catalog.entity (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_match_statistics_match_name_round ON matches.statistics (match_id, name, round);
-
-CREATE INDEX ix_match_statistics_match_user_round ON matches.statistics (match_id, user_id, round);
-
-CREATE INDEX ix_match_statistics_playtime_r0 ON matches.statistics (match_id, user_id, hero_id) WHERE round = 0 AND name = 'HeroTimePlayed';
-
-CREATE INDEX ix_match_statistics_user_hero_r0 ON matches.statistics (user_id, hero_id, name) WHERE round = 0 AND hero_id IS NOT NULL;
-
-CREATE INDEX ix_match_statistics_user_name_r0 ON matches.statistics (user_id, name) WHERE round = 0 AND hero_id IS NULL;
-
-CREATE INDEX ix_match_statistics_user_round_name ON matches.statistics (user_id, round, name);
-
-CREATE INDEX ix_matches_statistics_team_id ON matches.statistics (team_id);
 
 CREATE TABLE overwatch_rank.battle_tag_state (
 	id BIGSERIAL NOT NULL,
@@ -2845,6 +2640,232 @@ CREATE TABLE roster.team_format_dimension (
 	CONSTRAINT ck_tfd_assignments CHECK (player_min_assignments IS NULL OR player_max_assignments IS NULL OR player_min_assignments <= player_max_assignments),
 	CONSTRAINT fk_tfd_format FOREIGN KEY(team_format_id, discipline) REFERENCES roster.team_format (id, discipline) ON DELETE CASCADE,
 	CONSTRAINT fk_tfd_dimension FOREIGN KEY(dimension_id, discipline) REFERENCES catalog.role_dimension (id, discipline)
+);
+
+CREATE TABLE stats.discord_channel (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	tournament_id BIGINT NOT NULL,
+	channel_id BIGINT NOT NULL,
+	channel_name VARCHAR(100),
+	is_active BOOLEAN NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (tournament_id),
+	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX ix_stats_discord_channel_channel_id ON stats.discord_channel (channel_id);
+
+CREATE TABLE stats.event (
+	id BIGSERIAL NOT NULL,
+	match_id BIGINT NOT NULL,
+	segment SMALLINT DEFAULT '0' NOT NULL,
+	t DOUBLE PRECISION NOT NULL,
+	type_id SMALLINT NOT NULL,
+	actor_member_id BIGINT,
+	actor_team_id BIGINT,
+	target_member_id BIGINT,
+	target_team_id BIGINT,
+	entity_id BIGINT,
+	related_entity_id BIGINT,
+	entity_kind VARCHAR(16) DEFAULT 'character' NOT NULL,
+	data JSONB,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_event_entity_kind CHECK (entity_kind = 'character'),
+	CONSTRAINT fk_event_actor FOREIGN KEY(match_id, actor_member_id) REFERENCES stats.match_player (match_id, workspace_member_id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_event_target FOREIGN KEY(match_id, target_member_id) REFERENCES stats.match_player (match_id, workspace_member_id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_event_actor_team FOREIGN KEY(match_id, actor_team_id) REFERENCES stats.match_team (match_id, encounter_team_id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_event_target_team FOREIGN KEY(match_id, target_team_id) REFERENCES stats.match_team (match_id, encounter_team_id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_event_entity FOREIGN KEY(entity_id, entity_kind) REFERENCES catalog.entity (id, kind) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_event_related_entity FOREIGN KEY(related_entity_id, entity_kind) REFERENCES catalog.entity (id, kind) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_event_match FOREIGN KEY(match_id) REFERENCES stats.match (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_event_type FOREIGN KEY(type_id) REFERENCES stats.event_type (id)
+);
+
+CREATE INDEX ix_event_match ON stats.event (match_id, t);
+
+CREATE TABLE stats.event_type (
+	id SMALLINT GENERATED ALWAYS AS IDENTITY,
+	discipline VARCHAR(32) NOT NULL,
+	code VARCHAR(64) NOT NULL,
+	name VARCHAR(128) NOT NULL,
+	active BOOLEAN DEFAULT true NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_event_type_code UNIQUE (discipline, code),
+	CONSTRAINT fk_event_type_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
+);
+
+CREATE TABLE stats.fact (
+	match_id BIGINT NOT NULL,
+	segment SMALLINT DEFAULT '0' NOT NULL,
+	encounter_team_id BIGINT NOT NULL,
+	workspace_member_id BIGINT,
+	entity_id BIGINT,
+	entity_kind VARCHAR(16) DEFAULT 'character' NOT NULL,
+	stat_id SMALLINT NOT NULL,
+	value DOUBLE PRECISION NOT NULL,
+	CONSTRAINT ck_fact_entity_kind CHECK (entity_kind = 'character'),
+	CONSTRAINT fk_fact_team FOREIGN KEY(match_id, encounter_team_id) REFERENCES stats.match_team (match_id, encounter_team_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_fact_player FOREIGN KEY(match_id, workspace_member_id) REFERENCES stats.match_player (match_id, workspace_member_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_fact_entity FOREIGN KEY(entity_id, entity_kind) REFERENCES catalog.entity (id, kind) ON DELETE RESTRICT,
+	CONSTRAINT uq_fact UNIQUE NULLS NOT DISTINCT (match_id, segment, encounter_team_id, workspace_member_id, entity_id, stat_id),
+	CONSTRAINT fk_fact_stat FOREIGN KEY(stat_id) REFERENCES stats.stat_def (id)
+);
+
+CREATE INDEX ix_fact_match_member ON stats.fact (match_id, workspace_member_id, segment);
+
+CREATE INDEX ix_fact_member_entity_total ON stats.fact (workspace_member_id, entity_id, stat_id) WHERE segment = 0 AND entity_id IS NOT NULL;
+
+CREATE INDEX ix_fact_member_stat_total ON stats.fact (workspace_member_id, stat_id) WHERE segment = 0 AND entity_id IS NULL;
+
+CREATE TABLE stats.ingest_job (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	workspace_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	source_kind VARCHAR(32) NOT NULL,
+	external_id VARCHAR(128),
+	content_hash CHAR(64) NOT NULL,
+	filename VARCHAR(500),
+	raw_ref VARCHAR(512) NOT NULL,
+	document_ref VARCHAR(512),
+	status VARCHAR(16) NOT NULL,
+	attempts INTEGER DEFAULT '0' NOT NULL,
+	error_message TEXT,
+	uploader_user_id BIGINT,
+	api_key_id BIGINT,
+	hint_tournament_id BIGINT,
+	hint_encounter_id BIGINT,
+	hint_encounter_game_id BIGINT,
+	started_at TIMESTAMP WITH TIME ZONE,
+	finished_at TIMESTAMP WITH TIME ZONE,
+	PRIMARY KEY (id),
+	CONSTRAINT fk_ingest_job_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_ingest_job_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
+	CONSTRAINT ck_ingest_job_status CHECK (status IN ('pending', 'processing', 'awaiting_link', 'done', 'failed')),
+	CONSTRAINT fk_ingest_job_uploader FOREIGN KEY(uploader_user_id) REFERENCES players."user" (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_ingest_job_api_key FOREIGN KEY(api_key_id) REFERENCES auth.api_key (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_ingest_job_tournament FOREIGN KEY(hint_tournament_id) REFERENCES tournament.tournament (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_ingest_job_encounter FOREIGN KEY(hint_encounter_id) REFERENCES encounter.encounter (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_ingest_job_game FOREIGN KEY(hint_encounter_game_id) REFERENCES encounter.game (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX ix_ingest_job_api_key ON stats.ingest_job (api_key_id);
+
+CREATE INDEX ix_ingest_job_encounter ON stats.ingest_job (hint_encounter_id);
+
+CREATE INDEX ix_ingest_job_game ON stats.ingest_job (hint_encounter_game_id);
+
+CREATE INDEX ix_ingest_job_status ON stats.ingest_job (status, created_at);
+
+CREATE INDEX ix_ingest_job_tournament ON stats.ingest_job (hint_tournament_id);
+
+CREATE INDEX ix_ingest_job_uploader ON stats.ingest_job (uploader_user_id);
+
+CREATE UNIQUE INDEX uq_ingest_job_external ON stats.ingest_job (workspace_id, source_kind, external_id) WHERE external_id IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_ingest_job_hash ON stats.ingest_job (workspace_id, content_hash) WHERE external_id IS NULL;
+
+CREATE TABLE stats.match (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	workspace_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	encounter_game_id BIGINT NOT NULL,
+	ingest_job_id BIGINT,
+	revision INTEGER DEFAULT '1' NOT NULL,
+	played_at TIMESTAMP WITH TIME ZONE,
+	duration_s DOUBLE PRECISION,
+	map_entity_id BIGINT NOT NULL,
+	map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_stats_match_game UNIQUE (encounter_game_id),
+	CONSTRAINT ck_stats_match_map_kind CHECK (map_kind = 'map'),
+	CONSTRAINT fk_match_map FOREIGN KEY(map_entity_id, discipline, map_kind) REFERENCES catalog.entity (id, discipline, kind) ON DELETE RESTRICT,
+	CONSTRAINT fk_stats_match_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_stats_match_game FOREIGN KEY(encounter_game_id) REFERENCES encounter.game (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_stats_match_ingest_job FOREIGN KEY(ingest_job_id) REFERENCES stats.ingest_job (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX ix_stats_match_ingest_job ON stats.match (ingest_job_id);
+
+CREATE INDEX ix_stats_match_workspace ON stats.match (workspace_id);
+
+CREATE TABLE stats.match_player (
+	match_id BIGINT NOT NULL,
+	encounter_team_id BIGINT NOT NULL,
+	workspace_member_id BIGINT NOT NULL,
+	handle_snapshot VARCHAR(255) NOT NULL,
+	observed_role_id BIGINT,
+	CONSTRAINT pk_stats_match_player PRIMARY KEY (match_id, workspace_member_id),
+	CONSTRAINT fk_match_player_team FOREIGN KEY(match_id, encounter_team_id) REFERENCES stats.match_team (match_id, encounter_team_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_match_player_member FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_match_player_role FOREIGN KEY(observed_role_id) REFERENCES catalog.role (id) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX ix_match_player_member ON stats.match_player (workspace_member_id);
+
+CREATE INDEX ix_match_player_observed_role ON stats.match_player (observed_role_id);
+
+CREATE TABLE stats.match_team (
+	match_id BIGINT NOT NULL,
+	encounter_game_id BIGINT NOT NULL,
+	encounter_team_id BIGINT NOT NULL,
+	source_position INTEGER NOT NULL,
+	CONSTRAINT pk_stats_match_team PRIMARY KEY (match_id, encounter_team_id),
+	CONSTRAINT ck_match_team_source_position CHECK (source_position >= 1),
+	CONSTRAINT uq_match_team_source_position UNIQUE (match_id, source_position),
+	CONSTRAINT fk_match_team_game_team FOREIGN KEY(encounter_game_id, encounter_team_id) REFERENCES encounter.game_team (game_id, encounter_team_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_match_team_match FOREIGN KEY(match_id) REFERENCES stats.match (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX ix_match_team_game_team ON stats.match_team (encounter_game_id, encounter_team_id);
+
+CREATE TABLE stats.segment (
+	match_id BIGINT NOT NULL,
+	segment SMALLINT NOT NULL,
+	kind VARCHAR(16) NOT NULL,
+	attrs JSONB DEFAULT '{}'::jsonb NOT NULL,
+	CONSTRAINT pk_stats_segment PRIMARY KEY (match_id, segment),
+	CONSTRAINT ck_stats_segment_positive CHECK (segment >= 1),
+	CONSTRAINT fk_segment_match FOREIGN KEY(match_id) REFERENCES stats.match (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE TABLE stats.stat_baseline (
+	id BIGSERIAL NOT NULL,
+	formula_version VARCHAR(64) NOT NULL,
+	role_id BIGINT NOT NULL,
+	rank_bucket SMALLINT DEFAULT '-1' NOT NULL,
+	stat_id SMALLINT NOT NULL,
+	mean DOUBLE PRECISION NOT NULL,
+	std DOUBLE PRECISION NOT NULL,
+	meta JSONB,
+	computed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_stat_baseline UNIQUE (formula_version, role_id, rank_bucket, stat_id),
+	CONSTRAINT fk_stat_baseline_role FOREIGN KEY(role_id) REFERENCES catalog.role (id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT fk_stat_baseline_stat FOREIGN KEY(stat_id) REFERENCES stats.stat_def (id)
+);
+
+CREATE INDEX ix_stat_baseline_role ON stats.stat_baseline (role_id);
+
+CREATE TABLE stats.stat_def (
+	id SMALLINT GENERATED ALWAYS AS IDENTITY,
+	discipline VARCHAR(32) NOT NULL,
+	code VARCHAR(64) NOT NULL,
+	name VARCHAR(128) NOT NULL,
+	value_format VARCHAR(16) NOT NULL,
+	aggregation VARCHAR(8) NOT NULL,
+	stat_group VARCHAR(32),
+	active BOOLEAN DEFAULT true NOT NULL,
+	sort_order INTEGER DEFAULT '0' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_stat_def_code UNIQUE (discipline, code),
+	CONSTRAINT ck_stat_def_aggregation CHECK (aggregation IN ('sum', 'max', 'min', 'avg', 'last')),
+	CONSTRAINT fk_stat_def_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
 );
 
 CREATE TABLE subscriptions.check_log (

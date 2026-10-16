@@ -80,11 +80,3 @@ def test_attach_strips_the_alias_so_the_handler_never_has_to() -> None:
 def test_attach_rejects_an_alias_longer_than_the_column() -> None:
     with pytest.raises(ValidationError):
         schemas.CatalogAliasAttach.model_validate({"entity_id": 1, "alias": "x" * (schemas.ALIAS_MAX_LENGTH + 1)})
-
-
-def test_a_miss_carries_the_tournament_the_admin_ui_links_to() -> None:
-    # Joined from log_processing.record, not stored: the record id alone is not
-    # addressable in the admin UI.
-    fields = schemas.CatalogAliasMissRead.model_fields
-    assert "last_log_tournament_id" in fields
-    assert fields["last_log_tournament_id"].get_default() is None

@@ -31,6 +31,7 @@ from shared.repository.auth_merge import (
     apply_auth_merge_plan,
     load_auth_merge_state,
 )
+from shared.repository.identity import AuthUserRepository
 from shared.schemas.user_merge_auth import (
     AuthMergeAccount,
     AuthMergeDataConflict,
@@ -42,6 +43,7 @@ from shared.schemas.user_merge_auth import (
     AuthMergeResult,
     AuthMergeRole,
 )
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 
 
 def _json_value(value: Any) -> Any:
@@ -622,4 +624,22 @@ async def apply_auth_merge(
             # login stays on the other retained auth account.
             values["provider_user_id"] = None
         social_updates[social["id"]] = values
-    return await apply_auth_merge_plan(session, source, target, state, plan, social_updates)
+    api_key_ids = [row["id"] for row in state.rows.get(models.ApiKey.__table__, [])]
+    captures = await capture_owner_delete(session, api_key_ids=api_key_ids) if api_key_ids else []
+    result = await apply_auth_merge_plan(session, source, target, state, plan, social_updates)
+    if captures:
+        actor = (
+            await AuthUserRepository().get(session, operator_auth_user_id)
+            if operator_auth_user_id is not None
+            else None
+        )
+        await stage_owner_delete(
+            session,
+            captures,
+            workspace_id=None,
+            entity_type="auth_merge",
+            entity_id=target.id,
+            source="admin",
+            actor=actor,
+        )
+    return result

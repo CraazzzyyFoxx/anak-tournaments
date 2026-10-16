@@ -1,6 +1,6 @@
 """Kill-feed / event timeline read schemas for a single match.
 
-Backed by the ``matches.kill_feed`` and ``matches.event`` tables. Player
+Backed by discipline-scoped ``stats.event`` rows. Player
 display names are intentionally NOT included — the client already has the full
 roster (``user_id`` → name) from the match read and resolves them there, which
 keeps this payload lean and the names consistent with the stats tables. Only the
@@ -24,17 +24,17 @@ __all__ = (
 class KillFeedEntry(BaseModel):
     time: float
     round: int
-    fight: int
+    fight: int | None
     ability: str | None
-    damage: float
-    is_critical_hit: bool
-    is_environmental: bool
-    killer_user_id: int
-    killer_team_id: int
-    killer_hero: HeroRead
-    victim_user_id: int
-    victim_team_id: int
-    victim_hero: HeroRead
+    damage: float | None
+    is_critical_hit: bool | None
+    is_environmental: bool | None
+    killer_user_id: int | None
+    killer_team_id: int | None
+    killer_hero: HeroRead | None
+    victim_user_id: int | None
+    victim_team_id: int | None
+    victim_hero: HeroRead | None
 
 
 class MatchTimelineEvent(BaseModel):
@@ -43,8 +43,8 @@ class MatchTimelineEvent(BaseModel):
     time: float
     round: int
     name: str
-    user_id: int
-    team_id: int
+    user_id: int | None
+    team_id: int | None
     hero: HeroRead | None
     related_user_id: int | None
     related_team_id: int | None

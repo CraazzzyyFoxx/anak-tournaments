@@ -12,6 +12,7 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.repository.stats_queries import match_context, team_scores
 from src import models
 
 from ..features.standings_features import build_standings_training_frame
@@ -31,16 +32,21 @@ __all__ = ("run_match_quality_for_tournament",)
 
 
 async def _match_scores(session: AsyncSession, tournament_id: int) -> pd.DataFrame:
-    """Return ``(encounter_id, home_score, away_score)`` per ``Match``."""
+    """Return observed ``(encounter_id, home_score, away_score)`` per native match."""
+    matches = match_context(discipline="overwatch")
+    home = team_scores(discipline="overwatch", stat_code="score")
+    away = team_scores(discipline="overwatch", stat_code="score")
     query = (
         sa.select(
-            models.Match.encounter_id.label("encounter_id"),
-            models.Match.home_score.label("home_score"),
-            models.Match.away_score.label("away_score"),
+            matches.c.encounter_id.label("encounter_id"),
+            sa.cast(home.c.value, sa.Integer).label("home_score"),
+            sa.cast(away.c.value, sa.Integer).label("away_score"),
         )
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .where(models.Encounter.tournament_id == tournament_id)
-        .order_by(models.Match.encounter_id, models.Match.id)
+        .select_from(matches)
+        .join(home, sa.and_(home.c.match_id == matches.c.id, home.c.source_position == 1))
+        .join(away, sa.and_(away.c.match_id == matches.c.id, away.c.source_position == 2))
+        .where(matches.c.tournament_id == tournament_id)
+        .order_by(matches.c.encounter_id, matches.c.id)
     )
     result = await session.execute(query)
     return pd.DataFrame(result.mappings().all())

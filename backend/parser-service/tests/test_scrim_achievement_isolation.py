@@ -13,7 +13,7 @@ Unlike ``analytics/service.py:get_matches`` — where the same "it will be inert
 expectation turned out false because one read used an OUTER join where its
 siblings used an inner ``Player`` join — the engine really is inert here, and
 these tests are what pin that. They also pin *why*: the isolation rests entirely
-on the absence of ``Player`` rows and of ``MatchStatistics`` rows, which is
+on the absence of ``Player`` rows and of player ``StatsFact`` rows, which is
 exactly what ``ScrimRosterLeakTests`` demonstrates by giving a scrim team one
 ``Player`` row and watching its captain qualify. A future scrim-roster feature
 therefore cannot rely on this staying true.
@@ -34,11 +34,12 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, aggregate_order_by
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from shared.disciplines.overwatch.stats import EVENT_TYPES, STAT_DEFS
 from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.tournament.player_role import PlayerRole
 from shared.testing import create_sqlite_tables
@@ -74,6 +75,11 @@ def _compile_bigint_sqlite(type_, compiler, **kw):  # noqa: ANN001, ANN003, ANN2
     return "INTEGER"
 
 
+@compiles(aggregate_order_by, "sqlite")
+def _compile_ordered_aggregate_sqlite(element, compiler, **kw):  # noqa: ANN001, ANN003, ANN202
+    return f"{compiler.process(element.target, **kw)} ORDER BY {compiler.process(element.order_by, **kw)}"
+
+
 TABLE_NAMES = (
     "workspace",
     "division_grid",
@@ -92,10 +98,14 @@ TABLE_NAMES = (
     "catalog.role",
     "tournament.bracket_encounter",
     "tournament.standing",
-    "matches.match",
-    "matches.statistics",
-    "matches.kill_feed",
-    "matches.event",
+    "stats.match",
+    "stats.match_team",
+    "stats.match_player",
+    "stats.segment",
+    "stats.fact",
+    "stats.event",
+    "stats.stat_def",
+    "stats.event_type",
     "catalog.entity",
     "overwatch_rank.rank_snapshot",
     "balancer.registration",
@@ -104,6 +114,7 @@ TABLE_NAMES = (
     "balancer.draft_team",
     "balancer.draft_player",
     "balancer.draft_pick",
+    "encounter.scoring_rule",
     "encounter.encounter",
     "encounter.team",
     "encounter.team_member",
@@ -112,7 +123,7 @@ TABLE_NAMES = (
     "encounter.game_claim",
     "encounter.team_report",
     "encounter.readiness",
-    "log_processing.record",
+    "stats.ingest_job",
     "workspace_member",
     "achievements.rule",
     "achievements.evaluation_result",
@@ -196,7 +207,7 @@ class _AsyncSessionShim:
 
 
 class _Fixture:
-    """A throwaway in-memory database plus row builders for it."""
+    """An in-memory native-stats fixture using the complete OW vocabulary declarations."""
 
     def __init__(self) -> None:
         metadata = models.Tournament.__table__.metadata
@@ -248,6 +259,28 @@ class _Fixture:
         self.role_ids = {code: index for index, code in enumerate(("tank", "damage", "support"), 1)}
         for code, role_id in self.role_ids.items():
             self.insert(CatalogRole.__table__, id=role_id, dimension_id=1, code=code, name=code, attrs={})
+        self.stat_ids = {definition.code: index for index, definition in enumerate(STAT_DEFS, 1)}
+        for order, definition in enumerate(STAT_DEFS):
+            self.insert(
+                models.StatDef.__table__,
+                id=self.stat_ids[definition.code],
+                discipline="overwatch",
+                code=definition.code,
+                name=definition.name,
+                value_format=definition.value_format,
+                aggregation=definition.aggregation,
+                stat_group=definition.group,
+                sort_order=order,
+            )
+        self.event_ids = {definition.code: index for index, definition in enumerate(EVENT_TYPES, 1)}
+        for definition in EVENT_TYPES:
+            self.insert(
+                models.EventType.__table__,
+                id=self.event_ids[definition.code],
+                discipline="overwatch",
+                code=definition.code,
+                name=definition.name,
+            )
 
     def close(self) -> None:
         self.session.close()
@@ -273,11 +306,11 @@ class _Fixture:
             start_date=start,
         )
 
-    def member(self, user_id: int) -> int:
+    def member(self, user_id: int, *, workspace_id: int = WORKSPACE_ID) -> int:
         """Get-or-create: ``workspace_member`` is unique on (workspace, player)."""
         existing = self.session.scalar(
             sa.select(models.WorkspaceMember.__table__.c.id).where(
-                models.WorkspaceMember.__table__.c.workspace_id == WORKSPACE_ID,
+                models.WorkspaceMember.__table__.c.workspace_id == workspace_id,
                 models.WorkspaceMember.__table__.c.player_id == user_id,
             )
         )
@@ -287,7 +320,7 @@ class _Fixture:
         self.insert(
             models.WorkspaceMember.__table__,
             id=member_id,
-            workspace_id=WORKSPACE_ID,
+            workspace_id=workspace_id,
             player_id=user_id,
         )
         return member_id
@@ -353,7 +386,9 @@ class _Fixture:
         self.insert(
             models.Encounter.__table__,
             id=encounter_id,
-            workspace_id=WORKSPACE_ID,
+            workspace_id=self.session.scalar(
+                sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+            ),
             discipline="overwatch",
             tournament_id=tournament_id,
             scoring_rule_id=1,
@@ -421,19 +456,119 @@ class _Fixture:
             placement=retired.placement,
         )
 
-    def match(self, encounter_id: int, home_team_id: int, away_team_id: int) -> int:
-        match_id = self._id()
+    def match(
+        self,
+        encounter_id: int,
+        home_team_id: int,
+        away_team_id: int,
+        *,
+        home_score: int = 2,
+        away_score: int = 1,
+        map_id: int = 1,
+        time: float | None = None,
+        map_index: int | None = None,
+    ) -> int:
+        encounter = self.session.get(models.Encounter, encounter_id)
+        position = map_index
+        if position is None:
+            position = 1 + (
+                self.session.scalar(
+                    sa.select(sa.func.max(models.EncounterGame.position)).where(
+                        models.EncounterGame.encounter_id == encounter_id
+                    )
+                )
+                or 0
+            )
+        game_id, match_id = self._id(), self._id()
         self.insert(
-            models.Match.__table__,
-            id=match_id,
+            models.EncounterGame.__table__,
+            id=game_id,
             encounter_id=encounter_id,
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
-            home_score=2,
-            away_score=1,
-            map_id=1,
+            position=position,
+            map_id=map_id,
+            state="confirmed",
+            result_source=enums.EncounterGameResultSource.ADMIN,
+            confirmed_at=sa.func.now(),
         )
+        self.insert(
+            models.StatsMatch.__table__,
+            id=match_id,
+            workspace_id=encounter.workspace_id,
+            discipline="overwatch",
+            encounter_game_id=game_id,
+            map_entity_id=map_id,
+            duration_s=time if time is not None else 0,
+        )
+        for source_position, team_id, score in ((1, home_team_id, home_score), (2, away_team_id, away_score)):
+            seat = self.seat(encounter_id, team_id)
+            self.insert(
+                models.EncounterGameTeam.__table__,
+                game_id=game_id,
+                encounter_id=encounter_id,
+                encounter_team_id=seat,
+                score=score,
+            )
+            self.insert(
+                models.StatsMatchTeam.__table__,
+                match_id=match_id,
+                encounter_game_id=game_id,
+                encounter_team_id=seat,
+                source_position=source_position,
+            )
+            self.insert(
+                models.StatsFact.__table__,
+                match_id=match_id,
+                encounter_team_id=seat,
+                segment=0,
+                stat_id=self.stat_ids["score"],
+                value=score,
+            )
         return match_id
+
+    def observed_player(self, match_id: int, user_id: int, team_id: int) -> tuple[int, int]:
+        match = self.session.get(models.StatsMatch, match_id)
+        game = self.session.get(models.EncounterGame, match.encounter_game_id)
+        member_id = self.member(user_id, workspace_id=match.workspace_id)
+        seat = self.seat(game.encounter_id, team_id)
+        player = models.StatsMatchPlayer.__table__
+        if not self.session.scalar(
+            sa.select(player.c.workspace_member_id).where(
+                player.c.match_id == match_id,
+                player.c.workspace_member_id == member_id,
+            )
+        ):
+            self.insert(
+                player,
+                match_id=match_id,
+                workspace_member_id=member_id,
+                encounter_team_id=seat,
+                handle_snapshot=f"Player{user_id}#1234",
+            )
+        return member_id, seat
+
+    def fact(
+        self,
+        match_id: int,
+        user_id: int,
+        team_id: int,
+        name: object,
+        value: float,
+        *,
+        segment: int = 0,
+        entity_id: int | None = None,
+    ) -> None:
+        member_id, seat = self.observed_player(match_id, user_id, team_id)
+        code = name.value if isinstance(name, enums.LogStatsName) else enums.LogStatsName[str(name)].value
+        self.insert(
+            models.StatsFact.__table__,
+            match_id=match_id,
+            workspace_member_id=member_id,
+            encounter_team_id=seat,
+            stat_id=self.stat_ids[code],
+            value=value,
+            segment=segment,
+            entity_id=entity_id,
+        )
 
     def winning_standing(self, tournament_id: int, team_id: int) -> None:
         self.insert(
@@ -464,8 +599,7 @@ class _Fixture:
         """A room exactly as ``services/scrim/service.py:create_room`` leaves it.
 
         A stage with no items, two teams with ``captain_id`` set and NO ``Player``
-        rows, and a captain-reported ``Match`` — real, but never log-parsed, so no
-        ``MatchStatistics``.
+        rows, and an observed ``StatsMatch`` without player telemetry.
         """
         stage_id = self._id()
         self.insert(

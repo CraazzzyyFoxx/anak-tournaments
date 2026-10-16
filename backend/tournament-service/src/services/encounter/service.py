@@ -12,15 +12,15 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import (
     EncounterRepository,
     EncounterSavedViewRepository,
-    MatchRepository,
     TeamRepository,
 )
+from shared.repository.stats_queries import player_facts
+from shared.repository.stats_reads import MatchReadContext, duel_matches, get_match_reads
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src import models, schemas
 from src.core import enums, utils
 from src.core.query_page import execute_page_with_total
 from src.core.workspace import workspace_filter
-from src.services.map import service as map_service
 from src.services.tournament import service as tournament_service
 
 hero_jsonb_object = sa.func.jsonb_build_object(
@@ -40,30 +40,6 @@ hero_jsonb_object = sa.func.jsonb_build_object(
     sa.func.coalesce(models.CatalogEntity.attrs["color"].astext, "#ffffff"),
     "type",
     models.CatalogEntity.attrs["class"].astext,
-)
-
-
-match_jsonb_object = sa.func.jsonb_build_object(
-    "id",
-    models.Match.id,
-    "created_at",
-    models.Match.created_at,
-    "updated_at",
-    models.Match.updated_at,
-    "time",
-    models.Match.time,
-    "home_team_id",
-    models.Match.home_team_id,
-    "away_team_id",
-    models.Match.away_team_id,
-    "home_score",
-    models.Match.home_score,
-    "away_score",
-    models.Match.away_score,
-    "encounter_id",
-    models.Match.encounter_id,
-    "map_id",
-    models.Match.map_id,
 )
 
 
@@ -95,9 +71,7 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
     # longer relationships of an encounter at all (D22, D55).
     entities.append(utils.selectin_entity(child, models.Encounter.teams))
     if "matches" in in_entities:
-        matches_entity = utils.join_entity(child, models.Encounter.matches)
-        entities.append(matches_entity)
-        entities.extend(match_entities(utils.prepare_entities(in_entities, "matches"), matches_entity))
+        entities.append(utils.selectin_entity(child, models.Encounter.matches))
         # ``to_pydantic`` fills ``games`` off the SAME switch: a position and its
         # map exist before any parsed log does, and the read carries both.
         # selectin, never joined -- two to-many collections joined onto one
@@ -107,61 +81,20 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
     return entities
 
 
-def match_entities(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
-    """
-    Generates a list of SQLAlchemy loading options for related entities of a match.
-
-    Parameters:
-        in_entities (list[str]): A list of entity names to load (e.g., ["teams", "map"]).
-        child (typing.Any | None): Optional child entity for nested loading.
-
-    Returns:
-        list[_AbstractLoad]: A list of SQLAlchemy loading options.
-    """
-    entities = []
-
-    include_teams = "teams" in in_entities
-    include_home_team = include_teams or "home_team" in in_entities
-    include_away_team = include_teams or "away_team" in in_entities
-    if include_home_team:
-        home_team_entity = utils.join_entity(child, models.Match.home_team)
-        entities.append(home_team_entity)
-        entities.extend(
-            TeamRepository.team_entities(
-                (
-                    utils.prepare_entities(in_entities, "teams")
-                    if include_teams
-                    else utils.prepare_entities(in_entities, "home_team")
-                ),
-                home_team_entity,
-            )
+def _match_read_options(in_entities: list[str]) -> tuple[list[_AbstractLoad], list[_AbstractLoad]]:
+    team_entities = list(
+        dict.fromkeys(
+            entity
+            for prefix in ("teams", "home_team", "away_team")
+            for entity in utils.prepare_entities(in_entities, prefix)
         )
-    if include_away_team:
-        away_team_entity = utils.join_entity(child, models.Match.away_team)
-        entities.append(away_team_entity)
-        entities.extend(
-            TeamRepository.team_entities(
-                (
-                    utils.prepare_entities(in_entities, "teams")
-                    if include_teams
-                    else utils.prepare_entities(in_entities, "away_team")
-                ),
-                away_team_entity,
-            )
-        )
-    if "encounter" in in_entities:
-        encounter_entity = utils.join_entity(child, models.Match.encounter)
-        entities.append(encounter_entity)
-
-        if "encounter.matches" in in_entities:
-            in_entities.remove("encounter.matches")
-
-        entities.extend(encounter_entities(utils.prepare_entities(in_entities, "encounter"), encounter_entity))
-    if "map" in in_entities:
-        map_entity = utils.join_entity(child, models.Match.map)
-        entities.append(map_entity)
-        entities.extend(map_service.map_entities(utils.prepare_entities(in_entities, "map"), map_entity))
-    return entities
+    )
+    nested_encounter = [
+        entity
+        for entity in utils.prepare_entities(in_entities, "encounter")
+        if entity != "matches" and not entity.startswith("matches.")
+    ]
+    return TeamRepository.team_entities(team_entities), encounter_entities(nested_encounter)
 
 
 def join_encounter_entities(query: sa.Select, in_entities: list[str]) -> sa.Select:
@@ -317,11 +250,9 @@ class EncounterService:
         self,
         *,
         encounter_repo: EncounterRepository = EncounterRepository(),
-        match_repo: MatchRepository = MatchRepository(),
         saved_view_repo: EncounterSavedViewRepository = EncounterSavedViewRepository(),
     ) -> None:
         self.encounter_repo = encounter_repo
-        self.match_repo = match_repo
         self.saved_view_repo = saved_view_repo
 
     async def get_match(
@@ -330,29 +261,24 @@ class EncounterService:
         id: int,
         entities: list[str],
         workspace_id: int | None = None,
-    ) -> models.Match | None:
-        """
-        Retrieves a match by its ID.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            id (int): The ID of the match to retrieve.
-            entities (list[str]): A list of related entities to load (e.g., ["teams", "map"]).
-
-        Returns:
-            models.Match | None: The Match object if found, otherwise None.
-        """
-        # Analytical: the workspace scope is an encounter->tournament join, not a filter
-        # a CRUD get can express.
-        query = self.match_repo.select().where(sa.and_(models.Match.id == id)).options(*match_entities(entities))
+    ) -> MatchReadContext | None:
+        query = sa.select(models.StatsMatch.id).where(
+            models.StatsMatch.id == id,
+            models.StatsMatch.discipline == "overwatch",
+        )
         if workspace_id is not None:
-            query = query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id).join(
-                models.Tournament,
-                models.Encounter.tournament_id == models.Tournament.id,
+            query = query.where(models.StatsMatch.workspace_id == workspace_id)
+        if await session.scalar(query) is None:
+            return None
+        team_options, encounter_options = _match_read_options(entities)
+        return (
+            await get_match_reads(
+                session,
+                match_ids=[id],
+                team_options=team_options,
+                encounter_options=encounter_options,
             )
-            query = query.where(models.Tournament.workspace_id == workspace_id)
-        result = await session.execute(query)
-        return result.unique().scalars().first()
+        ).get(id)
 
     async def get_encounter(self, session: AsyncSession, id: int, entities: list[str]) -> models.Encounter | None:
         """
@@ -410,8 +336,7 @@ class EncounterService:
             joined_tournament="tournament" in params.entities,
         )
 
-        # Model-bound sort: ``has_logs`` is a ``column_property`` (EXISTS over
-        # matches.match), not a real column, so a textual ORDER BY would break.
+        # Model-bound sort uses the native observation EXISTS, not a stored column.
         query = params.apply_pagination_sort(query, models.Encounter)
 
         return await execute_page_with_total(
@@ -522,9 +447,19 @@ class EncounterService:
         # sequential round trips per cache miss).
         completed = models.Encounter.status == enums.EncounterStatus.COMPLETED
         duration_by_encounter = (
-            sa.select(models.Match.encounter_id.label("encounter_id"), sa.func.sum(models.Match.time).label("seconds"))
-            .join(base_ids, base_ids.c.id == models.Match.encounter_id)
-            .group_by(models.Match.encounter_id)
+            sa.select(models.EncounterGame.encounter_id, sa.func.sum(models.StatsMatch.duration_s).label("seconds"))
+            .select_from(models.StatsMatch)
+            .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
+            .join(
+                models.Encounter,
+                sa.and_(
+                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.workspace_id == models.StatsMatch.workspace_id,
+                    models.Encounter.discipline == models.StatsMatch.discipline,
+                ),
+            )
+            .join(base_ids, base_ids.c.id == models.EncounterGame.encounter_id)
+            .group_by(models.EncounterGame.encounter_id)
             .subquery()
         )
         avg_series_seconds_sq = sa.select(sa.func.avg(duration_by_encounter.c.seconds)).scalar_subquery()
@@ -715,12 +650,28 @@ class EncounterService:
         )
 
         hot_map_rows = await session.execute(
-            sa.select(models.CatalogEntity.name, sa.func.count(models.Match.id))
-            .select_from(models.Match)
-            .join(base_ids, base_ids.c.id == models.Match.encounter_id)
-            .join(models.CatalogEntity, models.Match.map_id == models.CatalogEntity.id)
+            sa.select(models.CatalogEntity.name, sa.func.count(models.StatsMatch.id))
+            .select_from(models.StatsMatch)
+            .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
+            .join(
+                models.Encounter,
+                sa.and_(
+                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.workspace_id == models.StatsMatch.workspace_id,
+                    models.Encounter.discipline == models.StatsMatch.discipline,
+                ),
+            )
+            .join(base_ids, base_ids.c.id == models.EncounterGame.encounter_id)
+            .join(
+                models.CatalogEntity,
+                sa.and_(
+                    models.StatsMatch.map_entity_id == models.CatalogEntity.id,
+                    models.CatalogEntity.discipline == models.StatsMatch.discipline,
+                    models.CatalogEntity.kind == "map",
+                ),
+            )
             .group_by(models.CatalogEntity.name)
-            .order_by(sa.func.count(models.Match.id).desc())
+            .order_by(sa.func.count(models.StatsMatch.id).desc())
             .limit(6)
         )
 
@@ -790,193 +741,152 @@ class EncounterService:
         }
 
     async def get_match_stats_for_user(
-        self, session: AsyncSession, match_id: int, user_id: int
+        self,
+        session: AsyncSession,
+        match_id: int,
+        user_id: int,
     ) -> tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]:
-        """
-        Retrieves match statistics and hero data for a specific user.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            match_id (int): The ID of the match.
-            user_id (int): The ID of the user.
-
-        Returns:
-            tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]: A tuple containing:
-                - A dictionary of round-based statistics.
-                - A dictionary of round-based hero data.
-        """
-        # Analytical: two grouped aggregates, one of them a jsonb_agg over a Hero join.
-        query = (
-            sa.select(
-                models.MatchStatistics.round,
-                models.MatchStatistics.name,
-                sa.func.sum(models.MatchStatistics.value).cast(sa.Numeric(10, 2)).label("value"),
-            )
-            .where(
-                sa.and_(
-                    models.MatchStatistics.match_id == match_id,
-                    models.MatchStatistics.user_id == user_id,
-                    models.MatchStatistics.hero_id.is_(None),
-                )
-            )
-            .group_by(models.MatchStatistics.name, models.MatchStatistics.round)
-        )
-
-        heroes_round = (
-            sa.select(models.MatchStatistics.round, sa.func.jsonb_agg(hero_jsonb_object))
-            .select_from(models.MatchStatistics)
-            .join(models.CatalogEntity, models.MatchStatistics.hero_id == models.CatalogEntity.id)
-            .where(
-                sa.and_(
-                    models.CatalogEntity.kind == "character",
-                    models.CatalogEntity.discipline == "overwatch",
-                    models.MatchStatistics.match_id == match_id,
-                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                    models.MatchStatistics.user_id == user_id,
-                    models.MatchStatistics.hero_id.isnot(None),
-                    models.MatchStatistics.value > 60,
-                )
-            )
-            .group_by(models.MatchStatistics.round)
-        )
-
-        stats_result = await session.execute(query)
-        heroes_result = await session.execute(heroes_round)
-
-        stats_out: dict[int, dict[enums.LogStatsName, int]] = {}
-        heroes_out: dict[int, list[dict]] = {}
-
-        for match_round, name, value in stats_result.all():
-            stats_out.setdefault(match_round, {})[name] = value
-
-        for match_round, value in heroes_result.all():
-            heroes_out[match_round] = value
-
-        return stats_out, heroes_out
+        return (await self.get_match_stats_for_users(session, match_id, [user_id]))[user_id]
 
     async def get_match_stats_for_users(
-        self, session: AsyncSession, match_id: int, user_ids: list[int]
+        self,
+        session: AsyncSession,
+        match_id: int,
+        user_ids: list[int],
     ) -> dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]]:
-        """Batched variant of :meth:`get_match_stats_for_user` for a full roster.
-
-        Runs the same two aggregate queries once with ``user_id IN (...)`` instead
-        of 2×N round trips when serializing a match page (the hottest public read).
-        Users without rows are still present in the result with empty dicts.
-        """
-        out: dict[int, tuple[dict[int, dict[enums.LogStatsName, int]], dict[int, list[dict]]]] = {
-            user_id: ({}, {}) for user_id in user_ids
-        }
+        out = {user_id: ({}, {}) for user_id in user_ids}
         if not user_ids:
             return out
-
-        # Analytical: same two grouped aggregates as the single-user read, keyed by user.
+        facts = player_facts(discipline="overwatch").c
         query = (
-            sa.select(
-                models.MatchStatistics.user_id,
-                models.MatchStatistics.round,
-                models.MatchStatistics.name,
-                sa.func.sum(models.MatchStatistics.value).cast(sa.Numeric(10, 2)).label("value"),
-            )
-            .where(
-                sa.and_(
-                    models.MatchStatistics.match_id == match_id,
-                    models.MatchStatistics.user_id.in_(user_ids),
-                    models.MatchStatistics.hero_id.is_(None),
-                )
-            )
-            .group_by(models.MatchStatistics.user_id, models.MatchStatistics.name, models.MatchStatistics.round)
+            sa.select(facts.player_id, facts.segment, facts.stat_code, sa.func.sum(facts.value).cast(sa.Numeric(10, 2)))
+            .where(facts.match_id == match_id, facts.player_id.in_(user_ids), facts.entity_id.is_(None))
+            .group_by(facts.player_id, facts.segment, facts.stat_code)
         )
-
-        heroes_round = (
-            sa.select(
-                models.MatchStatistics.user_id,
-                models.MatchStatistics.round,
-                sa.func.jsonb_agg(hero_jsonb_object),
-            )
-            .select_from(models.MatchStatistics)
-            .join(models.CatalogEntity, models.MatchStatistics.hero_id == models.CatalogEntity.id)
-            .where(
+        heroes = (
+            sa.select(facts.player_id, facts.segment, sa.func.jsonb_agg(hero_jsonb_object))
+            .join(
+                models.CatalogEntity,
                 sa.and_(
+                    models.CatalogEntity.id == facts.entity_id,
                     models.CatalogEntity.kind == "character",
                     models.CatalogEntity.discipline == "overwatch",
-                    models.MatchStatistics.match_id == match_id,
-                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                    models.MatchStatistics.user_id.in_(user_ids),
-                    models.MatchStatistics.hero_id.isnot(None),
-                    models.MatchStatistics.value > 60,
-                )
+                ),
             )
-            .group_by(models.MatchStatistics.user_id, models.MatchStatistics.round)
+            .where(
+                facts.match_id == match_id,
+                facts.player_id.in_(user_ids),
+                facts.stat_code == enums.LogStatsName.HeroTimePlayed.value,
+                facts.value > 60,
+            )
+            .group_by(facts.player_id, facts.segment)
         )
-
-        stats_result = await session.execute(query)
-        heroes_result = await session.execute(heroes_round)
-
-        for user_id, match_round, name, value in stats_result.all():
-            out[user_id][0].setdefault(match_round, {})[name] = value
-
-        for user_id, match_round, value in heroes_result.all():
-            out[user_id][1][match_round] = value
-
+        for user_id, segment, code, value in (await session.execute(query)).all():
+            out[user_id][0].setdefault(segment, {})[enums.LogStatsName(code)] = value
+        for user_id, segment, values in (await session.execute(heroes)).all():
+            out[user_id][1][segment] = values
         return out
 
     async def get_match_kill_feed(
         self,
         session: AsyncSession,
         match_id: int,
-    ) -> tuple[list[typing.Any], list[typing.Any]]:
-        """Raw kill-feed + timeline-event rows for one match, ordered chronologically.
-
-        Returns ``(kill_rows, event_rows)`` where each kill row is
-        ``(MatchKillFeed, killer_hero, victim_hero)`` and each event row is
-        ``(MatchEvent, hero | None)``. The hero *at event time* is joined (it can
-        differ from the aggregate roster hero); player names are resolved by the
-        caller/client from the roster to keep the payload lean. Only timeline-worthy
-        events (ultimate casts, resurrects) are returned — per-hit assists are
-        already surfaced as aggregate stats.
-        """
-        # Analytical: multi-entity row tuples over aliased catalog character joins, not a CRUD read.
-        killer_hero = aliased(models.CatalogEntity)
-        victim_hero = aliased(models.CatalogEntity)
-        kf = models.MatchKillFeed
-
-        kills_query = (
-            sa.select(kf, killer_hero, victim_hero)
-            .join(killer_hero, killer_hero.id == kf.killer_hero_id)
-            .join(victim_hero, victim_hero.id == kf.victim_hero_id)
-            .where(
-                kf.match_id == match_id,
-                killer_hero.kind == "character",
-                killer_hero.discipline == "overwatch",
-                victim_hero.kind == "character",
-                victim_hero.discipline == "overwatch",
+    ) -> tuple[list[schemas.KillFeedEntry], list[schemas.MatchTimelineEvent]]:
+        event, match, event_type = models.StatsEvent, models.StatsMatch, models.EventType
+        actor, target = aliased(models.WorkspaceMember), aliased(models.WorkspaceMember)
+        actor_team, target_team = aliased(models.EncounterTeam), aliased(models.EncounterTeam)
+        hero, related_hero = aliased(models.CatalogEntity), aliased(models.CatalogEntity)
+        timeline = (
+            enums.MatchEvent.UltimateStart.value,
+            enums.MatchEvent.UltimateEnd.value,
+            enums.MatchEvent.MercyRez.value,
+        )
+        query = (
+            sa.select(
+                event,
+                event_type.code,
+                actor.player_id,
+                target.player_id,
+                actor_team.team_id,
+                target_team.team_id,
+                hero,
+                related_hero,
             )
-            .order_by(kf.round.asc(), kf.time.asc(), kf.id.asc())
-        )
-
-        ev = models.MatchEvent
-        timeline_events = (
-            enums.MatchEvent.UltimateStart,
-            enums.MatchEvent.UltimateEnd,
-            enums.MatchEvent.MercyRez,
-        )
-        events_query = (
-            sa.select(ev, models.CatalogEntity)
-            .outerjoin(
-                models.CatalogEntity,
+            .select_from(event)
+            .join(match, match.id == event.match_id)
+            .join(models.EncounterGame, models.EncounterGame.id == match.encounter_game_id)
+            .join(
+                models.Encounter,
                 sa.and_(
-                    models.CatalogEntity.id == ev.hero_id,
-                    models.CatalogEntity.kind == "character",
-                    models.CatalogEntity.discipline == "overwatch",
+                    models.Encounter.id == models.EncounterGame.encounter_id,
+                    models.Encounter.workspace_id == match.workspace_id,
+                    models.Encounter.discipline == match.discipline,
                 ),
             )
-            .where(sa.and_(ev.match_id == match_id, ev.name.in_(timeline_events)))
-            .order_by(ev.round.asc(), ev.time.asc(), ev.id.asc())
+            .join(event_type, sa.and_(event_type.id == event.type_id, event_type.discipline == match.discipline))
+            .outerjoin(actor, sa.and_(actor.id == event.actor_member_id, actor.workspace_id == match.workspace_id))
+            .outerjoin(target, sa.and_(target.id == event.target_member_id, target.workspace_id == match.workspace_id))
+            .outerjoin(
+                actor_team,
+                sa.and_(actor_team.id == event.actor_team_id, actor_team.encounter_id == models.Encounter.id),
+            )
+            .outerjoin(
+                target_team,
+                sa.and_(target_team.id == event.target_team_id, target_team.encounter_id == models.Encounter.id),
+            )
+            .outerjoin(
+                hero, sa.and_(hero.id == event.entity_id, hero.discipline == match.discipline, hero.kind == "character")
+            )
+            .outerjoin(
+                related_hero,
+                sa.and_(
+                    related_hero.id == event.related_entity_id,
+                    related_hero.discipline == match.discipline,
+                    related_hero.kind == "character",
+                ),
+            )
+            .where(match.id == match_id, match.discipline == "overwatch", event_type.code.in_(("kill", *timeline)))
+            .order_by(event.segment, event.t, event.id)
         )
-
-        kill_rows = (await session.execute(kills_query)).all()
-        event_rows = (await session.execute(events_query)).all()
-        return list(kill_rows), list(event_rows)
+        kills, events = [], []
+        for row, code, actor_id, target_id, actor_team_id, target_team_id, entity, related_entity in (
+            await session.execute(query)
+        ).all():
+            if code == "kill":
+                data = row.data or {}
+                kills.append(
+                    schemas.KillFeedEntry(
+                        time=row.t,
+                        round=row.segment,
+                        fight=data.get("fight"),
+                        ability=data.get("ability"),
+                        damage=data.get("damage"),
+                        is_critical_hit=data.get("is_critical_hit"),
+                        is_environmental=data.get("is_environmental"),
+                        killer_user_id=actor_id,
+                        killer_team_id=actor_team_id,
+                        killer_hero=schemas.HeroRead.from_entity(entity) if entity is not None else None,
+                        victim_user_id=target_id,
+                        victim_team_id=target_team_id,
+                        victim_hero=schemas.HeroRead.from_entity(related_entity)
+                        if related_entity is not None
+                        else None,
+                    )
+                )
+            else:
+                events.append(
+                    schemas.MatchTimelineEvent(
+                        time=row.t,
+                        round=row.segment,
+                        name=code,
+                        user_id=actor_id,
+                        team_id=actor_team_id,
+                        hero=schemas.HeroRead.from_entity(entity) if entity is not None else None,
+                        related_user_id=target_id,
+                        related_team_id=target_team_id,
+                    )
+                )
+        return kills, events
 
     async def get_by_stage_id(
         self,
@@ -993,97 +903,124 @@ class EncounterService:
         )
 
     async def get_all_matches(
-        self, session: AsyncSession, params: schemas.MatchSearchParams, workspace_id: int | None = None
-    ) -> tuple[typing.Sequence[models.Match], int]:
-        """
-        Retrieves a paginated list of matches based on search parameters.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            params (schemas.MatchSearchParams): Search, pagination, and sorting parameters.
-
-        Returns:
-            tuple[typing.Sequence[models.Match], int]: A tuple containing:
-                - A sequence of Match objects.
-                - The total count of matches.
-        """
-        # Analytical: conditionally joined encounter/tournament scope, paginated, with a
-        # matching total query.
-        query = self.match_repo.select().options(*match_entities(params.entities))
-        total_query = sa.select(sa.func.count(models.Match.id))
-        if params.query:
-            query = params.apply_search(query, models.Match)
-            total_query = params.apply_search(total_query, models.Match)
-
-        encounter_joined: bool = False
-
-        if params.tournament_id:
-            encounter_joined = True
-            query = query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id).where(
-                sa.and_(models.Encounter.tournament_id == params.tournament_id)
+        self,
+        session: AsyncSession,
+        params: schemas.MatchSearchParams,
+        workspace_id: int | None = None,
+    ) -> tuple[typing.Sequence[MatchReadContext], int]:
+        d = duel_matches(discipline="overwatch")
+        home, away = aliased(models.Team), aliased(models.Team)
+        query = (
+            sa.select(d.c.id)
+            .select_from(d)
+            .join(models.Encounter, models.Encounter.id == d.c.encounter_id)
+            .join(
+                models.Tournament,
+                sa.and_(
+                    models.Tournament.id == d.c.tournament_id,
+                    models.Tournament.workspace_id == d.c.workspace_id,
+                    models.Tournament.discipline == d.c.discipline,
+                ),
             )
-            total_query = total_query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id).where(
-                sa.and_(models.Encounter.tournament_id == params.tournament_id)
+            .join(
+                models.CatalogEntity,
+                sa.and_(
+                    models.CatalogEntity.id == d.c.map_entity_id,
+                    models.CatalogEntity.discipline == d.c.discipline,
+                    models.CatalogEntity.kind == "map",
+                ),
             )
-        else:
-            # Cross-tournament browse: exclude matches of hidden tournaments (issue #115).
-            _visible_encounter_ids = sa.select(models.Encounter.id).where(
-                models.Encounter.tournament_id.in_(visible_tournament_ids_subquery(None))
+            .outerjoin(home, home.id == d.c.home_tournament_team_id)
+            .outerjoin(away, away.id == d.c.away_tournament_team_id)
+            .outerjoin(
+                models.IngestJob,
+                sa.and_(
+                    models.IngestJob.id == d.c.ingest_job_id,
+                    models.IngestJob.workspace_id == d.c.workspace_id,
+                    models.IngestJob.discipline == d.c.discipline,
+                ),
             )
-            query = query.where(models.Match.encounter_id.in_(_visible_encounter_ids))
-            total_query = total_query.where(models.Match.encounter_id.in_(_visible_encounter_ids))
-
-        if params.home_team_id:
-            if not encounter_joined:
-                query = query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
-                total_query = total_query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
-
-            query = query.where(sa.and_(models.Match.home_team_id == params.home_team_id))
-            total_query = total_query.where(sa.and_(models.Match.home_team_id == params.home_team_id))
-
-        if params.away_team_id:
-            if not encounter_joined:
-                query = query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
-                total_query = total_query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
-
-            query = query.where(sa.and_(models.Match.away_team_id == params.away_team_id))
-            total_query = total_query.where(sa.and_(models.Match.away_team_id == params.away_team_id))
-
-        if workspace_id is not None:
-            if not encounter_joined:
-                query = query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
-                total_query = total_query.join(models.Encounter, models.Match.encounter_id == models.Encounter.id)
-            query = query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-            total_query = total_query.join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
-            query = query.where(models.Tournament.workspace_id == workspace_id)
-            total_query = total_query.where(models.Tournament.workspace_id == workspace_id)
-
-        query = params.apply_pagination_sort(query, models.Match)
-
-        return await execute_page_with_total(
-            session,
-            query,
-            total_query,
-            pk=models.Match.id,
-            page=params.page,
-            only_count=params.only_count,
         )
+        if params.tournament_id:
+            query = query.where(d.c.tournament_id == params.tournament_id)
+        else:
+            query = query.where(d.c.tournament_id.in_(visible_tournament_ids_subquery(None)))
+        if workspace_id is not None:
+            query = query.where(d.c.workspace_id == workspace_id)
+        if params.home_team_id:
+            query = query.where(d.c.home_tournament_team_id == params.home_team_id)
+        if params.away_team_id:
+            query = query.where(d.c.away_tournament_team_id == params.away_team_id)
+        columns = {
+            "id": d.c.id,
+            "created_at": d.c.created_at,
+            "updated_at": d.c.updated_at,
+            "time": d.c.duration_s,
+            "map_index": d.c.position,
+            "map_id": d.c.map_entity_id,
+            "encounter_id": d.c.encounter_id,
+            "home_team_id": d.c.home_tournament_team_id,
+            "away_team_id": d.c.away_tournament_team_id,
+            "home_score": d.c.home_score,
+            "away_score": d.c.away_score,
+            "log_name": models.IngestJob.filename,
+            "map.name": models.CatalogEntity.name,
+            "encounter.name": models.Encounter.name,
+            "home_team.name": home.name,
+            "away_team.name": away.name,
+            "map.id": d.c.map_entity_id,
+            "map.slug": models.CatalogEntity.slug,
+            "encounter.id": d.c.encounter_id,
+            "encounter.tournament_id": d.c.tournament_id,
+            "home_team.id": d.c.home_tournament_team_id,
+            "away_team.id": d.c.away_tournament_team_id,
+            "home_team.avg_sr": home.avg_sr,
+            "away_team.avg_sr": away.avg_sr,
+        }
+        if params.query:
+            criteria = []
+            for field in params.fields:
+                if field not in columns:
+                    raise HTTPException(status_code=400, detail=f"Invalid match search field: {field}")
+                column = columns[field]
+                criteria.append(column.ilike(f"%{params.query}%"))
+                if field == "log_name":
+                    criteria.append(sa.func.split_part(column, ".", 1).ilike(f"%{params.query}%"))
+            if criteria:
+                query = query.where(sa.or_(*criteria))
+        total = int(await session.scalar(sa.select(sa.func.count()).select_from(query.distinct().subquery())) or 0)
+        if params.only_count:
+            return [], total
+        field = params.sort.removeprefix("similarity:")
+        if field not in columns:
+            raise HTTPException(status_code=400, detail=f"Invalid match sort field: {field}")
+        order_column = columns[field]
+        if params.sort.startswith("similarity:"):
+            order_column = sa.func.word_similarity(order_column, params.query)
+        descending = params.order == "desc" or getattr(params.order, "value", None) == "desc"
+        query = params.apply_pagination(query.order_by(order_column.desc() if descending else order_column.asc()))
+        ids = list((await session.scalars(query)).all())
+        reads = await self.get_match_bulk(session, ids, params.entities)
+        by_id = {read.match.id: read for read in reads}
+        return [by_id[id] for id in ids], total
 
     async def get_match_bulk(
-        self, session: AsyncSession, matches_id: list[int], entities: list[str]
-    ) -> typing.Sequence[models.Match]:
-        """
-        Retrieves a list of matches by their IDs.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            matches_id (list[int]): A list of match IDs to retrieve.
-            entities (list[str]): A list of related entities to load (e.g., ["teams", "map"]).
-
-        Returns:
-            typing.Sequence[models.Match]: A sequence of Match objects.
-        """
-        return await self.match_repo.bulk_get(session, matches_id, options=match_entities(entities))
+        self,
+        session: AsyncSession,
+        matches_id: list[int],
+        entities: list[str],
+    ) -> typing.Sequence[MatchReadContext]:
+        team_options, encounter_options = _match_read_options(entities)
+        return list(
+            (
+                await get_match_reads(
+                    session,
+                    match_ids=matches_id,
+                    team_options=team_options,
+                    encounter_options=encounter_options,
+                )
+            ).values()
+        )
 
 
 encounter_service = EncounterService()

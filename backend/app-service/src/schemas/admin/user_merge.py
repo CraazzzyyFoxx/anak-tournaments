@@ -68,6 +68,7 @@ class UserMergeUserSummary(BaseModel):
 class UserMergeConflictSummary(BaseModel):
     has_auth_conflict: bool = False
     summary: str | None = None
+    stats_member_history_conflicts: list[dict[str, int]] = Field(default_factory=list)
 
 
 class UserMergeFieldOptions(BaseModel):

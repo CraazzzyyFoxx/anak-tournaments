@@ -13,6 +13,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 from shared.division_grid import DivisionGrid, division_case_expr, division_filter_predicates
 from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.tournament.player_role import PlayerRole
+from shared.repository.stats_queries import player_facts
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import effective_division_number_expr
 from src import models
@@ -79,72 +80,49 @@ def _build_eligible_hero_stats_cte(
     tournament_id: int | None = None,
     workspace_id: int | None = None,
 ) -> sa.CTE:
-    # (match, user, hero) combos that actually played the hero (HeroTimePlayed
-    # > 60s). Expressed as a DISTINCT semi-join CTE rather than a correlated
-    # EXISTS so the planner joins it once (backed by ix_match_statistics_playtime_r0)
-    # instead of re-probing matches.statistics per candidate row. DISTINCT keeps
-    # the join a true semi-join: even if a (match, user, hero) ever had duplicate
-    # playtime rows, the eligible set is not fanned out.
-    qualified_where: list[typing.Any] = [
-        models.MatchStatistics.round == 0,
-        models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-        models.MatchStatistics.value > 60,
+    facts = player_facts(discipline="overwatch")
+    # Qualification is at observed member/entity grain, not today's roster.
+    qualified_where = [
+        facts.c.segment == 0,
+        facts.c.stat_code == enums.LogStatsName.HeroTimePlayed.value,
+        facts.c.value > 60,
     ]
     if user_id is not None:
-        # Scope the playtime probe to the same user as the eligible base: a
-        # per-user query then touches only that user's rows (a user-leading
-        # index seek) instead of DISTINCT-scanning every player's playtime stats.
-        qualified_where.append(models.MatchStatistics.user_id == user_id)
+        qualified_where.append(facts.c.player_id == user_id)
     qualified_combos = (
-        sa.select(
-            models.MatchStatistics.match_id.label("match_id"),
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.hero_id.label("hero_id"),
-        )
+        sa.select(facts.c.match_id, facts.c.workspace_member_id, facts.c.entity_id)
         .where(*qualified_where)
         .distinct()
         .cte(f"{cte_name}_qualified")
     )
-
-    where_conditions: list[typing.Any] = [
-        models.MatchStatistics.round == 0,
-        models.MatchStatistics.hero_id.isnot(None),
-    ]
-    if user_id is not None:
-        where_conditions.append(models.MatchStatistics.user_id == user_id)
-    if stats:
-        where_conditions.append(models.MatchStatistics.name.in_(stats))
-
     base_select = (
         sa.select(
-            models.MatchStatistics.match_id.label("match_id"),
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.hero_id.label("hero_id"),
-            models.MatchStatistics.name.label("name"),
-            models.MatchStatistics.value.label("value"),
+            facts.c.match_id,
+            facts.c.workspace_member_id,
+            facts.c.player_id,
+            facts.c.entity_id,
+            facts.c.stat_code,
+            facts.c.value,
         )
+        .select_from(facts)
         .join(
             qualified_combos,
             sa.and_(
-                qualified_combos.c.match_id == models.MatchStatistics.match_id,
-                qualified_combos.c.user_id == models.MatchStatistics.user_id,
-                qualified_combos.c.hero_id == models.MatchStatistics.hero_id,
+                qualified_combos.c.match_id == facts.c.match_id,
+                qualified_combos.c.workspace_member_id == facts.c.workspace_member_id,
+                qualified_combos.c.entity_id == facts.c.entity_id,
             ),
         )
-        .where(*where_conditions)
+        .where(facts.c.segment == 0, facts.c.entity_id.isnot(None))
     )
-
-    if tournament_id is not None or workspace_id is not None:
-        base_select = base_select.join(models.Match, models.Match.id == models.MatchStatistics.match_id).join(
-            models.Encounter, models.Encounter.id == models.Match.encounter_id
-        )
-        if tournament_id is not None:
-            base_select = base_select.where(models.Encounter.tournament_id == tournament_id)
-        if workspace_id is not None:
-            base_select = base_select.join(
-                models.Tournament, models.Tournament.id == models.Encounter.tournament_id
-            ).where(models.Tournament.workspace_id == workspace_id)
-
+    if user_id is not None:
+        base_select = base_select.where(facts.c.player_id == user_id)
+    if stats:
+        base_select = base_select.where(facts.c.stat_code.in_([stat.value for stat in stats]))
+    if tournament_id is not None:
+        base_select = base_select.where(facts.c.tournament_id == tournament_id)
+    if workspace_id is not None:
+        base_select = base_select.where(facts.c.workspace_id == workspace_id)
     return base_select.cte(cte_name)
 
 
@@ -240,19 +218,9 @@ def _apply_overview_role_filters(
 
 
 def apply_has_logs_filter(query: sa.Select) -> sa.Select:
-    """Keep only users with at least one parsed match-stat row.
-
-    EXISTS driven from the user side so it probes
-    ``ix_match_statistics_user_round_name`` once per candidate instead of
-    scanning matches.statistics (same shape as the with_logs KPI).
-    """
-    return query.where(
-        sa.exists(
-            sa.select(sa.literal(1))
-            .select_from(models.MatchStatistics)
-            .where(models.MatchStatistics.user_id == models.User.id)
-        )
-    )
+    """Keep users with observed OW facts; the existing KPI is explicitly global."""
+    facts = player_facts(discipline="overwatch")
+    return query.where(sa.exists(sa.select(1).select_from(facts).where(facts.c.player_id == models.User.id)))
 
 
 def _apply_workspace_member_filter(query: sa.Select, workspace_id: int | None) -> sa.Select:

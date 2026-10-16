@@ -53,7 +53,7 @@ ROLE_KPIS: dict[str, list[str]] = {
     ],
 }
 
-# Coarse fallback features used when no MatchStatistics are available.
+# Coarse fallback features used when no usable player facts are available.
 # Score / standings / opponent strength only — no per-stat detail.
 COARSE_FEATURES: list[str] = [
     "won",

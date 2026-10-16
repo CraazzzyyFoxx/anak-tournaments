@@ -24,11 +24,11 @@ named RabbitMQ queues (`discord_commands`, `discord_member_roles`, `discord_guil
 
 ## Responsibilities
 
-- **Match-log intake from Discord.** Authority for turning a file dropped in a tournament's Discord
-  channel into a parse request: which channels are watched, which attachments qualify, and whether a
-  given `(tournament, filename)` was already ingested.
-- **Upload feedback.** The uploader's verdict — reaction and reply on the originating message —
-  including the failed-parse error text read back from `log_processing.record`.
+- **Match-log intake from Discord.** Turns qualifying attachments in watched tournament channels
+  into upload requests. It downloads the actual bytes; parser-service owns workspace/content-hash
+  deduplication, so a reused filename never hides changed content.
+- **Upload feedback.** Displays the matching result's `done`, `failed` or `awaiting_link` state
+  and error text. It never queries a latest-by-filename record to invent a verdict.
 - **Discord directory.** The only process holding a live guild cache, so it answers guild info, guild
   roles, guild channels, and per-member role sets on behalf of every other service.
 - **Membership-driven subscription resync.** A member joining, leaving, or having roles changed
@@ -64,11 +64,19 @@ gateway cache has not yet seen the guild.
 
 ### Match-log upload and the result rendezvous
 
-`AttachmentProcessor` downloads the attachment through the egress proxy, publishes it to
-`upload_match_log` as base64, then blocks on `ResultWaiter.wait(tournament_id, filename)` for up to
-120 s. The parser replies by publishing `MatchLogProcessedEvent` to the **fanout** exchange
-`match_log.result`; each bot replica binds its **own server-named, exclusive, auto-deleted** queue to
-it.
+`AttachmentProcessor` downloads the attachment through the egress proxy and creates an upload
+event with `correlation_id = event_id`. When waiting for feedback it registers that correlation
+with `ResultWaiter` **before** publishing the base64 bytes to `upload_match_log`, then waits for
+up to 120 s. The parser preserves the id through its job-id processing event and the result body
+and broker metadata. A result arriving during publish is retained until the wait consumes it.
+Publish failure, timeout and cancellation clean up the registration.
+
+`MatchLogProcessedEvent` carries the persisted `ingest_job_id`, status and error text;
+only upload failure before job creation has a null job id. `awaiting_link` means the bytes were
+accepted but no unique eligible live game was found: the uploader is told to ask an administrator
+to select the encounter/game and retry. It is not reported as parse success, failure or timeout.
+Results go to the **fanout** exchange `match_log.result`; each bot replica binds its **own
+server-named, exclusive, auto-deleted** queue to it.
 
 The shape is deliberate. A single durable shared queue would round-robin results across replicas, so a
 result would usually land on a replica that holds no pending future for it and the replica that is
@@ -172,9 +180,9 @@ is kept — "not linked" and "deactivated" are re-asked every time, so linking a
 at once. Every click logs one line with `action`, `target`, `status` and `code`.
 
 **Match logs.** Passive: post a `.txt`, `.log`, or `.json` file in a monitored channel and the bot
-reacts `owt_ok` / `owt_warn` / `owt_error` and, where the outcome needs words, replies with the parse
-error. Reactions are reconciled, not just added, so a re-processed message ends with only the
-reaction matching its current state — the legacy ✅ / ⚠️ / ❌ included.
+reacts `owt_ok` / `owt_warn` / `owt_error`. Failures include the correlated error text, and
+awaiting-link includes an actionable administrator-link-and-retry reply, even for a single
+attachment. Reactions are reconciled so a reprocessed message reflects its current result.
 
 ### Operator tools
 
@@ -206,8 +214,8 @@ Run from `backend/discord-service` with the service env (REST only, safe beside 
   restart. A finished tournament stays watched for 24 hours so a late upload still lands.
 - Application emoji are re-read from Discord every 10 minutes (and once in `setup_hook`), so an
   upload by the `discord-emoji` job shows up without a restart.
-- On `on_ready`, the last 500 messages of every monitored channel are rescanned concurrently and any
-  unprocessed attachment is uploaded fire-and-forget (no result wait).
+- On `on_ready`, the last 500 messages of every monitored channel are rescanned concurrently and
+  qualifying attachments are uploaded fire-and-forget; the parser deduplicates their actual bytes.
 - `GatewayWatchdog` (`discord.ext.tasks.loop`, every 30 s) proves the gateway session is alive — see
   *Operational notes*.
 
@@ -226,13 +234,10 @@ None. This service does not write to the transactional outbox.
 It owns no schema. Everything it touches belongs to another service's domain, and there are no
 migrations here — the single Alembic project lives at `backend/migrations/`.
 
-Reads (`log_processing`, see
-[`../../docs/database_erd.md`](../../docs/database_erd.md#ingestion--log_processing)):
-
-- `log_processing.discord_channel` — the watched-channel map, written by parser-service's admin
-  `rpc.discord_channel.*` methods.
-- `log_processing.record` — the already-processed check and the failure text shown to the uploader;
-  written by parser-service.
+Reads `stats.discord_channel` for the watched-channel map, written by parser-service's admin
+`rpc.discord_channel.*` methods. Match-log jobs and failure details are not read by the bot:
+upload outcomes arrive through the correlated result event. See
+[`../../docs/database_erd.md`](../../docs/database_erd.md).
 
 Reads elsewhere: `workspace.discord_guild_id` (guild → workspace ids), `auth.oauth_connections`
 (Discord user id → platform user) and `discord_message` (below).
@@ -403,9 +408,10 @@ nothing outside the standard library, so it cannot report a configuration proble
   whose `card_json` is empty (posted before the column existed) or unreadable is logged and skipped.
 - **Upload timeout.** A parse result that does not arrive within 120 s leaves the message marked as
   timed out even if the parse later succeeds. The upload itself is not retried.
-- **Idempotency is by `(tournament_id, filename)`**, checked against `log_processing.record` before
-  upload. Two different logs sharing a filename inside one tournament collapse to one; a re-upload
-  after a failed parse is allowed, because only a `done` record blocks.
+- **Idempotency belongs to parser-service.** Identical bytes deduplicate within their workspace;
+  different bytes under the same filename create different jobs. Reuploading identical bytes
+  preserves the existing job's outcome and retry budget; an administrator explicitly retries
+  failed or awaiting-link jobs. Filenames and tournament ids are never result rendezvous keys.
 - **History rescan cost.** Startup and every `process_all` walk up to 500 messages per channel, all
   channels concurrently, each attachment costing one Discord CDN download through the proxy.
 - **The internal HTTP path to parser is currently unexercised.** `ParserClientFactory.create()` only

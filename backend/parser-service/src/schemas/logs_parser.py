@@ -8,7 +8,7 @@ from src.core import enums
 
 
 class Fight(typing.TypedDict):
-    kills: list[models.MatchKillFeed]
+    kills: list[models.StatsEvent]
     start: float
     end: float
 

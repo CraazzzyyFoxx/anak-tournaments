@@ -6,11 +6,13 @@ from collections import defaultdict
 
 import sqlalchemy as sa
 from cashews import cache
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
+from shared.repository.stats_queries import match_context, player_facts
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from shared.services.division_grid.access import tournament_effective_version_id_expr
@@ -28,6 +30,9 @@ from ._scope import (
     overview_division_number_expr,
     player_role_filter,
 )
+
+_facts = player_facts(discipline="overwatch")
+_matches = match_context(discipline="overwatch")
 
 if typing.TYPE_CHECKING:
     from src import schemas as app_schemas
@@ -176,7 +181,7 @@ class UserOverviewQueries:
         if role is None and div_min is None and div_max is None and tournament_id is None:
             return query.scalar_subquery()
 
-        achievement_match = aliased(models.Match)
+        achievement_match = _matches.alias()
         achievement_encounter = aliased(models.Encounter)
         tournament_scope = _compare_tournament_scope_exists(
             user_id_column,
@@ -190,9 +195,9 @@ class UserOverviewQueries:
         match_scope = sa.exists(
             sa.select(1)
             .select_from(achievement_match)
-            .join(achievement_encounter, achievement_encounter.id == achievement_match.encounter_id)
+            .join(achievement_encounter, achievement_encounter.id == achievement_match.c.encounter_id)
             .where(
-                achievement_match.id == effective_rows.c.match_id,
+                achievement_match.c.id == effective_rows.c.match_id,
                 _compare_tournament_scope_exists(
                     user_id_column,
                     achievement_encounter.tournament_id,
@@ -467,22 +472,22 @@ class UserOverviewQueries:
         tournament_id: int | None = None,
         grid: DivisionGrid,
     ) -> sa.ScalarSelect:
-        hero_time_alias = aliased(models.MatchStatistics)
+        hero_time_alias = _facts.alias()
         where_conditions: list[typing.Any] = [
-            models.MatchStatistics.user_id == user_id_column,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.isnot(None),
-            models.MatchStatistics.name == stat,
+            _facts.c.player_id == user_id_column,
+            _facts.c.segment == 0,
+            _facts.c.entity_id.isnot(None),
+            _facts.c.stat_code == stat,
             sa.exists(
                 sa.select(1)
                 .select_from(hero_time_alias)
                 .where(
-                    hero_time_alias.match_id == models.MatchStatistics.match_id,
-                    hero_time_alias.user_id == models.MatchStatistics.user_id,
-                    hero_time_alias.hero_id == models.MatchStatistics.hero_id,
-                    hero_time_alias.name == enums.LogStatsName.HeroTimePlayed,
-                    hero_time_alias.round == 0,
-                    hero_time_alias.value > 60,
+                    hero_time_alias.c.match_id == _facts.c.match_id,
+                    hero_time_alias.c.workspace_member_id == _facts.c.workspace_member_id,
+                    hero_time_alias.c.entity_id == _facts.c.entity_id,
+                    hero_time_alias.c.stat_code == enums.LogStatsName.HeroTimePlayed.value,
+                    hero_time_alias.c.segment == 0,
+                    hero_time_alias.c.value > 60,
                 )
             ),
         ]
@@ -491,7 +496,7 @@ class UserOverviewQueries:
             where_conditions.append(
                 _compare_team_scope_exists(
                     user_id_column,
-                    models.MatchStatistics.team_id,
+                    _facts.c.tournament_team_id,
                     role=role,
                     div_min=div_min,
                     div_max=div_max,
@@ -499,17 +504,20 @@ class UserOverviewQueries:
                     grid=grid,
                 )
             )
+        reduction_order = (_facts.c.match_id, _facts.c.workspace_member_id, _facts.c.entity_id)
 
         query = (
             sa.select(
-                sa.func.sum(models.MatchStatistics.value) / sa.func.nullif(sa.func.sum(models.Match.time), 0) * 600
+                sa.func.sum(aggregate_order_by(_facts.c.value, *reduction_order))
+                / sa.func.nullif(sa.func.sum(aggregate_order_by(_matches.c.duration_s, *reduction_order)), 0)
+                * 600
             )
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
+            .select_from(_facts)
+            .join(_matches, _matches.c.id == _facts.c.match_id)
         )
 
         if tournament_id is not None:
-            query = query.join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            query = query.join(models.Encounter, models.Encounter.id == _matches.c.encounter_id)
             where_conditions.append(models.Encounter.tournament_id == tournament_id)
 
         return query.where(*where_conditions).scalar_subquery()
@@ -953,40 +961,40 @@ class UserOverviewQueries:
     ) -> dict[int, list[tuple[models.CatalogEntity, float]]]:
         if not user_ids:
             return {}
+        playtime_sum = sa.func.sum(
+            aggregate_order_by(
+                _facts.c.value,
+                _facts.c.match_id,
+                _facts.c.workspace_member_id,
+            )
+        )
 
         playtime_select = (
             sa.select(
-                models.MatchStatistics.user_id.label("user_id"),
-                models.MatchStatistics.hero_id.label("hero_id"),
-                sa.func.sum(models.MatchStatistics.value).label("playtime_seconds"),
+                _facts.c.player_id.label("user_id"),
+                _facts.c.entity_id.label("hero_id"),
+                playtime_sum.label("playtime_seconds"),
                 sa.func.row_number()
                 .over(
-                    partition_by=models.MatchStatistics.user_id,
+                    partition_by=_facts.c.player_id,
                     order_by=[
-                        sa.func.sum(models.MatchStatistics.value).desc(),
-                        models.MatchStatistics.hero_id.asc(),
+                        playtime_sum.desc(),
+                        _facts.c.entity_id.asc(),
                     ],
                 )
                 .label("row_num"),
             )
             .where(
-                models.MatchStatistics.user_id.in_(user_ids),
-                models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.hero_id.isnot(None),
-                models.MatchStatistics.value > 0,
+                _facts.c.player_id.in_(user_ids),
+                _facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
+                _facts.c.segment == 0,
+                _facts.c.entity_id.isnot(None),
+                _facts.c.value > 0,
             )
-            .group_by(models.MatchStatistics.user_id, models.MatchStatistics.hero_id)
+            .group_by(_facts.c.player_id, _facts.c.entity_id)
         )
         if workspace_id is not None:
-            # MatchStatistics -> Match -> Encounter -> Tournament (all 1:1 per stat
-            # row, so the playtime sum is unchanged) to scope heroes to the workspace.
-            playtime_select = (
-                playtime_select.join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-                .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-                .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-                .where(models.Tournament.workspace_id == workspace_id)
-            )
+            playtime_select = playtime_select.where(_facts.c.workspace_id == workspace_id)
         playtime_subquery = playtime_select.cte("overview_user_hero_playtime")
 
         query = (
@@ -1192,26 +1200,9 @@ class UserOverviewQueries:
         # the workspace-scoped candidate set (total_players).
         ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
 
-        # NB: "has any parsed logs" is intentionally NOT workspace-scoped — reaching
-        # the workspace from match_statistics requires a Match->Encounter->Tournament
-        # join over that (very large) table, which times out for big workspaces. The
-        # candidate set is already workspace-scoped, so this counts scoped players who
-        # have parsed logs anywhere; the slight cross-workspace leniency is acceptable.
-        #
-        # Driven from the candidate side, NOT as `statistics.user_id IN (candidates)`:
-        # with the candidate set being ~every user, that IN-semi-join has
-        # matches.statistics (27M rows, see models/matches/match.py) as its outer
-        # relation, so the whole table/index has to be scanned and de-duplicated on
-        # every request. The EXISTS probes ix_match_statistics_user_round_name once
-        # per candidate and stops at the first row. Same number: `candidates` is
-        # DISTINCT, so counting candidates that own a stats row equals counting the
-        # distinct stats user_ids inside the candidate set.
-        owns_logs = (
-            sa.select(sa.literal(1))
-            .select_from(models.MatchStatistics)
-            .where(models.MatchStatistics.user_id == candidates.c.id)
-            .exists()
-        )
+        # Preserve the existing global has-logs KPI over workspace-scoped candidates.
+        # Actual statistic aggregates apply their own workspace filters.
+        owns_logs = sa.select(sa.literal(1)).select_from(_facts).where(_facts.c.player_id == candidates.c.id).exists()
         with_logs_query = sa.select(sa.func.count()).select_from(candidates).where(owns_logs)
         with_logs_count = (await session.execute(with_logs_query)).scalar_one() or 0
 

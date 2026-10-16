@@ -20,7 +20,7 @@ def register(broker: Any, logger: Any) -> None:
     async def _recompute(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             c.require_superuser(c.actor(data))
-            rows = await baselines_service.recompute(session)
+            rows = await baselines_service.recompute(session, discipline="overwatch")
             return {"rows": rows, "formula_version": FORMULA_VERSION}
 
         return await c.envelope(logger, "impact.recompute_baselines", op, session_factory=_SF)

@@ -1,7 +1,7 @@
-"""Out-of-band refresh of the ``matches.mv_hero_global_stats`` materialized view.
+"""Out-of-band refresh of the ``stats.mv_entity_global_stats`` materialized view.
 
 The global per-(hero, stat) comparison on ``GET /users/{id}/heroes`` is
-precomputed into a materialized view (see migration ``herostatmv01``). The heavy
+precomputed into a materialized view (see migration ``stats01``). The heavy
 aggregation that used to run inside the web request (and blew past
 ``statement_timeout`` on a cache miss) now happens here, off the request path.
 
@@ -28,7 +28,7 @@ from cashews import cache
 
 __all__ = ("HeroStatsRefresher", "hero_stats_refresh_service")
 
-_MV_QUALNAME = "matches.mv_hero_global_stats"
+_MV_QUALNAME = "stats.mv_entity_global_stats"
 # Arbitrary constant advisory-lock key, unique to this refresh.
 _ADVISORY_LOCK_KEY = 0x6865726F5F6756
 # Debounce window: collapse a burst of change events into a single refresh.
@@ -50,9 +50,9 @@ class HeroStatsRefresher:
 
         Returns ``True`` if this call performed the refresh, ``False`` if another
         refresh already held the advisory lock. Uses ``CONCURRENTLY`` once the view
-        is populated (no read lock); the very first refresh is a plain ``REFRESH``
-        because the view is created ``WITH NO DATA`` and ``CONCURRENTLY`` requires an
-        already-populated view.
+        is populated (no read lock). Migration populates it initially; a runtime
+        rebuild marked ``WITH NO DATA`` needs a plain refresh before concurrent
+        refreshes can resume. Missing views and refresh failures propagate.
         """
         # Heavy offline aggregation — lift the per-statement timeout for this txn.
         # All values interpolated below are module constants (never user input);
@@ -68,20 +68,8 @@ class HeroStatsRefresher:
         # such transaction runs at a time (advisory lock below), so it cannot multiply
         # across sessions the way a global bump would.
         await session.execute(sa.text("SET LOCAL work_mem = '768MB'"))
-        # The view's ``eligible`` CTE joins ``matches.statistics`` against its own
-        # (match, user, hero) qualification, and the planner answers it with a
-        # nested loop: 188,995 inner index scans on
-        # ``ix_match_statistics_match_user_round``, each fetching ``name``/``value``
-        # from the heap and discarding ~116 rows per 24 kept. That is 2.5M buffer
-        # touches for a 4.5M-row result — enough to evict the entire working set of
-        # a 2 GB ``shared_buffers`` once an hour, every hour. Forbidding the nested
-        # loop for this transaction turns it into a hash join over two scans:
-        # measured on a production restore (27.3M rows) 5055 ms -> 2538 ms and
-        # 2.53M -> 695k buffers. The small joins downstream (``best`` hydrates one
-        # metadata row per (hero, stat)) are unaffected at those cardinalities, and
-        # a covering index on the inner side — the only way to keep the nested loop
-        # and lose the heap fetches — would cost 336 MB of write-amplified index for
-        # one hourly job.
+        # Keep the offline aggregation's hash-join policy local to this transaction.
+        # Qualification and eligible rows now both come from native stats.fact.
         await session.execute(sa.text("SET LOCAL enable_nestloop = off"))
         got_lock = (await session.execute(sa.text(f"SELECT pg_try_advisory_xact_lock({_ADVISORY_LOCK_KEY})"))).scalar()
         if not got_lock:

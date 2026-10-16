@@ -29,8 +29,8 @@ from shared.messaging.config import (
     UPLOAD_MATCH_LOG_DLQ,
     UPLOAD_MATCH_LOG_QUEUE,
 )
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.messaging.topology import declare_dead_letter_queue
-from shared.models.ingestion.log_processing import LogProcessingSource
 from shared.observability import (
     make_rabbit_broker,
     metrics,
@@ -82,7 +82,7 @@ from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import reaper as logs_reaper
 from src.services.match_logs import retention as logs_retention
 from src.services.match_logs import uploads as upload_service
-from src.services.match_logs.binary import binary_match_logs
+from src.services.match_logs.log_records import log_records_service
 from src.services.match_logs.objectiveless import resolve_encounter_maps
 from src.services.match_logs.result_events import publish_match_log_result
 from src.services.overwatch_rank import scheduler as rank_scheduler
@@ -232,12 +232,7 @@ async def close_worker_resources() -> None:
 
 @broker.subscriber(UPLOAD_MATCH_LOG_QUEUE, channel=_JOBS_CHANNEL)
 async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
-    """Ingest a bot-uploaded match log carried over RabbitMQ (base64), then queue it.
-
-    Replaces the former direct ``POST /logs/{id}/upload`` HTTP call from the bot:
-    store the file to S3 + upsert the LogProcessingRecord, then publish a
-    ProcessMatchLogEvent so the normal processing path (and result delivery) runs.
-    """
+    """Hash/store actual bytes, create or reuse a native job, preserve the upload correlation."""
     async with observe_message_processing(
         queue=UPLOAD_MATCH_LOG_QUEUE,
         handler="process_upload_match_log",
@@ -246,45 +241,66 @@ async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
     ):
         event = UploadMatchLogEvent.model_validate(data)
         log = logger.bind(tournament_id=event.tournament_id, filename=event.filename)
-        content = base64.b64decode(event.content_b64)
-
-        async with db.async_session_maker() as session:
-            uploader_user_id: int | None = None
-            if event.uploader_discord_name:
-                source = LogProcessingSource.discord
-                uploader_user_id = await session.scalar(
-                    sa.select(models.SocialAccount.user_id)
-                    .where(
-                        models.SocialAccount.provider == SocialProvider.DISCORD,
-                        models.SocialAccount.username_normalized
-                        == normalize_social_handle(SocialProvider.DISCORD, event.uploader_discord_name),
+        job_id = None
+        try:
+            max_bytes = config.settings.max_match_log_bytes
+            if len(event.content_b64) > (max_bytes // 3 + 1) * 4:
+                raise ValueError("Match log exceeds the upload size limit")
+            content = base64.b64decode(event.content_b64, validate=True)
+            async with db.async_session_maker() as session:
+                uploader_user_id = None
+                if event.uploader_discord_name:
+                    uploader_user_id = await session.scalar(
+                        sa.select(models.SocialAccount.user_id)
+                        .where(
+                            models.SocialAccount.provider == SocialProvider.DISCORD,
+                            models.SocialAccount.username_normalized
+                            == normalize_social_handle(SocialProvider.DISCORD, event.uploader_discord_name),
+                        )
+                        .limit(1)
                     )
-                    .limit(1)
+                job = await upload_service.store_uploaded_log_bytes(
+                    session,
+                    s3=s3_client,
+                    tournament_id=event.tournament_id,
+                    filename=event.filename,
+                    content=content,
+                    source="discord" if event.uploader_discord_name else "manual",
+                    uploader_id=uploader_user_id,
                 )
-            else:
-                source = LogProcessingSource.manual
-
-            await upload_service.store_uploaded_log_bytes(
-                session,
-                s3=s3_client,
-                tournament_id=event.tournament_id,
-                filename=event.filename,
-                content=content,
-                source=source,
-                uploader_id=uploader_user_id,
+                job_id = job.id
+            await publish_message(
+                broker,
+                ProcessMatchLogEvent(
+                    ingest_job_id=job_id,
+                    correlation_id=event.correlation_id,
+                ).model_dump(),
+                PROCESS_MATCH_LOG_QUEUE,
+                logger=log,
+                correlation_id=event.correlation_id,
             )
-
-        await publish_message(
-            broker,
-            ProcessMatchLogEvent(tournament_id=event.tournament_id, filename=event.filename).model_dump(),
-            PROCESS_MATCH_LOG_QUEUE,
-            logger=log,
-        )
-        log.info("Uploaded match log ingested and queued for processing")
+        except Exception as exc:
+            if job_id is not None:
+                # Keep the durable pending job recoverable. Redelivery/reaper
+                # retries dispatch; a queue outage is not a persisted parse failure.
+                raise
+            await publish_match_log_result(
+                broker,
+                event.tournament_id,
+                event.filename,
+                "failed",
+                ingest_job_id=job_id,
+                correlation_id=event.correlation_id,
+                error_message=str(exc),
+                logger=log,
+            )
+            log.exception("Failed to upload or queue match log")
 
 
 @broker.subscriber(PROCESS_MATCH_LOG_QUEUE, channel=_MATCH_LOG_CHANNEL)
 async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
+    from shared.repository.stats import IngestJobRepository
+
     async with observe_message_processing(
         queue=PROCESS_MATCH_LOG_QUEUE,
         handler="process_match_log_async",
@@ -292,45 +308,25 @@ async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
         logger=logger,
     ):
         event = ProcessMatchLogEvent.model_validate(data)
-        log = logger.bind(tournament_id=event.tournament_id, filename=event.filename)
-        log.info("Processing match log from queue")
-
-        # Process the log and report the outcome to the uploading bot. The result
-        # is published exactly once per attempt, based solely on whether
-        # process_match_log succeeded — the achievement evaluation below must not
-        # flip it (and on retry the log is deduped, so it won't be reprocessed).
-        try:
-            async with db.async_session_maker() as session:
-                await logs_flows.process_match_log(
-                    session, event.tournament_id, event.filename, s3_client, is_raise=True
-                )
-        except Exception:
-            await publish_match_log_result(broker, event.tournament_id, event.filename, "failed", logger=log)
-            metrics.count("parser.match_log.processed", 1, attributes={"status": "failed"})
-            log.exception(f"Failed to process match log tournament_id={event.tournament_id} filename={event.filename}")
-            raise
-        else:
-            await publish_match_log_result(broker, event.tournament_id, event.filename, "done", logger=log)
-            metrics.count("parser.match_log.processed", 1, attributes={"status": "done"})
-
-        # Best-effort achievement evaluation (failure here retries the message).
+        log = logger.bind(ingest_job_id=event.ingest_job_id)
         async with db.async_session_maker() as session:
-            workspace_id = await session.scalar(
-                sa.select(models.Tournament.workspace_id).where(models.Tournament.id == event.tournament_id)
-            )
-            if workspace_id is None:
-                raise RuntimeError(f"Tournament {event.tournament_id} not found")
-            achievement_event = AchievementEvaluateEvent(
-                workspace_id=workspace_id,
-                tournament_id=event.tournament_id,
-                changed_tables=["matches.statistics", "matches.match", "tournament.encounter"],
-            )
-            await publish_message(
+            status = await logs_flows.process_match_log(session, event.ingest_job_id, s3_client, is_raise=False)
+            if status == models.IngestJobStatus.PROCESSING:
+                # Another delivery owns this claim. Acknowledge without
+                # resolving its uploader's waiter or changing the job outcome.
+                return
+            job = await IngestJobRepository().get(session, event.ingest_job_id, populate_existing=True)
+            await publish_match_log_result(
                 broker,
-                achievement_event.model_dump(),
-                ACHIEVEMENT_EVALUATE_QUEUE,
+                job.hint_tournament_id,
+                job.filename,
+                status.value,
+                ingest_job_id=job.id,
+                correlation_id=event.correlation_id,
+                error_message=job.error_message,
                 logger=log,
             )
+        metrics.count("parser.match_log.processed", 1, attributes={"status": status.value})
 
 
 @broker.subscriber(PROCESS_TOURNAMENT_LOGS_QUEUE, channel=_JOBS_CHANNEL)
@@ -345,27 +341,15 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
         logger.bind(tournament_id=event.tournament_id).info("Processing tournament logs from queue")
         try:
             async with db.async_session_maker() as session:
-                tournament_exists = await session.scalar(
-                    sa.select(models.Tournament.id).where(models.Tournament.id == event.tournament_id)
-                )
-                if tournament_exists is None:
-                    raise RuntimeError(f"Tournament {event.tournament_id} not found")
-                filenames = await binary_match_logs.get_logs_by_tournament(s3_client, event.tournament_id)
-
-            # Fan out instead of parsing the whole tournament inline: an inline
-            # loop holds one session (and one unacked delivery) for as long as it
-            # takes to chew every file, which outruns RabbitMQ's consumer_timeout
-            # and gets the delivery requeued — then dropped, because its 10-minute
-            # TTL has long expired. Per-log messages ride the normal
-            # process_match_log path, which is deduped, retried and reaped.
-            for filename in filenames:
+                job_ids = await log_records_service.requeue_tournament(session, event.tournament_id)
+            for job_id in job_ids:
                 await publish_message(
                     broker,
-                    ProcessMatchLogEvent(tournament_id=event.tournament_id, filename=filename).model_dump(),
+                    ProcessMatchLogEvent(ingest_job_id=job_id).model_dump(),
                     PROCESS_MATCH_LOG_QUEUE,
-                    logger=logger.bind(tournament_id=event.tournament_id, filename=filename),
+                    logger=logger.bind(ingest_job_id=job_id),
                 )
-            logger.info(f"Queued {len(filenames)} logs for tournament {event.tournament_id}.")
+            logger.info("Queued {} logs for tournament {}", len(job_ids), event.tournament_id)
         except Exception:
             logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")
             raise
@@ -412,23 +396,17 @@ async def process_tournament_encounter_completed(data: dict, msg: RabbitMessage)
             # completed series is what decides a Push/Clash map by exclusion.
             if await resolve_encounter_maps(session, event.encounter_id):
                 await logs_flows.enqueue_match_scores_changed(session, event.tournament_id, event.encounter_id)
-                await session.commit()
-
-        achievement_event = AchievementEvaluateEvent(
-            workspace_id=workspace_id,
-            tournament_id=event.tournament_id,
-            changed_tables=["tournament.encounter"],
-        )
-        await publish_message(
-            broker,
-            achievement_event.model_dump(),
-            ACHIEVEMENT_EVALUATE_QUEUE,
-            logger=logger.bind(
-                workspace_id=workspace_id,
-                tournament_id=event.tournament_id,
-                encounter_id=event.encounter_id,
-            ),
-        )
+            await enqueue_outbox_event(
+                session,
+                AchievementEvaluateEvent(
+                    workspace_id=workspace_id,
+                    tournament_id=event.tournament_id,
+                    changed_tables=["tournament.encounter", "stats.fact"],
+                ),
+                exchange="",
+                routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,
+            )
+            await session.commit()
 
 
 @broker.subscriber(RANK_FETCH_QUEUE, channel=_RANK_FETCH_CHANNEL)

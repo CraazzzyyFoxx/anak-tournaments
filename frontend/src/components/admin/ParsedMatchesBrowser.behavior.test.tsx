@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ParsedMatchesBrowser } from "@/components/admin/ParsedMatchesBrowser";
 import type { AdminMatchRow, AdminMatchesQuery, LogRecordRef } from "@/types/admin.types";
+import messages from "@/i18n/messages/en.json";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -188,7 +189,6 @@ function row(overrides: Partial<AdminMatchRow> = {}): AdminMatchRow {
     away_score: 1,
     time: 600,
     log_name: "alpha-beta-ilios.txt",
-    code: "ABC123",
     created_at: "2026-01-01T00:00:00Z",
     log_record: record(),
     ...overrides
@@ -239,33 +239,36 @@ describe("ParsedMatchesBrowser", () => {
     expect(activeChip("Tournament: Spring Cup")).toBeNull();
   });
 
-  it("maps the unresolved chip to the one filter a status cannot express", async () => {
+  it("maps the no-raw-log chip to the one filter a status cannot express", async () => {
     const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     // `unlinked_only` is a second query param, so `log_status` cannot carry it.
-    await pickChip(container, "Provenance unresolved");
+    await pickChip(container, messages.adminMatches.parsed.noRawLog);
     expect(lastQuery().unlinked_only).toBe(true);
     expect(lastQuery().log_status).toBeUndefined();
     // It is in the URL, so the narrowed list is linkable.
     expect(new URLSearchParams(window.location.search).get("unlinked_only")).toBe("1");
 
-    await click(activeChip("Provenance unresolved"));
+    await click(activeChip(messages.adminMatches.parsed.noRawLog));
     expect(lastQuery().unlinked_only).toBeUndefined();
     expect(lastQuery().log_status).toBeUndefined();
   });
 
-  it("sends a picked provenance status as the endpoint's log_status", async () => {
+  it.each([
+    { status: "failed", label: "Failed" },
+    { status: "awaiting_link", label: "Awaiting link" }
+  ] as const)("renders and filters the $status provenance status", async ({ status, label }) => {
+    listAdminMatches.mockResolvedValue(pageOf([row({ log_record: record({ status }) })]));
     const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
-    await pickChip(container, "Ingestion status", "Failed");
+    await waitFor(() => container.textContent?.includes(status), "the provenance status");
+    await pickChip(container, "Ingestion status", label);
 
-    // All four statuses are reachable, and the one the endpoint repeats per
-    // value stays a list.
-    expect(lastQuery().log_status).toEqual(["failed"]);
+    expect(lastQuery().log_status).toEqual([status]);
     expect(lastQuery().unlinked_only).toBeUndefined();
-    expect(new URLSearchParams(window.location.search).get("log_status")).toBe("failed");
+    expect(new URLSearchParams(window.location.search).get("log_status")).toBe(status);
   });
 
   it("sends a map picked from the catalogue as map_id", async () => {
@@ -274,8 +277,7 @@ describe("ParsedMatchesBrowser", () => {
 
     await pickChip(container, "Map", "Nepal");
 
-    // The endpoint's free-text search covers log name, match code and team
-    // names — never the map — so this filter is the only way to one map.
+    // Map selection is a distinct filter, not part of free-text search.
     expect(lastQuery().map_id).toBe(6);
   });
 
@@ -291,20 +293,20 @@ describe("ParsedMatchesBrowser", () => {
     await click(second);
     expect(lastQuery().page).toBe(2);
 
-    await pickChip(container, "Provenance unresolved");
+    await pickChip(container, messages.adminMatches.parsed.noRawLog);
 
     // Without the reset, a narrower filter lands on a page that no longer exists.
     expect(new URLSearchParams(window.location.search).get("page")).toBeNull();
   });
 
-  it("calls an unlinked map unresolved, never failed", async () => {
-    listAdminMatches.mockResolvedValue(pageOf([row({ log_record: null })]));
+  it("keeps maps without raw logs available for inspection", async () => {
+    listAdminMatches.mockResolvedValue(pageOf([row({ time: null, log_name: null, log_record: null })]));
     const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
-    await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
-
-    // Scoped to the rows: "Failed" is also a chip option label.
-    expect(bodyText(container)).toContain("unresolved");
-    expect(bodyText(container)).not.toContain("failed");
+    const first = await waitFor(() => dataRows(container)[0], "the parsed map row");
+    expect(first.textContent).toContain("Ilios");
+    expect(first.textContent).toContain("2 – 1");
+    await click(first);
+    expect(new URLSearchParams(window.location.search).get("id")).toBe("1");
   });
 
   it("opens the inspector for the clicked row and records it in the URL", async () => {

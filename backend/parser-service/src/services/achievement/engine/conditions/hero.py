@@ -11,6 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import player_facts
 from src import models
 
 from ..context import EvalContext
@@ -23,7 +24,7 @@ from .stat_threshold import OPERATORS
     grain=AchievementGrain.user_match,
     description="Per-map stat while playing one specific hero",
     required=("hero_slug", "stat", "op", "value"),
-    depends_on=("matches.statistics",),
+    depends_on=("stats.fact",),
 )
 async def execute_hero_stat(
     session: AsyncSession,
@@ -39,36 +40,35 @@ async def execute_hero_stat(
     value = params["value"]
 
     op_fn = OPERATORS[op]
-    sum_expr = sa.func.sum(models.MatchStatistics.value)
+    facts = player_facts(discipline="overwatch")
+    sum_expr = sa.func.sum(facts.c.value)
 
     query = (
         sa.select(
-            models.MatchStatistics.user_id,
-            models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
+            facts.c.player_id,
+            facts.c.tournament_id,
+            facts.c.match_id,
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .join(models.CatalogEntity, models.CatalogEntity.id == models.MatchStatistics.hero_id)
+        .select_from(facts)
+        .join(models.CatalogEntity, models.CatalogEntity.id == facts.c.entity_id)
         .where(
             models.CatalogEntity.kind == "character",
             models.CatalogEntity.discipline == "overwatch",
-            models.MatchStatistics.name == stat,
-            models.MatchStatistics.round == 0,
+            facts.c.stat_code == stat,
+            facts.c.segment == 0,
             models.CatalogEntity.slug == hero_slug,
-            models.Tournament.workspace_id == context.workspace_id,
+            facts.c.workspace_id == context.workspace_id,
         )
         .group_by(
-            models.MatchStatistics.user_id,
-            models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
+            facts.c.player_id,
+            facts.c.tournament_id,
+            facts.c.match_id,
         )
         .having(op_fn(sum_expr, value))
     )
 
     if context.tournament:
-        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+        query = query.where(facts.c.tournament_id == context.tournament.id)
 
     result = await session.execute(query)
     return {(row[0], row[1], row[2]) for row in result}
@@ -79,7 +79,7 @@ async def execute_hero_stat(
     grain=AchievementGrain.user_tournament,
     description="Best K/D on a hero across the tournament",
     optional=("hero_slug", "min_match_time", "min_matches", "min_time"),
-    depends_on=("matches.statistics",),
+    depends_on=("stats.fact",),
 )
 async def execute_hero_kd_best(
     session: AsyncSession,
@@ -125,73 +125,65 @@ async def _hero_kd_best_by_slug(
     min_match_time: float,
 ) -> dict[str, set[tuple[int, int]]]:
     """``{hero_slug: {(user_id, tournament_id)}}`` — each hero's best K/D per tournament."""
+    facts = player_facts(discipline="overwatch")
     base = (
         sa.select(
-            models.MatchStatistics.user_id,
-            models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
-            models.MatchStatistics.hero_id,
-            models.MatchStatistics.name,
-            sa.func.sum(models.MatchStatistics.value).label("val"),
+            facts.c.player_id,
+            facts.c.tournament_id,
+            facts.c.match_id,
+            facts.c.entity_id,
+            facts.c.stat_code,
+            sa.func.sum(facts.c.value).label("val"),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.isnot(None),
-            models.MatchStatistics.name.in_(
-                [
-                    "Eliminations",
-                    "Deaths",
-                    "HeroTimePlayed",
-                ]
-            ),
-            models.Tournament.workspace_id == context.workspace_id,
+            facts.c.segment == 0,
+            facts.c.entity_id.is_not(None),
+            facts.c.stat_code.in_(("eliminations", "deaths", "hero_time_played")),
+            facts.c.workspace_id == context.workspace_id,
         )
         .group_by(
-            models.MatchStatistics.user_id,
-            models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
-            models.MatchStatistics.hero_id,
-            models.MatchStatistics.name,
+            facts.c.player_id,
+            facts.c.tournament_id,
+            facts.c.match_id,
+            facts.c.entity_id,
+            facts.c.stat_code,
         )
     )
 
     if context.tournament:
-        base = base.where(models.Encounter.tournament_id == context.tournament.id)
+        base = base.where(facts.c.tournament_id == context.tournament.id)
 
     base_sq = base.subquery("base")
 
     # Pivot: per-user-per-match → eliminations, deaths, time_played
     user_match = (
         sa.select(
-            base_sq.c.user_id,
+            base_sq.c.player_id,
             base_sq.c.tournament_id,
-            base_sq.c.hero_id,
+            base_sq.c.entity_id,
             base_sq.c.match_id,
             sa.func.sum(
                 sa.case(
-                    (base_sq.c.name == "Eliminations", base_sq.c.val),
+                    (base_sq.c.stat_code == "eliminations", base_sq.c.val),
                     else_=0,
                 )
             ).label("eliminations"),
             sa.func.sum(
                 sa.case(
-                    (base_sq.c.name == "Deaths", base_sq.c.val),
+                    (base_sq.c.stat_code == "deaths", base_sq.c.val),
                     else_=0,
                 )
             ).label("deaths"),
             sa.func.sum(
                 sa.case(
-                    (base_sq.c.name == "HeroTimePlayed", base_sq.c.val),
+                    (base_sq.c.stat_code == "hero_time_played", base_sq.c.val),
                     else_=0,
                 )
             ).label("time_played"),
         ).group_by(
-            base_sq.c.user_id,
+            base_sq.c.player_id,
             base_sq.c.tournament_id,
-            base_sq.c.hero_id,
+            base_sq.c.entity_id,
             base_sq.c.match_id,
         )
     ).subquery("user_match")
@@ -204,9 +196,9 @@ async def _hero_kd_best_by_slug(
     # Aggregate across matches: per-user-per-hero-per-tournament
     agg = (
         sa.select(
-            qualified_matches.c.user_id,
+            qualified_matches.c.player_id,
             qualified_matches.c.tournament_id,
-            qualified_matches.c.hero_id,
+            qualified_matches.c.entity_id,
             (
                 sa.func.sum(qualified_matches.c.eliminations)
                 / sa.func.nullif(sa.func.sum(qualified_matches.c.deaths), 0)
@@ -215,9 +207,9 @@ async def _hero_kd_best_by_slug(
             sa.func.count().label("match_count"),
         )
         .group_by(
-            qualified_matches.c.user_id,
+            qualified_matches.c.player_id,
             qualified_matches.c.tournament_id,
-            qualified_matches.c.hero_id,
+            qualified_matches.c.entity_id,
         )
         .having(
             sa.func.sum(qualified_matches.c.time_played) >= min_time,
@@ -228,12 +220,12 @@ async def _hero_kd_best_by_slug(
     # Best K/D per hero per tournament
     best = (
         sa.select(
-            agg.c.user_id,
+            agg.c.player_id,
             agg.c.tournament_id,
-            agg.c.hero_id,
+            agg.c.entity_id,
             sa.func.row_number()
             .over(
-                partition_by=[agg.c.tournament_id, agg.c.hero_id],
+                partition_by=[agg.c.tournament_id, agg.c.entity_id],
                 order_by=agg.c.kd.desc(),
             )
             .label("rn"),
@@ -241,8 +233,8 @@ async def _hero_kd_best_by_slug(
     ).subquery("best")
 
     final = (
-        sa.select(best.c.user_id, best.c.tournament_id, models.CatalogEntity.slug)
-        .join(models.CatalogEntity, models.CatalogEntity.id == best.c.hero_id)
+        sa.select(best.c.player_id, best.c.tournament_id, models.CatalogEntity.slug)
+        .join(models.CatalogEntity, models.CatalogEntity.id == best.c.entity_id)
         .where(
             best.c.rn == 1,
             models.CatalogEntity.kind == "character",

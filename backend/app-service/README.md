@@ -81,6 +81,30 @@ to a hero (`attrs.class` → `type`), `map` to a map (`parent_id` → `gamemode_
 gamemode. All ids are new `catalog.entity` ids; `/api/v1/maps` sorts by `parent_id`, while the
 per-user map statistics wire still accepts `gamemode_id` and translates it internally.
 
+Statistics readers use native `stats.fact`/`stats.stat_def` queries with an explicit Overwatch
+discipline and workspace-member ownership. Historical observations survive membership removal.
+Profile and achievement match expansions bulk-load bound games and their historical participant
+slots: home/away means slots 1/2, never ingestion source order or today's active seats.
+`map_index` is the game's position; no pick-ban ordering inference remains. Public match `source`
+and `code` are removed (encounter-game replay codes are independent).
+
+Existing hidden-tournament policies, strict >60-second character qualification, 600-second
+leaderboard threshold, rank ties and null handling are preserved. Profile/comparison per-10
+denominators remain match duration; hero leaderboards use character playtime. MVP placement
+prefers ImpactRank over Performance. See [player statistics semantics](../../docs/users-identity.md#93-public-player-app-service).
+
+Native floating-point statistics reductions have a fixed observation order: match and historical
+workspace member, then character/stat identity when a group spans them. Rolled-up character totals
+use character identity order. Stored facts and the existing presentation rounding are unchanged.
+This replaces the legacy executor's unspecified SUM order; a last-bit difference can move a
+displayed total by 0.01 at a rounding boundary. The P4 app parity policy proves these changes from
+the frozen operand bits, historical member/encounter-participant identities and exact denominators,
+checks the native left-fold result bit-for-bit, and links displayed values to `round(raw, 2)`.
+The regular-comparison exceptions also prove the filtered population inputs and cohort-average
+arithmetic. This does not relax ranks, thresholds, best values or ownership, metadata, or unrelated
+fields. The separate initial global-MV average allowance remains at most 1e-12, with exact native
+derivation.
+
 Catalog admin uses `CatalogEntityCreate`, `CatalogEntityUpdate` and `CatalogEntityRead` rather
 than those Overwatch-shaped models. PATCH shallow-merges `attrs` (present keys replace, absent
 keys keep); a name-only edit keeps the stored slug. Explicit null for `name`, `slug`, `attrs` or
@@ -129,7 +153,7 @@ On each event (`src/services/tournament_events.py`) this worker:
 2. `delete_match`es the affected Redis read-cache patterns: `*tournaments/{id}*`, every user-scoped
    flow key (the event does not name the users a tournament touched), the users-overview id order,
    and the per-workspace achievement-rarity aggregate;
-3. requests a debounced refresh of the `matches.mv_hero_global_stats` materialized view.
+3. requests a debounced refresh of the `stats.mv_entity_global_stats` materialized view.
 
 This invalidates **this service's** Redis cache only. The gateway's own anonymous response cache is
 invalidated separately, off the `realtime:tournament:{id}:{bracket,draft}` Redis channels that
@@ -144,11 +168,15 @@ topics.
 
 ### Scheduled work
 
-One debounced background job: the `matches.mv_hero_global_stats` refresh
+One debounced background job: the `stats.mv_entity_global_stats` refresh
 (`src/services/hero_stats_refresh.py`). Fired best-effort at startup and on every
 `tournament_changed` event, throttled to one run per hour by a Redis-held cooldown key, guarded by a
 Postgres advisory lock, and executed with `statement_timeout` disabled and `work_mem` raised. It runs
 as a background task and never blocks the event consumer.
+`stats01` populates the view during migration. Runtime refreshes use `CONCURRENTLY`;
+an explicitly unpopulated rebuild uses a first plain refresh. Unpopulated reads and
+refresh failures are errors, not empty statistics. The refresher role must own this MV
+and have SELECT on its native sources; ordinary readers need only SELECT on the MV.
 
 ### Outbound RPC
 
@@ -176,15 +204,23 @@ There are no per-service migrations. All models live in one SQLAlchemy metadata 
 - `achievements` — `override` and `evaluation_result`, only to repoint `workspace_member_id` during a
   merge ([achievements](../../docs/database_erd.md#achievements--achievements)).
 
-Profile merge is the one operation that writes outside those schemas: it repoints references in
-`tournament.{player,team}`, `matches.{statistics,kill_feed,event}`, `log_processing.record` and
-`balancer.registration` from the source player to the target (`REFERENCE_CONFIG` and the
-`workspace_member`-aware mergers in `src/services/admin/user_merge.py`), one set-based `UPDATE` per
-resolved target member rather than one per row.
+Profile merge also repoints `tournament.team.captain_id` and `stats.ingest_job.uploader_user_id`.
+Member-anchored tournament, registration and achievement references follow their resolved member.
+Native `stats.match_player`, `stats.fact` and both actor/target identities in `stats.event` move via
+`StatsMatchRepository.merge_member_history`, within one workspace. Any same-match overlap is a
+409 `stats_member_history_conflict`, never a sum or deduplication. With no target membership, the
+source membership id is retained and its player identity changes; no member is fabricated.
+The original `UserMergeAudit` preview JSON retains complete global/member mappings and stable
+native statistics audit ids.
 
-**Reads only:** `tournament`, `matches`, `balancer`, `log_processing`, `auth` (for the acting
-identity and its roles), and `catalog.entity_legacy` for old-id lookups. No runtime access to
-the legacy `overwatch` schema remains.
+User/workspace deletion captures native evidence, flushes the deletion and stages its audit in
+the same transaction. Played-member deletion remains refused. Match-log downloads resolve
+`StatsMatch` → `IngestJob.raw_ref` and game → encounter tournament, authorize visibility before
+fetching that actual S3 key, and use the filename only for display.
+
+**Other reads:** `tournament`, native `stats`, `balancer`, `auth` (for the acting identity and its
+roles), and `catalog.entity_legacy` for old-id lookups. No runtime access to legacy `matches`,
+`log_processing` or `overwatch` tables remains.
 
 ## Dependencies
 

@@ -1,115 +1,121 @@
+"""Bind Workshop observations to one existing live game without inventing results."""
+
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.domain.pick_ban_config import pool_allows
 from shared.models.tournament.pick_ban import PickBanConfig
 from src import models
-from src.core import errors
+from src.core import enums, errors
 
 from . import service
-
-
-def _pool_scope(positions: dict[int, tuple[int | None, int]], encounter_id: int) -> dict[str, int | None]:
-    """The ``(stage, round)`` a map pool is keyed on; an encounter outside any bracket has neither."""
-    stage_id, round_ = positions.get(encounter_id, (None, None))
-    return {"stage_id": stage_id, "round": round_}
 
 
 async def resolve_for_log(
     session: AsyncSession,
     team_ids: tuple[int, int],
     *,
-    log_name: str,
+    job: models.IngestJob,
     map_id: int,
     map_pools: Sequence[PickBanConfig],
-    attached_encounter_id: int | None = None,
-) -> models.Encounter:
-    """The encounter a parsed log's two teams played.
-
-    ``team_ids`` are the tournament teams the log shows; an encounter is theirs
-    while both hold an active participation in it, so a team a bracket
-    correction replaced no longer resolves to the encounter it left.
-
-    The encounter the uploader attached wins, provided it is the duel between
-    the pair the log shows. Otherwise the pair has to name exactly one encounter: two teams can
-    meet more than once in a tournament (groups then playoffs, a
-    double-elimination rematch, a grand-final reset), and picking any of them
-    files the map's statistics under the wrong series. A re-parse keeps the
-    encounter an earlier run of the same file chose, so a pair that became
-    ambiguous after that first run does not strand the log.
-
-    When the pair alone is ambiguous, the log's map narrows it: only an
-    encounter whose round pool admits the map can hold it, and an encounter
-    that already holds that map from another log cannot hold a second one --
-    matches are keyed by (encounter, map), so filing there would overwrite it.
-    """
-    if attached_encounter_id is not None:
-        encounter = await session.get(models.Encounter, attached_encounter_id)
-        if encounter is None or encounter.tournament_id is None:  # a mix round is not a tournament encounter (D77)
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[errors.ApiExc(code="encounter_not_found", msg=f"Encounter {attached_encounter_id} not found")],
-            )
-        if encounter.slot_count != len(team_ids) or set(team_ids) != await service.active_team_ids(
-            session, encounter.id
-        ):
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="attached_encounter_mismatch",
-                        msg=(
-                            f"Attached encounter {attached_encounter_id} is not the one between teams "
-                            f"[{team_ids[0]}, {team_ids[1]}] this log shows"
-                        ),
-                    )
-                ],
-            )
-        return encounter
-
-    candidates = await service.list_by_teams(session, *team_ids)
-    if len(candidates) == 1:
-        return candidates[0]
-    if not candidates:
+) -> tuple[models.Encounter, models.EncounterGame, list[models.EncounterTeam]] | None:
+    encounter, game, team, side = models.Encounter, models.EncounterGame, models.EncounterTeam, models.EncounterGameTeam
+    if len(set(team_ids)) != 2:
         raise errors.ApiHTTPException(
-            status_code=404,
+            status_code=400, detail=[errors.ApiExc(code="invalid_teams", msg="A log must name two different teams")]
+        )
+    parents = sa.select(encounter).where(
+        encounter.workspace_id == job.workspace_id,
+        encounter.discipline == job.discipline,
+        encounter.tournament_id == job.hint_tournament_id,
+        encounter.slot_count == 2,
+        *(sa.exists().where(team.encounter_id == encounter.id, team.team_id == tid) for tid in team_ids),
+    )
+    if job.hint_encounter_id is not None:
+        parents = parents.where(encounter.id == job.hint_encounter_id)
+    if job.hint_encounter_game_id is not None:
+        parent_id = await session.scalar(sa.select(game.encounter_id).where(game.id == job.hint_encounter_game_id))
+        parents = parents.where(encounter.id == parent_id)
+    # All game creation/replacement under a series serializes on its parent.
+    encounters = list(await session.scalars(parents.order_by(encounter.id).with_for_update(of=encounter)))
+    if (job.hint_encounter_id is not None or job.hint_encounter_game_id is not None) and not encounters:
+        raise errors.ApiHTTPException(
+            status_code=422,
             detail=[
                 errors.ApiExc(
-                    code="not_found",
-                    msg=f"Encounter with teams [{team_ids[0]}, {team_ids[1]}] not found",
+                    code="attached_encounter_mismatch",
+                    msg="Attached encounter does not agree with the log's owner and teams",
                 )
             ],
         )
-
-    previous = await service.encounter_ids_with_log(session, [encounter.id for encounter in candidates], log_name)
-    if len(previous) == 1:
-        return next(encounter for encounter in candidates if encounter.id in previous)
-
-    # Each narrowing only applies when it leaves someone: a map outside every
-    # pool is the map-pool check's refusal to make, not this one's.
-    positions = await service.bracket_positions(session, [encounter.id for encounter in candidates])
-    candidates = [
-        encounter
-        for encounter in candidates
-        if pool_allows(map_pools, **_pool_scope(positions, encounter.id), item_id=map_id)
-    ] or candidates
-    if len(candidates) > 1:
-        played = await service.encounter_ids_with_map(session, [encounter.id for encounter in candidates], map_id)
-        candidates = [encounter for encounter in candidates if encounter.id not in played] or candidates
-    if len(candidates) == 1:
-        return candidates[0]
-
-    candidate_ids = ", ".join(str(encounter.id) for encounter in candidates)
-    raise errors.ApiHTTPException(
-        status_code=409,
-        detail=[
-            errors.ApiExc(
-                code="encounter_ambiguous",
-                msg=(
-                    f"Teams [{team_ids[0]}, {team_ids[1]}] play several encounters ({candidate_ids}) "
-                    f"that map {map_id} fits; attach the log to one of them"
-                ),
-            )
-        ],
+    if not encounters:
+        return None
+    parent_by_id = {row.id: row for row in encounters}
+    positions = await service.bracket_positions(session, list(parent_by_id))
+    permitted = {
+        eid
+        for eid in parent_by_id
+        if pool_allows(
+            map_pools,
+            stage_id=positions.get(eid, (None, None))[0],
+            round=positions.get(eid, (None, None))[1],
+            item_id=map_id,
+        )
+    }
+    if not permitted:
+        raise errors.ApiHTTPException(
+            status_code=400,
+            detail=[errors.ApiExc(code="map_not_in_pool", msg="Map is outside the configured encounter pool")],
+        )
+    query = sa.select(game).where(
+        game.encounter_id.in_(permitted),
+        game.map_id == map_id,
+        game.state != enums.EncounterGameState.CANCELLED,
     )
+    hinted_game = job.hint_encounter_game_id
+    if hinted_game is None:
+        # A previously validated provenance link is stronger than today's
+        # ambiguous map list. It never authorizes moving an existing match.
+        linked = list(
+            await session.scalars(
+                sa.select(models.StatsMatch.encounter_game_id).where(
+                    models.StatsMatch.ingest_job_id == job.id,
+                    models.StatsMatch.workspace_id == job.workspace_id,
+                    models.StatsMatch.discipline == job.discipline,
+                )
+            )
+        )
+        if len(linked) == 1:
+            hinted_game = linked[0]
+    if hinted_game is not None:
+        query = query.where(game.id == hinted_game)
+    games = list(await session.scalars(query.order_by(game.id).with_for_update(of=game)))
+    candidates = []
+    for candidate in games:
+        participants = list(
+            await session.scalars(
+                sa.select(team)
+                .join(side, side.encounter_team_id == team.id)
+                .where(
+                    side.game_id == candidate.id,
+                    side.encounter_id == candidate.encounter_id,
+                    team.encounter_id == candidate.encounter_id,
+                )
+                .order_by(team.id)
+            )
+        )
+        if len(participants) == 2 and {row.team_id for row in participants} == set(team_ids):
+            candidates.append((parent_by_id[candidate.encounter_id], candidate, participants))
+    if hinted_game is not None and not candidates:
+        raise errors.ApiHTTPException(
+            status_code=422,
+            detail=[
+                errors.ApiExc(
+                    code="attached_game_mismatch",
+                    msg="Attached game does not agree with the log's owner, map and teams",
+                )
+            ],
+        )
+    return candidates[0] if len(candidates) == 1 else None

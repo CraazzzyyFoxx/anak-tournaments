@@ -18,6 +18,7 @@ from shared.core import enums
 from shared.models.encounter import Encounter, EncounterGame, EncounterGameTeam, EncounterTeam, ScoringRule
 from shared.models.tournament import Team, Tournament
 from shared.models.tournament.bracket_encounter import BracketEncounter
+from src import models
 
 WINS_END = "games >= best_of or max_wins * 2 > best_of"
 
@@ -157,3 +158,107 @@ async def seed_confirmed_games(session: Any, encounter: Encounter, games: Sequen
             for seat, place in zip(seats, placements, strict=True)
         )
     await session.flush()
+
+
+def add_observed_game(
+    db: Any,
+    *,
+    match_id: int | None = None,
+    encounter_id: int,
+    map_entity_id: int,
+    position: int,
+    duration_s: float,
+    scores: Sequence[float],
+    observations: Sequence[tuple[int, int, int | None, enums.LogStatsName, float]],
+) -> None:
+    """Seed native facts; observations are (member, slot, character, stat, value)."""
+    encounter = db.get(Encounter, encounter_id)
+    assert encounter is not None
+    seats = db.scalars(
+        sa.select(EncounterTeam)
+        .where(
+            EncounterTeam.encounter_id == encounter_id,
+        )
+        .order_by(EncounterTeam.slot)
+    ).all()
+    by_slot = {seat.slot: seat for seat in seats}
+    assert len(scores) == len(seats)
+    game = EncounterGame(encounter_id=encounter_id, position=position, map_id=map_entity_id)
+    db.add(game)
+    db.flush()
+    db.add_all(
+        EncounterGameTeam(
+            game_id=game.id,
+            encounter_id=encounter_id,
+            encounter_team_id=seat.id,
+        )
+        for seat in seats
+    )
+    match = models.StatsMatch(
+        id=match_id,
+        workspace_id=encounter.workspace_id,
+        discipline=encounter.discipline,
+        encounter_game_id=game.id,
+        map_entity_id=map_entity_id,
+        duration_s=duration_s,
+    )
+    db.add(match)
+    db.flush()
+    match_id = match.id
+    db.add_all(
+        models.StatsMatchTeam(
+            match_id=match_id,
+            encounter_game_id=game.id,
+            encounter_team_id=seat.id,
+            source_position=seat.slot,
+        )
+        for seat in seats
+    )
+    for member_id, slot in sorted({(member, slot) for member, slot, *_ in observations}):
+        member = db.get(models.WorkspaceMember, member_id)
+        assert member is not None and member.workspace_id == encounter.workspace_id
+        player = db.get(models.User, member.player_id)
+        assert player is not None
+        db.add(
+            models.StatsMatchPlayer(
+                match_id=match_id,
+                workspace_member_id=member_id,
+                encounter_team_id=by_slot[slot].id,
+                handle_snapshot=player.name,
+            )
+        )
+    db.flush()
+    stat_ids = dict(
+        db.execute(
+            sa.select(models.StatDef.code, models.StatDef.id).where(
+                models.StatDef.discipline == encounter.discipline,
+            )
+        ).all()
+    )
+    facts = [
+        {
+            "match_id": match_id,
+            "segment": 0,
+            "encounter_team_id": seat.id,
+            "workspace_member_id": None,
+            "entity_id": None,
+            "entity_kind": "character",
+            "stat_id": stat_ids["score"],
+            "value": score,
+        }
+        for seat, score in zip(seats, scores, strict=True)
+    ]
+    facts.extend(
+        {
+            "match_id": match_id,
+            "segment": 0,
+            "encounter_team_id": by_slot[slot].id,
+            "workspace_member_id": member,
+            "entity_id": entity_id,
+            "entity_kind": "character",
+            "stat_id": stat_ids[stat.value],
+            "value": value,
+        }
+        for member, slot, entity_id, stat, value in observations
+    )
+    db.execute(models.StatsFact.__table__.insert(), facts)

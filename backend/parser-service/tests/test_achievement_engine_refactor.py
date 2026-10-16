@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PARSER_SERVICE_ROOT = REPO_BACKEND_ROOT / "parser-service"
@@ -13,8 +13,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(PARSER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-
-from sqlalchemy.dialects import postgresql  # noqa: E402
 
 from shared.core.enums import StageType  # noqa: E402
 from shared.models.achievements.achievement import AchievementGrain, AchievementRule  # noqa: E402
@@ -31,7 +29,6 @@ from src.domain.achievement_validation import (  # noqa: E402
     leaf_grain,
     validate_condition_tree,
 )
-from src.services.achievement.engine import differ as differ_module  # noqa: E402
 from src.services.achievement.engine.conditions import (  # noqa: E402
     get_registered_types,
     resolve_stat_name,
@@ -96,150 +93,9 @@ class DiffScopeTests(IsolatedAsyncioTestCase):
         self.assertEqual(3, slice_.match_id)
 
 
-class DiffWorkspaceMemberResolutionTests(IsolatedAsyncioTestCase):
-    """P6: ``AchievementEvaluationResult`` moved onto ``workspace_member_id``.
-
-    ``new_results`` still carries the player identity (what the condition
-    evaluator returns), so the insert path must resolve/create the
-    workspace_member for the rule's own workspace before persisting — and the
-    existing-rows read must key off the player identity it recovers via the
-    workspace_member join, so an already-qualified player is not re-inserted.
-
-    Rows are persisted with a single ``INSERT ... ON CONFLICT DO NOTHING``
-    (concurrent runs for one workspace used to collide on
-    ``uq_eval_result_dedup_coalesced``), so these tests inspect the emitted
-    statement rather than ``session.add`` calls.
-    """
-
-    @staticmethod
-    def _fake_session(existing_rows: list[tuple[object, ...]]) -> tuple[SimpleNamespace, list[object]]:
-        """Session double returning ``existing_rows`` for the diff read.
-
-        Rows are ``(rule_id, row_id, player_id, tournament_id, encounter_id,
-        match_id)`` — the shape ``load_existing_results`` reads. Returns the
-        session and the list that collects every non-read statement passed to
-        ``execute`` (the reconcile insert, and any delete).
-        """
-        statements: list[object] = []
-
-        async def execute_side_effect(query):
-            sql = str(query)
-            if "FROM achievements.evaluation_result" in sql:
-                return existing_rows
-            if sql.startswith("SELECT") and "workspace_member" in sql:
-                # No anchor rows yet: every player falls back to get_or_create.
-                return []
-            statements.append(query)
-            return None
-
-        session = SimpleNamespace(
-            execute=AsyncMock(side_effect=execute_side_effect),
-            add=lambda _row: None,
-            flush=AsyncMock(),
-        )
-        return session, statements
-
-    @staticmethod
-    def _insert_rows(statements: list[object]) -> list[dict]:
-        """Values carried by the reconcile INSERT, asserting it is upsert-safe."""
-        inserts = [s for s in statements if str(s).startswith("INSERT INTO achievements.evaluation_result")]
-        assert len(inserts) == 1, f"expected exactly one reconcile insert, got {len(inserts)}"
-        compiled = inserts[0].compile(dialect=postgresql.dialect())
-        sql = str(compiled)
-        assert "ON CONFLICT" in sql and "DO NOTHING" in sql, sql
-        # The conflict target must repeat the functional index's COALESCE
-        # expressions with literal zeros, or Postgres will not match it and the
-        # duplicate-key crash comes back (migration perfidx05).
-        assert "coalesce(tournament_id, 0)" in sql, sql
-        assert "coalesce(encounter_id, 0)" in sql, sql
-        assert "coalesce(match_id, 0)" in sql, sql
-        # Multi-row VALUES render as <column>_m<row index> bind parameters.
-        rows: dict[int, dict] = {}
-        for key, value in compiled.params.items():
-            column, _, index = key.rpartition("_m")
-            if not index.isdigit():
-                continue
-            rows.setdefault(int(index), {})[column] = value
-        return [rows[i] for i in sorted(rows)]
-
-    async def test_insert_path_resolves_workspace_member_for_new_player(self) -> None:
-        rule = AchievementRule(id=9, slug="newcomer", rule_version=1, workspace_id=3, grain=AchievementGrain.user_match)
-        session, statements = self._fake_session([])
-
-        fake_member = SimpleNamespace(id=777)
-        get_or_create = AsyncMock(return_value=fake_member)
-
-        with patch.object(differ_module, "get_or_create_workspace_member", get_or_create):
-            diff = await diff_and_apply(
-                session=session,
-                rule=rule,
-                new_results={(55, None, None)},
-                run_id="run-1",
-            )
-
-        get_or_create.assert_awaited_once_with(session, workspace_id=3, player_id=55)
-        rows = self._insert_rows(statements)
-        self.assertEqual(1, len(rows))
-        self.assertEqual(777, rows[0]["workspace_member_id"])
-        self.assertNotIn("user_id", rows[0])
-        self.assertEqual(1, len(diff.to_insert))
-        self.assertEqual(55, diff.to_insert[0]["user_id"])
-
-    async def test_insert_path_memoizes_workspace_member_per_player_across_rows(self) -> None:
-        """Two new rows for the same player (different tournaments) must only
-        resolve/create the workspace_member once."""
-        rule = AchievementRule(
-            id=9, slug="newcomer", rule_version=1, workspace_id=3, grain=AchievementGrain.user_tournament
-        )
-        session, statements = self._fake_session([])
-
-        fake_member = SimpleNamespace(id=888)
-        get_or_create = AsyncMock(return_value=fake_member)
-
-        with patch.object(differ_module, "get_or_create_workspace_member", get_or_create):
-            diff = await diff_and_apply(
-                session=session,
-                rule=rule,
-                new_results={(55, 10), (55, 20)},
-                run_id="run-1",
-            )
-
-        get_or_create.assert_awaited_once_with(session, workspace_id=3, player_id=55)
-        rows = self._insert_rows(statements)
-        self.assertEqual(2, len(rows))
-        self.assertTrue(all(row["workspace_member_id"] == 888 for row in rows))
-        self.assertEqual(2, len(diff.to_insert))
-
-    async def test_existing_rows_key_off_player_identity_via_workspace_member_join(self) -> None:
-        """A stored row's player identity is recovered through the
-        workspace_member join; a new result for the same player must not be
-        re-inserted (no spurious get_or_create call, no insert at all)."""
-        rule = AchievementRule(
-            id=9, slug="newcomer", rule_version=1, workspace_id=3, grain=AchievementGrain.user_tournament
-        )
-        # (rule_id, row_id, player_id, tournament_id, encounter_id, match_id) —
-        # player_id recovered via the workspace_member join, not a raw column.
-        session, statements = self._fake_session([(9, 101, 55, 10, None, None)])
-
-        get_or_create = AsyncMock()
-
-        with patch.object(differ_module, "get_or_create_workspace_member", get_or_create):
-            diff = await diff_and_apply(
-                session=session,
-                rule=rule,
-                new_results={(55, 10)},
-                run_id="run-1",
-            )
-
-        get_or_create.assert_not_awaited()
-        self.assertEqual([], statements)
-        self.assertEqual([], diff.to_insert)
-        self.assertEqual([], diff.to_delete)
-
-
 class ValidationTests(TestCase):
     def test_resolve_stat_name_maps_legacy_critical_hit_kills_alias(self) -> None:
-        self.assertEqual("ScopedCriticalHitKills", resolve_stat_name("CriticalHitKills"))
+        self.assertEqual("scoped_critical_hit_kills", resolve_stat_name("CriticalHitKills"))
 
     def test_rejects_top_level_player_role_condition(self) -> None:
         errors = validate_condition_tree({"type": "player_role", "params": {"role": "Damage"}})

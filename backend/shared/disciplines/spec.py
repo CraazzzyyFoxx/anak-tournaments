@@ -29,11 +29,15 @@ __all__ = (
     "CatalogSync",
     "DimensionSpec",
     "DisciplineSpec",
+    "EventTypeSpec",
     "FormatDimensionSpec",
     "FormatRuleSpec",
     "NativeRanks",
     "NativeTier",
     "RoleSpec",
+    "StatAggregation",
+    "StatDefSpec",
+    "StatFormat",
     "TeamFormatPreset",
 )
 
@@ -44,6 +48,23 @@ CATALOG_KINDS: tuple[str, ...] = ("character", "map", "mode")
 
 SelectionMode = Literal["single", "multi"]
 DimensionMode = Literal["off", "informational", "preference", "enforced"]
+StatFormat = Literal["integer", "decimal", "percent", "duration"]
+StatAggregation = Literal["sum", "max", "min", "avg", "last"]
+
+
+@dataclass(frozen=True, slots=True)
+class StatDefSpec:
+    code: str
+    name: str
+    value_format: StatFormat = "integer"
+    aggregation: StatAggregation = "sum"
+    group: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class EventTypeSpec:
+    code: str
+    name: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,6 +161,9 @@ class DisciplineSpec:
     team_format_presets: tuple[TeamFormatPreset, ...] = ()
     #: The provider used for default form identities, roster names and log matching (D90).
     identity_provider: str | None = None
+    #: Projected SMALLINT dictionaries; historical definitions are deactivated, never deleted.
+    stat_defs: tuple[StatDefSpec, ...] = ()
+    event_types: tuple[EventTypeSpec, ...] = ()
 
     @property
     def rated_dimension(self) -> DimensionSpec:

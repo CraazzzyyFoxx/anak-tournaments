@@ -324,6 +324,10 @@ Two report layers:
 
 A preview bracket rejects gameplay writes (409), including readiness, map choices and results. Organizers with `match.update` may swap team slots before publication; swaps still require open, unsettled encounters in the same stage.
 
+Parsed-match reads use `stats.match` bound to an encounter game. Overwatch match cards use that game's historical participant slots 1/2 (including retired participations), integer observed `score` facts, and the game's real `position` as `map_index`; official game results are never substituted. Match `source` and `code` no longer exist in public/admin responses or search/sort. Admin match updates accept only observed scores, duration and the already-bound map: removed/unknown fields return 422, and a different map returns 409 `stats_match_map_binding_conflict`. A different game/team binding requires the ingestion binding workflow.
+
+Admin match duration, display filename and source-team pointers can be null. `log_record: null` / `unlinked_only` mean no raw log is available; an internal object key is not reconstructed from the display filename. Player-stat counts exclude team-score facts, and kill/timeline arrays retain event multiplicity and chronological order. Score/duration edits and tournament/encounter/stage cascades stage narrow native-state evidence before their existing commit and retain the existing cache/outbox behavior.
+
 A **scrim** uses per-map reports to run the series engine but **does not write** `matches.match`; standings are not recalculated.
 
 ### Pick-ban
@@ -401,7 +405,11 @@ Impact (pure, `parser-service/src/domain/match_logs/impact.py`):
 - Flex and sub-`MIN_SECONDS` rows are not scored.
 - `ImpactPoints` = role-only baseline; `OverperformanceScore` = role+rank.
 
-Achievements: JSON condition tree (AND ∩, OR ∪, NOT complements at **user** grain even if the leaf is `user_tournament`). ~22 leaf types: stats, standings, bracket path (UB/LB, min LB wins, lost-in-round), MVP, newcomer, captain, revenge, streaks, OTP, teammate recurrence, …
+Achievements: JSON condition tree (AND ∩, OR ∪, NOT complements the eligible universe at the inferred leaf grain). ~22 leaf types: stats, standings, bracket path (UB/LB, min LB wins, lost-in-round), MVP, newcomer, captain, revenge, streaks, OTP, teammate recurrence, …
+
+Overwatch conditions read workspace-scoped native `stats` facts, match/game context and events. Stat and event comparisons use catalog codes; observed map winners come from participant score facts, while comeback order follows game position. Event actor/target members are converted explicitly to global player evaluation keys; identical events retain their multiplicity. Upload counts use actual ingest-job uploader, tournament hint and lifecycle state. Rule edits, imports and seeding derive native `depends_on` arrays from the tree (`stats.fact`, `stats.match`, `stats.event`, `stats.ingest_job`), never client arrays. Rule dependencies and evaluation/override match references are captured with transaction-bound evidence; mutations and cascades use bounded owner batches.
+
+Time-weighted rate rankings reduce the observed rate × playtime products and playtime denominator in immutable `(match_id, workspace_member_id)` order. Workspace-wide and tournament-scoped queries therefore use the same arithmetic order rather than whichever join plan PostgreSQL chooses.
 
 Effective set = evaluation ∪ grants − revokes (global / tournament / match precedence). Anchored on `workspace_member_id`.
 

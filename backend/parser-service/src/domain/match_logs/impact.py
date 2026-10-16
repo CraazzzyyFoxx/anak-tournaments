@@ -39,8 +39,8 @@ _EVENT_COLS = list(EVENT_STATS)
 FIGHT_GAP_SECONDS = 15.0
 
 
-def assign_fights(kill_feed: Sequence[models.MatchKillFeed]) -> None:
-    """Assign 1-indexed ``fight`` ids in place (mutates each row's ``.fight``).
+def assign_fights(kill_feed: Sequence[models.StatsEvent]) -> None:
+    """Assign 1-indexed fight ids through tracked, complete JSON assignments.
 
     A new fight begins on a **new round** OR after a gap longer than
     ``FIGHT_GAP_SECONDS`` between consecutive kills. Kills are ordered by time
@@ -54,13 +54,13 @@ def assign_fights(kill_feed: Sequence[models.MatchKillFeed]) -> None:
     so re-running the backfill produces identical fight ids (idempotent).
     """
     fight = 0
-    prev: models.MatchKillFeed | None = None
-    for kill in sorted(kill_feed, key=lambda k: k.time):
+    prev: models.StatsEvent | None = None
+    for kill in sorted(kill_feed, key=lambda k: k.t):
         if prev is None:
             fight = 1
-        elif kill.round != prev.round or (kill.time - prev.time) > FIGHT_GAP_SECONDS:
+        elif kill.segment != prev.segment or (kill.t - prev.t) > FIGHT_GAP_SECONDS:
             fight += 1
-        kill.fight = fight
+        kill.data = {**(kill.data or {}), "fight": fight}
         prev = kill
 
 
@@ -112,8 +112,10 @@ class ImpactContext:
 
 
 def build_event_counts(
-    kill_feed: Sequence[models.MatchKillFeed],
+    kill_feed: Sequence[models.StatsEvent],
     hero_types: Mapping[int, enums.HeroClass],
+    *,
+    member_user_ids: Mapping[int, int],
 ) -> pd.DataFrame:
     """Per (user_id, round) event counts derived from the kill feed.
 
@@ -126,13 +128,17 @@ def build_event_counts(
 
     rows = pd.DataFrame(
         {
-            "time": [k.time for k in kill_feed],
-            "round": [k.round for k in kill_feed],
-            "fight": [k.fight for k in kill_feed],
-            "killer_id": [k.killer_id for k in kill_feed],
-            "victim_id": [k.victim_id for k in kill_feed],
-            "victim_hero_id": [k.victim_hero_id for k in kill_feed],
-            "is_ult": [k.ability == enums.AbilityEvent.Ultimate for k in kill_feed],
+            "time": [k.t for k in kill_feed],
+            "round": [k.segment for k in kill_feed],
+            "fight": [(k.data or {}).get("fight") for k in kill_feed],
+            "killer_id": [
+                member_user_ids[k.actor_member_id] if k.actor_member_id is not None else None for k in kill_feed
+            ],
+            "victim_id": [
+                member_user_ids[k.target_member_id] if k.target_member_id is not None else None for k in kill_feed
+            ],
+            "victim_hero_id": [k.related_entity_id for k in kill_feed],
+            "is_ult": [(k.data or {}).get("ability") == enums.AbilityEvent.Ultimate.value for k in kill_feed],
         }
     ).sort_values("time")
 
@@ -143,6 +149,8 @@ def build_event_counts(
     counters: dict[tuple[int, int], dict[str, int]] = {}
 
     def bump(user_id: int, rnd: int, stat: str) -> None:
+        if pd.isna(user_id):
+            return
         key = (int(user_id), int(rnd))
         counters.setdefault(key, dict.fromkeys(_EVENT_COLS, 0))[stat] += 1
 
@@ -156,7 +164,10 @@ def build_event_counts(
         if r.victim_is_support:
             bump(r.killer_id, r.round, "SupportKills")
 
-    out = pd.DataFrame([{"user_id": uid, "round": rnd, **stats} for (uid, rnd), stats in counters.items()])
+    out = pd.DataFrame(
+        [{"user_id": uid, "round": rnd, **stats} for (uid, rnd), stats in counters.items()],
+        columns=["user_id", "round", *_EVENT_COLS],
+    )
     return out.sort_values(["user_id", "round"]).reset_index(drop=True)
 
 

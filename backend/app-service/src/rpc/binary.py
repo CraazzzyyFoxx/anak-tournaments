@@ -135,9 +135,9 @@ def register(broker: Any, logger: Any) -> None:
     async def _match_log(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             match_id = c.require_id(data)
-            filename, tournament_id = await workspace_binary.resolve_match_log_ref(session, match_id)
+            raw_ref, filename, tournament_id = await workspace_binary.resolve_match_log_ref(session, match_id)
             await c.gate_tournament(session, data, tournament_id)
-            data_bytes = await workspace_binary.fetch_log_bytes(tournament_id, filename)
+            data_bytes = await workspace_binary.fetch_log_bytes(raw_ref)
             return {
                 "content_b64": base64.b64encode(data_bytes).decode("ascii"),
                 "media_type": "application/octet-stream",

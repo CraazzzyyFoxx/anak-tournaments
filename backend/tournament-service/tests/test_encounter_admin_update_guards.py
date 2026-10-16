@@ -188,6 +188,11 @@ class MatchLogNameIsNotEditable(IsolatedAsyncioTestCase):
         gain by allowing the string to be rewritten."""
         self.assertNotIn("log_name", schemas.MatchUpdate.model_fields)
 
-    def test_the_other_match_fields_are_still_editable(self) -> None:
-        fields = set(schemas.MatchUpdate.model_fields)
-        assert {"home_score", "away_score", "map_id", "code", "time"} <= fields
+    def test_observed_scores_duration_and_bound_map_remain_editable(self) -> None:
+        body = schemas.MatchUpdate(home_score=3, away_score=2, map_id=10, time=120.5)
+        assert body.model_dump(exclude_unset=True) == {
+            "home_score": 3,
+            "away_score": 2,
+            "map_id": 10,
+            "time": 120.5,
+        }

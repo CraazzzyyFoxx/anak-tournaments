@@ -1,8 +1,4 @@
-"""Unit tests for ResultWaiter — the upload→result rendezvous used by the bot.
-
-Replaces the former pg LISTEN/NOTIFY waiter (broken under pgBouncer transaction
-pooling). Pure asyncio, so no DB/broker/env is required here.
-"""
+"""The upload id, not a display filename, owns the complete processing result."""
 
 import asyncio
 import sys
@@ -10,44 +6,78 @@ from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared.schemas.events import MatchLogProcessedEvent
 from src.result_waiter import ResultWaiter
 
 
+def result(correlation_id, status="done", *, job_id=11, error=None):
+    return MatchLogProcessedEvent(
+        tournament_id=73,
+        filename="same.log",
+        correlation_id=correlation_id,
+        ingest_job_id=job_id,
+        status=status,
+        error_message=error,
+    )
+
+
 class ResultWaiterTests(IsolatedAsyncioTestCase):
-    async def test_resolve_done_returns_true(self) -> None:
-        waiter = ResultWaiter(timeout=5)
-        task = asyncio.create_task(waiter.wait(73, "log.txt"))
-        await asyncio.sleep(0)  # let the task register its future
-        waiter.resolve(73, "log.txt", True)
-        self.assertIs(await task, True)
+    async def test_result_arriving_during_publish_is_not_lost(self):
+        waiter = ResultWaiter(timeout=1)
+        waiter.register("upload-a")
+        payload = result("upload-a")
+        waiter.resolve(payload)
+        self.assertIs(await waiter.wait("upload-a"), payload)
+        self.assertEqual({}, waiter._pending)
 
-    async def test_resolve_failed_returns_false(self) -> None:
-        waiter = ResultWaiter(timeout=5)
-        task = asyncio.create_task(waiter.wait(73, "log.txt"))
+    async def test_complete_failed_and_awaiting_results_survive(self):
+        waiter = ResultWaiter(timeout=1)
+        for status in ("failed", "awaiting_link"):
+            waiter.register(status)
+            payload = result(status, status, job_id=19, error="Administrator must link this game")
+            waiter.resolve(payload)
+            self.assertIs(await waiter.wait(status), payload)
+            self.assertEqual(19, payload.ingest_job_id)
+
+    async def test_same_filename_uploads_do_not_resolve_each_other(self):
+        waiter = ResultWaiter(timeout=1)
+        waiter.register("a")
+        waiter.register("b")
+        a, b = result("a", job_id=1), result("b", "failed", job_id=2, error="bad bytes")
+        waiter.resolve(b)
+        self.assertFalse(waiter._pending["a"].done())
+        waiter.resolve(a)
+        self.assertIs(await waiter.wait("a"), a)
+        self.assertIs(await waiter.wait("b"), b)
+
+    async def test_timeout_and_publish_failure_remove_the_registration(self):
+        waiter = ResultWaiter(timeout=0.001)
+        waiter.register("timeout")
+        self.assertIsNone(await waiter.wait("timeout"))
+        future = waiter.register("publish-failed")
+        waiter.cancel("publish-failed")
+        self.assertTrue(future.cancelled())
+        waiter.resolve(result("timeout"))
+        waiter.resolve(result("publish-failed"))
+        self.assertEqual({}, waiter._pending)
+
+    async def test_cancellation_cleans_up_and_duplicate_registration_is_rejected(self):
+        waiter = ResultWaiter(timeout=1)
+        waiter.register("a")
+        with self.assertRaises(ValueError):
+            waiter.register("a")
+        task = asyncio.create_task(waiter.wait("a"))
         await asyncio.sleep(0)
-        waiter.resolve(73, "log.txt", False)
-        self.assertIs(await task, False)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual({}, waiter._pending)
 
-    async def test_timeout_returns_none(self) -> None:
-        waiter = ResultWaiter(timeout=0.05)
-        self.assertIsNone(await waiter.wait(1, "x"))
-
-    async def test_resolve_unknown_key_is_noop(self) -> None:
-        waiter = ResultWaiter(timeout=5)
-        waiter.resolve(999, "missing", True)  # must not raise
-
-    async def test_resolve_after_timeout_is_noop(self) -> None:
-        waiter = ResultWaiter(timeout=0.05)
-        self.assertIsNone(await waiter.wait(2, "y"))
-        waiter.resolve(2, "y", True)  # future already dropped; must not raise
-
-    async def test_only_matching_key_is_resolved(self) -> None:
-        waiter = ResultWaiter(timeout=5)
-        task = asyncio.create_task(waiter.wait(10, "a.txt"))
-        await asyncio.sleep(0)
-        waiter.resolve(10, "b.txt", True)  # different filename — no effect
-        with self.assertRaises(asyncio.TimeoutError):
-            await asyncio.wait_for(asyncio.shield(task), timeout=0.05)
-        waiter.resolve(10, "a.txt", True)
-        self.assertIs(await task, True)
+    async def test_upload_failure_can_precede_job_creation(self):
+        waiter = ResultWaiter(timeout=1)
+        waiter.register("a")
+        payload = result("a", "failed", job_id=None, error="Object storage unavailable")
+        waiter.resolve(payload)
+        self.assertIs(await waiter.wait("a"), payload)

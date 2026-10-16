@@ -42,7 +42,7 @@ class CatalogAliasMissRead(BaseRead):
     first_seen_at: datetime
     last_seen_at: datetime
     last_ingest_job_id: int | None = None
-    # Joined through `log_processing.record` until P4; the UI links to the tournament's logs.
+    # Joined through stats.ingest_job.hint_tournament_id; breadcrumbs retain the real job ID.
     last_log_tournament_id: int | None = None
     resolved_at: datetime | None = None
 

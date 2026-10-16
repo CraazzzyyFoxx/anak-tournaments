@@ -5,6 +5,7 @@ Uses the SQLite fixture from ``test_scrim_achievement_isolation``.
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import sys
 from datetime import UTC, datetime
@@ -121,18 +122,25 @@ class _ParticipationFixture(_scrim._Fixture):
         tournament_id: int,
         uploader_id: int | None,
         *,
-        status: object = models.LogProcessingStatus.done,
+        status: object = models.IngestJobStatus.DONE,
         filename: str = "log.txt",
     ) -> int:
         row_id = self._id()
         self.insert(
-            models.LogProcessingRecord.__table__,
+            models.IngestJob.__table__,
             id=row_id,
-            tournament_id=tournament_id,
+            workspace_id=self.session.scalar(
+                sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+            ),
+            discipline="overwatch",
+            hint_tournament_id=tournament_id,
             filename=filename,
+            raw_ref=f"logs/{tournament_id}/{filename}",
+            content_hash=hashlib.sha256(b"00:00:01.000,fixture log upload\n").hexdigest(),
             status=status,
-            source=models.LogProcessingSource.upload,
-            uploader_id=uploader_id,
+            source_kind="upload",
+            external_id=f"fixture-upload-{row_id}",
+            uploader_user_id=uploader_id,
             attempts=0,
         )
         return row_id
@@ -291,7 +299,7 @@ class LogUploadCountTests(_ParticipationCase):
     async def test_failed_upload_is_ignored_unless_status_is_any(self) -> None:
         self._tournaments()
         self.db.log_record(REAL_TOURNAMENT_ID, REAL_HOME_USER)
-        self.db.log_record(REAL_TOURNAMENT_ID, REAL_HOME_USER, status=models.LogProcessingStatus.failed)
+        self.db.log_record(REAL_TOURNAMENT_ID, REAL_HOME_USER, status=models.IngestJobStatus.FAILED)
         self.db.session.commit()
 
         done, _ = await self.run_node("log_upload_count", {"op": ">=", "value": 2}, None)

@@ -12,10 +12,7 @@ from shared.models.identity.auth_user import *
 from shared.models.identity.social import *
 from shared.models.identity.user import *
 from shared.models.identity.user_merge_audit import *
-from shared.models.ingestion.discord_channel import *
-from shared.models.ingestion.log_processing import *
-from shared.models.matches.match import *
-from shared.models.matches.stat_baseline import *
+from shared.models.stats import *
 from shared.models.ranks.overwatch_rank import *
 from shared.models.registration.registration import *
 from shared.models.subscriptions.subscription import *

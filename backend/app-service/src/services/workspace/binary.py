@@ -176,42 +176,49 @@ class WorkspaceBinaryService:
     # --- match logs ---------------------------------------------------------
 
     def _match_log_ref_query(self, match_id: int) -> sa.Select:
-        """The log reference for one match: its file name plus the tournament id
-        that keys the S3 prefix. A two-table join, so it stays a query here rather
-        than hiding behind a CRUD repository."""
+        match, job, game, encounter = models.StatsMatch, models.IngestJob, models.EncounterGame, models.Encounter
         return (
-            sa.select(models.Match.log_name, models.Encounter.tournament_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .where(models.Match.id == match_id)
+            sa.select(job.raw_ref, job.filename, encounter.tournament_id)
+            .select_from(match)
+            .join(game, game.id == match.encounter_game_id)
+            .join(
+                encounter,
+                sa.and_(
+                    encounter.id == game.encounter_id,
+                    encounter.workspace_id == match.workspace_id,
+                    encounter.discipline == match.discipline,
+                ),
+            )
+            .outerjoin(
+                job,
+                sa.and_(
+                    job.id == match.ingest_job_id,
+                    job.workspace_id == match.workspace_id,
+                    job.discipline == match.discipline,
+                ),
+            )
+            .where(match.id == match_id)
         )
 
-    async def resolve_match_log_ref(self, session: AsyncSession, match_id: int) -> tuple[str, int]:
-        """The log filename and owning tournament id for one match, or a 404.
-
-        Split from the S3 fetch so a caller can gate tournament visibility
-        (hidden tournaments) on the resolved ``tournament_id`` before paying for
-        the S3 round trip.
-        """
+    async def resolve_match_log_ref(self, session: AsyncSession, match_id: int) -> tuple[str, str, int]:
+        """The actual raw object reference, safe display filename and owning tournament."""
         row = (await session.execute(self._match_log_ref_query(match_id))).first()
         if row is None:
             raise HTTPException(status_code=404, detail="Match not found")
-        log_name, tournament_id = row
-        filename = (log_name or "").rsplit("/", 1)[-1]
+        raw_ref, display_name, tournament_id = row
+        if not raw_ref:
+            raise HTTPException(status_code=404, detail="No log available for this match")
+        filename = (display_name or raw_ref).replace("\\", "/").rsplit("/", 1)[-1]
         if not filename or ".." in filename:
             raise HTTPException(status_code=404, detail="No log available for this match")
-        return filename, tournament_id
+        return raw_ref, filename, tournament_id
 
-    async def fetch_log_bytes(self, tournament_id: int, filename: str) -> bytes:
-        """Fetch one already-resolved log's raw bytes from S3."""
-        data_bytes = await s3_client.get_object(f"logs/{tournament_id}/{filename}")
+    async def fetch_log_bytes(self, raw_ref: str) -> bytes:
+        """Fetch only a server-resolved reference, after the caller's visibility gate."""
+        data_bytes = await s3_client.get_object(raw_ref)
         if data_bytes is None:
             raise HTTPException(status_code=404, detail="Log file not found")
         return data_bytes
-
-    async def match_log(self, session: AsyncSession, match_id: int) -> tuple[str, bytes]:
-        """Fetch a match's raw log from S3 as ``(filename, bytes)``."""
-        filename, tournament_id = await self.resolve_match_log_ref(session, match_id)
-        return filename, await self.fetch_log_bytes(tournament_id, filename)
 
 
 workspace_binary = WorkspaceBinaryService()

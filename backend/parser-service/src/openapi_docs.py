@@ -33,7 +33,7 @@ DOCS: dict[str, dict] = {
     # ── impact baselines ──────────────────────────────────────────────────────
     "rpc.parser.impact.recompute_baselines": {
         "summary": "Recompute impact baselines",
-        "description": "Permission: superuser. Rebuilds the statistical baselines MVP-impact scoring is measured against (`matches.stat_baselines`) for the active formula version, aggregating a mean/standard deviation per (role, rank bucket, stat) over every historical match-statistics row — global, with no tournament or workspace scope — and returns the row count plus that formula version. Each run atomically replaces the version's rows and aborts rather than wiping them when the aggregation yields nothing, so repeating it is safe; it does scan the whole statistics table and drops the 10-minute baseline cache every time, so avoid running it back to back.",
+        "description": "Permission: superuser. Rebuilds the native Overwatch baselines used for MVP-impact scoring (`stats.stat_baseline`) for the active formula version, aggregating a mean/standard deviation per (role id, rank bucket, stat code) from whole-match player facts across workspaces. Returns the row count and formula version. Each run atomically replaces that discipline/version's rows and aborts rather than wiping them when aggregation yields nothing. Repeated runs are safe but scan the historical facts and clear the 10-minute baseline cache.",
     },
     # ── OverFast rank ────────────────────────────────────────────────────────
     "rpc.parser.rank.user_history": {

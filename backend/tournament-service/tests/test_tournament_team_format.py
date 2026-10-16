@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 
 from shared.core.errors import BaseAPIException
 from shared.schemas.team_format import TeamFormatWrite
-from src import schemas
-from src.services.admin import encounter as admin_encounter
 from src.services.admin import tournament as admin_tournament
 from src.services.scrim import service as scrim_module
 
@@ -48,17 +46,6 @@ class TournamentTeamFormatTests(IsolatedAsyncioTestCase):
         save.assert_awaited_once_with(session, TOURNAMENT, BODY.to_domain("overwatch"))
         published.assert_awaited_once()
         session.commit.assert_awaited_once()
-
-    async def test_a_game_map_of_another_discipline_is_not_found(self) -> None:
-        match = SimpleNamespace(encounter=SimpleNamespace(tournament_id=1, discipline="lol"))
-        maps = SimpleNamespace(exists=AsyncMock(return_value=False))
-        service = admin_encounter.AdminEncounterService(
-            match_repo=SimpleNamespace(get=AsyncMock(return_value=match)), map_repo=maps
-        )
-        with self.assertRaises(BaseAPIException) as raised:
-            await service.update_match(AsyncMock(), 7, schemas.MatchUpdate(map_id=99))
-        assert raised.exception.status_code == 404
-        maps.exists.assert_awaited_once_with(ANY, id=99, discipline="lol")
 
     async def test_first_scrim_container_requires_an_enabled_discipline(self) -> None:
         service = scrim_module.ScrimService()

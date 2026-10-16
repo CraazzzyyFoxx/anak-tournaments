@@ -3,7 +3,7 @@
 Public entry points:
 
 - :func:`extractors.extract_match_features` — one row per ``(player, match)``,
-  pivoted from ``matches.statistics`` with per-10-min rate columns.
+  pivoted from native ``stats.fact`` with per-10-min rate columns.
 - :func:`extractors.extract_tournament_features` — roll-up of match features
   to ``(player, tournament)`` weighted by ``hero_time_played``.
 - :func:`extractors.extract_encounter_features` — pairwise team matchup

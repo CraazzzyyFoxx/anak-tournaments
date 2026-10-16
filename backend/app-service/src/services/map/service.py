@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.repository import CatalogEntityRepository
+from shared.repository.stats_reads import duel_matches
 from src import models, schemas
 from src.core import config, errors, pagination
 from src.services.hero.queries import HeroQueries
@@ -260,34 +261,37 @@ class MapService:
 
         ``workspace_id`` scopes the stats to a single workspace; ``None`` spans all of them.
         """
-        # Pre-resolve the user's team_id for each match via a CTE — this avoids
-        # fan-out from the Player table when a user has multiple Player records
-        # for the same team (e.g. starter + substitution role for different periods).
+        matches = duel_matches(discipline="overwatch")
+        # DISTINCT avoids fan-out when a roster has multiple rows for one player.
         user_match_teams = (
             sa.select(
-                models.Match.id.label("match_id"),
-                models.Match.map_id.label("map_id"),
-                models.Match.encounter_id.label("encounter_id"),
-                models.Match.home_team_id.label("home_team_id"),
-                models.Match.home_score.label("home_score"),
-                models.Match.away_score.label("away_score"),
+                matches.c.id.label("match_id"),
+                matches.c.map_entity_id.label("map_id"),
+                matches.c.encounter_id,
+                matches.c.home_tournament_team_id.label("home_team_id"),
+                matches.c.home_score,
+                matches.c.away_score,
                 models.Team.id.label("user_team_id"),
             )
-            .select_from(models.Match)
+            .select_from(matches)
             .join(
                 models.Team,
                 sa.or_(
-                    models.Team.id == models.Match.home_team_id,
-                    models.Team.id == models.Match.away_team_id,
+                    models.Team.id == matches.c.home_tournament_team_id,
+                    models.Team.id == matches.c.away_tournament_team_id,
                 ),
             )
             .join(models.Player, models.Player.team_id == models.Team.id)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(
+            .join(
+                models.WorkspaceMember,
                 sa.and_(
-                    models.WorkspaceMember.player_id == user_id,
-                    models.Player.is_substitution.is_(False),
-                )
+                    models.WorkspaceMember.id == models.Player.workspace_member_id,
+                    models.WorkspaceMember.workspace_id == matches.c.workspace_id,
+                ),
+            )
+            .where(
+                models.WorkspaceMember.player_id == user_id,
+                models.Player.is_substitution.is_(False),
             )
             .distinct()
             .cte("user_match_teams")
@@ -318,6 +322,7 @@ class MapService:
             )
             .select_from(user_match_teams)
             .join(models.CatalogEntity, models.CatalogEntity.id == user_match_teams.c.map_id)
+            .where(models.CatalogEntity.kind == "map", models.CatalogEntity.discipline == "overwatch")
             .group_by(models.CatalogEntity.id)
         )
 

@@ -11,6 +11,7 @@ from shared.repository import (
     StageRepository,
     TeamRepository,
 )
+from shared.repository.stats_reads import MatchReadContext
 from shared.services.bracket.advancement import SlotSource, resolve_slot_sources
 from shared.services.challonge_refs import (
     ChallongeRef,
@@ -236,8 +237,8 @@ class EncounterFlowsService:
                     # actually apply: ``session.get`` returns an identity-mapped row
                     # exactly as it was FIRST loaded and silently ignores them, so a
                     # read that reached the same team through a shallower path
-                    # earlier -- ``matches.teams`` loads ``Match.home_team`` with no
-                    # team options at all -- would hand this loop a bare instance.
+                    # earlier through a native match read would otherwise hand
+                    # this loop a bare instance.
                     source = await self.team_repo.get(
                         session,
                         seat.team_id,
@@ -248,6 +249,11 @@ class EncounterFlowsService:
                         team_read = await self._cached_team_read(session, source, nested_team, team_cache)
             teams_read.append(seat_to_read(seat, team_read))
         if "matches" in entities:
+            native_matches = await self.encounters.get_match_bulk(
+                session,
+                [match.id for match in encounter.matches],
+                utils.prepare_entities(entities, "matches"),
+            )
             matches_read = [
                 await self.to_pydantic_match(
                     session,
@@ -256,7 +262,7 @@ class EncounterFlowsService:
                     team_cache=team_cache,
                     tournament_cache=tournament_cache,
                 )
-                for match in encounter.matches
+                for match in native_matches
             ]
             # Same entity switch as `matches`: the encounter read carries both
             # what the tournament DECIDED per position (games) and what a parsed
@@ -302,11 +308,7 @@ class EncounterFlowsService:
         encounter_dict["challonge_id"] = (
             challonge_match_ids.get(encounter.id) if challonge_match_ids is not None else None
         )
-        # ``has_logs`` is a ``column_property`` (derived EXISTS over ``matches.match``,
-        # see ``shared/models/matches/match.py``), not a real column on
-        # ``__table__`` -- ``to_dict()`` only walks ``__table__.columns`` and
-        # silently drops it. Same footgun ``test_team_read_column_parity.py``
-        # guards for ``Team.avg_sr``/``total_sr``.
+        # Computed properties are not part of the persisted column dictionary.
         encounter_dict["has_logs"] = encounter.has_logs
         encounter_dict["scoring_preset"] = encounter.scoring_preset
 
@@ -346,23 +348,13 @@ class EncounterFlowsService:
     async def to_pydantic_match(
         self,
         session: AsyncSession,
-        match: models.Match,
+        match: MatchReadContext,
         entities: list[str],
         *,
         team_cache: dict[int, schemas.TeamRead] | None = None,
         tournament_cache: dict[int, schemas.TournamentRead] | None = None,
     ) -> schemas.MatchRead:
-        """
-        Converts a Match model instance to a Pydantic schema (MatchRead), including related entities.
-
-        Parameters:
-            session (AsyncSession): The SQLAlchemy async session.
-            match (models.Match): The Match model instance to convert.
-            entities (list[str]): A list of related entities to include (e.g., ["teams", "map"]).
-
-        Returns:
-            schemas.MatchRead: The Pydantic schema representing the match.
-        """
+        """Serialize explicit native match/game/participant observations."""
         home_team: schemas.TeamRead | None = None
         away_team: schemas.TeamRead | None = None
         encounter: schemas.EncounterRead | None = None
@@ -388,7 +380,11 @@ class EncounterFlowsService:
             encounter = await self.to_pydantic(
                 session,
                 match.encounter,
-                utils.prepare_entities(entities, "encounter"),
+                [
+                    entity
+                    for entity in utils.prepare_entities(entities, "encounter")
+                    if entity != "matches" and not entity.startswith("matches.")
+                ],
                 tournament_cache=tournament_cache,
                 team_cache=team_cache,
             )
@@ -396,7 +392,16 @@ class EncounterFlowsService:
             map_read = map_to_read(match.map, utils.prepare_entities(entities, "map"))
 
         return schemas.MatchRead(
-            **match.to_dict(),
+            id=match.match.id,
+            created_at=match.match.created_at,
+            updated_at=match.match.updated_at,
+            time=match.match.duration_s,
+            log_name=match.display_filename,
+            encounter_id=match.game.encounter_id,
+            map_id=match.match.map_entity_id,
+            map_index=match.game.position,
+            home_team_id=match.home_team.id if match.home_team is not None else None,
+            away_team_id=match.away_team.id if match.away_team is not None else None,
             score=schemas.Score(home=match.home_score, away=match.away_score),
             home_team=home_team,
             away_team=away_team,
@@ -768,8 +773,8 @@ class EncounterFlowsService:
             entities.append("teams.players")
         match = await self.get_match(session, match_id, entities, workspace_id=workspace_id)
         max_round: int = 0
-        home_ids = [player.user_id for player in match.home_team.players]
-        away_ids = [player.user_id for player in match.away_team.players]
+        home_ids = [player.user_id for player in match.home_team.players] if match.home_team is not None else []
+        away_ids = [player.user_id for player in match.away_team.players] if match.away_team is not None else []
         # One batched pair of aggregate queries for the whole roster instead of
         # 2 queries per player (this is the hottest public read — the match page).
         all_stats = await self.encounters.get_match_stats_for_users(session, match.id, [*home_ids, *away_ids])
@@ -784,8 +789,12 @@ class EncounterFlowsService:
             away_team_stats[user_id] = player_data
             max_round = max(max_round, max(player_data[0].keys()) if player_data[0] else 0)
 
-        home_team = create_team_with_match_stats(match.home_team, home_team_stats)
-        away_team = create_team_with_match_stats(match.away_team, away_team_stats)
+        home_team = (
+            create_team_with_match_stats(match.home_team, home_team_stats) if match.home_team is not None else None
+        )
+        away_team = (
+            create_team_with_match_stats(match.away_team, away_team_stats) if match.away_team is not None else None
+        )
         return schemas.MatchReadWithStats(
             **match.model_dump(exclude={"home_team", "away_team"}),
             rounds=max_round,
@@ -814,41 +823,7 @@ class EncounterFlowsService:
         # 404s if missing / out of workspace scope
         await self.get_match(session, match_id, [], workspace_id=workspace_id)
 
-        kill_rows, event_rows = await self.encounters.get_match_kill_feed(session, match_id)
-
-        kills = [
-            schemas.KillFeedEntry(
-                time=kf.time,
-                round=kf.round,
-                fight=kf.fight,
-                ability=kf.ability.value if kf.ability is not None else None,
-                damage=kf.damage,
-                is_critical_hit=kf.is_critical_hit,
-                is_environmental=kf.is_environmental,
-                killer_user_id=kf.killer_id,
-                killer_team_id=kf.killer_team_id,
-                killer_hero=schemas.HeroRead.from_entity(killer_hero),
-                victim_user_id=kf.victim_id,
-                victim_team_id=kf.victim_team_id,
-                victim_hero=schemas.HeroRead.from_entity(victim_hero),
-            )
-            for kf, killer_hero, victim_hero in kill_rows
-        ]
-
-        events = [
-            schemas.MatchTimelineEvent(
-                time=ev.time,
-                round=ev.round,
-                name=ev.name.value,
-                user_id=ev.user_id,
-                team_id=ev.team_id,
-                hero=schemas.HeroRead.from_entity(hero) if hero is not None else None,
-                related_user_id=ev.related_user_id,
-                related_team_id=ev.related_team_id,
-            )
-            for ev, hero in event_rows
-        ]
-
+        kills, events = await self.encounters.get_match_kill_feed(session, match_id)
         return schemas.MatchKillFeedRead(match_id=match_id, kills=kills, events=events)
 
 

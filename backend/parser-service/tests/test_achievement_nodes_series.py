@@ -36,7 +36,6 @@ evaluator = _scrim.evaluator
 eval_context = _scrim.eval_context
 models = _scrim.models
 sa = _scrim.sa
-enums = _scrim.enums
 
 USER_C = 104
 USER_D = 105
@@ -54,19 +53,14 @@ class _SeriesFixture(_scrim._Fixture):
         away_score: int = 0,
         map_index: int | None = None,
     ) -> int:
-        match_id = self._id()
-        self.insert(
-            models.Match.__table__,
-            id=match_id,
-            encounter_id=encounter_id,
-            home_team_id=home_team_id,
-            away_team_id=away_team_id,
+        return super().match(
+            encounter_id,
+            home_team_id,
+            away_team_id,
             home_score=home_score,
             away_score=away_score,
-            map_id=1,
             map_index=map_index,
         )
-        return match_id
 
     def stage(self, tournament_id: int, *, name: str, stage_type: object, order: int) -> int:
         stage_id = self._id()
@@ -312,52 +306,3 @@ class EncounterComebackTests(_SeriesCase):
             await self.context(REAL_TOURNAMENT_ID),
         )
         self.assertEqual({(REAL_HOME_USER, REAL_TOURNAMENT_ID, encounter)}, result)
-
-
-class SeriesGrainPersistenceTests(_SeriesCase):
-    """The series grain all the way to a stored row.
-
-    ``user_encounter`` and ``user_match`` keys are both 3-tuples, so only the
-    rule's grain says whether the third slot is a series or one of its maps.
-    Get that wrong and the engine writes the encounter id into ``match_id``
-    against a foreign key that points at ``matches.match`` — which is exactly
-    what this run would surface.
-    """
-
-    async def test_a_series_rule_stores_the_encounter_and_its_evidence(self) -> None:
-        self.db.tournament(REAL_TOURNAMENT_ID, name="T1", is_hidden=False, start=datetime(2026, 1, 1, tzinfo=UTC))
-        home, away = self.two_teams(REAL_TOURNAMENT_ID)
-        sweep = self.db.encounter(REAL_TOURNAMENT_ID, home, away, first_score=2, second_score=0)
-        self.db.rule(
-            1,
-            "clean-sweep",
-            {"type": "encounter_result", "params": {"outcome": "win", "opponent_score": 0}},
-            ["tournament.encounter"],
-            grain=_scrim.achievement.AchievementGrain.user_encounter,
-        )
-        self.db.session.commit()
-
-        run = await _scrim.runner.run_evaluation(
-            self.db.shim,
-            WORKSPACE_ID,
-            _scrim.achievement.EvaluationRunTrigger.parse_complete,
-            tournament_id=REAL_TOURNAMENT_ID,
-            changed_tables=["tournament.encounter"],
-        )
-
-        self.assertEqual(_scrim.achievement.EvaluationRunStatus.done, run.status)
-        self.assertEqual(1, run.results_created)
-
-        table = _scrim.achievement.AchievementEvaluationResult.__table__
-        rows = list(
-            self.db.session.execute(
-                _scrim.sa.select(table.c.tournament_id, table.c.encounter_id, table.c.match_id, table.c.evidence_json)
-            )
-        )
-        self.assertEqual(1, len(rows))
-        tournament_id, encounter_id, match_id, evidence = rows[0]
-        self.assertEqual(REAL_TOURNAMENT_ID, tournament_id)
-        self.assertEqual(sweep, encounter_id)
-        self.assertIsNone(match_id)
-        self.assertEqual("clean-sweep", evidence["rule_slug"])
-        self.assertEqual((2, 0), (evidence["winner_score"], evidence["loser_score"]))

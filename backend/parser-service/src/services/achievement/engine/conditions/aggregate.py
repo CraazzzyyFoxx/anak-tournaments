@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import EncounterStatus
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import player_facts
 from src import models
 from src.domain.achievement_duel import series_total
 
@@ -25,7 +26,7 @@ from .stat_threshold import OPERATORS
     grain=AchievementGrain.user,
     description="Career total of a log stat",
     required=("stat", "op", "value"),
-    depends_on=("matches.statistics",),
+    depends_on=("stats.fact",),
 )
 async def execute_global_stat_sum(
     session: AsyncSession,
@@ -40,19 +41,17 @@ async def execute_global_stat_sum(
     value = params["value"]
     op_fn = OPERATORS[op]
 
+    facts = player_facts(discipline="overwatch")
     query = (
-        sa.select(models.MatchStatistics.user_id)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        sa.select(facts.c.player_id)
         .where(
-            models.MatchStatistics.name == stat,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            facts.c.stat_code == stat,
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
+            facts.c.workspace_id == context.workspace_id,
         )
-        .group_by(models.MatchStatistics.user_id)
-        .having(op_fn(sa.func.sum(models.MatchStatistics.value), value))
+        .group_by(facts.c.player_id)
+        .having(op_fn(sa.func.sum(facts.c.value), value))
     )
 
     result = await session.execute(query)
@@ -108,6 +107,10 @@ async def execute_global_winrate(
         .where(
             models.Player.is_substitution.is_(False),
             models.Tournament.workspace_id == context.workspace_id,
+            models.Tournament.discipline == "overwatch",
+            models.Encounter.workspace_id == context.workspace_id,
+            models.Encounter.discipline == "overwatch",
+            models.WorkspaceMember.workspace_id == context.workspace_id,
             models.Encounter.status == EncounterStatus.COMPLETED,
             *([] if include_league else [models.Tournament.is_league.is_(False)]),
         )
@@ -134,7 +137,7 @@ async def execute_global_winrate(
     description="Distinct heroes, matches or roles",
     required=("field", "op", "value"),
     optional=("min_playtime", "scope"),
-    depends_on=("matches.statistics", "tournament.player"),
+    depends_on=("stats.fact", "tournament.player"),
     grain_for=lambda params: (
         AchievementGrain.user_tournament if params.get("scope") == "tournament" else AchievementGrain.user
     ),
@@ -168,6 +171,8 @@ async def execute_distinct_count(
             .where(
                 models.Player.is_substitution.is_(False),
                 models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == "overwatch",
+                models.WorkspaceMember.workspace_id == context.workspace_id,
                 models.Player.role.isnot(None),
             )
             .group_by(*group_cols)
@@ -180,62 +185,28 @@ async def execute_distinct_count(
         result = await session.execute(query)
         return {tuple(row) for row in result}
 
+    facts = player_facts(discipline="overwatch")
+    group_cols = [facts.c.player_id]
+    if scope == "tournament":
+        group_cols.append(facts.c.tournament_id)
+    query = sa.select(*group_cols).where(
+        facts.c.workspace_id == context.workspace_id,
+        facts.c.segment == 0,
+    )
     if field == "hero":
-        # Count distinct heroes played (with optional min playtime)
-        group_cols = [models.MatchStatistics.user_id]
-        if scope == "tournament":
-            group_cols.append(models.Encounter.tournament_id)
-
-        where_clauses = [
-            models.MatchStatistics.hero_id.isnot(None),
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.name == "HeroTimePlayed",
-            models.Tournament.workspace_id == context.workspace_id,
-        ]
-
+        query = query.where(
+            facts.c.entity_id.is_not(None),
+            facts.c.stat_code == "hero_time_played",
+        )
         if min_playtime:
-            where_clauses.append(models.MatchStatistics.value >= min_playtime)
-
-        query = (
-            sa.select(*group_cols)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(*where_clauses)
-            .group_by(*group_cols)
-            .having(op_fn(sa.func.count(models.MatchStatistics.hero_id.distinct()), value))
-        )
-
-        if context.tournament and scope == "tournament":
-            query = query.where(models.Encounter.tournament_id == context.tournament.id)
-
-        result = await session.execute(query)
-        return {tuple(row) for row in result}
-
-    if field == "match":
-        # Count distinct matches (used with scope="tournament")
-        group_cols = [models.MatchStatistics.user_id]
-        if scope == "tournament":
-            group_cols.append(models.Encounter.tournament_id)
-
-        query = (
-            sa.select(*group_cols)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.hero_id.is_(None),
-                models.Tournament.workspace_id == context.workspace_id,
-            )
-            .group_by(*group_cols)
-            .having(op_fn(sa.func.count(models.MatchStatistics.match_id.distinct()), value))
-        )
-
-        if context.tournament and scope == "tournament":
-            query = query.where(models.Encounter.tournament_id == context.tournament.id)
-
-        result = await session.execute(query)
-        return {tuple(row) for row in result}
-
-    raise ValueError(f"Unsupported distinct_count field: {field!r}")
+            query = query.where(facts.c.value >= min_playtime)
+        counted = facts.c.entity_id
+    elif field == "match":
+        query = query.where(facts.c.entity_id.is_(None))
+        counted = facts.c.match_id
+    else:
+        raise ValueError(f"Unsupported distinct_count field: {field!r}")
+    query = query.group_by(*group_cols).having(op_fn(sa.func.count(counted.distinct()), value))
+    if context.tournament and scope == "tournament":
+        query = query.where(facts.c.tournament_id == context.tournament.id)
+    return {tuple(row) for row in await session.execute(query)}

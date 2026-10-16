@@ -33,7 +33,7 @@ if typing.TYPE_CHECKING:
     from shared.models.encounter.audit import EncounterResultAudit
     from shared.models.encounter.game import EncounterGame
     from shared.models.encounter.team import EncounterTeam
-    from shared.models.matches.match import Match
+    from shared.models.stats.match import StatsMatch
     from shared.models.tournament.tournament import Tournament
 
 __all__ = ("Encounter", "ENCOUNTER_STATUS_ENUM", "ENCOUNTER_RESULT_STATUS_ENUM")
@@ -164,8 +164,7 @@ class Encounter(db.TimeStampIntegerMixin):
     confirmed_at: Mapped[datetime | None] = mapped_column(db.DateTime(timezone=True), nullable=True)
 
     if typing.TYPE_CHECKING:
-        # Derived from ``Match`` existence via ``column_property`` after
-        # ``Match`` is defined (see ``shared/models/matches/match.py``).
+        # Derived from game-bound native observations in ``stats/match.py``.
         has_logs: Mapped[bool]
         # Derived from the scoring rule via ``column_property`` (see
         # ``shared/models/encounter/scoring_rule.py``): ``wins`` or ``points``.
@@ -200,14 +199,11 @@ class Encounter(db.TimeStampIntegerMixin):
         passive_deletes=True,
         order_by="EncounterResultAudit.created_at.desc()",
     )
-    # Same shape as the collections around it, and for the same reason:
-    # ``Match.encounter_id`` is NOT NULL, so the default cascade -- which nulls a
-    # child's foreign key when the parent goes -- made ``delete_encounter`` emit
-    # ``UPDATE matches.match SET encounter_id = NULL`` and die on the constraint.
-    # ``passive_deletes`` hands the job to the ``ON DELETE CASCADE`` the column
-    # already carries (and every ``match_id`` child carries in turn).
-    matches: Mapped[list[Match]] = relationship(
-        back_populates="encounter",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
+    matches: Mapped[list[StatsMatch]] = relationship(
+        "StatsMatch",
+        secondary="encounter.game",
+        primaryjoin="Encounter.id == EncounterGame.encounter_id",
+        secondaryjoin="StatsMatch.encounter_game_id == EncounterGame.id",
+        viewonly=True,
+        order_by="EncounterGame.position",
     )

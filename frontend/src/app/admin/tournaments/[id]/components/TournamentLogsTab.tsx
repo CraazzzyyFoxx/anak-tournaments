@@ -42,6 +42,8 @@ import { useInvalidation } from "@/hooks/useInvalidation";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
+import encounterService from "@/services/encounter.service";
+import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import type {
   LogProcessingRecord,
   LogProcessingStats,
@@ -67,17 +69,18 @@ const ACTIVE_QUEUE_POLL_MS = 10_000;
 
 type LogFilter = LogProcessingStatus;
 
-const STATUS_META: Record<LogProcessingStatus, { key: "queued" | "processing" | "processed" | "failed"; icon: LucideIcon; tone: Tone }> = {
+const STATUS_META: Record<LogProcessingStatus, { key: "queued" | "processing" | "awaitingLink" | "processed" | "failed"; icon: LucideIcon; tone: Tone }> = {
   pending: { key: "queued", icon: Clock3, tone: "neutral" },
   processing: { key: "processing", icon: Loader2, tone: "info" },
+  awaiting_link: { key: "awaitingLink", icon: Link2, tone: "neutral" },
   done: { key: "processed", icon: CheckCircle2, tone: "success" },
   failed: { key: "failed", icon: XCircle, tone: "danger" }
 };
 
 /** Chip order is scan order: the states that need action come first. */
-const LOG_FILTERS: LogFilter[] = ["failed", "processing", "pending", "done"];
+const LOG_FILTERS: LogFilter[] = ["failed", "awaiting_link", "processing", "pending", "done"];
 
-const SOURCE_LABELS: Record<LogProcessingRecord["source"], "sourceUpload" | "sourceDiscord" | "sourceManual"> = {
+const SOURCE_LABELS: Partial<Record<string, "sourceUpload" | "sourceDiscord" | "sourceManual">> = {
   upload: "sourceUpload",
   discord: "sourceDiscord",
   manual: "sourceManual"
@@ -163,24 +166,34 @@ function AttachLogDialog({
   onAttach,
   onClose
 }: Readonly<{
-  record: LogProcessingRecord | null;
+  record: LogProcessingRecord;
   encounters: Encounter[];
   isPending: boolean;
-  onAttach: (encounterId: number) => void;
+  onAttach: (encounterId: number, encounterGameId: number) => void;
   onClose: () => void;
 }>) {
   const t = useTranslations("adminTournament.logs");
   const formatRound = useBracketRoundLabel();
-  const [picked, setPicked] = useState<string | undefined>(undefined);
-  const value =
-    picked ?? (record?.attached_encounter_id != null ? String(record.attached_encounter_id) : undefined);
+  const [value, setValue] = useState(
+    record.attached_encounter_id != null ? String(record.attached_encounter_id) : undefined
+  );
+  const [gameId, setGameId] = useState(
+    record.attached_encounter_game_id != null ? String(record.attached_encounter_game_id) : undefined
+  );
+  const encounterId = value === undefined ? undefined : Number(value);
+  const gamesQuery = useQuery({
+    queryKey: encounterQueryKeys.detail(encounterId),
+    queryFn: () => encounterService.getEncounter(encounterId!),
+    enabled: encounterId !== undefined
+  });
+  const games = gamesQuery.data?.games.filter((game) => game.state !== "cancelled") ?? [];
+  const selectedGame = games.find((game) => String(game.id) === gameId);
 
   return (
     <Dialog
-      open={record != null}
+      open
       onOpenChange={(open) => {
         if (open) return;
-        setPicked(undefined);
         onClose();
       }}
     >
@@ -188,12 +201,17 @@ function AttachLogDialog({
         <DialogHeader>
           <DialogTitle>{t("attachTitle")}</DialogTitle>
           <DialogDescription className="break-all">
-            {t("attachDescriptionWithFile", { filename: record ? getLogFileName(record.filename) : "" })}
+            {t("attachDescriptionWithFile", { filename: getLogFileName(record.filename) })}
           </DialogDescription>
         </DialogHeader>
         <SearchableImageSelect
           value={value}
-          onValueChange={setPicked}
+          onValueChange={(next) => {
+            setValue(next);
+            setGameId(undefined);
+          }}
+          disabled={isPending}
+          ariaLabel={t("pickEncounter")}
           options={encounters.map((encounter) => ({
             value: String(encounter.id),
             label: encounterOptionLabel(encounter, formatRound)
@@ -202,10 +220,41 @@ function AttachLogDialog({
           searchPlaceholder={t("searchEncounter")}
           triggerClassName="h-9"
         />
+        <SearchableImageSelect
+          value={selectedGame ? String(selectedGame.id) : undefined}
+          onValueChange={setGameId}
+          options={games.map((game) => ({
+            value: String(game.id),
+            label: t("gameOption", {
+              position: game.position,
+              map: game.map?.name ?? t("unknownMap"),
+              id: game.id
+            })
+          }))}
+          placeholder={t("pickGame")}
+          ariaLabel={t("pickGame")}
+          searchPlaceholder={t("searchGame")}
+          disabled={encounterId === undefined || gamesQuery.isFetching || gamesQuery.isError || isPending}
+          triggerClassName="h-9"
+        />
+        {encounterId !== undefined && gamesQuery.isFetching ? (
+          <p role="status" className="text-sm text-muted-foreground">{t("loadingGames")}</p>
+        ) : gamesQuery.isError ? (
+          <div role="alert" className="space-y-2 text-sm text-danger">
+            <p>{t("gamesLoadFailed")}</p>
+            <Button variant="outline" size="sm" onClick={() => void gamesQuery.refetch()}>
+              {t("reloadGames")}
+            </Button>
+          </div>
+        ) : encounterId !== undefined && gamesQuery.isSuccess && games.length === 0 ? (
+          <p role="status" className="text-sm text-muted-foreground">{t("noGames")}</p>
+        ) : null}
         <DialogFooter>
           <Button
-            disabled={value === undefined || isPending}
-            onClick={() => value !== undefined && onAttach(Number(value))}
+            disabled={!selectedGame || gamesQuery.isFetching || gamesQuery.isError || isPending}
+            onClick={() => {
+              if (encounterId !== undefined && selectedGame) onAttach(encounterId, selectedGame.id);
+            }}
           >
             {isPending ? <Spinner /> : <Link2 aria-hidden />}
             {t("attach")}
@@ -329,13 +378,18 @@ export function TournamentLogsTab({
 
   const [attachTarget, setAttachTarget] = useState<LogProcessingRecord | null>(null);
   const attachMutation = useMutation({
-    mutationFn: ({ recordId, encounterId }: { recordId: number; encounterId: number }) =>
-      adminService.retryLogRecord(recordId, encounterId),
+    mutationFn: ({ recordId, encounterId, encounterGameId }: {
+      recordId: number; encounterId: number; encounterGameId: number;
+    }) => adminService.retryLogRecord(recordId, {
+      encounter_id: encounterId,
+      encounter_game_id: encounterGameId
+    }),
     onSuccess: () => {
       notify.success(t("attachedQueued"));
       setAttachTarget(null);
       refreshAll();
-    }
+    },
+    onError: (error) => notify.apiError(error)
   });
 
   const columns: ColumnDef<LogProcessingRecord>[] = [
@@ -346,10 +400,11 @@ export function TournamentLogsTab({
       enableSorting: false,
       cell: ({ row }) => {
         const record = row.original;
+        const sourceLabel = Object.hasOwn(SOURCE_LABELS, record.source) ? SOURCE_LABELS[record.source] : undefined;
         return (
           <p
             className="max-w-[22rem] truncate font-mono text-xs"
-            title={tx("titleHint", { filename: record.filename, source: t(SOURCE_LABELS[record.source]), uploader: record.uploader_name ?? t("unknownUploader"), attempts: record.attempts > 1 ? record.attempts : 0 })}
+            title={tx("titleHint", { filename: record.filename, source: sourceLabel ? t(sourceLabel) : record.source, uploader: record.uploader_name ?? t("unknownUploader"), attempts: record.attempts > 1 ? record.attempts : 0 })}
           >
             {getLogFileName(record.filename)}
           </p>
@@ -394,7 +449,10 @@ export function TournamentLogsTab({
         if (!errorSummary) return null;
         return (
           <details className="group max-w-[28rem]">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs text-danger focus-visible:outline-2 focus-visible:outline-offset-2">
+            <summary className={cn(
+              "inline-flex cursor-pointer list-none items-center gap-1 rounded text-xs focus-visible:outline-2 focus-visible:outline-offset-2",
+              row.original.status === "failed" ? "text-danger" : "text-muted-foreground"
+            )}>
               <ChevronRight
                 className="size-3 shrink-0 transition-transform group-open:rotate-90"
                 aria-hidden
@@ -435,15 +493,13 @@ export function TournamentLogsTab({
         <span className="text-xs text-muted-foreground">{formatDuration(row.original)}</span>
       )
     },
-    // "Queued"/"Processing" rows go stale when the worker drops their queue
-    // message; the reaper requeues them on its own schedule, this is the
-    // operator's shortcut past the wait.
+    // Pending jobs can be requeued; an actively processing job cannot be retried.
     createKebabColumn<LogProcessingRecord>(
       (record) => [
         {
           label: record.status === "failed" ? tx("retryLog") : tx("requeueLog"),
           icon: RotateCcw,
-          hidden: record.status === "done",
+          hidden: record.status === "done" || record.status === "processing",
           onSelect: () => retryMutation.mutate([record.id])
         },
         // A processed log already filed its match; only an unfinished one can
@@ -451,7 +507,7 @@ export function TournamentLogsTab({
         {
           label: t("attachTo"),
           icon: Link2,
-          hidden: record.status === "done" || encounters.length === 0,
+          hidden: record.status === "done" || record.status === "processing" || encounters.length === 0,
           onSelect: () => setAttachTarget(record)
         }
       ],
@@ -522,7 +578,7 @@ export function TournamentLogsTab({
             });
             return { results: response.items, total: response.total, page, per_page: pageSize };
           }}
-          enableRowSelection={(row) => row.original.status !== "done"}
+          enableRowSelection={(row) => row.original.status !== "done" && row.original.status !== "processing"}
           bulkActions={(selected, clearSelection) => (
             <Button
               variant="outline"
@@ -612,15 +668,20 @@ export function TournamentLogsTab({
           }
         />
       </div>
-      <AttachLogDialog
-        record={attachTarget}
-        encounters={encounters}
-        isPending={attachMutation.isPending}
-        onAttach={(encounterId) =>
-          attachTarget && attachMutation.mutate({ recordId: attachTarget.id, encounterId })
-        }
-        onClose={() => setAttachTarget(null)}
-      />
+      {attachTarget ? (
+        <AttachLogDialog
+          key={attachTarget.id}
+          record={attachTarget}
+          encounters={encounters.filter((encounter) =>
+            attachTarget.tournament_id == null || encounter.tournament_id === attachTarget.tournament_id
+          )}
+          isPending={attachMutation.isPending}
+          onAttach={(encounterId, encounterGameId) =>
+            attachMutation.mutate({ recordId: attachTarget.id, encounterId, encounterGameId })
+          }
+          onClose={() => setAttachTarget(null)}
+        />
+      ) : null}
     </TooltipProvider>
   );
 }

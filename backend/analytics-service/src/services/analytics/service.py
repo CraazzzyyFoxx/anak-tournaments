@@ -9,6 +9,7 @@ from shared.core import enums
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.models.division_grid import DivisionGridMapping, DivisionGridMappingRule, DivisionGridVersion
 from shared.repository import AnalyticsAlgorithmRepository, AnalyticsPlayerRepository, TeamRepository
+from shared.repository.stats_queries import player_facts
 from src import models
 from src.core.workspace import workspace_scope_filter
 from src.domain.encounter_maps import seat_maps
@@ -106,29 +107,21 @@ class AnalyticsService:
             )
         ).cte("team_standings")
 
+        facts = player_facts(discipline="overwatch")
         performance_points = (
             sa.select(
                 models.Player.id.label("player_id"),
-                sa.func.avg(models.MatchStatistics.value).label("performance_points"),
+                sa.func.avg(facts.c.value).label("performance_points"),
             )
             .select_from(models.Player)
-            .join(
-                models.WorkspaceMember,
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-            )
-            .join(
-                models.MatchStatistics,
-                models.MatchStatistics.user_id == models.WorkspaceMember.player_id,
-            )
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .join(models.Tournament, models.Encounter.tournament_id == models.Tournament.id)
+            .join(facts, facts.c.workspace_member_id == models.Player.workspace_member_id)
+            .join(models.Tournament, facts.c.tournament_id == models.Tournament.id)
             .where(
-                models.MatchStatistics.team_id == models.Player.team_id,
-                models.MatchStatistics.round == 0,
-                models.MatchStatistics.hero_id.is_(None),
-                models.MatchStatistics.name == enums.LogStatsName.PerformancePoints,
-                models.Player.tournament_id == models.Encounter.tournament_id,
+                facts.c.tournament_team_id == models.Player.team_id,
+                facts.c.segment == 0,
+                facts.c.entity_id.is_(None),
+                facts.c.stat_code == enums.LogStatsName.PerformancePoints.value,
+                models.Player.tournament_id == facts.c.tournament_id,
                 *workspace_scope_filter(workspace_id, workspace_ids),
             )
             .group_by(models.Player.id)

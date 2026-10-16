@@ -11,15 +11,18 @@ from shared.domain.encounter_naming import build_encounter_name
 from shared.repository import (
     CatalogEntityRepository,
     EncounterRepository,
-    MatchRepository,
     StageItemRepository,
     StageRepository,
+    StatsMatchRepository,
     TeamRepository,
     TournamentRepository,
 )
+from shared.repository.stats_reads import MatchReadContext, get_match_reads
 from shared.services.bracket.advancement import reset_downstream
 from shared.services.bracket.swiss_state import remove_swiss_bye_round
 from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import models, schemas
 from src.core import enums
 from src.services.notifications.lifecycle import after_encounter_teams_changed, lifecycle_notifier
@@ -154,7 +157,7 @@ class AdminEncounterService:
         self,
         *,
         encounter_repo: EncounterRepository = EncounterRepository(),
-        match_repo: MatchRepository = MatchRepository(),
+        match_repo: StatsMatchRepository = StatsMatchRepository(),
         map_repo: CatalogEntityRepository = CatalogEntityRepository("map"),
         stage_repo: StageRepository = StageRepository(),
         stage_item_repo: StageItemRepository = StageItemRepository(),
@@ -585,49 +588,90 @@ class AdminEncounterService:
         session: AsyncSession,
         match_id: int,
         data: schemas.MatchUpdate,
-    ) -> models.Match:
-        """Update a single Match (map) belonging to an encounter."""
-        match = await self.match_repo.get(session, match_id, options=[selectinload(models.Match.encounter)])
-        if not match:
+        *,
+        actor: models.AuthUser | None = None,
+    ) -> MatchReadContext:
+        binding = (
+            await session.execute(
+                select(models.StatsMatch.encounter_game_id, models.EncounterGame.encounter_id)
+                .join(models.EncounterGame, models.EncounterGame.id == models.StatsMatch.encounter_game_id)
+                .where(models.StatsMatch.id == match_id, models.StatsMatch.discipline == "overwatch")
+            )
+        ).first()
+        if binding is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
-
-        update_data = data.model_dump(exclude_unset=True)
-
-        match_tournament_id = match.encounter.tournament_id if match.encounter else None
-
-        if "home_team_id" in update_data:
-            if update_data["home_team_id"] is None or match_tournament_id is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Home team not found")
-            await self._require_team_in_tournament(
-                session,
-                team_id=update_data["home_team_id"],
-                tournament_id=match_tournament_id,
-                label="Home team",
+        await session.execute(
+            select(models.Encounter.id)
+            .where(
+                models.Encounter.id == binding.encounter_id,
             )
-        if "away_team_id" in update_data:
-            if update_data["away_team_id"] is None or match_tournament_id is None:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Away team not found")
-            await self._require_team_in_tournament(
-                session,
-                team_id=update_data["away_team_id"],
-                tournament_id=match_tournament_id,
-                label="Away team",
+            .with_for_update()
+        )
+        await session.execute(
+            select(models.EncounterGame.id)
+            .where(
+                models.EncounterGame.id == binding.encounter_game_id,
             )
-        if "map_id" in update_data and update_data["map_id"] is not None:
-            if not await self.map_repo.exists(session, id=update_data["map_id"], discipline=match.encounter.discipline):
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
-
-        for field, value in update_data.items():
-            setattr(match, field, value)
-
-        tournament_id = match.encounter.tournament_id if match.encounter else None
-
-        if tournament_id is not None:
-            await enqueue_tournament_recalculation(session, tournament_id)
+            .with_for_update()
+        )
+        await session.execute(select(models.StatsMatch.id).where(models.StatsMatch.id == match_id).with_for_update())
+        read = (await get_match_reads(session, match_ids=[match_id])).get(match_id)
+        if read is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Match not found")
+        changes = data.model_dump(exclude_unset=True)
+        if "map_id" in changes and (
+            changes["map_id"] != read.game.map_id
+            or changes["map_id"] != read.match.map_entity_id
+            or read.map.discipline != read.match.discipline
+        ):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="stats_match_map_binding_conflict")
+        scopes = owner_scopes("match", (match_id,))
+        source = "admin" if actor is not None else "system"
+        scores = {}
+        for side in ("home", "away"):
+            field = f"{side}_score"
+            if field in changes and changes[field] != getattr(read, field):
+                scores[getattr(read, f"{side}_participant_id")] = changes[field]
+        if scores:
+            before = await capture_stats_evidence(session, scopes=scopes)
+            await self.match_repo.set_team_scores(
+                session,
+                match_id=match_id,
+                discipline=read.match.discipline,
+                scores=scores,
+            )
+            after = await capture_stats_evidence(session, scopes=scopes)
+            await stage_stats_evidence(
+                session,
+                operation="stats.score_edit",
+                before=before,
+                after=after,
+                workspace_id=read.match.workspace_id,
+                entity_type="match",
+                entity_id=match_id,
+                source=source,
+                actor=actor,
+            )
+        if "time" in changes and changes["time"] != read.match.duration_s:
+            before = await capture_stats_evidence(session, scopes=scopes)
+            read.match.duration_s = changes["time"]
+            await session.flush()
+            after = await capture_stats_evidence(session, scopes=scopes)
+            await stage_stats_evidence(
+                session,
+                operation="stats.match_edit",
+                before=before,
+                after=after,
+                workspace_id=read.match.workspace_id,
+                entity_type="match",
+                entity_id=match_id,
+                source=source,
+                actor=actor,
+            )
+        if read.encounter.tournament_id is not None:
+            await enqueue_tournament_recalculation(session, read.encounter.tournament_id)
         await session.commit()
-        await session.refresh(match)
-
-        return match
+        return (await get_match_reads(session, match_ids=[match_id]))[match_id]
 
     async def delete_encounter(self, session: AsyncSession, encounter_id: int, *, actor_user_id: int | None) -> None:
         """Delete encounter (cascade deletes matches).
@@ -658,6 +702,7 @@ class AdminEncounterService:
             and not await self._round_has_other_encounters(session, encounter, position)
         )
         await self._assert_source_correction_allowed(session, encounter)
+        evidence = await capture_owner_delete(session, encounter_id=encounter_id)
         # ``reset_downstream`` mutates ORM state and leaves flushing to its
         # caller, and ``session.delete`` does not flush either: the enqueue
         # below is still the first write of this transaction (same ordering
@@ -667,6 +712,13 @@ class AdminEncounterService:
         if drop_bye_round:
             await remove_swiss_bye_round(session, stage.id, position.stage_item_id, position.round)
         await enqueue_tournament_recalculation(session, tournament_id)
+        await stage_owner_delete(
+            session,
+            evidence,
+            workspace_id=encounter.workspace_id,
+            entity_type="encounter",
+            entity_id=encounter_id,
+        )
         await session.commit()
 
     @staticmethod

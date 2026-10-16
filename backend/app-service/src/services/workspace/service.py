@@ -30,6 +30,7 @@ from shared.repository import (
 )
 from shared.services.audit import record_audit
 from shared.services.settings_provider import settings_provider
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from shared.tenancy.hostnames import RESERVED_SUBDOMAINS, normalize_custom_domain
 from src import models
 
@@ -286,7 +287,16 @@ class WorkspaceService:
         return workspace
 
     async def delete(self, session: AsyncSession, workspace: models.Workspace) -> None:
+        captures = await capture_owner_delete(session, workspace_id=workspace.id)
         await self.workspace_repo.delete(session, workspace)
+        await stage_owner_delete(
+            session,
+            captures,
+            workspace_id=workspace.id,
+            entity_type="workspace",
+            entity_id=workspace.id,
+            source="admin",
+        )
 
     # --- members ------------------------------------------------------------
 

@@ -305,8 +305,8 @@ export function resolveMatchMvpPlacement(player: PlayerWithStats, round: number)
 }
 
 /** Players who actually fielded a hero in the given round (played the round). */
-export function activePlayers(team: TeamWithStats, round: number): PlayerWithStats[] {
-  return team.players.filter((player) => (player.heroes?.[round]?.length ?? 0) > 0);
+export function activePlayers(team: TeamWithStats | null, round: number): PlayerWithStats[] {
+  return team?.players.filter((player) => (player.heroes?.[round]?.length ?? 0) > 0) ?? [];
 }
 
 export function teamTotal(team: TeamWithStats, round: number, name: LogStatsName): number {
@@ -318,8 +318,8 @@ export function teamTotal(team: TeamWithStats, round: number, name: LogStatsName
  * inline magnitude micro-bars consistently home vs away.
  */
 export function columnMaxima(
-  home: TeamWithStats,
-  away: TeamWithStats,
+  home: TeamWithStats | null,
+  away: TeamWithStats | null,
   round: number,
   names: LogStatsName[]
 ): Record<string, number> {
@@ -360,9 +360,10 @@ export function findLeader(
 }
 
 /** Round keys present in the match data (0 = whole match, then per-round). */
-export function availableRounds(home: TeamWithStats, away: TeamWithStats): number[] {
+export function availableRounds(home: TeamWithStats | null, away: TeamWithStats | null): number[] {
   const rounds = new Set<number>();
   for (const team of [home, away]) {
+    if (team == null) continue;
     for (const player of team.players) {
       for (const key of Object.keys(player.stats ?? {})) {
         const round = Number(key);

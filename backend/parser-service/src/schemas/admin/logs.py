@@ -32,16 +32,17 @@ class QueueDepth(BaseModel):
 
 
 class LogRetryRequest(BaseModel):
-    # Attaches the log to this encounter before requeueing it: the way out of an
-    # `encounter_ambiguous` failure. Omitted = keep the current attachment.
+    # Binding hint for awaiting_link. Omitted = keep the current attachment.
     encounter_id: int | None = None
+    encounter_game_id: int | None = None
 
 
 class LogRecordRead(BaseModel):
     id: int
-    tournament_id: int
+    tournament_id: int | None
     tournament_name: str | None
     attached_encounter_id: int | None
+    attached_encounter_game_id: int | None
     attached_encounter_name: str | None
     filename: str
     status: str
@@ -74,6 +75,7 @@ class LogStatsRead(BaseModel):
     processing: int
     done: int
     failed: int
+    awaiting_link: int
     avg_duration_seconds: float | None
     last_created_at: datetime | None
 

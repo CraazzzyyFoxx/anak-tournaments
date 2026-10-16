@@ -10,8 +10,9 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core.enums import LogStatsName
 from shared.models.achievements.achievement import AchievementGrain
-from src import models
+from shared.repository.stats_queries import player_facts
 
 from ..context import EvalContext
 from . import ResultSet, register
@@ -31,7 +32,7 @@ OPERATORS = {
     grain=AchievementGrain.user_match,
     description="Per-map log stat compared against a threshold",
     required=("stat", "op", "value"),
-    depends_on=("matches.match", "matches.statistics"),
+    depends_on=("stats.match", "stats.fact"),
 )
 async def execute(
     session: AsyncSession,
@@ -45,39 +46,38 @@ async def execute(
     value = params["value"]
 
     op_fn = OPERATORS[op]
-    sum_expr = sa.func.sum(models.MatchStatistics.value)
+    facts = player_facts(discipline="overwatch")
+    sum_expr = sa.func.sum(facts.c.value)
 
     query = (
         sa.select(
-            models.MatchStatistics.user_id,
-            models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
+            facts.c.player_id,
+            facts.c.tournament_id,
+            facts.c.match_id,
             sum_expr.label("measured"),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .select_from(facts)
         .where(
-            models.MatchStatistics.name == stat_name,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            facts.c.stat_code == stat_name,
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
+            facts.c.workspace_id == context.workspace_id,
         )
         .group_by(
-            models.MatchStatistics.user_id,
-            models.Encounter.tournament_id,
-            models.MatchStatistics.match_id,
+            facts.c.player_id,
+            facts.c.tournament_id,
+            facts.c.match_id,
         )
         .having(op_fn(sum_expr, value))
     )
 
     if context.tournament:
-        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+        query = query.where(facts.c.tournament_id == context.tournament.id)
 
     result = await session.execute(query)
     keys: ResultSet = set()
     for row in result:
         key = (row[0], row[1], row[2])
         keys.add(key)
-        context.record_evidence(key, stat=stat_name, measured=row[3], op=op, threshold=value)
+        context.record_evidence(key, stat=LogStatsName(stat_name).name, measured=row[3], op=op, threshold=value)
     return keys

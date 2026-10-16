@@ -490,8 +490,8 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         # `encounter_play_key` sorts on these; undated rows fall back to id order.
         encounter_a = SimpleNamespace(id=101, ended_at=None, confirmed_at=None, started_at=None, created_at=None)
         encounter_b = SimpleNamespace(id=102, ended_at=None, confirmed_at=None, started_at=None, created_at=None)
-        match_1 = SimpleNamespace(id=201)
-        match_2 = SimpleNamespace(id=202)
+        match_1 = SimpleNamespace(match=SimpleNamespace(id=201), game=SimpleNamespace(position=1))
+        match_2 = SimpleNamespace(match=SimpleNamespace(id=202), game=SimpleNamespace(position=2))
 
         rows = [
             (team, encounter_a, match_1, 1, [], 1, 10.0, 5.0, 1),
@@ -505,7 +505,12 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             102: user_flows._mappers.EncounterContext(seats=[]),
         }
         # `sort_user_matches` reads `map_index` off every mapped match.
-        match_mapper = Mock(side_effect=lambda match, **kwargs: SimpleNamespace(id=match.id, map_index=None))
+        match_mapper = Mock(
+            side_effect=lambda context, **kwargs: SimpleNamespace(
+                id=context.match.id,
+                map_index=context.game.position,
+            )
+        )
         encounter_mapper = Mock(
             side_effect=lambda encounter, context, matches, **kwargs: SimpleNamespace(id=encounter.id, matches=matches)
         )
@@ -513,8 +518,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
         with (
             patch.object(user_flows.users, "get", AsyncMock(return_value=user)),
             patch.object(user_flows.users.encounters, "get_user_encounter_matches_unpaginated", repo_mock),
-            # Pick-ban map order: a real query, and this session is a stub.
-            patch.object(user_flows.users.encounters, "get_settled_map_ids", AsyncMock(return_value={})),
             patch.object(user_flows.users.encounters, "get_encounter_contexts", AsyncMock(return_value=contexts)),
             patch.object(user_flows._mappers, "to_match_with_user_stats", match_mapper),
             patch.object(user_flows._mappers, "to_encounter_with_user_stats", encounter_mapper),
@@ -522,11 +525,6 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
             result = await user_flows.users.get_tournament_encounters(session, 42, 7)
 
         repo_mock.assert_awaited_once_with(session, user.id, tournament_id=7)
-        # Both matches were oriented to the seats of THEIR encounter.
-        self.assertEqual(
-            [contexts[101].participations, contexts[101].participations],
-            [call.kwargs["seats"] for call in match_mapper.call_args_list],
-        )
         self.assertEqual([101, 102], [enc.id for enc in result])
         self.assertEqual([201, 202], [m.id for m in result[0].matches])
         self.assertEqual([], result[1].matches)

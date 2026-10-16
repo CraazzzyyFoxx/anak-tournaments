@@ -36,41 +36,41 @@ def test_build_message_feedback_replies_for_live_multi_log_results() -> None:
     assert ":owt_warn: match-2.log" in summary.reply_text
 
 
-def test_build_message_feedback_skips_reply_for_already_processed_logs() -> None:
+def test_build_message_feedback_replies_for_distinct_successful_uploads() -> None:
     summary = build_message_feedback(
         [
             AttachmentFeedbackResult(
                 filename="match-1.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
+                state=AttachmentFeedbackState.PROCESSED_OK,
             ),
             AttachmentFeedbackResult(
                 filename="match-2.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
+                state=AttachmentFeedbackState.PROCESSED_OK,
             ),
         ],
         wait_for_result=True,
     )
 
     assert summary.reactions == ("ok",)
-    assert summary.reply_text is None
+    assert "match-1.log" in summary.reply_text and "match-2.log" in summary.reply_text
 
 
-def test_build_message_feedback_is_noop_for_already_processed_history_rescan() -> None:
+def test_build_message_feedback_rescan_acknowledges_queued_bytes_not_a_filename_hit() -> None:
     summary = build_message_feedback(
         [
             AttachmentFeedbackResult(
                 filename="match-1.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
+                state=AttachmentFeedbackState.UPLOADED_QUEUED,
             ),
             AttachmentFeedbackResult(
                 filename="match-2.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
+                state=AttachmentFeedbackState.UPLOADED_QUEUED,
             ),
         ],
         wait_for_result=False,
     )
 
-    assert summary.reactions is None
+    assert summary.reactions == ("ok",)
     assert summary.reply_text is None
 
 
@@ -79,7 +79,7 @@ def test_build_message_feedback_reacts_on_history_rescan_when_mixed() -> None:
         [
             AttachmentFeedbackResult(
                 filename="match-1.log",
-                state=AttachmentFeedbackState.ALREADY_PROCESSED,
+                state=AttachmentFeedbackState.UPLOADED_QUEUED,
             ),
             AttachmentFeedbackResult(
                 filename="match-2.log",
@@ -120,3 +120,25 @@ def test_build_message_feedback_skips_reply_for_single_live_result() -> None:
 
     assert summary.reactions == ("ok",)
     assert summary.reply_text is None
+
+
+def test_single_awaiting_link_result_is_truthful_and_actionable() -> None:
+    summary = build_message_feedback(
+        [AttachmentFeedbackResult(filename="awaiting.log", state=AttachmentFeedbackState.AWAITING_LINK)],
+        wait_for_result=True,
+    )
+    assert summary.reactions == ("ok", "warn")
+    assert "администратору" in summary.reply_text and "привязать" in summary.reply_text
+    assert "обработан" not in summary.reply_text
+
+
+def test_single_failed_result_includes_its_own_error() -> None:
+    summary = build_message_feedback(
+        [
+            AttachmentFeedbackResult(
+                filename="bad.log", state=AttachmentFeedbackState.PROCESSED_FAILED, error_message="job-specific"
+            )
+        ],
+        wait_for_result=True,
+    )
+    assert "job-specific" in summary.reply_text

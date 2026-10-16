@@ -1,7 +1,7 @@
 """Pure, DB-free impact-scoring baseline aggregation (spec 2026-07-10).
 
 ``build_baseline_rows`` turns a per-(match, user) stat-rate frame into
-``StatBaseline`` row dicts. No ``AsyncSession``, ``await``, or ``asyncio`` —
+baseline component dicts. No ``AsyncSession``, ``await``, or ``asyncio`` —
 see ``backend/ARCHITECTURE.md``'s "domain/ boundary". Loading the frame from
 the DB and atomically replacing a formula version's rows is IO and lives in
 ``src.services.baselines.service.BaselineService``.
@@ -20,7 +20,7 @@ _STAT_NAMES = tuple(IMPACT_WEIGHTS)
 
 
 def build_baseline_rows(stats: pd.DataFrame) -> list[dict]:
-    """Aggregate per-(match, user) stat rates into ``StatBaseline`` row dicts.
+    """Aggregate per-(match, user) stat rates into baseline component dicts.
 
     ``stats`` columns: ``role`` (str, lowercase), ``rank`` (int), ``minutes``
     (float), ``has_killfeed`` (bool), and ``f"{stat}_rate"`` for every

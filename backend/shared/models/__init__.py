@@ -2,8 +2,7 @@
 
 Importing this package loads every model module, so string-based relationship
 resolution and ``configure_mappers()`` keep working against the single shared
-``db.Base.metadata``. Every model name importable as ``from shared.models
-import X`` before the domain-subpackage split remains importable.
+``db.Base.metadata``. Migration-only legacy tables are intentionally unmapped.
 """
 # ruff: noqa: F403
 
@@ -16,8 +15,6 @@ from .division_grid import *
 from .encounter import *
 from .member_rank import *
 from .identity import *
-from .ingestion import *
-from .matches import *
 from .platform import *
 from .preferences import *
 from .quota import *
@@ -25,5 +22,6 @@ from .ranks import *
 from .registration import *
 from .roster import *
 from .subscriptions import *
+from .stats import *
 from .tenancy import *
 from .tournament import *

@@ -20,11 +20,12 @@ os.environ["DEBUG"] = "true"
 enums = importlib.import_module("src.core.enums")
 flows = importlib.import_module("src.services.match_logs.flows")
 models = importlib.import_module("src.models")
+from shared.repository.stats import _bulk_insert
 
 
 class MatchLogParserTests(TestCase):
     def test_wide_player_stat_row_is_not_truncated_or_shifted(self) -> None:
-        tournament = SimpleNamespace(id=1, name="Test Cup", discipline="overwatch")
+        job = SimpleNamespace(filename="match.log", discipline="overwatch")
         stat_payload = [
             "1",
             "Blue Team",
@@ -34,21 +35,21 @@ class MatchLogParserTests(TestCase):
         ]
         line = ",".join(["2026-04-19T12:00:00Z", "player_stat", "12.5", *stat_payload])
 
-        processor = flows.MatchLogProcessor(tournament, "match.log", [line], SimpleNamespace())
+        processor = flows.MatchLogProcessor(job, [line])
 
         rows = processor._get_rows(enums.LogEventType.PlayerStat)
         self.assertEqual(1, len(rows))
         self.assertEqual(stat_payload, rows.iloc[0]["data"])
 
     def test_quoted_commas_and_type_index_survive_batched_csv_parse(self) -> None:
-        tournament = SimpleNamespace(id=1, name="Test Cup", discipline="overwatch")
+        job = SimpleNamespace(filename="match.log", discipline="overwatch")
         lines = [
             "2026-04-19T12:00:00Z,meta,0,ignored",
             '2026-04-19T12:00:00Z,match_start,0.0,Ilios,"Control","Team, A","Team, B"',
             "2026-04-19T12:00:00Z,not_a_real_event,1.0,x",
             "2026-04-19T12:00:00Z,kill,12.5,Team A,Ana,Ana,Team B,Mercy,Mercy,0,100,False,False",
         ]
-        processor = flows.MatchLogProcessor(tournament, "match.log", lines, SimpleNamespace())
+        processor = flows.MatchLogProcessor(job, lines)
 
         starts = processor._get_rows(enums.LogEventType.MatchStart)
         self.assertEqual(1, len(starts))
@@ -58,13 +59,7 @@ class MatchLogParserTests(TestCase):
 
 
 class BulkInsertTests(IsolatedAsyncioTestCase):
-    """A match's stat rows go out as ONE statement, hero or no hero.
-
-    ``sa.insert(MatchStatistics)`` (the ORM-entity form) drops ``hero_id`` from
-    the statement whenever its value is ``None`` and starts a fresh batch every
-    time that column set changes, so a match's rows left in pivot order were
-    emitted a few at a time (Sentry OWT-TOURNAMENTS-2BV).
-    """
+    """The native Core writer retains explicit NULL entity keys in one batch."""
 
     async def test_rows_with_and_without_hero_share_one_statement(self) -> None:
         engine = sa.create_engine("sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False})
@@ -75,35 +70,39 @@ class BulkInsertTests(IsolatedAsyncioTestCase):
             statements.append((statement, executemany))
 
         with engine.begin() as conn:
-            conn.exec_driver_sql("ATTACH DATABASE ':memory:' AS matches")
-            # Hand-written DDL, not ``__table__.create``: SQLite only
-            # autoincrements an INTEGER primary key, and the model's is BIGINT.
+            conn.exec_driver_sql("ATTACH DATABASE ':memory:' AS stats")
             conn.exec_driver_sql(
-                "CREATE TABLE matches.statistics (id INTEGER PRIMARY KEY, match_id BIGINT, round INTEGER,"
-                " team_id BIGINT, user_id BIGINT, hero_id BIGINT, name VARCHAR, value FLOAT)"
+                "CREATE TABLE stats.fact (match_id BIGINT, segment INTEGER, encounter_team_id BIGINT,"
+                " workspace_member_id BIGINT, entity_id BIGINT, entity_kind VARCHAR, stat_id BIGINT, value FLOAT)"
             )
         statements.clear()
 
         rows = [
-            {"match_id": 1, "round": 1, "team_id": 2, "user_id": 3, "hero_id": None, "name": name, "value": value}
-            for name, value in ((enums.LogStatsName.Eliminations, 4.0), (enums.LogStatsName.Deaths, 1.0))
+            {
+                "match_id": 1,
+                "segment": 1,
+                "encounter_team_id": 2,
+                "workspace_member_id": 3,
+                "entity_id": None,
+                "stat_id": stat_id,
+                "value": value,
+            }
+            for stat_id, value in ((1, 4.0), (2, 1.0))
         ]
-        rows.insert(1, {**rows[0], "hero_id": 9, "name": enums.LogStatsName.HeroTimePlayed, "value": 60.0})
+        rows.insert(1, {**rows[0], "entity_id": 9, "stat_id": 3, "value": 60.0})
 
         with Session(engine) as session:
-            await flows._bulk_insert(SimpleNamespace(execute=_sync_execute(session)), models.MatchStatistics, rows)
+            await _bulk_insert(SimpleNamespace(execute=_sync_execute(session)), models.StatsFact, rows)
             session.commit()
             stored = session.execute(
-                sa.select(models.MatchStatistics.hero_id, models.MatchStatistics.value).order_by(
-                    models.MatchStatistics.value
-                )
+                sa.select(models.StatsFact.entity_id, models.StatsFact.value).order_by(models.StatsFact.value)
             ).all()
 
         self.assertEqual([(None, 1.0), (None, 4.0), (9, 60.0)], [(hero_id, value) for hero_id, value in stored])
         inserts = [(statement, many) for statement, many in statements if statement.lstrip().startswith("INSERT")]
         self.assertEqual(1, len(inserts), inserts)
         self.assertTrue(inserts[0][1], "the batch must go out as one executemany")
-        self.assertIn("hero_id", inserts[0][0])
+        self.assertIn("entity_id", inserts[0][0])
 
 
 def _sync_execute(session: Session):  # noqa: ANN202

@@ -29,7 +29,7 @@ const MatchRow = ({ enc, selfUserId }: MatchRowProps) => {
   const heroList: Pick<Hero, "name" | "image_path" | "role">[] = [];
   (enc.matches ?? []).forEach((match) => {
     // MatchWithUserStats.heroes is already the viewer's heroes for
-    // this match (computed server-side from MatchStatistics).
+    // this match (computed server-side from native character facts).
     (match.heroes ?? []).forEach((h) => {
       if (!heroSet.has(h.name)) {
         heroSet.add(h.name);

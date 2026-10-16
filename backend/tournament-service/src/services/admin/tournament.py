@@ -27,6 +27,7 @@ from shared.services.draft_guards import assert_no_active_draft_session
 from shared.services.ontology import assert_discipline_enabled
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.registration_team_guards import assert_no_registered_teams
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from shared.services.team_format import copy_for_tournament, save_tournament_format
 from shared.services.tournament.computation import request_bracket_job
 from shared.services.tournament.slug import generate_unique_tournament_slug
@@ -440,9 +441,17 @@ class AdminTournamentService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
         workspace_id = tournament.workspace_id
+        evidence = await capture_owner_delete(session, tournament_id=tournament_id)
         await self.standing_repo.delete_for_tournament(session, tournament_id)
         await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
         await self.tournament_repo.delete(session, tournament)
+        await stage_owner_delete(
+            session,
+            evidence,
+            workspace_id=workspace_id,
+            entity_type="tournament",
+            entity_id=tournament_id,
+        )
         await session.commit()
         await division_grid_cache.invalidate_tournament(tournament_id)
         await division_grid_cache.invalidate_workspace(workspace_id)

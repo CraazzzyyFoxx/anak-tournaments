@@ -35,7 +35,7 @@ from src import schemas
 from src.core import db as app_db
 from src.services.user.queries.overview import overview as overview_queries
 from src.services.user.service import users as user_service
-from tests.encounter_seed import seed_encounter, seed_scoring_rule
+from tests.encounter_seed import add_observed_game, seed_encounter, seed_scoring_rule
 
 RECENT = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=5)
 
@@ -258,21 +258,24 @@ async def _seed(session: Any) -> _Seed:
             {"n": f"Map {suffix}", "s": f"map-{suffix}", "g": gamemode_id},
         )
     ).scalar_one()
-    match_id = (
-        await session.execute(
-            sa.text(
-                "insert into matches.match (home_team_id, away_team_id, home_score, away_score, time,"
-                " encounter_id, map_id) values (:h, :a, 1, 0, 600, :e, :m) returning id"
-            ),
-            {"h": teams["A"].id, "a": teams["B"].id, "e": encounter_ids[0], "m": map_id},
+    await session.run_sync(
+        lambda sync_session: add_observed_game(
+            sync_session,
+            encounter_id=encounter_ids[0],
+            map_entity_id=map_id,
+            position=1,
+            duration_s=600,
+            scores=(1, 0),
+            observations=[
+                (
+                    members[(seed.workspace_id, "charlie")],
+                    2,
+                    None,
+                    enums.LogStatsName.HeroTimePlayed,
+                    600,
+                )
+            ],
         )
-    ).scalar_one()
-    await session.execute(
-        sa.text(
-            "insert into matches.statistics (match_id, round, team_id, user_id, hero_id, name, value)"
-            " values (:match, 0, :team, :user, null, 'HeroTimePlayed', 600)"
-        ),
-        {"match": match_id, "team": teams["B"].id, "user": seed.users["charlie"]},
     )
 
     await session.commit()

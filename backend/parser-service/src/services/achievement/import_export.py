@@ -242,30 +242,29 @@ async def copy_workspace_achievement_image(
     return upload_result.public_url, None
 
 
-def _apply_rule_data(
-    rule: AchievementRule,
+def _rule_data(
     payload: PortableAchievementRule,
     *,
     hero_id: int | None,
     image_url: str | None,
-) -> AchievementRule:
-    rule.slug = payload.slug
-    rule.name = payload.name
-    rule.description_ru = payload.description_ru
-    rule.description_en = payload.description_en
-    rule.image_url = image_url
-    rule.entity_id = hero_id
-    rule.category = payload.category
-    rule.scope = payload.scope
-    rule.grain = payload.grain
-    rule.condition_tree = payload.condition_tree
-    # An imported rule's declared dependencies are whatever the exporting
-    # workspace happened to have; the tree is the truth.
-    rule.depends_on = derive_depends_on(payload.condition_tree)
-    rule.enabled = payload.enabled
-    rule.rule_version = payload.rule_version
-    rule.min_tournament_id = payload.min_tournament_id
-    return rule
+) -> dict[str, Any]:
+    return {
+        "slug": payload.slug,
+        "name": payload.name,
+        "description_ru": payload.description_ru,
+        "description_en": payload.description_en,
+        "image_url": image_url,
+        "entity_id": hero_id,
+        "category": payload.category,
+        "scope": payload.scope,
+        "grain": payload.grain,
+        "condition_tree": payload.condition_tree,
+        # Imported declarations are not trusted; derive from the actual tree.
+        "depends_on": derive_depends_on(payload.condition_tree),
+        "enabled": payload.enabled,
+        "rule_version": payload.rule_version,
+        "min_tournament_id": payload.min_tournament_id,
+    }
 
 
 async def import_portable_rules(
@@ -329,15 +328,15 @@ async def import_portable_rules(
                     warnings.append({"slug": payload.slug, "message": image_warning})
 
         existing = existing_rules.get(payload.slug)
+        data = _rule_data(payload, hero_id=hero_id, image_url=next_image_url)
         if existing is None:
-            rule = AchievementRule(workspace_id=target_workspace.id)
-            _apply_rule_data(rule, payload, hero_id=hero_id, image_url=next_image_url)
+            rule = AchievementRule(workspace_id=target_workspace.id, **data)
             await _rule_repo.create(session, rule)
             existing_rules[payload.slug] = rule
             created += 1
             continue
 
-        _apply_rule_data(existing, payload, hero_id=hero_id, image_url=next_image_url)
+        await _rule_repo.update_fields(session, existing, data)
         updated += 1
 
     return {

@@ -57,6 +57,7 @@ from shared.services.bracket.template import (
 )
 from shared.services.bracket.types import BracketSkeleton, Pairing
 from shared.services.encounter.participants import active_teams, place_team, vacate_slot
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import models, schemas
 from src.domain.admin.best_of import best_of_config, resolve_best_of
 from src.domain.stage.lifecycle import stage_lifecycle
@@ -758,6 +759,10 @@ class AdminStageService:
     async def delete_stage(self, session: AsyncSession, stage_id: int) -> None:
         stage = await self.get_stage(session, stage_id)
         tournament_id = stage.tournament_id
+        workspace_id = await session.scalar(
+            select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+        )
+        evidence = await capture_owner_delete(session, stage_id=stage_id)
         # Encounter.stage_id and Standing.stage_id reference Stage with ON DELETE
         # SET NULL, so deleting the stage alone would orphan its matches and
         # standings rather than remove them. Delete that derived data explicitly
@@ -767,6 +772,7 @@ class AdminStageService:
         await self.standing_repo.delete_for_stage(session, stage_id)
         await self.stage_repo.delete(session, stage)
         await self._publish_structure_changed(session, tournament_id)
+        await stage_owner_delete(session, evidence, workspace_id=workspace_id, entity_type="stage", entity_id=stage_id)
         await session.commit()
 
     async def delete_stage_item(self, session: AsyncSession, stage_item_id: int) -> None:
@@ -779,11 +785,22 @@ class AdminStageService:
         """
         item = await self.get_stage_item(session, stage_item_id)
         tournament_id = await self.stage_repo.get_tournament_id(session, item.stage_id)
+        workspace_id = await session.scalar(
+            select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
+        )
+        evidence = await capture_owner_delete(session, stage_item_id=stage_item_id)
         await self.encounter_repo.delete_for_stage_item(session, stage_item_id)
         await self.standing_repo.delete_for_stage_item(session, stage_item_id)
         await self.stage_item_repo.delete(session, item)
         await enqueue_tournament_recalculation(session, tournament_id)
         await self._publish_structure_changed(session, tournament_id)
+        await stage_owner_delete(
+            session,
+            evidence,
+            workspace_id=workspace_id,
+            entity_type="stage_item",
+            entity_id=stage_item_id,
+        )
         await session.commit()
 
     async def _merge_pick_ban_configs(

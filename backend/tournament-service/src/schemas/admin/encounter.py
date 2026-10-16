@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shared.core.enums import EncounterResultAuditAction, EncounterResultStatus, EncounterStatus
 
@@ -74,19 +74,21 @@ class EncounterUpdate(BaseModel):
 
 
 class MatchUpdate(BaseModel):
-    """Partial update for a single match (map) within an encounter.
+    """Edit observations without rebinding their game, participants or provenance."""
 
-    ``matches.match`` is what a parsed LOG observed, and a V4 log names two
-    sides; that is why this one shape still does.
-    """
+    model_config = ConfigDict(extra="forbid")
 
-    home_team_id: int | None = None
-    away_team_id: int | None = None
     home_score: int | None = None
     away_score: int | None = None
     map_id: int | None = None
-    code: str | None = None
     time: float | None = None
+
+    @model_validator(mode="after")
+    def _required_observations(self):
+        for field in ("home_score", "away_score", "map_id"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
 class SetResultLineIn(BaseModel):

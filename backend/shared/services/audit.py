@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.models.identity.auth_user import AuthUser
 from shared.models.platform.audit import AuditLog
 from shared.observability.correlation import get_correlation_id
-from shared.repository import AuditLogRepository
 from shared.rpc.identity import api_key_label, credential_type
 
 __all__ = ("AuditSource", "json_safe", "record_audit", "record_admin_audit")
@@ -40,8 +39,6 @@ AuditSource = Literal["admin", "api_key", "challonge", "discord", "player", "sch
 # ``ip_address`` is ``String(45)``.
 _LABEL_LIMIT = 255
 _IP_LIMIT = 45
-
-_logs = AuditLogRepository()
 
 
 def _clip(value: str | None, limit: int) -> str | None:
@@ -155,6 +152,8 @@ async def record_audit(
     that way. Callers keep passing ``admin`` for operator writes; the credential
     already rides the actor, so the 100+ sites do not have to know.
     """
+    from shared.repository import AuditLogRepository
+
     row = AuditLog(
         workspace_id=workspace_id,
         actor_auth_user_id=actor.id if actor else None,
@@ -173,7 +172,7 @@ async def record_audit(
         # set; ``None`` outside a traced flow is fine and stays NULL.
         correlation_id=get_correlation_id(),
     )
-    return _logs.add(session, row)
+    return AuditLogRepository().add(session, row)
 
 
 async def record_admin_audit(

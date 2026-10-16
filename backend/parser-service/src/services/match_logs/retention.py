@@ -1,9 +1,7 @@
-"""Retention for match logs the parser rejected.
+"""Expire failed native jobs only when their raw bytes have no surviving owner.
 
-A failed log stays in S3 (and in the admin console) for
-``failed_log_retention_days`` so an operator can inspect or retry it; after that
-the object and its ``failed`` record are dropped. Unfinished logs (no MatchEnd)
-never reach this: ``MatchLogProcessor.validate`` deletes them on the spot.
+Linked matches retain the job row itself, not an unusable orphaned S3 object.
+Awaiting-link jobs are operator work and are never retention candidates.
 """
 
 from __future__ import annotations
@@ -11,16 +9,20 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import sqlalchemy as sa
 from loguru import logger
 
+from shared import models
 from shared.observability import observe_scheduled_job
-from shared.repository.support import LogProcessingRepository
+from shared.repository.catalog import CatalogAliasMissRepository
+from shared.repository.stats import IngestJobRepository
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
     acquire_distributed_lock,
     release_distributed_lock,
 )
 from shared.services.scheduler import IntervalScheduler
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src.core import db
 from src.core.config import settings
 from src.services.match_logs.binary import binary_match_logs
@@ -32,7 +34,8 @@ TICK_SECONDS = 3600
 BATCH_SIZE = 100
 
 _scheduler = IntervalScheduler(job_id="failed_match_log_retention", label="Failed match-log retention")
-_repo = LogProcessingRepository()
+_repo = IngestJobRepository()
+_alias_repo = CatalogAliasMissRepository()
 
 
 async def purge_expired_failed_logs(
@@ -59,14 +62,63 @@ async def purge_expired_failed_logs(
             async with session_factory() as session:
                 rows = await _repo.claim_expired_failed(session, cutoff=cutoff, limit=BATCH_SIZE)
                 purged: list[int] = []
-                for record_id, tournament_id, filename in rows:
-                    in_use = await _repo.log_file_in_use(
-                        session, record_id=record_id, tournament_id=tournament_id, filename=filename, cutoff=cutoff
+                for job in rows:
+                    # Upload takes raw-key then job locks. Never wait here in
+                    # the inverse order: a busy key is retried next tick.
+                    locked = await session.scalar(
+                        sa.text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"), {"key": f"stats.raw:{job.raw_ref}"}
                     )
-                    # Keep the row when S3 refused the delete, so the next tick retries it.
-                    if in_use or await binary_match_logs.delete_log(s3, tournament_id, filename):
-                        purged.append(record_id)
-                await _repo.delete_by_ids(session, purged)
+                    if not locked or await _repo.raw_ref_in_use(session, job.raw_ref, exclude_ids=[job.id]):
+                        continue
+                    try:
+                        deleted = await binary_match_logs.delete_log(s3, job)
+                    except Exception:
+                        logger.exception("Raw delete failed for ingest job {}", job.id)
+                        continue
+                    if not deleted:
+                        continue
+                    scopes = owner_scopes("job", (job.id,))
+                    before = await capture_stats_evidence(session, scopes=scopes)
+                    alias = models.CatalogAliasMiss
+                    while True:
+                        ids = list(
+                            await session.scalars(
+                                sa.select(alias.id)
+                                .where(
+                                    alias.last_ingest_job_id == job.id,
+                                )
+                                .order_by(alias.id)
+                                .limit(100)
+                                .with_for_update()
+                            )
+                        )
+                        if not ids:
+                            break
+                        alias_scopes = [scope for row_id in ids for scope in owner_scopes("alias", (row_id,))]
+                        alias_before = await capture_stats_evidence(session, scopes=alias_scopes)
+                        await _alias_repo.clear_ingest_job_references(session, ids)
+                        alias_after = await capture_stats_evidence(session, scopes=alias_scopes)
+                        await stage_stats_evidence(
+                            session,
+                            operation="stats.owner_delete",
+                            before=alias_before,
+                            after=alias_after,
+                            workspace_id=job.workspace_id,
+                            entity_type="ingest_job",
+                            entity_id=job.id,
+                        )
+                    await _repo.delete_by_ids(session, [job.id])
+                    after = await capture_stats_evidence(session, scopes=scopes)
+                    await stage_stats_evidence(
+                        session,
+                        operation="stats.owner_delete",
+                        before=before,
+                        after=after,
+                        workspace_id=job.workspace_id,
+                        entity_type="ingest_job",
+                        entity_id=job.id,
+                    )
+                    purged.append(job.id)
                 await session.commit()
             if purged:
                 logger.info("Failed match-log retention: purged={}", len(purged))

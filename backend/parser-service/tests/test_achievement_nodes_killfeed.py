@@ -63,24 +63,29 @@ class _KillFeedFixture(_scrim._Fixture):
         fight: int = 1,
         count: int = 1,
     ) -> None:
+        actor, actor_team = self.observed_player(match_id, killer_id, killer_team_id)
+        target, target_team = self.observed_player(match_id, victim_id, victim_team_id)
         for index in range(count):
             self.insert(
-                models.MatchKillFeed.__table__,
+                models.StatsEvent.__table__,
                 id=self._id(),
                 match_id=match_id,
-                time=float(index),
-                round=round_no,
-                fight=fight,
-                ability=None,
-                killer_id=killer_id,
-                killer_hero_id=1,
-                killer_team_id=killer_team_id,
-                victim_id=victim_id,
-                victim_hero_id=2,
-                victim_team_id=victim_team_id,
-                damage=100.0,
-                is_critical_hit=False,
-                is_environmental=False,
+                t=float(index),
+                segment=round_no,
+                type_id=self.event_ids["kill"],
+                actor_member_id=actor,
+                actor_team_id=actor_team,
+                target_member_id=target,
+                target_team_id=target_team,
+                entity_id=1,
+                related_entity_id=2,
+                data={
+                    "fight": fight,
+                    "ability": None,
+                    "damage": 100.0,
+                    "is_critical_hit": False,
+                    "is_environmental": False,
+                },
             )
 
 

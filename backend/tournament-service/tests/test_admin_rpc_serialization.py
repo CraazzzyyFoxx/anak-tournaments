@@ -37,7 +37,7 @@ admin_misc = importlib.import_module("src.rpc.admin_misc")
 helpers = importlib.import_module("src.rpc._helpers")
 pagination = importlib.import_module("shared.core.pagination")
 schemas = importlib.import_module("src.schemas")
-log_processing = importlib.import_module("shared.models.ingestion.log_processing")
+native_ingest = importlib.import_module("shared.models.stats.ingest")
 
 CREATED_AT = datetime(2026, 5, 1, 12, 30, tzinfo=UTC)
 
@@ -69,13 +69,12 @@ def _match_row(**kw) -> schemas.AdminMatchRow:
         "away_score": 1,
         "time": 612.5,
         "log_name": "match.txt",
-        "code": "ABC123",
         "created_at": CREATED_AT,
         "log_record": {
             "id": 77,
             "filename": "match.txt",
-            "status": log_processing.LogProcessingStatus.done,
-            "source": log_processing.LogProcessingSource.upload,
+            "status": native_ingest.IngestJobStatus.DONE,
+            "source": "upload",
             "uploader_id": 5,
             "attempts": 1,
             "error_message": None,

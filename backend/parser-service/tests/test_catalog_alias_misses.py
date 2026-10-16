@@ -32,7 +32,7 @@ def _compile(statement) -> str:
 
 class MissUpsertStatementTests(IsolatedAsyncioTestCase):
     def test_a_repeat_occurrence_increments_the_counter_and_reopens_the_row(self) -> None:
-        statement = catalog_aliases.build_miss_upsert("map", ["Илиос", "Гавана"], log_record_id=None)
+        statement = catalog_aliases.build_miss_upsert("map", ["Илиос", "Гавана"], ingest_job_id=None)
         sql = _compile(statement)
 
         self.assertIn("ON CONFLICT", sql)
@@ -68,23 +68,29 @@ class RecordMissesTests(IsolatedAsyncioTestCase):
         session = AsyncMock()
         session.__aenter__.return_value = session
 
-        with patch.object(catalog_aliases.db, "async_session_maker", return_value=session) as factory:
-            await catalog_aliases.record_misses("character", ["Ана"], log_record_id=7)
+        with (
+            patch.object(catalog_aliases.db, "async_session_maker", return_value=session) as factory,
+            patch.object(catalog_aliases._misses, "record_miss", AsyncMock()) as record,
+        ):
+            await catalog_aliases.record_misses("character", ["Ана"], ingest_job_id=7)
 
         factory.assert_called_once_with()
-        session.execute.assert_awaited_once()
+        record.assert_awaited_once_with(
+            session, "overwatch", "character", {"Ана"}, ingest_job_id=7, name_max_length=128
+        )
         # Without the commit the row dies with the rolled-back log-processing run.
         session.commit.assert_awaited_once()
 
-    async def test_the_log_record_is_carried_into_the_row(self) -> None:
+    async def test_the_native_job_is_carried_into_the_row(self) -> None:
         session = AsyncMock()
         session.__aenter__.return_value = session
 
-        with patch.object(catalog_aliases.db, "async_session_maker", return_value=session):
-            await catalog_aliases.record_misses("map", ["Хогвартс"], log_record_id=11)
-
-        statement = session.execute.await_args.args[0]
-        self.assertIn(11, statement.compile(dialect=postgresql.dialect()).params.values())
+        with (
+            patch.object(catalog_aliases.db, "async_session_maker", return_value=session),
+            patch.object(catalog_aliases._misses, "record_miss", AsyncMock()) as record,
+        ):
+            await catalog_aliases.record_misses("map", ["Хогвартс"], ingest_job_id=11)
+        self.assertEqual(11, record.await_args.kwargs["ingest_job_id"])
 
     async def test_an_empty_name_set_does_not_open_a_session(self) -> None:
         with patch.object(catalog_aliases.db, "async_session_maker") as factory:

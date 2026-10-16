@@ -146,7 +146,7 @@ class MLModelArtifact(db.TimeStampIntegerMixin):
 class AnalyticsPerformance(db.TimeStampIntegerMixin):
     """Per-player-per-tournament performance v2 prediction.
 
-    Replaces the primitive ``avg(MatchStatistics.PerformancePoints)``.
+    Replaces the primitive average of per-match PerformancePoints.
     ``impact_score`` is the 0-100 percentile within (tournament, role) cohort.
     ``raw_value`` is the predicted residual (observed_win - baseline_win_prob).
     Full SHAP lives in ``contributions``; ``top_features`` is the UI top-5 slice.

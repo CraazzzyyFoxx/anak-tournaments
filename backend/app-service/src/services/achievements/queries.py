@@ -9,10 +9,10 @@ from datetime import datetime
 import sqlalchemy as sa
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared.models.achievements.achievement import AchievementRule
+from shared.repository.stats_reads import MatchReadContext, get_match_reads
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from src import models
 from src.core import config, pagination, utils
@@ -412,19 +412,8 @@ class AchievementQueries:
         self,
         session: AsyncSession,
         match_ids: typing.Sequence[int],
-    ) -> typing.Sequence[models.Match]:
-        if not match_ids:
-            return []
-        query = (
-            sa.select(models.Match)
-            .options(
-                joinedload(models.Match.home_team),
-                joinedload(models.Match.away_team),
-            )
-            .where(models.Match.id.in_(match_ids))
-        )
-        result = await session.execute(query)
-        return list(result.unique().scalars().all())
+    ) -> typing.Sequence[MatchReadContext]:
+        return list((await get_match_reads(session, match_ids=match_ids)).values())
 
 
 queries = AchievementQueries()

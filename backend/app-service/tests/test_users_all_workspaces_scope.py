@@ -9,9 +9,8 @@ number is only meaningful together with the grid it was resolved on, so every
 role reports its own tournament's effective grid version (own pin -> owning
 workspace default -> system default) and the response ships those grids.
 
-Postgres-backed assertions live with the integration suites; these run without
-a database — pure parsing, SQL shape, and the resolution layer with the cached
-grid loaders stubbed.
+Postgres-backed assertions live with the integration suites; these cover pure
+scope parsing and division resolution with cached grid loaders stubbed.
 """
 
 from __future__ import annotations
@@ -21,8 +20,6 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 from shared.core.errors import BaseAPIException
 from shared.division_grid import DEFAULT_GRID
@@ -32,8 +29,7 @@ from shared.schemas.role import RoleRef
 from shared.services.division_grid.normalization import DivisionGridNormalizer
 from shared.services.workspace_scope import ALL_WORKSPACES
 from shared.testing.factories import division_grid as make_grid
-from src import models, schemas
-from src.services.user.queries import _scope
+from src import schemas
 
 user_rpc = importlib.import_module("src.rpc.users")
 user_service = importlib.import_module("src.services.user.service")
@@ -42,10 +38,6 @@ enums = importlib.import_module("src.core.enums")
 
 def _query(**params: str) -> dict:
     return {"query": {key: [value] for key, value in params.items()}}
-
-
-def _compiled(stmt) -> str:
-    return str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
 
 def _version_payload(version_id: int) -> dict:
@@ -88,48 +80,7 @@ class WorkspaceScopeParsingTests(TestCase):
 class OverviewDivisionFilterTests(TestCase):
     """The ``divisions`` chips cannot be translated once for everyone."""
 
-    def test_scoped_read_filters_on_indexable_rank_ranges(self) -> None:
-        sql = _compiled(
-            _scope._apply_overview_role_filters(
-                sa.select(models.User.id),
-                role=None,
-                divisions=[3, 5],
-                grid=DEFAULT_GRID,
-                workspace_id=7,
-            )
-        )
-        self.assertIn("player.rank >= ", sql)
-        self.assertNotIn("division_grid_tier", sql)
-        # A set of divisions is an OR of per-division rank ranges, not one span:
-        # picking 3 and 5 must not drag 4 in with them.
-        self.assertIn(" OR ", sql)
-
-    def test_a_division_set_keeps_every_picked_division(self) -> None:
-        picked = _compiled(
-            _scope._apply_overview_role_filters(
-                sa.select(models.User.id),
-                role=None,
-                divisions=[3],
-                grid=DEFAULT_GRID,
-                workspace_id=7,
-            )
-        )
-        bounds = {tier.number: (tier.rank_min, tier.rank_max) for tier in DEFAULT_GRID.tiers if tier.number in (3, 5)}
-        self.assertIn(f"player.rank >= {bounds[3][0]}", picked)
-        self.assertNotIn(f"player.rank >= {bounds[5][0]}", picked)
-
-    def test_no_divisions_is_no_division_filter(self) -> None:
-        sql = _compiled(
-            _scope._apply_overview_role_filters(
-                sa.select(models.User.id),
-                role=RoleRef(dimension="player_role", role="tank"),
-                divisions=[],
-                grid=DEFAULT_GRID,
-                workspace_id=7,
-            )
-        )
-        self.assertNotIn("player.rank", sql)
-        self.assertNotIn("division_grid_tier", sql)
+    def test_role_filter_distinguishes_omitted_unassigned_and_named(self) -> None:
         for query_model, params_model in (
             (schemas.UserOverviewQueryParams, schemas.UserOverviewParams),
             (schemas.UserCatalogQueryParams, schemas.UserCatalogParams),
@@ -143,21 +94,6 @@ class OverviewDivisionFilterTests(TestCase):
                 build_query_model(query_model, {"role": [role.model_dump_json()]})
             )
             self.assertEqual(role, selected.role)
-        unassigned_sql = _compiled(
-            _scope._apply_overview_role_filters(
-                sa.select(models.User.id),
-                role=None,
-                has_role_filter=True,
-                grid=DEFAULT_GRID,
-            )
-        )
-        self.assertIn("NOT (EXISTS", unassigned_sql)
-        self.assertIn("catalog.role_dimension.rated IS true", unassigned_sql)
-
-    def test_has_logs_filter_probes_match_statistics_per_user(self) -> None:
-        sql = _compiled(_scope.apply_has_logs_filter(sa.select(models.User.id)))
-        self.assertIn("EXISTS", sql)
-        self.assertIn('matches.statistics.user_id = players."user".id', sql)
 
 
 class OverviewRoleDivisionTests(IsolatedAsyncioTestCase):

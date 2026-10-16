@@ -1,43 +1,9 @@
-"""Idempotent history backfill for MVP impact scoring (spec 2026-07-10).
+"""Idempotent native OW backfill at every non-character segment.
 
-Task 5 wired ``impact.py`` into the *live* match-log pipeline. This module
-recomputes the same 7 derived stats (the 4 ``EVENT_STATS`` + ImpactPoints /
-ImpactRank / OverperformanceScore) for matches that were already ingested
-before that wiring existed — or whenever the baseline set / formula changes
-and history needs to be rescored.
-
-The pure pivot-rebuilding core (``rebuild_frames`` and its ``_pivot``/
-``_merge_events``/``_rank_by_impact`` helpers) lives in
-``src.domain.match_logs.impact_backfill`` — it turns the OLD stat rows already
-stored for a match back into the same two MVP pivots (round-discrete and
-match-total) that the live pipeline builds from the raw log. Everything here
-is IO — reading rosters/kill-feed/baselines and writing the 7 derived stats
-back — and is exercised at rollout (see Task 10 runbook), not by unit tests,
-since it needs a live database.
-
-Idempotency contract (a rerun must produce byte-identical rows):
-
-* ``rebuild_frames`` only ever reads OLD stat rows: it drops per-hero rows
-  (``hero_id`` not null) and any of the 7 already-derived stats, so a
-  previous backfill's output is never fed back in as input.
-* ``backfill_match`` recomputes the kill-feed event counts fresh every call
-  (``impact.build_event_counts``) rather than reading previously-persisted
-  event rows.
-* ``backfill_match`` deletes every existing row named one of the 7 derived
-  stats for the match *before* inserting the freshly computed set, so a
-  rerun replaces rather than accumulates.
-* ``backfill_match`` also recomputes ``kill_feed.fight`` in place
-  (``impact.assign_fights``: round-aware, >15s gap) before deriving event
-  counts, so first_picks/first_deaths reflect the current fight rule. It is
-  deterministic, so a rerun re-derives identical fight ids.
-
-Scoring itself is not reimplemented here — the rebuilt pivots + the merged
-event columns are fed straight into ``impact.add_impact_scores`` and ranked
-with the exact same ``sort_values`` / ``groupby("round").cumcount()``
-recipe Task 5 uses, so backfilled scores match live-pipeline scores for the
-same inputs. Backfill has no roster ``Player.id`` to key by (a historical
-match may have since been re-rostered/substituted); it keys everything by
-``user_id`` instead, and ``PlayerRef.player_id == PlayerRef.user_id``.
+Raw and character facts remain untouched. The existing pandas formula and
+current-registration rank/role boundary are frozen (D96); ownership always
+comes from match_player, even after a roster change or removal. Each caller's
+per-match commit includes complete evidence and tracked JSON fight updates.
 """
 
 from __future__ import annotations
@@ -49,7 +15,9 @@ import pandas as pd
 import sqlalchemy as sa
 from loguru import logger
 
-from shared.repository.match_logs import MatchKillFeedRepository, MatchStatisticsRepository
+from shared.repository.stats import StatDefRepository, StatsMatchRepository
+from shared.repository.stats_queries import player_facts
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src import models
 from src.core import enums
 from src.domain.match_logs import impact
@@ -77,89 +45,118 @@ MAX_CONSECUTIVE_FAILURES = 10
 
 
 class BackfillService:
-    def __init__(
-        self,
-        *,
-        stats_repo: MatchStatisticsRepository = MatchStatisticsRepository(),
-        kill_feed_repo: MatchKillFeedRepository = MatchKillFeedRepository(),
-    ) -> None:
+    def __init__(self, *, stats_repo: StatsMatchRepository = StatsMatchRepository()) -> None:
         self._stats_repo = stats_repo
-        self._kill_feed_repo = kill_feed_repo
-        # Per-process cache of hero_id -> HeroClass; heroes are effectively
-        # static reference data, so one load per worker process is enough
-        # (mirrors the "кэшируемо на процесс" note in the task brief).
         self._hero_types_cache: dict[int, enums.HeroClass] = {}
 
     def _stat_objects(
         self,
         match_id: int,
-        refs: Mapping[int, impact.PlayerRef],
+        ownership: Mapping[int, tuple[int, int]],
+        stat_ids: Mapping[str, int],
         round_df: pd.DataFrame,
         match_df: pd.DataFrame,
-    ) -> list[models.MatchStatistics]:
-        """Build MatchStatistics rows for the 7 derived stats straight from the scored pivots.
-
-        Built directly (no ``_create_stat_object`` here — that helper is bound to
-        an ORM ``Player`` row the backfill doesn't have).
-        """
-        objects: list[models.MatchStatistics] = []
+    ) -> list[dict]:
+        """Build native facts using actual member/participant ownership, never roster teams."""
+        objects = []
         for df in (round_df, match_df):
             for _, row in df.iterrows():
-                ref = refs.get(int(row["user_id"]))
-                if ref is None:
-                    continue
-                round_value = int(row["round"])
+                member_id, team_id = ownership[int(row["user_id"])]
                 for member in NEW_STAT_MEMBERS:
                     raw = row.get(member, 0.0)
-                    value = 0.0 if pd.isna(raw) else float(raw)
                     objects.append(
-                        models.MatchStatistics(
-                            match_id=match_id,
-                            round=round_value,
-                            team_id=ref.team_id,
-                            user_id=ref.user_id,
-                            hero_id=None,
-                            name=member,
-                            value=value,
-                        )
+                        {
+                            "match_id": match_id,
+                            "segment": int(row["round"]),
+                            "encounter_team_id": team_id,
+                            "workspace_member_id": member_id,
+                            "entity_id": None,
+                            "stat_id": stat_ids[member.value],
+                            "value": 0.0 if pd.isna(raw) else float(raw),
+                        }
                     )
         return objects
 
     async def _load_stat_rows(self, session: AsyncSession, match_id: int) -> pd.DataFrame:
-        """Read a match's OLD ``matches.statistics`` rows (excluding the 7 derived stats).
-
-        UNTESTED here (needs a live DB) — verified at rollout (Task 10 runbook).
-        """
+        f = player_facts(discipline="overwatch").c
         result = await session.execute(
             sa.select(
-                models.MatchStatistics.user_id,
-                models.MatchStatistics.round,
-                models.MatchStatistics.hero_id,
-                models.MatchStatistics.name,
-                models.MatchStatistics.value,
-            ).where(
-                models.MatchStatistics.match_id == match_id,
-                models.MatchStatistics.name.notin_(NEW_STAT_MEMBERS),
-            )
+                f.player_id.label("user_id"),
+                f.segment.label("round"),
+                f.entity_id.label("hero_id"),
+                f.stat_code.label("name"),
+                f.value,
+            ).where(f.match_id == match_id, f.stat_code.not_in([member.value for member in NEW_STAT_MEMBERS]))
         )
         rows = result.mappings().all()
         if not rows:
             return pd.DataFrame(columns=["user_id", "round", "hero_id", "name", "value"])
         df = pd.DataFrame(rows)
-        # The ORM-typed select above already deserializes `name` to LogStatsName
-        # members (Enum(LogStatsName) column) — normalize defensively in case a
-        # future caller ever swaps in a raw-SQL/string-returning path (see
-        # lesson_sqlalchemy_enum_stores_name).
-        df["name"] = df["name"].map(lambda n: n if isinstance(n, enums.LogStatsName) else enums.LogStatsName[n])
+        df["name"] = df["name"].map(enums.LogStatsName)
         return df
 
+    async def _load_players(self, session: AsyncSession, match_id: int):
+        """All observed players, including event-only and no-longer-rostered members."""
+        player, match, member = models.StatsMatchPlayer, models.StatsMatch, models.WorkspaceMember
+        team, game, encounter = models.EncounterTeam, models.EncounterGame, models.Encounter
+        return (
+            await session.execute(
+                sa.select(
+                    member.player_id.label("user_id"),
+                    player.workspace_member_id,
+                    player.encounter_team_id,
+                    team.team_id,
+                )
+                .select_from(player)
+                .join(match, match.id == player.match_id)
+                .join(
+                    member,
+                    sa.and_(member.id == player.workspace_member_id, member.workspace_id == match.workspace_id),
+                )
+                .join(game, game.id == match.encounter_game_id)
+                .join(
+                    encounter,
+                    sa.and_(
+                        encounter.id == game.encounter_id,
+                        encounter.workspace_id == match.workspace_id,
+                        encounter.discipline == match.discipline,
+                    ),
+                )
+                .join(team, sa.and_(team.id == player.encounter_team_id, team.encounter_id == encounter.id))
+                .where(
+                    match.id == match_id,
+                    match.discipline == "overwatch",
+                )
+            )
+        ).all()
+
+    async def _load_kills(self, session: AsyncSession, match_id: int) -> list[models.StatsEvent]:
+        event, match, kind = models.StatsEvent, models.StatsMatch, models.EventType
+        return list(
+            await session.scalars(
+                sa.select(event)
+                .join(match, match.id == event.match_id)
+                .join(
+                    kind,
+                    kind.id == event.type_id,
+                )
+                .where(
+                    event.match_id == match_id,
+                    match.discipline == "overwatch",
+                    kind.discipline == "overwatch",
+                    kind.code == "kill",
+                )
+                .order_by(event.t, event.id)
+            )
+        )
+
     async def _load_hero_types(self, session: AsyncSession) -> dict[int, enums.HeroClass]:
-        """{entity.id: HeroClass}, cached for the life of the process."""
         if not self._hero_types_cache:
             rows = (
                 await session.execute(
                     sa.select(
-                        models.CatalogEntity.id, models.CatalogEntity.attrs["class"].astext.label("hero_class")
+                        models.CatalogEntity.id,
+                        models.CatalogEntity.attrs["class"].astext.label("hero_class"),
                     ).where(models.CatalogEntity.discipline == "overwatch", models.CatalogEntity.kind == "character")
                 )
             ).all()
@@ -167,55 +164,24 @@ class BackfillService:
         return self._hero_types_cache
 
     async def _load_player_refs(self, session: AsyncSession, match_id: int) -> dict[int, impact.PlayerRef]:
-        """user_id -> PlayerRef for one match.
-
-        UNTESTED here (needs a live DB) — verified at rollout. Schema assumptions
-        (flagged for rollout verification, mirroring ``baselines.flows._load_stats_frame``):
-
-        * ``team_id`` per user is read from the match's OWN (pre-existing)
-          ``matches.statistics`` rows, NOT re-derived from the current roster —
-          a re-run must never disagree with the ``team_id`` already stored on
-          the untouched OLD stat rows for the same match (idempotency /
-          consistency with historical data, even across a later substitution).
-        * "Dominant role" = the ``catalog.entity.attrs["class"]`` with the most summed
-          round-0 per-hero ``HeroTimePlayed`` seconds for that (match, user) —
-          mirrors ``impact.dominant_roles``, matching what Task 5 scores
-          against. Falls back to the declared ``tournament.player.role`` when
-          no dominant role can be derived (e.g. a match with no per-hero
-          playtime rows).
-        * ``rank`` comes from the ``tournament.player`` row for the exact
-          ``(team_id, user_id)`` pair (``user_id`` = ``workspace_member.player_id``).
-          If more than one ``Player`` row exists for the same team+identity
-          (substitution edge case), the non-substitute / most-recent row wins
-          (same tie-break as Task 4) — unverified against production data. If
-          NO roster row exists at all for a (team_id, user_id) pair found in the
-          match's own stat rows (stale/orphaned roster data), role/rank fall
-          back to ``None``/``0`` rather than dropping the player — unverified
-          edge case, flagged for rollout.
-        """
-        team_rows = (
-            await session.execute(
-                sa.select(models.MatchStatistics.user_id, models.MatchStatistics.team_id)
-                .where(models.MatchStatistics.match_id == match_id)
-                .distinct()
-            )
-        ).all()
-        team_by_user: dict[int, int] = {row.user_id: row.team_id for row in team_rows}
-        if not team_by_user:
+        """Frozen current-registration scoring inputs, anchored to historical ownership."""
+        f = player_facts(discipline="overwatch").c
+        fact_users = set(await session.scalars(sa.select(f.player_id).where(f.match_id == match_id).distinct()))
+        owners = [row for row in await self._load_players(session, match_id) if row.user_id in fact_users]
+        if not owners:
             return {}
-
         hero_types = await self._load_hero_types(session)
         playtime_rows = (
             await session.execute(
                 sa.select(
-                    models.MatchStatistics.user_id,
-                    models.MatchStatistics.hero_id,
-                    models.MatchStatistics.value,
+                    f.player_id.label("user_id"),
+                    f.entity_id.label("hero_id"),
+                    f.value,
                 ).where(
-                    models.MatchStatistics.match_id == match_id,
-                    models.MatchStatistics.round == 0,
-                    models.MatchStatistics.hero_id.is_not(None),
-                    models.MatchStatistics.name == enums.LogStatsName.HeroTimePlayed,
+                    f.match_id == match_id,
+                    f.segment == 0,
+                    f.entity_id.is_not(None),
+                    f.stat_code == enums.LogStatsName.HeroTimePlayed.value,
                 )
             )
         ).all()
@@ -227,105 +193,106 @@ class BackfillService:
             }
         )
         dominant_roles = impact.dominant_roles(playtime_df, hero_types)
-
-        team_ids = list(set(team_by_user.values()))
         roster_ranked = (
             sa.select(
-                models.Player.team_id.label("team_id"),
-                models.WorkspaceMember.player_id.label("user_id"),
+                models.Player.team_id,
+                models.Player.workspace_member_id,
                 models.Player.role.label("role"),
-                models.Player.rank.label("rank"),
+                models.Player.rank,
                 sa.func.row_number()
                 .over(
-                    partition_by=(models.Player.team_id, models.WorkspaceMember.player_id),
+                    partition_by=(models.Player.team_id, models.Player.workspace_member_id),
                     order_by=(models.Player.is_substitution.asc(), models.Player.id.desc()),
                 )
                 .label("roster_rank"),
             )
-            .select_from(
-                sa.join(
-                    models.Player,
-                    models.WorkspaceMember,
-                    models.WorkspaceMember.id == models.Player.workspace_member_id,
-                )
+            .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+            .where(
+                models.Player.team_id.in_({row.team_id for row in owners}),
+                models.Tournament.discipline == "overwatch",
             )
-            .where(models.Player.team_id.in_(team_ids))
             .subquery("backfill_roster_ranked")
         )
-        roster_rows = (
-            await session.execute(
-                sa.select(
-                    roster_ranked.c.team_id,
-                    roster_ranked.c.user_id,
-                    roster_ranked.c.role,
-                    roster_ranked.c.rank,
-                ).where(roster_ranked.c.roster_rank == 1)
+        roster_rows = (await session.execute(sa.select(roster_ranked).where(roster_ranked.c.roster_rank == 1))).all()
+        roster_by_key = {
+            (row.team_id, row.workspace_member_id): (
+                enums.HeroClass[row.role] if row.role else None,
+                row.rank,
             )
-        ).all()
-        roster_by_key: dict[tuple[int, int], tuple[enums.HeroClass | None, int]] = {
-            (row.team_id, row.user_id): (enums.HeroClass[row.role] if row.role else None, row.rank)
             for row in roster_rows
         }
-
-        refs: dict[int, impact.PlayerRef] = {}
-        for user_id, team_id in team_by_user.items():
-            roster_entry = roster_by_key.get((team_id, user_id))
-            has_roster = roster_entry is not None
-            declared_role, rank = roster_entry if has_roster else (None, 0)
-            # Only trust a dominant/declared role when a roster row actually
-            # exists for this (team_id, user_id) pair. Without a roster row,
-            # `rank` is meaningless (0), so leaking a role through here would
-            # make `add_impact_scores` score the player against baseline
-            # bucket 0 (elite/top) via `baselines.bucket_for(0)` — role=None
-            # is what routes the player to the safe zero-score path instead
-            # (impact.py zeroes both ImpactPoints and OverperformanceScore
-            # when role is None).
-            role = (dominant_roles.get(user_id) or declared_role) if has_roster else None
-            refs[user_id] = impact.PlayerRef(
-                player_id=user_id,
-                user_id=user_id,
-                team_id=team_id,
+        refs = {}
+        for owner in owners:
+            entry = roster_by_key.get((owner.team_id, owner.workspace_member_id))
+            declared_role, rank = entry if entry is not None else (None, 0)
+            role = (dominant_roles.get(owner.user_id) or declared_role) if entry is not None else None
+            refs[owner.user_id] = impact.PlayerRef(
+                player_id=owner.user_id,
+                user_id=owner.user_id,
+                team_id=owner.team_id,
                 role=role,
                 rank=rank,
             )
         return refs
 
     async def backfill_match(self, session: AsyncSession, match_id: int) -> bool:
-        """Recompute the 7 MVP-derived stats for one match. Returns False if the match has no stats yet."""
+        """Recompute seven codes and fights; flush/evidence here, commit in the caller."""
+        match = await session.scalar(
+            sa.select(models.StatsMatch)
+            .where(
+                models.StatsMatch.id == match_id,
+                models.StatsMatch.discipline == "overwatch",
+            )
+            .with_for_update()
+        )
+        if match is None:
+            return False
         stat_rows = await self._load_stat_rows(session, match_id)
         if stat_rows.empty:
             return False
-
-        kill_feed = await self._kill_feed_repo.list_for_match(session, match_id)
-        # Recompute fight boundaries (round-aware, >15s gap) and persist them — the
-        # mutated ORM rows flush on the per-match commit. MUST run before
-        # build_event_counts, which derives first_picks/first_deaths from `fight`.
-        # Deterministic, so it stays idempotent across reruns.
+        scopes = owner_scopes("match", (match_id,))
+        before = await capture_stats_evidence(session, scopes=scopes)
+        kill_feed = await self._load_kills(session, match_id)
         impact.assign_fights(kill_feed)
+        players = await self._load_players(session, match_id)
+        member_user_ids = {row.workspace_member_id: row.user_id for row in players}
+        ownership = {row.user_id: (row.workspace_member_id, row.encounter_team_id) for row in players}
         refs = await self._load_player_refs(session, match_id)
         hero_types = await self._load_hero_types(session)
-        baselines = await baselines_service.get_active(session)
+        baselines = await baselines_service.get_active(session, discipline="overwatch")
         if baselines is None:
             raise RuntimeError("Impact baselines are not computed — run recompute first")
-
         round_df, match_df = rebuild_frames(stat_rows)
         has_killfeed = bool(kill_feed)
-        events_df = impact.build_event_counts(kill_feed, hero_types)
+        events_df = impact.build_event_counts(kill_feed, hero_types, member_user_ids=member_user_ids)
         round_df, match_df = _merge_events(round_df, match_df, events_df)
-
         round_scored = _rank_by_impact(
             impact.add_impact_scores(round_df, players=refs, baselines=baselines, has_killfeed=has_killfeed)
         )
         match_scored = _rank_by_impact(
             impact.add_impact_scores(match_df, players=refs, baselines=baselines, has_killfeed=has_killfeed)
         )
-
-        objects = self._stat_objects(match_id, refs, round_scored, match_scored)
-
-        # Idempotency: wipe the 7 derived stats for this match before inserting
-        # the freshly computed set, so reruns replace rather than accumulate.
-        await self._stats_repo.delete_for_match_by_names(session, match_id, NEW_STAT_MEMBERS)
-        await self._stats_repo.create_many(session, objects)
+        stat_ids = await StatDefRepository().ids(session, discipline="overwatch")
+        objects = self._stat_objects(match_id, ownership, stat_ids, round_scored, match_scored)
+        await self._stats_repo.replace_fact_codes(
+            session,
+            match_id=match_id,
+            discipline="overwatch",
+            stat_codes=[member.value for member in NEW_STAT_MEMBERS],
+            rows=objects,
+        )
+        await session.flush()
+        after = await capture_stats_evidence(session, scopes=scopes)
+        if before != after:
+            await stage_stats_evidence(
+                session,
+                operation="stats.derived_backfill",
+                before=before,
+                after=after,
+                workspace_id=match.workspace_id,
+                entity_type="stats_match",
+                entity_id=match_id,
+            )
         return True
 
     async def backfill_all(
@@ -348,13 +315,28 @@ class BackfillService:
         accumulating for genuinely-isolated bad matches under the threshold.
         """
         async with session_factory() as session:
-            if await baselines_service.get_active(session) is None:
+            if await baselines_service.get_active(session, discipline="overwatch") is None:
                 raise RuntimeError("Impact baselines are not computed — run recompute first")
 
-            query = sa.select(models.Match.id).join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+            query = (
+                sa.select(models.StatsMatch.id)
+                .join(
+                    models.EncounterGame,
+                    models.EncounterGame.id == models.StatsMatch.encounter_game_id,
+                )
+                .join(
+                    models.Encounter,
+                    sa.and_(
+                        models.Encounter.id == models.EncounterGame.encounter_id,
+                        models.Encounter.workspace_id == models.StatsMatch.workspace_id,
+                        models.Encounter.discipline == models.StatsMatch.discipline,
+                    ),
+                )
+                .where(models.StatsMatch.discipline == "overwatch")
+            )
             if tournament_id is not None:
                 query = query.where(models.Encounter.tournament_id == tournament_id)
-            match_ids = (await session.execute(query.order_by(models.Match.id))).scalars().all()
+            match_ids = (await session.execute(query.order_by(models.StatsMatch.id))).scalars().all()
 
         total = len(match_ids)
         processed = 0

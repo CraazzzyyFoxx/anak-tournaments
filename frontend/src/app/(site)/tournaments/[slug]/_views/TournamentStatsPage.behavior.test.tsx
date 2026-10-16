@@ -214,8 +214,6 @@ function match(id: number, mapId: number, time: number | null): Match {
     map_id: mapId,
     map_index: null,
     log_name: null,
-    source: "log_parser",
-    code: null,
     map: null,
     home_team: null,
     away_team: null,

@@ -101,9 +101,15 @@ algorithms can hold different opinions about the same `(tournament, player)` wit
 overwriting each other. It also writes `realtime.workspace_event` rows for job progress.
 
 Reads, never writes: `tournament` (the `tournament.player` roster slot that every number is
-anchored on, plus teams, encounters and standings), `matches` (reached through the
-encounter, never referenced directly), `registration`, `tenancy`, and `division_grid` (for
-canonical division resolution).
+anchored on, plus teams and standings), native `stats` observations through their bound
+`encounter.game`, `registration`, `tenancy`, and `division_grid` (for canonical division
+resolution). Match features and match-quality scores retain observed `source_position`
+home/away orientation, not encounter slot order. Roster roles/ranks remain the trained
+input boundary; observed snapshots do not replace registration context.
+
+The P4 regression oracle covers all six feature/profile families and the actual aligned
+main/coarse predictor inputs. No trained application artifact is supplied by the fixture;
+the boundary probes stop before prediction and neither fit models nor claim prediction parity.
 
 Migrations are central — there is one Alembic project at `backend/migrations/` and this
 service ships none. Entity diagrams and column-level detail:

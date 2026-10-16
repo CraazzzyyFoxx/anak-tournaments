@@ -1001,6 +1001,14 @@ def _run_recompute(dry_run: bool) -> int:
 
 def test_the_lobby_recompute_fills_standings_dry_then_for_real_then_does_nothing(migrated) -> None:
     conn, ids = migrated["conn"], migrated["ids"]
+    # This legacy match belongs to the fixture's first game; make that binding
+    # explicit before the current-head statistics preflight.
+    conn.execute(
+        "UPDATE encounter.game SET map_id = (SELECT map_id FROM matches.match WHERE id = %s) WHERE id = %s",
+        (ids["match"], ids["games"][0]),
+    )
+    conn.execute("UPDATE matches.match SET map_index = 1 WHERE id = %s", (ids["match"],))
+    conn.commit()
     # The script is a post-upgrade one-shot and the ORM it uses always reflects the head, so bring the database there first.
     done = _alembic(MIGRATED_DB, "head")
     assert done.returncode == 0, done.stderr[-3000:]

@@ -1,232 +1,219 @@
-"""Service for creating and updating LogProcessingRecord entries."""
+"""Native ingest-job lifecycle. Callers own processing transactions and commits."""
 
 import hashlib
 from datetime import UTC, datetime
 
-from loguru import logger
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.ingestion.log_processing import LogProcessingRecord, LogProcessingSource, LogProcessingStatus
-from shared.repository.support import LogProcessingRepository
+from shared import models
+from shared.core.errors import BaseAPIException
+from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
+from shared.repository.encounter import EncounterGameRepository
+from shared.repository.stats import IngestJobRepository
+from shared.repository.tournament import EncounterRepository, TournamentRepository
+from shared.schemas.events import AchievementEvaluateEvent
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
+from src.services.match_logs.realtime import emit_logs_updated
+
+
+def compute_content_hash(raw_bytes: bytes) -> str:
+    return hashlib.sha256(raw_bytes).hexdigest()
 
 
 class LogRecordsService:
-    def __init__(self, *, repo: LogProcessingRepository = LogProcessingRepository()) -> None:
+    def __init__(self, *, repo: IngestJobRepository = IngestJobRepository()) -> None:
         self._repo = repo
 
-    @staticmethod
-    def compute_content_hash(raw_bytes: bytes) -> str:
-        """Return hex SHA-256 of the raw log file bytes."""
-        return hashlib.sha256(raw_bytes).hexdigest()
-
-    async def is_already_processed(
+    async def transition(
         self,
         session: AsyncSession,
-        tournament_id: int,
-        filename: str,
-        content_hash: str,
-    ) -> bool:
-        """Return True when a *done* record with the same content hash already exists.
-
-        This lets us skip reprocessing an unchanged log file that was re-uploaded.
-        """
-        return await self._repo.exists(
-            session,
-            tournament_id=tournament_id,
-            filename=filename,
-            status=LogProcessingStatus.done,
-            content_hash=content_hash,
-        )
-
-    async def upsert_log_record(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        filename: str,
-        source: LogProcessingSource,
-        uploader_id: int | None = None,
-        attached_encounter_id: int | None = None,
-    ) -> LogProcessingRecord:
-        """Create or refresh a log processing record. If a pending/failed record
-        already exists for the same (tournament_id, filename), reuse it. Otherwise
-        create a new one."""
-        record = await self._repo.find_reusable(session, tournament_id=tournament_id, filename=filename)
-
-        if record is None:
-            record = LogProcessingRecord(
-                tournament_id=tournament_id,
-                filename=filename,
-                source=source,
-                status=LogProcessingStatus.pending,
-                uploader_id=uploader_id,
-                attached_encounter_id=attached_encounter_id,
-            )
-            await self._repo.create(session, record)
+        job: models.IngestJob,
+        status: models.IngestJobStatus,
+        *,
+        error_message: str | None = None,
+        reset_attempts: bool = False,
+        now: datetime | None = None,
+    ) -> None:
+        scopes = owner_scopes("job", (job.id,))
+        before = await capture_stats_evidence(session, scopes=scopes)
+        moment = now or datetime.now(UTC)
+        job.status = status
+        job.updated_at = moment
+        job.error_message = error_message[:2000] if error_message else None
+        if reset_attempts:
+            job.attempts = 0
+        if status == models.IngestJobStatus.PROCESSING:
+            job.attempts += 1
+            job.started_at = moment
+            job.finished_at = None
+        elif status == models.IngestJobStatus.PENDING:
+            job.started_at = None
+            job.finished_at = None
         else:
-            record.source = source
-            record.status = LogProcessingStatus.pending
-            record.attached_encounter_id = attached_encounter_id
-            record.error_message = None
-            record.started_at = None
-            record.finished_at = None
-            # Fresh upload of this filename: content may differ from whatever
-            # exhausted the previous retry budget, so the reaper starts over.
-            record.attempts = 0
-            if uploader_id is not None:
-                record.uploader_id = uploader_id
+            job.finished_at = moment
+        await session.flush()
+        after = await capture_stats_evidence(session, scopes=scopes)
+        await stage_stats_evidence(
+            session,
+            operation="stats.job_transition",
+            before=before,
+            after=after,
+            workspace_id=job.workspace_id,
+            entity_type="ingest_job",
+            entity_id=job.id,
+        )
+        await emit_logs_updated(session, job.workspace_id, change=status.value)
+        await enqueue_outbox_event(
+            session,
+            AchievementEvaluateEvent(
+                workspace_id=job.workspace_id,
+                tournament_id=job.hint_tournament_id,
+                changed_tables=["stats.ingest_job"],
+                source_service="parser-service",
+            ),
+            exchange="",
+            routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,
+        )
 
-        await session.commit()
-        await session.refresh(record)
-        return record
-
-    async def set_processing(
+    async def retry(
         self,
         session: AsyncSession,
-        tournament_id: int,
-        filename: str,
-        content_hash: str | None = None,
-    ) -> LogProcessingRecord | None:
-        """Mark the most recent pending record as 'processing'."""
-        record = await self._repo.find_latest(session, tournament_id=tournament_id, filename=filename)
-
-        if record is None:
-            # No record created by upload — create one now for consumer-initiated processing
-            record = LogProcessingRecord(
-                tournament_id=tournament_id,
-                filename=filename,
-                source=LogProcessingSource.manual,
-                status=LogProcessingStatus.processing,
-                started_at=datetime.now(UTC),
-                content_hash=content_hash,
-                attempts=1,
+        job_id: int,
+        *,
+        workspace_id: int,
+        encounter_id: int | None = None,
+        encounter_game_id: int | None = None,
+    ) -> models.IngestJob:
+        if encounter_id is not None or encounter_game_id is not None:
+            scope = (
+                await session.execute(
+                    sa.select(
+                        models.IngestJob.hint_tournament_id,
+                        models.IngestJob.discipline,
+                    ).where(models.IngestJob.id == job_id, models.IngestJob.workspace_id == workspace_id)
+                )
+            ).one_or_none()
+            if scope is None:
+                raise BaseAPIException(status_code=404, detail="Ingest job not found")
+            target = encounter_id
+            if target is None:
+                target = await session.scalar(
+                    sa.select(models.EncounterGame.encounter_id).where(
+                        models.EncounterGame.id == encounter_game_id,
+                    )
+                )
+            # A changed FK needs the parent lock before the job lock, just as
+            # processing and parent deletion do. Plain retry changes no hints.
+            parent = await session.scalar(
+                sa.select(models.Encounter.id)
+                .where(
+                    models.Encounter.id == target,
+                    models.Encounter.workspace_id == workspace_id,
+                    models.Encounter.tournament_id == scope.hint_tournament_id,
+                    models.Encounter.discipline == scope.discipline,
+                )
+                .with_for_update(read=True)
             )
-            await self._repo.create(session, record)
-        else:
-            record.status = LogProcessingStatus.processing
-            record.started_at = datetime.now(UTC)
-            record.error_message = None
-            record.finished_at = None
-            record.attempts = (record.attempts or 0) + 1
-            if content_hash is not None:
-                record.content_hash = content_hash
-
-        try:
-            await session.commit()
-        except Exception as exc:
-            logger.warning(f"Failed to update log record to processing state: {exc}")
-            await session.rollback()
-            return None
-
-        await session.refresh(record)
-        return record
-
-    async def finish_duplicate_record(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        filename: str,
-        content_hash: str,
-    ) -> LogProcessingRecord | None:
-        """Mark the latest incomplete record as done when the uploaded content is a duplicate."""
-        record = await self._repo.find_latest_incomplete(
-            session,
-            tournament_id=tournament_id,
-            filename=filename,
-            statuses=[LogProcessingStatus.pending, LogProcessingStatus.processing, LogProcessingStatus.failed],
+            if parent is None:
+                raise BaseAPIException(status_code=422, detail="stats_upload_hint_conflict")
+            if (
+                encounter_game_id is not None
+                and await session.scalar(
+                    sa.select(models.EncounterGame.id)
+                    .where(
+                        models.EncounterGame.id == encounter_game_id,
+                        models.EncounterGame.encounter_id == parent,
+                        models.EncounterGame.state != "cancelled",
+                    )
+                    .with_for_update(read=True)
+                )
+                is None
+            ):
+                raise BaseAPIException(status_code=422, detail="stats_upload_hint_conflict")
+        job = await self._repo.get_for_update(session, job_id, workspace_id=workspace_id)
+        if job is None:
+            raise BaseAPIException(status_code=404, detail="Ingest job not found")
+        if job.status == models.IngestJobStatus.PROCESSING:
+            raise BaseAPIException(status_code=409, detail="Ingest job is already processing")
+        next_encounter = encounter_id if encounter_id is not None else job.hint_encounter_id
+        next_game = (
+            encounter_game_id
+            if encounter_game_id is not None
+            else None
+            if encounter_id is not None and encounter_id != job.hint_encounter_id
+            else job.hint_encounter_game_id
         )
-        if record is None:
-            return None
-
-        if record.started_at is None:
-            record.started_at = datetime.now(UTC)
-        record.error_message = None
-        record.content_hash = content_hash
-        await self.set_done(session, record)
-        return record
-
-    async def set_done(self, session: AsyncSession, record: LogProcessingRecord) -> None:
-        """Mark a log processing record as done."""
-        record.status = LogProcessingStatus.done
-        record.finished_at = datetime.now(UTC)
-        try:
-            await session.commit()
-        except Exception as exc:
-            logger.warning(f"Failed to mark log record as done: {exc}")
-            await session.rollback()
-
-    async def set_failed(self, session: AsyncSession, record: LogProcessingRecord, error: str) -> None:
-        """Mark a log processing record as failed."""
-        record.status = LogProcessingStatus.failed
-        record.finished_at = datetime.now(UTC)
-        record.error_message = error[:2000]  # guard against huge tracebacks
-        try:
-            await session.commit()
-        except Exception as exc:
-            logger.warning(f"Failed to mark log record as failed: {exc}")
-            await session.rollback()
-
-    async def fail_unstarted(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        filename: str,
-        error: str,
-    ) -> LogProcessingRecord | None:
-        """Fail the latest unfinished record for a log that never reached processing.
-
-        ``flows.process_match_log`` rejects a missing or oversized S3 object before
-        ``set_processing`` runs, so the row kept its ``pending`` status — "Queued" in
-        the admin console — and never spent a reaper attempt (``attempts`` is only
-        bumped by ``set_processing``). The stall reaper then republished it every
-        window forever, because its ``max_attempts`` guard could never trip. Marking
-        the row ``failed`` is terminal: the reaper leaves ``failed`` alone and an
-        operator sees the actual reason instead of an eternal queue.
-        """
-        record = await self._repo.find_latest_incomplete(
-            session,
-            tournament_id=tournament_id,
-            filename=filename,
-            statuses=[LogProcessingStatus.pending, LogProcessingStatus.processing],
-        )
-        if record is None:
-            return None
-
-        await self.set_failed(session, record, error)
-        return record
-
-    async def retry(self, session: AsyncSession, record_id: int) -> LogProcessingRecord | None:
-        """Reset a record to a fresh retry budget for the admin "retry" action.
-
-        An operator asking for a retry gets a fresh budget, so a record the
-        stall reaper retired can be driven again.
-        """
-        record = await self._repo.get(session, record_id)
-        if record is None:
-            return None
-
-        await self._repo.update_fields(
-            session,
-            record,
-            {
-                "status": LogProcessingStatus.pending,
-                "error_message": None,
-                "started_at": None,
-                "finished_at": None,
-                "attempts": 0,
-            },
-        )
+        if encounter_game_id is not None:
+            game = await EncounterGameRepository().get(session, encounter_game_id)
+            if (
+                game is None
+                or game.state.value == "cancelled"
+                or (next_encounter is not None and game.encounter_id != next_encounter)
+            ):
+                raise BaseAPIException(status_code=422, detail="stats_upload_hint_conflict")
+            next_encounter = game.encounter_id
+        if (next_encounter, next_game) != (job.hint_encounter_id, job.hint_encounter_game_id):
+            if await session.scalar(sa.select(models.StatsMatch.id).where(models.StatsMatch.ingest_job_id == job.id)):
+                raise BaseAPIException(status_code=409, detail="A linked log cannot be re-attached")
+            encounter = await EncounterRepository().get(session, next_encounter)
+            if (
+                encounter is None
+                or encounter.tournament_id != job.hint_tournament_id
+                or encounter.workspace_id != job.workspace_id
+                or encounter.discipline != job.discipline
+            ):
+                raise BaseAPIException(status_code=422, detail="stats_upload_hint_conflict")
+            scopes = owner_scopes("job", (job.id,))
+            before = await capture_stats_evidence(session, scopes=scopes)
+            await self._repo.update_hints(session, job, encounter_id=next_encounter, encounter_game_id=next_game)
+            after = await capture_stats_evidence(session, scopes=scopes)
+            await stage_stats_evidence(
+                session,
+                operation="stats.job_hint",
+                before=before,
+                after=after,
+                workspace_id=workspace_id,
+                entity_type="ingest_job",
+                entity_id=job.id,
+            )
+        await self.transition(session, job, models.IngestJobStatus.PENDING, reset_attempts=True)
         await session.commit()
-        await session.refresh(record)
-        return record
+        return job
+
+    async def requeue_tournament(self, session: AsyncSession, tournament_id: int) -> list[int]:
+        tournament = await TournamentRepository().get(session, tournament_id)
+        if tournament is None:
+            raise BaseAPIException(status_code=404, detail="Tournament not found")
+        workspace_id, discipline_code = tournament.workspace_id, tournament.discipline
+        ids = []
+        cursor = 0
+        while True:
+            jobs = list(
+                await session.scalars(
+                    sa.select(models.IngestJob)
+                    .where(
+                        models.IngestJob.hint_tournament_id == tournament_id,
+                        models.IngestJob.workspace_id == workspace_id,
+                        models.IngestJob.discipline == discipline_code,
+                        models.IngestJob.id > cursor,
+                    )
+                    .order_by(models.IngestJob.id)
+                    .limit(100)
+                    .with_for_update()
+                )
+            )
+            if not jobs:
+                break
+            for job in jobs:
+                cursor = job.id
+                if job.status == models.IngestJobStatus.PROCESSING:
+                    continue
+                await self.transition(session, job, models.IngestJobStatus.PENDING, reset_attempts=True)
+                ids.append(job.id)
+            await session.commit()
+        return ids
 
 
 log_records_service = LogRecordsService()
-
-compute_content_hash = log_records_service.compute_content_hash
-is_already_processed = log_records_service.is_already_processed
-upsert_log_record = log_records_service.upsert_log_record
-set_processing = log_records_service.set_processing
-finish_duplicate_record = log_records_service.finish_duplicate_record
-set_done = log_records_service.set_done
-set_failed = log_records_service.set_failed
-fail_unstarted = log_records_service.fail_unstarted

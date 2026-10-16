@@ -61,7 +61,6 @@ class LogCollectorBot(commands.Bot):
         self.result_waiter = ResultWaiter(timeout=_PROCESSING_RESULT_TIMEOUT)
         self.attachment_processor = AttachmentProcessor(
             client=self,
-            session_maker=self.session_maker,
             parser_clients=ParserClientFactory(settings),
             result_waiter=self.result_waiter,
         )

@@ -99,6 +99,7 @@ import {
   LogProcessingRecord,
   LogProcessingStats,
   LogProcessingStatus,
+  LogRetryRequest,
   LogUploadResponse,
   SeedResultRead,
   PlayerSubRole,
@@ -742,14 +743,13 @@ class AdminService {
   ): Promise<{
     id: number;
     encounter_id: number;
-    home_team_id: number;
-    away_team_id: number;
+    home_team_id: number | null;
+    away_team_id: number | null;
     home_score: number;
     away_score: number;
     map_id: number;
-    code: string | null;
-    time: number;
-    log_name: string;
+    time: number | null;
+    log_name: string | null;
   }> {
     const response = await apiFetch(`/api/v1/admin/encounters/matches/${matchId}`, {
       method: "PATCH",
@@ -1535,11 +1535,11 @@ class AdminService {
     return response.json();
   }
 
-  /** `encounterId` attaches the log to that encounter before it is requeued. */
-  async retryLogRecord(recordId: number, encounterId?: number): Promise<LogProcessingRecord> {
+  /** Omitted hints preserve the job's current binding; game IDs are never series positions. */
+  async retryLogRecord(recordId: number, request: LogRetryRequest = {}): Promise<LogProcessingRecord> {
     const response = await apiFetch(`/api/v1/admin/logs/${recordId}/retry`, {
       method: "POST",
-      body: { encounter_id: encounterId ?? null }
+      body: request
     });
     return response.json();
   }

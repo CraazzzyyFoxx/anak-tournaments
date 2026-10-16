@@ -199,14 +199,10 @@ _JOIN_PATHS: dict[type, list[tuple]] = {
     models.Standing: [
         (models.Tournament, models.Standing.tournament_id == models.Tournament.id),
     ],
-    models.Match: [
-        (models.Encounter, models.Match.encounter_id == models.Encounter.id),
-        (models.Tournament, models.Encounter.tournament_id == models.Tournament.id),
-    ],
-    models.MatchStatistics: [
-        (models.Match, models.MatchStatistics.match_id == models.Match.id),
-        (models.Encounter, models.Match.encounter_id == models.Encounter.id),
-        (models.Tournament, models.Encounter.tournament_id == models.Tournament.id),
+    models.StatsMatch: [],
+    models.IngestJob: [],
+    models.StatsFact: [
+        (models.StatsMatch, models.StatsFact.match_id == models.StatsMatch.id),
     ],
 }
 
@@ -236,6 +232,11 @@ def apply_workspace_filter(
     if root is not None and root in _JOIN_PATHS:
         for target_model, condition in _JOIN_PATHS[root]:
             query = query.join(target_model, condition, isouter=False)
+
+    if root in (models.StatsMatch, models.StatsFact):
+        return query.where(models.StatsMatch.workspace_id == workspace_id)
+    if root is models.IngestJob:
+        return query.where(models.IngestJob.workspace_id == workspace_id)
 
     return query.where(models.Tournament.workspace_id == workspace_id)
 

@@ -950,7 +950,7 @@ export interface PregameRoomsRead {
  */
 export interface LogRecordRef {
   id: number;
-  filename: string;
+  filename: string | null;
   status: LogProcessingStatus;
   source: string | null;
   uploader_id: number | null;
@@ -970,20 +970,15 @@ export interface AdminMatchRow {
   tournament_name: string;
   map_id: number;
   map_name: string;
-  home_team: { id: number; name: string | null };
-  away_team: { id: number; name: string | null };
+  home_team: { id: number; name: string | null } | null;
+  away_team: { id: number; name: string | null } | null;
   home_score: number;
   away_score: number;
   /** Map duration in seconds. */
-  time: number;
-  log_name: string;
-  code: string | null;
+  time: number | null;
+  log_name: string | null;
   created_at: string;
-  /**
-   * `null` means provenance is unresolved. That is the normal state for the
-   * bulk of the history — the ingestion table postdates most parsed matches —
-   * so the UI must present it as unknown, never as a failure.
-   */
+  /** Null when no raw-log ingestion job is linked; not a processing failure. */
   log_record: LogRecordRef | null;
 }
 
@@ -1045,14 +1040,10 @@ export interface EncounterUpdateInput {
 }
 
 export interface MatchUpdateInput {
-  home_team_id?: number;
-  away_team_id?: number;
   home_score?: number;
   away_score?: number;
   map_id?: number;
-  code?: string | null;
   time?: number;
-  log_name?: string;
 }
 
 // ─── Standing ────────────────────────────────────────────────────────────────
@@ -1634,18 +1625,18 @@ export interface DiscordChannelInput {
 
 // ─── Log Processing ───────────────────────────────────────────────────────────
 
-export type LogProcessingStatus = "pending" | "processing" | "done" | "failed";
-type LogProcessingSource = "upload" | "discord" | "manual";
+export type LogProcessingStatus = "pending" | "processing" | "awaiting_link" | "done" | "failed";
 
 export interface LogProcessingRecord {
   id: number;
-  tournament_id: number;
+  tournament_id: number | null;
   tournament_name: string | null;
   attached_encounter_id: number | null;
+  attached_encounter_game_id: number | null;
   attached_encounter_name: string | null;
   filename: string;
   status: LogProcessingStatus;
-  source: LogProcessingSource;
+  source: string;
   uploader_name: string | null;
   error_message: string | null;
   /** Times the record entered processing; >1 means the stall reaper requeued it. */
@@ -1653,6 +1644,11 @@ export interface LogProcessingRecord {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+}
+
+export interface LogRetryRequest {
+  encounter_id?: number | null;
+  encounter_game_id?: number | null;
 }
 
 export interface LogHistoryResponse {
@@ -1665,6 +1661,7 @@ export interface LogProcessingStats {
   total: number;
   pending: number;
   processing: number;
+  awaiting_link: number;
   done: number;
   failed: number;
   avg_duration_seconds: number | null;

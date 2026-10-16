@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from shared.core.social import SocialProvider
 from shared.disciplines.overwatch.ladder import NATIVE_LADDER
+from shared.disciplines.overwatch.stats import EVENT_TYPES, STAT_DEFS
 from shared.disciplines.spec import (
     DimensionSpec,
     DisciplineSpec,
@@ -76,4 +77,6 @@ SPEC = DisciplineSpec(
     dimensions=(PLAYER_ROLE,),
     team_format_presets=(ROLE_QUEUE_5V5,),
     identity_provider=SocialProvider.BATTLENET,
+    stat_defs=STAT_DEFS,
+    event_types=EVENT_TYPES,
 )

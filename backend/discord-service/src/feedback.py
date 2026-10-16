@@ -13,11 +13,11 @@ from shared.domain.discord_ui import emoji
 
 
 class AttachmentFeedbackState(str, enum.Enum):
-    ALREADY_PROCESSED = "already_processed"
     UPLOADED_QUEUED = "uploaded_queued"
     PROCESSED_OK = "processed_ok"
     PROCESSED_FAILED = "processed_failed"
     UPLOAD_FAILED = "upload_failed"
+    AWAITING_LINK = "awaiting_link"
     TIMED_OUT = "timed_out"
 
 
@@ -38,26 +38,27 @@ class MessageFeedbackSummary:
 
 
 _UPLOAD_ACCEPTED_STATES = {
-    AttachmentFeedbackState.ALREADY_PROCESSED,
     AttachmentFeedbackState.UPLOADED_QUEUED,
     AttachmentFeedbackState.PROCESSED_OK,
     AttachmentFeedbackState.PROCESSED_FAILED,
     AttachmentFeedbackState.TIMED_OUT,
+    AttachmentFeedbackState.AWAITING_LINK,
 }
 _PROBLEM_STATES = {
     AttachmentFeedbackState.PROCESSED_FAILED,
     AttachmentFeedbackState.UPLOAD_FAILED,
     AttachmentFeedbackState.TIMED_OUT,
+    AttachmentFeedbackState.AWAITING_LINK,
 }
 
 
 def _format_result_line(result: AttachmentFeedbackResult) -> str | None:
-    if result.state is AttachmentFeedbackState.ALREADY_PROCESSED:
-        return None
     if result.state is AttachmentFeedbackState.PROCESSED_OK:
         return f"{emoji('ok')} {result.filename} — загружен и обработан"
     if result.state is AttachmentFeedbackState.UPLOADED_QUEUED:
         return f"{emoji('ok')} {result.filename} — загружен и поставлен в обработку"
+    if result.state is AttachmentFeedbackState.AWAITING_LINK:
+        return f"{emoji('warn')} {result.filename} — загружен; администратору нужно привязать лог к игре и повторить обработку"
     if result.state is AttachmentFeedbackState.PROCESSED_FAILED:
         suffix = f": {result.error_message}" if result.error_message else ""
         return f"{emoji('warn')} {result.filename} — загружен, но обработка завершилась ошибкой{suffix}"
@@ -72,17 +73,6 @@ def build_message_feedback(
     *,
     wait_for_result: bool,
 ) -> MessageFeedbackSummary:
-    # История пере-сканируется при старте бота / добавлении канала. Сообщение,
-    # где все вложения уже обработаны ранее, трогать не нужно — иначе рестарт
-    # повторно навешивает реакции (и перетирает снятые вручную). На живых
-    # сообщениях по-прежнему подтверждаем ✅.
-    if (
-        not wait_for_result
-        and results
-        and all(result.state is AttachmentFeedbackState.ALREADY_PROCESSED for result in results)
-    ):
-        return MessageFeedbackSummary(reactions=None, reply_text=None)
-
     has_uploaded = any(result.state in _UPLOAD_ACCEPTED_STATES for result in results)
     has_problem = any(result.state in _PROBLEM_STATES for result in results)
 
@@ -96,7 +86,7 @@ def build_message_feedback(
 
     reply_lines = [line for result in results if (line := _format_result_line(result)) is not None]
     reply_text = None
-    if wait_for_result and len(reply_lines) > 1:
-        reply_text = "Результат обработки логов:\n" + "\n".join(reply_lines)
+    if wait_for_result and reply_lines and (len(reply_lines) > 1 or has_problem):
+        reply_text = ("Результат обработки логов:\n" if len(reply_lines) > 1 else "") + "\n".join(reply_lines)
 
     return MessageFeedbackSummary(reactions=tuple(reactions), reply_text=reply_text)

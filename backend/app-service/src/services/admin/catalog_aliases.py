@@ -50,15 +50,14 @@ class CatalogAliasService:
             filters.append(miss.kind == params.kind)
 
         total = await session.scalar(sa.select(sa.func.count()).select_from(miss).where(*filters)) or 0
-        # LEFT JOIN for the tournament: a log record is only addressable in the admin
-        # UI as /admin/tournaments/{id}/matches/logs, so the bare record id is useless
-        # on its own. NULL when no record was recorded or the record was since deleted.
+        # The breadcrumb remains the real ingest job; its tournament hint locates
+        # the admin history page even when no match has been bound yet.
         # Ordering is fixed rather than driven by the inherited `sort`/`order`: this is
         # a worklist, so the name costing the most data comes first.
-        record = models.LogProcessingRecord
+        job = models.IngestJob
         query = (
-            sa.select(miss, record.tournament_id)
-            .outerjoin(record, record.id == miss.last_ingest_job_id)
+            sa.select(miss, job.hint_tournament_id)
+            .outerjoin(job, sa.and_(job.id == miss.last_ingest_job_id, job.discipline == miss.discipline))
             .where(*filters)
             .order_by(miss.occurrences.desc(), miss.last_seen_at.desc(), miss.id.desc())
         )

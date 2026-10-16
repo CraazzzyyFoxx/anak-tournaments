@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
-from src import models
+from shared.repository.stats_queries import player_facts
 
 from ..context import EvalContext
 from . import ResultSet, register
@@ -30,7 +30,7 @@ MIN_PLAYTIME_SEC = 60
     grain=AchievementGrain.user_tournament,
     description="Played a hero nobody else picked",
     optional=("op", "value"),
-    depends_on=("matches.statistics",),
+    depends_on=("stats.fact",),
 )
 async def execute_hero_pickrate(
     session: AsyncSession,
@@ -47,57 +47,51 @@ async def execute_hero_pickrate(
     value = params.get("value", 0.001)
     op_fn = OPERATORS[op]
 
+    facts = player_facts(discipline="overwatch")
     base_where = [
-        models.MatchStatistics.name == "HeroTimePlayed",
-        models.MatchStatistics.value > MIN_PLAYTIME_SEC,
-        models.MatchStatistics.hero_id.isnot(None),
-        models.MatchStatistics.round == 0,
-        models.Tournament.workspace_id == context.workspace_id,
+        facts.c.stat_code == "hero_time_played",
+        facts.c.value > MIN_PLAYTIME_SEC,
+        facts.c.entity_id.is_not(None),
+        facts.c.segment == 0,
+        facts.c.workspace_id == context.workspace_id,
     ]
     if context.tournament:
-        base_where.append(models.Encounter.tournament_id == context.tournament.id)
+        base_where.append(facts.c.tournament_id == context.tournament.id)
 
     def _playtime_base(*columns: Any) -> sa.Select[Any]:
-        return (
-            sa.select(*columns)
-            .select_from(models.MatchStatistics)
-            .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-            .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-            .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(*base_where)
-        )
+        return sa.select(*columns).select_from(facts).where(*base_where)
 
     total_sq = (
         _playtime_base(
-            models.Encounter.tournament_id.label("tournament_id"),
-            sa.func.sum(models.MatchStatistics.value).label("total_time"),
-        ).group_by(models.Encounter.tournament_id)
+            facts.c.tournament_id,
+            sa.func.sum(facts.c.value).label("total_time"),
+        ).group_by(facts.c.tournament_id)
     ).subquery("pickrate_total")
 
     hero_sq = (
         _playtime_base(
-            models.Encounter.tournament_id.label("tournament_id"),
-            models.MatchStatistics.hero_id.label("hero_id"),
-            sa.func.sum(models.MatchStatistics.value).label("hero_time"),
-        ).group_by(models.Encounter.tournament_id, models.MatchStatistics.hero_id)
+            facts.c.tournament_id,
+            facts.c.entity_id,
+            sa.func.sum(facts.c.value).label("hero_time"),
+        ).group_by(facts.c.tournament_id, facts.c.entity_id)
     ).subquery("pickrate_hero")
 
     rare_heroes = (
-        sa.select(hero_sq.c.tournament_id, hero_sq.c.hero_id)
+        sa.select(hero_sq.c.tournament_id, hero_sq.c.entity_id)
         .join(total_sq, total_sq.c.tournament_id == hero_sq.c.tournament_id)
         .where(op_fn(hero_sq.c.hero_time, value * total_sq.c.total_time))
     ).subquery("rare_heroes")
 
     query = (
-        _playtime_base(models.MatchStatistics.user_id, models.Encounter.tournament_id)
+        _playtime_base(facts.c.player_id, facts.c.tournament_id)
         .join(
             rare_heroes,
             sa.and_(
-                rare_heroes.c.tournament_id == models.Encounter.tournament_id,
-                rare_heroes.c.hero_id == models.MatchStatistics.hero_id,
+                rare_heroes.c.tournament_id == facts.c.tournament_id,
+                rare_heroes.c.entity_id == facts.c.entity_id,
             ),
         )
-        .group_by(models.MatchStatistics.user_id, models.Encounter.tournament_id)
+        .group_by(facts.c.player_id, facts.c.tournament_id)
     )
 
     result = await session.execute(query)

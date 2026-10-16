@@ -5,11 +5,11 @@ from typing import Final, Literal
 
 
 class HeroClass(StrEnum):
-    """An Overwatch character's class and a stat-baseline key until P4.
+    """An Overwatch character's class.
 
-    Player roles are ontology codes (D86, D92), not this enum. Character classes
-    live in ``catalog.entity.attrs``; ``matches.stat_baselines.role`` still uses
-    the PostgreSQL enum. Member names are stored labels, values are display names.
+    Player roles and native baseline keys use catalog role ids, not this enum.
+    Character classes live in ``catalog.entity.attrs``. Member names are stored
+    labels; values are display names.
     ``flex`` is retained only for legacy inputs; no character or player assignment
     has that class.
     """
@@ -531,20 +531,6 @@ class PickBanKind(StrEnum):
     HERO = "hero"
 
 
-class MatchSource(StrEnum):
-    """Provenance of a :class:`~shared.models.matches.match.Match` row.
-
-    ``LOG_PARSER``: written by ``MatchLogFlow`` from an uploaded OW log — the
-    only value written today.
-    ``CAPTAIN_REPORT``: legacy per-map captain confirmation with no log.
-    encgame01 moved those results to ``encounter_game`` and deleted the rows;
-    nothing writes this value any more.
-    """
-
-    LOG_PARSER = "log_parser"
-    CAPTAIN_REPORT = "captain_report"
-
-
 class EncounterStatus(StrEnum):
     COMPLETED = "completed"
     PENDING = "pending"
@@ -646,6 +632,5 @@ __all__ = [
     "EncounterStatus",
     "MatchEvent",
     "AbilityEvent",
-    "MatchSource",
     "RouteTag",
 ]

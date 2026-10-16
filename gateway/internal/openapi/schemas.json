@@ -6338,7 +6338,7 @@
       "summary": "Upsert tournament Discord channel"
     },
     "rpc.parser.impact.recompute_baselines": {
-      "description": "Permission: superuser. Rebuilds the statistical baselines MVP-impact scoring is measured against (`matches.stat_baselines`) for the active formula version, aggregating a mean/standard deviation per (role, rank bucket, stat) over every historical match-statistics row \u2014 global, with no tournament or workspace scope \u2014 and returns the row count plus that formula version. Each run atomically replaces the version's rows and aborts rather than wiping them when the aggregation yields nothing, so repeating it is safe; it does scan the whole statistics table and drops the 10-minute baseline cache every time, so avoid running it back to back.",
+      "description": "Permission: superuser. Rebuilds the native Overwatch baselines used for MVP-impact scoring (`stats.stat_baseline`) for the active formula version, aggregating a mean/standard deviation per (role id, rank bucket, stat code) from whole-match player facts across workspaces. Returns the row count and formula version. Each run atomically replaces that discipline/version's rows and aborts rather than wiping them when aggregation yields nothing. Repeated runs are safe but scan the historical facts and clear the 10-minute baseline cache.",
       "summary": "Recompute impact baselines"
     },
     "rpc.parser.logs.history": {
@@ -7445,7 +7445,7 @@
       "summary": "Get a parsed match"
     },
     "rpc.tournament.admin_matches_list": {
-      "description": "Permission: workspace `match.read` on the workspace named by `workspace_id`. Every played map the log parser produced, across the workspace. One row is one map, not one encounter. `log_record` is the ingestion record the map was parsed from and is null when provenance is unresolved \u2014 the normal state for matches that predate the ingestion table, not an error. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over log name, match code and team names. An empty `log_status` filters nothing, so unlinked matches stay visible.",
+      "description": "Permission: workspace `match.read` on the workspace named by `workspace_id`. Every native Overwatch observed duel map across the workspace, not one encounter. Scores follow the bound game's historical slots; official game results are unchanged. `log_record` is its native ingest job and is null for observations with no raw provenance. Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a free-text `query` over the actual ingest filename and team names. An empty `log_status` filters nothing, so observations without an ingest job stay visible.",
       "query_params": [
         {
           "name": "page",
@@ -7579,7 +7579,7 @@
           "schema": {
             "default": [],
             "items": {
-              "$ref": "#/components/schemas/tournament.LogProcessingStatus"
+              "$ref": "#/components/schemas/tournament.IngestJobStatus"
             },
             "title": "Log Status",
             "type": "array"
@@ -8023,7 +8023,7 @@
       "description": "Permission: workspace `match.update` on the encounter's workspace. Swaps one of an encounter's team slots with another slot and answers with both encounters' resulting seats, so the bracket re-renders the pair without a refetch."
     },
     "rpc.tournament.encounter_update_match": {
-      "description": "Permission: workspace `match.result` on the workspace resolved from the match. Edits one played map of an encounter (teams, score, map, lobby code, time, log name) and answers the match's own columns.",
+      "description": "Permission: workspace `match.result` on the workspace resolved from the match. Edits observed home/away scores in historical game-slot order and nullable duration. The map must equal the bound game's existing map (409 otherwise). Team IDs, source, code, log_name and other unsupported fields are rejected with 422. Official game scores remain unchanged; score and duration changes carry separate native evidence records in the same transaction as the existing recalculation outbox.",
       "request": {
         "array": false,
         "ref": "tournament.MatchUpdate"
@@ -15393,18 +15393,6 @@
           "default": null,
           "title": "Away Team Id"
         },
-        "code": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Code"
-        },
         "encounter_id": {
           "title": "Encounter Id",
           "type": "integer"
@@ -15483,16 +15471,8 @@
           "type": "integer"
         },
         "map_index": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Map Index"
+          "title": "Map Index",
+          "type": "integer"
         },
         "overperformance_badge": {
           "default": false,
@@ -15544,7 +15524,8 @@
         "time",
         "log_name",
         "encounter_id",
-        "map_id"
+        "map_id",
+        "map_index"
       ],
       "title": "MatchReadWithUserStats",
       "type": "object"
@@ -20110,6 +20091,16 @@
           "default": false,
           "title": "Has Auth Conflict",
           "type": "boolean"
+        },
+        "stats_member_history_conflicts": {
+          "items": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "title": "Stats Member History Conflicts",
+          "type": "array"
         },
         "summary": {
           "anyOf": [
@@ -32496,6 +32487,17 @@
     },
     "parser.LogRecordRead": {
       "properties": {
+        "attached_encounter_game_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attached Encounter Game Id"
+        },
         "attached_encounter_id": {
           "anyOf": [
             {
@@ -32580,8 +32582,15 @@
           "type": "string"
         },
         "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tournament Id"
         },
         "tournament_name": {
           "anyOf": [
@@ -32611,6 +32620,7 @@
         "tournament_id",
         "tournament_name",
         "attached_encounter_id",
+        "attached_encounter_game_id",
         "attached_encounter_name",
         "filename",
         "status",
@@ -32626,6 +32636,18 @@
     },
     "parser.LogRetryRequest": {
       "properties": {
+        "encounter_game_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Encounter Game Id"
+        },
         "encounter_id": {
           "anyOf": [
             {
@@ -32655,6 +32677,10 @@
             }
           ],
           "title": "Avg Duration Seconds"
+        },
+        "awaiting_link": {
+          "title": "Awaiting Link",
+          "type": "integer"
         },
         "done": {
           "title": "Done",
@@ -32695,6 +32721,7 @@
         "processing",
         "done",
         "failed",
+        "awaiting_link",
         "avg_duration_seconds",
         "last_created_at"
       ],
@@ -34333,25 +34360,21 @@
       "type": "object"
     },
     "tournament.AdminMatchDetail": {
-      "description": "A single match with the per-match aggregates the list omits.\n\nNFR 3: ``matches.statistics`` / ``kill_feed`` / ``assists`` are the hot,\nhigh-volume tables. Counting them per row would put three aggregate scans\nbehind every page of the list, so they live here \u2014 one row at a time.",
+      "description": "Detail-only player fact and event volumes; no team-score facts counted.",
       "properties": {
         "away_score": {
           "title": "Away Score",
           "type": "integer"
         },
         "away_team": {
-          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
-        },
-        "code": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
             },
             {
               "type": "null"
             }
-          ],
-          "title": "Code"
+          ]
         },
         "created_at": {
           "format": "date-time",
@@ -34375,7 +34398,14 @@
           "type": "integer"
         },
         "home_team": {
-          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "id": {
           "title": "Id",
@@ -34386,8 +34416,15 @@
           "type": "integer"
         },
         "log_name": {
-          "title": "Log Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Log Name"
         },
         "log_record": {
           "anyOf": [
@@ -34416,8 +34453,15 @@
           "type": "integer"
         },
         "time": {
-          "title": "Time",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
         },
         "tournament_id": {
           "title": "Tournament Id",
@@ -34442,7 +34486,6 @@
         "away_score",
         "time",
         "log_name",
-        "code",
         "created_at",
         "log_record",
         "rounds",
@@ -34454,25 +34497,21 @@
       "type": "object"
     },
     "tournament.AdminMatchRow": {
-      "description": "One parsed match \u2014 a single played map \u2014 as the log parser produced it.\n\nOnly ``log_record`` is optional. Everything else hangs off a NOT NULL foreign\nkey, so a row that cannot name its encounter, tournament, map or either team\nis a broken invariant and should surface as one rather than as empty cells.",
+      "description": "One observed map. Deleted source teams and absent raw provenance stay null.",
       "properties": {
         "away_score": {
           "title": "Away Score",
           "type": "integer"
         },
         "away_team": {
-          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
-        },
-        "code": {
           "anyOf": [
             {
-              "type": "string"
+              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
             },
             {
               "type": "null"
             }
-          ],
-          "title": "Code"
+          ]
         },
         "created_at": {
           "format": "date-time",
@@ -34492,15 +34531,29 @@
           "type": "integer"
         },
         "home_team": {
-          "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.EncounterTeamRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "id": {
           "title": "Id",
           "type": "integer"
         },
         "log_name": {
-          "title": "Log Name",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Log Name"
         },
         "log_record": {
           "anyOf": [
@@ -34521,8 +34574,15 @@
           "type": "string"
         },
         "time": {
-          "title": "Time",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Time"
         },
         "tournament_id": {
           "title": "Tournament Id",
@@ -34547,7 +34607,6 @@
         "away_score",
         "time",
         "log_name",
-        "code",
         "created_at",
         "log_record"
       ],
@@ -34586,7 +34645,7 @@
         "log_status": {
           "default": [],
           "items": {
-            "$ref": "#/components/schemas/tournament.LogProcessingStatus"
+            "$ref": "#/components/schemas/tournament.IngestJobStatus"
           },
           "title": "Log Status",
           "type": "array"
@@ -42792,6 +42851,17 @@
       "title": "HeroRead",
       "type": "object"
     },
+    "tournament.IngestJobStatus": {
+      "enum": [
+        "pending",
+        "processing",
+        "awaiting_link",
+        "done",
+        "failed"
+      ],
+      "title": "IngestJobStatus",
+      "type": "string"
+    },
     "tournament.KillFeedEntry": {
       "properties": {
         "ability": {
@@ -42806,31 +42876,80 @@
           "title": "Ability"
         },
         "damage": {
-          "title": "Damage",
-          "type": "number"
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Damage"
         },
         "fight": {
-          "title": "Fight",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Fight"
         },
         "is_critical_hit": {
-          "title": "Is Critical Hit",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Is Critical Hit"
         },
         "is_environmental": {
-          "title": "Is Environmental",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Is Environmental"
         },
         "killer_hero": {
-          "$ref": "#/components/schemas/tournament.HeroRead"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.HeroRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "killer_team_id": {
-          "title": "Killer Team Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Killer Team Id"
         },
         "killer_user_id": {
-          "title": "Killer User Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Killer User Id"
         },
         "round": {
           "title": "Round",
@@ -42841,15 +42960,36 @@
           "type": "number"
         },
         "victim_hero": {
-          "$ref": "#/components/schemas/tournament.HeroRead"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.HeroRead"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "victim_team_id": {
-          "title": "Victim Team Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Victim Team Id"
         },
         "victim_user_id": {
-          "title": "Victim User Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Victim User Id"
         }
       },
       "required": [
@@ -42913,25 +43053,6 @@
       "title": "LastResolutionRead",
       "type": "object"
     },
-    "tournament.LogProcessingSource": {
-      "enum": [
-        "upload",
-        "discord",
-        "manual"
-      ],
-      "title": "LogProcessingSource",
-      "type": "string"
-    },
-    "tournament.LogProcessingStatus": {
-      "enum": [
-        "pending",
-        "processing",
-        "done",
-        "failed"
-      ],
-      "title": "LogProcessingStatus",
-      "type": "string"
-    },
     "tournament.LogRecordRef": {
       "description": "The ingestion record a match was parsed from.\n\nEvery field but the identity is nullable because a record is a *live*\ningestion state, not a finished document: ``started_at`` is unset until the\nworker picks it up, ``finished_at`` until it stops, and ``error_message``\nonly ever fills in on failure.",
       "properties": {
@@ -42970,8 +43091,15 @@
           "title": "Error Message"
         },
         "filename": {
-          "title": "Filename",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Filename"
         },
         "finished_at": {
           "anyOf": [
@@ -42992,12 +43120,13 @@
         "source": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/tournament.LogProcessingSource"
+              "type": "string"
             },
             {
               "type": "null"
             }
-          ]
+          ],
+          "title": "Source"
         },
         "started_at": {
           "anyOf": [
@@ -43012,7 +43141,7 @@
           "title": "Started At"
         },
         "status": {
-          "$ref": "#/components/schemas/tournament.LogProcessingStatus"
+          "$ref": "#/components/schemas/tournament.IngestJobStatus"
         },
         "uploader_id": {
           "anyOf": [
@@ -43433,18 +43562,6 @@
           "default": null,
           "title": "Away Team Id"
         },
-        "code": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Code"
-        },
         "encounter": {
           "anyOf": [
             {
@@ -43511,23 +43628,11 @@
           "type": "integer"
         },
         "map_index": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Map Index"
+          "title": "Map Index",
+          "type": "integer"
         },
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
-        },
-        "source": {
-          "title": "Source",
-          "type": "string"
         },
         "time": {
           "anyOf": [
@@ -43546,9 +43651,9 @@
         "score",
         "time",
         "log_name",
-        "source",
         "encounter_id",
         "map_id",
+        "map_index",
         "home_team",
         "away_team",
         "encounter",
@@ -43560,7 +43665,14 @@
     "tournament.MatchReadWithStats": {
       "properties": {
         "away_team": {
-          "$ref": "#/components/schemas/tournament.TeamWithMatchStats"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.TeamWithMatchStats"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "away_team_id": {
           "anyOf": [
@@ -43573,18 +43685,6 @@
           ],
           "default": null,
           "title": "Away Team Id"
-        },
-        "code": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Code"
         },
         "encounter": {
           "anyOf": [
@@ -43601,7 +43701,14 @@
           "type": "integer"
         },
         "home_team": {
-          "$ref": "#/components/schemas/tournament.TeamWithMatchStats"
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/tournament.TeamWithMatchStats"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "home_team_id": {
           "anyOf": [
@@ -43645,16 +43752,8 @@
           "type": "integer"
         },
         "map_index": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Map Index"
+          "title": "Map Index",
+          "type": "integer"
         },
         "rounds": {
           "title": "Rounds",
@@ -43662,10 +43761,6 @@
         },
         "score": {
           "$ref": "#/components/schemas/tournament.Score"
-        },
-        "source": {
-          "title": "Source",
-          "type": "string"
         },
         "time": {
           "anyOf": [
@@ -43684,9 +43779,9 @@
         "score",
         "time",
         "log_name",
-        "source",
         "encounter_id",
         "map_id",
+        "map_index",
         "home_team",
         "away_team",
         "encounter",
@@ -43875,16 +43970,30 @@
           "type": "integer"
         },
         "team_id": {
-          "title": "Team Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Team Id"
         },
         "time": {
           "title": "Time",
           "type": "number"
         },
         "user_id": {
-          "title": "User Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "User Id"
         }
       },
       "required": [
@@ -43901,7 +44010,8 @@
       "type": "object"
     },
     "tournament.MatchUpdate": {
-      "description": "Partial update for a single match (map) within an encounter.\n\n``matches.match`` is what a parsed LOG observed, and a V4 log names two\nsides; that is why this one shape still does.",
+      "additionalProperties": false,
+      "description": "Edit observations without rebinding their game, participants or provenance.",
       "properties": {
         "away_score": {
           "anyOf": [
@@ -43915,30 +44025,6 @@
           "default": null,
           "title": "Away Score"
         },
-        "away_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Away Team Id"
-        },
-        "code": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Code"
-        },
         "home_score": {
           "anyOf": [
             {
@@ -43950,18 +44036,6 @@
           ],
           "default": null,
           "title": "Home Score"
-        },
-        "home_team_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Home Team Id"
         },
         "map_id": {
           "anyOf": [

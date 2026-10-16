@@ -24,7 +24,7 @@ from shared.models.tournament.tournament import Tournament
 
 if typing.TYPE_CHECKING:
     from shared.models.encounter.encounter import Encounter
-    from shared.models.matches.match import Match
+    from shared.models.stats.match import StatsMatch
     from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 
 __all__ = (
@@ -196,7 +196,9 @@ class AchievementEvaluationResult(db.TimeStampIntegerMixin):
     encounter_id: Mapped[int | None] = mapped_column(
         ForeignKey("encounter.encounter.id", ondelete="CASCADE"), nullable=True
     )
-    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.match.id", ondelete="CASCADE"), nullable=True)
+    match_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stats.match.id", ondelete="CASCADE", deferrable=True, initially="DEFERRED"), nullable=True
+    )
     qualified_at: Mapped[db.datetime] = mapped_column(db.DateTime(timezone=True), server_default=func.now())
     evidence_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     rule_version: Mapped[int] = mapped_column(Integer())
@@ -212,7 +214,7 @@ class AchievementEvaluationResult(db.TimeStampIntegerMixin):
     rule: Mapped[AchievementRule] = relationship(back_populates="evaluation_results")
     workspace_member: Mapped[WorkspaceMember] = relationship()
     tournament: Mapped[Tournament | None] = relationship()
-    match: Mapped[Match | None] = relationship()
+    match: Mapped[StatsMatch | None] = relationship()
     encounter: Mapped[Encounter | None] = relationship()
 
 
@@ -233,7 +235,9 @@ class AchievementOverride(db.TimeStampIntegerMixin):
     achievement_rule_id: Mapped[int] = mapped_column(ForeignKey("achievements.rule.id", ondelete="CASCADE"), index=True)
     workspace_member_id: Mapped[int] = mapped_column(ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True)
     tournament_id: Mapped[int | None] = mapped_column(ForeignKey(Tournament.id, ondelete="CASCADE"), nullable=True)
-    match_id: Mapped[int | None] = mapped_column(ForeignKey("matches.match.id", ondelete="CASCADE"), nullable=True)
+    match_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stats.match.id", ondelete="CASCADE", deferrable=True, initially="DEFERRED"), nullable=True
+    )
     action: Mapped[AchievementOverrideAction] = mapped_column(String())
     reason: Mapped[str] = mapped_column(String())
     granted_by: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="SET NULL"))

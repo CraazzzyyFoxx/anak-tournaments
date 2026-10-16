@@ -1,7 +1,7 @@
 """High-level training entry point.
 
-Builds the feature frames once (expensive — joins MatchStatistics, KillFeed,
-event tables and runs OpenSkill replays), then dispatches per-model trainers.
+Builds the feature frames once (native observation queries and OpenSkill
+replays), then dispatches per-model trainers.
 Each artifact is serialised under ``ANALYTICS_MODELS_DIR`` and registered in
 ``analytics.ml_model_artifact`` with ``is_active=True``.
 """

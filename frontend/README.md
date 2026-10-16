@@ -148,12 +148,34 @@ are saved without changing the official score; confirmation no longer hides the 
 
 The **One ban per opponent player** board shows each opponent's logged heroes inside their
 roster row, below the name and role. Heroes come only from the immediately previous series
-position in this encounter, deduplicated across that map's rounds. Captain-report placeholders
-and other players' heroes are excluded. The first map, a missing previous log, or legacy rows
-without enough position information show no history rather than falling back to older maps
+position in this encounter, deduplicated across that map's rounds. Every returned statistics
+match is a parsed log; captain reports and replay codes are separate game/report data.
+Other players' heroes are excluded. The first map, a missing previous log, or a response
+without enough position information shows no history rather than falling back to older maps
 or account-wide statistics. Long hero lists scroll within the row.
 The board reuses the match-detail cache; room refreshes invalidate parsed match details.
 Displaying history does not change ban eligibility.
+
+Statistics matches no longer expose source or replay-code fields. Encounter scoreboards retain
+the official game result source, observed slot scores, map position and raw-log download when
+available. Admin parsed maps remain inspectable without a raw log or recorded duration; missing
+duration is not displayed as zero. Parsed-map search covers log names and teams, not replay codes.
+
+Admin log history retains native job IDs and source kinds, including jobs whose tournament hint
+was cleared by deletion. **Awaiting link** is a separate, filterable status with its own aggregate
+count: it is neither processed nor failed, and an awaiting-only queue does not keep polling.
+To resolve a log, choose an encounter and an actual noncancelled game loaded from its detail API.
+Options show the series position, map and game ID so repeated maps are distinguishable; the retry
+submits `encounter_id` and `encounter_game_id`, never a position substituted for an ID.
+Changing encounters clears the game selection. Loading, empty and failed game reads cannot submit;
+retry rejection keeps the dialog open. The server enforces authorization, scope, map/teams and
+existing-binding constraints. Uploads and participation replay codes are unchanged.
+
+Historical match details remain readable when a source team has been deleted: the surviving
+scoreboard stays visible, while unavailable team statistics and comparisons use a neutral dash.
+Timeline observations with missing players, teams, heroes or optional kill fields remain in order,
+including duplicates and event-only history. Unknown actor teams are not credited to either side,
+and a missing fight identifier is not treated as fight zero.
 
 **Upload match logs** uses the File System Access API (`showDirectoryPicker`, read-only).
 The first click selects a folder; its native `FileSystemDirectoryHandle` is structured-cloned

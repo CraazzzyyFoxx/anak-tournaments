@@ -1,42 +1,41 @@
-"""Rendezvous between a match-log upload and its processing result.
-
-The bot uploads a log, then blocks on :meth:`ResultWaiter.wait` until the parser
-publishes the result (delivered over RabbitMQ and routed in via
-:meth:`ResultWaiter.resolve`) or the timeout elapses.
-
-This replaces the former pg ``LISTEN/NOTIFY`` waiter: pgBouncer transaction
-pooling silently drops ``LISTEN`` registrations, so notifications never arrived
-and every upload timed out. Kept dependency-free (pure asyncio) so it is trivial
-to unit test.
-"""
+"""Pre-publication rendezvous keyed by the upload event's correlation id."""
 
 import asyncio
+
+from shared.schemas.events import MatchLogProcessedEvent
 
 
 class ResultWaiter:
     def __init__(self, timeout: float) -> None:
         self._timeout = timeout
-        self._pending: dict[tuple[int, str], asyncio.Future[bool]] = {}
+        self._pending: dict[str, asyncio.Future[MatchLogProcessedEvent]] = {}
 
-    async def wait(self, tournament_id: int, filename: str) -> bool | None:
-        """Block until the result for ``(tournament_id, filename)`` arrives.
+    def register(self, correlation_id: str) -> asyncio.Future[MatchLogProcessedEvent]:
+        if correlation_id in self._pending:
+            raise ValueError("upload correlation is already registered")
+        future = asyncio.get_running_loop().create_future()
+        self._pending[correlation_id] = future
+        return future
 
-        Returns ``True`` (done), ``False`` (failed), or ``None`` (timed out).
-        """
-        key = (tournament_id, filename)
-        fut: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
-        self._pending[key] = fut
+    async def wait(self, correlation_id: str) -> MatchLogProcessedEvent | None:
+        future = self._pending[correlation_id]
         try:
-            return await asyncio.wait_for(fut, timeout=self._timeout)
+            return await asyncio.wait_for(future, timeout=self._timeout)
         except TimeoutError:
             return None
         finally:
-            # Drop our own entry only — resolve() may have already replaced/removed it.
-            if self._pending.get(key) is fut:
-                del self._pending[key]
+            self.cancel(correlation_id)
 
-    def resolve(self, tournament_id: int, filename: str, success: bool) -> None:
-        """Resolve a pending waiter; a no-op when none is registered."""
-        fut = self._pending.pop((tournament_id, filename), None)
-        if fut is not None and not fut.done():
-            fut.set_result(success)
+    def cancel(self, correlation_id: str) -> None:
+        future = self._pending.pop(correlation_id, None)
+        if future is not None and not future.done():
+            future.cancel()
+
+    def resolve(self, event: MatchLogProcessedEvent) -> None:
+        if event.correlation_id is None:
+            return
+        future = self._pending.get(event.correlation_id)
+        if future is not None and not future.done():
+            # Keep it registered until wait() consumes it: a result may arrive
+            # inside publish(), before the uploader has started awaiting.
+            future.set_result(event)

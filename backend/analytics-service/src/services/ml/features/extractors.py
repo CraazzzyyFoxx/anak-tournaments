@@ -1,7 +1,7 @@
 """Feature extractors: SQL → pandas DataFrames at four granularities.
 
-All extractors pivot ``matches.statistics`` rows from long-format (one row per
-``(user, match, round, hero, stat_name)``) into wide-format DataFrames using a
+All extractors pivot native ``stats.fact`` rows from long-format (one row per
+``(member, match, segment, entity, stat_code)``) into wide-format DataFrames using a
 single SQL query with ``CASE`` expressions per stat. This keeps the database
 round-trip cost to one query per granularity regardless of how many stats are
 materialised.
@@ -9,7 +9,7 @@ materialised.
 Granularities provided in Phase 1:
 
 - :func:`extract_match_features` — one row per ``(player_id, match_id)``,
-  aggregated over ``round = 0`` and ``hero_id IS NULL`` rows (these are
+  aggregated over ``segment = 0`` and ``entity_id IS NULL`` rows (these are
   already-summed per-match totals produced upstream by the parser).
 - :func:`extract_tournament_features` — roll-up of match features to
   ``(player_id, tournament_id)`` weighted by ``hero_time_played``.
@@ -32,6 +32,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import LogStatsName
+from shared.repository.stats_queries import player_facts, team_scores
 from src import models
 from src.core.workspace import workspace_scope_filter
 
@@ -124,14 +125,9 @@ RATE_COLUMNS: tuple[str, ...] = (
 )
 
 
-def _stat_col(stat: LogStatsName, column_name: str) -> sa.Label[typing.Any]:
-    """Build a ``MAX(CASE WHEN name = X THEN value END) AS column_name`` expression.
-
-    Using ``MAX`` rather than ``SUM`` because each ``(user, match, round=0,
-    hero_id NULL, stat_name)`` row is unique in the source table; ``MAX`` is
-    equivalent to picking the single row and avoids accidental duplication.
-    """
-    return sa.func.max(sa.case((models.MatchStatistics.name == stat, models.MatchStatistics.value))).label(column_name)
+def _stat_col(facts: sa.Subquery, stat: LogStatsName, column_name: str) -> sa.Label[typing.Any]:
+    """Pivot the unique native whole-match, non-character player fact."""
+    return sa.func.max(sa.case((facts.c.stat_code == stat.value, facts.c.value))).label(column_name)
 
 
 # ---------------------------------------------------------------------------
@@ -148,9 +144,9 @@ async def extract_match_features(
 ) -> pd.DataFrame:
     """Return per-(player, match) feature DataFrame for the given tournaments.
 
-    Rows in the source ``matches.statistics`` table with ``round = 0`` and
-    ``hero_id IS NULL`` are already-aggregated per-match totals (one row per
-    ``(user, match, stat_name)``). The pivot below turns one such row-set per
+    Source ``stats.fact`` rows with ``segment = 0`` and ``entity_id IS NULL``
+    are already-aggregated per-match totals (one row per member and stat).
+    The pivot below turns one such row-set per
     match into a single wide row with one column per stat.
 
     Output columns (always present, NaN if missing):
@@ -170,69 +166,52 @@ async def extract_match_features(
     if not tournament_ids:
         return pd.DataFrame()
 
-    stat_columns = [_stat_col(stat, name) for stat, name in STAT_COLUMNS]
-
+    facts = player_facts(discipline="overwatch")
+    home = team_scores(discipline="overwatch", stat_code="score")
+    away = team_scores(discipline="overwatch", stat_code="score")
+    # Observation order, not encounter slots, is part of the trained input boundary.
+    home_score = sa.cast(home.c.value, sa.Integer)
+    away_score = sa.cast(away.c.value, sa.Integer)
+    identity_columns = (
+        models.Tournament.id.label("tournament_id"),
+        facts.c.encounter_id.label("encounter_id"),
+        facts.c.match_id.label("match_id"),
+        facts.c.map_entity_id.label("map_id"),
+        home.c.tournament_team_id.label("home_team_id"),
+        away.c.tournament_team_id.label("away_team_id"),
+        home_score.label("home_score"),
+        away_score.label("away_score"),
+        facts.c.duration_s.label("match_time"),
+        facts.c.player_id.label("user_id"),
+        facts.c.tournament_team_id.label("team_id"),
+        models.Player.id.label("player_id"),
+        models.Player.role.label("role"),
+        models.Player.rank.label("rank"),
+        models.Player.is_newcomer.label("is_newcomer"),
+    )
     query = (
-        sa.select(
-            models.Tournament.id.label("tournament_id"),
-            models.Encounter.id.label("encounter_id"),
-            models.Match.id.label("match_id"),
-            models.Match.map_id.label("map_id"),
-            models.Match.home_team_id.label("home_team_id"),
-            models.Match.away_team_id.label("away_team_id"),
-            models.Match.home_score.label("home_score"),
-            models.Match.away_score.label("away_score"),
-            models.Match.time.label("match_time"),
-            models.MatchStatistics.user_id.label("user_id"),
-            models.MatchStatistics.team_id.label("team_id"),
-            models.Player.id.label("player_id"),
-            models.Player.role.label("role"),
-            models.Player.rank.label("rank"),
-            models.Player.is_newcomer.label("is_newcomer"),
-            *stat_columns,
-        )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        sa.select(*identity_columns, *[_stat_col(facts, stat, name) for stat, name in STAT_COLUMNS])
+        .select_from(facts)
+        .join(models.Tournament, models.Tournament.id == facts.c.tournament_id)
+        .join(home, sa.and_(home.c.match_id == facts.c.match_id, home.c.source_position == 1))
+        .join(away, sa.and_(away.c.match_id == facts.c.match_id, away.c.source_position == 2))
         .join(
             models.Player,
             sa.and_(
-                models.Player.team_id == models.MatchStatistics.team_id,
-                models.Player.tournament_id == models.Tournament.id,
-            ),
-        )
-        .join(
-            models.WorkspaceMember,
-            sa.and_(
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-                models.WorkspaceMember.player_id == models.MatchStatistics.user_id,
+                models.Player.team_id == facts.c.tournament_team_id,
+                models.Player.tournament_id == facts.c.tournament_id,
+                models.Player.workspace_member_id == facts.c.workspace_member_id,
             ),
         )
         .where(
             models.Tournament.id.in_(tournament_ids),
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
             models.Player.is_substitution.is_(False),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
-        .group_by(
-            models.Tournament.id,
-            models.Encounter.id,
-            models.Match.id,
-            models.Match.map_id,
-            models.Match.home_team_id,
-            models.Match.away_team_id,
-            models.Match.home_score,
-            models.Match.away_score,
-            models.Match.time,
-            models.MatchStatistics.user_id,
-            models.MatchStatistics.team_id,
-            models.Player.id,
-            models.Player.role,
-            models.Player.rank,
-            models.Player.is_newcomer,
-        )
+        .group_by(*identity_columns)
+        .order_by(models.Tournament.id, facts.c.encounter_id, facts.c.match_id, facts.c.player_id, models.Player.id)
     )
 
     result = await session.execute(query)
@@ -462,6 +441,7 @@ async def extract_encounter_features(
         .join(away_stats, away_stats.c.team_id == second_seat.team_id, isouter=True)
         .where(
             models.Encounter.slot_count == 2,
+            models.Encounter.discipline == "overwatch",
             models.Encounter.tournament_id.in_(tournament_ids),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
@@ -561,47 +541,35 @@ async def extract_round_residuals(
     the detector can compare early vs late rounds on a stable scale even when
     absolute performance-point magnitudes differ sharply by role.
     """
+    facts = player_facts(discipline="overwatch")
     query = (
         sa.select(
-            models.Encounter.id.label("encounter_id"),
-            models.Match.id.label("match_id"),
-            models.MatchStatistics.round.label("source_round"),
+            facts.c.encounter_id.label("encounter_id"),
+            facts.c.match_id.label("match_id"),
+            facts.c.segment.label("source_round"),
             models.Player.id.label("player_id"),
             models.Player.team_id.label("team_id"),
-            models.MatchStatistics.value.label("performance_points"),
+            facts.c.value.label("performance_points"),
         )
-        .select_from(models.MatchStatistics)
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .select_from(facts)
+        .join(models.Tournament, models.Tournament.id == facts.c.tournament_id)
         .join(
             models.Player,
             sa.and_(
-                models.Player.team_id == models.MatchStatistics.team_id,
-                models.Player.tournament_id == models.Tournament.id,
-            ),
-        )
-        .join(
-            models.WorkspaceMember,
-            sa.and_(
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-                models.WorkspaceMember.player_id == models.MatchStatistics.user_id,
+                models.Player.team_id == facts.c.tournament_team_id,
+                models.Player.tournament_id == facts.c.tournament_id,
+                models.Player.workspace_member_id == facts.c.workspace_member_id,
             ),
         )
         .where(
-            models.Encounter.tournament_id == tournament_id,
-            models.MatchStatistics.round > 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.MatchStatistics.name == LogStatsName.PerformancePoints,
+            facts.c.tournament_id == tournament_id,
+            facts.c.segment > 0,
+            facts.c.entity_id.is_(None),
+            facts.c.stat_code == LogStatsName.PerformancePoints.value,
             models.Player.is_substitution.is_(False),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
-        .order_by(
-            models.Player.id,
-            models.Encounter.id,
-            models.Match.id,
-            models.MatchStatistics.round,
-        )
+        .order_by(models.Player.id, facts.c.encounter_id, facts.c.match_id, facts.c.segment)
     )
     rows = (await session.execute(query)).mappings().all()
     df = pd.DataFrame(rows)

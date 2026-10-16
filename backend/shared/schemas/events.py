@@ -258,8 +258,7 @@ class ProcessMatchLogEvent(BaseEvent):
     """
 
     event_type: str = Field(default="process_match_log", frozen=True)
-    tournament_id: int = Field(..., description="Tournament ID")
-    filename: str = Field(..., description="Match log filename to process")
+    ingest_job_id: int = Field(..., gt=0, description="Authorized stats.ingest_job ID")
 
 
 class UploadMatchLogEvent(BaseEvent):
@@ -267,8 +266,8 @@ class UploadMatchLogEvent(BaseEvent):
 
     Published by: discord-service (bot upload, replacing the former direct
     ``POST http://parser:8002/logs/{id}/upload`` HTTP call).
-    Consumed by: parser-service worker, which stores the log to S3, upserts the
-    LogProcessingRecord, then publishes a ``ProcessMatchLogEvent``.
+    Consumed by: parser-service worker, which stores the log to S3, creates or
+    reuses its native ingest job, then publishes a ``ProcessMatchLogEvent``.
 
     The file bytes ride in ``content_b64`` (base64). Keep logs reasonably sized:
     the message must fit RabbitMQ's frame/size limits.
@@ -297,9 +296,19 @@ class MatchLogProcessedEvent(BaseEvent):
     """
 
     event_type: str = Field(default="match_log_processed", frozen=True)
-    tournament_id: int = Field(..., description="Tournament ID")
+    tournament_id: int | None = Field(..., description="Tournament hint, nullable if its owner was deleted")
     filename: str = Field(..., description="Processed match log filename")
-    status: Literal["done", "failed"] = Field(..., description="Processing outcome")
+    status: Literal["done", "failed", "awaiting_link"] = Field(..., description="Persisted processing outcome")
+    ingest_job_id: int | None = Field(
+        default=None, gt=0, description="Absent only if upload failed before job creation"
+    )
+    error_message: str | None = None
+
+    @model_validator(mode="after")
+    def require_completed_job(self):
+        if self.ingest_job_id is None and self.status != "failed":
+            raise ValueError("A completed or awaiting-link result requires an ingest job")
+        return self
 
 
 class ProcessTournamentLogsEvent(BaseEvent):
@@ -504,7 +513,7 @@ class AchievementEvaluateEvent(BaseEvent):
     )
     changed_tables: list[str] = Field(
         ...,
-        description="DB tables that changed (e.g. ['matches.statistics', 'tournament.encounter'])",
+        description="DB tables that changed (e.g. ['stats.fact', 'encounter.encounter'])",
     )
     # Deferred-queue only: the run row already exists (status ``queued``), so the
     # consumer resumes it instead of opening a second audit row, and the slice

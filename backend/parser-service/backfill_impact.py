@@ -5,9 +5,9 @@ Usage::
     cd backend/parser-service && uv run python backfill_impact.py [--tournament-id N]
 
 Recomputes the 7 MVP-derived stats (event stats + ImpactPoints / ImpactRank /
-OverperformanceScore) for every match that already has stat rows, using the
-active baseline set. Safe to rerun — see
-``src.services.match_logs.backfill`` for the idempotency contract.
+OverperformanceScore) for every Overwatch match with player facts, using the
+discipline-scoped active baseline set. Replaces all non-character segments;
+preserves raw/character facts and audits each per-match commit. Safe to rerun.
 """
 
 import argparse

@@ -71,7 +71,6 @@ function row(overrides: Partial<AdminMatchRow> = {}): AdminMatchRow {
     away_score: 1,
     time: 612.5,
     log_name: "Log-2026-04-20.txt",
-    code: "ABC123",
     created_at: "2026-05-01T00:00:00Z",
     log_record: record(),
     ...overrides
@@ -90,30 +89,54 @@ describe("ParsedMatchDetail", () => {
     });
   });
 
-  it("calls an unlinked map unresolved, never failed", async () => {
-    // Most of the archive predates the ingestion table. Presenting that as a
-    // failure would bury the maps whose ingestion actually broke.
+  it.each([
+    { time: null, duration: "—" },
+    { time: 0, duration: "0m 00s" }
+  ])("preserves statistics with unavailable raw logs and duration $time", async ({ time, duration }) => {
     const scope = await mount(
-      <ParsedMatchDetail row={row({ log_record: null })} workspaceId={1} />
+      <ParsedMatchDetail row={row({ time, log_name: null, log_record: null })} workspaceId={1} />
     );
-    expect(scope.textContent).toContain("Provenance unresolved");
-    expect(scope.textContent).not.toContain("failed");
-  });
-
-  it("still shows the log name when provenance is unresolved", async () => {
-    // The S3 key is built from log_name, so the log stays downloadable even
-    // with no record — the admin needs to see which file it is.
-    const scope = await mount(
-      <ParsedMatchDetail row={row({ log_record: null })} workspaceId={1} />
+    const durationLabel = Array.from(scope.querySelectorAll("p")).find(
+      (element) => element.textContent === "Duration"
     );
-    expect(scope.textContent).toContain("Log-2026-04-20.txt");
+    expect(durationLabel?.nextElementSibling?.textContent).toBe(duration);
+    expect(scope.textContent).toContain("A 2 – 1 B");
+    expect(scope.textContent).toContain("120");
+    expect(scope.textContent).toContain("88");
+    expect(scope.textContent).toContain("40");
   });
 
   it("names the record and its state when provenance resolves", async () => {
     const scope = await mount(<ParsedMatchDetail row={row()} workspaceId={1} />);
     expect(scope.textContent).toContain("#77");
     expect(scope.textContent).toContain("done");
-    expect(scope.textContent).not.toContain("Provenance unresolved");
+  });
+
+  it("keeps an awaiting-link job distinct from success and failure", async () => {
+    const scope = await mount(
+      <ParsedMatchDetail
+        row={row({ log_record: record({ status: "awaiting_link", source: "desktop_agent" }) })}
+        workspaceId={1}
+      />
+    );
+    expect(scope.textContent).toContain("awaiting_link");
+    expect(scope.textContent).toContain("#77");
+    expect(scope.textContent).toContain("desktop_agent");
+    expect(scope.textContent).not.toContain("done");
+    expect(scope.textContent).not.toContain("failed");
+  });
+
+  it("keeps historical scores and job details when team references and filename are absent", async () => {
+    const scope = await mount(
+      <ParsedMatchDetail
+        row={row({ home_team: null, away_team: null, log_record: record({ filename: null }) })}
+        workspaceId={1}
+      />
+    );
+    expect(scope.textContent).toContain("? 2 – 1 ?");
+    expect(scope.textContent).toContain("#77");
+    expect(scope.textContent).toContain("done");
+    expect(scope.textContent).toContain("120");
   });
 
   it("surfaces the ingestion error verbatim", async () => {

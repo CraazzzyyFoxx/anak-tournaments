@@ -1,6 +1,6 @@
 """One position of an encounter and what each participation did in it.
 
-A ``Match`` (``matches.match``) is what a parsed log OBSERVED; ``EncounterGame``
+A ``StatsMatch`` (``stats.match``) is what a parsed log OBSERVED; ``EncounterGame``
 is what the tournament DECIDED for position ``position``. A cancelled game keeps
 its position as history and is never revived -- a replayed position is a new row
 (D64).

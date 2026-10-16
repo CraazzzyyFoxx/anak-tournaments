@@ -17,6 +17,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 const STATUS_TONE: Record<LogProcessingStatus, Tone> = {
   pending: "neutral",
   processing: "info",
+  awaiting_link: "neutral",
   done: "success",
   failed: "danger"
 };
@@ -33,11 +34,8 @@ function Field({ label, value }: Readonly<{ label: string; value: string | numbe
 /**
  * Technical summary for one parsed map, with its provenance.
  *
- * The provenance block is the reason this exists: `Encounter.has_logs` said a
- * log existed somewhere, never which upload produced which map. Since
- * `mtchlog001` that is a foreign key rather than a filename comparison, so the
- * answer is either a specific record or an honest "unresolved" — this never
- * guesses.
+ * The linked ingestion job identifies the raw log. A missing job means the
+ * raw log is unavailable; never infer provenance from a filename.
  *
  * It renders the body only. The surrounding panel-or-sheet is `Inspector`,
  * which is where every T2 browser puts row detail; this used to own a `Sheet`
@@ -64,18 +62,18 @@ export function ParsedMatchDetail({
 
   const detail = detailQuery.data;
   const record = row.log_record;
-  const minutes = Math.floor(row.time / 60);
-  const seconds = Math.round(row.time % 60);
+  const duration = row.time == null
+    ? "—"
+    : `${Math.floor(row.time / 60)}m ${String(Math.round(row.time % 60)).padStart(2, "0")}s`;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <Field
           label={t("score")}
-          value={`${row.home_team.name ?? "?"} ${row.home_score} – ${row.away_score} ${row.away_team.name ?? "?"}`}
+          value={`${row.home_team?.name ?? "?"} ${row.home_score} – ${row.away_score} ${row.away_team?.name ?? "?"}`}
         />
-        <Field label={t("duration")} value={`${minutes}m ${String(seconds).padStart(2, "0")}s`} />
-        <Field label={t("matchCode")} value={row.code ?? "—"} />
+        <Field label={t("duration")} value={duration} />
         <Field label={t("rounds")} value={detailQuery.isLoading ? "…" : (detail?.rounds ?? "—")} />
       </div>
 
@@ -85,7 +83,7 @@ export function ParsedMatchDetail({
           <div className="mt-2 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill tone={STATUS_TONE[record.status]}>{record.status}</StatusPill>
-              <span className="font-mono text-xs">{record.filename}</span>
+              <span className="font-mono text-xs">{record.filename ?? "—"}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Field label={t("record")} value={`#${record.id}`} />
@@ -108,18 +106,15 @@ export function ParsedMatchDetail({
             ) : null}
           </div>
         ) : (
-          // Not an error state. The ingestion table postdates most parsed
-          // matches, so the overwhelming majority of history lands here and
-          // dressing it as a failure would bury the ones that really failed.
+          // No linked raw log is distinct from a failed ingestion job.
           <div className="mt-2 space-y-1">
             <p className="flex items-center gap-2 text-sm">
               <HelpCircle className="size-4 text-muted-foreground" aria-hidden />
-              {t("provenanceUnresolvedTitle")}
+              {t("noRawLog")}
             </p>
             <p className="text-xs text-muted-foreground">
               {t("provenanceText")}
             </p>
-            <p className="font-mono text-xs text-muted-foreground">{row.log_name}</p>
           </div>
         )}
       </section>

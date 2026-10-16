@@ -14,6 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import match_context
 from src import models
 from src.domain.achievement_duel import active_seat
 
@@ -21,11 +22,8 @@ from ..context import EvalContext
 from . import ResultSet, register
 from .stat_threshold import OPERATORS
 
-# Fields on Match (per-map)
-MATCH_FIELD_MAP = {
-    "match_time": models.Match.time,
-    "time": models.Match.time,
-}
+# Existing duration DSL aliases resolve on the native header relation.
+MATCH_FIELD_MAP = {"match_time": "duration_s", "time": "duration_s"}
 
 # Fields on Encounter (per-series)
 ENCOUNTER_FIELD_MAP = {
@@ -38,7 +36,7 @@ ENCOUNTER_FIELD_MAP = {
     grain=AchievementGrain.user_match,
     description="Map or series field (closeness, match_time) compared against a value",
     required=("field", "op", "value"),
-    depends_on=("matches.match", "tournament.encounter"),
+    depends_on=("stats.match", "tournament.encounter"),
 )
 async def execute(
     session: AsyncSession,
@@ -69,16 +67,17 @@ async def _execute_encounter_field(
     """
     column = ENCOUNTER_FIELD_MAP[field]
     seat, on_seat = active_seat()
+    match = match_context(discipline="overwatch")
 
     query = (
         sa.select(
             models.WorkspaceMember.player_id,
             models.Encounter.tournament_id,
-            models.Match.id.label("match_id"),
+            match.c.id.label("match_id"),
         )
         .select_from(models.Encounter)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-        .join(models.Match, models.Match.encounter_id == models.Encounter.id)
+        .join(match, match.c.encounter_id == models.Encounter.id)
         .join(seat, on_seat)
         .join(
             models.Player,
@@ -89,11 +88,15 @@ async def _execute_encounter_field(
         )
         .join(
             models.WorkspaceMember,
-            models.WorkspaceMember.id == models.Player.workspace_member_id,
+            sa.and_(
+                models.WorkspaceMember.id == models.Player.workspace_member_id,
+                models.WorkspaceMember.workspace_id == match.c.workspace_id,
+            ),
         )
         .where(
             op_fn(column, value),
             models.Tournament.workspace_id == context.workspace_id,
+            match.c.workspace_id == context.workspace_id,
             models.Player.is_substitution.is_(False),
         )
     )
@@ -113,44 +116,53 @@ async def _execute_match_field(
     context: EvalContext,
 ) -> ResultSet:
     """Match-level field (e.g. match_time). One result per user per match."""
-    column = MATCH_FIELD_MAP[field]
+    match = match_context(discipline="overwatch")
+    column = match.c[MATCH_FIELD_MAP[field]]
 
     query = (
         sa.select(
             models.WorkspaceMember.player_id,
-            models.Encounter.tournament_id,
-            models.Match.id.label("match_id"),
+            match.c.tournament_id,
+            match.c.id.label("match_id"),
         )
-        .select_from(models.Match)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .select_from(match)
         .join(
-            models.Team,
-            sa.or_(
-                models.Team.id == models.Match.home_team_id,
-                models.Team.id == models.Match.away_team_id,
+            models.StatsMatchTeam,
+            sa.and_(
+                models.StatsMatchTeam.match_id == match.c.id,
+                models.StatsMatchTeam.encounter_game_id == match.c.encounter_game_id,
+            ),
+        )
+        .join(
+            models.EncounterTeam,
+            sa.and_(
+                models.EncounterTeam.id == models.StatsMatchTeam.encounter_team_id,
+                models.EncounterTeam.encounter_id == match.c.encounter_id,
             ),
         )
         .join(
             models.Player,
             sa.and_(
-                models.Player.team_id == models.Team.id,
-                models.Player.tournament_id == models.Encounter.tournament_id,
+                models.Player.team_id == models.EncounterTeam.team_id,
+                models.Player.tournament_id == match.c.tournament_id,
             ),
         )
         .join(
             models.WorkspaceMember,
-            models.WorkspaceMember.id == models.Player.workspace_member_id,
+            sa.and_(
+                models.WorkspaceMember.id == models.Player.workspace_member_id,
+                models.WorkspaceMember.workspace_id == match.c.workspace_id,
+            ),
         )
         .where(
             op_fn(column, value),
-            models.Tournament.workspace_id == context.workspace_id,
+            match.c.workspace_id == context.workspace_id,
             models.Player.is_substitution.is_(False),
         )
     )
 
     if context.tournament:
-        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+        query = query.where(match.c.tournament_id == context.tournament.id)
 
     result = await session.execute(query)
     return {(row[0], row[1], row[2]) for row in result}

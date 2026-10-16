@@ -179,14 +179,11 @@ class MatchRead(BaseRead):
     score: Score
     time: float | None
     log_name: str | None
-    source: str
 
     encounter_id: int
     map_id: int
-    # 1-based position in the series, NULL when unknown (every parsed log). Read
-    # by the pre-game room to tell two plays of the SAME map apart.
-    map_index: int | None = None
-    code: str | None = None
+    # The real 1-based position of the bound encounter game.
+    map_index: int
 
     home_team: TeamRead | None
     away_team: TeamRead | None
@@ -196,8 +193,8 @@ class MatchRead(BaseRead):
 
 class MatchReadWithStats(MatchRead):
     rounds: int
-    home_team: TeamWithMatchStats
-    away_team: TeamWithMatchStats
+    home_team: TeamWithMatchStats | None
+    away_team: TeamWithMatchStats | None
 
 
 class EncounterFiltersRead(BaseModel):
@@ -350,16 +347,6 @@ class MatchSearchParams(pagination.PaginationSortSearchParams):
     tournament_id: int | None = None
     home_team_id: int | None = None
     away_team_id: int | None = None
-
-    def apply_search(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
-        criteria = []
-        search_query = f"%{self.query}%"
-        for field in self.fields:
-            column = model.depth_get_column(field.split("."))
-            criteria.append(column.ilike(search_query))
-            if field == "log_name":
-                criteria.append(sa.func.split_part(column, ".", 1).ilike(search_query))
-        return query.where(sa.or_(*criteria))
 
 
 class MatchSearchQueryParams(pagination.PaginationSortSearchQueryParams):

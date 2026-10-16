@@ -176,9 +176,8 @@ class DivisionChangeWindowFunctionTests(IsolatedAsyncioTestCase):
 
 
 class AggregateDistinctCountRoleTests(IsolatedAsyncioTestCase):
-    """distinct_count(field="role") groups by the substitute identity column
-    while leaving the unrelated MatchStatistics-based branches (hero/match,
-    out of this migration's scope) untouched."""
+    """distinct_count(field="role") groups roster roles by global player identity.
+    The hero/match branches independently consume native player facts."""
 
     async def test_role_branch_groups_by_workspace_member_player_id(self) -> None:
         session = _CapturingSession()

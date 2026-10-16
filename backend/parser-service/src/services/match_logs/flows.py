@@ -3,30 +3,30 @@ from __future__ import annotations
 import asyncio
 import csv
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import pandas as pd
 import sqlalchemy as sa
 from loguru import logger
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.clients.s3 import S3Client
 from shared.core import impact as impact_consts
 from shared.disciplines import discipline, identity_provider
 from shared.domain.pick_ban_config import pool_allows
-from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
+from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE, TOURNAMENT_EVENTS_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.tournament.pick_ban import PickBanConfig
-from shared.repository import CatalogEntityRepository
+from shared.repository import CatalogEntityRepository, CatalogRoleRepository
 from shared.repository.identity import UserRepository
-from shared.repository.match_logs import MatchEventRepository, MatchKillFeedRepository, MatchStatisticsRepository
 from shared.repository.pick_ban import CONFIG_POOL_LOAD, PickBanConfigRepository
-from shared.repository.tournament import MatchRepository
-from shared.schemas.events import TournamentStandingsInvalidatedEvent
+from shared.repository.stats import EventTypeRepository, IngestJobRepository, StatDefRepository, StatsMatchRepository
+from shared.schemas.events import AchievementEvaluateEvent, TournamentStandingsInvalidatedEvent
 from shared.services.encounter.events import enqueue_encounter_completed
-from shared.services.encounter.participants import MemberSnapshot, active_teams, add_substitute
+from shared.services.encounter.participants import MemberSnapshot, add_substitute
 from shared.services.realtime import Resource, Scope, emit, enqueue_invalidation_outbox
 from shared.services.social_identity import social_identity_service
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src import models
 from src.core import enums, errors, pagination
 from src.core.config import settings
@@ -35,15 +35,14 @@ from src.services import catalog_aliases
 from src.services.baselines import service as baselines_service
 from src.services.encounter import flows as encounter_flows
 from src.services.encounter import service as encounter_service
-from src.services.map import flows as map_flows
+from src.services.map.service import map_service
 from src.services.match_logs.binary import binary_match_logs
 from src.services.match_logs.event_models import KillEvent, MatchEventRow, PlayerStatRow
 from src.services.match_logs.limits import match_log_oversize_message
+from src.services.match_logs.log_records import compute_content_hash, log_records_service
 from src.services.match_logs.objectiveless import resolve_encounter_maps
-from src.services.match_logs.realtime import emit_logs_updated
 from src.services.match_logs.roster import LogPlayer
 from src.services.team import service as team_service
-from src.services.tournament import flows as tournament_flows
 
 from . import service
 
@@ -63,67 +62,16 @@ def _index_rows_by_event_type(df: pd.DataFrame) -> dict[enums.LogEventType, pd.D
     return {event_type: group for event_type, group in df.groupby("event_type", sort=False)}  # noqa: C416
 
 
-async def _bulk_insert(session: AsyncSession, model: type, rows: list[dict]) -> None:
-    """One executemany for the whole list — insert against the table, not the entity.
-
-    The ORM-entity form (``sa.insert(Model)``) drops any column whose value is
-    ``None`` from the statement and starts a new batch whenever that column set
-    changes, so stat rows alternating ``hero_id``/no-``hero_id`` and kills
-    alternating ``ability``/no-``ability`` were emitted a handful of rows at a
-    time (Sentry OWT-TOURNAMENTS-2BV/2BY). The Core form keeps every key of the
-    first row and binds ``None`` as NULL, so one statement carries them all —
-    which also means every dict here must have identical keys.
-    """
-    if rows:
-        await session.execute(sa.insert(model.__table__), rows)
-
-
-def _kill_feed_row(kill: models.MatchKillFeed) -> dict:
+def _event_row(event: models.StatsEvent) -> dict:
     return {
-        "match_id": kill.match_id,
-        "time": kill.time,
-        "round": kill.round,
-        "fight": kill.fight,
-        "ability": kill.ability,
-        "killer_id": kill.killer_id,
-        "killer_hero_id": kill.killer_hero_id,
-        "killer_team_id": kill.killer_team_id,
-        "victim_id": kill.victim_id,
-        "victim_hero_id": kill.victim_hero_id,
-        "victim_team_id": kill.victim_team_id,
-        "damage": kill.damage,
-        "is_critical_hit": kill.is_critical_hit,
-        "is_environmental": kill.is_environmental,
+        column.name: getattr(event, column.name)
+        for column in models.StatsEvent.__table__.columns
+        if column.name != "id"
     }
 
 
-def _match_event_row(event: models.MatchEvent) -> dict:
-    return {
-        "match_id": event.match_id,
-        "time": event.time,
-        "round": event.round,
-        "team_id": event.team_id,
-        "user_id": event.user_id,
-        "hero_id": event.hero_id,
-        "related_team_id": event.related_team_id,
-        "related_user_id": event.related_user_id,
-        "related_hero_id": event.related_hero_id,
-        "name": event.name,
-    }
-
-
-def _processor_from_bytes(
-    tournament: models.Tournament,
-    name: str,
-    raw_bytes: bytes,
-    s3: S3Client,
-    log_record_id: int | None,
-    attached_encounter_id: int | None,
-) -> MatchLogProcessor:
-    decoded_lines = [line for line in raw_bytes.decode().split("\n") if line]
-    return MatchLogProcessor(
-        tournament, name, decoded_lines, s3, log_record_id, attached_encounter_id=attached_encounter_id
-    )
+def _processor_from_bytes(job: models.IngestJob, raw_bytes: bytes) -> MatchLogProcessor:
+    return MatchLogProcessor(job, raw_bytes.decode("utf-8").splitlines())
 
 
 def _encounter_is_completed(encounter: models.Encounter) -> bool:
@@ -166,43 +114,25 @@ async def _enqueue_match_log_tournament_events(
     await enqueue_encounter_completed(session, encounter, source_service="parser-service")
 
 
-_match_repo = MatchRepository()
-_stats_repo = MatchStatisticsRepository()
-_events_repo = MatchEventRepository()
-_kill_feed_repo = MatchKillFeedRepository()
+_match_repo = StatsMatchRepository()
+_job_repo = IngestJobRepository()
 _user_repo = UserRepository()
 _pick_ban_config_repo = PickBanConfigRepository()
 
 
 class MatchLogProcessor:
-    def __init__(
-        self,
-        tournament: models.Tournament,
-        name: str,
-        data_in: list[str],
-        s3: S3Client,
-        log_record_id: int | None = None,
-        *,
-        attached_encounter_id: int | None = None,
-    ):
-        self.tournament: models.Tournament = tournament
-        self.identity_provider = identity_provider(tournament.discipline)
-        self.filename: str = name
-        # The ingestion row this run came from. Recorded on every match it
-        # writes so provenance is a foreign key, not a filename comparison
-        # across two differently normalised columns.
-        self.log_record_id: int | None = log_record_id
-        # The encounter the uploader bound this log to, if any. It overrides the
-        # team-pair lookup in ``start`` (``encounter_flows.resolve_for_log``).
-        self.attached_encounter_id: int | None = attached_encounter_id
-        self.df: pd.DataFrame = self._load_and_format_data(data_in)
+    def __init__(self, job: models.IngestJob, data_in: list[str]):
+        self.job = job
+        self.identity_provider = identity_provider(job.discipline)
+        self.filename = job.filename
+        self.df = self._load_and_format_data(data_in)
         self._rows_by_type = _index_rows_by_event_type(self.df)
-        self.heroes_map: dict[str, models.CatalogEntity] = {}  # Hero cache: canonical names + aliases
-        # Hero names that matched neither a canonical name nor an alias. Batched
-        # here rather than written on the spot: `get_hero` is synchronous (no
-        # `await` possible) and runs once per kill event. Flushed in `start()`.
+        self.heroes_map: dict[str, models.CatalogEntity] = {}
         self.hero_misses: set[str] = set()
-        self._s3 = s3
+        self.map_misses: dict[str, set[str]] = {}
+        self.member_by_user: dict[int, int] = {}
+        self.participant_by_team: dict[int, int] = {}
+        self.observed_roles: dict[int, enums.HeroClass] = {}
 
     def _load_and_format_data(self, data_in: list[str]) -> pd.DataFrame:
         # Cap the number of lines before building the DataFrame — an oversized or
@@ -285,27 +215,48 @@ class MatchLogProcessor:
         return row_data[2], row_data[3]
 
     def get_teams_raw(self) -> dict[str, list[str]]:
-        team1_name, team2_name = self.get_team_names()
-        if not team1_name or not team2_name:
-            return {"unknown1": [], "unknown2": []}
+        home, away = self.get_team_names()
+        teams = {home: [], away: []}
+        participant_team = {}
 
-        cache: dict[str, list[str]] = {team1_name: [], team2_name: []}
+        def add(name, team):
+            if not name or team not in teams:
+                raise ValueError("Log participant has no declared team")
+            if name in participant_team and participant_team[name] != team:
+                raise ValueError("Log participant appears on both teams")
+            participant_team[name] = team
+            if name not in teams[team]:
+                teams[team].append(name)
 
-        match_end_events = self._get_rows(enums.LogEventType.MatchEnd)
-        boundary_time = match_end_events["time"].min() if not match_end_events.empty else float("inf")
-
-        player_joined_df = self.df[
-            (self.df["event_type"] == enums.LogEventType.PlayerJoined) & (self.df["time"] < boundary_time)
-        ]
-
-        for row in player_joined_df.itertuples(index=False):
-            player, team = row.data[0], row.data[1]
-            if team == team1_name and player not in cache[team1_name]:
-                cache[team1_name].append(player)
-            elif team == team2_name and player not in cache[team2_name]:
-                cache[team2_name].append(player)
-
-        return cache
+        # Event endpoints count even without a PlayerStat or PlayerJoined row.
+        for row in self.df.itertuples(index=False):
+            data = row.data
+            if row.event_type == enums.LogEventType.PlayerJoined and len(data) >= 2:
+                add(data[0], data[1])
+            elif row.event_type == enums.LogEventType.PlayerStat and len(data) >= 4:
+                add(data[2], data[1])
+            elif row.event_type == enums.LogEventType.Kill and len(data) >= 6:
+                add(data[1], data[0])
+                add(data[4], data[3])
+            elif (
+                row.event_type
+                in {
+                    enums.LogEventType.OffensiveAssist,
+                    enums.LogEventType.DefensiveAssist,
+                    enums.LogEventType.UltimateCharged,
+                    enums.LogEventType.UltimateStart,
+                    enums.LogEventType.UltimateEnd,
+                    enums.LogEventType.MercyRez,
+                    enums.LogEventType.HeroSwap,
+                    enums.LogEventType.EchoDuplicateStart,
+                    enums.LogEventType.EchoDuplicateEnd,
+                }
+                and len(data) >= 3
+            ):
+                add(data[1], data[0])
+                if row.event_type == enums.LogEventType.MercyRez and len(data) > 4 and data[4]:
+                    add(data[4], data[0])
+        return teams
 
     def get_match_score_and_time(self) -> tuple[float, int, int]:
         match_end_events = self._get_rows(enums.LogEventType.MatchEnd)
@@ -318,18 +269,16 @@ class MatchLogProcessor:
         row_data = match_end_events.iloc[0]["data"]  # Assuming one MatchEnd
         return float(match_end_events.iloc[0]["time"]), int(row_data[1]), int(row_data[2])
 
-    async def validate(self, is_raise: bool) -> bool:
+    async def validate(self) -> None:
+        if self.df.empty:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="match_log_empty", msg="Match log is empty or unparseable.")],
+            )
         if self._get_rows(enums.LogEventType.MatchEnd).empty:
-            msg = f"Match log {self.filename} in tournament {self.tournament.name} is not finished"
-            logger.warning(msg)
-            await binary_match_logs.delete_log(self._s3, self.tournament.id, self.filename)
-            if is_raise:
-                raise errors.ApiHTTPException(
-                    status_code=400,
-                    detail=[errors.ApiExc(code="match_not_finished", msg=msg)],
-                )
-            return False
-        return True
+            raise errors.ApiHTTPException(
+                status_code=400, detail=[errors.ApiExc(code="match_not_finished", msg="MatchEnd event missing")]
+            )
 
     async def get_map(self, session: AsyncSession) -> models.CatalogEntity:
         match_start_events = self._get_rows(enums.LogEventType.MatchStart)
@@ -341,11 +290,16 @@ class MatchLogProcessor:
 
         row_data = match_start_events.iloc[0]["data"]
         gamemode_raw, map_name_raw = row_data[1], row_data[0]
-        # Raw, untranslated: `aliases` in the catalog carries what the three
-        # hardcoded dicts used to, and an unresolved name lands in the miss queue.
-        return await map_flows.get_by_name_or_alias_and_gamemode(
-            session, map_name_raw, gamemode_raw, log_record_id=self.log_record_id
-        )
+        result = await map_service.get_by_name_or_alias_and_gamemode(session, map_name_raw, gamemode_raw)
+        if result is None:
+            # Persist after rollback, avoiding a second transaction waiting on
+            # the locked job's FK while this processor waits on that transaction.
+            self.map_misses = {"map": {map_name_raw}, "mode": {gamemode_raw}}
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg=f"Map {map_name_raw!r} / mode {gamemode_raw!r} not found")],
+            )
+        return result
 
     async def _validate_map_pool(
         self,
@@ -379,9 +333,8 @@ class MatchLogProcessor:
     def get_hero(self, hero_name: str) -> models.CatalogEntity:
         hero = self.heroes_map.get(hero_name)
         if not hero:
-            # A hero miss is soft — all three callers swallow it (kill skipped,
-            # `hero_id=None`, stat row skipped). So the name has to reach the
-            # queue, otherwise the data loss shows up only in the service log.
+            # Recorded after rollback; unresolved vocabulary must not silently
+            # drop observations from an otherwise successful revision.
             self.hero_misses.add(hero_name)
             raise errors.ApiHTTPException(
                 status_code=404,
@@ -531,177 +484,104 @@ class MatchLogProcessor:
 
     async def process_kills(
         self,
-        match: models.Match,
+        match: models.StatsMatch,
         players_map: dict[str, LogPlayer],
-    ) -> list[models.MatchKillFeed]:
-        kill_feed_objects: list[models.MatchKillFeed] = []
-
-        kill_events_df = self._get_rows(enums.LogEventType.Kill)
-        if kill_events_df.empty:
-            return []
-
-        kill_events_df = kill_events_df.sort_values(by="time").reset_index(drop=True)
-
-        for row in kill_events_df.itertuples(index=False):
-            try:
-                kill = KillEvent.from_data(row.data)
-            except (ValueError, ValidationError) as e:
-                logger.warning(f"Skipping malformed kill event at t={row.time}: {e}")
-                continue
-
-            if kill.attacker not in players_map:
-                logger.warning(f"Killer '{kill.attacker}' not found in players map. Skipping kill.")
-                continue
-            if kill.victim not in players_map:
-                logger.warning(f"Victim '{kill.victim}' not found in players map. Skipping kill.")
-                continue
-
-            killer_player = players_map[kill.attacker]
-            victim_player = players_map[kill.victim]
-
-            try:
-                killer_hero = self.get_hero(kill.attacker_hero)
-                victim_hero = self.get_hero(kill.victim_hero)
-            except errors.ApiHTTPException as e:
-                logger.warning(f"Skipping kill at t={row.time} (unknown hero): {e}")
-                continue
-
-            kill_feed_objects.append(
-                models.MatchKillFeed(
+    ) -> list[models.StatsEvent]:
+        kills = []
+        for row in (
+            self._get_rows(enums.LogEventType.Kill).sort_values(by="time", kind="stable").itertuples(index=False)
+        ):
+            kill = KillEvent.from_data(row.data)
+            attacker, victim = players_map[kill.attacker], players_map[kill.victim]
+            kills.append(
+                models.StatsEvent(
                     match_id=match.id,
-                    time=row.time,
-                    round=row.round_number,
-                    fight=0,
-                    killer_id=killer_player.user_id,
-                    killer_hero_id=killer_hero.id,
-                    killer_team_id=killer_player.team_id,
-                    victim_id=victim_player.user_id,
-                    victim_hero_id=victim_hero.id,
-                    victim_team_id=victim_player.team_id,
-                    ability=kill.ability,
-                    damage=kill.damage,
-                    is_critical_hit=kill.is_critical_hit,
-                    is_environmental=kill.is_environmental,
+                    t=float(row.time),
+                    segment=int(row.round_number),
+                    type_id=self.event_type_ids["kill"],
+                    actor_member_id=self.member_by_user[attacker.user_id],
+                    actor_team_id=self.participant_by_team[attacker.team_id],
+                    target_member_id=self.member_by_user[victim.user_id],
+                    target_team_id=self.participant_by_team[victim.team_id],
+                    entity_id=self.get_hero(kill.attacker_hero).id,
+                    related_entity_id=self.get_hero(kill.victim_hero).id,
+                    entity_kind="character",
+                    data={
+                        "fight": 0,
+                        "ability": kill.ability.value if kill.ability is not None else None,
+                        "damage": kill.damage,
+                        "is_critical_hit": kill.is_critical_hit,
+                        "is_environmental": kill.is_environmental,
+                    },
                 )
             )
-
-        if not kill_feed_objects:
-            return []
-
-        # Cluster kills into fights (new round OR >15s lull). Shared with the
-        # history backfill so live and backfilled first_picks/impact agree.
-        impact.assign_fights(kill_feed_objects)
-        return kill_feed_objects
+        impact.assign_fights(kills)
+        return kills
 
     def _format_match_event_generic(
         self,
-        match: models.Match,
+        match: models.StatsMatch,
         players_map: dict[str, LogPlayer],
         time: float,
         round_number: int,
         data: list[str],
         event_name_enum: enums.MatchEvent,
-    ) -> models.MatchEvent:
-        try:
-            evt = MatchEventRow.from_data(data, event_name_enum)
-        except (ValueError, ValidationError) as e:
-            raise ValueError(f"Cannot parse {event_name_enum.value} at t={time}: {e}") from e
-
-        if evt.player not in players_map:
-            raise ValueError(f"Player '{evt.player}' for event {event_name_enum.value} at t={time} not in players_map.")
-
-        player = players_map[evt.player]
-
-        hero_id: int | None = None
-        if evt.hero:
-            try:
-                hero_id = self.get_hero(evt.hero).id
-            except errors.ApiHTTPException:
-                logger.warning(
-                    f"Unknown hero '{evt.hero}' for {event_name_enum.value} at t={time}, hero_id set to None."
-                )
-
-        related_player_id: int | None = None
-        related_team_id: int | None = None
-        related_hero_id: int | None = None
-
-        if evt.related_hero:
-            try:
-                related_hero_id = self.get_hero(evt.related_hero).id
-            except errors.ApiHTTPException:
-                logger.warning(f"Unknown related_hero '{evt.related_hero}' for {event_name_enum.value} at t={time}.")
-
-        if evt.related_player:
-            if evt.related_player not in players_map:
-                logger.warning(f"MercyRez target '{evt.related_player}' not in players_map.")
-            else:
-                related_player_obj = players_map[evt.related_player]
-                related_player_id = related_player_obj.user_id
-                related_team_id = related_player_obj.team_id
-
-        return models.MatchEvent(
-            match_id=match.id,
-            time=time,
-            round=round_number,
-            team_id=player.team_id,
-            user_id=player.user_id,
-            hero_id=hero_id,
-            related_hero_id=related_hero_id,
-            related_team_id=related_team_id,
-            related_user_id=related_player_id,
-            name=event_name_enum,
-        )
+    ) -> dict:
+        event = MatchEventRow.from_data(data, event_name_enum)
+        actor = players_map[event.player]
+        target = players_map[event.related_player] if event.related_player else None
+        return {
+            "match_id": match.id,
+            "t": float(time),
+            "segment": int(round_number),
+            "type_id": self.event_type_ids[event_name_enum.value],
+            "actor_member_id": self.member_by_user[actor.user_id],
+            "actor_team_id": self.participant_by_team[actor.team_id],
+            "target_member_id": self.member_by_user[target.user_id] if target else None,
+            "target_team_id": self.participant_by_team[target.team_id] if target else None,
+            "entity_id": self.get_hero(event.hero).id if event.hero else None,
+            "related_entity_id": self.get_hero(event.related_hero).id if event.related_hero else None,
+            "data": None,
+        }
 
     async def process_events(
         self,
         session: AsyncSession,
-        match: models.Match,
+        match: models.StatsMatch,
         players_map: dict[str, LogPlayer],
-    ) -> list[models.MatchEvent]:
-        event_type_map = [
-            (enums.LogEventType.OffensiveAssist, enums.MatchEvent.OffensiveAssist),
-            (enums.LogEventType.DefensiveAssist, enums.MatchEvent.DefensiveAssist),
-            (enums.LogEventType.UltimateCharged, enums.MatchEvent.UltimateCharged),
-            (enums.LogEventType.UltimateStart, enums.MatchEvent.UltimateStart),
-            (enums.LogEventType.UltimateEnd, enums.MatchEvent.UltimateEnd),
-            (enums.LogEventType.HeroSwap, enums.MatchEvent.HeroSwap),
-            (enums.LogEventType.EchoDuplicateStart, enums.MatchEvent.EchoDuplicateStart),
-            (enums.LogEventType.EchoDuplicateEnd, enums.MatchEvent.EchoDuplicateEnd),
+    ) -> list[dict]:
+        event_types = {enums.LogEventType[name.name]: name for name in enums.MatchEvent}
+        return [
+            self._format_match_event_generic(
+                match,
+                players_map,
+                row.time,
+                row.round_number,
+                row.data,
+                event_types[row.event_type],
+            )
+            for row in self.df.itertuples(index=False)
+            if row.event_type in event_types
         ]
 
-        all_match_event_objects: list[models.MatchEvent] = []
-        for log_event_type, match_event_enum in event_type_map:
-            event_df = self._get_rows(log_event_type)
-            for row in event_df.itertuples(index=False):
-                try:
-                    match_event_obj = self._format_match_event_generic(
-                        match, players_map, row.time, row.round_number, row.data, match_event_enum
-                    )
-                    all_match_event_objects.append(match_event_obj)
-                except ValueError as e:
-                    logger.warning(f"Skipping event creation due to error: {e}")
-                    continue
-
-        return all_match_event_objects
-
-    @staticmethod
     def _create_stat_object(
-        match: models.Match,
+        self,
+        match: models.StatsMatch,
         name: enums.LogStatsName,
         player: LogPlayer,
         match_round: int,
         hero_id: int | None,
         value: float,
-    ) -> models.MatchStatistics:
-        return models.MatchStatistics(
-            match_id=match.id,
-            round=match_round,
-            team_id=player.team_id,
-            user_id=player.user_id,
-            hero_id=hero_id,
-            name=name,
-            value=value,
-        )
+    ) -> dict:
+        return {
+            "match_id": match.id,
+            "segment": int(match_round),
+            "encounter_team_id": self.participant_by_team[player.team_id],
+            "workspace_member_id": self.member_by_user[player.user_id],
+            "entity_id": int(hero_id) if hero_id is not None else None,
+            "stat_id": self.stat_ids[name.value],
+            "value": float(value),
+        }
 
     async def _get_player_stat_base_df(self, players_map: dict[str, LogPlayer]) -> pd.DataFrame:
         player_stat_events = self._get_rows(enums.LogEventType.PlayerStat)
@@ -710,26 +590,9 @@ class MatchLogProcessor:
 
         stat_records = []
         for row in player_stat_events.itertuples(index=False):
-            try:
-                stat_row = PlayerStatRow.from_data(row.data)
-            except (ValueError, ValidationError) as e:
-                logger.warning(f"PlayerStat: Skipping malformed row at round {row.round_number}: {e}")
-                continue
-
-            if stat_row.player not in players_map:
-                logger.warning(f"PlayerStat: Player '{stat_row.player}' not in players_map. Skipping.")
-                continue
-
+            stat_row = PlayerStatRow.from_data(row.data)
             player_model = players_map[stat_row.player]
-
-            try:
-                hero_model = self.get_hero(stat_row.hero)
-            except errors.ApiHTTPException:
-                logger.warning(
-                    f"PlayerStat: Unknown hero '{stat_row.hero}' for player '{stat_row.player}' "
-                    f"at round {row.round_number}. Skipping stat entry."
-                )
-                continue
+            hero_model = self.get_hero(stat_row.hero)
 
             current_round = int(row.round_number)
 
@@ -740,7 +603,7 @@ class MatchLogProcessor:
                         "player_id": player_model.user_id,
                         "player_model": player_model,
                         "hero_id": hero_model.id,
-                        "hero_class": hero_model.type,
+                        "hero_class": enums.HeroClass[hero_model.attrs["class"]],
                         "round": current_round,
                         "stat_name": stat_name_enum,
                         "value": value,
@@ -751,7 +614,7 @@ class MatchLogProcessor:
 
     def _calculate_and_add_derived_stats(
         self,
-        match: models.Match,
+        match: models.StatsMatch,
         df: pd.DataFrame,
         is_mvp_calc: bool = False,
         impact_ctx: impact.ImpactContext | None = None,
@@ -880,10 +743,10 @@ class MatchLogProcessor:
     async def create_stats(
         self,
         session: AsyncSession,
-        match: models.Match,
+        match: models.StatsMatch,
         players_map: dict[str, LogPlayer],
-        kill_feed: list[models.MatchKillFeed] | None = None,
-    ) -> list[models.MatchStatistics]:
+        kill_feed: list[models.StatsEvent] | None = None,
+    ) -> list[dict]:
         cumulative_stats_df = await self._get_player_stat_base_df(players_map)
         if cumulative_stats_df.empty:
             logger.info(f"No PlayerStat events found for match {match.id}. Skipping stat creation.")
@@ -901,7 +764,7 @@ class MatchLogProcessor:
             .fillna(cumulative_stats_df["value"])
         )
 
-        all_stat_objects: list[models.MatchStatistics] = []
+        all_stat_objects: list[dict] = []
 
         discrete_per_hero_df = cumulative_stats_df[cumulative_stats_df["round"] > 0].copy()
         records_per_hero = discrete_per_hero_df[
@@ -969,15 +832,17 @@ class MatchLogProcessor:
             df["player_model"] = df["player_id"].map(player_id_to_model_map)
 
         # --- MVP impact scoring inputs (spec 2026-07-10) --------------------
-        # Event stats derived from the kill feed (FirstPicks/FirstDeaths/…) are
-        # emitted as their own MatchStatistics rows AND merged into the two MVP
-        # pivots so add_impact_scores can read them. The kill feed, the stat
-        # rows and the pivots are all keyed by the account's user_id.
+        # Event counts cross into pure OW math as global user ids;
+        # persistence keeps native member/participant identities.
         hero_types = {h.id: enums.HeroClass[h.attrs["class"]] for h in self.heroes_map.values()}
         user_to_player = {p.user_id: p for p in players_map.values()}
         has_killfeed = bool(kill_feed)
 
-        events_df = impact.build_event_counts(kill_feed or [], hero_types)
+        events_df = impact.build_event_counts(
+            kill_feed or [],
+            hero_types,
+            member_user_ids={member: user for user, member in self.member_by_user.items()},
+        )
         if not events_df.empty:
             events_df = events_df[events_df["user_id"].isin(user_to_player)].assign(
                 player_id=lambda df_: df_["user_id"]
@@ -1044,6 +909,7 @@ class MatchLogProcessor:
             ["player_id", "hero_id", "value"]
         ].rename(columns={"value": "seconds"})
         roles = impact.dominant_roles(playtime_df, hero_types)
+        self.observed_roles = roles
 
         player_refs = {
             p.user_id: impact.PlayerRef(
@@ -1055,7 +921,7 @@ class MatchLogProcessor:
             )
             for p in players_map.values()
         }
-        baselines = await baselines_service.get_active(session)
+        baselines = await baselines_service.get_active(session, discipline=self.job.discipline)
         impact_ctx = impact.ImpactContext(players=player_refs, baselines=baselines, has_killfeed=has_killfeed)
 
         all_stat_objects.extend(self._calculate_and_add_derived_stats(match, hero_derived_df, is_mvp_calc=False))
@@ -1069,131 +935,202 @@ class MatchLogProcessor:
 
         return all_stat_objects
 
-    async def start(self, session: AsyncSession, is_raise: bool = True) -> models.Match | None:
-        logger.info(f"Processing match log {self.filename} in tournament {self.tournament.name}")
-        if self.df.empty:
-            logger.error(f"Match log {self.filename} is empty or unparseable. Aborting.")
-            if is_raise:
-                raise errors.ApiHTTPException(
-                    status_code=400,
-                    detail=[errors.ApiExc(code="match_log_empty", msg="Match log is empty or unparseable.")],
-                )
-            return None
-
-        if not await self.validate(is_raise=is_raise):
-            return None
-        resolved_teams = await self.find_teams_by_players(session)
-        (home_team_db, _), (away_team_db, _) = resolved_teams
-        # The map is read before the encounter: it is what tells apart two
-        # encounters the same pair plays.
-        match_map_model = await self.get_map(session)
-        map_pools = await _pick_ban_config_repo.list_by_tournament(
-            session, self.tournament.id, kind=enums.PickBanKind.MAP, options=CONFIG_POOL_LOAD
-        )
-        encounter = await encounter_flows.resolve_for_log(
+    async def start(
+        self,
+        session: AsyncSession,
+        *,
+        claimed_attempt: int,
+        claimed_started_at: datetime,
+    ) -> models.StatsMatch | None:
+        await self.validate()
+        job = self.job
+        self.tournament = await session.get(models.Tournament, job.hint_tournament_id)
+        if (
+            self.tournament is None
+            or self.tournament.workspace_id != job.workspace_id
+            or self.tournament.discipline != job.discipline
+            or job.discipline != "overwatch"
+        ):
+            raise errors.ApiHTTPException(
+                status_code=422,
+                detail=[errors.ApiExc(code="invalid_log_owner", msg="Workshop job has no valid Overwatch tournament")],
+            )
+        resolved = await self.find_teams_by_players(session)
+        home, away = resolved[0][0], resolved[1][0]
+        match_map = await self.get_map(session)
+        pools = await _pick_ban_config_repo.list_by_tournament(
             session,
-            (home_team_db.id, away_team_db.id),
-            log_name=self.filename,
-            map_id=match_map_model.id,
-            map_pools=map_pools,
-            attached_encounter_id=self.attached_encounter_id,
+            self.tournament.id,
+            kind=enums.PickBanKind.MAP,
+            options=CONFIG_POOL_LOAD,
         )
-        # Roster repair can commit substitutions/name changes; validate first.
-        await self._validate_map_pool(session, encounter, match_map_model, map_pools)
+        bound = await encounter_flows.resolve_for_log(
+            session,
+            (home.id, away.id),
+            job=job,
+            map_id=match_map.id,
+            map_pools=pools,
+        )
+        if bound is None:
+            return None
+        encounter, game, self.participations = bound
+        # Parent-first ordering matches encounter deletion/score resolution.
+        # Raw download and team discovery do not hold a job lock while waiting
+        # for a parent owned by another transaction.
+        job = await _job_repo.get_for_update(session, job.id, workspace_id=job.workspace_id)
+        if (
+            job is None
+            or job.status != models.IngestJobStatus.PROCESSING
+            or job.attempts != claimed_attempt
+            or job.started_at != claimed_started_at
+        ):
+            raise RuntimeError("Ingest claim was superseded before observations were written")
+        self.job = job
+        await self._validate_map_pool(session, encounter, match_map, pools)
         await self._preload_data(session)
-        (home_team_tuple, away_team_tuple) = await self.process_teams(session, resolved_teams, encounter)
-        home_team_db, home_players_map = home_team_tuple
-        away_team_db, away_players_map = away_team_tuple
-        players_map = {**home_players_map, **away_players_map}
-        logger.info(
-            f"Match map: {match_map_model.name} in match log {self.filename} in tournament {self.tournament.name}"
-        )
-        match_time, home_score, away_score = self.get_match_score_and_time()
-        logger.info(f"Match time: {match_time}, home score: {home_score}, away score: {away_score}")
-
-        match_model = await encounter_service.get_match_by_encounter_and_map(
-            session, encounter.id, match_map_model.id, []
-        )
-
-        if not match_model:
-            match_model = await encounter_service.create_match(
-                session,
-                encounter,
-                time=match_time,
-                log_name=self.filename,
-                map=match_map_model,
-                home_team_id=home_team_db.id,
-                away_team_id=away_team_db.id,
-                home_score=home_score,
-                away_score=away_score,
-                log_record_id=self.log_record_id,
+        self.stat_ids = await StatDefRepository().ids(session, discipline=job.discipline)
+        self.event_type_ids = await EventTypeRepository().ids(session, discipline=job.discipline)
+        if ({stat.value for stat in enums.LogStatsName} | {"score"}) - self.stat_ids.keys():
+            raise errors.ApiHTTPException(
+                status_code=422,
+                detail=[errors.ApiExc(code="stat_not_found", msg="Discipline statistic vocabulary is incomplete")],
             )
-            logger.info(
-                f"Match created [id={match_model.id}] in match log {self.filename} in tournament {self.tournament.name}"
+        if ({"kill"} | {event.value for event in enums.MatchEvent}) - self.event_type_ids.keys():
+            raise errors.ApiHTTPException(
+                status_code=422,
+                detail=[errors.ApiExc(code="event_type_not_found", msg="Discipline event vocabulary is incomplete")],
             )
-        else:
-            match_model.time = match_time
-            match_model.home_score = home_score
-            match_model.away_score = away_score
-            match_model.map_id = match_map_model.id
-            match_model.home_team_id = home_team_db.id
-            match_model.away_team_id = away_team_db.id
-            match_model.log_name = self.filename
-            if self.log_record_id is not None:
-                match_model.log_record_id = self.log_record_id
-            await _match_repo.create(session, match_model)
-            logger.info(f"Match updated [id={match_model.id}] for log {self.filename}")
-
-        # The log just written is either a Push/Clash map with no result of its
-        # own, or the last map that lets one be decided by exclusion.
+        home_result, away_result = await self.process_teams(session, resolved, encounter)
+        players_map = {**home_result[1], **away_result[1]}
+        users = {player.user_id for player in players_map.values()}
+        self.member_by_user = dict(
+            (
+                await session.execute(
+                    sa.select(
+                        models.WorkspaceMember.player_id,
+                        models.WorkspaceMember.id,
+                    ).where(
+                        models.WorkspaceMember.workspace_id == job.workspace_id,
+                        models.WorkspaceMember.player_id.in_(users),
+                    )
+                )
+            ).all()
+        )
+        if self.member_by_user.keys() != users:
+            raise ValueError("Every observed player must be a member of the job workspace")
+        self.participant_by_team = {team.team_id: team.id for team in self.participations}
+        duration, home_score, away_score = self.get_match_score_and_time()
+        match = await _match_repo.get_for_game(
+            session,
+            encounter_game_id=game.id,
+            workspace_id=job.workspace_id,
+            discipline=job.discipline,
+            for_update=True,
+        )
+        created = match is None
+        match_id = (
+            await session.scalar(sa.text("SELECT nextval(pg_get_serial_sequence('stats.match', 'id'))"))
+            if created
+            else match.id
+        )
+        scopes = owner_scopes("match", (match_id,))
+        before = await capture_stats_evidence(session, scopes=scopes)
+        if created:
+            match = models.StatsMatch(
+                id=match_id,
+                workspace_id=job.workspace_id,
+                discipline=job.discipline,
+                encounter_game_id=game.id,
+                map_entity_id=match_map.id,
+                map_kind="map",
+                revision=1,
+            )
+            session.add(match)
+        match.ingest_job_id = job.id
+        match.duration_s = duration
+        await session.flush()
+        kills = await self.process_kills(match, players_map)
+        events = await self.process_events(session, match, players_map)
+        facts = await self.create_stats(session, match, players_map, kill_feed=kills)
+        facts.extend(
+            {
+                "match_id": match.id,
+                "segment": 0,
+                "encounter_team_id": self.participant_by_team[team.id],
+                "workspace_member_id": None,
+                "entity_id": None,
+                "stat_id": self.stat_ids["score"],
+                "value": float(score),
+            }
+            for team, score in ((home, home_score), (away, away_score))
+        )
+        roles = await CatalogRoleRepository().rated_rows(session, discipline=job.discipline, workspace_id=None)
+        player_rows = []
+        seen = set()
+        for handle, player in players_map.items():
+            member = self.member_by_user[player.user_id]
+            if member in seen:
+                raise ValueError("A player has multiple observed handles or teams in the same log")
+            seen.add(member)
+            role = self.observed_roles.get(player.user_id)
+            if role is not None and role.slot_code not in roles:
+                raise ValueError("Observed role does not resolve in the discipline")
+            player_rows.append(
+                {
+                    "match_id": match.id,
+                    "workspace_member_id": member,
+                    "encounter_team_id": self.participant_by_team[player.team_id],
+                    "handle_snapshot": handle,
+                    "observed_role_id": roles[role.slot_code].id if role is not None else None,
+                }
+            )
+        events = [_event_row(kill) for kill in kills] + events
+        segments = sorted({row["segment"] for row in facts + events if row["segment"] > 0})
+        await _match_repo.replace_observations(
+            session,
+            match=match,
+            teams=[
+                {
+                    "match_id": match.id,
+                    "encounter_game_id": game.id,
+                    "encounter_team_id": self.participant_by_team[team.id],
+                    "source_position": position,
+                }
+                for position, team in enumerate((home, away), 1)
+            ],
+            players=player_rows,
+            segments=[{"match_id": match.id, "segment": number, "kind": "round"} for number in segments],
+            facts=facts,
+            events=events,
+        )
+        if not created:
+            match.revision += 1
+        match.updated_at = datetime.now(UTC)
+        await session.flush()
+        after = await capture_stats_evidence(session, scopes=scopes)
+        await stage_stats_evidence(
+            session,
+            operation="stats.reparse",
+            before=before,
+            after=after,
+            workspace_id=job.workspace_id,
+            entity_type="stats_match",
+            entity_id=match.id,
+        )
         await resolve_encounter_maps(session, encounter.id)
-
-        logger.info(f"Clearing existing stats/events/kills for match {match_model.id}")
-        await _stats_repo.delete_for_match(session, match_model.id)
-        await _events_repo.delete_for_match(session, match_model.id)
-        await _kill_feed_repo.delete_for_match(session, match_model.id)
-
-        logger.info(f"Processing kills for match {match_model.id}")
-        kill_feed_db_objects = await self.process_kills(match_model, players_map)
-
-        logger.info(f"Processing events for match {match_model.id}")
-        events = await self.process_events(session, match_model, players_map)
-
-        logger.info(f"Processing stats for match {match_model.id}")
-        stats = await self.create_stats(session, match_model, players_map, kill_feed=kill_feed_db_objects)
-
-        # Own transaction, and before the commit below, so the queue records the
-        # gaps whether this log ends up committed or rolled back.
-        if self.hero_misses:
-            await catalog_aliases.record_misses("character", self.hero_misses, log_record_id=self.log_record_id)
-
-        try:
-            await _bulk_insert(session, models.MatchKillFeed, [_kill_feed_row(k) for k in kill_feed_db_objects])
-            await _bulk_insert(session, models.MatchEvent, [_match_event_row(e) for e in events])
-            await _bulk_insert(
-                session,
-                models.MatchStatistics,
-                [
-                    {
-                        "match_id": s.match_id,
-                        "round": s.round,
-                        "team_id": s.team_id,
-                        "user_id": s.user_id,
-                        "hero_id": s.hero_id,
-                        "name": s.name,
-                        "value": s.value,
-                    }
-                    for s in stats
-                ],
-            )
-            await _enqueue_match_log_tournament_events(session, encounter)
-            await session.commit()
-        except Exception:
-            await session.rollback()
-            raise
-
-        logger.info(f"Match log {self.filename} (match_id={match_model.id}) processed successfully")
-        return match_model
+        await _enqueue_match_log_tournament_events(session, encounter)
+        await enqueue_outbox_event(
+            session,
+            AchievementEvaluateEvent(
+                workspace_id=job.workspace_id,
+                tournament_id=self.tournament.id,
+                changed_tables=["stats.match", "stats.fact", "stats.event"],
+                source_service="parser-service",
+            ),
+            exchange="",
+            routing_key=ACHIEVEMENT_EVALUATE_QUEUE.name,
+        )
+        return match
 
     async def add_substitution(
         self,
@@ -1224,11 +1161,14 @@ class MatchLogProcessor:
             else ()
         )
 
-        (member_id,) = (
-            await team_service.resolve_workspace_member_ids(
-                session, workspace_id=self.tournament.workspace_id, player_ids={sub_user.id}
+        member_id = await session.scalar(
+            sa.select(models.WorkspaceMember.id).where(
+                models.WorkspaceMember.workspace_id == self.job.workspace_id,
+                models.WorkspaceMember.player_id == sub_user.id,
             )
-        ).values()
+        )
+        if member_id is None:
+            raise ValueError("A substitute must already belong to the job workspace")
         await add_substitute(
             session,
             participation,
@@ -1347,7 +1287,7 @@ class MatchLogProcessor:
                         provider=self.identity_provider,
                         username=f"{new_battle_name_from_log}#0000",
                     )
-                    await session.commit()
+                    await session.flush()
                     logger.info(
                         f"Associated new battle_name '{new_battle_name_from_log}' with User ID {user_to_update.id}."
                     )
@@ -1362,14 +1302,23 @@ class MatchLogProcessor:
                     f"Could not resolve automatically."
                 )
 
-        final_players_map_verified = {name: p for name, p in final_players_map.items() if p.team_id == team_db.id}
-        if len(final_players_map_verified) != len(final_players_map):
-            logger.warning(
-                f"Team {team_db.name} player map verification failed after collision fix. "
-                f"Some players might not belong to the team."
+        for handle, user in all_players_from_log_for_team:
+            if handle in final_players_map:
+                continue
+            if user is None:
+                raise ValueError(f"Unresolved participant {handle!r}; no observation was written")
+            # An event-only endpoint need not displace a roster starter. Keep
+            # its real identity without inventing a rated role or roster change.
+            final_players_map[handle] = LogPlayer(
+                user_id=user.id,
+                team_id=team_db.id,
+                name=user.name,
+                role=None,
+                rank=0,
             )
-
-        return team_db, final_players_map_verified
+        if any(player.team_id != team_db.id for player in final_players_map.values()):
+            raise ValueError("Participant belongs to the wrong team")
+        return team_db, final_players_map
 
     async def process_teams(
         self,
@@ -1383,7 +1332,7 @@ class MatchLogProcessor:
         tuple[models.Team, dict[str, LogPlayer]],
         tuple[models.Team, dict[str, LogPlayer]],
     ]:
-        seats = {seat.team_id: seat for seat in await active_teams(session, encounter.id)}
+        seats = {seat.team_id: seat for seat in self.participations}
         resolved = []
         for team_db, players_from_log_tuples in resolved_teams:
             roster_map_initial = {
@@ -1402,83 +1351,90 @@ class MatchLogProcessor:
 
 
 async def process_match_log(
-    session: AsyncSession, tournament_id: int, filename: str, s3: S3Client, *, is_raise: bool = True
-) -> None:
-    from src.services.match_logs import log_records as record_service
-
-    # LogProcessingRecord.filename is always a bare object name — uploads.py
-    # rejects "/" outright — but the bulk path feeds us the full S3 key
-    # ("logs/{tournament_id}/{name}") straight from list_objects. Matching
-    # records on the prefixed form found nothing, forked a duplicate "manual"
-    # row and left the uploaded one on `pending` ("Queued") forever, so key
-    # every record lookup on the bare name.
-    object_name = filename.rsplit("/", 1)[-1]
-    logger.info(f"Fetching logs from S3 for tournament {tournament_id} and file {filename}")
-
-    raw_bytes = await binary_match_logs.get_log_by_filename(s3, tournament_id, filename)
-    if not raw_bytes:
-        msg = f"Log file {filename} not found or empty in S3"
-        # WARNING, not ERROR: a missing/empty object is a state of the uploaded
-        # data, not a service defect — and it is already reported three other
-        # ways (the terminal `failed` record below, the 404 raised to the caller,
-        # and the `failed` result published to the bot). As an ERROR it opened a
-        # second Sentry group for every occurrence that the raise below already
-        # reported, so one missing file cost two issues and 300+ events.
-        logger.warning(msg)
-        # Terminal, not silent: this fires before set_processing, so without it
-        # the row stays `pending` and the stall reaper requeues it forever.
-        await record_service.fail_unstarted(session, tournament_id, object_name, msg)
-        if is_raise:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[errors.ApiExc(code="log_not_found", msg=msg)],
-            )
-        return
-
-    max_log_bytes = settings.max_match_log_bytes
-    oversize = match_log_oversize_message(len(raw_bytes), max_log_bytes, filename=filename)
-    if oversize:
-        logger.warning(oversize)
-        await record_service.fail_unstarted(session, tournament_id, object_name, oversize)
-        if is_raise:
-            raise errors.ApiHTTPException(
-                status_code=413,
-                detail=[errors.ApiExc(code="match_log_too_large", msg=oversize)],
-            )
-        return
-
-    content_hash = await asyncio.to_thread(record_service.compute_content_hash, raw_bytes)
-
-    if await record_service.is_already_processed(session, tournament_id, object_name, content_hash):
-        logger.info(
-            f"Log {object_name} (tournament {tournament_id}) already processed with hash {content_hash[:8]}…, skipping."
+    session: AsyncSession,
+    job_id: int,
+    s3: S3Client,
+    *,
+    is_raise: bool = True,
+) -> models.IngestJobStatus:
+    workspace_id = await session.scalar(sa.select(models.IngestJob.workspace_id).where(models.IngestJob.id == job_id))
+    if workspace_id is None:
+        raise errors.ApiHTTPException(
+            status_code=404, detail=[errors.ApiExc(code="not_found", msg="Ingest job not found")]
         )
-        await record_service.finish_duplicate_record(session, tournament_id, object_name, content_hash)
-        return
-
-    record = await record_service.set_processing(session, tournament_id, object_name, content_hash=content_hash)
-    tournament = await tournament_flows.get(session, tournament_id, [])
-
-    processor = await asyncio.to_thread(
-        _processor_from_bytes,
-        tournament,
-        object_name,
-        raw_bytes,
-        s3,
-        record.id if record is not None else None,
-        record.attached_encounter_id if record is not None else None,
-    )
-    # The signal is staged, not published: ``set_done``/``set_failed`` own the
-    # commit that carries it, so a state write that fails announces nothing.
+    job = await _job_repo.get_for_update(session, job_id, workspace_id=workspace_id)
+    if job is None:
+        raise errors.ApiHTTPException(
+            status_code=404, detail=[errors.ApiExc(code="not_found", msg="Ingest job not found")]
+        )
+    terminal = {models.IngestJobStatus.DONE, models.IngestJobStatus.FAILED, models.IngestJobStatus.AWAITING_LINK}
+    if job.status in terminal:
+        status = job.status
+        await session.commit()
+        return status
+    if job.status == models.IngestJobStatus.PROCESSING:
+        # This delivery did not create the active claim and cannot borrow it.
+        await session.rollback()
+        return models.IngestJobStatus.PROCESSING
+    await log_records_service.transition(session, job, models.IngestJobStatus.PROCESSING)
+    attempt, started_at = job.attempts, job.started_at
+    await session.commit()
+    processor = None
     try:
-        await processor.start(session, is_raise=is_raise)
-        if record is not None:
-            await emit_logs_updated(session, tournament.workspace_id, change="done")
-            await record_service.set_done(session, record)
-    except Exception as e:
-        logger.exception(e)
-        if record is not None:
-            await emit_logs_updated(session, tournament.workspace_id, change="failed")
-            await record_service.set_failed(session, record, str(e))
+        raw = await binary_match_logs.get_log(s3, job)
+        if not raw:
+            raise errors.ApiHTTPException(
+                status_code=404, detail=[errors.ApiExc(code="log_not_found", msg="Raw log is missing or empty")]
+            )
+        oversize = match_log_oversize_message(len(raw), settings.max_match_log_bytes, filename=job.filename)
+        if oversize:
+            raise errors.ApiHTTPException(
+                status_code=413, detail=[errors.ApiExc(code="match_log_too_large", msg=oversize)]
+            )
+        if await asyncio.to_thread(compute_content_hash, raw) != job.content_hash:
+            raise ValueError("Stored raw bytes do not agree with the ingest job content hash")
+        processor = await asyncio.to_thread(_processor_from_bytes, job, raw)
+        match = await processor.start(session, claimed_attempt=attempt, claimed_started_at=started_at)
+        job = await _job_repo.get_for_update(session, job_id, workspace_id=workspace_id)
+        if (
+            job is None
+            or job.status != models.IngestJobStatus.PROCESSING
+            or job.attempts != attempt
+            or job.started_at != started_at
+        ):
+            raise RuntimeError("Ingest claim was superseded before completion")
+        status = models.IngestJobStatus.DONE if match is not None else models.IngestJobStatus.AWAITING_LINK
+        await log_records_service.transition(
+            session,
+            job,
+            status,
+            error_message=None
+            if match is not None
+            else "No unique matching live game; an administrator must link the log and retry",
+        )
+        await session.commit()
+        return status
+    except Exception as exc:
+        await session.rollback()
+        if processor is not None:
+            for kind, names in {**processor.map_misses, "character": processor.hero_misses}.items():
+                await catalog_aliases.record_misses(kind, names, ingest_job_id=job_id)
+        job = await _job_repo.get_for_update(session, job_id, workspace_id=workspace_id)
+        if (
+            job is not None
+            and job.status == models.IngestJobStatus.PROCESSING
+            and job.attempts == attempt
+            and job.started_at == started_at
+        ):
+            await log_records_service.transition(session, job, models.IngestJobStatus.FAILED, error_message=str(exc))
+            await session.commit()
+        elif job is not None and job.status in terminal:
+            status = job.status
+            await session.commit()
+            return status
+        else:
+            await session.rollback()
+            raise
         if is_raise:
-            raise e
+            raise
+        return models.IngestJobStatus.FAILED

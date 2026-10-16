@@ -46,8 +46,16 @@ class VisibilityResolverService:
         return await self._scalar_or_404(
             session,
             sa.select(models.Encounter.tournament_id)
-            .join(models.Match, models.Match.encounter_id == models.Encounter.id)
-            .where(models.Match.id == match_id),
+            .join(models.EncounterGame, models.EncounterGame.encounter_id == models.Encounter.id)
+            .join(
+                models.StatsMatch,
+                sa.and_(
+                    models.StatsMatch.encounter_game_id == models.EncounterGame.id,
+                    models.StatsMatch.workspace_id == models.Encounter.workspace_id,
+                    models.StatsMatch.discipline == models.Encounter.discipline,
+                ),
+            )
+            .where(models.StatsMatch.id == match_id),
             "Match not found",
         )
 

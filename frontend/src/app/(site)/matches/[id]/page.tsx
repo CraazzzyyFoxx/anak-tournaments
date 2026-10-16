@@ -18,12 +18,12 @@ export async function generateMetadata(props: {
   const t = await getTranslations();
 
   const matchTitle = t("matches.meta.matchTitle", {
-    home: match.home_team.name,
-    away: match.away_team.name
+    home: match.home_team?.name ?? "—",
+    away: match.away_team?.name ?? "—"
   });
   const matchDescription = t("matches.meta.matchDescription", {
-    home: match.home_team.name,
-    away: match.away_team.name,
+    home: match.home_team?.name ?? "—",
+    away: match.away_team?.name ?? "—",
     siteName: SITE_NAME
   });
 

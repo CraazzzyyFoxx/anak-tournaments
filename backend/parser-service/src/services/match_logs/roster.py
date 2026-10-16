@@ -1,9 +1,9 @@
 """The player of a parsed log, as the statistics rows need them.
 
-A log names people, not roster rows: a substitute who joined the encounter
-mid-series is a snapshot in ``encounter.team_member`` (D19), never a
-``tournament.player``. So the stats pipeline keys everything on the account --
-``user_id`` is both the pivot key and what the stat rows store.
+A log names people, not roster rows: a substitute is an encounter snapshot,
+never a fabricated tournament roster row. Global ``user_id`` remains the pure
+Overwatch scoring pivot key; persistence resolves it to a workspace member and
+the game's encounter participation before constructing native observations.
 """
 
 from __future__ import annotations

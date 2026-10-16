@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 import os
 import sys
 import types
@@ -24,11 +23,6 @@ from shared.core.impact import IMPACT_WEIGHTS  # noqa: E402
 from src.core import enums  # noqa: E402
 from src.domain.match_logs import impact  # noqa: E402
 from src.services.match_logs.flows import MatchLogProcessor  # noqa: E402
-
-
-def test_create_stats_accepts_kill_feed():
-    sig = inspect.signature(MatchLogProcessor.create_stats)
-    assert "kill_feed" in sig.parameters
 
 
 def test_impact_context_shape():
@@ -117,11 +111,17 @@ def _players_map() -> dict[int, impact.PlayerRef]:
 
 
 def _stats_named(stats: list, name: enums.LogStatsName) -> list:
-    return [s for s in stats if s.name == name]
+    return [s for s in stats if s["stat_id"] == _STAT_IDS[name.value]]
+
+
+_STAT_IDS = {stat.value: index for index, stat in enumerate(enums.LogStatsName, 1)}
 
 
 def _run_derived_stats(*, baselines: impact.BaselineSet | None) -> list:
     proc = MatchLogProcessor.__new__(MatchLogProcessor)
+    proc.stat_ids = _STAT_IDS
+    proc.member_by_user = {101: 1101, 102: 1102}
+    proc.participant_by_team = {10: 210, 20: 220}
     p1 = _fake_player_model(user_id=101, team_id=10)
     p2 = _fake_player_model(user_id=102, team_id=20)
     ctx = impact.ImpactContext(players=_players_map(), baselines=baselines, has_killfeed=True)
@@ -135,7 +135,7 @@ def test_impact_scores_and_rank_are_emitted_and_ranked_by_impact_points():
 
     impact_points = _stats_named(stats, enums.LogStatsName.ImpactPoints)
     assert len(impact_points) == 2
-    by_user = {s.user_id: s.value for s in impact_points}
+    by_user = {s["workspace_member_id"] - 1000: s["value"] for s in impact_points}
     # Eliminations rate 20/10min -> z=2.0 (w=1.3); FirstPicks rate 3 -> z=2.0 (w=0.55)
     assert by_user[101] == pytest.approx(IMPACT_WEIGHTS["Eliminations"] * 2.0 + IMPACT_WEIGHTS["FirstPicks"] * 2.0)
     # Eliminations rate 5 -> z=-1.0; FirstPicks rate 0 -> z=-1.0
@@ -143,7 +143,7 @@ def test_impact_scores_and_rank_are_emitted_and_ranked_by_impact_points():
 
     overperformance = _stats_named(stats, enums.LogStatsName.OverperformanceScore)
     assert len(overperformance) == 2
-    overperf_by_user = {s.user_id: s.value for s in overperformance}
+    overperf_by_user = {s["workspace_member_id"] - 1000: s["value"] for s in overperformance}
     # rank bucket 1: Eliminations z=(20-12)/5=1.6, FirstPicks z=(3-1.5)/1=1.5
     assert overperf_by_user[101] == pytest.approx(
         IMPACT_WEIGHTS["Eliminations"] * 1.6 + IMPACT_WEIGHTS["FirstPicks"] * 1.5
@@ -155,7 +155,7 @@ def test_impact_scores_and_rank_are_emitted_and_ranked_by_impact_points():
 
     ranks = _stats_named(stats, enums.LogStatsName.ImpactRank)
     assert len(ranks) == 2
-    rank_by_user = {s.user_id: s.value for s in ranks}
+    rank_by_user = {s["workspace_member_id"] - 1000: s["value"] for s in ranks}
     assert rank_by_user[101] == 1  # higher ImpactPoints -> rank 1 (MVP)
     assert rank_by_user[102] == 2
 

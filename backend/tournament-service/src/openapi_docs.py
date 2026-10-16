@@ -286,7 +286,14 @@ DOCS: dict[str, dict] = {
     # ── per-map match edit (admin) ─────────────────────────────────────────
     "rpc.tournament.encounter_update_match": {
         "summary": "Update match",
-        "description": "Permission: workspace `match.result` on the workspace resolved from the match. Edits one played map of an encounter (teams, score, map, lobby code, time, log name) and answers the match's own columns.",
+        "description": (
+            "Permission: workspace `match.result` on the workspace resolved from the match. "
+            "Edits observed home/away scores in historical game-slot order and nullable duration. "
+            "The map must equal the bound game's existing map (409 otherwise). "
+            "Team IDs, source, code, log_name and other unsupported fields are rejected with 422. "
+            "Official game scores remain unchanged; score and duration changes carry separate native "
+            "evidence records in the same transaction as the existing recalculation outbox."
+        ),
     },
     "rpc.tournament.encounter_swap_slot": {
         "description": (
@@ -320,12 +327,12 @@ DOCS: dict[str, dict] = {
         "summary": "List parsed matches",
         "description": (
             "Permission: workspace `match.read` on the workspace named by `workspace_id`. "
-            "Every played map the log parser produced, across the workspace. One row is one map, "
-            "not one encounter. `log_record` is the ingestion record the map was parsed from and is "
-            "null when provenance is unresolved \u2014 the normal state for matches that predate the "
-            "ingestion table, not an error. Filter with `tournament_id`, `encounter_id`, `map_id`, "
-            "`log_status`, `unlinked_only` and a free-text `query` over log name, match code and team "
-            "names. An empty `log_status` filters nothing, so unlinked matches stay visible."
+            "Every native Overwatch observed duel map across the workspace, not one encounter. "
+            "Scores follow the bound game's historical slots; official game results are unchanged. "
+            "`log_record` is its native ingest job and is null for observations with no raw provenance. "
+            "Filter with `tournament_id`, `encounter_id`, `map_id`, `log_status`, `unlinked_only` and a "
+            "free-text `query` over the actual ingest filename and team names. An empty `log_status` "
+            "filters nothing, so observations without an ingest job stay visible."
         ),
     },
     "rpc.tournament.admin_match_get": {

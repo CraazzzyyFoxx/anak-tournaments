@@ -21,7 +21,7 @@ import {
 } from "@/lib/match-stats";
 
 interface MatchTeamTableProps {
-  team: TeamWithStats;
+  team: TeamWithStats | null;
   isHome: boolean;
   matchRound: number;
   /** Dynamic stat columns to render (from the active preset). */
@@ -72,6 +72,18 @@ const MatchTeamTable = ({
   const t = useTranslations<never>();
   const format = useFormatter();
   const teamAccent = isHome ? "var(--aqt-teal)" : "var(--aqt-rose)";
+
+  if (team == null) {
+    return (
+      <TableBody>
+        <TableRow>
+          <TableCell colSpan={columns.length + 4} className="text-center text-muted-foreground">
+            —
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    );
+  }
 
   const sortedPlayers = sortTeamPlayers(team.players);
   const activeIds = new Set(activePlayers(team, matchRound).map((player) => player.id));

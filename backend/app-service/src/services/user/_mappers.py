@@ -7,7 +7,6 @@ only the fields the frontend actually renders on user-scoped pages.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -15,6 +14,7 @@ import sqlalchemy as sa
 
 from shared.core.impact import BADGE_THRESHOLD
 from shared.division_grid import DivisionGrid
+from shared.repository.stats_reads import MatchReadContext
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src import models, schemas
@@ -120,29 +120,9 @@ def to_user_tournament_player(
     )
 
 
-def _duel_team_ids(seats: Sequence[models.EncounterTeam]) -> tuple[int | None, int | None]:
-    """Source teams of slots 1 and 2 (``None`` for a seat that is empty or has no team)."""
-    by_slot = {seat.slot: seat.team_id for seat in seats}
-    return by_slot.get(1), by_slot.get(2)
-
-
-def encounter_oriented_score(match: models.Match, seats: Sequence[models.EncounterTeam]) -> Score:
-    """Map score in the encounter's slot order, not the log's.
-
-    Parsed logs often write ``Match.home_team_id`` as the uploader's side, which
-    is the opposite of slot 1 of the encounter. The Run then paints the
-    winner's maps as losses.
-    """
-    first, second = _duel_team_ids(seats)
-    if match.home_team_id == second and match.away_team_id == first and first != second:
-        return Score(home=match.away_score, away=match.home_score)
-    return Score(home=match.home_score, away=match.away_score)
-
-
 def to_match_with_user_stats(
-    match: models.Match,
+    context: MatchReadContext,
     *,
-    seats: Sequence[models.EncounterTeam],
     performance: int | None,
     heroes: list[dict] | None,
     impact_rank: int | float | None = None,
@@ -155,23 +135,22 @@ def to_match_with_user_stats(
     ``overperf_pos`` is the viewer's rank (1 = best) among all match
     participants by OverperformanceScore (match-wide window, not scoped to the
     viewer) — used only to compute ``overperformance_badge`` and not exposed
-    on the schema itself. ``score`` and the two team ids follow the encounter's
-    slots 1 and 2, not the log's.
+    on the schema itself. Scores and team ids follow the bound game's historical
+    slots 1 and 2, never the live encounter seats or the log's source order.
     """
-    map_read = schemas.MapRead.from_entity(match.map, with_gamemode=True) if match.map is not None else None
+    match = context.match
+    map_read = schemas.MapRead.from_entity(context.map, with_gamemode=True) if context.map is not None else None
     hero_objs = [schemas.HeroRead.model_validate(h) for h in (heroes or [])]
-    first, second = _duel_team_ids(seats)
     return schemas.MatchReadWithUserStats(
         id=match.id,
-        home_team_id=first,
-        away_team_id=second,
-        score=encounter_oriented_score(match, seats),
-        time=match.time,
-        log_name=match.log_name,
-        encounter_id=match.encounter_id,
-        map_id=match.map_id,
-        map_index=match.map_index,
-        code=getattr(match, "code", None),
+        home_team_id=context.home_team.id if context.home_team is not None else None,
+        away_team_id=context.away_team.id if context.away_team is not None else None,
+        score=Score(home=context.home_score, away=context.away_score),
+        time=match.duration_s,
+        log_name=context.display_filename,
+        encounter_id=context.game.encounter_id,
+        map_id=match.map_entity_id,
+        map_index=context.game.position,
         map=map_read,
         performance=performance,
         impact_rank=int(impact_rank) if impact_rank is not None else None,
@@ -303,12 +282,7 @@ def to_encounter_with_user_stats(
     )
 
 
-_SETTLED_POOL_STATUSES = frozenset({"picked", "played"})
 _MISSING_PLAYED_AT = datetime.min.replace(tzinfo=UTC)
-
-
-def _pool_status(value: object) -> str:
-    return str(getattr(value, "value", value))
 
 
 def encounter_play_key(encounter: models.Encounter) -> tuple[datetime, int]:
@@ -324,47 +298,6 @@ def encounter_play_key(encounter: models.Encounter) -> tuple[datetime, int]:
 
 def sort_user_matches(
     matches: list[schemas.MatchReadWithUserStats],
-    pool_map_ids: list[int] | None = None,
 ) -> list[schemas.MatchReadWithUserStats]:
-    """Play order: ``map_index``, then map-pool settle order for unindexed rows."""
-    if not matches:
-        return matches
-    indexed = sorted(matches, key=lambda match: (match.map_index is None, match.map_index or 0, match.id))
-    if not pool_map_ids or all(match.map_index is not None for match in matches):
-        return indexed
-
-    claimed: set[int] = set()
-    ordered: list[schemas.MatchReadWithUserStats] = []
-    for position, map_id in enumerate(pool_map_ids, start=1):
-        exact = next(
-            (
-                match
-                for match in matches
-                if match.id not in claimed and match.map_id == map_id and match.map_index == position
-            ),
-            None,
-        )
-        if exact is not None:
-            claimed.add(exact.id)
-            ordered.append(exact)
-            continue
-        adopted = next(
-            (
-                match
-                for match in matches
-                if match.id not in claimed and match.map_id == map_id and match.map_index is None
-            ),
-            None,
-        )
-        if adopted is not None:
-            claimed.add(adopted.id)
-            ordered.append(adopted)
-    ordered.extend(match for match in indexed if match.id not in claimed)
-    return ordered
-
-
-def settled_map_ids(rows: list[tuple[object, object, object, object]]) -> list[int]:
-    """``(map_id, status, action_index, order)`` → play-order map ids."""
-    settled = [row for row in rows if _pool_status(row[1]) in _SETTLED_POOL_STATUSES]
-    settled.sort(key=lambda row: row[2] if row[2] is not None else row[3])
-    return [int(row[0]) for row in settled]
+    """Bound game position is authoritative, including repeated maps."""
+    return sorted(matches, key=lambda match: (match.map_index, match.id))

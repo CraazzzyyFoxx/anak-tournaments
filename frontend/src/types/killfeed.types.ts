@@ -1,30 +1,30 @@
 import { Hero } from "@/types/hero.types";
 
-/** One kill from `matches.kill_feed` (hero = the hero at the moment of the kill). */
+/** One native kill observation (hero = the hero at the moment of the kill). */
 export interface KillFeedEntry {
   time: number;
   round: number;
-  fight: number;
+  fight: number | null;
   ability: string | null;
-  damage: number;
-  is_critical_hit: boolean;
-  is_environmental: boolean;
-  killer_user_id: number;
-  killer_team_id: number;
-  killer_hero: Hero;
-  victim_user_id: number;
-  victim_team_id: number;
-  victim_hero: Hero;
+  damage: number | null;
+  is_critical_hit: boolean | null;
+  is_environmental: boolean | null;
+  killer_user_id: number | null;
+  killer_team_id: number | null;
+  killer_hero: Hero | null;
+  victim_user_id: number | null;
+  victim_team_id: number | null;
+  victim_hero: Hero | null;
 }
 
-/** A non-kill timeline event (ultimate cast / resurrect) from `matches.assists`. */
+/** A native non-kill timeline observation (ultimate cast / resurrect). */
 export interface MatchTimelineEvent {
   time: number;
   round: number;
-  /** "ultimate_start" | "mercy_rez" */
+  /** "ultimate_start" | "ultimate_end" | "mercy_rez" */
   name: string;
-  user_id: number;
-  team_id: number;
+  user_id: number | null;
+  team_id: number | null;
   hero: Hero | null;
   related_user_id: number | null;
   related_team_id: number | null;

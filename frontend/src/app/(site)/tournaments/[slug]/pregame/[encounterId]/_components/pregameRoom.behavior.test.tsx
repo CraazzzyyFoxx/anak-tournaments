@@ -836,6 +836,7 @@ describe("phase selection", () => {
 
   it.each([
     { hasLog: true, hasGames: true },
+    { hasLog: true, hasGames: false },
     { hasLog: false, hasGames: true },
     { hasLog: false, hasGames: false }
   ])("shows only the previous map's heroes (log: $hasLog, positions: $hasGames)", async ({ hasLog, hasGames }) => {
@@ -846,13 +847,12 @@ describe("phase selection", () => {
       ...encounter(),
       best_of: 5,
       games: hasGames ? [game({ position: 1, map_id: 21 }), game({ position: 2, map_id: 22 })] : [],
-      // Every Match the API sends carries its score; the series slots read it.
+      // Stats matches are logs; official results and replay codes belong to games.
       matches: [
-        { id: 501, map_id: 21, map_index: null, source: "log_parser", score: { home: 0, away: 0 } },
-        { id: 503, map_id: 22, map_index: 2, source: "captain_report", score: { home: 0, away: 0 } },
-        { id: 504, map_id: 23, map_index: null, source: "log_parser", score: { home: 0, away: 0 } },
+        { id: 501, map_id: 21, map_index: 1, score: { home: 0, away: 0 } },
+        { id: 504, map_id: 23, map_index: 3, score: { home: 0, away: 0 } },
         ...(hasLog
-          ? [{ id: 502, map_id: 22, map_index: null, source: "log_parser", score: { home: 0, away: 0 } }]
+          ? [{ id: 502, map_id: 22, map_index: 2, score: { home: 0, away: 0 } }]
           : [])
       ]
     });

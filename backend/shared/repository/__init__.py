@@ -63,11 +63,6 @@ from .identity import (
     UserRepository,
     UserRoleRepository,
 )
-from .match_logs import (
-    MatchEventRepository,
-    MatchKillFeedRepository,
-    MatchStatisticsRepository,
-)
 from .pick_ban import (
     EncounterReadinessRepository,
     PickBanConfigItemRepository,
@@ -100,6 +95,7 @@ from .roles import CatalogRoleRepository
 from .team_format import TeamFormatRepository
 from .scrim import ScrimRoomRepository
 from .settings import SettingsRepository
+from .stats import EventTypeRepository, IngestJobRepository, StatDefRepository, StatsMatchRepository
 from .stream import (
     SelfDeclaredChannelRow,
     StreamRosterRow,
@@ -131,12 +127,10 @@ from .support import (
     ChallongeMappingRepository,
     DiscordChannelRepository,
     DivisionGridRepository,
-    LogProcessingRepository,
 )
 from .tournament import (
     BracketEncounterRepository,
     EncounterRepository,
-    MatchRepository,
     PlayerRepository,
     StageItemInputRepository,
     StageItemRepository,
@@ -217,6 +211,9 @@ __all__ = (
     "ChatMessageRepository",
     "ChatMuteRepository",
     "ChatRoomSettingsRepository",
+    "EventTypeRepository",
+    "StatDefRepository",
+    "StatsMatchRepository",
     "DiscordChannelRepository",
     "DivisionGridImportJobRepository",
     "DivisionGridMappingRepository",
@@ -246,11 +243,7 @@ __all__ = (
     "FavoritePlayerRepository",
     "GoogleSheetBindingRepository",
     "GoogleSheetFeedRepository",
-    "LogProcessingRepository",
-    "MatchEventRepository",
-    "MatchKillFeedRepository",
-    "MatchRepository",
-    "MatchStatisticsRepository",
+    "IngestJobRepository",
     "MemberHiddenRatingRepository",
     "MemberRankRepository",
     "MLModelArtifactRepository",

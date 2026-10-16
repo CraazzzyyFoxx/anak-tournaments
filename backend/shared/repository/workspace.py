@@ -512,9 +512,8 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         workspace_id: int,
         player_ids: set[int],
     ) -> dict[int, int]:
-        """Batch counterpart of ``get_or_create_workspace_member``: resolve (or
-        create) the ``workspace_member`` anchors for a whole roster in three
-        statements (a removed member is revived, like the single-row helper).
+        """Batch counterpart of ``get_or_create_workspace_member``: resolve or
+        create roster anchors, reviving removed members like the single-row helper.
 
         Mirrors ``get_or_create_workspace_member``'s insert-or-select
         idempotency (``INSERT ... ON CONFLICT DO NOTHING`` on
@@ -525,19 +524,7 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         if not player_ids:
             return {}
 
-        insert_stmt = (
-            pg_insert(models.WorkspaceMember)
-            .values(
-                [
-                    {"workspace_id": workspace_id, "player_id": player_id}
-                    # Sorted for a deterministic insert order (avoids deadlocks
-                    # between concurrent bulk imports).
-                    for player_id in sorted(player_ids)
-                ]
-            )
-            .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
-        )
-        await session.execute(insert_stmt)
+        await insert_missing_workspace_members(session, [(workspace_id, player_id) for player_id in player_ids])
 
         # Re-adding a removed member reuses the row, exactly as ``get_or_create_workspace_member`` does,
         # baseline-role autofill included.
@@ -572,6 +559,73 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         return dict(result.all())
 
 
+async def insert_missing_workspace_members(
+    session: AsyncSession,
+    pairs: Sequence[tuple[int, int]],
+) -> dict[tuple[int, int], int]:
+    """Create absent (workspace, player) anchors; never revive, grant roles or commit."""
+    from shared.services.stats_evidence import (
+        OWNER_BATCH,
+        capture_stats_evidence,
+        owner_scopes,
+        stage_stats_evidence,
+    )
+
+    if not pairs:
+        return {}
+    existing = await session.execute(
+        sa.select(models.WorkspaceMember.workspace_id, models.WorkspaceMember.player_id).where(
+            sa.tuple_(models.WorkspaceMember.workspace_id, models.WorkspaceMember.player_id).in_(pairs)
+        )
+    )
+    missing = sorted(set(pairs) - set(existing.tuples().all()))
+    created = {}
+    for offset in range(0, len(missing), OWNER_BATCH):
+        batch = missing[offset : offset + OWNER_BATCH]
+        ids = list(
+            await session.scalars(
+                sa.text(
+                    "SELECT nextval(pg_get_serial_sequence('workspace_member','id')) FROM generate_series(1,:count)"
+                ),
+                {"count": len(batch)},
+            )
+        )
+        # Separate sealed captures let ON CONFLICT discard race losers without
+        # claiming that their reserved, still-absent owner ids were created.
+        before = {
+            member_id: await capture_stats_evidence(session, scopes=owner_scopes("member", (member_id,)))
+            for member_id in ids
+        }
+        rows = (
+            await session.execute(
+                pg_insert(models.WorkspaceMember)
+                .values(
+                    [
+                        {"id": member_id, "workspace_id": workspace_id, "player_id": player_id}
+                        for member_id, (workspace_id, player_id) in zip(ids, batch, strict=True)
+                    ]
+                )
+                .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
+                .returning(
+                    models.WorkspaceMember.id, models.WorkspaceMember.workspace_id, models.WorkspaceMember.player_id
+                )
+            )
+        ).all()
+        for member_id, workspace_id, player_id in rows:
+            after = await capture_stats_evidence(session, scopes=owner_scopes("member", (member_id,)))
+            await stage_stats_evidence(
+                session,
+                operation="stats.member_create",
+                before=before[member_id],
+                after=after,
+                workspace_id=workspace_id,
+                entity_type="workspace_member",
+                entity_id=member_id,
+            )
+            created[(workspace_id, player_id)] = member_id
+    return created
+
+
 async def get_or_create_workspace_member(
     session: AsyncSession,
     *,
@@ -585,14 +639,8 @@ async def get_or_create_workspace_member(
     row already existed, so concurrent calls never raise
     ``IntegrityError``/duplicate-key races.
     """
-    insert_stmt = (
-        pg_insert(models.WorkspaceMember)
-        .values(workspace_id=workspace_id, player_id=player_id)
-        .on_conflict_do_nothing(constraint="uq_workspace_member_workspace_player")
-        .returning(models.WorkspaceMember.id)
-    )
-    result = await session.execute(insert_stmt)
-    member_id = result.scalar_one_or_none()
+    created = await insert_missing_workspace_members(session, [(workspace_id, player_id)])
+    member_id = created.get((workspace_id, player_id))
     if member_id is not None:
         await session.flush()
         member = await session.get(models.WorkspaceMember, member_id)

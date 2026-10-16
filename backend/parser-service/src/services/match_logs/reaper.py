@@ -2,7 +2,7 @@
 
 ``process_match_log`` carries ``x-message-ttl=300000``, so a ``ProcessMatchLogEvent``
 that isn't consumed within five minutes is dead-lettered — and nothing looks at
-the ``LogProcessingRecord`` again. A batch upload larger than the worker chews in
+the native ingest job again. A batch upload larger than the worker chews in
 five minutes, a worker restart, or a publish that failed after the row committed
 all leave records sitting on ``pending`` forever; that is the admin monitor
 showing files stuck on "Queued" weeks after upload. A worker killed mid-parse
@@ -12,17 +12,17 @@ Neither state self-heals, because the queue message — not the row — was the 
 thing driving the work. This reaper inverts that: a leader-locked APScheduler
 tick scans for records whose last touch predates the queue TTL and republishes a
 ``ProcessMatchLogEvent`` for each, so the row is what drives the work. Requeueing
-is safe — ``flows.process_match_log`` dedupes on content hash, so a log that did
-finish is finalized without a second parse.
+is safe — terminal native jobs are returned unchanged and active revisions
+serialize on the encounter/game and job locks.
 
-``attempts`` (bumped by ``log_records.set_processing``) bounds the loop: a log
+``attempts`` (bumped by the processing transition) bounds the loop: a log
 that kills the worker before it can mark itself failed is retried a few times and
 then marked ``failed`` with an explicit message, instead of cycling forever.
 Requeues that are never picked up don't consume an attempt, so a slow backlog
 drains rather than burning its budget.
 
-``failed`` records are left alone on purpose — the parser rejected them, so
-auto-retrying is a loop on bad data. Operators retry those from the console.
+``failed`` and ``awaiting_link`` jobs are operator work, not stalls; the reaper
+never retries them. Operators link/retry those from the console.
 """
 
 from __future__ import annotations
@@ -34,9 +34,9 @@ from typing import Any
 from loguru import logger
 
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE
-from shared.models.ingestion.log_processing import LogProcessingStatus
+from shared.models import IngestJobStatus
 from shared.observability import metrics, observe_scheduled_job, publish_message
-from shared.repository.support import LogProcessingRepository, stalled_conditions
+from shared.repository.stats import IngestJobRepository, stalled_conditions
 from shared.schemas.events import ProcessMatchLogEvent
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
@@ -47,16 +47,14 @@ from shared.services.scheduler import IntervalScheduler
 from src.core import db
 from src.core.broker import require_broker
 from src.core.config import settings
-from src.services.match_logs import realtime as logs_realtime
+from src.services.match_logs.log_records import log_records_service
 
-# Re-exported: a test constructs this directly to pin the exact WHERE shape,
-# and the module attribute must stay resolvable as ``reaper.stalled_conditions``.
 __all__ = ("ReaperResult", "reclaim_stalled_logs", "stalled_conditions")
 
 LEADER_LOCK_KEY = "log_processing:reaper:leader"
 
 _scheduler = IntervalScheduler(job_id="match_log_stall_reaper", label="Match-log stall reaper")
-_log_processing_repo = LogProcessingRepository()
+_log_processing_repo = IngestJobRepository()
 
 
 @dataclass(frozen=True)
@@ -108,32 +106,25 @@ async def _claim_stalled(
     exhausted: list[int] = []
     for record in records:
         if (record.attempts or 0) >= max_attempts:
-            record.status = LogProcessingStatus.failed
-            record.finished_at = now
-            record.error_message = (
-                f"Processing abandoned after {record.attempts} attempts without a terminal result "
-                "(worker died mid-parse or the log is unprocessable). Retry manually to try again."
+            await log_records_service.transition(
+                session,
+                record,
+                IngestJobStatus.FAILED,
+                now=now,
+                error_message=f"Processing abandoned after {record.attempts} attempts without a terminal result. Retry manually.",
             )
             exhausted.append(record.id)
             continue
 
-        record.status = LogProcessingStatus.pending
-        record.started_at = None
-        record.finished_at = None
-        record.updated_at = now
+        await log_records_service.transition(session, record, IngestJobStatus.PENDING, now=now)
         requeue.append(
             _Stalled(
                 record_id=record.id,
-                tournament_id=record.tournament_id,
+                tournament_id=record.hint_tournament_id,
                 filename=record.filename,
-                workspace_id=record.tournament.workspace_id if record.tournament else None,
+                workspace_id=record.workspace_id,
             )
         )
-
-    # Staged inside the claim transaction rather than after it: the monitor must
-    # only learn about a requeue that actually persisted.
-    for workspace_id in {item.workspace_id for item in requeue if item.workspace_id}:
-        await logs_realtime.emit_logs_updated(session, workspace_id, change="requeued")
 
     await session.commit()
     return requeue, exhausted
@@ -186,7 +177,7 @@ async def reclaim_stalled_logs(
             published = 0
             target = require_broker(broker)
             for item in requeue:
-                event = ProcessMatchLogEvent(tournament_id=item.tournament_id, filename=item.filename)
+                event = ProcessMatchLogEvent(ingest_job_id=item.record_id)
                 try:
                     await publish_message(target, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
                 except Exception:

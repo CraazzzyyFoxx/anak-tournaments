@@ -10,6 +10,7 @@ import type {
   LogProcessingStats
 } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
+import { notify } from "@/lib/notify";
 import { TournamentLogsTab } from "./TournamentLogsTab";
 
 declare global {
@@ -21,6 +22,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const getLogStats = vi.fn();
 const getLogHistory = vi.fn();
 const retryLogRecord = vi.fn();
+const getEncounter = vi.fn();
+
+vi.mock("@/services/encounter.service", () => ({
+  default: { getEncounter: (...args: unknown[]) => getEncounter(...args) }
+}));
 
 vi.mock("@/services/admin.service", () => ({
   default: {
@@ -58,6 +64,7 @@ const STATS: LogProcessingStats = {
   processing: 1,
   done: 120,
   failed: 3,
+  awaiting_link: 0,
   avg_duration_seconds: 4.25,
   last_created_at: "2026-07-30T17:04:00Z"
 };
@@ -69,6 +76,7 @@ function record(id: number, overrides: Partial<LogProcessingRecord> = {}): LogPr
     tournament_name: "OWT 78",
     attached_encounter_id: null,
     attached_encounter_name: null,
+    attached_encounter_game_id: null,
     filename: `logs/round_${id}.txt`,
     status: "done",
     source: "upload",
@@ -79,6 +87,29 @@ function record(id: number, overrides: Partial<LogProcessingRecord> = {}): LogPr
     started_at: "2026-07-30T17:00:00Z",
     finished_at: "2026-07-30T17:00:04Z",
     ...overrides
+  };
+}
+
+const PLAYOFF = {
+  id: 6662,
+  name: "Home vs Away",
+  tournament_id: 78,
+  round: -3,
+  stage: { name: "Playoffs" },
+  stage_item: null
+} as Encounter;
+
+function game(id: number, position: number, state: Encounter["games"][number]["state"] = "planned"): Encounter["games"][number] {
+  return {
+    id,
+    position,
+    map_id: 21,
+    map: { id: 21, name: "Ilios" } as Encounter["games"][number]["map"],
+    state,
+    result_source: null,
+    result_version: 0,
+    confirmed_at: null,
+    teams: []
   };
 }
 
@@ -103,9 +134,13 @@ const mounted: { root: Root; container: HTMLElement }[] = [];
 async function settle(turns = 5) {
   for (let turn = 0; turn < turns; turn += 1) {
     await act(async () => {
-      const { promise, resolve } = Promise.withResolvers<void>();
-      setTimeout(resolve, 0);
-      await promise;
+      if (vi.isFakeTimers()) {
+        await vi.advanceTimersByTimeAsync(0);
+      } else {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 0);
+        await promise;
+      }
     });
   }
 }
@@ -183,6 +218,12 @@ beforeEach(() => {
   getLogHistory.mockReset().mockResolvedValue(FIRST_PAGE);
   replace.mockClear();
   retryLogRecord.mockReset().mockResolvedValue(record(1, { status: "pending" }));
+  getEncounter.mockReset().mockResolvedValue({
+    ...PLAYOFF,
+    games: [game(801, 1), game(907, 2), game(999, 3, "cancelled")]
+  });
+  vi.mocked(notify.success).mockClear();
+  vi.mocked(notify.apiError).mockClear();
   window.history.replaceState(null, "", "/admin/tournaments/78/matches/logs");
 });
 
@@ -194,6 +235,7 @@ afterEach(async () => {
     }
   });
   document.body.innerHTML = "";
+  vi.useRealTimers();
 });
 
 describe("TournamentLogsTab", () => {
@@ -311,24 +353,132 @@ describe("TournamentLogsTab", () => {
     expect(scope.textContent).toContain("×3");
   });
 
-  it("re-files a failed log under the encounter the operator picks", async () => {
-    // Two encounters of one pair share a name; the option says which round it is.
-    const playoff = {
-      id: 6662,
-      name: "Home vs Away",
-      round: -3,
-      stage: { name: "Playoffs" },
-      stage_item: null
-    } as unknown as Encounter;
-    const scope = await mount(78, [playoff]);
+  it("does not offer retry or attachment while the job is processing", async () => {
+    getLogHistory.mockResolvedValue({ items: [record(17, { status: "processing" })], total: 1 });
+    const scope = await mount(78, [PLAYOFF]);
+    expect(scope.textContent).toContain("Processing");
+    expect(scope.querySelector('button[aria-label="Select row 17"]')).toBeNull();
+    expect(scope.querySelector('button[aria-label="Actions for round_17.txt"]')).toBeNull();
+  });
 
-    await click(scope.querySelector('button[aria-label="Actions for round_1.txt"]'));
+  it("requires an actual noncancelled game when resolving two live games on the same map", async () => {
+    getLogHistory.mockResolvedValue({
+      items: [record(17, { status: "awaiting_link", tournament_id: null, tournament_name: null })],
+      total: 1
+    });
+    const scope = await mount(78, [PLAYOFF]);
+
+    await click(scope.querySelector('button[aria-label="Actions for round_17.txt"]'));
     await click(menuItem("Attach to encounter…"));
     await click(document.querySelector('button[aria-label="Pick an encounter"]'));
     await click(commandItem("Home vs Away · Playoffs · LB Round 3"));
+    expect(button(document, "Attach and reprocess")?.disabled).toBe(true);
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    expect(commandItem("Game 3")).toBeUndefined();
+    await click(commandItem("Game 2 · Ilios · #907"));
     await click(button(document, "Attach and reprocess"));
 
-    expect(retryLogRecord).toHaveBeenCalledWith(1, 6662);
+    expect(retryLogRecord).toHaveBeenCalledWith(17, {
+      encounter_id: 6662,
+      encounter_game_id: 907
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(notify.success).toHaveBeenCalledWith("Log attached and queued");
+  });
+
+  it("renders and filters awaiting-link jobs with null tournament hints and native source kinds", async () => {
+    getLogStats.mockResolvedValue({ ...STATS, awaiting_link: 9 });
+    getLogHistory.mockResolvedValue({
+      items: [record(17, {
+        status: "awaiting_link",
+        tournament_id: null,
+        tournament_name: null,
+        source: "desktop_agent"
+      })],
+      total: 1
+    });
+    const scope = await mount(null);
+    expect(scope.textContent).toContain("Awaiting link");
+    expect(scope.textContent).toContain("Not attached");
+    expect(scope.querySelector('[title*="desktop_agent"]')).not.toBeNull();
+    await click(scope.querySelector('button[aria-label="Add filter"]'));
+    await click(commandItem("Status"));
+    expect(commandItem("Awaiting link")?.textContent).toContain("9");
+    await click(commandItem("Awaiting link"));
+    expect(new URLSearchParams(window.location.search).get("status")).toBe("awaiting_link");
+    expect(getLogHistory).toHaveBeenLastCalledWith(undefined, expect.objectContaining({
+      status: "awaiting_link", workspaceId: 1
+    }));
+  });
+
+  it("does not poll an awaiting-only queue or present it as failed or processed", async () => {
+    vi.useFakeTimers();
+    getLogStats.mockResolvedValue({
+      ...STATS, total: 1, pending: 0, processing: 0, failed: 0, done: 0, awaiting_link: 1
+    });
+    getLogHistory.mockResolvedValue({ items: [record(17, { status: "awaiting_link" })], total: 1 });
+    const scope = await mount();
+    const reads = getLogHistory.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(getLogHistory).toHaveBeenCalledTimes(reads);
+    expect(scope.textContent).toContain("Awaiting link");
+    expect(scope.textContent).not.toContain("Processed");
+    expect(scope.textContent).not.toContain("failed to process");
+  });
+
+  it("clears the selected game when the encounter changes", async () => {
+    const scope = await mount(78, [PLAYOFF, { ...PLAYOFF, id: 6663, name: "Other teams" }]);
+    await click(scope.querySelector('button[aria-label="Actions for round_1.txt"]'));
+    await click(menuItem("Attach to encounter…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 2 · Ilios · #907"));
+    expect(button(document, "Attach and reprocess")?.disabled).toBe(false);
+    getEncounter.mockResolvedValue({ ...PLAYOFF, id: 6663, games: [game(1201, 1)] });
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Other teams"));
+    expect(button(document, "Attach and reprocess")?.disabled).toBe(true);
+    expect(retryLogRecord).not.toHaveBeenCalled();
+  });
+
+  it("keeps attachment pending and preserves the dialog and selection when the server rejects it", async () => {
+    const retry = Promise.withResolvers<LogProcessingRecord>();
+    retryLogRecord.mockReturnValue(retry.promise);
+    const scope = await mount(78, [PLAYOFF]);
+    await click(scope.querySelector('button[aria-label="Actions for round_1.txt"]'));
+    await click(menuItem("Attach to encounter…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    await click(document.querySelector('button[aria-label="Pick a game"]'));
+    await click(commandItem("Game 2 · Ilios · #907"));
+    await click(button(document, "Attach and reprocess"));
+    expect(button(document, "Attach and reprocess")?.disabled).toBe(true);
+    expect(notify.success).not.toHaveBeenCalled();
+    const error = new Error("This game cannot be rebound");
+    await act(async () => { retry.reject(error); });
+    await settle();
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.body.textContent).toContain("Game 2 · Ilios · #907");
+    expect(button(document, "Attach and reprocess")?.disabled).toBe(false);
+    expect(notify.apiError).toHaveBeenCalledWith(error);
+    expect(notify.success).not.toHaveBeenCalled();
+  });
+
+  it("blocks attachment when games cannot be loaded or only cancelled games remain", async () => {
+    getEncounter.mockRejectedValue(new Error("Forbidden"));
+    const scope = await mount(78, [PLAYOFF]);
+    await click(scope.querySelector('button[aria-label="Actions for round_1.txt"]'));
+    await click(menuItem("Attach to encounter…"));
+    await click(document.querySelector('button[aria-label="Pick an encounter"]'));
+    await click(commandItem("Home vs Away"));
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Could not load games");
+    expect(button(document, "Attach and reprocess")?.disabled).toBe(true);
+    getEncounter.mockResolvedValue({ ...PLAYOFF, games: [game(999, 1, "cancelled")] });
+    await click(button(document, "Reload games"));
+    expect(document.body.textContent).toContain("No noncancelled games");
+    expect(button(document, "Attach and reprocess")?.disabled).toBe(true);
+    expect(retryLogRecord).not.toHaveBeenCalled();
   });
 
   it("points forward when the tournament has no logs at all", async () => {

@@ -11,12 +11,10 @@ import base64
 import discord
 import httpx
 from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.domain.discord_ui import EMOJI
 from shared.messaging.config import UPLOAD_MATCH_LOG_QUEUE
 from shared.observability import publish_message
-from shared.repository import LogProcessingRepository
 from shared.schemas.events import UploadMatchLogEvent
 from src.core.broker import optional_broker
 from src.feedback import (
@@ -46,16 +44,12 @@ class AttachmentProcessor:
         self,
         *,
         client: discord.Client,
-        session_maker: async_sessionmaker[AsyncSession],
         parser_clients: ParserClientFactory,
         result_waiter: ResultWaiter,
-        log_records: LogProcessingRepository = LogProcessingRepository(),
     ) -> None:
         self._client = client
-        self._session_maker = session_maker
         self._parser_clients = parser_clients
         self._result_waiter = result_waiter
-        self._log_records = log_records
         self._processing_messages: set[int] = set()
 
     async def get_text_channel(self, channel_id: int) -> discord.abc.Messageable | None:
@@ -67,16 +61,6 @@ class AttachmentProcessor:
                 return None
         return channel if isinstance(channel, discord.abc.Messageable) else None
 
-    async def _already_processed(self, tournament_id: int, filename: str) -> bool:
-        async with self._session_maker() as session:
-            return await self._log_records.exists_done(session, tournament_id=tournament_id, filename=filename)
-
-    async def _get_latest_log_error(self, tournament_id: int, filename: str) -> str | None:
-        async with self._session_maker() as session:
-            return await self._log_records.get_latest_error_message(
-                session, tournament_id=tournament_id, filename=filename
-            )
-
     async def process_attachment(
         self,
         tournament_id: int,
@@ -87,28 +71,18 @@ class AttachmentProcessor:
     ) -> AttachmentFeedbackResult:
         """
         Download and process a single attachment.
-        If wait_for_result is True, polls until processing completes and returns
-        the actual success/failure. If False, returns after queuing.
+        If wait_for_result is True, wait for this upload's correlated native
+        outcome. Otherwise return after queuing.
         """
         try:
-            # Skip already-processed logs to avoid re-processing on restart
-            if await self._already_processed(tournament_id, attachment.filename):
-                logger.info(f"⏭️ Skipping {attachment.filename} - already processed")
-                return AttachmentFeedbackResult(
-                    filename=attachment.filename,
-                    state=AttachmentFeedbackState.ALREADY_PROCESSED,
-                )
-
             logger.info(f"📥 Downloading {attachment.filename} for tournament {tournament_id}")
             async with await self._parser_clients.create(destination="discord") as http_client:
                 # Download file from Discord
                 response = await http_client.get(attachment.url)
                 response.raise_for_status()
 
-            # Hand the log to parser over RabbitMQ (base64); the worker stores it to S3,
-            # upserts the LogProcessingRecord, and queues processing. Replaces the former
-            # direct HTTP upload (POST /logs/{id}/upload) so the bot no longer calls
-            # parser over HTTP.
+            # Hash identity is decided from the downloaded bytes by the parser;
+            # a display filename is never proof that an upload was processed.
             broker = optional_broker()
             if broker is None:
                 logger.warning(f"⚠️ RabbitMQ not available, cannot upload {attachment.filename}")
@@ -125,17 +99,24 @@ class AttachmentProcessor:
                 content_type=attachment.content_type,
                 uploader_discord_name=uploader_discord_name,
             )
-            await publish_message(
-                broker,
-                event.model_dump(),
-                UPLOAD_MATCH_LOG_QUEUE,
-                logger=logger.bind(tournament_id=tournament_id, filename=attachment.filename),
-            )
-            logger.success(f"✅ {attachment.filename} uploaded and queued for processing")
+            event.correlation_id = event.event_id
+            if wait_for_result:
+                self._result_waiter.register(event.event_id)
+            try:
+                await publish_message(
+                    broker,
+                    event.model_dump(),
+                    UPLOAD_MATCH_LOG_QUEUE,
+                    logger=logger.bind(tournament_id=tournament_id, filename=attachment.filename),
+                    correlation_id=event.event_id,
+                )
+            except BaseException:
+                self._result_waiter.cancel(event.event_id)
+                raise
 
             if wait_for_result:
-                processing_result = await self._result_waiter.wait(tournament_id, attachment.filename)
-                if processing_result is True:
+                processing_result = await self._result_waiter.wait(event.event_id)
+                if processing_result is not None and processing_result.status == "done":
                     return AttachmentFeedbackResult(
                         filename=attachment.filename,
                         state=AttachmentFeedbackState.PROCESSED_OK,
@@ -147,10 +128,21 @@ class AttachmentProcessor:
                         state=AttachmentFeedbackState.TIMED_OUT,
                     )
 
+                if processing_result.status == "awaiting_link":
+                    return AttachmentFeedbackResult(
+                        filename=attachment.filename,
+                        state=AttachmentFeedbackState.AWAITING_LINK,
+                        error_message=processing_result.error_message,
+                    )
+
                 return AttachmentFeedbackResult(
                     filename=attachment.filename,
-                    state=AttachmentFeedbackState.PROCESSED_FAILED,
-                    error_message=await self._get_latest_log_error(tournament_id, attachment.filename),
+                    state=(
+                        AttachmentFeedbackState.UPLOAD_FAILED
+                        if processing_result.ingest_job_id is None
+                        else AttachmentFeedbackState.PROCESSED_FAILED
+                    ),
+                    error_message=processing_result.error_message,
                 )
 
             return AttachmentFeedbackResult(

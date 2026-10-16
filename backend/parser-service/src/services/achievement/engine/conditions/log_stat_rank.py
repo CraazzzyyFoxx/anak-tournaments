@@ -12,11 +12,11 @@ from __future__ import annotations
 from typing import Any
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from shared.models.achievements.achievement import AchievementGrain
-from src import models
+from shared.repository.stats_queries import player_facts
 
 from ..context import EvalContext
 from . import ResultSet, register
@@ -24,12 +24,12 @@ from . import ResultSet, register
 # Stored as a 0–100 (or 0–1) rate, not a count. Never rank these as value/time.
 _RATE_STATS = frozenset(
     {
-        "CriticalHitAccuracy",
-        "ScopedCriticalHitAccuracy",
-        "ScopedAccuracy",
-        "WeaponAccuracy",
-        "KD",
-        "KDA",
+        "critical_hit_accuracy",
+        "scoped_critical_hit_accuracy",
+        "scoped_accuracy",
+        "weapon_accuracy",
+        "kd",
+        "kda",
     }
 )
 
@@ -38,19 +38,19 @@ _RATE_STATS = frozenset(
 # HeroTimePlayed a second time would rank the shortest appearance highest.
 _NO_TIME_NORMALIZE = frozenset(
     {
-        "ImpactPoints",
-        "ImpactRank",
-        "OverperformanceScore",
-        "Performance",
-        "PerformancePoints",
+        "impact_points",
+        "impact_rank",
+        "overperformance_score",
+        "performance",
+        "performance_points",
     }
 )
 
 # Prefer the original hits/shots fraction when both sides are logged.
 _RATE_FRACTIONS: dict[str, tuple[str, str]] = {
-    "CriticalHitAccuracy": ("CriticalHits", "ShotsFired"),
-    "WeaponAccuracy": ("ShotsHit", "ShotsFired"),
-    "ScopedAccuracy": ("ScopedShotsHit", "ScopedShotsFired"),
+    "critical_hit_accuracy": ("critical_hits", "shots_fired"),
+    "weapon_accuracy": ("shots_hit", "shots_fired"),
+    "scoped_accuracy": ("scoped_shots_hit", "scoped_shots_fired"),
 }
 
 
@@ -60,7 +60,7 @@ _RATE_FRACTIONS: dict[str, tuple[str, str]] = {
     description="Ranked by a log stat across the tournament",
     required=("stat",),
     optional=("limit", "normalize_by_time", "order"),
-    depends_on=("matches.statistics",),
+    depends_on=("stats.fact",),
 )
 async def execute_log_stat_rank(
     session: AsyncSession,
@@ -111,104 +111,86 @@ async def execute_log_stat_rank(
 
 
 def _count_query(stat: str, context: EvalContext, *, normalize_by_time: bool) -> sa.Select:
-    log_value = sa.func.sum(sa.case((models.MatchStatistics.name == stat, models.MatchStatistics.value), else_=0))
-    time_value = sa.func.sum(
-        sa.case(
-            (models.MatchStatistics.name == "HeroTimePlayed", models.MatchStatistics.value),
-            else_=0,
-        )
-    )
-    if normalize_by_time:
-        metric = log_value / sa.func.nullif(time_value, 0)
-        stat_names = [stat, "HeroTimePlayed"]
-    else:
-        metric = log_value
-        stat_names = [stat]
-
-    per_user = (
-        sa.select(
-            models.MatchStatistics.user_id.label("user_id"),
-            models.Encounter.tournament_id.label("tournament_id"),
-            metric.label("metric"),
-        )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+    facts = player_facts(discipline="overwatch")
+    log_value = sa.func.sum(sa.case((facts.c.stat_code == stat, facts.c.value), else_=0))
+    time_value = sa.func.sum(sa.case((facts.c.stat_code == "hero_time_played", facts.c.value), else_=0))
+    metric = log_value / sa.func.nullif(time_value, 0) if normalize_by_time else log_value
+    stat_codes = [stat, "hero_time_played"] if normalize_by_time else [stat]
+    query = (
+        sa.select(facts.c.player_id.label("user_id"), facts.c.tournament_id, metric.label("metric"))
         .where(
-            models.MatchStatistics.name.in_(stat_names),
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            facts.c.stat_code.in_(stat_codes),
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
+            facts.c.workspace_id == context.workspace_id,
         )
-        .group_by(models.MatchStatistics.user_id, models.Encounter.tournament_id)
+        .group_by(facts.c.player_id, facts.c.tournament_id)
     )
     if context.tournament:
-        per_user = per_user.where(models.Encounter.tournament_id == context.tournament.id)
-    return per_user
+        query = query.where(facts.c.tournament_id == context.tournament.id)
+    return query
 
 
 def _fraction_query(stat: str, context: EvalContext) -> sa.Select:
     numerator, denominator = _RATE_FRACTIONS[stat]
-    num_value = sa.func.sum(sa.case((models.MatchStatistics.name == numerator, models.MatchStatistics.value), else_=0))
-    den_value = sa.func.sum(
-        sa.case((models.MatchStatistics.name == denominator, models.MatchStatistics.value), else_=0)
-    )
-    per_user = (
+    facts = player_facts(discipline="overwatch")
+    num_value = sa.func.sum(sa.case((facts.c.stat_code == numerator, facts.c.value), else_=0))
+    den_value = sa.func.sum(sa.case((facts.c.stat_code == denominator, facts.c.value), else_=0))
+    query = (
         sa.select(
-            models.MatchStatistics.user_id.label("user_id"),
-            models.Encounter.tournament_id.label("tournament_id"),
+            facts.c.player_id.label("user_id"),
+            facts.c.tournament_id,
             (num_value / sa.func.nullif(den_value, 0)).label("metric"),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(
-            models.MatchStatistics.name.in_([numerator, denominator]),
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            facts.c.stat_code.in_((numerator, denominator)),
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
+            facts.c.workspace_id == context.workspace_id,
         )
-        .group_by(models.MatchStatistics.user_id, models.Encounter.tournament_id)
+        .group_by(facts.c.player_id, facts.c.tournament_id)
     )
     if context.tournament:
-        per_user = per_user.where(models.Encounter.tournament_id == context.tournament.id)
-    return per_user
+        query = query.where(facts.c.tournament_id == context.tournament.id)
+    return query
 
 
 def _time_weighted_rate_query(stat: str, context: EvalContext) -> sa.Select:
-    """Mean of the stored rate, weighted by HeroTimePlayed — not rate/time."""
-    rate_row = aliased(models.MatchStatistics)
-    time_row = aliased(models.MatchStatistics)
-    per_user = (
+    """Mean of the stored rate, weighted by playtime — not rate/time."""
+    rate_row = player_facts(discipline="overwatch")
+    time_row = rate_row.alias("playtime")
+    # Both scopes reduce the same observations in the same native order, even
+    # when PostgreSQL chooses a different join or grouping plan.
+    reduction_order = (rate_row.c.match_id, rate_row.c.workspace_member_id)
+    query = (
         sa.select(
-            rate_row.user_id.label("user_id"),
-            models.Encounter.tournament_id.label("tournament_id"),
-            (sa.func.sum(rate_row.value * time_row.value) / sa.func.nullif(sa.func.sum(time_row.value), 0)).label(
-                "metric"
-            ),
+            rate_row.c.player_id.label("user_id"),
+            rate_row.c.tournament_id,
+            (
+                sa.func.sum(aggregate_order_by(rate_row.c.value * time_row.c.value, *reduction_order))
+                / sa.func.nullif(sa.func.sum(aggregate_order_by(time_row.c.value, *reduction_order)), 0)
+            ).label("metric"),
         )
         .select_from(rate_row)
         .join(
             time_row,
             sa.and_(
-                time_row.match_id == rate_row.match_id,
-                time_row.user_id == rate_row.user_id,
-                time_row.round == 0,
-                time_row.hero_id.is_(None),
-                time_row.name == "HeroTimePlayed",
+                time_row.c.match_id == rate_row.c.match_id,
+                time_row.c.workspace_member_id == rate_row.c.workspace_member_id,
+                time_row.c.encounter_team_id == rate_row.c.encounter_team_id,
+                time_row.c.segment == 0,
+                time_row.c.entity_id.is_(None),
+                time_row.c.stat_code == "hero_time_played",
             ),
         )
-        .join(models.Match, models.Match.id == rate_row.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(
-            rate_row.name == stat,
-            rate_row.round == 0,
-            rate_row.hero_id.is_(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            rate_row.c.stat_code == stat,
+            rate_row.c.segment == 0,
+            rate_row.c.entity_id.is_(None),
+            rate_row.c.workspace_id == context.workspace_id,
         )
-        .group_by(rate_row.user_id, models.Encounter.tournament_id)
+        .group_by(rate_row.c.player_id, rate_row.c.tournament_id)
     )
     if context.tournament:
-        per_user = per_user.where(models.Encounter.tournament_id == context.tournament.id)
-    return per_user
+        query = query.where(rate_row.c.tournament_id == context.tournament.id)
+    return query

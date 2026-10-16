@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import match_context
 from src import models
 from src.domain.achievement_duel import Duel
 from src.domain.achievement_stage_filters import join_bracket_context
@@ -19,6 +20,7 @@ from src.domain.achievement_stage_filters import join_bracket_context
 from ..context import EvalContext
 from . import ResultSet, register
 from .encounter import join_final_encounters
+from .match_win import winning_teams
 
 
 def _series_roster_query() -> sa.Select:
@@ -56,6 +58,9 @@ async def execute_encounter_result(
 
     where = [
         models.Tournament.workspace_id == context.workspace_id,
+        models.Encounter.workspace_id == context.workspace_id,
+        models.Encounter.discipline == "overwatch",
+        models.WorkspaceMember.workspace_id == context.workspace_id,
         models.Encounter.status == "COMPLETED",
         # A draw has no winner and no loser, so it qualifies neither side.
         duel.decided,
@@ -116,7 +121,7 @@ async def execute_encounter_result(
     grain=AchievementGrain.user_encounter,
     description="Won a series after trailing by this many maps",
     optional=("min_deficit",),
-    depends_on=("tournament.encounter", "tournament.player", "matches.match"),
+    depends_on=("tournament.encounter", "tournament.player", "stats.match", "stats.fact"),
 )
 async def execute_encounter_comeback(
     session: AsyncSession,
@@ -135,6 +140,8 @@ async def execute_encounter_comeback(
     min_deficit = params.get("min_deficit", 2)
 
     duel = Duel()
+    match = match_context(discipline="overwatch")
+    winners = winning_teams()
     maps_query = duel.join(
         sa.select(
             models.Encounter.id.label("encounter_id"),
@@ -143,18 +150,17 @@ async def execute_encounter_comeback(
             duel.loser_team_id.label("loser_team_id"),
             duel.winner_score.label("winner_score"),
             duel.loser_score.label("loser_score"),
-            models.Match.id.label("match_id"),
-            models.Match.map_index.label("map_index"),
-            models.Match.home_team_id.label("map_home_team_id"),
-            models.Match.away_team_id.label("map_away_team_id"),
-            models.Match.home_score.label("map_home_score"),
-            models.Match.away_score.label("map_away_score"),
+            match.c.id.label("match_id"),
+            match.c.position,
+            winners.c.tournament_team_id.label("map_winner"),
         )
-        .select_from(models.Match)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+        .select_from(match)
+        .join(winners, winners.c.match_id == match.c.id)
+        .join(models.Encounter, models.Encounter.id == match.c.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
     ).where(
         models.Tournament.workspace_id == context.workspace_id,
+        match.c.workspace_id == context.workspace_id,
         models.Encounter.status == "COMPLETED",
         duel.decided,
     )
@@ -173,17 +179,8 @@ async def execute_encounter_comeback(
 
         won = lost = 0
         max_deficit = 0
-        # NULL ``map_index`` sorts last: an unpositioned map is of unknown order,
-        # so it cannot be assumed to have come first.
-        for row in sorted(rows, key=lambda r: (r.map_index is None, r.map_index or 0, r.match_id)):
-            if row.map_home_score > row.map_away_score:
-                map_winner = row.map_home_team_id
-            elif row.map_away_score > row.map_home_score:
-                map_winner = row.map_away_team_id
-            else:  # a drawn map moves neither side
-                continue
-            # Map orientation is independent of the encounter's, so resolve the
-            # map's winner onto the encounter's two teams rather than its sides.
+        for row in sorted(rows, key=lambda r: (r.position, r.match_id)):
+            map_winner = row.map_winner
             if map_winner == winner_team_id:
                 won += 1
             elif map_winner == loser_team_id:
@@ -215,6 +212,7 @@ async def execute_encounter_comeback(
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
         .where(
             models.Tournament.workspace_id == context.workspace_id,
+            models.WorkspaceMember.workspace_id == context.workspace_id,
             models.Player.team_id.in_(winning_team_ids),
             models.Player.is_substitution.is_(False),
         )

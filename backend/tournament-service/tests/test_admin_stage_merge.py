@@ -185,6 +185,7 @@ class AdminStageDeleteOrderTests(IsolatedAsyncioTestCase):
         remaining_c = SimpleNamespace(id=12, order=2)
 
         session = SimpleNamespace(
+            scalar=AsyncMock(return_value=1),
             delete=AsyncMock(),
             flush=AsyncMock(),
             commit=AsyncMock(),
@@ -192,6 +193,7 @@ class AdminStageDeleteOrderTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(stage_service.stage_service, "get_stage", AsyncMock(return_value=deleted_stage)),
+            patch.object(stage_service, "capture_owner_delete", AsyncMock(return_value=[])),
             patch.object(stage_service.stage_service.encounter_repo, "delete_for_stage", AsyncMock()),
             patch.object(stage_service.stage_service.standing_repo, "delete_for_stage", AsyncMock()),
             patch.object(stage_service.stage_service, "_publish_structure_changed", AsyncMock()),

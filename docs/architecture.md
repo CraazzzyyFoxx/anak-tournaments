@@ -166,10 +166,10 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
-`public`, `tournament`, `encounter`, `catalog`, `roster`, `matches`, `overwatch_rank`,
-`balancer`, `achievements`, `analytics`, `log_processing`, `realtime`, plus two legacy schemas:
-`overwatch` — the old catalog, read by nobody at runtime and dropped by the gated `discipline02`;
-and `casual` — mix history that nothing reads since V2, dropped by the gated `mixround02`.
+`public`, `tournament`, `encounter`, `catalog`, `roster`, `stats`, `overwatch_rank`,
+`balancer`, `achievements`, `analytics`, `realtime`. Retained migration-only schemas include
+`matches` and `log_processing` (statistics cutover source), `overwatch` (old catalog, gated
+`discipline02`) and `casual` (old mix history, gated `mixround02`); services do not use them.
 Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
 
 - **Multitenancy.** `public.workspace` is the tenant root. Nearly every business table
@@ -259,6 +259,17 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   ladder/crests. Open-ended tiers stay open-ended. The legacy physical workspace pointer and old rank
   role columns remain unmapped until P9; ORM diagrams do not inventory that migration-only storage.
   See the [P3 release and cutover guide](./multi-game-p3-ranks-release.md).
+- **Statistics and ingestion (P4).** `stats.match` binds parsed observations to one
+  `encounter.game`, with direct workspace/discipline ownership. `match_team.source_position`
+  preserves decoder order; public duel fields use historical encounter slots. Facts have native
+  participant/member/entity/segment/stat grain; events preserve duplicate and nullable endpoints.
+  Observed scores remain separate from official game results. Discipline-qualified `stat_def`
+  and `event_type` projection never reuses a same-code definition from another game.
+  `stats.ingest_job` owns actual hash/raw-reference provenance and upload lifecycle, including
+  `awaiting_link`. Baselines and the entity global-statistics MV also live in `stats`.
+  Complete cutover receipts and narrow transaction-bound audit chains distinguish unchanged,
+  review-required and unexplained data. Membership creation is absent→present only; identity
+  changes require the original merge mapping. See the [cutover/operator notes](../backend/README.md#p4-statistics-cutover-stats01).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
   `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only
@@ -353,6 +364,10 @@ serve, recreates the stack (`make prod-up`), and finally publishes the GitHub Re
 notes rendered from the Conventional Commit subjects since the previous tag by
 [`ops/release/changelog.sh`](../ops/release/changelog.sh). The Release is written last on
 purpose: it means "this is what production is running", not "somebody clicked publish".
+
+The `stats01` maintenance cutover is an exception: this ordinary rolling sequence is insufficient.
+All writers must be drained for reviewed preparation, upgrade and immutable initial receipt capture;
+backup/restore rehearsal and the later deletion gate remain explicit release prerequisites.
 
 Nothing builds on the server and no self-hosted runner takes part. `workflow_dispatch`
 deploys a tag without the gates (an operator's call, and the only way out while CI is

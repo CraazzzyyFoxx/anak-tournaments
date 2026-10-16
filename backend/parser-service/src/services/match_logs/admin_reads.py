@@ -17,7 +17,7 @@ import asyncio
 
 import httpx
 from loguru import logger
-from sqlalchemy import ColumnElement, or_
+from sqlalchemy import ColumnElement, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
@@ -70,17 +70,34 @@ async def _fetch_queue_depths() -> list[schemas.QueueDepth]:
         return [_error_depth(queue_name) for queue_name in MONITORED_QUEUES]
 
 
-def _record_to_dict(record: models.LogProcessingRecord) -> dict:
+def history_query():
+    job = models.IngestJob
+    return (
+        select(job, models.Tournament.name, models.Encounter.name, models.User.name)
+        .outerjoin(
+            models.Tournament,
+            models.Tournament.id == job.hint_tournament_id,
+        )
+        .outerjoin(models.Encounter, models.Encounter.id == job.hint_encounter_id)
+        .outerjoin(
+            models.User,
+            models.User.id == job.uploader_user_id,
+        )
+    )
+
+
+def _record_to_dict(record: models.IngestJob, tournament_name=None, encounter_name=None, uploader_name=None) -> dict:
     return {
         "id": record.id,
-        "tournament_id": record.tournament_id,
-        "tournament_name": record.tournament.name if record.tournament else None,
-        "attached_encounter_id": record.attached_encounter_id,
-        "attached_encounter_name": record.attached_encounter.name if record.attached_encounter else None,
+        "tournament_id": record.hint_tournament_id,
+        "tournament_name": tournament_name,
+        "attached_encounter_id": record.hint_encounter_id,
+        "attached_encounter_game_id": record.hint_encounter_game_id,
+        "attached_encounter_name": encounter_name,
         "filename": record.filename,
-        "status": record.status.value if hasattr(record.status, "value") else record.status,
-        "source": record.source.value if hasattr(record.source, "value") else record.source,
-        "uploader_name": record.uploader.name if record.uploader else None,
+        "status": record.status.value,
+        "source": record.source_kind,
+        "uploader_name": uploader_name,
         "error_message": record.error_message,
         "attempts": record.attempts or 0,
         "created_at": record.created_at.isoformat() if record.created_at else None,
@@ -95,19 +112,14 @@ def history_scope_conditions(
     encounter_id: int | None,
     workspace_id: int | None,
 ) -> list[ColumnElement[bool]]:
-    """WHERE terms selecting the record set a history/stats read is scoped to.
-
-    The workspace term is an EXISTS on the ``tournament`` relationship rather than
-    a join so the same list composes into a plain ``SELECT``, a ``count()`` and the
-    stats aggregate without three different FROM shapes.
-    """
+    """Native workspace ownership remains available even when a hint is cleared."""
     conditions: list[ColumnElement[bool]] = []
     if tournament_id is not None:
-        conditions.append(models.LogProcessingRecord.tournament_id == tournament_id)
+        conditions.append(models.IngestJob.hint_tournament_id == tournament_id)
     if encounter_id is not None:
-        conditions.append(models.LogProcessingRecord.attached_encounter_id == encounter_id)
+        conditions.append(models.IngestJob.hint_encounter_id == encounter_id)
     if workspace_id is not None:
-        conditions.append(models.LogProcessingRecord.tournament.has(models.Tournament.workspace_id == workspace_id))
+        conditions.append(models.IngestJob.workspace_id == workspace_id)
     return conditions
 
 
@@ -126,10 +138,16 @@ def history_search_condition(search: str | None) -> ColumnElement[bool] | None:
     # Escape LIKE wildcards so a filename containing "_" stays a literal match.
     pattern = "%{}%".format(term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_"))
     return or_(
-        models.LogProcessingRecord.filename.ilike(pattern, escape="\\"),
-        models.LogProcessingRecord.error_message.ilike(pattern, escape="\\"),
-        models.LogProcessingRecord.uploader.has(models.User.name.ilike(pattern, escape="\\")),
-        models.LogProcessingRecord.attached_encounter.has(models.Encounter.name.ilike(pattern, escape="\\")),
+        models.IngestJob.filename.ilike(pattern, escape="\\"),
+        models.IngestJob.error_message.ilike(pattern, escape="\\"),
+        exists()
+        .where(models.User.id == models.IngestJob.uploader_user_id, models.User.name.ilike(pattern, escape="\\"))
+        .correlate(models.IngestJob),
+        exists()
+        .where(
+            models.Encounter.id == models.IngestJob.hint_encounter_id, models.Encounter.name.ilike(pattern, escape="\\")
+        )
+        .correlate(models.IngestJob),
     )
 
 

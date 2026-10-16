@@ -15,6 +15,7 @@ from shared.repository import (
     resolve_workspace_member_id,
 )
 from shared.services.ontology import resolve_role_ref
+from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from src import models, schemas
 from src.services.tournament.events import STRUCTURE_RESOURCES, publish_tournament_invalidation
 
@@ -278,9 +279,18 @@ class AdminTeamService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
         tournament_id = team.tournament_id
+        evidence = await capture_owner_delete(session, team_id=team_id)
+        tournament = await self.tournament_repo.get(session, tournament_id)
         await self.standing_repo.delete_for_team(session, team_id)
         await self.team_repo.delete(session, team)
         await self._publish_structure_changed(session, tournament_id)
+        await stage_owner_delete(
+            session,
+            evidence,
+            workspace_id=tournament.workspace_id,
+            entity_type="team",
+            entity_id=team_id,
+        )
         await session.commit()
 
     # ─── Player Management ───────────────────────────────────────────────────

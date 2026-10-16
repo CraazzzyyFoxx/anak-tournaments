@@ -3,7 +3,7 @@
 The queue arguments name a dead-letter exchange and routing key, but RabbitMQ
 does not create the target: an expired message routed to `dlx` with a routing key
 nothing is bound to is discarded silently. That is how a match-log job could time
-out on its 5-minute TTL and vanish, leaving its LogProcessingRecord on "Queued"
+out on its 5-minute TTL and vanish, leaving its IngestJob on "Queued"
 with nothing to inspect. This test fails when a new dead-lettering subscriber is
 added without extending ``serve._OWNED_DLQS``.
 """

@@ -26,20 +26,17 @@ System overview: [`../../docs/architecture.md`](../../docs/architecture.md). Cod
 
 ## Responsibilities
 
-- **Match-log ingestion** — the authority for the `log_processing.record` lifecycle and for every
-  row parsed out of a log: matches (one per played map), per-round statistics, the kill feed and
-  the assist/ultimate/hero-swap event stream.
-- **Catalog name resolution** — Overwatch logs carry map/gamemode/hero names in the reporting
-  client's locale, so names resolve through the canonical name or `catalog.entity.aliases`, scoped
-  to `discipline = 'overwatch'` and kind `map`, `mode` or `character`, never through code.
-  Unresolved names land in `catalog.alias_miss` — the "add an alias" queue behind `/admin/aliases`,
-  keyed on `(discipline, kind, raw_name)` with an occurrence counter. A map/gamemode miss is written
-  in its own transaction so the 404 that fails the log cannot roll it away; hero misses are batched
-  per log because they are soft (an unknown hero drops that stat/kill row and the log still completes).
-  The nullable `last_ingest_job_id` breadcrumb currently holds a `log_processing.record` id;
-  `stats01` will remap or clear it before adding the ingest-job FK in P4.
-- **Player resolution from logs** — creates virtual players for battle tags with no account and
-  upserts the battlenet `social_account` when a known player renames mid-log.
+- **Match-log ingestion** — owns the `stats.ingest_job` lifecycle and native observations in
+  `stats.match`, `stats.match_team`, `stats.match_player`, `stats.segment`, `stats.fact` and
+  `stats.event`. One match belongs to one existing live encounter game.
+- **Catalog name resolution** — Overwatch map/gamemode/hero names resolve through canonical names
+  or `catalog.entity.aliases`, scoped to the discipline and kind, never through code. Unknown names
+  fail the attempt rather than silently dropping observations. After rollback, their
+  `catalog.alias_miss` breadcrumbs are committed separately with the actual `stats.ingest_job` id;
+  adding the missing alias and explicitly retrying preserves the original raw bytes.
+- **Player resolution from logs** — resolves real workspace members and historical game
+  participations, including substitutes and event-only players. Roster snapshot repairs and
+  battlenet renames share the observation transaction; ingestion does not grant workspace access.
 - **Overwatch rank collection** — selects due battle tags, fetches career summaries from OverFast
   and keeps the per-tag collection state, snapshot series and fetch log.
 - **Achievement evaluation** — owns the condition-tree engine, the rules admin surface, the
@@ -73,9 +70,9 @@ The full method list with request/response schemas is published at `/api/docs`, 
 
 | Queue | Event | Effect |
 | --- | --- | --- |
-| `upload_match_log` | `UploadMatchLogEvent` | Store a bot-uploaded log (base64 over RabbitMQ) to S3, upsert its record, enqueue processing |
-| `process_match_log` | `ProcessMatchLogEvent` | Parse one log file; own channel, prefetch 2 |
-| `process_tournament_logs` | `ProcessTournamentLogsEvent` | List a tournament's stored logs in S3 and fan out one `ProcessMatchLogEvent` per file |
+| `upload_match_log` | `UploadMatchLogEvent` | Persist the original decoded bytes to a content-addressed S3 key, create/find the native ingest job, enqueue its id |
+| `process_match_log` | `ProcessMatchLogEvent` | Process one authorized `ingest_job_id`; own channel, prefetch 2 |
+| `process_tournament_logs` | `ProcessTournamentLogsEvent` | Requeue the tournament's actual native jobs and fan out one job-id event each, including imported raw references |
 | `achievement_evaluate` | `AchievementEvaluateEvent` | Run the achievement engine for a workspace |
 | `achievement_evaluate.deferred` | `AchievementEvaluateEvent` | Resumes a `queued` run an unverified workspace's manual/`rule_version_bump` recompute was parked as; own channel, prefetch 1 |
 | `tournament_encounter_completed` | `EncounterCompletedEvent` | Bound to the `tournament.events` exchange; fills in the encounter's Push/Clash map scores (`match_logs/objectiveless.py`), then enqueues an achievement evaluation |
@@ -93,57 +90,66 @@ take `upload_match_log`, `process_tournament_logs` and `achievement_evaluate` do
 
 ### Ingestion path
 
-1. **Arrival.** Either the gateway relays a multipart upload as base64 to `rpc.parser.logs.upload`
-   (`log.create` on the tournament's workspace), or the Discord bot publishes an
-   `UploadMatchLogEvent` on `upload_match_log`. On the bot path the uploader's Discord name is
-   resolved to a `social_account` → player, and the record source is `discord`; otherwise `manual`.
-2. **Store.** `services/match_logs/uploads.py` rejects a filename containing `/`, `\` or `..`,
-   rejects non-UTF-8 bytes, PUTs the object to S3 and upserts a `log_processing.record`. An
-   existing `pending`/`failed` row for the same `(tournament_id, filename)` is reused and reset to
-   `pending` with `attempts = 0` — a fresh upload of a filename may carry different content, so it
-   gets a fresh retry budget.
-3. **Enqueue.** A `ProcessMatchLogEvent(tournament_id, filename)` goes to `process_match_log`.
-   `rpc.parser.logs.process_tournament` reaches the same point by fanning out one event per stored
-   file rather than parsing a whole tournament inline.
-4. **Parse.** `flows.process_match_log` fetches the object from S3. A missing/empty object or one
-   over `MAX_MATCH_LOG_BYTES` fails the record terminally (`fail_unstarted`) and raises 404/413 —
-   terminal on purpose, because a row left on `pending` would be requeued by the reaper forever.
-   Otherwise the record moves to `processing` and `MatchLogProcessor` walks the log lines into
-   `matches.match` (one row per played map, linked to its encounter and back to the log record),
-   `matches.statistics` (long format: one row per match/round/team/player/hero/stat, raw stats plus
-   derived KD/KDA/Assists/DamageDelta and the MVP-impact stats), `matches.kill_feed` and
-   `matches.event` (offensive/defensive assists, ultimate charge/start/end, hero swaps). Existing
-   stats, events and kills for that match are cleared first, so a reparse replaces rather than
-   duplicates. Completing an encounter enqueues `TournamentChangedEvent`,
-   `TournamentStandingsInvalidatedEvent` and `EncounterCompletedEvent` through the outbox.
-5. **Result.** Exactly once per attempt, and based solely on whether the parse succeeded, the
-   worker publishes a `MatchLogProcessedEvent{tournament_id, filename, status}` to the **fanout**
-   exchange `match_log.result`.
-6. **Follow-up.** On success the record is marked `done`, a `logs.updated` realtime signal is
-   published, and an `AchievementEvaluateEvent` is enqueued for the tournament's workspace. That
-   evaluation is deliberately downstream of the result publish: a failing evaluation retries the
-   message but must not flip the reported ingestion outcome.
+1. **Arrival.** The gateway relays a multipart upload as base64 to `rpc.parser.logs.upload`
+   (`log.create` on the tournament's workspace), or Discord publishes `UploadMatchLogEvent`.
+   Discord resolves the uploader through their linked social account; source is `discord` or
+   `upload`. Filenames are display metadata, not job identity.
+2. **Store.** `uploads.py` validates size, UTF-8, a finished log, and a filename of at most
+   500 characters without path separators, `..` or NUL. It hashes the actual bytes (SHA-256),
+   stores those same bytes at `logs/{tournament_id}/{content_hash}`, then records the job.
+   A failed PUT never creates a dangling job; a failed DB insert may leave an unreferenced object.
+   Imported `raw_ref` values are preserved and remain readable by their job ids.
+3. **Deduplicate.** New uploads use `external_id = NULL` and a workspace/content-hash unique key.
+   Concurrent uploads of identical bytes return the same job without resetting its status,
+   attempts, filename, uploader or hints. Same filename with different bytes creates distinct
+   jobs and objects. A same-workspace hash with conflicting discipline/tournament intent returns
+   `stats_upload_scope_conflict` (409); invalid owner/game hints return
+   `stats_upload_hint_conflict` (422). Different workspaces never deduplicate together.
+4. **Enqueue and claim.** `ProcessMatchLogEvent` carries only `ingest_job_id` plus common event
+   metadata. Processing uses that row's authorized `raw_ref`, checks the stored hash, and commits
+   the `processing` claim/attempt before parsing. Ownership is the exact saved
+   `(attempts, started_at)` pair, checked before observations, completion and failure writes;
+   an explicit retry may reset the attempt budget but cannot revive an old worker's claim.
+   A delivery finding an active claim acknowledges without parsing or publishing a terminal
+   result. Duplicate terminal delivery returns the persisted state. Bulk processing enumerates
+   native jobs, never guessed S3 filenames.
+5. **Bind before replacement.** The parser resolves teams, map and map-pool restrictions, then
+   locks the owning encounter and an existing noncancelled game. Workspace, discipline, map and
+   the game's exact two historical participants must agree; inactive historical participation
+   does not disappear. Zero or multiple matching games persist `awaiting_link`, with no
+   observation writes or parse-success achievement event. No newest-game heuristic or invented
+   game is used. An administrator can retry with `encounter_id` and `encounter_game_id`; omitted
+   hints are retained and a previously linked log cannot be reassigned.
+6. **Write atomically.** Native player/fact/event/segment rows use workspace-member and
+   encounter-team ids, with observed `source_position` independent of live slots. All scope,
+   vocabulary and participant constraints are validated before deleting the old children.
+   Reparse keeps the match id, replaces its observations and increments its revision once.
+   Score facts do not overwrite accepted live-game scores or `result_version`. Observation
+   replacement, score derivation, invalidation/achievement outbox rows, the `done` transition and
+   sealed `stats.reparse`/`stats.job_transition` evidence share one commit.
+7. **Failure and result.** Decode, validation or write failures first roll back the observation
+   transaction, then mark the matching claim `failed` separately, preserving the previous
+   successful revision. `awaiting_link` is neither success nor failure. After commit the worker
+   broadcasts the actual state in `MatchLogProcessedEvent`, with its job id and error text.
+   Only a failure before job creation has a null `ingest_job_id`; result delivery is best-effort.
 
-**Correlation.** The bot that uploaded a log blocks on the answer, but there is no reply-to on this
-path — the result is a broadcast. `MATCH_LOG_RESULT_EXCHANGE` is a fanout, so *every*
-discord-service replica receives every result; each replica hands it to its in-process
-`ResultWaiter`, which holds pending futures keyed on `(tournament_id, filename)`. Only the replica
-that actually has a future under that key resolves it; the others no-op. That is the whole
-correlation: the tuple is the correlation id, and the fanout exists because a work-queue would
-round-robin the result to a replica that is not waiting for it. A waiter that hears nothing within
-its timeout gives up on its own. This replaced Postgres `LISTEN`/`NOTIFY`, which pgBouncer
-transaction pooling breaks.
+**Correlation.** Discord sets `correlation_id` to the upload event's `event_id`, registers its
+future **before** publishing, and carries the same value through processing and result events
+(including broker correlation metadata). It then consumes the complete result, even if that
+result arrived during publish. `match_log.result` is a fanout so each replica can resolve its own
+registered correlation; filename/tournament are display fields only. Publish failure, timeout
+and cancellation remove the future. A pending or failed job is never inferred from a
+latest-by-filename database query.
 
-**Idempotency.** Before parsing, the raw bytes are hashed (SHA-256). If a `done` record already
-exists for the same `(tournament_id, filename, content_hash)`, the log is not reparsed: the latest
-incomplete record is finalised as `done` against that hash and the flow returns. This is what makes
-requeueing safe. `attempts` on the record is the retry budget, bumped on every transition to
-`processing` and bounded by `LOG_REAPER_MAX_ATTEMPTS`: a log that kills the worker before it can
-mark itself failed is retried a few times and then marked `failed` with an explicit message instead
-of cycling forever. A requeue that is never picked up costs no attempt, so a slow backlog drains
-rather than burning its budget. `failed` records are never auto-retried — the parser rejected them,
-so retrying is a loop on bad data; operators retry those from the admin console
-(`rpc.parser.logs.retry`, which resets the budget).
+**Follow-up and recovery.** Successful observation writes enqueue `AchievementEvaluateEvent`
+with `stats.match`, `stats.fact` and `stats.event`; lifecycle commits use `stats.ingest_job`.
+These durable outbox rows and their creation evidence share the writing transaction. The reaper
+claims stalled `pending`/`processing` jobs with `FOR UPDATE SKIP LOCKED`; only entering processing
+costs an attempt. Exhausted claims become `failed`. Neither `failed` nor `awaiting_link` is
+automatically retried. Explicit admin retry resets the budget after ownership/hint validation.
+
+**Maintenance cutover.** Drain old `process_match_log` messages before deploying the job-id
+schema; tournament/filename processing payloads have no compatibility adapter.
 
 ### Achievement engine
 
@@ -190,7 +196,7 @@ global cooldown key set on a 429.
 
 - `match_log.result` (fanout) — `MatchLogProcessedEvent`, consumed by discord-service.
 - `process_match_log` — fanned out by the tournament-wide job and by the stall reaper.
-- `achievement_evaluate` — enqueued after a successful parse and on `EncounterCompletedEvent`.
+- `achievement_evaluate` — transactionally enqueued for native observations, job lifecycle changes and `EncounterCompletedEvent`.
 - `achievement_evaluate.deferred` — a manual or `rule_version_bump` run for a workspace whose
   `verification_status` is `unverified`: the run row is created `queued` and the message carries its
   id, so the consumer finishes that row instead of opening a second one. `parse_complete` is never
@@ -198,9 +204,9 @@ global cooldown key set on a 429.
 - `rank_fetch` / `rank_fetch_priority` — from the collection tick, the admin collect RPC and
   registration approval.
 - `discord_commands` — `DiscordCommandEvent` for the on-demand channel-history backfill.
-- Through the transactional outbox (`public.outbox`): `TournamentChangedEvent`,
-  `TournamentStandingsInvalidatedEvent`, `EncounterCompletedEvent` when a parsed log completes an
-  encounter.
+- Through the transactional outbox (`public.event_outbox`): achievement evaluation and tournament
+  score/cache invalidations; `EncounterCompletedEvent` is emitted when the encounter is already
+  completed, without accepting a live-game result on the log's authority.
 
 ### Realtime
 
@@ -217,17 +223,16 @@ tick.
 | Job | Cadence | What it does |
 | --- | --- | --- |
 | OverFast rank collection | 60s tick | Selects and *claims* due battle tags and publishes one `FetchRankEvent` each — it never calls OverFast itself. Per-tag cadence comes from `next_eligible_at`, so changing the admin interval needs no restart. No-ops while collection is disabled in settings. |
-| Match-log stall reaper | `LOG_REAPER_TICK_SECONDS` (300s) | Requeues records the queue dropped: `pending` older than `LOG_REAPER_PENDING_AFTER_SECONDS` (kept above the 5-minute queue TTL so a message still waiting on a busy consumer is not double-parsed) and `processing` older than `LOG_REAPER_PROCESSING_AFTER_SECONDS`. Records past `LOG_REAPER_MAX_ATTEMPTS` are retired as `failed`. |
-| Failed match-log retention | 1h tick | Deletes the S3 object and the record of `failed` logs finished more than `FAILED_LOG_RETENTION_DAYS` (14) ago. Records a match still points at are kept; the object stays while another live record or a match uses the same key. Unfinished logs (no `MatchEnd`) are not retained at all — `validate` deletes them on the spot. |
+| Match-log stall reaper | `LOG_REAPER_TICK_SECONDS` (300s) | Requeues native jobs dropped by the queue: `pending` older than `LOG_REAPER_PENDING_AFTER_SECONDS` and `processing` older than `LOG_REAPER_PROCESSING_AFTER_SECONDS`. Exhausted attempts become `failed`; awaiting-link is never claimed. Keep the pending threshold above the queue TTL. |
+| Failed match-log retention | 1h tick | Deletes only expired failed jobs whose raw reference is unused by another job or match. A linked match keeps both its job row and raw object, not an orphaned object with no usable reference. Storage deletion failure keeps the row; an upload's raw-key lock prevents concurrent deletion. Alias breadcrumb SET NULL and deleted-owner evidence share the deletion transaction. Invalid/uncompleted uploads are rejected before persistence; processing never deletes raw bytes as validation cleanup. |
 | Subscription collection | 60s heartbeat | Decides inside the tick whether the admin-configured `interval_seconds` has elapsed (read from the append-only check log), then re-checks entitlements for active tournament participants. |
 
 ## Data owned
 
 Writes:
 
-- `matches` — `match`, `statistics`, `event`, `kill_feed`, `stat_baselines`.
-- `log_processing` — `record` (shared with discord-service, which uploads through this worker),
-  `discord_channel`.
+- `stats` — `ingest_job`, `match`, `match_team`, `match_player`, `segment`, `fact`, `event`,
+  `stat_baseline` and `discord_channel` (the Discord channel binding).
 - `overwatch_rank` — `battle_tag_state`, `rank_snapshot`, `fetch_log`.
 - `achievements` — `rule`, `evaluation_result`, `evaluation_run`, `override`.
 - `catalog` — `alias_miss` for unresolved Overwatch log names, plus `entity` aliases and rows
@@ -236,17 +241,17 @@ Writes:
 - `subscriptions` — `entitlement`, `check_log` (shared with tournament-service, which owns
   requirements).
 - `public.settings` — global key-namespaced settings.
-- As a side effect of ingestion: `players.user` and `players.social_account` (virtual players and
-  battlenet renames), and `encounter.team_member` snapshots (as substitutes) for players found in a log
-  who are not on the participation's roster.
+- As a side effect of ingestion: `players.social_account` for battlenet renames and
+  `encounter.team_member` snapshots for real workspace members observed as substitutes.
+- `public.audit_log` and `public.event_outbox` for transactional evidence and follow-up delivery.
 
-Reads only: `encounter.*` (encounters, participations, games, claims, reports), `tournament.*`
-(tournaments, bracket positions, teams, players), `public.workspace` and
-`public.workspace_member`, the division grid, `auth.user` for actor stamping.
+Reads: native `encounter.*` encounters, participations and games; `tournament.*` bracket/team/player
+data; `public.workspace`, `public.workspace_member`, the division grid and actor identities.
+No runtime reads or writes of the retired `matches` or `log_processing` schemas are needed.
 
 No service ships its own migrations — there is one Alembic project at
 [`../migrations/`](../migrations/). Entity diagrams for these tables:
-[`../../docs/database_erd.md`](../../docs/database_erd.md), sections *matches*, *ingestion*,
+[`../../docs/database_erd.md`](../../docs/database_erd.md), sections *stats*, *tournament*,
 *ranks*, *achievements*, *catalog* and *subscriptions*.
 
 ## Dependencies
@@ -257,8 +262,8 @@ No service ships its own migrations — there is one Alembic project at
   result fanout and the DLQs.
 - **Redis** — scheduler leader locks, rank-collection dedup/rate-limit/cooldown keys, the cashews
   cache for impact baselines, and the realtime publish channel.
-- **S3** — match-log file storage (`logs/{tournament_id}/{filename}`) and the catalog images
-  (`assets/{discipline}/{kind}/{slug}.{ext}`); an image already on the bucket survives a sync.
+- **S3** — new raw logs at `logs/{tournament_id}/{content_hash}` (imported keys remain unchanged)
+  and catalog images at `assets/{discipline}/{kind}/{slug}.{ext}`; an image already stored survives sync.
 - **OverFast API** (self-hosted on the production host, called directly) — player career
   summaries for rank collection and the Overwatch module's hero/map/gamemode catalog; the
   hero sync pulls all 13 Blizzard locales and only ever adds aliases. OverFast exposes no
@@ -318,6 +323,11 @@ The MVP-impact backfill is a separate CLI (idempotent, safe to rerun):
 uv run python backfill_impact.py [--tournament-id N]
 ```
 
+The backfill enumerates Overwatch matches through game → encounter ownership, replaces only the
+seven derived non-character fact codes across all segments, and preserves character/raw facts.
+Fight metadata is reassigned as complete JSON values. Each match has its own flush/evidence/commit
+boundary. Objectiveless resolution adjusts native score facts, not accepted live-game results.
+
 In compose, `parser-svc` is built from `backend/` with `APP_PATH=parser` and depends on healthy
 `redis`, `rabbitmq` and `proxy`. Dev runs `faststream run serve:app --reload` with the service and
 `shared/` bind-mounted and polling watchers (`WATCHFILES_FORCE_POLLING`); production runs the plain
@@ -343,9 +353,12 @@ consuming; liveness is judged from metrics and queue depth instead.
 - **Rank fetches are scheduler-retried, not broker-retried.** A transient OverFast failure is
   recorded with backoff and swallowed, so the message is not redelivered; the next tick picks the
   tag up when `next_eligible_at` says so.
-- **Baseline cache.** Impact baselines are cashews-cached for 10 minutes under a single literal key
-  scoped to `FORMULA_VERSION`; any process reading them (including `backfill_impact.py`) must call
-  `configure_cache()` first, or every cache operation raises.
+- **Baseline cache.** Impact baselines are cashews-cached for 10 minutes under
+  `backend:parser:impact_baselines:{discipline}:{FORMULA_VERSION}`. Every reader, including the
+  backfill CLI, must call `configure_cache()` before cache operations.
+- **Baseline input order.** The loader orders rows by `(match_id ASC, global user_id ASC)`
+  before the unchanged pandas reductions. Stable identity ordering prevents query-planner row
+  order from changing floating-point accumulation; formulas, rank handling and cache policy are unchanged.
 - **Replicas are safe.** All three schedulers are leader-locked in Redis, and rank enqueue plus
   match-log parsing are deduped (Redis keys and content hash respectively), so scaling the worker
   horizontally does not duplicate work.

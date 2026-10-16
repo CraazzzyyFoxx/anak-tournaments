@@ -10,13 +10,21 @@ import HeroImage from "@/components/hero/HeroImage";
 
 interface MatchKillFeedTimelineProps {
   matchId: number;
-  home: TeamWithStats;
-  away: TeamWithStats;
+  home: TeamWithStats | null;
+  away: TeamWithStats | null;
 }
 
 type Side = "home" | "away";
 
-const sideColor = (side: Side) => (side === "home" ? "var(--aqt-teal)" : "var(--aqt-rose)");
+const sideColor = (side: Side | null) =>
+  side === "home" ? "var(--aqt-teal)" : side === "away" ? "var(--aqt-rose)" : "var(--aqt-fg-muted)";
+
+const teamSide = (teamId: number | null, homeId: number | null, awayId: number | null): Side | null => {
+  if (teamId == null) return null;
+  if (teamId === homeId) return "home";
+  if (teamId === awayId) return "away";
+  return null;
+};
 
 const formatClock = (seconds: number) => {
   const s = Math.max(0, Math.floor(seconds));
@@ -25,12 +33,12 @@ const formatClock = (seconds: number) => {
 };
 
 type Item =
-  | { kind: "kill"; time: number; fight: number; kill: KillFeedEntry }
+  | { kind: "kill"; time: number; fight: number | null; kill: KillFeedEntry }
   | { kind: "event"; time: number; event: MatchTimelineEvent };
 
 interface FightScore {
-  home: number;
-  away: number;
+  home: number | null;
+  away: number | null;
 }
 
 interface RoundData {
@@ -39,13 +47,16 @@ interface RoundData {
   fightScores: Map<number, FightScore>;
   /** Match-wide fight id → 1-based local index within this round (for display). */
   fightOrder: Map<number, number>;
-  home: number;
-  away: number;
+  home: number | null;
+  away: number | null;
   multiFight: boolean;
 }
 
 /** Thin teal↔rose split bar for a kill tally (home vs away). */
-const ScoreSplit = ({ home, away }: { home: number; away: number }) => {
+const ScoreSplit = ({ home, away }: FightScore) => {
+  if (home == null || away == null) {
+    return <span className="text-label text-[color:var(--aqt-fg-muted)]">—</span>;
+  }
   const total = home + away;
   const homePct = total > 0 ? (home / total) * 100 : 50;
   const homeWins = home > away;
@@ -97,14 +108,16 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
   const nameByUserId = useMemo(() => {
     const map = new Map<number, string>();
     for (const team of [home, away]) {
+      if (team == null) continue;
       for (const player of team.players) map.set(player.user_id, player.name.split("#")[0]);
     }
     return map;
   }, [home, away]);
 
-  const homeTeamId = home.id;
-  const nameOf = (userId: number) => nameByUserId.get(userId) ?? "—";
-  const sideOf = (teamId: number): Side => (teamId === homeTeamId ? "home" : "away");
+  const homeTeamId = home?.id ?? null;
+  const awayTeamId = away?.id ?? null;
+  const nameOf = (userId: number | null) => userId == null ? "—" : nameByUserId.get(userId) ?? "—";
+  const sideOf = (teamId: number | null) => teamSide(teamId, homeTeamId, awayTeamId);
 
   const rounds = useMemo<RoundData[]>(() => {
     if (!data) return [];
@@ -117,8 +130,8 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         items: [],
         fightScores: new Map(),
         fightOrder: new Map(),
-        home: 0,
-        away: 0,
+        home: homeTeamId == null ? null : 0,
+        away: awayTeamId == null ? null : 0,
         multiFight: false
       };
       byRound.set(round, created);
@@ -131,14 +144,27 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
     for (const kill of data.kills) {
       const block = ensure(roundOf(kill.round));
       block.items.push({ kind: "kill", time: kill.time, fight: kill.fight, kill });
-      // Inline side check (not the sideOf closure) so the memo's only deps are data + homeTeamId.
-      const side: Side = kill.killer_team_id === homeTeamId ? "home" : "away";
-      if (side === "home") block.home += 1;
-      else block.away += 1;
-      const score = block.fightScores.get(kill.fight) ?? { home: 0, away: 0 };
-      if (side === "home") score.home += 1;
-      else score.away += 1;
-      block.fightScores.set(kill.fight, score);
+      const side = teamSide(kill.killer_team_id, homeTeamId, awayTeamId);
+      if (side == null) {
+        block.home = null;
+        block.away = null;
+      } else if (block[side] != null) {
+        block[side] += 1;
+      }
+      // A missing fight is not fight zero; retain the observation without a divider.
+      if (kill.fight != null) {
+        const score = block.fightScores.get(kill.fight) ?? {
+          home: homeTeamId == null ? null : 0,
+          away: awayTeamId == null ? null : 0
+        };
+        if (side == null) {
+          score.home = null;
+          score.away = null;
+        } else if (score[side] != null) {
+          score[side] += 1;
+        }
+        block.fightScores.set(kill.fight, score);
+      }
     }
     for (const event of data.events) {
       ensure(roundOf(event.round)).items.push({ kind: "event", time: event.time, event });
@@ -153,11 +179,12 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
         .forEach((fightId, index) => block.fightOrder.set(fightId, index + 1));
     }
     return [...byRound.values()].sort((a, b) => a.round - b.round);
-  }, [data, homeTeamId]);
+  }, [data, homeTeamId, awayTeamId]);
 
   const multiRound = rounds.length > 1;
 
   const totalKills = data?.kills.length ?? 0;
+  const hasEvents = rounds.length > 0;
 
   const legend = (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label text-[color:var(--aqt-fg-dim)]">
@@ -205,7 +232,7 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
           {formatClock(kill.time)}
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          <HeroImage hero={kill.killer_hero} size="sm" />
+          {kill.killer_hero ? <HeroImage hero={kill.killer_hero} size="sm" /> : null}
           <span className="truncate text-caption font-semibold" style={{ color: sideColor(killerSide) }}>
             {nameOf(kill.killer_user_id)}
           </span>
@@ -215,9 +242,11 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
           <span className="truncate text-right text-label text-[color:var(--aqt-fg-dim)]">
             {nameOf(kill.victim_user_id)}
           </span>
-          <span className="opacity-70">
-            <HeroImage hero={kill.victim_hero} size="sm" />
-          </span>
+          {kill.victim_hero ? (
+            <span className="opacity-70">
+              <HeroImage hero={kill.victim_hero} size="sm" />
+            </span>
+          ) : null}
         </div>
         <div className="flex min-w-[52px] shrink-0 items-center justify-end gap-1">
           {isUltKill ? (
@@ -303,11 +332,11 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
       {status === "error" ? (
         <div className="py-8 text-center text-caption text-[color:var(--aqt-rose)]">{t("matches.timeline.error")}</div>
       ) : null}
-      {status === "ready" && totalKills === 0 ? (
+      {status === "ready" && !hasEvents ? (
         <div className="py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("matches.timeline.empty")}</div>
       ) : null}
 
-      {status === "ready" && totalKills > 0 ? (
+      {status === "ready" && hasEvents ? (
         <div className="flex max-h-[600px] flex-col gap-5 overflow-y-auto pr-1">
           {rounds.map((block) => (
               <div key={block.round}>
@@ -329,11 +358,11 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
                       .slice(0, i)
                       .reverse()
                       .find((x): x is Extract<Item, { kind: "kill" }> => x.kind === "kill");
-                    const showFight = block.multiFight && (!prevKill || prevKill.fight !== item.fight);
-                    const fightScore = block.fightScores.get(item.fight);
+                    const showFight = item.fight != null && block.multiFight && (!prevKill || prevKill.fight !== item.fight);
+                    const fightScore = item.fight == null ? undefined : block.fightScores.get(item.fight);
                     return (
                       <React.Fragment key={`k-${i}`}>
-                        {showFight ? (
+                        {showFight && item.fight != null ? (
                           <div className="mb-0.5 mt-2 flex items-center gap-2 first:mt-0">
                             <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
                               {t("matches.timeline.fight", { n: block.fightOrder.get(item.fight) ?? item.fight })}
@@ -344,9 +373,9 @@ const MatchKillFeedTimeline = ({ matchId, home, away }: MatchKillFeedTimelinePro
                             <div className="h-px flex-1 bg-[color:var(--aqt-border)]" />
                             {fightScore ? (
                               <span className="aqt-tnum text-label">
-                                <span style={{ color: "var(--aqt-teal)" }}>{fightScore.home}</span>
+                                <span style={{ color: "var(--aqt-teal)" }}>{fightScore.home ?? "—"}</span>
                                 <span className="text-[color:var(--aqt-fg-faint)]">–</span>
-                                <span style={{ color: "var(--aqt-rose)" }}>{fightScore.away}</span>
+                                <span style={{ color: "var(--aqt-rose)" }}>{fightScore.away ?? "—"}</span>
                               </span>
                             ) : null}
                           </div>

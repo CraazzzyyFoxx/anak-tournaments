@@ -250,7 +250,7 @@ async def publish_message(
     jobs, rank fetches, ...), and FastStream's own default is
     ``persist=False`` — a transient message on a durable queue, which a broker
     restart silently discards. The dropped job leaves its row behind with no
-    live consumer (a LogProcessingRecord stuck on ``pending``, i.e. "Queued"
+    live consumer (an IngestJob stuck on ``pending``, i.e. "Queued"
     forever). The transactional outbox already publishes with ``persist=True``;
     this makes the direct publishers match. Pass ``persist=False`` explicitly
     for a genuinely disposable message.

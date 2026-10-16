@@ -32,8 +32,10 @@ from shared.core.social import normalize_social_handle
 from shared.models.custom_game import CustomGameRoundMember
 from shared.rbac import RBAC_USER_KEY_PREFIX
 from shared.repository import SocialAccountRepository, UserMergeAuditRepository, get_or_create_workspace_member
+from shared.repository.stats import StatsMatchRepository
 from shared.schemas.user_merge_auth import AuthMergeResult
 from shared.services.auth_merge import apply_auth_merge, preview_auth_merge
+from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src import models, schemas
 from src.services import user_cache
 
@@ -54,12 +56,7 @@ REGISTRATION_MEMBER_REFERENCE_KEY = "balancer.registration.workspace_member_id"
 # a generic reassign here.
 REFERENCE_CONFIG: tuple[tuple[str, type, str], ...] = (
     ("tournament.team.captain_id", models.Team, "captain_id"),
-    ("matches.statistics.user_id", models.MatchStatistics, "user_id"),
-    ("matches.kill_feed.killer_id", models.MatchKillFeed, "killer_id"),
-    ("matches.kill_feed.victim_id", models.MatchKillFeed, "victim_id"),
-    ("matches.event.user_id", models.MatchEvent, "user_id"),
-    ("matches.event.related_user_id", models.MatchEvent, "related_user_id"),
-    ("log_processing.record.uploader_id", models.LogProcessingRecord, "uploader_id"),
+    ("stats.ingest_job.uploader_user_id", models.IngestJob, "uploader_user_id"),
 )
 
 
@@ -79,6 +76,7 @@ def empty_affected_counts() -> dict[str, int]:
     counts[OVERRIDE_MEMBER_REFERENCE_KEY] = 0
     counts[REGISTRATION_MEMBER_REFERENCE_KEY] = 0
     counts["players.user.auth_user_id"] = 0
+    counts.update(stats_matches=0, stats_players=0, stats_facts=0, stats_events=0)
     return counts
 
 
@@ -224,6 +222,11 @@ class UserMergeService:
             operator_auth_user_id=operator_auth_user_id,
         )
         preview.conflicts.has_auth_conflict = bool(preview.auth_merge and preview.auth_merge.issues)
+        preview.conflicts.stats_member_history_conflicts = await self._stats_conflicts(
+            session,
+            request.source_user_id,
+            request.target_user_id,
+        )
         preview.preview_fingerprint = _build_preview_fingerprint(preview)
         return preview
 
@@ -245,6 +248,14 @@ class UserMergeService:
                 .order_by(models.User.id)
                 .with_for_update()
             )
+            await session.execute(
+                select(models.WorkspaceMember.id)
+                .where(
+                    models.WorkspaceMember.player_id.in_((request.source_user_id, request.target_user_id)),
+                )
+                .order_by(models.WorkspaceMember.id)
+                .with_for_update()
+            )
             preview = await self.preview_merge(
                 session,
                 schemas.UserMergePreviewRequest(
@@ -254,12 +265,15 @@ class UserMergeService:
                 ),
                 operator_auth_user_id=operator_auth_user_id,
             )
+            if preview.conflicts.stats_member_history_conflicts:
+                raise HTTPException(status_code=409, detail="stats_member_history_conflict")
             if preview.preview_fingerprint != request.preview_fingerprint:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="Merge preview is stale. Refresh preview and try again.",
                 )
             context = await self._load_merge_context(session, request.source_user_id, request.target_user_id)
+            identity_map = await self._stats_identity_map(session, context.source.id, context.target.id)
             desired_name = _pick_field_value(request.field_policy.name, context.source.name, context.target.name)
             desired_avatar_url = _pick_field_value(
                 request.field_policy.avatar_url, context.source.avatar_url, context.target.avatar_url
@@ -278,10 +292,32 @@ class UserMergeService:
                     operator_auth_user_id=operator_auth_user_id,
                 )
 
+            stats_captures = await self._capture_stats_merge(
+                session,
+                context.source.id,
+                context.target.id,
+                identity_map,
+            )
+            if await self._stats_conflicts(session, context.source.id, context.target.id):
+                raise HTTPException(status_code=409, detail="stats_member_history_conflict")
             identity_result_raw = await self.apply_identity_selection(
                 session, context.source, context.target, request.identity_selection
             )
             affected_counts = empty_affected_counts()
+            affected_counts.update(
+                {
+                    key: preview.affected_counts[key]
+                    for key in (
+                        "stats_matches",
+                        "stats_players",
+                        "stats_facts",
+                        "stats_events",
+                    )
+                }
+            )
+            # Move unshared member ids before generic repoint helpers can fabricate
+            # target memberships. Existing target members remain a disjoint merge.
+            await self._move_source_members(session, source_user_id=context.source.id, target_user_id=context.target.id)
             await session.flush()
             affected_counts[PLAYER_WORKSPACE_MEMBER_REFERENCE_KEY] = await self._repoint_player_workspace_members(
                 session, source_user_id=context.source.id, target_user_id=context.target.id
@@ -303,14 +339,42 @@ class UserMergeService:
             if auth_result is not None:
                 affected_counts.update(auth_result.transferred_counts)
 
-            await self._move_source_members(session, source_user_id=context.source.id, target_user_id=context.target.id)
-            await self._delete_source_user_row(session, context.source.id)
+            # Remove only now-unreferenced duplicate memberships before sealing
+            # their transition; source-user cascades cannot erase unaudited history.
+            await session.execute(
+                delete(models.WorkspaceMember).where(
+                    models.WorkspaceMember.player_id == context.source.id,
+                )
+            )
             await session.flush()
             context.target.name = desired_name
             context.target.avatar_url = desired_avatar_url
             await session.flush()
+            stats_audit_ids = []
+            for scopes, before, mapping in stats_captures:
+                after = await capture_stats_evidence(session, scopes=scopes, identity_map=mapping)
+                stats_audit = await stage_stats_evidence(
+                    session,
+                    operation="stats.member_merge",
+                    before=before,
+                    after=after,
+                    workspace_id=None,
+                    entity_type="user",
+                    entity_id=request.target_user_id,
+                    source="admin",
+                    identity_map=mapping,
+                )
+                stats_audit_ids.append(stats_audit.id)
+            await self._delete_source_user_row(session, context.source.id)
+            await session.flush()
 
             snapshot = preview.model_dump(mode="json")
+            snapshot["stats_evidence"] = {
+                "source_user_id": request.source_user_id,
+                "target_user_id": request.target_user_id,
+                "identity_map": identity_map,
+                "audit_ids": stats_audit_ids,
+            }
             if auth_result is not None:
                 snapshot["auth_execution"] = {
                     "confirm_auth_changes": request.confirm_auth_changes,
@@ -513,6 +577,22 @@ class UserMergeService:
             result = await session.execute(select(func.count()).select_from(model).where(column == source_user_id))
             counts[reference_key] = int(result.scalar_one())
         counts["players.user.auth_user_id"] = await self._count_auth_links(session, source_user_id)
+        members = select(models.WorkspaceMember.id).where(models.WorkspaceMember.player_id == source_user_id)
+        player, fact, event = models.StatsMatchPlayer, models.StatsFact, models.StatsEvent
+        counts["stats_matches"] = int(
+            await session.scalar(
+                select(func.count(sa.distinct(player.match_id))).where(
+                    player.workspace_member_id.in_(members),
+                )
+            )
+            or 0
+        )
+        for key, model, predicate in (
+            ("stats_players", player, player.workspace_member_id.in_(members)),
+            ("stats_facts", fact, fact.workspace_member_id.in_(members)),
+            ("stats_events", event, sa.or_(event.actor_member_id.in_(members), event.target_member_id.in_(members))),
+        ):
+            counts[key] = int(await session.scalar(select(func.count()).select_from(model).where(predicate)) or 0)
         return counts
 
     async def _count_workspace_member_rows_for_source(
@@ -560,9 +640,11 @@ class UserMergeService:
         target_user_id: int,
     ) -> int:
         column = getattr(model, column_name)
-        result = await session.execute(
-            update(model).where(column == source_user_id).values({column_name: target_user_id})
-        )
+        values = {column_name: target_user_id}
+        if model is models.IngestJob:
+            # Uploader identity is a hint change, not a lifecycle transition.
+            values["updated_at"] = model.updated_at
+        result = await session.execute(update(model).where(column == source_user_id).values(values))
         return int(result.rowcount or 0)
 
     async def _repoint_player_workspace_members(
@@ -610,6 +692,117 @@ class UserMergeService:
 
         return moved
 
+    async def _stats_identity_map(self, session: AsyncSession, source_id: int, target_id: int) -> list[dict]:
+        member = models.WorkspaceMember
+        rows = (
+            await session.execute(
+                select(member.id, member.workspace_id, member.player_id)
+                .where(
+                    member.player_id.in_((source_id, target_id)),
+                )
+                .order_by(member.workspace_id, member.id)
+            )
+        ).all()
+        targets = {workspace: member_id for member_id, workspace, user_id in rows if user_id == target_id}
+        return [
+            {
+                "workspace_id": workspace,
+                "source_member_id": member_id,
+                "target_member_id": targets.get(workspace, member_id),
+                "mode": "retain" if workspace in targets else "move",
+                "source_user_id": source_id,
+                "target_user_id": target_id,
+            }
+            for member_id, workspace, user_id in rows
+            if user_id == source_id
+        ]
+
+    async def _stats_conflicts(self, session: AsyncSession, source_id: int, target_id: int) -> list[dict]:
+        source = sa.orm.aliased(models.WorkspaceMember)
+        target = sa.orm.aliased(models.WorkspaceMember)
+        observed = sa.orm.aliased(models.StatsMatchPlayer)
+        other = sa.orm.aliased(models.StatsMatchPlayer)
+        rows = await session.execute(
+            select(
+                source.workspace_id,
+                source.id.label("source_member_id"),
+                target.id.label("target_member_id"),
+                observed.match_id,
+            )
+            .select_from(source)
+            .join(target, target.workspace_id == source.workspace_id)
+            .join(observed, observed.workspace_member_id == source.id)
+            .join(other, sa.and_(other.match_id == observed.match_id, other.workspace_member_id == target.id))
+            .where(source.player_id == source_id, target.player_id == target_id)
+            .order_by(source.workspace_id, observed.match_id)
+        )
+        return [dict(row) for row in rows.mappings()]
+
+    async def _capture_stats_merge(
+        self,
+        session: AsyncSession,
+        source_id: int,
+        target_id: int,
+        identity_map: list[dict],
+    ) -> list[tuple]:
+        captures = []
+
+        async def capture(owners, mapping):
+            scopes = [scope for kind, key in owners for scope in owner_scopes(kind, (key,))]
+            before = await capture_stats_evidence(session, scopes=scopes, identity_map=mapping)
+            captures.append((scopes, before, mapping))
+
+        # Keep each retain pair together: both owners count against the limit,
+        # while a move has one owner. Every original member appears exactly once.
+        owners, mapping = [], []
+        for entry in identity_map:
+            member_ids = sorted({entry["source_member_id"], entry["target_member_id"]})
+            if len(owners) + len(member_ids) > 100:
+                await capture(owners, mapping)
+                owners, mapping = [], []
+            owners.extend(("member", member_id) for member_id in member_ids)
+            mapping.append(entry)
+        if owners:
+            await capture(owners, mapping)
+
+        # A global player has at most one source member per workspace. A batch
+        # of 100 matches therefore needs at most 100 applicable member mappings.
+        by_workspace = {entry["workspace_id"]: entry for entry in identity_map}
+        player, match = models.StatsMatchPlayer, models.StatsMatch
+        source_members = select(models.WorkspaceMember.id).where(models.WorkspaceMember.player_id == source_id)
+        matches = select(player.match_id).where(player.workspace_member_id.in_(source_members))
+        stream = await session.stream(
+            select(match.id, match.workspace_id)
+            .where(
+                match.id.in_(matches),
+            )
+            .order_by(match.id)
+            .execution_options(yield_per=100)
+        )
+        async for batch in stream.partitions(100):
+            mapping = [by_workspace[workspace_id] for workspace_id in sorted({row.workspace_id for row in batch})]
+            await capture([("match", row.id) for row in batch], mapping)
+        await stream.close()
+
+        # Job hints rewrite only the global uploader pair, never memberships.
+        stream = await session.stream_scalars(
+            select(models.IngestJob.id)
+            .where(
+                models.IngestJob.uploader_user_id == source_id,
+            )
+            .order_by(models.IngestJob.id)
+            .execution_options(yield_per=100)
+        )
+        async for batch in stream.partitions(100):
+            await capture(
+                [("job", job_id) for job_id in batch],
+                [
+                    {"source_user_id": source_id, "target_user_id": target_id},
+                ],
+            )
+        await stream.close()
+        return captures
+
     async def _move_source_members(self, session: AsyncSession, *, source_user_id: int, target_user_id: int) -> None:
         """Hand the source player's ``workspace_member`` rows to the survivor.
 
@@ -655,6 +848,11 @@ class UserMergeService:
                     .execution_options(synchronize_session=False)
                 )
                 continue
+            await StatsMatchRepository().merge_member_history(
+                session,
+                source_member_id=source_member_id,
+                target_member_id=target_member_id,
+            )
             duplicate = (
                 sa.exists()
                 .where(

@@ -6,7 +6,7 @@ loaded on demand.
 
 Inputs per ``Encounter``:
 
-- ``home_score``, ``away_score`` per match (from ``matches.match``)
+- observed ``home_score``, ``away_score`` per match (native team facts, source order)
 - pre-encounter team mu snapshot (from ``opponent_strength``)
 - realised winner + the Standings-v2 ``p_home_wins`` if available
 

@@ -61,7 +61,7 @@ TABLE_NAMES = (
     "players.user",
     "workspace_member",
     "balancer.registration",
-    "matches.match",
+    "stats.match",
     "tournament.tournament",
     "tournament.tournament_phase_schedule",
     "tournament.team",

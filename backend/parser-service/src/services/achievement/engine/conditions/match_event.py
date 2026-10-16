@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import MatchEvent as MatchEventName
 from shared.models.achievements.achievement import AchievementGrain
+from shared.repository.stats_queries import match_context
 from src import models
 
 from ..context import EvalContext
@@ -33,17 +34,14 @@ OPERATORS = {
     description="How many times an in-match event happened for this player on one map",
     required=("event", "op", "value"),
     optional=("hero_slug",),
-    depends_on=("matches.event", "matches.match", "tournament.encounter"),
+    depends_on=("stats.event", "stats.match", "tournament.encounter"),
 )
 async def execute_match_event_count(
     session: AsyncSession,
     params: dict[str, Any],
     context: EvalContext,
 ) -> ResultSet:
-    # ``Enum(enums.MatchEvent)`` persists the member NAME ("HeroSwap"), not its
-    # value ("hero_swap") — so the param is a member name and the bind is the
-    # member itself, which the column type renders back to that name. An
-    # unknown name raises KeyError here; the runner records it as a rule failure.
+    # Keep the DSL/evidence member name; compare the native event code.
     event = MatchEventName[params["event"]]
     op = params["op"]
     value = params["value"]
@@ -52,37 +50,51 @@ async def execute_match_event_count(
     op_fn = OPERATORS[op]
     count_expr = sa.func.count()
 
+    match = match_context(discipline="overwatch")
     query = (
         sa.select(
-            models.MatchEvent.user_id,
-            models.Encounter.tournament_id,
-            models.MatchEvent.match_id,
+            models.WorkspaceMember.player_id,
+            match.c.tournament_id,
+            models.StatsEvent.match_id,
             count_expr.label("measured"),
         )
-        .join(models.Match, models.Match.id == models.MatchEvent.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
-        .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
+        .select_from(models.StatsEvent)
+        .join(match, match.c.id == models.StatsEvent.match_id)
+        .join(
+            models.EventType,
+            sa.and_(
+                models.EventType.id == models.StatsEvent.type_id,
+                models.EventType.discipline == match.c.discipline,
+            ),
+        )
+        .join(
+            models.WorkspaceMember,
+            sa.and_(
+                models.WorkspaceMember.id == models.StatsEvent.actor_member_id,
+                models.WorkspaceMember.workspace_id == match.c.workspace_id,
+            ),
+        )
         .where(
-            models.MatchEvent.name == event,
-            models.Tournament.workspace_id == context.workspace_id,
+            models.EventType.code == event.value,
+            match.c.workspace_id == context.workspace_id,
         )
         .group_by(
-            models.MatchEvent.user_id,
-            models.Encounter.tournament_id,
-            models.MatchEvent.match_id,
+            models.WorkspaceMember.player_id,
+            match.c.tournament_id,
+            models.StatsEvent.match_id,
         )
         .having(op_fn(count_expr, value))
     )
 
     if hero_slug:
-        query = query.join(models.CatalogEntity, models.CatalogEntity.id == models.MatchEvent.hero_id).where(
+        query = query.join(models.CatalogEntity, models.CatalogEntity.id == models.StatsEvent.entity_id).where(
             models.CatalogEntity.slug == hero_slug,
             models.CatalogEntity.kind == "character",
             models.CatalogEntity.discipline == "overwatch",
         )
 
     if context.tournament:
-        query = query.where(models.Encounter.tournament_id == context.tournament.id)
+        query = query.where(match.c.tournament_id == context.tournament.id)
 
     result = await session.execute(query)
     keys: ResultSet = set()

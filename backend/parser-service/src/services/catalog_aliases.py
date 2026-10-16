@@ -1,9 +1,8 @@
 """Queue of catalog names from match logs that no alias resolved.
 
-A miss is written in its OWN transaction. For maps and gamemodes it precedes the
-404 that rolls the log-processing session back — a shared session would lose the
-row. The write is best-effort: its own failure is logged and must never replace
-the real processing error, because the caller is already on the way to raising one.
+A miss is written in its OWN transaction after processing rollback releases the
+job row lock. The breadcrumb survives the rejected observation revision. Its
+failure is logged without replacing the underlying parse error.
 
 The upsert itself lives on ``CatalogAliasMissRepository`` — this module only
 owns the isolated session and the swallow-on-failure wrapper.
@@ -33,14 +32,14 @@ def build_miss_upsert(
     kind: str,
     raw_names: Iterable[str],
     *,
-    log_record_id: int | None = None,
+    ingest_job_id: int | None = None,
 ) -> Insert:
     """The upsert on its own, so the SQL can be asserted without a database."""
     return _misses.build_miss_upsert(
         DISCIPLINE,
         kind,
         raw_names,
-        ingest_job_id=log_record_id,
+        ingest_job_id=ingest_job_id,
         name_max_length=MISS_NAME_MAX_LENGTH,
     )
 
@@ -49,7 +48,7 @@ async def record_misses(
     kind: str,
     raw_names: Iterable[str],
     *,
-    log_record_id: int | None = None,
+    ingest_job_id: int | None = None,
 ) -> None:
     names = {name.strip() for name in raw_names if name and name.strip()}
     if not names:
@@ -62,7 +61,7 @@ async def record_misses(
                 DISCIPLINE,
                 kind,
                 names,
-                ingest_job_id=log_record_id,
+                ingest_job_id=ingest_job_id,
                 name_max_length=MISS_NAME_MAX_LENGTH,
             )
             await session.commit()

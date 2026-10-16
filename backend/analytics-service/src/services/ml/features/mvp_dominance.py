@@ -26,6 +26,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import LogStatsName
+from shared.repository.stats_queries import player_facts
 from src import models
 
 __all__ = ("compute_mvp_dominance", "dominance_from_perf_ranks")
@@ -73,33 +74,27 @@ async def compute_mvp_dominance(
     scoped to the tournament via the encounter, and maps each match participant
     back to their tournament ``player_id``. Empty when no match log exists.
     """
+    facts = player_facts(discipline="overwatch")
     query = (
         sa.select(
             models.Player.id.label("player_id"),
-            models.MatchStatistics.match_id.label("match_id"),
-            models.MatchStatistics.value.label("perf_rank"),
+            facts.c.match_id.label("match_id"),
+            facts.c.value.label("perf_rank"),
         )
-        .join(models.Match, models.Match.id == models.MatchStatistics.match_id)
-        .join(models.Encounter, models.Encounter.id == models.Match.encounter_id)
+        .select_from(facts)
         .join(
             models.Player,
             sa.and_(
                 models.Player.tournament_id == tournament_id,
-            ),
-        )
-        .join(
-            models.WorkspaceMember,
-            sa.and_(
-                models.WorkspaceMember.id == models.Player.workspace_member_id,
-                models.WorkspaceMember.player_id == models.MatchStatistics.user_id,
+                models.Player.workspace_member_id == facts.c.workspace_member_id,
             ),
         )
         .where(
-            models.Encounter.tournament_id == tournament_id,
+            facts.c.tournament_id == tournament_id,
             models.Player.is_substitution.is_(False),
-            models.MatchStatistics.name == LogStatsName.Performance,
-            models.MatchStatistics.round == 0,
-            models.MatchStatistics.hero_id.is_(None),
+            facts.c.stat_code == LogStatsName.Performance.value,
+            facts.c.segment == 0,
+            facts.c.entity_id.is_(None),
         )
     )
     df = pd.DataFrame((await session.execute(query)).mappings().all())

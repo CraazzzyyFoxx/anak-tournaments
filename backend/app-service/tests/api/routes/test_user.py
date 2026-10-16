@@ -34,7 +34,7 @@ from shared.schemas.role import RoleRef
 from src import models
 from src.core import enums
 from tests.conftest import RpcHarness, build_query
-from tests.encounter_seed import add_duel
+from tests.encounter_seed import add_duel, add_observed_game
 
 _COMPARE_FIXTURE_IDS = {
     "subject_user": 9_100_000_001,
@@ -74,40 +74,9 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
     subject_user_id = _COMPARE_FIXTURE_IDS["subject_user"]
     subject_user = db.get(models.User, subject_user_id)
     if subject_user is not None:
-        existing_subject_performance = db.get(models.MatchStatistics, 9_100_000_807)
-        existing_baseline_performance = db.get(models.MatchStatistics, 9_100_000_808)
-        if existing_subject_performance is None:
-            db.add(
-                models.MatchStatistics(
-                    id=9_100_000_807,
-                    match_id=9_100_000_701,
-                    round=0,
-                    team_id=9_100_000_301,
-                    user_id=subject_user_id,
-                    hero_id=None,
-                    name=enums.LogStatsName.Performance,
-                    value=10,
-                )
-            )
-        if existing_baseline_performance is None:
-            db.add(
-                models.MatchStatistics(
-                    id=9_100_000_808,
-                    match_id=9_100_000_703,
-                    round=0,
-                    team_id=9_100_000_303,
-                    user_id=_COMPARE_FIXTURE_IDS["baseline_user"],
-                    hero_id=None,
-                    name=enums.LogStatsName.Performance,
-                    value=20,
-                )
-            )
-        if existing_subject_performance is None or existing_baseline_performance is None:
-            db.commit()
-
         cohort_player = (
             db.query(models.Player)
-            .filter(models.Player.user_id == subject_user_id)
+            .filter(models.Player.workspace_member.has(models.WorkspaceMember.player_id == subject_user_id))
             .filter(models.Player.tournament_id == _COMPARE_FIXTURE_IDS["subject_cohort_tournament"])
             .one()
         )
@@ -175,14 +144,8 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
         "subject_cohort_match": 9_100_000_701,
         "subject_other_match": 9_100_000_702,
         "baseline_cohort_match": 9_100_000_703,
-        "subject_cohort_playtime": 9_100_000_801,
-        "subject_cohort_eliminations": 9_100_000_802,
-        "subject_other_playtime": 9_100_000_803,
-        "subject_other_eliminations": 9_100_000_804,
-        "baseline_cohort_playtime": 9_100_000_805,
-        "baseline_cohort_eliminations": 9_100_000_806,
-        "subject_cohort_performance": 9_100_000_807,
-        "baseline_cohort_performance": 9_100_000_808,
+        "subject_member": 9_100_000_811,
+        "baseline_member": 9_100_000_812,
     }
 
     db.add(models.Workspace(id=ids["workspace"], slug="compare-division-ws", name="Compare Division Workspace"))
@@ -201,6 +164,22 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
         [
             models.User(id=ids["subject_user"], name="compare-division-subject"),
             models.User(id=ids["baseline_user"], name="compare-division-baseline"),
+        ]
+    )
+    db.flush()
+    db.add_all(
+        [
+            models.WorkspaceMember(
+                id=ids["subject_member"], workspace_id=ids["workspace"], player_id=ids["subject_user"]
+            ),
+            models.WorkspaceMember(
+                id=ids["baseline_member"], workspace_id=ids["workspace"], player_id=ids["baseline_user"]
+            ),
+        ]
+    )
+    db.flush()
+    db.add_all(
+        [
             models.Tournament(
                 id=ids["subject_cohort_tournament"],
                 name="Compare Division Subject Cohort",
@@ -274,7 +253,7 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 div=division,
                 assignments=[assignment_of(leaf)],
                 tournament_id=ids["subject_cohort_tournament"],
-                user_id=ids["subject_user"],
+                workspace_member_id=ids["subject_member"],
                 team_id=ids["subject_cohort_team"],
             ),
             models.Player(
@@ -284,7 +263,7 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 div=other_division,
                 assignments=[assignment_of(leaf)],
                 tournament_id=ids["subject_other_tournament"],
-                user_id=ids["subject_user"],
+                workspace_member_id=ids["subject_member"],
                 team_id=ids["subject_other_team"],
             ),
             models.Player(
@@ -294,7 +273,7 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
                 div=division,
                 assignments=[assignment_of(leaf)],
                 tournament_id=ids["baseline_cohort_tournament"],
-                user_id=ids["baseline_user"],
+                workspace_member_id=ids["baseline_member"],
                 team_id=ids["baseline_cohort_team"],
             ),
             models.Standing(
@@ -372,129 +351,27 @@ def _ensure_compare_division_fixture(db: Session) -> dict[str, int | str]:
         seats=[(ids["baseline_cohort_team"], 2), (ids["baseline_cohort_enemy_team"], 1)],
         closeness=0.65,
     )
-    db.add_all(
-        [
-            models.Match(
-                id=ids["subject_cohort_match"],
-                home_team_id=ids["subject_cohort_team"],
-                away_team_id=ids["subject_cohort_enemy_team"],
-                home_score=2,
-                away_score=1,
-                time=600,
-                log_name="compare-subject-cohort-match",
-                encounter_id=ids["subject_cohort_encounter"],
-                map_id=map_id,
-            ),
-            models.Match(
-                id=ids["subject_other_match"],
-                home_team_id=ids["subject_other_team"],
-                away_team_id=ids["subject_other_enemy_team"],
-                home_score=2,
-                away_score=1,
-                time=600,
-                log_name="compare-subject-other-match",
-                encounter_id=ids["subject_other_encounter"],
-                map_id=map_id,
-            ),
-            models.Match(
-                id=ids["baseline_cohort_match"],
-                home_team_id=ids["baseline_cohort_team"],
-                away_team_id=ids["baseline_cohort_enemy_team"],
-                home_score=2,
-                away_score=1,
-                time=600,
-                log_name="compare-baseline-cohort-match",
-                encounter_id=ids["baseline_cohort_encounter"],
-                map_id=map_id,
-            ),
+    for prefix, member, eliminations, performance in (
+        ("subject_cohort", ids["subject_member"], 20, 10),
+        ("subject_other", ids["subject_member"], 100, None),
+        ("baseline_cohort", ids["baseline_member"], 40, 20),
+    ):
+        observations = [
+            (member, 1, hero_id, enums.LogStatsName.HeroTimePlayed, 600),
+            (member, 1, hero_id, enums.LogStatsName.Eliminations, eliminations),
         ]
-    )
-    # Matches before their statistics: the rows share no relationship to order them by.
-    db.flush()
-    db.add_all(
-        [
-            models.MatchStatistics(
-                id=ids["subject_cohort_playtime"],
-                match_id=ids["subject_cohort_match"],
-                round=0,
-                team_id=ids["subject_cohort_team"],
-                user_id=ids["subject_user"],
-                hero_id=hero_id,
-                name=enums.LogStatsName.HeroTimePlayed,
-                value=600,
-            ),
-            models.MatchStatistics(
-                id=ids["subject_cohort_eliminations"],
-                match_id=ids["subject_cohort_match"],
-                round=0,
-                team_id=ids["subject_cohort_team"],
-                user_id=ids["subject_user"],
-                hero_id=hero_id,
-                name=enums.LogStatsName.Eliminations,
-                value=20,
-            ),
-            models.MatchStatistics(
-                id=ids["subject_other_playtime"],
-                match_id=ids["subject_other_match"],
-                round=0,
-                team_id=ids["subject_other_team"],
-                user_id=ids["subject_user"],
-                hero_id=hero_id,
-                name=enums.LogStatsName.HeroTimePlayed,
-                value=600,
-            ),
-            models.MatchStatistics(
-                id=ids["subject_other_eliminations"],
-                match_id=ids["subject_other_match"],
-                round=0,
-                team_id=ids["subject_other_team"],
-                user_id=ids["subject_user"],
-                hero_id=hero_id,
-                name=enums.LogStatsName.Eliminations,
-                value=100,
-            ),
-            models.MatchStatistics(
-                id=ids["baseline_cohort_playtime"],
-                match_id=ids["baseline_cohort_match"],
-                round=0,
-                team_id=ids["baseline_cohort_team"],
-                user_id=ids["baseline_user"],
-                hero_id=hero_id,
-                name=enums.LogStatsName.HeroTimePlayed,
-                value=600,
-            ),
-            models.MatchStatistics(
-                id=ids["baseline_cohort_eliminations"],
-                match_id=ids["baseline_cohort_match"],
-                round=0,
-                team_id=ids["baseline_cohort_team"],
-                user_id=ids["baseline_user"],
-                hero_id=hero_id,
-                name=enums.LogStatsName.Eliminations,
-                value=40,
-            ),
-            models.MatchStatistics(
-                id=ids["subject_cohort_performance"],
-                match_id=ids["subject_cohort_match"],
-                round=0,
-                team_id=ids["subject_cohort_team"],
-                user_id=ids["subject_user"],
-                hero_id=None,
-                name=enums.LogStatsName.Performance,
-                value=10,
-            ),
-            models.MatchStatistics(
-                id=ids["baseline_cohort_performance"],
-                match_id=ids["baseline_cohort_match"],
-                round=0,
-                team_id=ids["baseline_cohort_team"],
-                user_id=ids["baseline_user"],
-                hero_id=None,
-                name=enums.LogStatsName.Performance,
-                value=20,
-            ),
-        ]
-    )
+        if performance is not None:
+            observations.append((member, 1, None, enums.LogStatsName.Performance, performance))
+        add_observed_game(
+            db,
+            match_id=ids[f"{prefix}_match"],
+            encounter_id=ids[f"{prefix}_encounter"],
+            map_entity_id=map_id,
+            position=1,
+            duration_s=600,
+            scores=(2, 1),
+            observations=observations,
+        )
     db.commit()
 
     return {

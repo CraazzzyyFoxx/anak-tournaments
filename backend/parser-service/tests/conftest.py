@@ -13,6 +13,7 @@ from shared.testing import apply_test_env_defaults
 apply_test_env_defaults()
 
 from shared.testing import configure_test_cache, db_session  # noqa: E402,F401
+from shared.testing.stats_parity import stats_parity_database, stats_parity_template  # noqa: E402,F401
 
 # The cashews cache is a process-global singleton with no default backend --
 # any cache-touching flow raises ``NotConfiguredError`` until something calls

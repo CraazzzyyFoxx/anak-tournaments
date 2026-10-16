@@ -20,7 +20,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from shared.core import pagination
-from shared.models.ingestion.log_processing import LogProcessingSource, LogProcessingStatus
+from shared.models.stats.ingest import IngestJobStatus
 
 # The team ref is shared with the reports list rather than duplicated: both
 # surfaces mean the same thing by "a team, reduced to what a table cell shows",
@@ -46,9 +46,9 @@ class LogRecordRef(BaseModel):
     """
 
     id: int
-    filename: str
-    status: LogProcessingStatus
-    source: LogProcessingSource | None
+    filename: str | None
+    status: IngestJobStatus
+    source: str | None
     uploader_id: int | None
     #: Times the record entered processing; >1 means the stall reaper requeued it.
     attempts: int | None
@@ -59,12 +59,7 @@ class LogRecordRef(BaseModel):
 
 
 class AdminMatchRow(BaseModel):
-    """One parsed match — a single played map — as the log parser produced it.
-
-    Only ``log_record`` is optional. Everything else hangs off a NOT NULL foreign
-    key, so a row that cannot name its encounter, tournament, map or either team
-    is a broken invariant and should surface as one rather than as empty cells.
-    """
+    """One observed map. Deleted source teams and absent raw provenance stay null."""
 
     id: int
     encounter_id: int
@@ -73,33 +68,21 @@ class AdminMatchRow(BaseModel):
     tournament_name: str
     map_id: int
     map_name: str
-    home_team: EncounterTeamRef
-    away_team: EncounterTeamRef
+    home_team: EncounterTeamRef | None
+    away_team: EncounterTeamRef | None
     home_score: int
     away_score: int
     #: Map duration in seconds.
-    time: float
-    #: The bare filename the parser recorded. Kept alongside ``log_record``
-    #: because the S3 key is still built from it, so the log stays downloadable
-    #: even when the owning record could not be resolved.
-    log_name: str
-    #: In-game match code. Searched by the free-text filter, so it is returned
-    #: too — a column you can match on but never see makes a hit look arbitrary.
-    code: str | None
+    time: float | None
+    #: Display filename only; downloads resolve the job's actual raw_ref.
+    log_name: str | None
     created_at: datetime
-    #: None means the provenance is unresolved, which is the normal state for the
-    #: bulk of the history: ``log_processing.record`` postdates most parsed
-    #: matches and the backfill left those NULL instead of guessing (D22).
+    #: None means no raw log is available for this observation.
     log_record: LogRecordRef | None
 
 
 class AdminMatchDetail(AdminMatchRow):
-    """A single match with the per-match aggregates the list omits.
-
-    NFR 3: ``matches.statistics`` / ``kill_feed`` / ``assists`` are the hot,
-    high-volume tables. Counting them per row would put three aggregate scans
-    behind every page of the list, so they live here — one row at a time.
-    """
+    """Detail-only player fact and event volumes; no team-score facts counted."""
 
     #: Highest round the parser recorded; 0 when no statistics landed at all,
     #: which is itself the diagnostic (the log parsed but produced nothing).
@@ -115,7 +98,7 @@ class AdminMatchesQueryParams(pagination.PaginationSortSearchQueryParams):
     tournament_id: int | None = None
     encounter_id: int | None = None
     map_id: int | None = None
-    log_status: list[LogProcessingStatus] = []
+    log_status: list[IngestJobStatus] = []
     unlinked_only: bool = False
 
 
@@ -131,5 +114,5 @@ class AdminMatchesSearchParams(pagination.PaginationSortSearchParams):
     tournament_id: int | None = None
     encounter_id: int | None = None
     map_id: int | None = None
-    log_status: list[LogProcessingStatus] = field(default_factory=list)
+    log_status: list[IngestJobStatus] = field(default_factory=list)
     unlinked_only: bool = False

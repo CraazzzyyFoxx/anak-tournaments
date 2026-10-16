@@ -88,7 +88,7 @@ TABLE_NAMES = (
     "encounter.encounter",
     "encounter.team",
     "encounter.game",
-    "matches.match",
+    "stats.match",
     "workspace",
     "players.user",
     "workspace_member",

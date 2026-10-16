@@ -101,21 +101,23 @@ class AchievementSeederService:
             existing = existing_by_slug.get(rule.slug)
 
             if existing:
-                existing.condition_tree = rule.condition_tree
-                existing.category = rule.category
-                existing.scope = rule.scope
-                existing.grain = rule.grain
-                existing.depends_on = rule.depends_on
-                existing.name = rule.name
-                existing.description_ru = rule.description_ru
-                existing.description_en = rule.description_en
-                existing.min_tournament_id = rule.min_tournament_id
-                # Only refresh hero linkage when the seed provides it (hero rules),
-                # so admin-customised images on other rules are preserved.
+                updates = {
+                    "condition_tree": rule.condition_tree,
+                    "category": rule.category,
+                    "scope": rule.scope,
+                    "grain": rule.grain,
+                    "depends_on": rule.depends_on,
+                    "name": rule.name,
+                    "description_ru": rule.description_ru,
+                    "description_en": rule.description_en,
+                    "min_tournament_id": rule.min_tournament_id,
+                }
+                # Preserve admin-customised images on non-character rules.
                 if rule.entity_id is not None:
-                    existing.entity_id = rule.entity_id
+                    updates["entity_id"] = rule.entity_id
                 if rule.image_url is not None:
-                    existing.image_url = rule.image_url
+                    updates["image_url"] = rule.image_url
+                await self.rule_repo.update_fields(session, existing, updates)
             else:
                 await self.rule_repo.create(session, rule)
 

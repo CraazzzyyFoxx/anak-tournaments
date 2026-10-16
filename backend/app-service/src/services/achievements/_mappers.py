@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from shared.repository.stats_reads import MatchReadContext
 from src import models, schemas
 from src.schemas.base import Score
 
@@ -22,14 +23,14 @@ def _team_ref(team: models.Team | None) -> schemas.AchievementMatchTeamRef | Non
     return schemas.AchievementMatchTeamRef(id=team.id, name=team.name, image_url=team.image_url)
 
 
-def to_match_link(match: models.Match) -> schemas.AchievementMatchLink:
+def to_match_link(context: MatchReadContext) -> schemas.AchievementMatchLink:
     return schemas.AchievementMatchLink(
-        id=match.id,
-        encounter_id=match.encounter_id,
-        map_id=match.map_id,
-        score=Score(home=match.home_score, away=match.away_score),
-        log_name=match.log_name,
-        time=match.time,
-        home_team=_team_ref(getattr(match, "home_team", None)),
-        away_team=_team_ref(getattr(match, "away_team", None)),
+        id=context.match.id,
+        encounter_id=context.game.encounter_id,
+        map_id=context.match.map_entity_id,
+        score=Score(home=context.home_score, away=context.away_score),
+        log_name=context.display_filename,
+        time=context.match.duration_s,
+        home_team=_team_ref(context.home_team),
+        away_team=_team_ref(context.away_team),
     )

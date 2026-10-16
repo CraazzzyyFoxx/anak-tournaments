@@ -26,7 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.core import enums  # noqa: E402
 from shared.models.catalog.entity import CatalogEntity  # noqa: E402
-from shared.models.matches.match import Match  # noqa: E402
+from shared.models.encounter.game import EncounterGame  # noqa: E402
+from shared.models.stats.match import StatsMatch  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Team, Tournament  # noqa: E402
 from src.services.tournament.service import tournament_service  # noqa: E402
@@ -110,32 +111,24 @@ async def _seed(session: Any) -> tuple[int, int]:
     # 3600 + 1800 on the finished encounter, 1800 on the open one: three maps,
     # 7200 seconds -> exactly two hours. The unfinished encounter's maps still
     # count as maps -- only `encounters` is status-filtered.
-    session.add_all(
-        [
-            Match(
-                home_team_id=teams[0].id,
-                away_team_id=teams[1].id,
-                home_score=1,
-                away_score=0,
-                time=seconds,
-                encounter_id=encounter.id,
-                map_id=map_id,
+    for encounter, position, seconds in (
+        (done, 1, 3600.0),
+        (done, 2, 1800.0),
+        (open_one, 1, 1800.0),
+        (done, 3, None),
+    ):
+        game = EncounterGame(encounter_id=encounter.id, position=position, map_id=map_id)
+        session.add(game)
+        await session.flush()
+        session.add(
+            StatsMatch(
+                workspace_id=workspace.id,
+                discipline="overwatch",
+                encounter_game_id=game.id,
+                duration_s=seconds,
+                map_entity_id=map_id,
             )
-            for encounter, seconds in ((done, 3600.0), (done, 1800.0), (open_one, 1800.0))
-        ]
-    )
-    # A logless legacy row: NULL time must not NULL the whole sum.
-    session.add(
-        Match(
-            home_team_id=teams[0].id,
-            away_team_id=teams[1].id,
-            home_score=1,
-            away_score=0,
-            time=None,
-            encounter_id=done.id,
-            map_id=map_id,
         )
-    )
     await session.commit()
     return workspace.id, gamemode.id
 

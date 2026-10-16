@@ -84,10 +84,9 @@ TABLE_NAMES = (
     "tournament.player",
     "encounter.encounter",
     "encounter.team",
-    # ``Encounter.has_logs`` is a ``column_property`` EXISTS over this table
-    # (see ``shared/models/matches/match.py``) — every ``select(Encounter)``
-    # references it now, so it must exist even with zero rows.
-    "matches.match",
+    # The native has_logs EXISTS reaches both the observed match and its game.
+    "stats.match",
+    "encounter.game",
     "tournament.standing",
     "tournament.standing_pin",
     "tournament.scrim_room",

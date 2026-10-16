@@ -16,10 +16,13 @@ from shared.schemas.events import MatchLogProcessedEvent
 
 async def publish_match_log_result(
     broker: Any,
-    tournament_id: int,
+    tournament_id: int | None,
     filename: str,
-    status: Literal["done", "failed"],
+    status: Literal["done", "failed", "awaiting_link"],
     *,
+    ingest_job_id: int | None = None,
+    correlation_id: str | None = None,
+    error_message: str | None = None,
     logger: Any = default_logger,
 ) -> None:
     """Broadcast a single match-log result so the waiting bot can stop blocking.
@@ -31,6 +34,9 @@ async def publish_match_log_result(
         tournament_id=tournament_id,
         filename=filename,
         status=status,
+        ingest_job_id=ingest_job_id,
+        correlation_id=correlation_id,
+        error_message=error_message,
         source_service="parser-worker",
     )
     try:
@@ -40,6 +46,7 @@ async def publish_match_log_result(
             "",  # routing handled by the fanout exchange
             exchange=MATCH_LOG_RESULT_EXCHANGE,
             routing_key="",
+            correlation_id=correlation_id,
             logger=logger,
         )
     except Exception:

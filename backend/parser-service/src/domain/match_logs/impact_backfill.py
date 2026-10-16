@@ -32,7 +32,7 @@ def rebuild_frames(stat_rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
     """Rebuild the round-discrete and match-total MVP pivots from OLD stat rows.
 
     ``stat_rows`` columns: ``user_id, round, hero_id, name (LogStatsName
-    member), value`` — a match's ``matches.statistics`` rows. Pure and
+    member), value`` — native facts projected only at this pandas boundary.
     DB-free; PROTECTS the idempotency contract by dropping (a) per-hero rows
     (``hero_id`` not null — only hero-NULL "all heroes" rows feed MVP
     scoring) and (b) any row already named one of the 7 derived stats, so a

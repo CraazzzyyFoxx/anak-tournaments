@@ -25,7 +25,7 @@ from sqlalchemy import desc, func, select
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE, PROCESS_TOURNAMENT_LOGS_QUEUE
-from shared.models.ingestion.log_processing import LogProcessingSource, LogProcessingStatus
+from shared.models import IngestJobStatus
 from shared.observability import publish_message
 from shared.schemas.events import ProcessMatchLogEvent, ProcessTournamentLogsEvent
 from shared.services.audit import record_admin_audit
@@ -38,6 +38,7 @@ from src.services.match_logs.admin_reads import (
     _fetch_queue_depths,
     _record_to_dict,
     _validate_attached_encounter,
+    history_query,
     history_scope_conditions,
     history_search_condition,
 )
@@ -109,10 +110,10 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
             if offset < 0:
                 raise HTTPException(status_code=422, detail="offset must be >= 0")
-            if status_filter is not None and status_filter not in LogProcessingStatus.__members__:
+            if status_filter is not None and status_filter not in {member.value for member in IngestJobStatus}:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"status must be one of: {', '.join(LogProcessingStatus.__members__)}",
+                    detail=f"status must be one of: {', '.join(member.value for member in IngestJobStatus)}",
                 )
 
             workspace_id = await _authorize_scope(
@@ -127,25 +128,23 @@ def register(broker: Any, logger: Any) -> None:
                 tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
             )
             if status_filter is not None:
-                conditions.append(models.LogProcessingRecord.status == LogProcessingStatus[status_filter])
+                conditions.append(models.IngestJob.status == IngestJobStatus(status_filter))
             search_condition = history_search_condition(search)
             if search_condition is not None:
                 conditions.append(search_condition)
 
             # Aggregate count, not a full row fetch: the previous len(all()) pulled
             # every matching record over the wire just to size the page footer.
-            total = await session.scalar(
-                select(func.count()).select_from(models.LogProcessingRecord).where(*conditions)
-            )
+            total = await session.scalar(select(func.count()).select_from(models.IngestJob).where(*conditions))
 
             result = await session.execute(
-                select(models.LogProcessingRecord)
+                history_query()
                 .where(*conditions)
-                .order_by(desc(models.LogProcessingRecord.created_at), desc(models.LogProcessingRecord.id))
+                .order_by(desc(models.IngestJob.created_at), desc(models.IngestJob.id))
                 .limit(limit)
                 .offset(offset)
             )
-            items = [_record_to_dict(r) for r in result.scalars().all()]
+            items = [_record_to_dict(*row) for row in result.all()]
             return {"items": items, "total": int(total or 0)}
 
         return await c.envelope(logger, "logs.history", op, session_factory=_SF)
@@ -164,7 +163,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 
-            record = models.LogProcessingRecord
+            record = models.IngestJob
             conditions = history_scope_conditions(
                 tournament_id=tournament_id, encounter_id=encounter_id, workspace_id=workspace_id
             )
@@ -176,10 +175,11 @@ def register(broker: Any, logger: Any) -> None:
                         *(
                             func.count().filter(record.status == member)
                             for member in (
-                                LogProcessingStatus.pending,
-                                LogProcessingStatus.processing,
-                                LogProcessingStatus.done,
-                                LogProcessingStatus.failed,
+                                IngestJobStatus.PENDING,
+                                IngestJobStatus.PROCESSING,
+                                IngestJobStatus.DONE,
+                                IngestJobStatus.FAILED,
+                                IngestJobStatus.AWAITING_LINK,
                             )
                         ),
                         # AVG skips NULL rows, so unfinished records drop out on their own.
@@ -191,13 +191,14 @@ def register(broker: Any, logger: Any) -> None:
                 )
             ).one()
 
-            total, pending, processing, done, failed, avg_duration, last_created_at = row
+            total, pending, processing, done, failed, awaiting_link, avg_duration, last_created_at = row
             return schemas.LogStatsRead(
                 total=int(total or 0),
                 pending=int(pending or 0),
                 processing=int(processing or 0),
                 done=int(done or 0),
                 failed=int(failed or 0),
+                awaiting_link=int(awaiting_link or 0),
                 avg_duration_seconds=float(avg_duration) if avg_duration is not None else None,
                 last_created_at=last_created_at,
             )
@@ -211,25 +212,10 @@ def register(broker: Any, logger: Any) -> None:
             user = c.actor(data)
             c.require_active(user)
             record_id = c.require_id(data)
-            workspace_id = await auth._get_log_record_workspace_id(session, record_id)
+            workspace_id = await auth._get_ingest_job_workspace_id(session, record_id)
             await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
             body = schemas.LogRetryRequest.model_validate(c.payload(data))
 
-            if body.encounter_id is not None:
-                record = await session.get(models.LogProcessingRecord, record_id)
-                if record is None:
-                    raise HTTPException(status_code=404, detail="Log processing record not found")
-                # A processed log already filed its match under some encounter;
-                # re-filing it would leave that match behind as a duplicate.
-                if record.status == LogProcessingStatus.done:
-                    raise HTTPException(status_code=409, detail="A processed log cannot be re-attached")
-                encounter = await _validate_attached_encounter(
-                    session, tournament_id=record.tournament_id, encounter_id=body.encounter_id
-                )
-                record.attached_encounter = encounter
-
-            # `log_records_service.retry` commits — stage the row and the
-            # attachment on that session first.
             await record_admin_audit(
                 session,
                 action="match_log.retry",
@@ -240,14 +226,18 @@ def register(broker: Any, logger: Any) -> None:
                 entity_id=record_id,
                 after={"attached_encounter_id": body.encounter_id} if body.encounter_id is not None else None,
             )
-            record = await log_records_service.retry(session, record_id)
-            if record is None:
-                raise HTTPException(status_code=404, detail="Log processing record not found")
-
-            event = ProcessMatchLogEvent(tournament_id=record.tournament_id, filename=record.filename)
+            record = await log_records_service.retry(
+                session,
+                record_id,
+                workspace_id=workspace_id,
+                encounter_id=body.encounter_id,
+                encounter_game_id=body.encounter_game_id,
+            )
+            event = ProcessMatchLogEvent(ingest_job_id=record.id)
             await publish_message(broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
 
-            return schemas.LogRecordRead.model_validate(_record_to_dict(record))
+            row = (await session.execute(history_query().where(models.IngestJob.id == record.id))).one()
+            return schemas.LogRecordRead.model_validate(_record_to_dict(*row))
 
         return await c.envelope(logger, "logs.retry", op, session_factory=_SF)
 
@@ -271,12 +261,6 @@ def register(broker: Any, logger: Any) -> None:
             if not files:
                 raise HTTPException(status_code=400, detail="At least one log file is required")
             filenames = [upload_service.validate_log_filename(f.get("filename")) for f in files]
-            duplicate_names = sorted({name for name in filenames if filenames.count(name) > 1})
-            if duplicate_names:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Duplicate file names in upload: {', '.join(duplicate_names)}",
-                )
 
             tournament = await tournament_flows.get(session, tournament_id, [])
             raw_encounter = data.get("encounter_id")
@@ -323,7 +307,7 @@ def register(broker: Any, logger: Any) -> None:
                             status_code=413,
                             detail=match_log_oversize_message(max_log_bytes + 1, max_log_bytes),
                         )
-                    content = base64.b64decode(raw_b64)
+                    content = base64.b64decode(raw_b64, validate=True)
                     oversize = match_log_oversize_message(len(content), max_log_bytes)
                     if oversize:
                         raise HTTPException(status_code=413, detail=oversize)
@@ -332,25 +316,27 @@ def register(broker: Any, logger: Any) -> None:
                     record = await upload_service.store_uploaded_log_bytes(
                         session,
                         s3=_clients.s3_client,
-                        tournament_id=tournament.id,
+                        tournament_id=tournament_id,
                         filename=filename,
                         content=content,
-                        source=LogProcessingSource.upload,
+                        source="upload",
                         uploader_id=uploader_id,
                         attached_encounter_id=attached_encounter_id,
                     )
-                    event = ProcessMatchLogEvent(tournament_id=tournament.id, filename=filename)
+                    event = ProcessMatchLogEvent(ingest_job_id=record.id)
                     await publish_message(broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
                     uploaded.append(
                         schemas.LogUploadItem(
                             record_id=record.id,
                             filename=record.filename,
-                            attached_encounter_id=record.attached_encounter_id,
+                            attached_encounter_id=record.hint_encounter_id,
                         )
                     )
                 except HTTPException as exc:
+                    await session.rollback()
                     errors.append(schemas.LogUploadError(filename=filename, error=str(exc.detail)))
                 except Exception as exc:  # noqa: BLE001 - collected per-file, mirrors the route
+                    await session.rollback()
                     logger.exception("Failed to upload and queue admin log {}", filename)
                     errors.append(schemas.LogUploadError(filename=filename, error=str(exc)))
 
