@@ -682,6 +682,38 @@ def test_event_only_handle_falls_back_only_when_its_scoped_roster_is_absent(stat
         engine.dispose()
 
 
+def test_receipt_lookups_observe_the_snapshot_not_connection_preparation(stats01_database):
+    url, ids = stats01_database
+    engine = sa.create_engine(url, poolclass=sa.pool.NullPool)
+    writer = sa.create_engine(url, poolclass=sa.pool.NullPool)
+
+    @sa.event.listens_for(engine, "commit")
+    def after_preparation(conn):
+        conn.info["prepared_receipt"] = True
+
+    @sa.event.listens_for(engine, "begin")
+    def rename_before_snapshot(conn):
+        if conn.info.pop("prepared_receipt", False):
+            with writer.begin() as changed:
+                changed.execute(
+                    sa.text("UPDATE tournament.player SET name='Snapshot#1234' WHERE id=:roster_player"), ids
+                )
+
+    try:
+        with reconcile.readonly_snapshot(engine, revision) as conn:
+            assert conn.scalar(sa.text("SHOW transaction_read_only")) == "on"
+            assert (
+                conn.execute(
+                    sa.text("SELECT handle_snapshot FROM stats01_handles WHERE match_id=:match AND player_id=:player"),
+                    ids,
+                ).scalar_one()
+                == "Snapshot#1234"
+            )
+    finally:
+        engine.dispose()
+        writer.dispose()
+
+
 def test_historical_roster_handles_remain_observation_scoped_through_full_receipt(stats01_legacy_database, tmp_path):
     from test_stats01_preflight_sql import operator_results
 

@@ -187,6 +187,9 @@ Receipt snapshots use a dedicated physical PostgreSQL session for committed temp
 and one repeatable-read, read-only transaction; repeated checks do not reuse pooled temporary state.
 The full summary materializes only the set of mismatching class names once, rather than
 expanding the complete comparison view for every class. Every source/native row is still checked.
+Initial capture indexes the small identity/handle lookups used by the migration. Their temporary
+schemas are prepared first, but rows are loaded and analyzed only inside that same read-only
+snapshot; facts and events are never materialized or sampled.
 
 Later, validate current data and the actual native mutation audit chains:
 

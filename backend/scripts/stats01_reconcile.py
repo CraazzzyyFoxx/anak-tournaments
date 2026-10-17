@@ -481,12 +481,35 @@ def _initial_proof(conn, revision) -> list[dict]:
 
 
 def prepare_connection(conn, revision, *, receipt_dir: Path | None = None):
-    """Only connection-local SQL setup; all data reads occur in the next snapshot."""
+    """Only connection-local SQL setup; all observation reads occur in the next snapshot."""
     if receipt_dir is not None:
         load_manifest(receipt_dir, revision)
     for sql in revision.RECONCILE_SETUP:
         conn.execute(sa.text(sql))
     conn.execute(sa.text(revision.RECONCILE_VIEW))
+    lookups = []
+    if receipt_dir is None:
+        for name, columns in (
+            ("match", "match_id"),
+            ("team", "match_id,team_id"),
+            ("endpoints", "match_id,user_id,team_id"),
+            ("handles", "match_id,player_id,team_id"),
+            ("stat_ids", "discipline,legacy_name"),
+            ("event_ids", "discipline,legacy_name"),
+        ):
+            query = (
+                conn.scalar(
+                    sa.text("SELECT pg_get_viewdef(CAST(:name AS regclass))"), {"name": f"pg_temp.stats01_{name}"}
+                )
+                .strip()
+                .removesuffix(";")
+            )
+            lookups.append((name, query))
+            conn.execute(
+                sa.text(f"CREATE TEMP TABLE stats01_{name}_indexed AS SELECT * FROM stats01_{name} WITH NO DATA")
+            )
+            conn.execute(sa.text(f"CREATE INDEX ON stats01_{name}_indexed({columns})"))
+            conn.execute(sa.text(f"CREATE OR REPLACE TEMP VIEW stats01_{name} AS SELECT * FROM stats01_{name}_indexed"))
     if receipt_dir is not None:
         conn.execute(
             sa.text(
@@ -575,6 +598,7 @@ def prepare_connection(conn, revision, *, receipt_dir: Path | None = None):
         ):
             conn.execute(sa.text(f"CREATE INDEX ON stats01_receipt_{name}({columns})"))
     conn.commit()
+    return lookups
 
 
 @contextmanager
@@ -582,11 +606,16 @@ def readonly_snapshot(engine, revision, *, receipt_dir: Path | None = None):
     with engine.connect() as conn:
         # Committed pg_temp setup belongs to this snapshot, not the next pool borrower.
         conn.detach()
-        prepare_connection(conn, revision, receipt_dir=receipt_dir)
+        lookups = prepare_connection(conn, revision, receipt_dir=receipt_dir)
         with conn.begin():
             conn.execute(sa.text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
             conn.execute(sa.text("SET LOCAL TIME ZONE 'UTC'"))
             conn.execute(sa.text("SET LOCAL extra_float_digits=3"))
+            # Match migration lookup indexes, but populate only after this snapshot starts.
+            for name, query in lookups:
+                distinct = "DISTINCT " if name == "endpoints" else ""
+                conn.execute(sa.text(f"INSERT INTO stats01_{name}_indexed SELECT {distinct}* FROM ({query}) source"))
+                conn.execute(sa.text(f"ANALYZE stats01_{name}_indexed"))
             yield conn
 
 
