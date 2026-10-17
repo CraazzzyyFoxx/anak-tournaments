@@ -1010,6 +1010,18 @@ def _projection_digest(conn, query, scope):
         return semantic_digest(scope, cursor)
 
 
+def _owner_predicate(key_sql: str, key) -> tuple[str, dict]:
+    """Compare each attributed column directly: a jsonb array built per row hides indexes."""
+    prefix = "jsonb_build_array("
+    if key_sql.startswith(prefix) and key_sql.endswith(")"):
+        parts = [part.strip() for part in key_sql[len(prefix) : -1].split(",")]
+        if len(parts) == len(key) and all(type(value) in (int, str) for value in key):
+            return " AND ".join(f"{part}=:k{i}" for i, part in enumerate(parts)), {
+                f"k{i}": value for i, value in enumerate(key)
+            }
+    return f"{key_sql}=CAST(:key AS jsonb)", {"key": json.dumps(list(key))}
+
+
 def _legacy_digests(conn, revision, owner, *, compare_native=False):
     """Independent frozen expected projections, with multiplicity and original mapping."""
     result = []
@@ -1017,15 +1029,13 @@ def _legacy_digests(conn, revision, owner, *, compare_native=False):
         attribution = revision.RECONCILE_OWNERS.get(name)
         if attribution is None or attribution[0] != owner[0] or name == "mv":
             continue
-        key_sql = attribution[1]
+        predicate, params = _owner_predicate(attribution[1], owner[1])
         scope = (owner[0], owner[1], f"legacy/{name}")
 
-        def digest(query, *, omit=(), key_sql=key_sql, scope=scope):
+        def digest(query, *, omit=(), predicate=predicate, params=params, scope=scope):
             columns, ordering = _ordered_projection(conn, query, omit=omit)
-            sql = f"SELECT {columns} FROM ({query}) p WHERE {key_sql}=CAST(:key AS jsonb) ORDER BY {ordering}"
-            with conn.execute(
-                sa.text(sql).execution_options(yield_per=ROW_BATCH), {"key": json.dumps(owner[1])}
-            ) as cursor:
+            sql = f"SELECT {columns} FROM ({query}) p WHERE {predicate} ORDER BY {ordering}"
+            with conn.execute(sa.text(sql).execution_options(yield_per=ROW_BATCH), params) as cursor:
                 return semantic_digest(scope, cursor)
 
         count, sha256 = digest(expected)
@@ -1035,8 +1045,7 @@ def _legacy_digests(conn, revision, owner, *, compare_native=False):
         if name in LEGACY_NULL_REFERENCES:
             fields = LEGACY_NULL_REFERENCES[name]
             row = conn.execute(
-                sa.text(f"SELECT to_jsonb(p) FROM ({expected}) p WHERE {key_sql}=CAST(:key AS jsonb)"),
-                {"key": json.dumps(owner[1])},
+                sa.text(f"SELECT to_jsonb(p) FROM ({expected}) p WHERE {predicate}"), params
             ).scalar_one_or_none()
             evidence["references"] = {field: row[field] for field in fields} if row is not None else None
             evidence["complement_sha256"] = digest(expected, omit=fields)[1]
