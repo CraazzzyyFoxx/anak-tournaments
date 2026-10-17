@@ -265,7 +265,8 @@ Wire/runtime changes:
   the existing transaction. New workspace-member identities use creation-only evidence; reuse or
   revival does not authorize an identity change.
 
-The latest Moscow production dump is being prepared as isolated `owt_dev`, continued on home
-after its return. Production `anak_v5` remains unchanged; keep the working home `anak_dev` until
-the isolated copy is verified. Retain the original dump, exact source bundles and verification
-evidence. Retained statistics storage still requires the later reviewed removal gate.
+Dev refreshes use a selected Moscow production dump in isolated `owt_dev`; production
+`anak_v5` is never the migration target. Keep the working home `anak_dev` and its stack until
+the isolated copy, immutable receipt and backup are verified. Retain the original dump, exact
+source bundles and verification evidence. Retained statistics storage still requires the later
+reviewed removal gate. See [the dev-site runbook](../docs/dev-site.md) for the paired cutover.
