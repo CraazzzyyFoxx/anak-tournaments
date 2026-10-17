@@ -1266,11 +1266,15 @@ def _reconcile_class(name, expected, actual):
 RECONCILE_VIEW = "CREATE TEMP VIEW stats01_reconcile AS " + " UNION ALL ".join(
     _reconcile_class(name, expected, actual) for name, expected, actual in RECONCILE_CLASSES
 )
-RECONCILE_SUMMARY = " UNION ALL ".join(
-    f"""SELECT {_literal(name)}::text AS class,(SELECT count(*) FROM ({expected}) p) AS legacy,
+# Each class must reuse the full comparison, not expand the entire view again.
+RECONCILE_SUMMARY = (
+    "WITH stats01_reconcile AS MATERIALIZED (SELECT DISTINCT class FROM pg_temp.stats01_reconcile) "
+    + " UNION ALL ".join(
+        f"""SELECT {_literal(name)}::text AS class,(SELECT count(*) FROM ({expected}) p) AS legacy,
       (SELECT count(*) FROM ({actual}) p) AS migrated,
       CASE WHEN EXISTS(SELECT 1 FROM stats01_reconcile WHERE class={_literal(name)}) THEN 'blocking' ELSE 'ok' END AS status"""
-    for name, expected, actual in RECONCILE_CLASSES
+        for name, expected, actual in RECONCILE_CLASSES
+    )
 )
 
 

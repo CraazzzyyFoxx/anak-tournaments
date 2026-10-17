@@ -185,6 +185,8 @@ experimental codec2 evidence is refused. Report paths cannot overwrite either th
 or a `--prior-receipt-dir` input, including filesystem aliases.
 Receipt snapshots use a dedicated physical PostgreSQL session for committed temporary projections
 and one repeatable-read, read-only transaction; repeated checks do not reuse pooled temporary state.
+The full summary materializes only the set of mismatching class names once, rather than
+expanding the complete comparison view for every class. Every source/native row is still checked.
 
 Later, validate current data and the actual native mutation audit chains:
 
