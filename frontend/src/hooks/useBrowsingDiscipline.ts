@@ -71,11 +71,14 @@ export function useBrowsingDiscipline({
           currentWorkspaceId
         })
       : initial.axis;
-  const axis = axisOverride ?? viewed;
+  // A tenant host's workspace is authoritative: a platform-wide override never widens it.
+  const tenantLock = storeHostLock ?? initial?.hostLockedWorkspaceId ?? null;
+  const axis = tenantLock ?? axisOverride ?? viewed;
 
   const list = useDisciplines(axis, initial?.axis === axis ? (initial.disciplines ?? undefined) : undefined);
   const disciplines = list.data;
-  const explicit = searchParams.get(DISCIPLINE_PARAM) || null;
+  // `?discipline=` with no value is an explicit (invalid) request, not an absent one.
+  const explicit = searchParams.get(DISCIPLINE_PARAM);
 
   const resolved = disciplines
     ? resolveDiscipline({

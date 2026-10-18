@@ -451,7 +451,7 @@ describe("tournaments list", () => {
 
     expect(listCalls()).toEqual([expect.objectContaining({ workspaceId: "all" })]);
     expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: "all" }), expect.anything());
-    expect(getOverview).toHaveBeenCalledWith("", {}, "all");
+    expect(getOverview).toHaveBeenCalledWith("", { discipline: null }, "all");
     expect(getOverallStatistics).toHaveBeenCalledWith({ workspaceId: "all" });
     expect(container.textContent).toContain(en.common.scope.all);
   });
@@ -461,6 +461,7 @@ describe("tournaments list", () => {
 
     expect(listCalls()).toEqual([expect.objectContaining({ discipline: "lol" })]);
     expect(getFacets).toHaveBeenCalledWith(expect.objectContaining({ discipline: "lol" }), expect.anything());
+    expect(getOverview).toHaveBeenCalledWith("", { discipline: "lol" }, 1);
     // The platform totals have no per-game reader: a game's page states none rather than another scope's.
     expect(getOverallStatistics).not.toHaveBeenCalled();
     expect(container.textContent).not.toContain(en.common.playersLabel);

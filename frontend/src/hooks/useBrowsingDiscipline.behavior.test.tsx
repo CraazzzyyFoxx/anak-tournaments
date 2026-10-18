@@ -32,20 +32,24 @@ function init(overrides: Partial<BrowsingDisciplineInit> = {}): BrowsingDiscipli
   return { stored: null, axis: "all", hostLockedWorkspaceId: null, disciplines: GAMES, ...overrides };
 }
 
-function Probe({ allowsAll = false, initial }: Readonly<{ allowsAll?: boolean; initial: BrowsingDisciplineInit }>) {
-  const { axis, resolved } = useBrowsingDiscipline({ allowsAll, initial });
+function Probe({
+  allowsAll = false,
+  initial,
+  axis: override
+}: Readonly<{ allowsAll?: boolean; initial: BrowsingDisciplineInit; axis?: number | "all" }>) {
+  const { axis, resolved } = useBrowsingDiscipline({ allowsAll, initial, axis: override });
   return <output>{JSON.stringify({ axis, resolved })}</output>;
 }
 
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 /** What the server renders for one request: its store never saw the visitor's cookies, only `initial` did. */
-function serverRender(initial: BrowsingDisciplineInit, allowsAll = false, url = "/x") {
+function serverRender(initial: BrowsingDisciplineInit, allowsAll = false, url = "/x", axis?: number | "all") {
   navigation.reset(url);
   useWorkspaceStore.setState({ browsingDiscipline: null, hostLockedWorkspaceId: null, currentWorkspaceId: null, statsScope: "all" });
   return renderToString(
     <QueryClientProvider client={client()}>
-      <Probe initial={initial} allowsAll={allowsAll} />
+      <Probe initial={initial} allowsAll={allowsAll} axis={axis} />
     </QueryClientProvider>
   );
 }
@@ -92,6 +96,20 @@ describe("server render of the browsing discipline", () => {
     const html = serverRender(init({ axis: 7, hostLockedWorkspaceId: 7 }));
     expect(read(html).axis).toBe(7);
     expect(read(serverRender(init({ axis: "all" }))).axis).toBe("all");
+  });
+
+  it("keeps the tenant host's workspace above a platform-wide axis override", () => {
+    const tenant = serverRender(init({ axis: 7, hostLockedWorkspaceId: 7 }), false, "/x", "all");
+    expect(read(tenant).axis).toBe(7);
+    expect(read(serverRender(init({ axis: 3 }), false, "/x", "all")).axis).toBe("all");
+  });
+
+  it("treats an empty ?discipline= as an explicit invalid value, not an absent one", () => {
+    expect(read(serverRender(init({ stored: "lol" }), false, "/x?discipline=")).resolved).toEqual({
+      kind: "invalid",
+      requested: "",
+      reason: "unknown"
+    });
   });
 
   it("is empty, not defaulted, when the server saw no enabled game", () => {

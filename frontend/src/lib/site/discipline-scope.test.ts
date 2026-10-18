@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  browsingSurfaceOf,
   disciplineParamOf,
   reconcileStoredDiscipline,
   resolveDiscipline,
   resolveWorkspaceAxis,
+  withBrowsingDiscipline,
   type DisciplineChoice
 } from "./discipline-scope";
 import { scopeQuery } from "./stats-scope";
@@ -121,5 +123,45 @@ describe("scopeQuery", () => {
     expect(scopeQuery("workspace", 5)).toEqual({ workspace_id: 5 });
     expect(scopeQuery("workspace")).toEqual({});
     expect(scopeQuery(undefined)).toEqual({});
+  });
+});
+
+describe("browsingSurfaceOf", () => {
+  it("classifies directories, concrete surfaces and owner pages", () => {
+    expect(browsingSurfaceOf("/tournaments")).toBe("directory");
+    expect(browsingSurfaceOf("/tournaments/")).toBe("directory");
+    expect(browsingSurfaceOf("/balancer/mix")).toBe("directory");
+    for (const path of ["/achievements", "/encounters", "/statistics", "/users", "/users/compare", "/users/some-player/stats", "/workspace/community", "/admin/content/heroes", "/admin/achievements"]) {
+      expect(browsingSurfaceOf(path)).toBe("concrete");
+    }
+    for (const path of ["/", "/tournaments/spring-cup", "/tournaments/analytics", "/encounters/12", "/matches/3", "/draft/4", "/balancer/mix/9", "/admin/members", "/privacy"]) {
+      expect(browsingSurfaceOf(path)).toBeNull();
+    }
+  });
+});
+
+describe("withBrowsingDiscipline", () => {
+  const from = (pathname: string, discipline: string | null) => ({ pathname, discipline });
+
+  it("carries a concrete game between browsing surfaces and keeps the rest of the href", () => {
+    expect(withBrowsingDiscipline("/achievements", from("/tournaments", "lol"))).toBe("/achievements?discipline=lol");
+    expect(withBrowsingDiscipline("/users/heroes-compare?hero_id=3#x", from("/achievements", "lol"))).toBe(
+      "/users/heroes-compare?hero_id=3&discipline=lol#x"
+    );
+    expect(withBrowsingDiscipline("/tournaments", from("/achievements", "lol"))).toBe("/tournaments?discipline=lol");
+  });
+
+  it("carries all only to a directory, never to a concrete destination", () => {
+    expect(withBrowsingDiscipline("/tournaments", from("/tournaments", "all"))).toBe("/tournaments?discipline=all");
+    expect(withBrowsingDiscipline("/achievements", from("/tournaments", "all"))).toBe("/achievements");
+  });
+
+  it("leaves owner and non-game destinations, owner sources, absent values and explicit hrefs alone", () => {
+    expect(withBrowsingDiscipline("/tournaments/spring-cup", from("/tournaments", "lol"))).toBe("/tournaments/spring-cup");
+    expect(withBrowsingDiscipline("/privacy", from("/tournaments", "lol"))).toBe("/privacy");
+    expect(withBrowsingDiscipline("/achievements", from("/tournaments/spring-cup", "lol"))).toBe("/achievements");
+    expect(withBrowsingDiscipline("/achievements", from("/tournaments", null))).toBe("/achievements");
+    expect(withBrowsingDiscipline("/achievements?discipline=overwatch", from("/tournaments", "lol"))).toBe("/achievements?discipline=overwatch");
+    expect(withBrowsingDiscipline("https://elsewhere.test/achievements", from("/tournaments", "lol"))).toBe("https://elsewhere.test/achievements");
   });
 });

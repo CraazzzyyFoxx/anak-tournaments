@@ -190,8 +190,9 @@ const TournamentsClient = ({
   });
 
   const { data: overview } = useQuery({
-    queryKey: tournamentQueryKeys.encountersOverview(workspaceId),
-    queryFn: () => encounterService.getOverview("", {}, workspaceId),
+    queryKey: tournamentQueryKeys.encountersOverview(workspaceId, disciplineFilter),
+    queryFn: () => encounterService.getOverview("", { discipline: disciplineFilter }, workspaceId),
+    enabled: ready,
     refetchInterval: 30_000,
     staleTime: 15_000
   });
@@ -209,16 +210,8 @@ const TournamentsClient = ({
     [listPages]
   );
 
-  // The overview is platform-wide; its live encounters name their tournament, so a game's view keeps its own.
-  const liveGroups = useMemo(
-    () =>
-      groupLiveByTournament(
-        (overview?.featured.live ?? []).filter(
-          (encounter) => disciplineFilter === null || encounter.tournament?.discipline === disciplineFilter
-        )
-      ),
-    [overview, disciplineFilter]
-  );
+  // The overview is read for the chosen game, so its live strip is that game's before the server limit.
+  const liveGroups = useMemo(() => groupLiveByTournament(overview?.featured.live ?? []), [overview]);
 
   if (resolved === null) {
     return browsing.isError ? (

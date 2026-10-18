@@ -53,10 +53,11 @@ export const tournamentQueryKeys = {
     ["ffa", tournamentId, "stage", stageId, "admin"] as const,
   /** That shared prefix, for the writes that move every lobby of a tournament. */
   ffaAll: (tournamentId: number) => ["ffa", tournamentId] as const,
-  encountersOverview: (workspaceId?: number | "all" | null) =>
+  /** `discipline` null/absent is every game; a concrete code narrows every aggregate and strip. */
+  encountersOverview: (workspaceId?: number | "all" | null, discipline?: string | null) =>
     workspaceId == null
       ? (["encounters", "overview"] as const)
-      : (["encounters", "overview", workspaceId] as const),
+      : (["encounters", "overview", workspaceId, discipline ?? "all"] as const),
   overallStatistics: (workspaceId?: number | "all" | null) =>
     workspaceId == null
       ? (["statistics", "overall"] as const)

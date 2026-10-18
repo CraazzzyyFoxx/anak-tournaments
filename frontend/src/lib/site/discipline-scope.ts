@@ -104,3 +104,51 @@ export function disciplineParamOf(resolved: ResolvedDiscipline): string | null {
   if (resolved.kind === "all") return ALL_DISCIPLINES;
   return resolved.kind === "concrete" && resolved.source !== "owner" ? resolved.code : null;
 }
+
+export type BrowsingSurface = "directory" | "concrete";
+
+const DIRECTORY_PATHS: readonly string[] = ["/tournaments", "/balancer/mix"];
+const CONCRETE_EXACT: readonly string[] = [
+  "/encounters",
+  "/statistics",
+  "/achievements",
+  "/admin/achievements",
+  "/admin/ranks",
+  "/admin/matches",
+  "/admin/settings/divisions",
+  "/admin/collectors"
+];
+const CONCRETE_PREFIXES: readonly string[] = ["/users", "/workspace", "/admin/content"];
+
+/**
+ * Which kind of browsing surface a path is (§2.3): a `directory` may show all games, a
+ * `concrete` one needs a game. Owner pages (`/tournaments/<slug>`, `/encounters/<id>`,
+ * `/matches/<id>`, `/draft/<id>`, …), the composite home and non-game pages are `null`:
+ * they neither read nor receive `?discipline=`.
+ */
+export function browsingSurfaceOf(pathname: string): BrowsingSurface | null {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  if (DIRECTORY_PATHS.includes(path)) return "directory";
+  if (CONCRETE_EXACT.includes(path)) return "concrete";
+  return CONCRETE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`)) ? "concrete" : null;
+}
+
+/**
+ * The href a browsing link should navigate to (§2.4): from a browsing surface that carries
+ * `?discipline=`, a link to another browsing surface carries it too — `all` only to a
+ * directory, since a concrete destination resolves and shows its own game. Owner and
+ * non-game destinations, and hrefs that already name a game, are untouched. Pure: it never
+ * decides or stores a preference.
+ */
+export function withBrowsingDiscipline(
+  href: string,
+  from: { pathname: string; discipline: string | null }
+): string {
+  if (!from.discipline || browsingSurfaceOf(from.pathname) === null || !href.startsWith("/")) return href;
+  const target = new URL(href, "http://x");
+  const surface = browsingSurfaceOf(target.pathname);
+  if (surface === null || target.searchParams.has(DISCIPLINE_PARAM)) return href;
+  if (surface === "concrete" && from.discipline === ALL_DISCIPLINES) return href;
+  target.searchParams.set(DISCIPLINE_PARAM, from.discipline);
+  return `${target.pathname}${target.search}${target.hash}`;
+}

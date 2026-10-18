@@ -1,0 +1,46 @@
+"""``discipline`` narrows the encounters overview before any strip limit.
+
+The live/upcoming/closest strips are ``encounter JOIN base_ids ... LIMIT 4``; ``base_ids`` is built by
+``_apply_encounter_filters``, so a game filter there is applied upstream of every limit and aggregate, and a
+client never has to filter a truncated cross-game sample.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import pytest
+import sqlalchemy as sa
+from pydantic import ValidationError
+from sqlalchemy.dialects import postgresql
+
+os.environ.setdefault("DEBUG", "true")
+
+backend_root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(backend_root))
+sys.path.insert(0, str(backend_root / "tournament-service"))
+
+from shared.rpc.query import build_query_model  # noqa: E402
+from src import schemas  # noqa: E402
+from src.services.encounter.service import _encounter_ids_query  # noqa: E402
+
+
+def _params(query: dict) -> schemas.EncounterSearchParams:
+    return schemas.EncounterSearchParams.from_query_params(build_query_model(schemas.EncounterSearchQueryParams, query))
+
+
+def _sql(statement: sa.Select) -> str:
+    return str(statement.compile(dialect=postgresql.dialect()))
+
+
+def test_the_game_reaches_the_id_subquery_every_overview_read_joins() -> None:
+    assert "encounter.discipline = " in _sql(_encounter_ids_query(_params({"discipline": ["lol"]})))
+    assert "encounter.discipline = " not in _sql(_encounter_ids_query(_params({})))
+
+
+@pytest.mark.parametrize("bogus", ["starcraft", "", "all"])
+def test_an_uninstalled_game_is_rejected(bogus: str) -> None:
+    with pytest.raises(ValidationError):
+        build_query_model(schemas.EncounterSearchQueryParams, {"discipline": [bogus]})

@@ -145,6 +145,8 @@ def _apply_encounter_filters(
         # Cross-tournament browse: never surface hidden tournaments (issue #115).
         # A specific tournament_id is authorized upstream by ensure_tournament_viewable.
         query = query.where(models.Encounter.tournament_id.in_(visible_tournament_ids_subquery(None)))
+    if params.discipline is not None:
+        query = query.where(models.Encounter.discipline == params.discipline)
     if params.stage_id is not None:
         query = query.where(
             sa.exists()

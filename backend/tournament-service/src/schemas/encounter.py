@@ -6,6 +6,7 @@ import sqlalchemy as sa
 from pydantic import BaseModel, Field
 
 from shared.models.stats.ingest import RawSourceStatus
+from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from src.core import db, enums, pagination
 from src.schemas import (
     BaseRead,
@@ -344,6 +345,8 @@ class EncounterSearchParams(pagination.PaginationSortSearchParams):
     #: ``None`` reads as 2: every existing list, search and overview is a list
     #: of duels, and a lobby's table is drawn by the FFA read instead.
     slot_count: int | None = None
+    #: One game's encounters (every aggregate and the live/upcoming strips included); ``None`` is every game.
+    discipline: str | None = None
 
     def apply_search(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
         criteria = []
@@ -374,6 +377,7 @@ class EncounterSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     #: ``None`` reads as 2: every existing list, search and overview is a list
     #: of duels, and a lobby's table is drawn by the FFA read instead.
     slot_count: int | None = None
+    discipline: InstalledDisciplineFilter = None
 
 
 @dataclass

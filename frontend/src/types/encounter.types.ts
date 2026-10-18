@@ -258,6 +258,8 @@ export interface EncounterFilters {
   closeness_max?: number | null;
   scope?: EncounterScope;
   sort?: string | null;
+  /** One installed game's encounters; absent is every game. */
+  discipline?: string | null;
 }
 
 export interface EncounterSavedView {

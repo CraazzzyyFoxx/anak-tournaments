@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, type ComponentProps } from "react";
 
+import { useBrowsingHref } from "@/hooks/useBrowsingHref";
+
 type HoverPrefetchLinkProps = Omit<ComponentProps<typeof Link>, "prefetch">;
 
 /**
@@ -33,12 +35,14 @@ type HoverPrefetchLinkProps = Omit<ComponentProps<typeof Link>, "prefetch">;
  * which for a dynamic route fetches only down to the nearest loading boundary
  * rather than the whole page.
  */
-export function HoverPrefetchLink({ onMouseEnter, onFocus, ...props }: HoverPrefetchLinkProps) {
+export function HoverPrefetchLink({ onMouseEnter, onFocus, href, ...props }: HoverPrefetchLinkProps) {
   const [armed, setArmed] = useState(false);
+  const target = useBrowsingHref(href);
 
   return (
     <Link
       {...props}
+      href={target}
       prefetch={armed ? null : false}
       onMouseEnter={(event) => {
         setArmed(true);
