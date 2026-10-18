@@ -583,6 +583,11 @@ class AnalyticsReadFlowsService:
         note: str | None,
         reviewer_user_id: int | None,
     ) -> models.AnalyticsAnomalyFeedback:
+        if not (await self._owned(session, tournament_id))[0]:  # same gate as list_feedback: no analytics, no feedback
+            raise errors.ApiHTTPException(
+                status_code=404,
+                detail=[errors.ApiExc(code="not_found", msg="Analytics is not available for this tournament.")],
+            )
         existing = await self.feedback.get_by_key(
             session,
             tournament_id=tournament_id,

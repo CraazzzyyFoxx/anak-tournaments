@@ -74,6 +74,9 @@ artifact (active and historical) must be converted in a maintenance window with
 5. **Rollback.** `rollback --receipt` restores the original URI set (the old image is needed to read the old bytes);
    originals and converted files are never deleted. Originals' SHA256 and the new SHA256 are both recorded (they differ by
    design).
+   After `apply`, the first retrain writes the original `<alg>/<ver>/<role>.joblib` path, overwriting the original bytes:
+   from then on the rollback material lives only in the storage snapshot, and `rollback` is blocked by its original-file
+   check (`_check_old_files`). Roll back before retraining or restore the snapshot.
 6. **P9 gate.** The real inventory shows no unsupported class or state, every referenced artifact in the receipt, a
    rehearsed apply + rollback, and reviewed checksums/predictions before the new image serves traffic. Fixture tests
    prove the tool, not any production artifact.
@@ -99,6 +102,12 @@ artifact (active and historical) must be converted in a maintenance window with
 
 ## 6. Deferred items and known limits
 
+* A parse-complete event for a tournament deleted before the achievement runner consumes it now fails the run and is
+  dead-lettered (`runner.py` resolves the trigger's owner first); it used to evaluate the workspace. Expected, not an
+  incident: discard it from the dead-letter queue.
+* A discipline a workspace has disabled refuses rule update and override creation, but deliberately still allows rule
+  delete and override delete (`rpc/achievements.py`), so an organizer can clean up what the game left behind.
+* Anomaly feedback is refused (404) for a tournament whose discipline has no analytics module, like its list read.
 * P9: real artifact inventory/conversion, trusted original bytes, maintenance approval, rehearsal; image identity strings
   are recorded, not verified. Real-log decoder parity and the P4 data blockers are unchanged (P5 note, section 14).
 * Read-side algorithm gating uses a globally selected declaration (`reads.py`); revisit when a second module declares

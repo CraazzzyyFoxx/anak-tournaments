@@ -14,12 +14,15 @@ import typing
 from datetime import timedelta
 
 import pandas as pd
+import pytest
 import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared.core import errors
 from shared.domain.analytics import MATCH_QUALITY_MODEL, PERFORMANCE_MODEL, STANDINGS_MODEL
 from shared.testing.stats_parity import _DATES, STAMP, _insert, seed_native_sentinel
+from src import models
 from src.core import config
 from src.services.analytics.reads import flows_service
 from tests.ow_analytics import exports
@@ -377,6 +380,23 @@ def test_stored_prediction_reads_are_owner_and_declared_algorithm_gated(stats_pa
                 assert [row.algorithm_id for row in quality] == [seeded["quality"]]
                 assert await flows_service.list_match_quality(session, tid, algorithm_id=seeded["foreign"]) == []
                 assert len(await flows_service.list_player_anomalies(session, tid)) == 1
+                # Feedback follows the same gate: refused (and nothing written) for the unsupported discipline.
+                feedback = {"kind": "smurf", "verdict": "confirmed", "note": None, "reviewer_user_id": None}
+                with pytest.raises(errors.ApiHTTPException) as refused:
+                    await flows_service.upsert_feedback(
+                        session, tournament_id=lol_tid, player_id=seeded["lol_player"], **feedback
+                    )
+                assert refused.value.status_code == 404
+                assert await flows_service.list_feedback(session, lol_tid) == []
+                assert (
+                    await session.scalar(sa.select(sa.func.count()).select_from(models.AnalyticsAnomalyFeedback)) == 0
+                )
+                written = await flows_service.upsert_feedback(
+                    session, tournament_id=tid, player_id=seeded["ow_player"], **feedback
+                )
+                assert written.tournament_id == tid
+                assert len(await flows_service.list_feedback(session, tid)) == 1
+                await session.rollback()
                 # The foreign algorithm alone carries a contribution for this player: it is not an explanation.
                 assert await flows_service.get_explanation(session, seeded["ow_player"], tid) is None
                 assert (
