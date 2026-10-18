@@ -220,6 +220,7 @@ async def process_ingest_message(discipline: str, data: dict, msg: RabbitMessage
     ):
         event = ProcessIngestJobEvent.model_validate(data)
         log = logger.bind(ingest_job_id=event.ingest_job_id, discipline=discipline)
+        replay = event.reparse_expected_revision is not None
         async with db.async_session_maker() as session:
             job_discipline = await session.scalar(
                 sa.select(models.IngestJob.discipline).where(models.IngestJob.id == event.ingest_job_id)
@@ -230,6 +231,26 @@ async def process_ingest_message(discipline: str, data: dict, msg: RabbitMessage
                 raise ValueError(
                     f"Ingest job {event.ingest_job_id} is a {job_discipline!r} job delivered to {queue.name}"
                 )
+            if replay:
+                # A done job replayed by a tournament-wide request: the revision-fenced reparse of its stored document,
+                # run only by a worker that serves the job's discipline. Stale/busy is reported per job, nothing is
+                # published to the uploader (nobody waits for it).
+                outcome = "replayed"
+                try:
+                    await reparse_authorized_job(
+                        session,
+                        job_id=event.ingest_job_id,
+                        expected_revision=event.reparse_expected_revision,
+                        s3=s3_client,
+                    )
+                except IngestRejected as exc:
+                    outcome = "refused"
+                    log.warning("Reparse of log {} refused: {}", event.ingest_job_id, exc.code)
+                except Exception:
+                    outcome = "refused"
+                    log.exception("Reparse of log {} failed", event.ingest_job_id)
+                metrics.count("stats.ingest.replayed", 1, attributes={"outcome": outcome, "discipline": discipline})
+                return
             status = await process_ingest_job(session, event.ingest_job_id, s3_client, is_raise=False)
             if status == models.IngestJobStatus.PROCESSING:
                 # Another delivery owns this claim. Acknowledge without
@@ -284,26 +305,21 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
                     ingest_queue(requeued.discipline),
                     logger=logger.bind(ingest_job_id=job_id),
                 )
-            # Done jobs are never re-pended: each replays through the explicit reparse branch with the revision seen
-            # at selection, so a log superseded or re-replaced in the meantime reports stale instead of winning.
-            replayed, refused = 0, 0
+            # Done jobs are never re-pended: each is replayed through the discipline's own ingest queue with the revision
+            # seen at selection, so a log superseded or re-replaced in the meantime reports stale instead of winning.
+            # This consumer never decodes: only a worker serving the job's discipline can.
             for job_id, revision in requeued.replay.items():
-                try:
-                    async with db.async_session_maker() as session:
-                        await reparse_authorized_job(session, job_id=job_id, expected_revision=revision, s3=s3_client)
-                    replayed += 1
-                except IngestRejected as exc:
-                    refused += 1
-                    logger.bind(ingest_job_id=job_id).warning("Reparse of log {} refused: {}", job_id, exc.code)
-                except Exception:
-                    refused += 1
-                    logger.bind(ingest_job_id=job_id).exception("Reparse of log {} failed", job_id)
+                await publish_message(
+                    broker,
+                    ProcessIngestJobEvent(ingest_job_id=job_id, reparse_expected_revision=revision).model_dump(),
+                    ingest_queue(requeued.discipline),
+                    logger=logger.bind(ingest_job_id=job_id),
+                )
             logger.info(
-                "Tournament {} logs: {} queued, {} reparsed, {} refused",
+                "Tournament {} logs: {} queued, {} replays requested",
                 event.tournament_id,
                 len(requeued.queue),
-                replayed,
-                refused,
+                len(requeued.replay),
             )
         except Exception:
             logger.exception(f"Failed to process tournament logs tournament_id={event.tournament_id}")

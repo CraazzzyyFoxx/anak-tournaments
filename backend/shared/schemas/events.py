@@ -261,6 +261,11 @@ class ProcessIngestJobEvent(BaseEvent):
 
     event_type: str = Field(default="process_ingest_job", frozen=True)
     ingest_job_id: int = Field(..., gt=0, description="Authorized stats.ingest_job ID")
+    reparse_expected_revision: int | None = Field(
+        default=None,
+        ge=1,
+        description="Set for a revision-fenced replay of a done job: the observation revision seen when it was selected",
+    )
 
 
 class UploadMatchLogEvent(BaseEvent):
