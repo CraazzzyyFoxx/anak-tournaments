@@ -74,13 +74,16 @@ export function useAchievementDetailData({
     initialPageParam: 1
   });
 
+  // The overrides list is per game, and which game is the loaded rule's: its id key
+  // (workspace + rule) names exactly one game, so the read waits for the rule.
+  const discipline = rule?.discipline;
   const { data: overrides, refetch: refetchOverrides } = useQuery({
     queryKey: achievementQueryKeys.overrides(workspaceId, ruleId),
     queryFn: async () => {
-      const all = await adminService.getAchievementOverrides(workspaceId!);
+      const all = await adminService.getAchievementOverrides(workspaceId!, discipline!);
       return all.filter((o) => o.achievement_rule_id === ruleId);
     },
-    enabled: !!workspaceId
+    enabled: !!workspaceId && !!discipline
   });
 
   return { rule, isLoading, tournaments, users, overrides, refetchOverrides };
@@ -90,6 +93,7 @@ export function useAchievementDetailData({
 export function useAchievementDetailMutations({
   workspaceId,
   ruleId,
+  discipline,
   onUpdated,
   onTreeSaved,
   onOverrideSaved,
@@ -98,6 +102,8 @@ export function useAchievementDetailMutations({
 }: {
   workspaceId: number | null;
   ruleId: number;
+  /** The rule's own game; `undefined` until the rule has loaded (no mutation can run before). */
+  discipline: string | undefined;
   onUpdated: () => void;
   onTreeSaved: () => void;
   onOverrideSaved: () => void;
@@ -107,6 +113,11 @@ export function useAchievementDetailMutations({
   const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
   const ruleKey = achievementQueryKeys.rule(workspaceId, ruleId);
+
+  const invalidateLists = () => {
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
+  };
 
   const updateMutation = useMutation({
     mutationFn: async ({
@@ -133,7 +144,7 @@ export function useAchievementDetailMutations({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ruleKey });
-      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId) });
+      invalidateLists();
       onUpdated();
     }
   });
@@ -143,25 +154,31 @@ export function useAchievementDetailMutations({
       adminService.updateAchievementRule(workspaceId!, ruleId, { condition_tree: conditionTree }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ruleKey });
-      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId) });
+      invalidateLists();
       onTreeSaved();
     }
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => adminService.deleteAchievementRule(workspaceId!, ruleId),
-    onSuccess: onDeleted
+    onSuccess: () => {
+      invalidateLists();
+      onDeleted();
+    }
   });
 
   const toggleMutation = useMutation({
     mutationFn: (enabled: boolean) =>
       adminService.updateAchievementRule(workspaceId!, ruleId, { enabled }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ruleKey })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ruleKey });
+      invalidateLists();
+    }
   });
 
   const evaluateMutation = useMutation({
     mutationFn: (tournamentId?: number) =>
-      adminService.evaluateAchievements(workspaceId!, {
+      adminService.evaluateAchievements(workspaceId!, discipline!, {
         tournament_id: tournamentId,
         rule_ids: [ruleId]
       }),

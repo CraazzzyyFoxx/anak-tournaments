@@ -30,6 +30,7 @@ const ConditionFlowViewer = dynamic(
  */
 export function ConditionTreeCard({
   conditionTree,
+  discipline,
   canUpdate,
   editing,
   onEditingChange,
@@ -38,6 +39,8 @@ export function ConditionTreeCard({
   saveError
 }: Readonly<{
   conditionTree: Record<string, unknown>;
+  /** The rule's own game (immutable): it decides which conditions the editor offers. */
+  discipline: string;
   canUpdate: boolean;
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
@@ -76,7 +79,7 @@ export function ConditionTreeCard({
       <CardContent>
         {editing ? (
           <div className="space-y-4">
-            <ConditionFlowEditor value={draft} onChange={setDraft} />
+            <ConditionFlowEditor value={draft} onChange={setDraft} discipline={discipline} />
             <div className="flex items-center justify-end gap-2 pt-2 border-t">
               {saveError && <p className="text-sm text-destructive mr-auto">{saveError}</p>}
               <Button variant="outline" onClick={() => onEditingChange(false)} disabled={isSaving}>
@@ -88,7 +91,7 @@ export function ConditionTreeCard({
             </div>
           </div>
         ) : (
-          <ConditionFlowViewer value={conditionTree} readOnly />
+          <ConditionFlowViewer value={conditionTree} readOnly discipline={discipline} />
         )}
       </CardContent>
     </Card>

@@ -34,3 +34,13 @@ def to_match_link(context: MatchReadContext) -> schemas.AchievementMatchLink:
         home_team=_team_ref(context.home_team),
         away_team=_team_ref(context.away_team),
     )
+
+
+def to_entity_read(entity: models.CatalogEntity) -> schemas.CatalogEntityRead:
+    """A rule's linked character as the catalog's own entity DTO.
+
+    Built field by field: a rule only links characters, which never have a ``parent`` (the admin
+    catalog refuses it), so the lazy ``parent`` relationship is not touched on an async session.
+    """
+    fields = {name: getattr(entity, name) for name in schemas.CatalogEntityRead.model_fields if name != "parent"}
+    return schemas.CatalogEntityRead(**fields, parent=None)

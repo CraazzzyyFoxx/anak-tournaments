@@ -1,5 +1,6 @@
 import { Score } from "./encounter.types";
 import { User } from "@/types/user.types";
+import type { CatalogEntityRead } from "@/types/admin.types";
 
 export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
 type AchievementScope = "global" | "tournament" | "match";
@@ -19,6 +20,11 @@ export interface Achievement {
   description_ru: string;
   description_en: string;
   image_url: string | null;
+  /** The game the rule belongs to; (discipline, slug) is its public identity. */
+  discipline: string;
+  entity_id: number | null;
+  /** The linked catalog character; present only when `entities=entity` was requested. */
+  entity?: CatalogEntityRead | null;
 
   category: AchievementCategory | null;
   scope: AchievementScope | null;

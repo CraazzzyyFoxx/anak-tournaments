@@ -46,10 +46,11 @@ export interface AchievementsTableActions {
 /** The paged rule catalog. Every row action is decided by the page, not here. */
 export function AchievementsTable({
   workspaceId,
+  discipline,
   actions,
-}: Readonly<{ workspaceId: number; actions: AchievementsTableActions }>) {
+}: Readonly<{ workspaceId: number; discipline: string; actions: AchievementsTableActions }>) {
   const t = useTranslations("adminAchievements");
-  const listKey = achievementQueryKeys.adminList(workspaceId);
+  const listKey = achievementQueryKeys.adminList(workspaceId, discipline);
 
   const columns: ColumnDef<AchievementRule>[] = [
     {
@@ -169,7 +170,7 @@ export function AchievementsTable({
     <DataTable
       queryKey={(page, search, pageSize, sf, sd) => [...listKey, page, search, pageSize, sf, sd]}
       queryFn={async (page, search, pageSize, sortField, sortDir) =>
-        adminService.getAchievementRules(workspaceId, {
+        adminService.getAchievementRules(workspaceId, discipline, {
           page,
           per_page: pageSize,
           search: search || undefined,

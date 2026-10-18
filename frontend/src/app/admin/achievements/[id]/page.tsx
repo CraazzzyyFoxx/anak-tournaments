@@ -63,6 +63,7 @@ export default function AchievementDetailPage() {
   } = useAchievementDetailMutations({
     workspaceId,
     ruleId,
+    discipline: rule?.discipline,
     onUpdated: () => {
       setEditDialogOpen(false);
       setImageFile(null);
@@ -121,6 +122,7 @@ export default function AchievementDetailPage() {
 
       <ConditionTreeCard
         conditionTree={rule.condition_tree as Record<string, unknown>}
+        discipline={rule.discipline}
         canUpdate={canUpdate}
         editing={editingTree}
         onEditingChange={setEditingTree}

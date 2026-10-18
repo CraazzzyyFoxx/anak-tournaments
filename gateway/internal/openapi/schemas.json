@@ -1499,7 +1499,7 @@
       "summary": "Read workspace quota usage"
     },
     "rpc.app.read.get#achievement": {
-      "description": "Permission: public; no authentication required. Returns a single achievement rule by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
+      "description": "Permission: public; no authentication required. Returns a single achievement rule by id (with its `discipline`/`entity_id`; `entities=entity` expands the character) via the shared CRUD read engine, 404 if not found. Pooled numbers use the rule's own discipline.",
       "response": {
         "array": false,
         "ref": "app.AchievementRead"
@@ -1531,7 +1531,7 @@
       "summary": "Get map"
     },
     "rpc.app.read.list#achievement": {
-      "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine.",
+      "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.",
       "query_params": [
         {
           "name": "page",
@@ -12716,17 +12716,21 @@
           "title": "Description Ru",
           "type": "string"
         },
-        "hero": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "entity": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroRead"
+              "$ref": "#/components/schemas/app.CatalogEntityRead"
             },
             {
               "type": "null"
             }
           ]
         },
-        "hero_id": {
+        "entity_id": {
           "anyOf": [
             {
               "type": "integer"
@@ -12735,7 +12739,7 @@
               "type": "null"
             }
           ],
-          "title": "Hero Id"
+          "title": "Entity Id"
         },
         "id": {
           "title": "Id",
@@ -12784,9 +12788,10 @@
         "description_ru",
         "description_en",
         "image_url",
-        "hero_id",
+        "discipline",
+        "entity_id",
         "rarity",
-        "hero",
+        "entity",
         "count"
       ],
       "title": "AchievementRead",
@@ -18529,17 +18534,21 @@
           "title": "Description Ru",
           "type": "string"
         },
-        "hero": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "entity": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.HeroRead"
+              "$ref": "#/components/schemas/app.CatalogEntityRead"
             },
             {
               "type": "null"
             }
           ]
         },
-        "hero_id": {
+        "entity_id": {
           "anyOf": [
             {
               "type": "integer"
@@ -18548,7 +18557,7 @@
               "type": "null"
             }
           ],
-          "title": "Hero Id"
+          "title": "Entity Id"
         },
         "id": {
           "title": "Id",
@@ -18625,9 +18634,10 @@
         "description_ru",
         "description_en",
         "image_url",
-        "hero_id",
+        "discipline",
+        "entity_id",
         "rarity",
-        "hero",
+        "entity",
         "count",
         "tournaments_ids",
         "tournaments",

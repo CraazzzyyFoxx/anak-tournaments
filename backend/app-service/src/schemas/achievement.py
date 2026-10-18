@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import BaseModel
 
 from .base import BaseRead, Score
 
@@ -11,7 +11,8 @@ __all__ = (
     "AchievementMatchTeamRef",
 )
 
-from src.schemas import HeroRead, UserRead
+from src.schemas import UserRead
+from src.schemas.admin.catalog import CatalogEntityRead
 
 
 class AchievementRead(BaseRead):
@@ -20,14 +21,15 @@ class AchievementRead(BaseRead):
     description_ru: str
     description_en: str
     image_url: str | None
-    hero_id: int | None = Field(validation_alias=AliasChoices("entity_id", "hero_id"))
+    discipline: str
+    entity_id: int | None
     rarity: float
 
     category: str | None = None
     scope: str | None = None
     condition_tree: dict | None = None
 
-    hero: HeroRead | None
+    entity: CatalogEntityRead | None
     count: int | None
 
 

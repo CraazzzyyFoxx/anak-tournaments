@@ -16,7 +16,6 @@ from .scrim import *
 from .killfeed import *
 from .standing import *
 from .statistics import *
-from .achievement import *
 from .analytics import *
 from .workspace import *
 from .admin.balancer import *

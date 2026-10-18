@@ -41,11 +41,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.read.get#achievement": {
         "summary": "Get achievement",
-        "description": "Permission: public; no authentication required. Returns a single achievement rule by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
+        "description": "Permission: public; no authentication required. Returns a single achievement rule by id (with its `discipline`/`entity_id`; `entities=entity` expands the character) via the shared CRUD read engine, 404 if not found. Pooled numbers use the rule's own discipline.",
     },
     "rpc.app.read.list#achievement": {
         "summary": "List achievements",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine.",
+        "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.",
     },
     # ── lookups ────────────────────────────────────────────────────────────────
     "rpc.app.heroes.lookup": {

@@ -17,7 +17,6 @@ import { Team, Player } from "@/types/team.types";
 import { Encounter } from "@/types/encounter.types";
 import { User } from "@/types/user.types";
 import { Hero } from "@/types/hero.types";
-import { Achievement } from "@/types/achievement.types";
 import { Gamemode } from "@/types/gamemode.types";
 import { MapRead } from "@/types/map.types";
 import type {
@@ -68,9 +67,6 @@ import {
   CatalogAliasMissRead,
   CatalogEntityRead,
   CatalogEntityWrite,
-  AchievementCreateInput,
-  AchievementUpdateInput,
-  AchievementRegistryEntry,
   AchievementLibraryRule,
   AchievementLibraryWorkspace,
   AchievementRuleExportEnvelope,
@@ -986,6 +982,16 @@ class AdminService {
     await apiFetch(`${OVERWATCH_CATALOG}/character/${id}`, { method: "DELETE" });
   }
 
+  /** Every character of one discipline's catalog (a rule links one of them), in any state. */
+  async getCatalogCharacters(discipline: string): Promise<CatalogEntityRead[]> {
+    const page: PaginatedResponse<CatalogEntityRead> = await (
+      await apiFetch(`/api/v1/admin/catalog/${discipline}/character`, {
+        query: { per_page: -1, sort: "name", order: "asc" }
+      })
+    ).json();
+    return page.results;
+  }
+
   /** Pull a discipline's catalog from its module's source (OverFast, Data Dragon). */
   async syncCatalog(discipline: string): Promise<BulkOperationResult> {
     const response = await apiFetch(`/api/v1/admin/catalog-sync/${discipline}`, { method: "POST" });
@@ -1107,68 +1113,11 @@ class AdminService {
     });
   }
 
-  // ─── Achievement CRUD ──────────────────────────────────────────────────────
-
-  async getAchievements(
-    params: {
-      page?: number;
-      per_page?: number;
-      search?: string;
-      sort?: string;
-      order?: string;
-    } = {}
-  ): Promise<PaginatedResponse<Achievement>> {
-    const response = await apiFetch("/api/v1/admin/achievements", {
-      query: params
-    });
-    return response.json();
-  }
-
-  async getAchievementRegistry(): Promise<{ entries: AchievementRegistryEntry[] }> {
-    const response = await apiFetch("/api/v1/admin/achievements/registry");
-    return response.json();
-  }
-
-  async createAchievement(data: AchievementCreateInput): Promise<Achievement> {
-    const response = await apiFetch("/api/v1/admin/achievements", {
-      method: "POST",
-      body: data
-    });
-    return response.json();
-  }
-
-  async updateAchievement(id: number, data: AchievementUpdateInput): Promise<Achievement> {
-    const response = await apiFetch(`/api/v1/admin/achievements/${id}`, {
-      method: "PATCH",
-      body: data
-    });
-    return response.json();
-  }
-
-  async deleteAchievement(id: number): Promise<void> {
-    await apiFetch(`/api/v1/admin/achievements/${id}`, {
-      method: "DELETE"
-    });
-  }
-
-  async calculateAchievements(
-    slugs?: string[],
-    tournamentId?: number
-  ): Promise<BulkOperationResult> {
-    const url = tournamentId
-      ? `/api/v1/achievement/calculate/${tournamentId}`
-      : "/api/v1/achievement/calculate";
-    const response = await apiFetch(url, {
-      method: "POST",
-      body: { slugs, ensure_created: true }
-    });
-    return response.json();
-  }
-
   // ─── Achievement Rule Engine ────────────────────────────────────────────────
 
   async getAchievementRules(
     workspaceId: number,
+    discipline: string,
     params: {
       page?: number;
       per_page?: number;
@@ -1182,6 +1131,7 @@ class AdminService {
     const { category, enabled, ...list } = params;
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules`, {
       query: {
+        discipline,
         ...buildAdminListQuery(list),
         ...(category != null && { category }),
         ...(enabled != null && { enabled })
@@ -1255,10 +1205,11 @@ class AdminService {
 
   async validateConditionTree(
     workspaceId: number,
+    discipline: string,
     conditionTree: Record<string, unknown>
   ): Promise<ConditionTreeValidateResponse> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/validate`,
-      { method: "POST", body: { condition_tree: conditionTree } }
+      { method: "POST", body: { discipline, condition_tree: conditionTree } }
     );
     return response.json();
   }
@@ -1276,10 +1227,11 @@ class AdminService {
 
   async evaluateAchievements(
     workspaceId: number,
+    discipline: string,
     params: { tournament_id?: number; rule_ids?: number[] } = {}
   ): Promise<EvaluationRunRead> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/evaluate`,
-      { method: "POST", body: params }
+      { method: "POST", body: { discipline, ...params } }
     );
     return response.json();
   }
@@ -1289,28 +1241,33 @@ class AdminService {
     return response.json();
   }
 
-  async seedAchievementRules(workspaceId: number): Promise<SeedResultRead> {
+  async seedAchievementRules(workspaceId: number, discipline: string): Promise<SeedResultRead> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/seed`, {
-      method: "POST"
+      method: "POST",
+      query: { discipline }
     });
     return response.json();
   }
 
-  async hardResetAchievementRules(workspaceId: number): Promise<HardResetResultRead> {
+  async hardResetAchievementRules(workspaceId: number, discipline: string): Promise<HardResetResultRead> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/reset`, {
-      method: "POST"
+      method: "POST",
+      query: { discipline }
     });
     return response.json();
   }
 
   async exportAchievementRules(
-    workspaceId: number
+    workspaceId: number,
+    discipline: string
   ): Promise<{ blob: Blob; filename: string; data: AchievementRuleExportEnvelope }> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/export`);
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/export`, {
+      query: { discipline }
+    });
     const blob = await response.blob();
     const filename =
       response.headers.get("Content-Disposition")?.match(/filename=\"?([^"]+)\"?/)?.[1] ??
-      `achievements-workspace-${workspaceId}.json`;
+      `achievements-workspace-${workspaceId}-${discipline}.json`;
     const data = JSON.parse(await blob.text()) as AchievementRuleExportEnvelope;
     return {
       blob: new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),
@@ -1331,26 +1288,29 @@ class AdminService {
   }
 
   async getAchievementLibraryWorkspaces(
-    workspaceId: number
+    workspaceId: number,
+    discipline: string
   ): Promise<AchievementLibraryWorkspace[]> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library/workspaces`
-    );
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library/workspaces`, {
+      query: { discipline }
+    });
     return response.json();
   }
 
   async getAchievementLibraryRules(
     workspaceId: number,
-    sourceWorkspaceId: number
+    sourceWorkspaceId: number,
+    discipline: string
   ): Promise<AchievementLibraryRule[]> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library`, {
-      query: { source_workspace_id: sourceWorkspaceId }
+      query: { source_workspace_id: sourceWorkspaceId, discipline }
     });
     return response.json();
   }
 
   async importAchievementLibraryRules(
     workspaceId: number,
-    data: { source_workspace_id: number; slugs: string[] }
+    data: { source_workspace_id: number; discipline: string; slugs: string[] }
   ): Promise<AchievementRuleImportResult> {
     const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/library/import`, {
       method: "POST",
@@ -1359,13 +1319,17 @@ class AdminService {
     return response.json();
   }
 
-  async getConditionTypes(workspaceId: number): Promise<ConditionTypeInfo[]> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/condition-types`);
+  async getConditionTypes(workspaceId: number, discipline: string): Promise<ConditionTypeInfo[]> {
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/rules/condition-types`, {
+      query: { discipline }
+    });
     return response.json();
   }
 
-  async getAchievementOverrides(workspaceId: number): Promise<AchievementOverrideRead[]> {
-    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/overrides`);
+  async getAchievementOverrides(workspaceId: number, discipline: string): Promise<AchievementOverrideRead[]> {
+    const response = await apiFetch(`/api/v1/admin/ws/${workspaceId}/achievements/overrides`, {
+      query: { discipline }
+    });
     return response.json();
   }
 

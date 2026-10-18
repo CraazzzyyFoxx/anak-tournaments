@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.models.achievements.achievement import AchievementRule
 from src import schemas
 from src.core import errors, pagination
-from src.services.hero.service import heroes as hero_service
 from src.services.user.service import users as user_service
 
 from . import _mappers
@@ -38,22 +37,24 @@ class AchievementService:
 
         if "count" in entities:
             if merge_slugs:
-                by_slug = await self.queries.get_count_users_by_slug(session, [rule.slug for rule, _ in rules])
-                count = {rule.id: by_slug.get(rule.slug, 0) for rule, _ in rules}
+                by_key = await self.queries.get_count_users_by_slug(
+                    session, [(rule.discipline, rule.slug) for rule, _ in rules]
+                )
+                count = {rule.id: by_key.get((rule.discipline, rule.slug), 0) for rule, _ in rules}
             else:
                 rule_ids = [rule.id for rule, _ in rules]
                 count = await self.queries.get_count_users(session, rule_ids)
 
         for rule, rarity in rules:
-            hero = None
-            if "hero" in entities and rule.entity:
-                hero = hero_service.to_read(rule.entity)
+            entity = None
+            if "entity" in entities and rule.entity:
+                entity = _mappers.to_entity_read(rule.entity)
 
             output.append(
                 schemas.AchievementRead(
                     **rule.to_dict(),
                     rarity=rarity or 0.0,
-                    hero=hero,
+                    entity=entity,
                     count=count.get(rule.id) if count else None,
                 )
             )
@@ -119,15 +120,18 @@ class AchievementService:
             without_tournament=without_tournament,
         )
 
-        # Keyed by slug: unique within a workspace, and in the cross-workspace view
-        # (``workspace_id=None``) it folds every workspace's copy of a rule into one.
-        cache: dict[str, schemas.UserAchievementRead] = {}
+        # Keyed by (discipline, slug): slug is unique within a workspace but a game's copy
+        # in another workspace shares it, so the cross-workspace view
+        # (``workspace_id=None``) folds one game's copies of a rule into one — never
+        # another game's rule that happens to reuse the slug.
+        cache: dict[tuple[str, str], schemas.UserAchievementRead] = {}
 
         for result_row in results:
             rule = result_row.rule
+            key = (rule.discipline, rule.slug)
 
-            if rule.slug not in cache:
-                cache[rule.slug] = schemas.UserAchievementRead(
+            if key not in cache:
+                cache[key] = schemas.UserAchievementRead(
                     **rule.to_dict(),
                     rarity=result_row.rarity or 0.0,
                     count=1,
@@ -135,10 +139,10 @@ class AchievementService:
                     matches_ids=[result_row.match_id] if result_row.match_id else [],
                     tournaments=[],
                     matches=[],
-                    hero=None,
+                    entity=None,
                 )
             else:
-                achievement = cache[rule.slug]
+                achievement = cache[key]
                 achievement.count += 1
                 if result_row.tournament_id and result_row.tournament_id not in achievement.tournaments_ids:
                     achievement.tournaments_ids.append(result_row.tournament_id)
@@ -154,9 +158,10 @@ class AchievementService:
         if include_locked and tournament_id is None and not without_tournament:
             all_rules = await self.queries.get_all_rules_with_rarity(session, workspace_id=workspace_id)
             for rule, rarity in all_rules:
-                if rule.slug in cache:
+                key = (rule.discipline, rule.slug)
+                if key in cache:
                     continue
-                cache[rule.slug] = schemas.UserAchievementRead(
+                cache[key] = schemas.UserAchievementRead(
                     **rule.to_dict(),
                     rarity=rarity or 0.0,
                     count=0,
@@ -164,7 +169,7 @@ class AchievementService:
                     matches_ids=[],
                     tournaments=[],
                     matches=[],
-                    hero=None,
+                    entity=None,
                 )
 
         # Bulk-fetch tournaments and matches in one DB hit each, then map back to

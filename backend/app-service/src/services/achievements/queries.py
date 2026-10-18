@@ -22,15 +22,9 @@ __all__ = ("AchievementQueries", "UserAchievementRow", "queries")
 # Cache-key prefix for the per-workspace rarity aggregate. Invalidated broadly on
 # a ``tournament.standings`` invalidation (see ``services.cache_resources``) — earned
 # achievements and the player denominator both move with tournament/match data.
+# The map is ``{rule_id: rarity}`` over every discipline: each rule's rarity already
+# divides by its own discipline's players, so one entry per workspace is not game-mixed.
 _RARITY_MAP_CACHE_KEY = "backend:achievement_rarity_map:{workspace_id}"
-
-# Subquery to count distinct users (players) in a workspace
-_player_count_subq = (
-    sa.select(sa.func.count(models.WorkspaceMember.player_id.distinct()))
-    .select_from(models.Player)
-    .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-    .scalar_subquery()
-)
 
 
 @dataclass(slots=True)
@@ -42,15 +36,25 @@ class UserAchievementRow:
     rarity: float | None
 
 
-def _player_count_for_workspace(workspace_id: int) -> sa.ScalarSelect:
-    """Count distinct players within a specific workspace."""
-    return (
-        sa.select(sa.func.count(models.WorkspaceMember.player_id.distinct()))
+def _players_by_discipline(workspace_id: int | None) -> sa.Subquery:
+    """Distinct players who took part in a tournament of each discipline (optionally of one workspace).
+
+    A rule's rarity divides by *its own* game's population: Overwatch earners are never
+    divided by League-only players.
+    """
+    query = (
+        sa.select(
+            models.Tournament.discipline.label("discipline"),
+            sa.func.count(models.WorkspaceMember.player_id.distinct()).label("players"),
+        )
         .select_from(models.Player)
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-        .where(models.Tournament.workspace_id == workspace_id)
-    ).scalar_subquery()
+        .group_by(models.Tournament.discipline)
+    )
+    if workspace_id:
+        query = query.where(models.Tournament.workspace_id == workspace_id)
+    return query.subquery("players_by_discipline")
 
 
 def _effective_rows_subq(
@@ -74,56 +78,66 @@ def get_rarity_subq(
     *,
     merge_slugs: bool = False,
 ) -> sa.Subquery:
-    """Rarity = distinct users earned / total players (optionally per workspace).
+    """Rarity = distinct users earned / players of the rule's discipline (optionally per workspace).
 
     ``merge_slugs`` is the cross-workspace view: every workspace carries its own
-    copy of a rule under the same slug, so the earners of all enabled copies are
-    pooled and each copy reports the slug's rarity.
+    copy of a rule under the same slug, so the earners of all enabled copies *of the
+    same discipline* are pooled and each copy reports the (discipline, slug) rarity.
     """
-    denominator = _player_count_for_workspace(workspace_id) if workspace_id else _player_count_subq
+    players = _players_by_discipline(workspace_id)
     effective_rows = _effective_rows_subq(
         workspace_id=workspace_id,
         rule_ids=[rule_id] if rule_id is not None else None,
         name="rarity_effective_rows",
     )
-    rarity = (sa.func.count(sa.distinct(effective_rows.c.user_id)) / sa.func.nullif(denominator, 0)).label("rarity")
-
-    if not merge_slugs:
-        return (
-            sa.select(effective_rows.c.achievement_rule_id, rarity)
-            .group_by(effective_rows.c.achievement_rule_id)
-            .subquery()
-        )
-
-    by_slug = (
-        sa.select(AchievementRule.slug, rarity)
+    rarity = (sa.func.count(sa.distinct(effective_rows.c.user_id)) / sa.func.nullif(players.c.players, 0)).label(
+        "rarity"
+    )
+    earned = (
+        sa.select(AchievementRule.discipline, AchievementRule.slug, effective_rows.c.achievement_rule_id, rarity)
         .select_from(effective_rows)
         .join(AchievementRule, AchievementRule.id == effective_rows.c.achievement_rule_id)
+        .join(players, players.c.discipline == AchievementRule.discipline)
+    )
+
+    if not merge_slugs:
+        return earned.group_by(
+            AchievementRule.discipline, AchievementRule.slug, effective_rows.c.achievement_rule_id, players.c.players
+        ).subquery()
+
+    by_slug = (
+        sa.select(AchievementRule.discipline, AchievementRule.slug, rarity)
+        .select_from(effective_rows)
+        .join(AchievementRule, AchievementRule.id == effective_rows.c.achievement_rule_id)
+        .join(players, players.c.discipline == AchievementRule.discipline)
         .where(AchievementRule.enabled.is_(True))
-        .group_by(AchievementRule.slug)
+        .group_by(AchievementRule.discipline, AchievementRule.slug, players.c.players)
         .subquery("rarity_by_slug")
     )
     return (
         sa.select(AchievementRule.id.label("achievement_rule_id"), by_slug.c.rarity)
         .select_from(AchievementRule)
-        .join(by_slug, by_slug.c.slug == AchievementRule.slug)
+        .join(
+            by_slug,
+            sa.and_(by_slug.c.discipline == AchievementRule.discipline, by_slug.c.slug == AchievementRule.slug),
+        )
         .subquery()
     )
 
 
 def _slug_representatives() -> sa.Select:
-    """One enabled rule per slug (the oldest) — the cross-workspace catalogue entry."""
+    """One enabled rule per (discipline, slug) (the oldest) — the cross-workspace catalogue entry."""
     return (
         sa.select(sa.func.min(AchievementRule.id))
         .where(AchievementRule.enabled.is_(True))
-        .group_by(AchievementRule.slug)
+        .group_by(AchievementRule.discipline, AchievementRule.slug)
     )
 
 
 def rule_entity(in_entities: list[str], child: typing.Any | None = None) -> list[_AbstractLoad]:
     """Loading options for AchievementRule relationships."""
     entities = []
-    if "hero" in in_entities:
+    if "entity" in in_entities:
         entities.append(utils.join_entity(child, AchievementRule.entity))
     return entities
 
@@ -184,15 +198,16 @@ class AchievementQueries:
         """Paginated list of achievement rules with rarity.
 
         Without a workspace (the cross-workspace view) rules are deduplicated by
-        slug: one representative per slug, carrying the slug's pooled rarity.
+        (discipline, slug): one representative per key, carrying the pooled rarity.
         """
         merge_slugs = not workspace_id
         filters = [AchievementRule.enabled.is_(True)]
         if workspace_id:
             filters.append(AchievementRule.workspace_id == workspace_id)
 
-        counted = sa.func.count(AchievementRule.slug.distinct()) if merge_slugs else sa.func.count(AchievementRule.id)
-        count_query = sa.select(counted).where(*filters)
+        count_query = sa.select(sa.func.count(AchievementRule.id)).where(*filters)
+        if merge_slugs:
+            count_query = count_query.where(AchievementRule.id.in_(_slug_representatives()))
 
         rarity_subq = get_rarity_subq(workspace_id=workspace_id, merge_slugs=merge_slugs)
         query = (
@@ -274,17 +289,17 @@ class AchievementQueries:
     async def get_count_users_by_slug(
         self,
         session: AsyncSession,
-        slugs: list[str],
-    ) -> dict[str, int]:
-        """Count distinct users per slug, pooled over every workspace's enabled copy."""
-        if not slugs:
+        keys: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], int]:
+        """Count distinct users per ``(discipline, slug)``, pooled over every workspace's enabled copy."""
+        if not keys:
             return {}
 
         rule_ids = list(
             (
                 await session.execute(
                     sa.select(AchievementRule.id).where(
-                        AchievementRule.slug.in_(slugs),
+                        sa.tuple_(AchievementRule.discipline, AchievementRule.slug).in_(keys),
                         AchievementRule.enabled.is_(True),
                     )
                 )
@@ -295,13 +310,17 @@ class AchievementQueries:
 
         effective_rows = _effective_rows_subq(rule_ids=rule_ids, name="slug_count_effective_rows")
         query = (
-            sa.select(AchievementRule.slug, sa.func.count(sa.distinct(effective_rows.c.user_id)))
+            sa.select(
+                AchievementRule.discipline,
+                AchievementRule.slug,
+                sa.func.count(sa.distinct(effective_rows.c.user_id)),
+            )
             .select_from(effective_rows)
             .join(AchievementRule, AchievementRule.id == effective_rows.c.achievement_rule_id)
-            .group_by(AchievementRule.slug)
+            .group_by(AchievementRule.discipline, AchievementRule.slug)
         )
         results = await session.execute(query)
-        return dict(results.tuples().all())
+        return {(discipline, slug): count for discipline, slug, count in results.all()}
 
     async def get_users_for_rule(
         self,
@@ -313,13 +332,22 @@ class AchievementQueries:
     ) -> tuple[list[tuple[models.User, int, int | None, int | None]], int]:
         """Paginated list of users who earned a specific achievement.
 
-        ``merge_slugs`` pools the earners of every enabled copy of the rule's slug.
+        ``merge_slugs`` pools the earners of every enabled copy of the rule's (discipline, slug).
         """
         rule_ids = [rule_id]
         if merge_slugs:
-            slug = sa.select(AchievementRule.slug).where(AchievementRule.id == rule_id).scalar_subquery()
-            copies = sa.select(AchievementRule.id).where(
-                AchievementRule.slug == slug, AchievementRule.enabled.is_(True)
+            own = sa.orm.aliased(AchievementRule)
+            copies = (
+                sa.select(AchievementRule.id)
+                .join(
+                    own,
+                    sa.and_(
+                        own.id == rule_id,
+                        own.slug == AchievementRule.slug,
+                        own.discipline == AchievementRule.discipline,
+                    ),
+                )
+                .where(AchievementRule.enabled.is_(True))
             )
             # Never empty: an empty id list would read as "no rule filter".
             rule_ids = list((await session.execute(copies)).scalars()) or rule_ids

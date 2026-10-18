@@ -30,6 +30,8 @@ import type {
 
 import { CATEGORIES, GRAINS, SCOPES } from "../achievement-meta";
 import type { AchievementRuleForm } from "../_hooks/useAchievementRuleForm";
+import { useDisciplineLabel } from "../_hooks/useDisciplineLabel";
+import { RuleEntityField } from "./RuleEntityField";
 
 /**
  * Create and edit share one dialog: the fields are the same, and the only
@@ -52,8 +54,10 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
     reset,
     pickImage,
     clearImage,
-    submit
+    submit,
+    discipline
   } = form;
+  const disciplineLabel = useDisciplineLabel();
 
   return (
     <EntityFormDialog
@@ -97,6 +101,20 @@ export function AchievementFormDialog({ form }: Readonly<{ form: AchievementRule
                 required
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="rule-discipline">{t("form.discipline")}</Label>
+              <Input id="rule-discipline" value={discipline ? disciplineLabel(discipline) : ""} readOnly disabled />
+            </div>
+            {discipline && (
+              <RuleEntityField
+                discipline={discipline}
+                value={formData.entity_id}
+                onChange={(entity_id) => setFormData({ ...formData, entity_id })}
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

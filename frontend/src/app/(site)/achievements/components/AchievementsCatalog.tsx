@@ -100,7 +100,8 @@ const AchievementsCatalog = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const sort: SortBy = sortParam && SORT_VALUES.includes(sortParam) ? sortParam : "rarity";
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: achievementQueryKeys.all(scopeId),
+    // Not filtered by game: every rule carries its own `discipline`, so one list serves all.
+    queryKey: achievementQueryKeys.all(scopeId, null),
     queryFn: () => achievementsService.getAll(1, -1, scopeId)
   });
 

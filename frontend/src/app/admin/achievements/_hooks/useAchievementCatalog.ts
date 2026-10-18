@@ -17,9 +17,12 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
  */
 export function useAchievementCatalog({
   workspaceId,
+  discipline,
   pickersOpen,
 }: {
   workspaceId: number | null;
+  /** The selected game: its overrides and rules, never another game's. `null` when none is enabled. */
+  discipline: string | null;
   /** An open evaluate/override dialog needs every rule, not just the current page. */
   pickersOpen: boolean;
 }) {
@@ -29,17 +32,17 @@ export function useAchievementCatalog({
   });
 
   const { data: overrides, refetch: refetchOverrides } = useQuery({
-    queryKey: achievementQueryKeys.overridesAll(workspaceId),
-    queryFn: () => adminService.getAchievementOverrides(workspaceId!),
-    enabled: !!workspaceId,
+    queryKey: achievementQueryKeys.overridesAll(workspaceId, discipline),
+    queryFn: () => adminService.getAchievementOverrides(workspaceId!, discipline!),
+    enabled: !!workspaceId && !!discipline,
   });
 
   // The overrides table resolves rule ids to slugs, so a workspace with
   // overrides needs the catalog even before a dialog opens.
   const { data: allRulesPage } = useQuery({
-    queryKey: [...achievementQueryKeys.adminList(workspaceId), "catalog"],
-    queryFn: () => adminService.getAchievementRules(workspaceId!, { per_page: -1 }),
-    enabled: !!workspaceId && (pickersOpen || Boolean(overrides?.length)),
+    queryKey: [...achievementQueryKeys.adminList(workspaceId, discipline), "catalog"],
+    queryFn: () => adminService.getAchievementRules(workspaceId!, discipline!, { per_page: -1 }),
+    enabled: !!workspaceId && !!discipline && (pickersOpen || Boolean(overrides?.length)),
   });
 
   return {

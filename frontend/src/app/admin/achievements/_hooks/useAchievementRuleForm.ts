@@ -23,6 +23,11 @@ import {
 export interface AchievementRuleForm {
   open: boolean;
   editingRule: AchievementRule | null;
+  /**
+   * The game the open form belongs to: the rule's own when editing (immutable),
+   * the draft's when creating. `null` while the dialog is closed.
+   */
+  discipline: string | null;
   formData: AchievementRuleCreateInput | AchievementRuleUpdateInput;
   setFormData: (data: AchievementRuleCreateInput | AchievementRuleUpdateInput) => void;
   imagePreview: string | null;
@@ -46,21 +51,34 @@ export interface AchievementRuleForm {
  * an image is two round-trips — the rule has to exist before its badge can be
  * uploaded against its slug — so the upload lives inside the create mutation
  * rather than in a second call site.
+ *
+ * `selectedDiscipline` is where a new rule starts. A form already open keeps the
+ * game it was opened for: a create draft is tied to its own `discipline` and an
+ * edit to the rule's immutable one, so changing the page's game neither
+ * reassigns an edit nor re-targets a half-written draft — closing it goes
+ * through the dialog's own unsaved-changes prompt.
  */
-export function useAchievementRuleForm(workspaceId: number | null): AchievementRuleForm {
+export function useAchievementRuleForm(
+  workspaceId: number | null,
+  selectedDiscipline: string | null
+): AchievementRuleForm {
   const t = useTranslations("adminAchievements");
   const queryClient = useQueryClient();
-  const listKey = achievementQueryKeys.adminList(workspaceId);
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<AchievementRule | null>(null);
-  const [formData, setFormData] = useState<AchievementRuleCreateInput | AchievementRuleUpdateInput>({
-    ...emptyAchievementForm,
-  });
+  const [formData, setFormData] = useState<AchievementRuleCreateInput | AchievementRuleUpdateInput>(() =>
+    emptyAchievementForm(selectedDiscipline ?? "")
+  );
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const invalidateRules = (discipline: string) => {
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+    queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
+  };
 
   const createMutation = useMutation({
     mutationFn: async (data: AchievementRuleCreateInput) => {
@@ -73,10 +91,10 @@ export function useAchievementRuleForm(workspaceId: number | null): AchievementR
       }
       return created;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listKey });
+    onSuccess: (created) => {
+      invalidateRules(created.discipline);
       setCreateDialogOpen(false);
-      setFormData({ ...emptyAchievementForm });
+      setFormData(emptyAchievementForm(selectedDiscipline ?? created.discipline));
       setImageFile(null);
       setImagePreview(null);
     },
@@ -85,25 +103,26 @@ export function useAchievementRuleForm(workspaceId: number | null): AchievementR
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: AchievementRuleUpdateInput }) =>
       adminService.updateAchievementRule(workspaceId!, id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: listKey });
+    onSuccess: (updated) => {
+      invalidateRules(updated.discipline);
       setEditingRule(null);
-      setFormData({ ...emptyAchievementForm });
+      setFormData(emptyAchievementForm(selectedDiscipline ?? updated.discipline));
     },
   });
 
   const reset = () => {
     setCreateDialogOpen(false);
     setEditingRule(null);
-    setFormData({ ...emptyAchievementForm });
+    setFormData(emptyAchievementForm(selectedDiscipline ?? ""));
     setImageFile(null);
     setImagePreview(null);
   };
 
   const openCreate = () => {
+    if (!selectedDiscipline) return;
     createMutation.reset();
     updateMutation.reset();
-    setFormData({ ...emptyAchievementForm });
+    setFormData(emptyAchievementForm(selectedDiscipline));
     setCreateDialogOpen(true);
   };
 
@@ -138,17 +157,23 @@ export function useAchievementRuleForm(workspaceId: number | null): AchievementR
     }
   };
 
-  const formInitial = editingRule ? achievementFormDataWithSlug(editingRule) : emptyAchievementForm;
+  const open = createDialogOpen || !!editingRule;
+  const draftDiscipline = (formData as AchievementRuleCreateInput).discipline;
+  const discipline = editingRule ? editingRule.discipline : createDialogOpen ? draftDiscipline : null;
+  const formInitial = editingRule
+    ? achievementFormDataWithSlug(editingRule)
+    : emptyAchievementForm(draftDiscipline ?? "");
 
   return {
-    open: createDialogOpen || !!editingRule,
+    open,
     editingRule,
+    discipline,
     formData,
     setFormData,
     imagePreview,
     imageError,
     imageInputRef,
-    isDirty: (createDialogOpen || !!editingRule) && hasUnsavedChanges(formData, formInitial),
+    isDirty: open && hasUnsavedChanges(formData, formInitial),
     isSubmitting: createMutation.isPending || updateMutation.isPending,
     error: (editingRule ? updateMutation.error : createMutation.error) instanceof Error
       ? (editingRule ? updateMutation.error : createMutation.error)?.message

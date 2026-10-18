@@ -11,7 +11,7 @@ export interface paths {
         };
         /**
          * List achievements
-         * @description Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine.
+         * @description Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.
          *
          *     RPC subject: `rpc.app.read.list`
          */
@@ -55,7 +55,7 @@ export interface paths {
         };
         /**
          * Get achievement
-         * @description Permission: public; no authentication required. Returns a single achievement rule by id with optional entity expansion via the shared CRUD read engine, 404 if not found.
+         * @description Permission: public; no authentication required. Returns a single achievement rule by id (with its `discipline`/`entity_id`; `entities=entity` expands the character) via the shared CRUD read engine, 404 if not found. Pooled numbers use the rule's own discipline.
          *
          *     RPC subject: `rpc.app.read.get`
          */
@@ -4631,7 +4631,7 @@ export interface paths {
         put?: never;
         /**
          * Run achievement calculation
-         * @description Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine across a workspace (optionally seeding the built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
+         * @description Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine over one discipline of a workspace (the required `discipline` must be enabled for it; optionally seeding that discipline's built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
          *     RPC subject: `rpc.stats.ach.calculate`
          */
@@ -4653,7 +4653,7 @@ export interface paths {
         put?: never;
         /**
          * Calculate tournament achievements
-         * @description Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament — the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied — and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
+         * @description Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament — the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied — and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament and 422 when the required `discipline` is not the tournament's. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
          *     RPC subject: `rpc.stats.ach.calculate_tournament`
          */
@@ -8459,7 +8459,7 @@ export interface paths {
         };
         /**
          * List library rules
-         * @description Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the achievement rules of a source workspace available for library import.
+         * @description Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the source workspace's achievement rules of the required `discipline` available for library import.
          *
          *     RPC subject: `rpc.stats.ach.lib_list`
          */
@@ -8483,7 +8483,7 @@ export interface paths {
         put?: never;
         /**
          * Import library rules
-         * @description Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
+         * @description Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules of the required `discipline` from a source workspace's library into the target workspace, warning on missing slugs; the same all-or-nothing validation as a portable import applies. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
          *     RPC subject: `rpc.stats.ach.lib_import`
          */
@@ -8503,7 +8503,7 @@ export interface paths {
         };
         /**
          * List library workspaces
-         * @description Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules available to import as a library.
+         * @description Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules of the required `discipline` available to import as a library.
          *
          *     RPC subject: `rpc.stats.ach.lib_workspaces`
          */
@@ -8525,7 +8525,7 @@ export interface paths {
         };
         /**
          * List achievement overrides
-         * @description Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides for a workspace.
+         * @description Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides of the required `discipline` for a workspace.
          *
          *     RPC subject: `rpc.stats.ach.overrides_list`
          */
@@ -8533,7 +8533,7 @@ export interface paths {
         put?: never;
         /**
          * Create achievement override
-         * @description Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor.
+         * @description Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor; a tournament or match it names must belong to the rule's workspace and discipline and agree with each other.
          *
          *     RPC subject: `rpc.stats.ach.override_create`
          */
@@ -8575,7 +8575,7 @@ export interface paths {
         };
         /**
          * List achievement rules
-         * @description Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters.
+         * @description Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.
          *
          *     RPC subject: `rpc.stats.ach.list`
          */
@@ -8583,7 +8583,7 @@ export interface paths {
         put?: never;
         /**
          * Create achievement rule
-         * @description Permission: workspace `achievement.create`. Creates a workspace achievement rule after validating its condition tree and enforcing slug uniqueness.
+         * @description Permission: workspace `achievement.create`. Creates a workspace achievement rule in the explicit `discipline` after validating its condition tree, its `entity_id` character and enforcing slug uniqueness (409 when the slug belongs to a rule of any discipline). The discipline is immutable afterwards; the retired `hero_id` is rejected.
          *
          *     RPC subject: `rpc.stats.ach.create`
          */
@@ -8603,7 +8603,7 @@ export interface paths {
         };
         /**
          * List condition types
-         * @description Permission: workspace `achievement.read`. Returns the catalog of available achievement condition-tree leaf types with their grain.
+         * @description Permission: workspace `achievement.read`. Returns the catalog of achievement condition-tree leaf types the required `discipline` (query) can evaluate, with their grain; a discipline with no conditions returns an empty list.
          *
          *     RPC subject: `rpc.stats.ach.condition_types`
          */
@@ -8627,7 +8627,7 @@ export interface paths {
         put?: never;
         /**
          * Evaluate achievement rules
-         * @description Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for selected rules and/or a tournament.
+         * @description Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for the required `discipline`: explicit rule ids must be that discipline's rules, absent ids select its enabled rules, an empty list selects none; the optional tournament must belong to the workspace and discipline.
          *
          *     RPC subject: `rpc.stats.ach.evaluate`
          */
@@ -8647,7 +8647,7 @@ export interface paths {
         };
         /**
          * Export achievement rules
-         * @description Permission: workspace `achievement.read`. Returns a portable JSON export payload of all of a workspace's achievement rules. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
+         * @description Permission: workspace `achievement.read`. Returns a portable v2 JSON export payload (`discipline` + `entity_id` per rule) of a workspace's achievement rules of the required `discipline`. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
          *     RPC subject: `rpc.stats.ach.export`
          */
@@ -8671,7 +8671,7 @@ export interface paths {
         put?: never;
         /**
          * Import achievement rules
-         * @description Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable achievement rules into a workspace and returns the import result. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
+         * @description Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable v2 achievement rules (each names its discipline) into a workspace and returns the import result. The whole batch is validated before any write: v1/`hero_id`, an unknown or foreign character, a disabled discipline or an invalid tree reject it (400/422), a slug owned by a rule of another discipline is a 409. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
          *     RPC subject: `rpc.stats.ach.import`
          */
@@ -8693,7 +8693,7 @@ export interface paths {
         put?: never;
         /**
          * Reset achievement rules
-         * @description Permission: workspace `achievement.update`. Hard-resets a workspace by reseeding rules and clearing evaluation results, returning the new run.
+         * @description Permission: workspace `achievement.update`. Hard-resets one discipline of a workspace by reseeding its rules and clearing that discipline's evaluation results, returning the new run. Other disciplines' rules, results and overrides are untouched.
          *
          *     RPC subject: `rpc.stats.ach.reset`
          */
@@ -8737,7 +8737,7 @@ export interface paths {
         put?: never;
         /**
          * Seed achievement rules
-         * @description Permission: workspace `achievement.create`. Seeds the built-in achievement rules into a workspace and returns seeded/removed counts.
+         * @description Permission: workspace `achievement.create`. Seeds the required `discipline`'s built-in achievement rules into a workspace and returns seeded/removed counts; other disciplines' rules are never touched, a same-slug rule of another discipline is a 409 and a discipline with no catalog is a 422, both before any write.
          *
          *     RPC subject: `rpc.stats.ach.seed`
          */
@@ -8759,7 +8759,7 @@ export interface paths {
         put?: never;
         /**
          * Validate condition tree
-         * @description Permission: workspace `achievement.read`. Validates an achievement condition tree and returns errors plus the inferred grain.
+         * @description Permission: workspace `achievement.read`. Validates an achievement condition tree against the required `discipline` and returns errors plus the inferred grain.
          *
          *     RPC subject: `rpc.stats.ach.validate`
          */
@@ -8797,7 +8797,7 @@ export interface paths {
         head?: never;
         /**
          * Update achievement rule
-         * @description Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation when enabled.
+         * @description Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation. Omitted fields are unchanged, `entity_id: null` clears the character link, an explicit `{}` tree is an empty tree; `discipline` and the retired `hero_id` are rejected.
          *
          *     RPC subject: `rpc.stats.ach.update`
          */
@@ -8815,7 +8815,7 @@ export interface paths {
         put?: never;
         /**
          * Test achievement rule
-         * @description Permission: workspace `achievement.update`. Dry-runs a rule's condition tree against an optional tournament and returns the qualifying count plus a sample of results.
+         * @description Permission: workspace `achievement.update`. Dry-runs a rule's condition tree (in the rule's own discipline) against an optional tournament of that discipline and returns the qualifying count plus a sample of results.
          *
          *     RPC subject: `rpc.stats.ach.test`
          */
@@ -12238,9 +12238,11 @@ export interface components {
             description_en: string;
             /** Description Ru */
             description_ru: string;
-            hero: components["schemas"]["app.HeroRead"] | null;
-            /** Hero Id */
-            hero_id: number | null;
+            /** Discipline */
+            discipline: string;
+            entity: components["schemas"]["app.CatalogEntityRead"] | null;
+            /** Entity Id */
+            entity_id: number | null;
             /** Id */
             id: number;
             /** Image Url */
@@ -12268,6 +12270,52 @@ export interface components {
             is_league: boolean;
             /** Name */
             name: string;
+        };
+        /** CatalogEntityParentRead */
+        "app.CatalogEntityParentRead": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** CatalogEntityRead */
+        "app.CatalogEntityRead": {
+            /** Active */
+            active: boolean;
+            /** Aliases */
+            aliases: string[];
+            /** Attrs */
+            attrs: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Discipline */
+            discipline: string;
+            /** Id */
+            id: number;
+            /** Image Path */
+            image_path: string | null;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** @default null */
+            parent: components["schemas"]["app.CatalogEntityParentRead"] | null;
+            /** Parent Id */
+            parent_id: number | null;
+            /** Slug */
+            slug: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
         };
         /**
          * CatalogLegacyRead
@@ -13117,9 +13165,11 @@ export interface components {
             description_en: string;
             /** Description Ru */
             description_ru: string;
-            hero: components["schemas"]["app.HeroRead"] | null;
-            /** Hero Id */
-            hero_id: number | null;
+            /** Discipline */
+            discipline: string;
+            entity: components["schemas"]["app.CatalogEntityRead"] | null;
+            /** Entity Id */
+            entity_id: number | null;
             /** Id */
             id: number;
             /** Image Url */
@@ -20336,52 +20386,6 @@ export interface components {
              */
             slug: string | null;
         };
-        /** CatalogEntityParentRead */
-        "app.CatalogEntityParentRead": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-        };
-        /** CatalogEntityRead */
-        "app.CatalogEntityRead": {
-            /** Active */
-            active: boolean;
-            /** Aliases */
-            aliases: string[];
-            /** Attrs */
-            attrs: {
-                [key: string]: unknown;
-            };
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Discipline */
-            discipline: string;
-            /** Id */
-            id: number;
-            /** Image Path */
-            image_path: string | null;
-            /** Kind */
-            kind: string;
-            /** Name */
-            name: string;
-            /** @default null */
-            parent: components["schemas"]["app.CatalogEntityParentRead"] | null;
-            /** Parent Id */
-            parent_id: number | null;
-            /** Slug */
-            slug: string;
-            /**
-             * Updated At
-             * @default null
-             */
-            updated_at: string | null;
-        };
         /** CatalogEntityUpdate */
         "app.CatalogEntityUpdate": {
             /**
@@ -22246,6 +22250,8 @@ export interface components {
         };
         /** AchievementCalculateRequest */
         "stats.AchievementCalculateRequest": {
+            /** Discipline */
+            discipline: string;
             /**
              * Ensure Created
              * @default true
@@ -22270,6 +22276,22 @@ export interface components {
             message: string;
             /** Tournament Id */
             tournament_id: number | null;
+        };
+        /** AchievementImportWarning */
+        "stats.AchievementImportWarning": {
+            /** Message */
+            message: string;
+            /** Slug */
+            slug: string;
+        };
+        /** AchievementLibraryImportRequest */
+        "stats.AchievementLibraryImportRequest": {
+            /** Discipline */
+            discipline: string;
+            /** Slugs */
+            slugs?: string[];
+            /** Source Workspace Id */
+            source_workspace_id: number;
         };
         /** AchievementLibraryRuleRead */
         "stats.AchievementLibraryRuleRead": {
@@ -22312,18 +22334,105 @@ export interface components {
             description_en: string;
             /** Description Ru */
             description_ru: string;
+            /** Discipline */
+            discipline: string;
             /**
              * Enabled
              * @default true
              */
             enabled: boolean;
+            /**
+             * Entity Id
+             * @default null
+             */
+            entity_id: number | null;
             /** Grain */
             grain: string;
             /**
-             * Hero Id
+             * Image Url
              * @default null
              */
-            hero_id: number | null;
+            image_url: string | null;
+            /**
+             * Min Tournament Id
+             * @default null
+             */
+            min_tournament_id: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Rule Version
+             * @default 1
+             */
+            rule_version: number;
+            /** Scope */
+            scope: string;
+            /** Slug */
+            slug: string;
+        };
+        /** AchievementRuleExportEnvelope */
+        "stats.AchievementRuleExportEnvelope": {
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Rules */
+            rules: components["schemas"]["stats.AchievementRulePortable"][];
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 2;
+            /** @default null */
+            source_workspace: components["schemas"]["stats.AchievementRuleExportWorkspace"] | null;
+        };
+        /** AchievementRuleExportWorkspace */
+        "stats.AchievementRuleExportWorkspace": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** AchievementRuleImportResult */
+        "stats.AchievementRuleImportResult": {
+            /** Created */
+            created: number;
+            /** Updated */
+            updated: number;
+            /** Warnings */
+            warnings?: components["schemas"]["stats.AchievementImportWarning"][];
+        };
+        /** AchievementRulePortable */
+        "stats.AchievementRulePortable": {
+            /** Category */
+            category: string;
+            /** Condition Tree */
+            condition_tree: {
+                [key: string]: unknown;
+            };
+            /** Depends On */
+            depends_on?: string[];
+            /** Description En */
+            description_en: string;
+            /** Description Ru */
+            description_ru: string;
+            /** Discipline */
+            discipline: string;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Entity Id
+             * @default null
+             */
+            entity_id: number | null;
+            /** Grain */
+            grain: string;
             /**
              * Image Url
              * @default null
@@ -22365,12 +22474,14 @@ export interface components {
             description_en: string;
             /** Description Ru */
             description_ru: string;
+            /** Discipline */
+            discipline: string;
             /** Enabled */
             enabled: boolean;
+            /** Entity Id */
+            entity_id: number | null;
             /** Grain */
             grain: string;
-            /** Hero Id */
-            hero_id: number | null;
             /** Id */
             id: number;
             /** Image Url */
@@ -22390,7 +22501,11 @@ export interface components {
             /** Workspace Id */
             workspace_id: number;
         };
-        /** AchievementRuleUpdate */
+        /**
+         * AchievementRuleUpdate
+         * @description A partial update. Omitted means unchanged; explicit ``null`` is only meaningful for the nullable columns
+         *     (``image_url``, ``entity_id``, ``min_tournament_id``) and an explicit ``{}`` tree is a real, empty tree.
+         */
         "stats.AchievementRuleUpdate": {
             /**
              * Category
@@ -22425,15 +22540,15 @@ export interface components {
              */
             enabled: boolean | null;
             /**
+             * Entity Id
+             * @default null
+             */
+            entity_id: number | null;
+            /**
              * Grain
              * @default null
              */
             grain: string | null;
-            /**
-             * Hero Id
-             * @default null
-             */
-            hero_id: number | null;
             /**
              * Image Url
              * @default null
@@ -22552,6 +22667,8 @@ export interface components {
             condition_tree: {
                 [key: string]: unknown;
             };
+            /** Discipline */
+            discipline: string;
         };
         /** ConditionTreeValidateResponse */
         "stats.ConditionTreeValidateResponse": {
@@ -22631,6 +22748,8 @@ export interface components {
         };
         /** EvaluateRequest */
         "stats.EvaluateRequest": {
+            /** Discipline */
+            discipline: string;
             /**
              * Rule Ids
              * @default null
@@ -22727,6 +22846,16 @@ export interface components {
              * @default 0
              */
             revision: number;
+        };
+        /** HardResetResultRead */
+        "stats.HardResetResultRead": {
+            /** Cleared Results */
+            cleared_results: number;
+            /** Removed */
+            removed: number;
+            run: components["schemas"]["stats.EvaluationRunRead"];
+            /** Seeded */
+            seeded: number;
         };
         /**
          * IngestTeamKey
@@ -23063,6 +23192,16 @@ export interface components {
         "stats.ReenableDisabledResponse": {
             /** Reenabled */
             reenabled: number;
+        };
+        /** SeedResultRead */
+        "stats.SeedResultRead": {
+            /**
+             * Removed
+             * @default 0
+             */
+            removed: number;
+            /** Seeded */
+            seeded: number;
         };
         /** SettingRead */
         "stats.SettingRead": {
@@ -60687,8 +60826,9 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_library: {
         parameters: {
-            query?: {
-                source_workspace_id?: string;
+            query: {
+                source_workspace_id: number;
+                discipline: string;
             };
             header?: never;
             path: {
@@ -60776,7 +60916,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["stats.AchievementLibraryImportRequest"];
             };
         };
         responses: {
@@ -60786,7 +60926,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["stats.AchievementRuleImportResult"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -60849,7 +60989,9 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_library_workspaces: {
         parameters: {
-            query?: never;
+            query: {
+                discipline: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -60927,7 +61069,9 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_overrides: {
         parameters: {
-            query?: never;
+            query: {
+                discipline: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -61164,13 +61308,14 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_rules: {
         parameters: {
-            query?: {
+            query: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1AdminWsWorkspace_idAchievementsRulesGetParametersQuerySort;
                 order?: components["schemas"]["stats.SortOrder"];
+                discipline: string;
                 search?: string | null;
                 category?: string | null;
                 enabled?: boolean | null;
@@ -61334,7 +61479,9 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_rules_condition_types: {
         parameters: {
-            query?: never;
+            query: {
+                discipline: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -61494,7 +61641,9 @@ export interface operations {
     };
     get__api_v1_admin_ws__workspace_id__achievements_rules_export: {
         parameters: {
-            query?: never;
+            query: {
+                discipline: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -61581,7 +61730,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["stats.AchievementRuleExportEnvelope"];
             };
         };
         responses: {
@@ -61591,7 +61740,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["stats.AchievementRuleImportResult"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61654,7 +61803,9 @@ export interface operations {
     };
     post__api_v1_admin_ws__workspace_id__achievements_rules_reset: {
         parameters: {
-            query?: never;
+            query: {
+                discipline: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -61669,7 +61820,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["stats.HardResetResultRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61810,7 +61961,9 @@ export interface operations {
     };
     post__api_v1_admin_ws__workspace_id__achievements_rules_seed: {
         parameters: {
-            query?: never;
+            query: {
+                discipline: string;
+            };
             header?: never;
             path: {
                 workspace_id: string;
@@ -61825,7 +61978,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["stats.SeedResultRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */

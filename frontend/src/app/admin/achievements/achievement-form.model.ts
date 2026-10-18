@@ -4,23 +4,33 @@ import type {
   AchievementRuleUpdateInput,
 } from "@/types/admin.types";
 
-export const emptyAchievementForm: AchievementRuleCreateInput = {
-  slug: "",
-  name: "",
-  description_ru: "",
-  description_en: "",
-  category: "overall",
-  scope: "global",
-  grain: "user",
-  condition_tree: {},
-  depends_on: [],
-  enabled: true,
-};
+/**
+ * A fresh create form of one game. There is no module-level default object: a
+ * rule's discipline is immutable and has no sensible default, so the caller has
+ * to name the game the form belongs to.
+ */
+export function emptyAchievementForm(discipline: string): AchievementRuleCreateInput {
+  return {
+    slug: "",
+    name: "",
+    description_ru: "",
+    description_en: "",
+    discipline,
+    entity_id: null,
+    category: "overall",
+    scope: "global",
+    grain: "user",
+    condition_tree: {},
+    depends_on: [],
+    enabled: true,
+  };
+}
 
 /**
  * The editable half of a rule. Key order matters: the dirty check is a
  * `JSON.stringify` comparison against the form state, which is built by
- * spreading this same object.
+ * spreading this same object. `discipline` is deliberately absent: it is the
+ * rule's own and immutable, so an edit can neither carry nor change it.
  */
 export function achievementFormData(rule: AchievementRule): AchievementRuleUpdateInput {
   return {
@@ -28,7 +38,7 @@ export function achievementFormData(rule: AchievementRule): AchievementRuleUpdat
     description_ru: rule.description_ru,
     description_en: rule.description_en,
     image_url: rule.image_url,
-    hero_id: rule.hero_id,
+    entity_id: rule.entity_id,
     category: rule.category,
     scope: rule.scope,
     grain: rule.grain,

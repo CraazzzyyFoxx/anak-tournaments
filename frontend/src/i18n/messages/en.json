@@ -10111,6 +10111,14 @@
   },
   "adminAchievements": {
     "listActionsFor": "Actions for {slug}",
+    "discipline": {
+      "select": "Game",
+      "none": "This workspace has no game enabled, so there are no achievements to manage.",
+      "names": {
+        "overwatch": "Overwatch",
+        "lol": "League of Legends"
+      }
+    },
     "common": {
       "achievements": "Achievements",
       "id": "ID",
@@ -10206,7 +10214,11 @@
       "missingUser": "a user",
       "missingAchievement": "an achievement",
       "missingReason": "a reason",
-      "invalidJson": "“{name}” is not valid JSON. Import a file produced by Export JSON on this page, unedited."
+      "invalidJson": "“{name}” is not valid JSON. Import a file produced by Export JSON on this page, unedited.",
+      "importNotPortable": "“{name}” is not an achievement export. Import a file produced by Export JSON on this page.",
+      "importUnsupportedVersion": "“{name}” uses export format {version}, which is no longer supported. Only format 2 can be imported: export the rules again from a current version. Nothing was imported.",
+      "importLegacyHero": "“{name}” still uses the retired hero_id (rule “{slug}”). Only files with discipline and entity_id can be imported. Nothing was imported.",
+      "importFailed": "The import failed. Nothing was imported."
     },
     "detail": {
       "deleteTitle": "Delete achievement \"{slug}\"",
@@ -10256,7 +10268,12 @@
       "imageTooLarge": "“{name}” is {size} MB. Pick an image under 5 MB.",
       "changeImage": "Change image",
       "uploadImage": "Upload image",
-      "removeImage": "Remove image"
+      "removeImage": "Remove image",
+      "discipline": "Game",
+      "entity": "Linked character",
+      "entityNone": "No character",
+      "entityLinked": "Character #{id}",
+      "entityUnavailable": "The character list of this game could not be loaded; the current link is kept."
     },
     "library": {
       "title": "Achievement library",
@@ -10269,7 +10286,8 @@
       "empty": "That workspace has no achievements to copy. Choose another source workspace.",
       "copy": "Copy {name}",
       "importSelected": "Import selected",
-      "importing": "Importing…"
+      "importing": "Importing…",
+      "importFailed": "The import failed. Nothing was imported."
     },
     "evaluation": {
       "title": "Evaluate achievements",
@@ -10334,7 +10352,10 @@
       "global": "Global",
       "perTournament": "Per tournament",
       "noParameters": "No parameters",
-      "addScorePattern": "Add score pattern"
+      "addScorePattern": "Add score pattern",
+      "loadingTypes": "Loading the conditions this game offers",
+      "typesFailed": "The conditions this game offers could not be loaded. Reload the page to try again.",
+      "unavailable": "This game has no achievement conditions yet, so a condition tree cannot be built for it."
     },
     "palette": {
       "logic": "Logic",
@@ -10364,7 +10385,8 @@
       "globalWinrate": "Global winrate",
       "distinctCount": "Distinct count",
       "consecutive": "Consecutive",
-      "stableStreak": "Stable streak"
+      "stableStreak": "Stable streak",
+      "other": "Other"
     },
     "fields": {
       "stat": "Stat…",

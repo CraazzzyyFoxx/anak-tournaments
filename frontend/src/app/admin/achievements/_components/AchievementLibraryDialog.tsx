@@ -38,12 +38,15 @@ export function AchievementLibraryDialog({
   open,
   onOpenChange,
   workspaceId,
+  discipline,
   canImport,
   onImported,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId: number;
+  /** The game being copied: the source list, the selection and the import all stay inside it. */
+  discipline: string;
   canImport: boolean;
   onImported: (result: AchievementRuleImportResult) => void;
 }>) {
@@ -53,22 +56,24 @@ export function AchievementLibraryDialog({
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
 
   const { data: libraryWorkspaces } = useQuery({
-    queryKey: achievementQueryKeys.libraryWorkspaces(workspaceId),
-    queryFn: () => adminService.getAchievementLibraryWorkspaces(workspaceId),
+    queryKey: achievementQueryKeys.libraryWorkspaces(workspaceId, discipline),
+    queryFn: () => adminService.getAchievementLibraryWorkspaces(workspaceId, discipline),
     enabled: open,
   });
 
   const { data: libraryRules } = useQuery({
-    queryKey: achievementQueryKeys.libraryRules(workspaceId, sourceWorkspaceId),
-    queryFn: () => adminService.getAchievementLibraryRules(workspaceId, sourceWorkspaceId!),
+    queryKey: achievementQueryKeys.libraryRules(workspaceId, sourceWorkspaceId, discipline),
+    queryFn: () => adminService.getAchievementLibraryRules(workspaceId, sourceWorkspaceId!, discipline),
     enabled: open && !!sourceWorkspaceId,
   });
 
+  // A failed import keeps the selection: nothing was imported, and the admin can fix the cause and retry.
   const importMutation = useMutation({
     mutationFn: (data: { source_workspace_id: number; slugs: string[] }) =>
-      adminService.importAchievementLibraryRules(workspaceId, data),
+      adminService.importAchievementLibraryRules(workspaceId, { ...data, discipline }),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId) });
+      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
+      queryClient.invalidateQueries({ queryKey: achievementQueryKeys.publicLists() });
       onImported(data);
       onOpenChange(false);
       setSelectedSlugs(new Set());
@@ -104,6 +109,12 @@ export function AchievementLibraryDialog({
             {t("library.description")}
           </DialogDescription>
         </DialogHeader>
+
+        {importMutation.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            {importMutation.error instanceof Error ? importMutation.error.message : t("library.importFailed")}
+          </p>
+        )}
 
         <div className="space-y-4">
           <div className="space-y-2">

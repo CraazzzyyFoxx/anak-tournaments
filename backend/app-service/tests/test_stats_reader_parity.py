@@ -159,7 +159,7 @@ async def _achievement_outputs(session: AsyncSession, ids: dict[str, int], works
         "catalog": _json(
             await achievements.get_all(
                 session,
-                pagination.PaginationSortParams(per_page=100, sort="id", entities=["hero", "count"]),
+                pagination.PaginationSortParams(per_page=100, sort="id", entities=["entity", "count"]),
                 workspace_id=workspace_id,
             )
         ),
@@ -188,7 +188,7 @@ async def _achievement_outputs(session: AsyncSession, ids: dict[str, int], works
             await achievements.get(
                 session,
                 ids["rule"],
-                ["hero", "count"],
+                ["entity", "count"],
                 workspace_id=workspace_id,
                 merge_slugs=workspace_id is None,
             )

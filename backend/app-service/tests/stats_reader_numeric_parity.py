@@ -380,6 +380,7 @@ async def assert_app_golden(session, ids, actual):
         old[3] = new[3]
     await _prove_comparison_population(session, ids, expected, actual, compare_module, pool, population_witness)
     _accept_observed_history_of_the_event_only_player(ids, expected, actual)
+    _accept_p6_achievement_wire(actual)
     _strict(expected, actual)
 
 
@@ -397,6 +398,43 @@ def _accept_observed_history_of_the_event_only_player(ids, expected, actual):
     assert frozen["results"] == [] and frozen["total"] == 0
     assert [row["id"] for row in native["results"]] == [ids["encounter"]] and native["total"] == 1
     frozen["results"], frozen["total"] = native["results"], native["total"]
+
+
+def _accept_p6_achievement_wire(actual):
+    """P6's wire cutover is the only change to the frozen achievement payloads.
+
+    ``hero_id``/``hero`` became ``discipline``/``entity_id``/``entity`` (the catalog entity DTO). The golden stays
+    untouched on disk; the native payload is rewritten into the P3 spelling only after proving the rule is an
+    Overwatch rule and rebuilding the frozen ``hero`` object field by field from the entity, so a wrong entity,
+    class or colour still fails the exact comparison.
+    """
+
+    def walk(node):
+        if isinstance(node, dict):
+            if {"entity_id", "entity", "discipline", "rarity"} <= node.keys():
+                assert node.pop("discipline") == "overwatch"
+                node["hero_id"] = node.pop("entity_id")
+                entity = node.pop("entity")
+                node["hero"] = (
+                    None
+                    if entity is None
+                    else {
+                        "id": entity["id"],
+                        "slug": entity["slug"],
+                        "name": entity["name"],
+                        "image_path": entity["image_path"] or "",
+                        "aliases": entity["aliases"],
+                        "type": enums.HeroClass[entity["attrs"]["class"]].value,
+                        "color": entity["attrs"].get("color", "#ffffff"),
+                    }
+                )
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(actual)
 
 
 def _prove_two_person_mean(values, observed):

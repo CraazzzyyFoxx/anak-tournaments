@@ -1374,32 +1374,6 @@ export interface CatalogEntityWrite {
   active?: boolean;
 }
 
-// ─── Achievement ─────────────────────────────────────────────────────────────
-
-export interface AchievementCreateInput {
-  name: string;
-  slug: string;
-  description_ru: string;
-  description_en: string;
-  image_url?: string | null;
-  hero_id?: number | null;
-}
-
-export interface AchievementUpdateInput {
-  name?: string;
-  slug?: string;
-  description_ru?: string;
-  description_en?: string;
-  image_url?: string | null;
-  hero_id?: number | null;
-}
-
-export interface AchievementRegistryEntry {
-  slug: string;
-  category: string;
-  tournament_required: boolean;
-}
-
 // ─── Achievement Rule Engine ──────────────────────────────────────────────────
 
 export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
@@ -1414,7 +1388,8 @@ export interface AchievementRule {
   description_ru: string;
   description_en: string;
   image_url: string | null;
-  hero_id: number | null;
+  discipline: string;
+  entity_id: number | null;
   category: AchievementCategory;
   scope: AchievementScope;
   grain: AchievementGrain;
@@ -1433,7 +1408,8 @@ export interface AchievementRuleCreateInput {
   description_ru: string;
   description_en: string;
   image_url?: string | null;
-  hero_id?: number | null;
+  discipline: string;
+  entity_id?: number | null;
   category: AchievementCategory;
   scope: AchievementScope;
   grain: AchievementGrain;
@@ -1443,13 +1419,14 @@ export interface AchievementRuleCreateInput {
   min_tournament_id?: number | null;
 }
 
+/** An edit never carries `discipline` (immutable) and never `hero_id` (retired); the server rejects both. */
 export interface AchievementRuleUpdateInput {
   slug?: string;
   name?: string;
   description_ru?: string;
   description_en?: string;
   image_url?: string | null;
-  hero_id?: number | null;
+  entity_id?: number | null;
   category?: AchievementCategory;
   scope?: AchievementScope;
   grain?: AchievementGrain;
@@ -1472,7 +1449,8 @@ interface AchievementRuleExportWorkspace {
 }
 
 export interface AchievementRuleExportEnvelope {
-  schema_version: number;
+  /** Portable format v2 (`discipline` + `entity_id`); v1 and `hero_id` files are refused by the server. */
+  schema_version: 2;
   exported_at: string;
   source_workspace: AchievementRuleExportWorkspace | null;
   rules: AchievementRulePortable[];

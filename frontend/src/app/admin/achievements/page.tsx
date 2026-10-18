@@ -31,9 +31,11 @@ import { AchievementsTable } from "./_components/AchievementsTable";
 import { DryRunResultDialog } from "./_components/DryRunResultDialog";
 import { EvaluateAchievementsDialog } from "./_components/EvaluateAchievementsDialog";
 import { ImportErrorPanel, ImportResultPanel } from "./_components/ImportOutcomePanels";
+import { DisciplineSelect } from "./_components/DisciplineSelect";
 import { useAchievementCatalog } from "./_hooks/useAchievementCatalog";
 import { useAchievementRuleActions } from "./_hooks/useAchievementRuleActions";
 import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
+import { useAchievementDiscipline } from "./_hooks/useAchievementDiscipline";
 
 const emptyOverrideDraft: OverrideDraftState = { userName: "", action: "grant", reason: "" };
 
@@ -42,6 +44,7 @@ export default function AchievementsPage() {
   const router = useRouter();
   const { canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
+  const { discipline, disciplines, select } = useAchievementDiscipline();
 
   const [deletingRule, setDeletingRule] = useState<AchievementRule | null>(null);
   const [hardResetOpen, setHardResetOpen] = useState(false);
@@ -62,13 +65,17 @@ export default function AchievementsPage() {
 
   const { tournaments, overrides, refetchOverrides, allRules } = useAchievementCatalog({
     workspaceId,
+    discipline,
     pickersOpen: evaluateDialogOpen || overrideDialogOpen,
   });
+  // Evaluating and overriding name a tournament: only the selected game's can be one.
+  const tournamentOptions = (tournaments?.results ?? []).filter((tournament) => tournament.discipline === discipline);
 
-  const form = useAchievementRuleForm(workspaceId);
+  const form = useAchievementRuleForm(workspaceId, discipline);
 
   const actions = useAchievementRuleActions({
     workspaceId,
+    discipline,
     jsonInputRef,
     onDeleted: () => setDeletingRule(null),
     onEvaluated: () => setEvaluateDialogOpen(false),
@@ -103,7 +110,7 @@ export default function AchievementsPage() {
     });
   };
 
-  if (!workspaceId) {
+  if (!workspaceId || !discipline) {
     return (
       <div className="space-y-6">
         <AdminPageHeader
@@ -111,7 +118,7 @@ export default function AchievementsPage() {
           description={t("list.headerDescription")}
         />
         <EmptyNote>
-          {t("list.selectWorkspace")}
+          {workspaceId ? t("discipline.none") : t("list.selectWorkspace")}
         </EmptyNote>
       </div>
     );
@@ -124,6 +131,12 @@ export default function AchievementsPage() {
         description={t("list.headerDescription")}
         actions={
           <div className="flex gap-2">
+            <DisciplineSelect
+              value={discipline}
+              disciplines={disciplines}
+              onChange={select}
+              disabled={form.open}
+            />
             <input
               ref={jsonInputRef}
               type="file"
@@ -230,6 +243,7 @@ export default function AchievementsPage() {
 
       <AchievementsTable
         workspaceId={workspaceId}
+        discipline={discipline}
         actions={{
           canUpdate,
           canDelete,
@@ -256,9 +270,11 @@ export default function AchievementsPage() {
       )}
 
       <AchievementLibraryDialog
+        key={discipline}
         open={libraryDialogOpen}
         onOpenChange={setLibraryDialogOpen}
         workspaceId={workspaceId}
+        discipline={discipline}
         canImport={canCreate || canUpdate}
         onImported={actions.setImportResult}
       />
@@ -266,7 +282,7 @@ export default function AchievementsPage() {
       <EvaluateAchievementsDialog
         open={evaluateDialogOpen}
         onOpenChange={setEvaluateDialogOpen}
-        tournaments={tournaments?.results ?? []}
+        tournaments={tournamentOptions}
         rules={allRules ?? []}
         tournamentId={evalTournamentId}
         onTournamentChange={setEvalTournamentId}
@@ -280,7 +296,7 @@ export default function AchievementsPage() {
         open={overrideDialogOpen}
         onOpenChange={setOverrideDialogOpen}
         rules={allRules ?? []}
-        tournaments={tournaments?.results ?? []}
+        tournaments={tournamentOptions}
         draft={overrideDraft}
         onDraftChange={setOverrideDraft}
         onSubmit={handleOverrideSubmit}
