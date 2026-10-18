@@ -9,6 +9,7 @@ import { ChartEmptyState, RankHistorySkeleton } from "@/components/RankHistorySt
 import { DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import { loadRankUI } from "@/disciplines/registry/rank";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
 import { useNativeRankCollector } from "@/hooks/useNativeRankCollector";
 import { userQueryKeys } from "@/lib/users/query-keys";
@@ -117,6 +118,7 @@ export default function RankHistory({
       <div className={contentClassName}>
         <DisciplineWidget
           discipline={descriptor.code}
+          load={loadRankUI}
           slot="rankHistory"
           capabilities={descriptor.capabilities}
           requires="native_rank_collection"

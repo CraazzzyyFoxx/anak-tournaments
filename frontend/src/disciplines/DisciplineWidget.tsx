@@ -3,11 +3,13 @@
 import { createElement, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { loadDisciplineUI } from "./registry";
+import type { DisciplineLoader } from "./registry/create";
 import type { DisciplineCapabilities, DisciplineSlot, DisciplineUI, SlotProps } from "./types";
 
-interface DisciplineWidgetProps<K extends DisciplineSlot> {
+interface DisciplineWidgetProps<F extends DisciplineSlot, K extends F> {
   discipline: string;
+  /** The loader of the slot's family (`loadRankUI`, `loadPregameUI`, `loadAdminUI`): the host reaches only that family's modules. */
+  load: DisciplineLoader<F>;
   slot: K;
   capabilities: DisciplineCapabilities;
   /** The native capability this slot needs; a promised-but-unimplemented one is a configuration error. */
@@ -27,15 +29,16 @@ type Loaded = { code: string; ui: DisciplineUI | null };
  * said so, and everything else falls back to the generic view. An unknown discipline never resolves to
  * another game's module.
  */
-export function DisciplineWidget<K extends DisciplineSlot>({
+export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
   discipline,
+  load,
   slot,
   capabilities,
   requires,
   applicable = true,
   props,
   fallback
-}: Readonly<DisciplineWidgetProps<K>>): ReactNode {
+}: Readonly<DisciplineWidgetProps<F, K>>): ReactNode {
   const t = useTranslations("common.discipline");
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const blocked = (requires !== undefined && !capabilities[requires]) || !applicable;
@@ -43,7 +46,7 @@ export function DisciplineWidget<K extends DisciplineSlot>({
   useEffect(() => {
     if (blocked) return;
     let live = true;
-    void loadDisciplineUI(discipline)
+    void load(discipline)
       .catch(() => null)
       .then((ui) => {
         if (live) setLoaded({ code: discipline, ui });
@@ -51,7 +54,7 @@ export function DisciplineWidget<K extends DisciplineSlot>({
     return () => {
       live = false;
     };
-  }, [discipline, blocked]);
+  }, [discipline, load, blocked]);
 
   if (requires !== undefined && !capabilities[requires]) {
     return <p className="text-sm text-muted-foreground">{t("widgetUnsupported")}</p>;

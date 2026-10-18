@@ -36,6 +36,18 @@ describe("pickMessages", () => {
     }
   });
 
+  it("keeps module slot families apart: a host ships only the namespaces of the slots it can render", () => {
+    // The admin slot family (division editor, collector mapping) must not widen the public bundle, and the
+    // pre-game bans slot must not widen the balancer/draft one (their rank-history host reaches only its own family).
+    for (const namespace of ["adminSettings", "collectors"]) {
+      expect(namespace in en).toBe(true);
+      expect(ZONE_NAMESPACES.web).not.toContain(namespace);
+      expect(ZONE_NAMESPACES.tools).not.toContain(namespace);
+    }
+    expect(ZONE_NAMESPACES.tools).not.toContain("pickBan");
+    expect(ZONE_NAMESPACES.web).toContain("pickBan");
+  });
+
   it("keeps the public bundle materially smaller than the whole tree", () => {
     const full = JSON.stringify(en).length;
     const web = JSON.stringify(pickMessages(en, "web")).length;

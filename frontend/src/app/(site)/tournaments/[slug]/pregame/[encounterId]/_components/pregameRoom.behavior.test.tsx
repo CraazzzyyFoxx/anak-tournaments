@@ -1928,6 +1928,112 @@ describe("phase selection", () => {
     expect(text).not.toContain(ROOM.heroBans.seriesEyebrow);
   });
 
+  describe("the game's metadata, which its bans slot needs", () => {
+    const OW_METADATA = {
+      discipline: { code: "overwatch", character_classes: ["tank", "damage", "support"], capabilities: {} },
+      roles: []
+    };
+    const bansBy = (side: "home" | "away") => ({
+      pool: [
+        entry({
+          id: 3,
+          item_id: 101,
+          round: 1,
+          status: "banned",
+          picked_by_kind: "team",
+          picked_by_team_id: side === "home" ? HOME : AWAY
+        })
+      ]
+    });
+    /** The map-result screen: one map picked, its hero bans committed. */
+    function mapResultScreen() {
+      getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
+      mockStates(
+        readyState({
+          session: session({ kind: "map" }),
+          is_complete: true,
+          viewer_team_id: HOME,
+          pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+        }),
+        readyState({
+          session: session({ kind: "hero" }),
+          is_complete: true,
+          viewer_team_id: HOME,
+          ...acts([{ side: "home", itemId: 101 }]),
+          ...bansBy("home")
+        })
+      );
+    }
+    /** The closing screen: the series is done, its bans are the record. */
+    function closingScreen() {
+      getEncounter.mockResolvedValue({ ...encounter(), best_of: 1, teams: seats(1, 0) } as unknown as Encounter);
+      mockStates(
+        readyState({
+          session: session({ kind: "map" }),
+          is_complete: true,
+          viewer_team_id: null,
+          games: [confirmed(1, 21, 1, 0)],
+          pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+        }),
+        readyState({
+          session: session({ kind: "hero" }),
+          is_complete: true,
+          viewer_team_id: null,
+          ...acts([{ side: "home", itemId: 101 }]),
+          ...bansBy("home")
+        })
+      );
+    }
+    const retryButton = () =>
+      Array.from(document.body.querySelectorAll<HTMLElement>('[role="alert"] button')).find(
+        (button) => button.textContent?.trim() === ROOM.retry
+      );
+
+    for (const [name, screen, marker] of [
+      ["map-result", mapResultScreen, ROOM.mapResult.report],
+      ["closing", closingScreen, ROOM.heroBans.seriesTitle]
+    ] as const) {
+      it(`${name} screen: a failed metadata read says so, keeps the room, and a retry brings the bans back`, async () => {
+        screen();
+        getMetadata.mockRejectedValue(new Error("metadata down"));
+        await render();
+        await settle(5);
+
+        const alert = document.body.querySelector('[role="alert"]');
+        expect(alert?.textContent).toContain(ROOM.heroBans.metadataError);
+        expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+        // The rest of the screen is intact: only the bans' display settings are missing.
+        expect(document.body.textContent).toContain(marker);
+
+        getMetadata.mockResolvedValue(OW_METADATA);
+        await act(async () => retryButton()!.click());
+        await untilBans();
+
+        expect(document.body.querySelector("[data-hero-bans]")).not.toBeNull();
+        expect(document.body.textContent).toContain("Hero 101");
+        expect(document.body.textContent).not.toContain(ROOM.heroBans.metadataError);
+      });
+
+      it(`${name} screen: a slow metadata read shows neither bans nor an error, then the bans`, async () => {
+        screen();
+        const slow = Promise.withResolvers<typeof OW_METADATA>();
+        getMetadata.mockReturnValue(slow.promise);
+        await render();
+        await settle(5);
+
+        expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+        expect(document.body.textContent).not.toContain(ROOM.heroBans.metadataError);
+        expect(document.body.textContent).toContain(marker);
+
+        await act(async () => slow.resolve(OW_METADATA));
+        await untilBans();
+
+        expect(document.body.querySelector("[data-hero-bans]")).not.toBeNull();
+        expect(document.body.textContent).not.toContain(ROOM.heroBans.metadataError);
+      });
+    }
+  });
+
   it("states a flat hero pool once, not once per map", async () => {
     // A round-less pool bans for the whole series; repeating it under every map
     // would invent per-map decisions nobody made.

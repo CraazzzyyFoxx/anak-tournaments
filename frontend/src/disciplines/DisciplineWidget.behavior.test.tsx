@@ -8,17 +8,21 @@
 //  - without a required capability a missing renderer simply shows the generic fallback;
 //  - an unknown game never resolves to another game's module.
 import { NextIntlClientProvider } from "next-intl";
-import { act, lazy, type ReactNode } from "react";
+import { act, lazy, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 
-import { DisciplineWidget } from "./DisciplineWidget";
-import type { DisciplineCapabilities, DisciplineUI, SlotProps } from "./types";
+import { DisciplineWidget as Host } from "./DisciplineWidget";
+import type { DisciplineLoader } from "./registry/create";
+import type { DisciplineCapabilities, DisciplineSlot, DisciplineUI, SlotProps } from "./types";
 
-const loadDisciplineUI = vi.fn<(code: string) => Promise<DisciplineUI | null>>();
-vi.mock("./registry", () => ({ loadDisciplineUI: (code: string) => loadDisciplineUI(code) }));
+// The host takes its family's loader as a prop; the test supplies a controllable one.
+const loadDisciplineUI = vi.fn<DisciplineLoader<DisciplineSlot>>();
+function DisciplineWidget(props: Omit<ComponentProps<typeof Host>, "load">) {
+  return <Host {...props} load={loadDisciplineUI} />;
+}
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;

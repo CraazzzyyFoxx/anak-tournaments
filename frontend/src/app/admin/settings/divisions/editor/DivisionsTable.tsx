@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import { loadAdminUI } from "@/disciplines/registry/admin";
 import type { DisciplineCapabilities } from "@/types/discipline.types";
 
 import {
@@ -152,6 +153,7 @@ export function DivisionsTable({
                   return (
                     <DisciplineWidget
                       discipline={discipline}
+                      load={loadAdminUI}
                       slot="nativeRankEditor"
                       capabilities={capabilities}
                       requires="native_ladder"

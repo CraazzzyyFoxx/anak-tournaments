@@ -109,7 +109,17 @@ export type SlotProps = {
 
 export type DisciplineSlot = keyof SlotProps;
 
-export interface DisciplineUI {
+/**
+ * Slot families. Each family has its own registry and module entrypoint, so a host reaches (and its i18n zone
+ * ships) only the code of the slots it can render. A slot's owner adds it to exactly one family; never to a
+ * catch-all one.
+ */
+export type RankSlot = "rankHistory";
+export type PregameSlot = "pregameCharacterBans";
+export type AdminSlot = "nativeRankEditor" | "rankMapping";
+
+/** One module's lazy renderers for the slots of family `S`. */
+export interface DisciplineUI<S extends DisciplineSlot = DisciplineSlot> {
   code: string;
-  slots: Partial<{ [K in DisciplineSlot]: LazyExoticComponent<ComponentType<SlotProps[K]>> }>;
+  slots: Partial<{ [K in S]: LazyExoticComponent<ComponentType<SlotProps[K]>> }>;
 }

@@ -6,6 +6,7 @@ import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspac
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import { loadAdminUI } from "@/disciplines/registry/admin";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 
 /**
@@ -56,6 +57,7 @@ export function RankMappingTab() {
       />
       <DisciplineWidget
         discipline={descriptor.code}
+        load={loadAdminUI}
         slot="rankMapping"
         capabilities={descriptor.capabilities}
         requires="native_rank_collection"

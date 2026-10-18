@@ -4419,6 +4419,7 @@
         "roleUnknown": "Other",
         "copy": "Copy for the lobby",
         "copied": "Copied",
+        "metadataError": "The ban list could not be shown: this game's display settings failed to load.",
         "state": {
           "ban": "Banned:",
           "protect": "Protected:"
