@@ -1,0 +1,43 @@
+2026-10-18T12:00:00Z,match_start,0,Ingest Ilios,Ingest Control,Home,Away
+2026-10-18T12:00:00Z,player_joined,0,IngestH0,Home
+2026-10-18T12:00:00Z,player_joined,0,IngestH1,Home
+2026-10-18T12:00:00Z,player_joined,0,IngestH2,Home
+2026-10-18T12:00:00Z,player_joined,0,IngestA0,Away
+2026-10-18T12:00:00Z,player_joined,0,IngestA1,Away
+2026-10-18T12:00:00Z,player_joined,0,IngestA2,Away
+2026-10-18T12:00:00Z,round_start,1,1
+2026-10-18T12:00:00Z,setup_complete,2,1
+2026-10-18T12:00:00Z,hero_spawn,3,Home,IngestH0,Ingest Ana
+2026-10-18T12:00:00Z,not_a_real_event,4,x
+2026-10-18T12:00:00Z,hero_swap,5,Home,IngestH0,Ingest Ana,Ingest Reaper
+2026-10-18T12:00:00Z,offensive_assist,21,Home,IngestEventOnly,Ingest Ana
+2026-10-18T12:00:00Z,offensive_assist,21,Home,IngestEventOnly,Ingest Ana
+2026-10-18T12:00:00Z,mercy_rez,22,Home,IngestH2,Ingest Ana,,IngestH1,Ingest Ana
+2026-10-18T12:00:00Z,defensive_assist,23,Away,IngestA2,Ingest Ana
+2026-10-18T12:00:00Z,ultimate_charged,24,Home,IngestH2,Ingest Ana
+2026-10-18T12:00:00Z,ultimate_start,26,Home,IngestH2,Ingest Ana
+2026-10-18T12:00:00Z,ultimate_end,28,Home,IngestH2,Ingest Ana
+2026-10-18T12:00:00Z,point_progress,35,Home,50.0
+2026-10-18T12:00:00Z,round_end,45,1
+2026-10-18T12:00:00Z,player_stat,60,1,Home,IngestH0,Ingest Ana,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5
+2026-10-18T12:00:00Z,player_stat,60,1,Home,IngestH0,Ingest Reaper,3,2,1,0,0,1250.5,0,0,0,400.25,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55.5
+2026-10-18T12:00:00Z,player_stat,60,1,Home,IngestH1,Ingest Ana,1,0,2,0,0,300.75,2400.5,0,0,800,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60
+2026-10-18T12:00:00Z,player_stat,60,1,Home,IngestH2,Ingest Ana,0,0,1,0,0,100,1800.125,0,0,500.5,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60
+2026-10-18T12:00:00Z,player_stat,60,1,Away,IngestA0,Ingest Ana,2,1,2,0,0,650.25,0,0,0,900,120.5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60
+2026-10-18T12:00:00Z,player_stat,60,1,Away,IngestA1,Ingest Ana,1,1,0,0,0,410,75,0,0,210.75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60
+2026-10-18T12:00:00Z,player_stat,60,1,Away,IngestA2,Ingest Ana,1,1,1,0,0,380.125,0,0,0,640,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,60
+2026-10-18T12:00:00Z,round_start,50,2
+2026-10-18T12:00:00Z,hero_swap,65,Away,IngestA1,Ingest Ana,Ingest Reaper
+2026-10-18T12:00:00Z,offensive_assist,66,Home,IngestEventOnly,Ingest Ana
+2026-10-18T12:00:00Z,hero_swap,80,Home,IngestH0,Ingest Reaper,Ingest Ana
+2026-10-18T12:00:00Z,meta,99,ignored
+2026-10-18T12:00:00Z,player_stat,120,2,Home,IngestH0,Ingest Ana,1,1,0,0,0,90.5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30
+2026-10-18T12:00:00Z,player_stat,120,2,Home,IngestH0,Ingest Reaper,4,3,1,0,0,1800.75,0,0,0,620.25,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100.5
+2026-10-18T12:00:00Z,player_stat,120,2,Home,IngestH1,Ingest Ana,3,1,2,0,0,700.5,4100.75,0,0,1300,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120
+2026-10-18T12:00:00Z,player_stat,120,2,Home,IngestH2,Ingest Ana,0,0,2,0,0,210,3500.5,0,0,980.5,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120
+2026-10-18T12:00:00Z,player_stat,120,2,Away,IngestA0,Ingest Ana,3,2,3,0,0,1100.25,0,0,0,1500,300.5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120
+2026-10-18T12:00:00Z,player_stat,120,2,Away,IngestA1,Ingest Ana,1,1,0,0,0,410,75,0,0,410.75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,85
+2026-10-18T12:00:00Z,player_stat,120,2,Away,IngestA1,Ingest Reaper,1,1,1,0,0,250.5,0,0,0,300,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,35
+2026-10-18T12:00:00Z,player_stat,120,2,Away,IngestA2,Ingest Ana,2,1,2,0,0,880.125,0,0,0,1200,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,120
+2026-10-18T12:00:00Z,round_end,110,2
+2026-10-18T12:00:00Z,match_end,120,Home,3,2

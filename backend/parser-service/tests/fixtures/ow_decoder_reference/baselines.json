@@ -1,0 +1,1437 @@
+{
+ "bucket_bounds": [
+  700.0,
+  900.0
+ ],
+ "formula_version": "impact_v1",
+ "rows": [
+  {
+   "mean": 19.8,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "eliminations",
+   "std": 10.5
+  },
+  {
+   "mean": 4.95,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "final_blows",
+   "std": 3.1500000000000004
+  },
+  {
+   "mean": 11.880000000000003,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "deaths",
+   "std": 6.300000000000001
+  },
+  {
+   "mean": 5940.000000000001,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "hero_damage_dealt",
+   "std": 3150.0
+  },
+  {
+   "mean": 1980.0000000000002,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "healing_dealt",
+   "std": 2625.0
+  },
+  {
+   "mean": 1485.0000000000002,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "damage_blocked",
+   "std": 1050.0
+  },
+  {
+   "mean": 9.9,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "offensive_assists",
+   "std": 5.25
+  },
+  {
+   "mean": 9.9,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "defensive_assists",
+   "std": 5.25
+  },
+  {
+   "mean": 0.9900000000000001,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "ultimates_used",
+   "std": 1.05
+  },
+  {
+   "mean": 0.49500000000000005,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "multikills",
+   "std": 1.05
+  },
+  {
+   "mean": 2.9700000000000006,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "solo_kills",
+   "std": 2.1
+  },
+  {
+   "mean": 0.19800000000000004,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "objective_kills",
+   "std": 0.525
+  },
+  {
+   "mean": 0.19800000000000004,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "environmental_kills",
+   "std": 0.525
+  },
+  {
+   "mean": 2.9700000000000006,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "first_picks",
+   "std": 2.1
+  },
+  {
+   "mean": 2.9700000000000006,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "first_deaths",
+   "std": 2.1
+  },
+  {
+   "mean": 0.9900000000000001,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "ultimate_kills",
+   "std": 1.05
+  },
+  {
+   "mean": 1.9800000000000002,
+   "rank_bucket": -1,
+   "role": "tank",
+   "stat": "support_kills",
+   "std": 2.1
+  },
+  {
+   "mean": 22.0,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "eliminations",
+   "std": 11.0
+  },
+  {
+   "mean": 5.5,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "final_blows",
+   "std": 3.3000000000000003
+  },
+  {
+   "mean": 13.200000000000001,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "deaths",
+   "std": 6.6000000000000005
+  },
+  {
+   "mean": 6600.000000000001,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "hero_damage_dealt",
+   "std": 3300.0000000000005
+  },
+  {
+   "mean": 2200.0,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "healing_dealt",
+   "std": 2750.0
+  },
+  {
+   "mean": 1650.0000000000002,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "damage_blocked",
+   "std": 1100.0
+  },
+  {
+   "mean": 11.0,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "offensive_assists",
+   "std": 5.5
+  },
+  {
+   "mean": 11.0,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "defensive_assists",
+   "std": 5.5
+  },
+  {
+   "mean": 1.1,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "ultimates_used",
+   "std": 1.1
+  },
+  {
+   "mean": 0.55,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "multikills",
+   "std": 1.1
+  },
+  {
+   "mean": 3.3000000000000003,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "solo_kills",
+   "std": 2.2
+  },
+  {
+   "mean": 0.22000000000000003,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "objective_kills",
+   "std": 0.55
+  },
+  {
+   "mean": 0.22000000000000003,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "environmental_kills",
+   "std": 0.55
+  },
+  {
+   "mean": 3.3000000000000003,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "first_picks",
+   "std": 2.2
+  },
+  {
+   "mean": 3.3000000000000003,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "first_deaths",
+   "std": 2.2
+  },
+  {
+   "mean": 1.1,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "ultimate_kills",
+   "std": 1.1
+  },
+  {
+   "mean": 2.2,
+   "rank_bucket": 0,
+   "role": "tank",
+   "stat": "support_kills",
+   "std": 2.2
+  },
+  {
+   "mean": 24.200000000000003,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "eliminations",
+   "std": 11.5
+  },
+  {
+   "mean": 6.050000000000001,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "final_blows",
+   "std": 3.4499999999999997
+  },
+  {
+   "mean": 14.520000000000003,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "deaths",
+   "std": 6.8999999999999995
+  },
+  {
+   "mean": 7260.000000000002,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "hero_damage_dealt",
+   "std": 3449.9999999999995
+  },
+  {
+   "mean": 2420.0,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "healing_dealt",
+   "std": 2875.0
+  },
+  {
+   "mean": 1815.0000000000005,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "damage_blocked",
+   "std": 1150.0
+  },
+  {
+   "mean": 12.100000000000001,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "offensive_assists",
+   "std": 5.75
+  },
+  {
+   "mean": 12.100000000000001,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "defensive_assists",
+   "std": 5.75
+  },
+  {
+   "mean": 1.2100000000000002,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "ultimates_used",
+   "std": 1.15
+  },
+  {
+   "mean": 0.6050000000000001,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "multikills",
+   "std": 1.15
+  },
+  {
+   "mean": 3.630000000000001,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "solo_kills",
+   "std": 2.3
+  },
+  {
+   "mean": 0.24200000000000005,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "objective_kills",
+   "std": 0.575
+  },
+  {
+   "mean": 0.24200000000000005,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "environmental_kills",
+   "std": 0.575
+  },
+  {
+   "mean": 3.630000000000001,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "first_picks",
+   "std": 2.3
+  },
+  {
+   "mean": 3.630000000000001,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "first_deaths",
+   "std": 2.3
+  },
+  {
+   "mean": 1.2100000000000002,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "ultimate_kills",
+   "std": 1.15
+  },
+  {
+   "mean": 2.4200000000000004,
+   "rank_bucket": 1,
+   "role": "tank",
+   "stat": "support_kills",
+   "std": 2.3
+  },
+  {
+   "mean": 26.400000000000002,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "eliminations",
+   "std": 12.0
+  },
+  {
+   "mean": 6.6000000000000005,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "final_blows",
+   "std": 3.5999999999999996
+  },
+  {
+   "mean": 15.84,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "deaths",
+   "std": 7.199999999999999
+  },
+  {
+   "mean": 7920.000000000001,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "hero_damage_dealt",
+   "std": 3600.0
+  },
+  {
+   "mean": 2640.0,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "healing_dealt",
+   "std": 3000.0
+  },
+  {
+   "mean": 1980.0000000000002,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "damage_blocked",
+   "std": 1200.0
+  },
+  {
+   "mean": 13.200000000000001,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "offensive_assists",
+   "std": 6.0
+  },
+  {
+   "mean": 13.200000000000001,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "defensive_assists",
+   "std": 6.0
+  },
+  {
+   "mean": 1.32,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "ultimates_used",
+   "std": 1.2
+  },
+  {
+   "mean": 0.66,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "multikills",
+   "std": 1.2
+  },
+  {
+   "mean": 3.96,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "solo_kills",
+   "std": 2.4
+  },
+  {
+   "mean": 0.264,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "objective_kills",
+   "std": 0.6
+  },
+  {
+   "mean": 0.264,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "environmental_kills",
+   "std": 0.6
+  },
+  {
+   "mean": 3.96,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "first_picks",
+   "std": 2.4
+  },
+  {
+   "mean": 3.96,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "first_deaths",
+   "std": 2.4
+  },
+  {
+   "mean": 1.32,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "ultimate_kills",
+   "std": 1.2
+  },
+  {
+   "mean": 2.64,
+   "rank_bucket": 2,
+   "role": "tank",
+   "stat": "support_kills",
+   "std": 2.4
+  },
+  {
+   "mean": 18.0,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "eliminations",
+   "std": 10.815
+  },
+  {
+   "mean": 4.5,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "final_blows",
+   "std": 3.2445000000000004
+  },
+  {
+   "mean": 10.8,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "deaths",
+   "std": 6.489000000000001
+  },
+  {
+   "mean": 5400.0,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "hero_damage_dealt",
+   "std": 3244.5
+  },
+  {
+   "mean": 1800.0,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "healing_dealt",
+   "std": 2703.75
+  },
+  {
+   "mean": 1350.0,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "damage_blocked",
+   "std": 1081.5
+  },
+  {
+   "mean": 9.0,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "offensive_assists",
+   "std": 5.4075
+  },
+  {
+   "mean": 9.0,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "defensive_assists",
+   "std": 5.4075
+  },
+  {
+   "mean": 0.9,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "ultimates_used",
+   "std": 1.0815000000000001
+  },
+  {
+   "mean": 0.45,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "multikills",
+   "std": 1.0815000000000001
+  },
+  {
+   "mean": 2.7,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "solo_kills",
+   "std": 2.1630000000000003
+  },
+  {
+   "mean": 0.18000000000000002,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "objective_kills",
+   "std": 0.5407500000000001
+  },
+  {
+   "mean": 0.18000000000000002,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "environmental_kills",
+   "std": 0.5407500000000001
+  },
+  {
+   "mean": 2.7,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "first_picks",
+   "std": 2.1630000000000003
+  },
+  {
+   "mean": 2.7,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "first_deaths",
+   "std": 2.1630000000000003
+  },
+  {
+   "mean": 0.9,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "ultimate_kills",
+   "std": 1.0815000000000001
+  },
+  {
+   "mean": 1.8,
+   "rank_bucket": -1,
+   "role": "damage",
+   "stat": "support_kills",
+   "std": 2.1630000000000003
+  },
+  {
+   "mean": 20.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "eliminations",
+   "std": 11.33
+  },
+  {
+   "mean": 5.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "final_blows",
+   "std": 3.3990000000000005
+  },
+  {
+   "mean": 12.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "deaths",
+   "std": 6.798000000000001
+  },
+  {
+   "mean": 6000.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "hero_damage_dealt",
+   "std": 3399.0000000000005
+  },
+  {
+   "mean": 2000.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "healing_dealt",
+   "std": 2832.5
+  },
+  {
+   "mean": 1500.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "damage_blocked",
+   "std": 1133.0
+  },
+  {
+   "mean": 10.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "offensive_assists",
+   "std": 5.665
+  },
+  {
+   "mean": 10.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "defensive_assists",
+   "std": 5.665
+  },
+  {
+   "mean": 1.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "ultimates_used",
+   "std": 1.1330000000000002
+  },
+  {
+   "mean": 0.5,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "multikills",
+   "std": 1.1330000000000002
+  },
+  {
+   "mean": 3.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "solo_kills",
+   "std": 2.2660000000000005
+  },
+  {
+   "mean": 0.2,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "objective_kills",
+   "std": 0.5665000000000001
+  },
+  {
+   "mean": 0.2,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "environmental_kills",
+   "std": 0.5665000000000001
+  },
+  {
+   "mean": 3.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "first_picks",
+   "std": 2.2660000000000005
+  },
+  {
+   "mean": 3.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "first_deaths",
+   "std": 2.2660000000000005
+  },
+  {
+   "mean": 1.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "ultimate_kills",
+   "std": 1.1330000000000002
+  },
+  {
+   "mean": 2.0,
+   "rank_bucket": 0,
+   "role": "damage",
+   "stat": "support_kills",
+   "std": 2.2660000000000005
+  },
+  {
+   "mean": 22.0,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "eliminations",
+   "std": 11.845
+  },
+  {
+   "mean": 5.5,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "final_blows",
+   "std": 3.5534999999999997
+  },
+  {
+   "mean": 13.200000000000001,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "deaths",
+   "std": 7.106999999999999
+  },
+  {
+   "mean": 6600.000000000001,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "hero_damage_dealt",
+   "std": 3553.4999999999995
+  },
+  {
+   "mean": 2200.0,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "healing_dealt",
+   "std": 2961.25
+  },
+  {
+   "mean": 1650.0000000000002,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "damage_blocked",
+   "std": 1184.5
+  },
+  {
+   "mean": 11.0,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "offensive_assists",
+   "std": 5.9225
+  },
+  {
+   "mean": 11.0,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "defensive_assists",
+   "std": 5.9225
+  },
+  {
+   "mean": 1.1,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "ultimates_used",
+   "std": 1.1844999999999999
+  },
+  {
+   "mean": 0.55,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "multikills",
+   "std": 1.1844999999999999
+  },
+  {
+   "mean": 3.3000000000000003,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "solo_kills",
+   "std": 2.3689999999999998
+  },
+  {
+   "mean": 0.22000000000000003,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "objective_kills",
+   "std": 0.5922499999999999
+  },
+  {
+   "mean": 0.22000000000000003,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "environmental_kills",
+   "std": 0.5922499999999999
+  },
+  {
+   "mean": 3.3000000000000003,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "first_picks",
+   "std": 2.3689999999999998
+  },
+  {
+   "mean": 3.3000000000000003,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "first_deaths",
+   "std": 2.3689999999999998
+  },
+  {
+   "mean": 1.1,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "ultimate_kills",
+   "std": 1.1844999999999999
+  },
+  {
+   "mean": 2.2,
+   "rank_bucket": 1,
+   "role": "damage",
+   "stat": "support_kills",
+   "std": 2.3689999999999998
+  },
+  {
+   "mean": 24.0,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "eliminations",
+   "std": 12.36
+  },
+  {
+   "mean": 6.0,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "final_blows",
+   "std": 3.7079999999999997
+  },
+  {
+   "mean": 14.399999999999999,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "deaths",
+   "std": 7.4159999999999995
+  },
+  {
+   "mean": 7200.0,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "hero_damage_dealt",
+   "std": 3708.0
+  },
+  {
+   "mean": 2400.0,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "healing_dealt",
+   "std": 3090.0
+  },
+  {
+   "mean": 1800.0,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "damage_blocked",
+   "std": 1236.0
+  },
+  {
+   "mean": 12.0,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "offensive_assists",
+   "std": 6.18
+  },
+  {
+   "mean": 12.0,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "defensive_assists",
+   "std": 6.18
+  },
+  {
+   "mean": 1.2,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "ultimates_used",
+   "std": 1.236
+  },
+  {
+   "mean": 0.6,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "multikills",
+   "std": 1.236
+  },
+  {
+   "mean": 3.5999999999999996,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "solo_kills",
+   "std": 2.472
+  },
+  {
+   "mean": 0.24,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "objective_kills",
+   "std": 0.618
+  },
+  {
+   "mean": 0.24,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "environmental_kills",
+   "std": 0.618
+  },
+  {
+   "mean": 3.5999999999999996,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "first_picks",
+   "std": 2.472
+  },
+  {
+   "mean": 3.5999999999999996,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "first_deaths",
+   "std": 2.472
+  },
+  {
+   "mean": 1.2,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "ultimate_kills",
+   "std": 1.236
+  },
+  {
+   "mean": 2.4,
+   "rank_bucket": 2,
+   "role": "damage",
+   "stat": "support_kills",
+   "std": 2.472
+  },
+  {
+   "mean": 16.200000000000003,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "eliminations",
+   "std": 11.13
+  },
+  {
+   "mean": 4.050000000000001,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "final_blows",
+   "std": 3.3390000000000004
+  },
+  {
+   "mean": 9.720000000000002,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "deaths",
+   "std": 6.678000000000001
+  },
+  {
+   "mean": 4860.000000000001,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "hero_damage_dealt",
+   "std": 3339.0
+  },
+  {
+   "mean": 1620.0000000000002,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "healing_dealt",
+   "std": 2782.5
+  },
+  {
+   "mean": 1215.0000000000002,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "damage_blocked",
+   "std": 1113.0
+  },
+  {
+   "mean": 8.100000000000001,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "offensive_assists",
+   "std": 5.565
+  },
+  {
+   "mean": 8.100000000000001,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "defensive_assists",
+   "std": 5.565
+  },
+  {
+   "mean": 0.8100000000000002,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "ultimates_used",
+   "std": 1.1130000000000002
+  },
+  {
+   "mean": 0.4050000000000001,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "multikills",
+   "std": 1.1130000000000002
+  },
+  {
+   "mean": 2.4300000000000006,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "solo_kills",
+   "std": 2.2260000000000004
+  },
+  {
+   "mean": 0.16200000000000003,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "objective_kills",
+   "std": 0.5565000000000001
+  },
+  {
+   "mean": 0.16200000000000003,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "environmental_kills",
+   "std": 0.5565000000000001
+  },
+  {
+   "mean": 2.4300000000000006,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "first_picks",
+   "std": 2.2260000000000004
+  },
+  {
+   "mean": 2.4300000000000006,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "first_deaths",
+   "std": 2.2260000000000004
+  },
+  {
+   "mean": 0.8100000000000002,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "ultimate_kills",
+   "std": 1.1130000000000002
+  },
+  {
+   "mean": 1.6200000000000003,
+   "rank_bucket": -1,
+   "role": "support",
+   "stat": "support_kills",
+   "std": 2.2260000000000004
+  },
+  {
+   "mean": 18.000000000000004,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "eliminations",
+   "std": 0.0
+  },
+  {
+   "mean": 4.500000000000001,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "final_blows",
+   "std": 3.4980000000000007
+  },
+  {
+   "mean": 10.8,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "deaths",
+   "std": 6.996000000000001
+  },
+  {
+   "mean": 5400.000000000001,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "hero_damage_dealt",
+   "std": 3498.0000000000005
+  },
+  {
+   "mean": 1800.0000000000002,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "healing_dealt",
+   "std": 2915.0
+  },
+  {
+   "mean": 1350.0000000000002,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "damage_blocked",
+   "std": 1166.0
+  },
+  {
+   "mean": 9.000000000000002,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "offensive_assists",
+   "std": 5.83
+  },
+  {
+   "mean": 9.000000000000002,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "defensive_assists",
+   "std": 0.0
+  },
+  {
+   "mean": 0.9000000000000001,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "ultimates_used",
+   "std": 1.1660000000000001
+  },
+  {
+   "mean": 0.45000000000000007,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "multikills",
+   "std": 1.1660000000000001
+  },
+  {
+   "mean": 2.7,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "solo_kills",
+   "std": 2.3320000000000003
+  },
+  {
+   "mean": 0.18000000000000005,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "objective_kills",
+   "std": 0.5830000000000001
+  },
+  {
+   "mean": 0.18000000000000005,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "environmental_kills",
+   "std": 0.5830000000000001
+  },
+  {
+   "mean": 2.7,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "first_picks",
+   "std": 2.3320000000000003
+  },
+  {
+   "mean": 2.7,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "first_deaths",
+   "std": 0.0
+  },
+  {
+   "mean": 0.9000000000000001,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "ultimate_kills",
+   "std": 1.1660000000000001
+  },
+  {
+   "mean": 1.8000000000000003,
+   "rank_bucket": 0,
+   "role": "support",
+   "stat": "support_kills",
+   "std": 2.3320000000000003
+  },
+  {
+   "mean": 19.800000000000004,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "eliminations",
+   "std": 12.190000000000001
+  },
+  {
+   "mean": 4.950000000000001,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "final_blows",
+   "std": 3.657
+  },
+  {
+   "mean": 11.880000000000003,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "deaths",
+   "std": 7.314
+  },
+  {
+   "mean": 5940.000000000002,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "hero_damage_dealt",
+   "std": 3656.9999999999995
+  },
+  {
+   "mean": 1980.0000000000002,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "healing_dealt",
+   "std": 3047.5
+  },
+  {
+   "mean": 1485.0000000000005,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "damage_blocked",
+   "std": 1219.0
+  },
+  {
+   "mean": 9.900000000000002,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "offensive_assists",
+   "std": 6.095000000000001
+  },
+  {
+   "mean": 9.900000000000002,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "defensive_assists",
+   "std": 6.095000000000001
+  },
+  {
+   "mean": 0.9900000000000002,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "ultimates_used",
+   "std": 1.2189999999999999
+  },
+  {
+   "mean": 0.4950000000000001,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "multikills",
+   "std": 1.2189999999999999
+  },
+  {
+   "mean": 2.9700000000000006,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "solo_kills",
+   "std": 2.4379999999999997
+  },
+  {
+   "mean": 0.19800000000000006,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "objective_kills",
+   "std": 0.6094999999999999
+  },
+  {
+   "mean": 0.19800000000000006,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "environmental_kills",
+   "std": 0.6094999999999999
+  },
+  {
+   "mean": 2.9700000000000006,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "first_picks",
+   "std": 2.4379999999999997
+  },
+  {
+   "mean": 2.9700000000000006,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "first_deaths",
+   "std": 2.4379999999999997
+  },
+  {
+   "mean": 0.9900000000000002,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "ultimate_kills",
+   "std": 1.2189999999999999
+  },
+  {
+   "mean": 1.9800000000000004,
+   "rank_bucket": 1,
+   "role": "support",
+   "stat": "support_kills",
+   "std": 2.4379999999999997
+  },
+  {
+   "mean": 21.6,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "eliminations",
+   "std": 12.72
+  },
+  {
+   "mean": 5.4,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "final_blows",
+   "std": 3.816
+  },
+  {
+   "mean": 12.96,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "deaths",
+   "std": 7.632
+  },
+  {
+   "mean": 6480.000000000001,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "hero_damage_dealt",
+   "std": 3816.0
+  },
+  {
+   "mean": 2160.0000000000005,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "healing_dealt",
+   "std": 3180.0
+  },
+  {
+   "mean": 1620.0000000000002,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "damage_blocked",
+   "std": 1272.0
+  },
+  {
+   "mean": 10.8,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "offensive_assists",
+   "std": 6.36
+  },
+  {
+   "mean": 10.8,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "defensive_assists",
+   "std": 6.36
+  },
+  {
+   "mean": 1.08,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "ultimates_used",
+   "std": 1.272
+  },
+  {
+   "mean": 0.54,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "multikills",
+   "std": 1.272
+  },
+  {
+   "mean": 3.24,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "solo_kills",
+   "std": 2.544
+  },
+  {
+   "mean": 0.21600000000000003,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "objective_kills",
+   "std": 0.636
+  },
+  {
+   "mean": 0.21600000000000003,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "environmental_kills",
+   "std": 0.636
+  },
+  {
+   "mean": 3.24,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "first_picks",
+   "std": 2.544
+  },
+  {
+   "mean": 3.24,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "first_deaths",
+   "std": 2.544
+  },
+  {
+   "mean": 1.08,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "ultimate_kills",
+   "std": 1.272
+  },
+  {
+   "mean": 2.16,
+   "rank_bucket": 2,
+   "role": "support",
+   "stat": "support_kills",
+   "std": 2.544
+  }
+ ]
+}

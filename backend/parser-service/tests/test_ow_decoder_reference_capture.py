@@ -30,6 +30,11 @@ import pytest
 import sqlalchemy as sa
 
 from shared import models
+from shared.core.enums import LogStatsName
+from shared.core.impact import FORMULA_VERSION, IMPACT_WEIGHTS
+from shared.repository.baselines import StatBaselineRepository
+from shared.repository.roles import CatalogRoleRepository
+from shared.repository.stats import StatDefRepository
 from tests.test_stats_ingest_db import STATUS, environment, process, upload
 
 DIRECTORY = Path(__file__).parent / "fixtures" / "ow_decoder_reference"
@@ -40,6 +45,133 @@ CAPTURE_COMMAND = (
     "uv run pytest tests/test_ow_decoder_reference_capture.py -k capture -s"
 )
 SECOND_HERO = {"slug": "ingest-reaper", "name": "Ingest Reaper", "attrs": {"class": "damage"}}
+BASELINES = DIRECTORY / "baselines.json"
+EXTRA_COMMAND = CAPTURE_COMMAND.replace("P5_CAPTURE_OW_REFERENCE=1", "P5_CAPTURE_OW_REFERENCE=extra").replace(
+    "-k capture", "-k extra"
+)
+#: Captures beyond the base log, all through the same unchanged P4 path with baselines seeded. ``users`` are added to
+#: the capture database before upload (``team`` index into the home/away teams = roster row, ``None`` = a workspace
+#: member with no roster row); ``ranks`` overrides the roster rank the P4 formulas read.
+EXTRA_CASES = {
+    "echo_substitution": {
+        "raw": "cases/echo_substitution.csv",
+        "users": [{"name": "IngestH3", "team": 0, "rank": 800}, {"name": "IngestSub", "team": None}],
+        "ranks": {"IngestA0": 1200, "IngestA1": 1200, "IngestA2": 1200, "IngestH0": 500},
+    },
+    "impact": {"raw": "workshop.csv", "users": [], "ranks": {"IngestA0": 1200, "IngestH0": 500, "IngestH1": 950}},
+    "no_killfeed": {"raw": "cases/no_killfeed.csv", "users": [], "ranks": {"IngestA1": 1200, "IngestH2": 600}},
+}
+#: Per-10-minute (mean, std) of the capture cohort per impact stat; roles/buckets scale them so no cell is constant.
+_BASELINE_SCALE = {
+    "Eliminations": (20.0, 10.0),
+    "FinalBlows": (5.0, 3.0),
+    "Deaths": (12.0, 6.0),
+    "HeroDamageDealt": (6000.0, 3000.0),
+    "HealingDealt": (2000.0, 2500.0),
+    "DamageBlocked": (1500.0, 1000.0),
+    "OffensiveAssists": (10.0, 5.0),
+    "DefensiveAssists": (10.0, 5.0),
+    "UltimatesUsed": (1.0, 1.0),
+    "Multikills": (0.5, 1.0),
+    "SoloKills": (3.0, 2.0),
+    "ObjectiveKills": (0.2, 0.5),
+    "EnvironmentalKills": (0.2, 0.5),
+    "FirstPicks": (3.0, 2.0),
+    "FirstDeaths": (3.0, 2.0),
+    "UltimateKills": (1.0, 1.0),
+    "SupportKills": (2.0, 2.0),
+}
+
+
+def baseline_spec() -> dict:
+    """Deterministic non-trivial baseline cells (including std == 0) for every OW role, bucket and impact stat."""
+    rows = []
+    for role_index, role in enumerate(("tank", "damage", "support")):
+        for bucket in (-1, 0, 1, 2):
+            for stat_index, (name, (mean, std)) in enumerate(_BASELINE_SCALE.items()):
+                zero = role == "support" and bucket == 0 and stat_index % 7 == 0
+                rows.append(
+                    {
+                        "role": role,
+                        "rank_bucket": bucket,
+                        "stat": LogStatsName[name].value,
+                        "mean": mean * (1 + 0.1 * bucket) * (1.1 - 0.1 * role_index),
+                        "std": 0.0 if zero else std * (1 + 0.05 * (bucket + 2)) * (1 + 0.03 * role_index),
+                    }
+                )
+    assert set(_BASELINE_SCALE) == set(IMPACT_WEIGHTS)
+    return {"formula_version": FORMULA_VERSION, "bucket_bounds": [700.0, 900.0], "rows": rows}
+
+
+async def seed_baselines(session, spec: dict) -> None:
+    roles = await CatalogRoleRepository().rated_rows(session, discipline="overwatch", workspace_id=None)
+    stat_ids = await StatDefRepository().ids(session, discipline="overwatch")
+    meta = {"bucket_bounds": spec["bucket_bounds"], "n": 1000}
+    await StatBaselineRepository().replace_for_version(
+        session,
+        spec["formula_version"],
+        [
+            models.StatsBaseline(
+                formula_version=spec["formula_version"],
+                role_id=roles[row["role"]].id,
+                rank_bucket=row["rank_bucket"],
+                stat_id=stat_ids[row["stat"]],
+                mean=row["mean"],
+                std=row["std"],
+                meta=meta,
+            )
+            for row in spec["rows"]
+        ],
+        discipline="overwatch",
+    )
+
+
+async def prepare_case(env, session, case: dict, spec: dict) -> None:
+    """The scenario around an extra capture; only the capture database changes, never the P4 path."""
+    session.add(models.CatalogEntity(discipline="overwatch", kind="character", **SECOND_HERO))
+    for user in case["users"]:
+        person = models.User(name=user["name"])
+        session.add(person)
+        await session.flush()
+        member = models.WorkspaceMember(workspace_id=env.workspace, player_id=person.id)
+        session.add(member)
+        handle = user["name"] + "#1234"
+        session.add(
+            models.SocialAccount(
+                user_id=person.id,
+                provider="battlenet",
+                username=handle,
+                username_normalized=handle.lower(),
+                is_primary=True,
+            )
+        )
+        await session.flush()
+        if user["team"] is not None:
+            roster = models.Player(
+                tournament_id=env.tournament,
+                workspace_member_id=member.id,
+                team_id=env.teams[user["team"]],
+                name=user["name"],
+                rank=user["rank"],
+            )
+            session.add(roster)
+            await session.flush()
+            session.add(
+                models.PlayerRole(
+                    player_id=roster.id,
+                    role_id=env.fixture_ids["role_support"],
+                    dimension_id=env.fixture_ids["role_dimension"],
+                )
+            )
+    await session.flush()
+    for name, rank in case["ranks"].items():
+        await session.execute(
+            sa.update(models.Player)
+            .where(models.Player.tournament_id == env.tournament, models.Player.name == name)
+            .values(rank=rank)
+        )
+    await seed_baselines(session, spec)
+    await session.commit()
 
 
 def bits(value: float) -> dict:
@@ -161,6 +293,7 @@ def test_capture_p4_reference(stats_parity_database, monkeypatch):
         (
             json.dumps(
                 {
+                    "cases": json.loads(MANIFEST.read_bytes()).get("cases", {}) if MANIFEST.exists() else {},
                     "source_head": _git("rev-parse", "HEAD"),
                     "uncommitted_paths_at_capture": _git(
                         "-C", root, "status", "--porcelain", "--", "backend/parser-service/src", "backend/shared"
@@ -187,6 +320,60 @@ def test_capture_p4_reference(stats_parity_database, monkeypatch):
     )
 
 
+@pytest.mark.skipif(
+    os.environ.get("P5_CAPTURE_OW_REFERENCE") != "extra", reason="recapture harness: set P5_CAPTURE_OW_REFERENCE=extra"
+)
+@pytest.mark.parametrize("name", list(EXTRA_CASES))
+def test_capture_p4_extra_references(stats_parity_database, monkeypatch, name):
+    """Echo/objective/substitution rows and impact metrics, captured through the unchanged P4 path (before P5 moved
+    the decoder). The base case's files are never touched here."""
+    import asyncio
+
+    spec, case = baseline_spec(), EXTRA_CASES[name]
+
+    async def run():
+        async with environment(stats_parity_database, monkeypatch) as env:
+            async with env.sf() as session:
+                await prepare_case(env, session, case, spec)
+            job = await upload(env, (DIRECTORY / case["raw"]).read_bytes(), filename=Path(case["raw"]).name)
+            assert await process(env, job.id) == STATUS.DONE
+            return await observe(env)
+
+    expected = asyncio.run(run())
+    target = DIRECTORY / "cases" / f"{name}.expected.json"
+    target.write_bytes((json.dumps(expected, indent=1, sort_keys=True, ensure_ascii=False) + "\n").encode())
+    raw = (DIRECTORY / case["raw"]).read_bytes()
+    BASELINES.write_bytes((json.dumps(spec, indent=1, sort_keys=True) + "\n").encode())
+    manifest = json.loads(MANIFEST.read_bytes())
+    shared = manifest.setdefault("cases", {})
+    shared.update(
+        {
+            "baselines": {"file": BASELINES.name, "sha256": hashlib.sha256(BASELINES.read_bytes()).hexdigest()},
+            "capture_command": EXTRA_COMMAND,
+            "source_head": _git("rev-parse", "HEAD"),
+            "uncommitted_paths_at_capture": _git(
+                "-C",
+                _git("rev-parse", "--show-toplevel"),
+                "status",
+                "--porcelain",
+                "--",
+                "backend/parser-service/src",
+                "backend/shared",
+            ).splitlines(),
+            "second_catalog_hero": SECOND_HERO,
+        }
+    )
+    shared.setdefault("items", {})[name] = {
+        "raw": {"file": case["raw"], "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)},
+        "expected": {"file": f"cases/{target.name}", "sha256": hashlib.sha256(target.read_bytes()).hexdigest()},
+        "users": case["users"],
+        "ranks": case["ranks"],
+        "counts": {key: len(expected[key]) for key in ("facts", "events", "players")},
+    }
+    MANIFEST.write_bytes((json.dumps(manifest, indent=1, sort_keys=True) + "\n").encode())
+    print(name, shared["items"][name]["counts"])
+
+
 def test_reference_is_intact():
     manifest = json.loads(MANIFEST.read_bytes())
     assert hashlib.sha256(RAW.read_bytes()).hexdigest() == manifest["raw"]["sha256"]
@@ -206,3 +393,16 @@ def test_reference_is_intact():
                 check(child)
 
     check(expected)
+
+
+def test_extra_references_are_intact():
+    cases = json.loads(MANIFEST.read_bytes())["cases"]
+    assert hashlib.sha256(BASELINES.read_bytes()).hexdigest() == cases["baselines"]["sha256"]
+    assert json.loads(BASELINES.read_bytes()) == baseline_spec()
+    assert set(cases["items"]) == set(EXTRA_CASES)
+    for name, item in cases["items"].items():
+        assert hashlib.sha256((DIRECTORY / item["raw"]["file"]).read_bytes()).hexdigest() == item["raw"]["sha256"]
+        expected = DIRECTORY / item["expected"]["file"]
+        assert hashlib.sha256(expected.read_bytes()).hexdigest() == item["expected"]["sha256"], name
+        facts = json.loads(expected.read_bytes())["facts"]
+        assert {"impact_points", "overperformance_score", "impact_rank"} <= {fact["stat"] for fact in facts}, name
