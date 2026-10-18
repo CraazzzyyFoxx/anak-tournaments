@@ -19,12 +19,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.core.social import matches_handle_pattern
 from shared.disciplines import DISCIPLINES
 from shared.domain.roles import Ontology, RoleNode, UnknownRole
 from shared.repository import WorkspaceRepository
@@ -249,16 +251,26 @@ async def _hints(session: AsyncSession, doc: MatchDoc, workspace_id: int, found:
         found.add(["hint", "encounter_game_id"], "hint_unresolved", unresolved)
 
 
-async def validate_document(session: AsyncSession, *, workspace_id: int, doc: MatchDoc) -> ValidatedDocument:
+async def validate_document(
+    session: AsyncSession,
+    *,
+    workspace_id: int,
+    doc: MatchDoc,
+    producer: Literal["canonical", "decoded"] = "canonical",
+) -> ValidatedDocument:
     """Resolve every code of ``doc`` for ``workspace_id``; raise :class:`DocumentRejected` with all findings.
+
+    ``producer="canonical"`` (a caller-authored document) also enforces each known provider's handle grammar at
+    ``participants[i].identity.id``; ``"decoded"`` documents (server-authored from raw logs) carry bare in-game names
+    and skip that grammar. Everything else is identical.
 
     Reads run under ``no_autoflush``: pending state of the caller's session is never flushed by validation.
     """
     with session.no_autoflush:
-        return await _validate(session, workspace_id, doc)
+        return await _validate(session, workspace_id, doc, producer)
 
 
-async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc) -> ValidatedDocument:
+async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc, producer: str) -> ValidatedDocument:
     spec = DISCIPLINES.get(doc.discipline)
     registered = await session.scalar(sa.select(models.Discipline.code).where(models.Discipline.code == doc.discipline))
     if spec is None or registered is None:
@@ -280,6 +292,12 @@ async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc) -> 
                 "unknown_identity_provider",
                 "identity provider is not this discipline's provider",
             )
+        elif producer == "canonical" and not matches_handle_pattern(person.identity.provider, person.identity.id):
+            found.add(
+                ["participants", index, "identity", "id"],
+                "invalid_identity",
+                "identity id is not a valid handle for the provider",
+            )
 
     refs = _references(doc)
     wanted: dict[str, set[str]] = {kind: set() for kind in ("map", "character", "stat", "event")}
@@ -296,8 +314,11 @@ async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc) -> 
     await _hints(session, doc, workspace_id, found)
 
     if found.issues:
-        provider_error = any(issue.code == "unknown_identity_provider" for issue in found.issues)
-        raise DocumentRejected("unknown_identity_provider" if provider_error else "unresolved_references", found.issues)
+        codes = {issue.code for issue in found.issues}
+        code = next(
+            (c for c in ("unknown_identity_provider", "invalid_identity") if c in codes), "unresolved_references"
+        )
+        raise DocumentRejected(code, found.issues)
     return ValidatedDocument(
         doc=doc,
         workspace_id=workspace_id,

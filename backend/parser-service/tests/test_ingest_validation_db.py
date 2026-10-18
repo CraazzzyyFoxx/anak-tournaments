@@ -493,3 +493,30 @@ def test_a_huge_number_of_distinct_codes_is_a_rejection_not_a_driver_error():
         assert len(error.issues) <= 200 and set(error.misses()) == {"stat", "character"}
 
     run(case)
+
+
+def test_handle_grammar_is_enforced_for_canonical_producers_only():
+    async def case(env, session):
+        raw = copy.deepcopy(DOC)
+        raw["participants"][1]["identity"]["id"] = "Player"
+        bare = MatchDoc.model_validate(raw)
+        for kwargs in ({}, {"producer": "canonical"}):
+            error = await rejected_with(session, env.wa, bare, **kwargs)
+            assert error.code == "invalid_identity"
+            assert paths(error) == [(["participants", 1, "identity", "id"], "invalid_identity")]
+            assert error.misses() == {}
+        validated = await validate_document(session, workspace_id=env.wa, doc=bare, producer="decoded")
+        assert validated.doc.participants[1].identity.id == "Player"
+        # other checks still apply to decoded documents
+        raw["map"] = "nowhere"
+        with pytest.raises(DocumentRejected) as caught:
+            await validate_document(session, workspace_id=env.wa, doc=MatchDoc.model_validate(raw), producer="decoded")
+        assert caught.value.misses() == {"map": ("nowhere",)}
+
+    run(case)
+
+
+async def rejected_with(session, workspace_id, document, **kwargs) -> DocumentRejected:
+    with pytest.raises(DocumentRejected) as caught:
+        await validate_document(session, workspace_id=workspace_id, doc=document, **kwargs)
+    return caught.value

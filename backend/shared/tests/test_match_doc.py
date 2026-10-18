@@ -456,11 +456,14 @@ def test_issue_count_is_bounded():
     assert len(caught.value.issues) == 200
 
 
-def test_known_provider_handle_syntax_is_enforced_at_the_identity_id_path():
-    for bad in ("Player", "Ana#12", "a#1234", "Ana#Smith"):
-        raw = doc()
-        raw["participants"][0]["identity"]["id"] = bad
-        only(raw, ["participants", 0, "identity", "id"], "invalid_identity")
+def test_structure_accepts_bare_in_game_names_the_grammar_is_a_producer_rule():
+    raw = doc()
+    raw["participants"][0]["identity"]["id"] = "Player"
+    parsed = parse_match_doc(json.dumps(raw).encode())
+    assert parsed.participants[0].identity.id == "Player"
+    # a decoded document survives the internal envelope round trip
+    envelope = {"document": json.loads(parsed.model_dump_json()), "producer": "decoded"}
+    assert MatchDoc.model_validate(envelope["document"]) == parsed
 
 
 def test_unknown_provider_syntax_is_left_to_semantic_validation():
