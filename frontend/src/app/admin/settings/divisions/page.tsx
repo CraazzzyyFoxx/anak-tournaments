@@ -109,18 +109,17 @@ export default function DivisionsSettingsPage() {
   });
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
-  // An explicitly opened `?grid=` (grid-only URL, no `?discipline=`) is an OWNER: its own game sets the
-  // browsing game, outranking URL and preference, and nothing is written to the preference. With an
-  // explicit `?discipline=` a pin of another game is simply not honoured; it is dropped only when the
-  // user changes the game selector.
+  // Every explicitly opened `?grid=` is an OWNER (owner > URL > preference): its own game sets the browsing
+  // game even when a different `?discipline=` is present, and nothing is written to the preference. An
+  // intentional game change goes through the selector, which drops the pin.
   const gridParam = Number(searchParams?.get("grid"));
-  const gridOnlyUrl = searchParams?.has("grid") === true && searchParams.has("discipline") === false;
-  const ownerGrid = gridOnlyUrl ? (grids.find((grid) => grid.id === gridParam) ?? null) : null;
+  const hasGridPin = searchParams?.has("grid") === true;
+  const ownerGrid = hasGridPin ? (grids.find((grid) => grid.id === gridParam) ?? null) : null;
   const browsing = useBrowsingDiscipline({
     allowsAll: false,
     axis: workspaceId ?? undefined,
     ownerDiscipline: ownerGrid?.discipline ?? null,
-    ownerPending: gridOnlyUrl && canRead && !gridsQuery.isSuccess && !gridsQuery.isError
+    ownerPending: hasGridPin && canRead && !gridsQuery.isSuccess && !gridsQuery.isError
   });
   const browsedDiscipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
   const preferredActiveVersionId = activeGridVersionId(workspace, browsedDiscipline);

@@ -681,16 +681,29 @@ describe("Settings › Divisions · browsing game", () => {
 });
 
 describe("Settings › Divisions · game switch and captured scope", () => {
-  it("does not honour a pin of another game when the URL names the game explicitly", async () => {
-    // The pinned grid 7 is Overwatch; the URL explicitly browses LoL.
+  it("lets an explicit grid own its game even when the URL names another game", async () => {
+    getDivisionGrids.mockResolvedValue([
+      grid(7, "OW"),
+      { ...grid(8, "LoL"), discipline: "lol", versions: [] }
+    ]);
+    getDivisionGridVersions.mockResolvedValue([]);
+
+    // LoL grid, Overwatch in the URL: the grid wins.
+    window.history.replaceState(null, "", "/admin/settings/divisions?grid=8&discipline=overwatch");
+    const lol = await mount();
+    expect(lol.querySelector("#divisions-in-force")?.textContent).toBe(
+      "Create a division grid for this game"
+    );
+    expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 8);
+    expect(button("Load standard OW ladder")).toBeUndefined();
+  });
+
+  it("opens an Overwatch grid under ?discipline=lol as Overwatch", async () => {
     window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol&grid=7");
     const container = await mount();
 
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
-      "Create a division grid for this game"
-    );
-    expect(container.textContent).not.toContain(VERSIONS[2].label);
-    expect(getDivisionGridVersions).not.toHaveBeenCalled();
+    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
+    expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 7);
   });
 
   it("opens a grid-only URL as the owner of its game, whatever the saved preference is", async () => {

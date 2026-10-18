@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 import { ChartEmptyState, RankHistorySkeleton } from "@/components/RankHistoryState";
+import { DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
@@ -88,6 +89,19 @@ export default function RankHistory({
         title={t("rankHistory.errorTitle")}
         body={t("rankHistory.errorBody")}
       />
+    );
+  } else if (collector.resolved?.kind === "invalid" || collector.resolved?.kind === "empty") {
+    // An explicit `?discipline=` the installed games cannot honour is named, with the way out — it is
+    // never read as "this game collects no ranks".
+    content = (
+      <div className={contentClassName}>
+        <DisciplineUnavailable
+          resolved={collector.resolved}
+          disciplines={collector.disciplines ?? []}
+          allowsAll={false}
+          onSelect={collector.select}
+        />
+      </div>
     );
   } else if (!descriptor || !collector.supported) {
     content = (

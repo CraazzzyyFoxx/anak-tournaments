@@ -1,9 +1,9 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useDisciplines } from "@/hooks/useDisciplineMetadata";
-import { DISCIPLINE_PARAM, resolveDiscipline, type WorkspaceAxis } from "@/lib/site/discipline-scope";
+import { DISCIPLINE_PARAM, resolveDiscipline, type ResolvedDiscipline, type WorkspaceAxis } from "@/lib/site/discipline-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
@@ -17,6 +17,11 @@ import type { DisciplineDescriptor } from "@/types/discipline.types";
  */
 /** The resolved game (`null` when none resolves) and whether it collects native ranks. */
 export interface NativeRankCollector {
+  /** `null` until the installed games are known. Invalid/empty resolutions are surfaced, never replaced by a game. */
+  resolved: ResolvedDiscipline | null;
+  disciplines: DisciplineDescriptor[] | undefined;
+  /** The way out of an invalid selection: saves the choice and writes it to `?discipline=` (replace). */
+  select: (value: string) => void;
   descriptor: DisciplineDescriptor | null;
   supported: boolean;
   isLoading: boolean;
@@ -28,8 +33,12 @@ export function useNativeRankCollector(
   ownerDiscipline?: string | null
 ): NativeRankCollector {
   const disciplines = useDisciplines(axis);
-  const explicit = useSearchParams()?.get(DISCIPLINE_PARAM) ?? null;
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const explicit = searchParams?.get(DISCIPLINE_PARAM) ?? null;
   const stored = useWorkspaceStore((state) => state.browsingDiscipline);
+  const setBrowsingDiscipline = useWorkspaceStore((state) => state.setBrowsingDiscipline);
   const resolved = disciplines.data
     ? resolveDiscipline({
         ownerDiscipline: ownerDiscipline ?? null,
@@ -43,7 +52,16 @@ export function useNativeRankCollector(
     resolved?.kind === "concrete"
       ? (disciplines.data?.find((entry) => entry.code === resolved.code) ?? null)
       : null;
+  const select = (value: string) => {
+    setBrowsingDiscipline(value);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.set(DISCIPLINE_PARAM, value);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  };
   return {
+    resolved,
+    disciplines: disciplines.data,
+    select,
     descriptor,
     supported: descriptor?.capabilities.native_rank_collection === true,
     isLoading: disciplines.isLoading,

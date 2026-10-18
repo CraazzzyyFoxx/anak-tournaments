@@ -7,10 +7,14 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ResolvedDiscipline } from "@/lib/site/discipline-scope";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 const getUserByName = vi.fn();
 let collector: {
+  resolved: ResolvedDiscipline | null;
+  disciplines: DisciplineDescriptor[] | undefined;
+  select: (value: string) => void;
   descriptor: DisciplineDescriptor | null;
   supported: boolean;
   isLoading: boolean;
@@ -75,6 +79,9 @@ const LOL: DisciplineDescriptor = {
   capabilities: { ...OVERWATCH.capabilities, native_rank_collection: false, native_ladder: false }
 };
 
+const selectGame = vi.fn();
+const BASE = { disciplines: [OVERWATCH, LOL], select: selectGame, isLoading: false, isError: false };
+
 const mounted: { root: Root; container: HTMLElement }[] = [];
 
 async function render(ui: ReactNode) {
@@ -97,7 +104,7 @@ async function render(ui: ReactNode) {
 }
 
 beforeEach(() => {
-  collector = { descriptor: OVERWATCH, supported: true, isLoading: false, isError: false };
+  collector = { ...BASE, resolved: { kind: "concrete", code: "overwatch", source: "stored" }, descriptor: OVERWATCH, supported: true };
   requestedDiscipline = undefined;
   getUserByName.mockReset().mockResolvedValue({ id: 42 });
 });
@@ -130,7 +137,7 @@ describe("RankHistory host", () => {
   });
 
   it("asks the hook for the OWNING game, and shows the unsupported state for a game that collects no ranks", async () => {
-    collector = { descriptor: LOL, supported: false, isLoading: false, isError: false };
+    collector = { ...BASE, resolved: { kind: "concrete", code: "lol", source: "owner" }, descriptor: LOL, supported: false };
     const container = await render(<RankHistory userId={7} discipline="lol" />);
 
     expect(requestedDiscipline).toBe("lol");
@@ -139,11 +146,28 @@ describe("RankHistory host", () => {
   });
 
   it("shows the unsupported state when no game resolves at all", async () => {
-    collector = { descriptor: null, supported: false, isLoading: false, isError: false };
+    collector = { ...BASE, resolved: null, descriptor: null, supported: false };
     const container = await render(<RankHistory userId={7} />);
 
     expect(container.querySelector('[data-testid="widget"]')).toBeNull();
     expect(container.textContent).toContain("Rank history is not available for this game");
+  });
+
+  it("names an invalid explicit ?discipline= and offers the selection, instead of claiming the game collects no ranks", async () => {
+    selectGame.mockClear();
+    collector = {
+      ...BASE,
+      resolved: { kind: "invalid", requested: "chess", reason: "unknown" },
+      descriptor: null,
+      supported: false
+    };
+    const container = await render(<RankHistory userId={7} />);
+
+    expect(container.querySelector('[data-testid="widget"]')).toBeNull();
+    expect(container.textContent).toContain("chess");
+    expect(container.textContent).toContain("Unknown game selection");
+    expect(container.textContent).not.toContain("Rank history is not available for this game");
+    expect(container.querySelector('button[role="combobox"]')).not.toBeNull();
   });
 
   it("keeps the no-linked-profile state ahead of any game", async () => {

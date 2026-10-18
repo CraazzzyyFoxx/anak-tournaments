@@ -29,13 +29,23 @@ const game = (code: string, collects: boolean, enabled = true): DisciplineDescri
 });
 const INSTALLED = [game("overwatch", true), game("lol", false), game("old", true, false)];
 
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(search) }));
+const replace = vi.fn();
+const saveChoice = vi.fn();
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(search),
+  usePathname: () => "/admin/people/42",
+  useRouter: () => ({ replace })
+}));
 vi.mock("@/hooks/useDisciplineMetadata", () => ({
   useDisciplines: () => ({ data: INSTALLED, isLoading: false, isError: false })
 }));
 vi.mock("@/stores/workspace.store", () => ({
-  useWorkspaceStore: (selector: (state: { browsingDiscipline: string | null }) => unknown) =>
-    selector({ browsingDiscipline: preference })
+  useWorkspaceStore: (
+    selector: (state: {
+      browsingDiscipline: string | null;
+      setBrowsingDiscipline: (value: string) => void;
+    }) => unknown
+  ) => selector({ browsingDiscipline: preference, setBrowsingDiscipline: saveChoice })
 }));
 
 import { useNativeRankCollector, type NativeRankCollector } from "./useNativeRankCollector";
@@ -87,9 +97,18 @@ describe("useNativeRankCollector", () => {
     for (const bad of ["chess", "all", "old", ""]) {
       search = `discipline=${bad}`;
       const outcome = run();
+      expect(outcome.resolved?.kind, bad).toBe("invalid");
       expect(outcome.descriptor, bad).toBeNull();
       expect(outcome.supported, bad).toBe(false);
     }
+  });
+
+  it("selecting a game saves the choice and writes it to ?discipline= without a history entry", () => {
+    search = "tab=ranks&discipline=chess";
+    run().select("overwatch");
+
+    expect(saveChoice).toHaveBeenCalledWith("overwatch");
+    expect(replace).toHaveBeenCalledWith("/admin/people/42?tab=ranks&discipline=overwatch", { scroll: false });
   });
 
   it("lets the owning game outrank the URL and the preference", () => {
