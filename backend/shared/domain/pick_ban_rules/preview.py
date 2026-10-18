@@ -33,12 +33,15 @@ def preview_series(
     best_of: int = 3,
     pool_groups: Mapping[str, int] | None = None,
     roster_slots: Mapping[str, int] | None = None,
+    pool_size: int | None = None,
 ) -> dict[str, Any]:
     """Resolve every map of a ``best_of`` series and count the damage.
 
     ``pool_groups`` is ``{group: item count}`` of the configured pool (for a
     hero pool: heroes per class). ``worst_case_remaining`` is per group and
     only reported for the hero kind — a map pool has no group budget to blow.
+    ``pool_size`` is the number of items in the pool; it defaults to the grouped
+    total, which is only right when every item has a group.
 
     ``roster_slots`` is ``{role: players per team}``. Without it a per-player
     ban step is counted as if all of its bans could hit one role; with it the
@@ -67,7 +70,9 @@ def preview_series(
         if (normalized := normalize_group(role)) and int(count) > 0
     }
     sides = dict(zip(discipline_spec(discipline).sides, PREVIEW_PARTICIPANTS, strict=False))
-    pool_size = sum(groups.values())
+    # The pool's cardinality is its own fact: an item with no group (a map whose game has no modes, a champion
+    # without a class) still takes part in the series, it just belongs to no group budget.
+    pool_size = sum(groups.values()) if pool_size is None else pool_size
     worst: dict[str, tuple[int, int]] = {}  # group -> (fewest remaining, the map it happens on)
     maps: list[dict[str, Any]] = []
     #: round -> (group -> bans that round can land on it), and the round's steps.

@@ -32,6 +32,8 @@ interface PregameFinalReportProps {
    * would otherwise have to reopen a grid that is already complete.
    */
   heroRounds?: PregameHeroRound[];
+  /** The room's game's declared `character_classes`: the order a team's hero rows follow. */
+  characterClasses?: readonly string[];
   header: ReactNode;
   /** Where the room hands the viewer back — the page they opened it from. */
   returnTo: string;
@@ -55,6 +57,7 @@ export function PregameFinalReport({
   viewerTeamId,
   reportable = true,
   heroRounds = [],
+  characterClasses,
   header,
   returnTo
 }: Readonly<PregameFinalReportProps>) {
@@ -144,6 +147,7 @@ export function PregameFinalReport({
                   )}
                   <PregameHeroBans
                     board={block}
+                    characterClasses={characterClasses}
                     teams={encounter.teams}
                     eyebrow={null}
                     hint={null}

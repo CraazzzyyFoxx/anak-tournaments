@@ -26,7 +26,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -121,17 +121,20 @@ async def group_vocabulary(session: AsyncSession, kind: PickBanKind, discipline:
     return [group for group in (pbr.normalize_group(slug) for slug in slugs) if group]
 
 
-async def pool_group_counts(
+async def pool_composition(
     session: AsyncSession, kind: PickBanKind, item_ids: Sequence[int], discipline: str
-) -> dict[str, int]:
-    """``{group: how many pool items are in it}`` -- the preview's budget.
+) -> tuple[dict[str, int], int]:
+    """``({group: how many pool items are in it}, pool size)`` -- the preview's budget.
 
     "How many supports are left on map 5?" is only answerable against a real
     pool, so the preview takes the counts rather than the ids. Only items of
-    ``discipline`` count: an id of another game is not a member of this pool.
+    ``discipline`` and of the kind's catalog count: an id of another game is not a
+    member of this pool. An item with no group (a League map has no gamemode, a
+    champion may have no class) still counts toward the size: the pool's
+    cardinality never depends on optional grouping data.
     """
     if not item_ids:
-        return {}
+        return {}, 0
     if kind == PickBanKind.HERO:
         query = select(CatalogEntity.attrs["class"].astext).where(
             CatalogEntity.id.in_(item_ids),
@@ -142,21 +145,92 @@ async def pool_group_counts(
         mode = aliased(CatalogEntity, name="mode")
         query = (
             select(mode.slug)
-            .join(CatalogEntity, CatalogEntity.parent_id == mode.id)
+            .select_from(CatalogEntity)
+            .outerjoin(
+                mode,
+                and_(mode.id == CatalogEntity.parent_id, mode.kind == "mode", mode.discipline == discipline),
+            )
             .where(
                 CatalogEntity.id.in_(item_ids),
                 CatalogEntity.kind == "map",
                 CatalogEntity.discipline == discipline,
-                mode.kind == "mode",
-                mode.discipline == discipline,
             )
         )
     counts: dict[str, int] = {}
+    size = 0
     for raw in await session.scalars(query):
+        size += 1
         group = pbr.normalize_group(raw)
         if group:
             counts[group] = counts.get(group, 0) + 1
-    return counts
+    return counts, size
+
+
+async def assert_pool_in_discipline(
+    session: AsyncSession,
+    *,
+    kind: PickBanKind,
+    discipline: str,
+    item_ids: Sequence[int],
+    slots: Sequence[tuple[Sequence[int], int | None]],
+) -> None:
+    """Every pool id (flat items, slot candidates and reserves) is a catalog row of ``discipline`` and of the
+    kind's catalog (a character for the hero kind, a map for the map kind); 422 ``pool_item_not_in_catalog``
+    otherwise. The shared save boundary: the admin upsert and the scrim custom pool both go through it."""
+    wanted = set(item_ids)
+    for candidates, reserve in slots:
+        wanted.update(candidates)
+        if reserve is not None:
+            wanted.add(reserve)
+    if not wanted:
+        return
+    found = set(
+        await session.scalars(
+            select(CatalogEntity.id).where(
+                CatalogEntity.id.in_(wanted),
+                CatalogEntity.kind == ("character" if kind == PickBanKind.HERO else "map"),
+                CatalogEntity.discipline == discipline,
+            )
+        )
+    )
+    if missing := sorted(wanted - found):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                ApiExc(
+                    code="pool_item_not_in_catalog",
+                    msg=f"Not a {discipline} {kind.value} catalog item: {', '.join(str(item) for item in missing)}",
+                )
+            ],
+        )
+
+
+async def validate_config(
+    session: AsyncSession,
+    *,
+    kind: PickBanKind,
+    mode: MapVetoMode,
+    ruleset: Any,
+    item_ids: Sequence[int],
+    slots: Sequence[tuple[Sequence[int], int | None]],
+    stage_id: int | None,
+    round: int | None,
+    discipline: str,
+) -> None:
+    """The whole save gate of a config body: the ruleset against the discipline's group vocabulary, the pool's
+    shape, and the pool's membership in the discipline's catalog."""
+    validate_config_payload(
+        kind=kind,
+        mode=mode,
+        ruleset=ruleset,
+        item_ids=item_ids,
+        slots=slots,
+        stage_id=stage_id,
+        round=round,
+        discipline=discipline,
+        groups=await group_vocabulary(session, kind, discipline),
+    )
+    await assert_pool_in_discipline(session, kind=kind, discipline=discipline, item_ids=item_ids, slots=slots)
 
 
 async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[str, int] | None:
@@ -513,12 +587,14 @@ __all__ = (
     "RULESET_INVALID",
     "PickBanConfigService",
     "SlotSpec",
+    "assert_pool_in_discipline",
     "group_vocabulary",
     "normalized_ruleset",
     "pick_ban_config_service",
-    "pool_group_counts",
+    "pool_composition",
     "roster_slot_counts",
     "serialize_pick_ban_config",
+    "validate_config",
     "validate_config_payload",
     "validate_pick_ban_slot_config",
 )

@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock
 
 import pytest
 import sqlalchemy as sa
@@ -446,3 +447,28 @@ class TheHealthyRoomPasses(_FitCase):
         readiness = models.Tournament.__table__.metadata.tables["encounter.readiness"]
         self.assertEqual(0, self.db.session.scalar(sa.select(sa.func.count()).select_from(readiness)))
         await self.assert_playable(encounter, best_of=3)
+
+
+class CustomPoolSavesInTheContainersDiscipline(IsolatedAsyncioTestCase):
+    """A scrim's custom pool goes through the same save gate as the organizer's upsert."""
+
+    def entry(self) -> dict:
+        return {"kind": "map", "mode": "pool", "ruleset": FLAT_RULESET, "item_ids": [1, 2, 3, 4, 5, 6]}
+
+    async def test_a_foreign_map_id_is_refused_before_a_config_is_built(self) -> None:
+        session = AsyncMock()
+        session.scalar.return_value = "lol"  # the container tournament's discipline
+        session.scalars.return_value = [1, 2, 3, 4, 5]  # id 6 is not a lol map
+        with self.assertRaises(HTTPException) as raised:
+            await scrim._config_from_input(session, self.entry(), tournament_id=9, stage_id=3)
+        self.assertEqual(422, raised.exception.status_code)
+        self.assertIn("6", str(raised.exception.detail))
+        sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn("entity.discipline = 'lol'", sql)
+
+    async def test_an_all_native_pool_builds_its_config(self) -> None:
+        session = AsyncMock()
+        session.scalar.return_value = "lol"
+        session.scalars.return_value = [1, 2, 3, 4, 5, 6]
+        config = await scrim._config_from_input(session, self.entry(), tournament_id=9, stage_id=3)
+        self.assertEqual([1, 2, 3, 4, 5, 6], sorted(item.item_id for item in config.items))

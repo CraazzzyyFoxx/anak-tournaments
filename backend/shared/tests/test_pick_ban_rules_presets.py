@@ -195,7 +195,7 @@ def test_preview_warns_once_per_group_when_a_role_can_be_wiped_out():
 
 
 def test_a_max_per_group_cap_bounds_the_worst_case():
-    ruleset = pbr.PRESETS_BY_ID["hero_role_bans"].ruleset
+    ruleset = OVERWATCH["hero_role_bans"].ruleset
     preview = preview_series(ruleset, kind="hero", mode="pool", best_of=1, pool_groups=HERO_POOL)
     # 3 blind bans per side, but at most one per role each: 2 per role, not 6.
     assert preview["maps"][0]["worst_case_remaining"] == {"tank": 11, "damage": 18, "support": 13}
@@ -266,6 +266,16 @@ def test_preview_resolves_a_generated_map_series():
     (row,) = preview["maps"]
     assert [step["action"] for step in row["steps"]] == ["ban", "ban", "pick", "pick", "decider"]
     assert row["worst_case_remaining"] is None
+
+
+def test_the_pool_size_is_its_own_input_not_the_sum_of_the_groups():
+    # A game whose maps have no gamemode has no groups: seven ungrouped maps are still a seven-map pool.
+    ruleset = pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset
+    sized = preview_series(ruleset, kind="map", mode="pool", best_of=3, pool_groups={}, pool_size=7)
+    unsized = preview_series(ruleset, kind="map", mode="pool", best_of=3, pool_groups={})
+    actions = [step["action"] for step in sized["maps"][0]["steps"]]
+    assert actions == ["ban", "ban", "pick", "pick", "decider"]
+    assert sized["maps"][0]["steps"] != unsized["maps"][0]["steps"]
 
 
 def test_preview_refuses_to_guess_at_a_broken_ruleset():

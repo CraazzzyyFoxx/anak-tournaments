@@ -270,7 +270,8 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanConfigUpsert.model_validate(_payload(data))
             discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
-            pick_ban_config.validate_config_payload(
+            await pick_ban_config.validate_config(
+                session,
                 kind=body.kind,
                 mode=body.mode,
                 ruleset=body.ruleset,
@@ -279,7 +280,6 @@ def register(broker: Any, logger: Any) -> None:
                 stage_id=body.stage_id,
                 round=body.round,
                 discipline=discipline,
-                groups=await pick_ban_config.group_vocabulary(session, body.kind, discipline),
             )
             config = await pick_ban_config.pick_ban_config_service.upsert_config(
                 session,
@@ -405,15 +405,17 @@ def register(broker: Any, logger: Any) -> None:
             ensure_workspace_permission(user, ws_id, "match", "update")
             body = PickBanRulesPreviewInput.model_validate(_payload(data))
             discipline = await pick_ban_config.tournament_discipline(session, tournament_id)
+            pool_groups, pool_size = await pick_ban_config.pool_composition(
+                session, body.kind, _pool_item_ids(body.mode, body.item_ids, body.slots), discipline
+            )
             return pbr.preview_series(
                 body.ruleset,
                 kind=body.kind.value,
                 mode=body.mode.value,
                 discipline=discipline,
                 best_of=body.best_of,
-                pool_groups=await pick_ban_config.pool_group_counts(
-                    session, body.kind, _pool_item_ids(body.mode, body.item_ids, body.slots), discipline
-                ),
+                pool_groups=pool_groups,
+                pool_size=pool_size,
                 # The tournament's own roster shape, not a workspace default:
                 # it bounds how many of a per-player ban step's bans can land
                 # on one role.

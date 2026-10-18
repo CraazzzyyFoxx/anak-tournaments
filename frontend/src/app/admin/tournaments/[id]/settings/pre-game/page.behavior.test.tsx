@@ -325,10 +325,40 @@ const CATALOG = {
   ],
   groups: { hero: ["Tank", "Damage", "Support"], map: ["Control", "Hybrid"] },
   presets: [
-    { id: "hero_anti_one_trick", kind: "hero" as const, modes: ["pool" as const], ruleset: ANTI_ONE_TRICK },
-    { id: "map_bracket", kind: "map" as const, modes: ["pool" as const], ruleset: TOURNAMENT_MAP_CONFIG.ruleset }
+    {
+      id: "hero_anti_one_trick",
+      kind: "hero" as const,
+      modes: ["pool" as const],
+      ruleset: ANTI_ONE_TRICK,
+      first_ban_rotation: null
+    },
+    {
+      id: "map_bracket",
+      kind: "map" as const,
+      modes: ["pool" as const],
+      ruleset: TOURNAMENT_MAP_CONFIG.ruleset,
+      first_ban_rotation: null
+    }
   ]
 };
+
+/** A game's catalog is its own: League has no Overwatch preset, and its module preset names a rotation. */
+const LOL_PRESET_RULESET: PickBanRuleset = { ...ANTI_ONE_TRICK, phases: [ANTI_ONE_TRICK.phases[0]] };
+const LOL_CATALOG = {
+  ...CATALOG,
+  groups: { hero: ["Mage", "Fighter"], map: [] },
+  presets: [
+    {
+      id: "lol_side_selection",
+      kind: "hero" as const,
+      modes: ["pool" as const],
+      ruleset: LOL_PRESET_RULESET,
+      first_ban_rotation: "result_loser_first" as const
+    },
+    CATALOG.presets[1]
+  ]
+};
+const CATALOG_BY_DISCIPLINE: Record<string, typeof CATALOG> = { overwatch: CATALOG, lol: LOL_CATALOG };
 
 let container: HTMLDivElement;
 let root: Root;
@@ -365,6 +395,8 @@ interface MountOptions {
   encounters?: Array<{ stage_id: number | null; round: number; best_of: number }>;
   /** Initial query string, e.g. `?scope=tournament&kind=hero&step=sides`. */
   url?: string;
+  /** The tournament's own game; League unless a test is about another one. */
+  discipline?: string;
 }
 
 async function mount({
@@ -372,13 +404,14 @@ async function mount({
   maps = MAPS,
   stages = STAGES,
   encounters = ENCOUNTERS,
-  url = "?scope=tournament&kind=map&step=pool"
+  url = "?scope=tournament&kind=map&step=pool",
+  discipline = "lol"
 }: MountOptions = {}) {
   listConfigs.mockResolvedValue({ configs });
   getHeroes.mockResolvedValue({ results: HEROES });
   getMaps.mockResolvedValue({ results: maps });
   getStages.mockResolvedValue(stages);
-  getTournament.mockResolvedValue({ id: 84, workspace_id: 3, team_formation: "balancer", discipline: "lol" });
+  getTournament.mockResolvedValue({ id: 84, workspace_id: 3, team_formation: "balancer", discipline });
   getEncounters.mockResolvedValue({ results: encounters });
 
   search = new URL(url, "http://localhost").search;
@@ -513,7 +546,7 @@ beforeEach(() => {
   upsertConfig.mockResolvedValue({});
   deleteConfig.mockResolvedValue({});
   getStagePlannedRounds.mockResolvedValue([]);
-  getRulesCatalog.mockResolvedValue(CATALOG);
+  getRulesCatalog.mockImplementation(async (discipline: string) => CATALOG_BY_DISCIPLINE[discipline]);
   validateRuleset.mockResolvedValue({ valid: true, issues: [] });
   previewRuleset.mockResolvedValue({ maps: [], issues: [] });
 });
@@ -761,7 +794,7 @@ describe("Settings › Pre-game phase keeps the stored rules", () => {
   // The 2026-10-03 regulation is a preset rather than a board an organizer
   // rebuilds by hand under deadline; loading it has to land every phase.
   it("loads a preset onto the board and saves it verbatim", async () => {
-    await mount({ url: "?scope=tournament&kind=hero&step=rules" });
+    await mount({ url: "?scope=tournament&kind=hero&step=rules", discipline: "overwatch" });
 
     await click(only(en.pickBan.rules.presets));
     await click(option(en.pickBan.rules.preset.hero_anti_one_trick));
@@ -778,6 +811,61 @@ describe("Settings › Pre-game phase keeps the stored rules", () => {
 
     const body = upsertConfig.mock.calls[0][1];
     expect(body.ruleset).toEqual(ANTI_ONE_TRICK);
+    // This module preset declares no rotation: the stored default stays what it was.
+    expect(body.first_ban_rotation).toBe("fixed");
+  });
+
+  it("asks for the tournament's own discipline, with a cancellation signal, and offers only its presets", async () => {
+    await mount({ url: "?scope=tournament&kind=hero&step=rules" });
+
+    expect(getRulesCatalog).toHaveBeenCalledTimes(1);
+    expect(getRulesCatalog.mock.calls[0][0]).toBe("lol");
+    expect(getRulesCatalog.mock.calls[0][1]).toBeInstanceOf(AbortSignal);
+    await click(only(en.pickBan.rules.presets));
+    expect(option("lol_side_selection")).toBeTruthy();
+    expect(() => option(en.pickBan.rules.preset.hero_anti_one_trick)).toThrow();
+  });
+
+  it("applies the rotation a module preset declares, saves it, and reopens with it", async () => {
+    await mount({
+      configs: [CUSTOM_HERO_CONFIG],
+      url: "?scope=stage:11&kind=hero&step=rules"
+    });
+    expect(CUSTOM_HERO_CONFIG.first_ban_rotation).toBe("alternate");
+
+    await click(only(en.pickBan.rules.presets));
+    await click(option("lol_side_selection"));
+    await click(only("Save rules"));
+
+    const body = upsertConfig.mock.calls[0][1];
+    expect(body.ruleset).toEqual(LOL_PRESET_RULESET);
+    expect(body.first_ban_rotation).toBe("result_loser_first");
+    expect(body.stage_id).toBe(11);
+
+    // Reopen against what the server stored: the Sides step reads the preset's rotation back.
+    act(() => root.unmount());
+    container.remove();
+    await mount({
+      configs: [{ ...CUSTOM_HERO_CONFIG, ruleset: body.ruleset, first_ban_rotation: body.first_ban_rotation }],
+      url: "?scope=stage:11&kind=hero&step=sides"
+    });
+    expect(editor().textContent).toContain(en.pickBan.admin.firstBanRotationValue.result_loser_first);
+  });
+
+  it("keeps the organizer's rotation when the chosen preset declares none", async () => {
+    await mount({
+      configs: [CUSTOM_HERO_CONFIG],
+      url: "?scope=stage:11&kind=hero&step=rules",
+      discipline: "overwatch"
+    });
+
+    await click(only(en.pickBan.rules.presets));
+    await click(option(en.pickBan.rules.preset.hero_anti_one_trick));
+    await click(only("Save rules"));
+
+    const body = upsertConfig.mock.calls[0][1];
+    expect(body.ruleset).toEqual(ANTI_ONE_TRICK);
+    expect(body.first_ban_rotation).toBe("alternate");
   });
 });
 

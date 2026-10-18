@@ -221,7 +221,8 @@ async def _config_from_input(
 
     pick_ban = _pick_ban()
     discipline = await pick_ban.config.tournament_discipline(session, tournament_id)
-    pick_ban.config.validate_config_payload(
+    await pick_ban.config.validate_config(
+        session,
         kind=kind,
         mode=mode,
         ruleset=ruleset,
@@ -230,7 +231,6 @@ async def _config_from_input(
         stage_id=stage_id,
         round=None,
         discipline=discipline,
-        groups=await pick_ban.config.group_vocabulary(session, kind, discipline),
     )
 
     config = PickBanConfig(

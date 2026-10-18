@@ -12,13 +12,18 @@ import { usePregameRoomData } from "./usePregameRoomData";
 const subscriptions = new Map<string, { event: (event?: unknown) => void; subscribed?: () => void }>();
 const getState = vi.fn();
 const getEncounter = vi.fn();
+const getMetadata = vi.fn();
+const useCatalog = vi.hoisted(() => vi.fn((..._args: unknown[]) => ({ data: [] })));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/hooks/useRealtimeTopic", () => ({
   useRealtimeTopic: (topic: string | null, event: (event?: unknown) => void, _deps: unknown[], subscribed?: () => void) => {
     if (topic) subscriptions.set(topic, { event, subscribed });
   }
 }));
-vi.mock("@/hooks/useCatalogEntities", () => ({ useCatalogEntities: () => ({ data: [] }) }));
+vi.mock("@/hooks/useCatalogEntities", () => ({ useCatalogEntities: (...args: unknown[]) => useCatalog(...args) }));
+vi.mock("@/services/discipline.service", () => ({
+  default: { list: async () => [], metadata: (...args: unknown[]) => getMetadata(...args) }
+}));
 vi.mock("@/services/captain.service", () => ({ default: { getMyRole: async () => ({ side: null }) } }));
 vi.mock("@/services/pickBan.service", () => ({
   default: { getPickBanState: (...args: unknown[]) => getState(...args), markReady: async () => undefined }
@@ -48,7 +53,7 @@ let root: Root;
 let client: QueryClient;
 function Harness({ encounterId }: { encounterId: number }) {
   const room = usePregameRoomData(encounterId);
-  return <div>{room.mapState?.session?.paused_at ? "paused" : "running"}:{room.heroState?.session?.id ?? "no-hero"}:{room.encounter?.teams?.[0]?.score ?? 0}<span>{room.encounter?.matches.map((match) => match.log_name).join(",")}</span></div>;
+  return <div data-classes={room.characterClasses.join(",")}>{room.mapState?.session?.paused_at ? "paused" : "running"}:{room.heroState?.session?.id ?? "no-hero"}:{room.encounter?.teams?.[0]?.score ?? 0}<span>{room.encounter?.matches.map((match) => match.log_name).join(",")}</span></div>;
 }
 async function advance(ms = 0) {
   await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
@@ -71,7 +76,8 @@ beforeEach(() => {
   useRealtimeStore.setState({ connectionState: "connected", topicErrors: {} });
   states = { map: state(), hero: state() };
   getState.mockImplementation(async (kind: PickBanKind) => states[kind]);
-  getEncounter.mockResolvedValue({ id: 42, tournament_id: 3, teams: [{ id: 71, slot: 1, team_id: 7, name: "A", seed: null, score: 0, placement: null, active: true }], matches: [] } as unknown as Encounter);
+  getMetadata.mockResolvedValue({ discipline: { code: "lol", character_classes: ["Mage", "Fighter"] } });
+  getEncounter.mockResolvedValue({ id: 42, tournament_id: 3, workspace_id: 5, discipline: "lol", teams: [{ id: 71, slot: 1, team_id: 7, name: "A", seed: null, score: 0, placement: null, active: true }], matches: [] } as unknown as Encounter);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -83,6 +89,27 @@ afterEach(() => {
   container.remove();
   vi.useRealTimers();
   vi.restoreAllMocks();
+});
+
+describe("pregame room owner scope", () => {
+  it("reads the catalogs and the class order in the encounter's own discipline and workspace", async () => {
+    await render();
+    await advance(50); // the metadata read waits for the encounter that names its owner
+
+    expect(getMetadata).toHaveBeenCalledWith(5, "lol", expect.anything());
+    expect(useCatalog).toHaveBeenCalledWith("lol", "map");
+    expect(useCatalog).toHaveBeenCalledWith("lol", "character");
+    expect(container.querySelector("[data-classes]")?.getAttribute("data-classes")).toBe("Mage,Fighter");
+  });
+
+  it("asks for no game's catalog or classes before the encounter names it", async () => {
+    getEncounter.mockReturnValue(new Promise(() => undefined));
+    await render();
+
+    expect(useCatalog.mock.calls.every(([discipline]) => discipline === null)).toBe(true);
+    expect(getMetadata).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-classes]")?.getAttribute("data-classes")).toBe("");
+  });
 });
 
 describe("pregame room refresh", () => {

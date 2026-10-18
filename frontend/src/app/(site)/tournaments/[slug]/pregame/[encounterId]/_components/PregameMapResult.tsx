@@ -41,6 +41,8 @@ interface PregameMapResultProps {
    * hero phase, and the section then renders nothing at all.
    */
   heroBoard: PregameHeroBoard;
+  /** The room's game's declared `character_classes`: the order a team's hero rows follow. */
+  characterClasses?: readonly string[];
   /**
    * The hero session's undo affordance, rendered under the bans it would take
    * back. Supplied as a node because the consent flow needs the room's query
@@ -85,6 +87,7 @@ export function PregameMapResult({
   teams,
   game,
   heroBoard,
+  characterClasses,
   heroUndo,
   header,
   invalidateKeys,
@@ -189,6 +192,7 @@ export function PregameMapResult({
                 <div className="mx-auto w-full max-w-2xl">
                   <PregameHeroBans
                     board={heroBoard}
+                    characterClasses={characterClasses}
                     teams={teams}
                   />
                 </div>

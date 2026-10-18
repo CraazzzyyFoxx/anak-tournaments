@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -260,6 +261,8 @@ class _FakeSession:
         self._roster_slots = roster_slots
         self._hero_types = hero_types or []
         self._discipline = discipline
+        #: Catalog ids the fake reports as NOT rows of the tournament's discipline and kind (a pool-membership read).
+        self.missing_ids: set[int] = set()
         self._existing = existing
         # One table described two ways: ``existing`` is the single row already
         # sitting at the scope the upsert targets, ``configs`` the tournament's
@@ -295,6 +298,10 @@ class _FakeSession:
             return _Result(self._configs)
         if entity is catalog_models.CatalogEntity:
             sql = str(query.compile(compile_kwargs={"literal_binds": True}))
+            if query.column_descriptions[0]["name"] == "id":
+                # `assert_pool_in_discipline`: echo every requested id the test did not declare foreign.
+                wanted = [int(part) for part in re.search(r"\.id IN \(([^)]*)\)", sql).group(1).split(",")]
+                return _Result([item_id for item_id in wanted if item_id not in self.missing_ids])
             return _Result(list(GAMEMODE_SLUGS) if "'mode'" in sql else list(self._hero_types))
         raise AssertionError(f"the handler queried an unexpected entity: {entity!r}")
 
@@ -1147,11 +1154,38 @@ class GroupVocabularyScope(IsolatedAsyncioTestCase):
 
     async def test_pool_counts_only_count_items_of_the_requested_discipline(self) -> None:
         session = AsyncMock()
-        session.scalars.return_value = ["Fighter", "fighter", "Mage"]
-        counts = await pick_ban_config.pool_group_counts(session, enums.PickBanKind.HERO, [1, 2, 3], "lol")
+        session.scalars.return_value = ["Fighter", "fighter", "Mage", None]
+        counts, size = await pick_ban_config.pool_composition(session, enums.PickBanKind.HERO, [1, 2, 3, 4], "lol")
         assert counts == {"fighter": 2, "mage": 1}
+        assert size == 4  # a champion with no class still belongs to the pool
         sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
         assert "entity.discipline = 'lol'" in sql
+
+    async def test_a_map_without_a_gamemode_still_counts_toward_the_pool(self) -> None:
+        # League maps have no mode parent: the mode join is optional, never a filter on the pool.
+        session = AsyncMock()
+        session.scalars.return_value = [None, None, None]
+        counts, size = await pick_ban_config.pool_composition(session, enums.PickBanKind.MAP, [1, 2, 3], "lol")
+        assert (counts, size) == ({}, 3)
+        sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "LEFT OUTER JOIN" in sql
+
+    async def test_pool_membership_is_checked_against_the_discipline_and_kind(self) -> None:
+        session = AsyncMock()
+        session.scalars.return_value = [1, 2]
+        await pick_ban_config.assert_pool_in_discipline(
+            session, kind=enums.PickBanKind.MAP, discipline="lol", item_ids=[1], slots=[([2], None)]
+        )
+        sql = str(session.scalars.await_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "entity.discipline = 'lol'" in sql
+        assert "entity.kind = 'map'" in sql
+        session.scalars.return_value = [1]
+        with self.assertRaises(BaseAPIException) as raised:
+            await pick_ban_config.assert_pool_in_discipline(
+                session, kind=enums.PickBanKind.HERO, discipline="lol", item_ids=[1], slots=[([2], 3)]
+            )
+        assert raised.exception.status_code == 422
+        assert "2, 3" in str(raised.exception.detail)
 
 
 #: A hero pool big enough that every role survives a Bo5 of the anti-one-trick
@@ -1245,6 +1279,30 @@ class RulesPreviewOp(_SubjectCase):
         )
 
 
+class RulesPreviewPoolSize(_SubjectCase):
+    async def test_a_parentless_map_pool_keeps_its_size_for_the_preview(self) -> None:
+        # League maps have no gamemode: no groups at all, but five maps are still five maps.
+        from shared.domain.roster_shape import RosterShape
+
+        async def shape(session, _tournament_id):
+            return RosterShape(entries=(("top", 1),))
+
+        self.enterContext(patch.object(pick_ban_config, "tournament_slot_shape", shape))
+        # The pool reader reports seven maps and no groups, as it does for a game whose maps have no mode.
+        self.enterContext(patch.object(pick_ban_config, "pool_composition", AsyncMock(return_value=({}, 7))))
+        ruleset = pbr.GENERIC_PRESETS_BY_ID["map_bracket"].ruleset.to_json()
+        body = {"kind": "map", "mode": "pool", "ruleset": ruleset, "best_of": 3, "item_ids": list(range(1, 8))}
+        envelope, _ = await self.call(
+            PREVIEW,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline="lol"),
+        )
+        self.assertTrue(envelope["ok"], envelope)
+        (row,) = envelope["data"]["maps"]
+        # The bracket sizes itself to a 7-map pool: ban, ban, pick, pick, decider for a Bo3.
+        self.assertEqual(["ban", "ban", "pick", "pick", "decider"], [step["action"] for step in row["steps"]])
+
+
 # ── the public catalog read ──────────────────────────────────────────────────
 
 
@@ -1301,6 +1359,48 @@ class CatalogOp(IsolatedAsyncioTestCase):
             self.assertFalse(envelope["ok"], envelope)
             self.assertEqual("not_found", envelope["error"]["code"], envelope)
             self.assertEqual("discipline_not_installed", envelope["error"]["details"]["fields"][0]["code"], envelope)
+
+
+class UpsertRejectsAnotherDisciplinesPool(_SubjectCase):
+    async def _upsert(self, body: dict, missing: set[int]) -> dict:
+        session = _FakeSession()
+        session.missing_ids = missing
+        envelope, _ = await self.call(
+            UPSERT, {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body}, session=session
+        )
+        return envelope
+
+    def assert_not_in_catalog(self, envelope: dict, item_id: int) -> None:
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual("unprocessable", envelope["error"]["code"], envelope)
+        self.assertEqual("pool_item_not_in_catalog", envelope["error"]["details"]["fields"][0]["code"], envelope)
+        self.assertIn(str(item_id), envelope["error"]["message"] + str(envelope["error"]["details"]))
+
+    async def test_a_foreign_flat_item_is_rejected(self) -> None:
+        self.assert_not_in_catalog(await self._upsert(flat_body(), {FLAT_ITEM_IDS[2]}), FLAT_ITEM_IDS[2])
+
+    async def test_a_foreign_slot_candidate_and_a_foreign_reserve_are_rejected(self) -> None:
+        self.assert_not_in_catalog(await self._upsert(slot_body(), {CANDIDATES[1][0]}), CANDIDATES[1][0])
+        self.assert_not_in_catalog(await self._upsert(slot_body(), {99}), 99)
+
+    async def test_an_all_native_pool_still_saves(self) -> None:
+        self.assertTrue((await self._upsert(slot_body(), set()))["ok"])
+        self.assertTrue((await self._upsert(flat_body(), set()))["ok"])
+
+    async def test_a_pool_less_template_reads_no_catalog_membership(self) -> None:
+        session = _FakeSession()
+        envelope, _ = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": flat_body(item_ids=[])},
+            session=session,
+        )
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertFalse(
+            any(
+                "id IN" in str(q.compile(compile_kwargs={"literal_binds": True}))
+                for q in session.statements.get("CatalogEntity", [])
+            )
+        )
 
 
 # ── a preset's rotation reaches the saved config; the discipline reaches validation ──────────────────────────────

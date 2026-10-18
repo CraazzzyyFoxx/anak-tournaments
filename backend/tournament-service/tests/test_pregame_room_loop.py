@@ -619,6 +619,30 @@ class ScopedItemGroupTests(LoopCase):
         self.assertEqual(2, (await self.state())["current_round"])
         self.assertEqual(fighters, (await self.round_items())[2])
 
+    async def test_a_step_level_item_group_condition_decides_eligibility_after_reload(self) -> None:
+        """The same class vocabulary as a per-STEP eligibility condition (not a pool filter): every champion stays in
+        the room, but only fighters are eligible, and the action path judges a mage by the same rule."""
+        fighters = {item_id for item_id, cls in CHAMPIONS.items() if cls == "fighter"}
+        mage = next(item_id for item_id, cls in CHAMPIONS.items() if cls == "mage")
+        document = ban_ruleset()
+        for step in document["phases"][0]["steps"]:
+            step["eligible"] = {"type": "item_group", "params": {"groups": ["fighter"]}}
+
+        await self.start(document)
+        self.assertEqual(set(CHAMPIONS), (await self.round_items())[1])
+
+        # A fresh read (``pick_ban_action._load``) as the acting captain: the eligible set is the fighters.
+        (actor,) = (await self.state())["acting_team_ids"]
+        state = await self.state(viewer=actor)
+        self.assertEqual(fighters, set(state["eligible"]["item_ids"]))
+        self.assertEqual(["ban"], state["allowed_actions"])
+
+        with self.assertRaises(BaseAPIException):
+            await self.act(actor, mage)
+        await self.act(actor, min(fighters))
+        banned = {entry["item_id"] for entry in (await self.state())["pool"] if entry["status"] == "banned"}
+        self.assertEqual({min(fighters)}, banned)
+
 
 # ── side actors bind after the pick ─────────────────────────────────────────
 
