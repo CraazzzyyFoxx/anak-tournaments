@@ -113,9 +113,10 @@ def _load(host: str) -> SeedData:
     seed.user_ids = _ids(users_payload)
     seed.user_names = _names(users_payload)
 
-    seed.hero_ids = _ids(_get(session, host, "/api/v1/heroes", page))
-    seed.map_ids = _ids(_get(session, host, "/api/v1/maps", page))
-    seed.gamemode_ids = _ids(_get(session, host, "/api/v1/gamemodes", page))
+    catalog = f"/api/v1/catalog/{config.CATALOG_DISCIPLINE}"
+    seed.hero_ids = _ids(_get(session, host, f"{catalog}/character", page))
+    seed.map_ids = _ids(_get(session, host, f"{catalog}/map", page))
+    seed.gamemode_ids = _ids(_get(session, host, f"{catalog}/mode", page))
     seed.match_ids = _ids(_get(session, host, "/api/v1/matches", {**page, **ws}))
     seed.team_ids = _ids(_get(session, host, "/api/v1/teams", {**page, **ws}))
     seed.encounter_ids = _ids(_get(session, host, "/api/v1/encounters", {**page, **ws}))

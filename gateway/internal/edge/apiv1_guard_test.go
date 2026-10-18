@@ -382,15 +382,11 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 
 	paths := []string{
 		// app-service (was /api/v1/core)
-		"/api/v1/heroes",
-		"/api/v1/heroes/5",
-		"/api/v1/heroes/lookup",
+		"/api/v1/catalog/overwatch/character",
+		"/api/v1/catalog/lol/character/5",
+		"/api/v1/catalog/legacy/hero/5",
 		"/api/v1/heroes/5/leaderboard",
 		"/api/v1/heroes/statistics/playtime",
-		"/api/v1/maps",
-		"/api/v1/maps/5",
-		"/api/v1/maps/lookup",
-		"/api/v1/gamemodes/5",
 		"/api/v1/achievements",
 		"/api/v1/achievements/5",
 		"/api/v1/achievements/5/users",

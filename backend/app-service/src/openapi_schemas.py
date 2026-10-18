@@ -16,7 +16,6 @@ from shared.core.pagination import (
     Paginated,
     PaginationQueryParams,
     PaginationSortQueryParams,
-    PaginationSortSearchQueryParams,
 )
 from shared.rpc.openapi import Op, QueryParam
 from shared.schemas.quota import (
@@ -34,9 +33,6 @@ from src.schemas.discipline import DisciplineDescriptor, DisciplineMetadata
 # Sort-field whitelists mirror the read handlers' Literal constraints (used to
 # build the generic query-param aliases below). Drift only affects the `sort`
 # enum shown in docs.
-_HERO_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
-_MAP_SORT = typing.Literal["id", "parent_id", "name", "similarity:name"]
-_GAMEMODE_SORT = typing.Literal["id", "name", "slug", "similarity:name", "similarity:slug"]
 _USER_SORT = typing.Literal["id", "name", "similarity:name"]
 _STAT_SORT = typing.Literal["id", "name", "value"]
 _ENC_SORT = typing.Literal["id", "name", "closeness", "round", "played_at"]
@@ -55,24 +51,15 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.workspaces.team_format_get": Op(response=TeamFormatRead),
     "rpc.app.workspaces.team_format_put": Op(request=TeamFormatWrite, response=TeamFormatRead),
     # ── generic CRUD read engine (rpc.app.read.{get,list}#<entity>) ────────
-    "rpc.app.read.get#hero": Op(response=schemas.HeroRead),
-    "rpc.app.read.list#hero": Op(
-        response=Paginated[schemas.HeroRead], query=PaginationSortSearchQueryParams[_HERO_SORT]
-    ),
-    "rpc.app.read.get#map": Op(response=schemas.MapRead),
-    "rpc.app.read.list#map": Op(response=Paginated[schemas.MapRead], query=PaginationSortSearchQueryParams[_MAP_SORT]),
-    "rpc.app.read.get#gamemode": Op(response=schemas.GamemodeRead),
-    "rpc.app.read.list#gamemode": Op(
-        response=Paginated[schemas.GamemodeRead], query=PaginationSortSearchQueryParams[_GAMEMODE_SORT]
-    ),
     "rpc.app.read.get#achievement": Op(response=schemas.AchievementRead),
     "rpc.app.read.list#achievement": Op(
         response=Paginated[schemas.AchievementRead], query=schemas.AchievementListQueryParams
     ),
-    # ── lookups ────────────────────────────────────────────────────────────
-    "rpc.app.heroes.lookup": Op(response=schemas.LookupItem, response_array=True),
-    "rpc.app.maps.lookup": Op(response=schemas.LookupItem, response_array=True),
-    "rpc.app.gamemodes.lookup": Op(response=schemas.LookupItem, response_array=True),
+    # ── public native catalog ──────────────────────────────────────────────
+    "rpc.app.catalog.list": Op(
+        response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
+    ),
+    "rpc.app.catalog.get": Op(response=schemas.CatalogEntityRead),
     "rpc.app.catalog.legacy": Op(response=schemas.CatalogLegacyRead),
     "rpc.app.disciplines.list": Op(response=DisciplineDescriptor, response_array=True, query_params=(_WS_OR_ALL,)),
     "rpc.app.disciplines.metadata": Op(response=DisciplineMetadata, query_params=(_WS_OR_ALL,)),

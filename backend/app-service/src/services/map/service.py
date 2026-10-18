@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from shared.repository import CatalogEntityRepository
 from shared.repository.stats_reads import duel_matches
 from src import models, schemas
-from src.core import config, errors, pagination
+from src.core import config, pagination
 from src.services.hero.queries import HeroQueries
 from src.services.hero.queries import queries as hero_queries
 from src.services.hero.service import heroes as hero_service
@@ -32,30 +32,6 @@ class MapService:
     def to_read(game_map: models.CatalogEntity, entities: list[str]) -> schemas.MapRead:
         """Project the OW-shaped map read; the caller loads its parent when ``gamemode`` is requested."""
         return schemas.MapRead.from_entity(game_map, with_gamemode="gamemode" in entities)
-
-    async def get(self, session: AsyncSession, id: int, entities: list[str]) -> schemas.MapRead:
-        """Retrieve a map by ID and convert to its Pydantic schema."""
-        game_map = await self.repo.get(session, id, options=self.repo.load_options(entities))
-        if not game_map:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[
-                    errors.ApiExc(code="not_found", msg=f"Map with ID {id} not found"),
-                ],
-            )
-        return self.to_read(game_map, entities)
-
-    async def get_all(
-        self, session: AsyncSession, params: pagination.PaginationSortParams
-    ) -> pagination.Paginated[schemas.MapRead]:
-        """Paginated maps scoped to the Overwatch catalog."""
-        game_maps, total = await self.repo.get_all(session, params, options=self.repo.load_options(params.entities))
-        return pagination.Paginated(
-            total=total,
-            page=params.page,
-            per_page=params.per_page,
-            results=[self.to_read(game_map, params.entities) for game_map in game_maps],
-        )
 
     @cache(
         ttl=config.settings.users_cache_ttl,
@@ -238,15 +214,6 @@ class MapService:
             best=best,
             worst=worst,
         )
-
-    async def lookup(self, session: AsyncSession) -> list[schemas.LookupItem]:
-        """``(id, name)`` pairs for the admin/filter pickers, name-ordered.
-
-        Was inlined in `rpc/maps.py`; the projection itself now lives on
-        `CatalogEntityRepository.list_lookup`, so this only shapes the DTO.
-        """
-        rows = await self.repo.list_lookup(session)
-        return [schemas.LookupItem(id=row.id, name=row.name) for row in rows]
 
     async def get_top_maps(
         self,

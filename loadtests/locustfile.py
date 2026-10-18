@@ -127,9 +127,17 @@ class AnonymousBrowser(OwtUser):
 
     @task(2)
     def metadata(self) -> None:
-        # Heavily cached (1-day Redis TTL) — cheap, high-frequency requests.
-        path = random.choice(("/api/v1/heroes", "/api/v1/maps", "/api/v1/gamemodes", "/api/v1/achievements"))
-        self.get(path, path, {"page": 1, "per_page": 50})
+        # Public catalog + achievements: cheap, high-frequency requests; one stats name per kind, not per discipline.
+        base = f"/api/v1/catalog/{config.CATALOG_DISCIPLINE}"
+        path, name = random.choice(
+            (
+                (f"{base}/character", "/api/v1/catalog/[discipline]/character"),
+                (f"{base}/map", "/api/v1/catalog/[discipline]/map"),
+                (f"{base}/mode", "/api/v1/catalog/[discipline]/mode"),
+                ("/api/v1/achievements", "/api/v1/achievements"),
+            )
+        )
+        self.get(path, name, {"page": 1, "per_page": 50})
 
     @task(1)
     def list_workspaces(self) -> None:

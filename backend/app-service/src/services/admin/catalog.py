@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.catalog_aliases import normalize_aliases, slugify
 from shared.core import http_status as status
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
 from shared.disciplines import DISCIPLINES, DisciplineSpec
@@ -27,11 +28,19 @@ _WITH_PARENT = [selectinload(models.CatalogEntity.parent)]
 
 
 def kind_spec(discipline: str, kind: str) -> DisciplineSpec:
-    """The module behind ``discipline`` when it declares ``kind``; 404 otherwise."""
+    """The module behind ``discipline`` when it declares ``kind``; 404 (with the P7 error code) otherwise."""
     spec = DISCIPLINES.get(discipline)
-    if spec is None or kind not in spec.kinds:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"No catalog kind {kind!r} in discipline {discipline!r}"
+    if spec is None:
+        raise ApiHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=[ApiExc(code="discipline_not_installed", msg=f"Discipline {discipline!r} is not installed")],
+        )
+    if kind not in spec.kinds:
+        raise ApiHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=[
+                ApiExc(code="catalog_kind_not_declared", msg=f"No catalog kind {kind!r} in discipline {discipline!r}")
+            ],
         )
     return spec
 

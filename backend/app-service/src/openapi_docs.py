@@ -14,31 +14,6 @@ DOCS: dict[str, dict] = {
         "summary": "Replace a workspace's default team format",
         "description": "Permission: workspace `workspace.update`. Sets the template for future tournaments and mixes; existing copies never change. Invalid formats return 422.",
     },
-    # ── generic CRUD read engine (rpc.app.read.{get,list}#<entity>) ────────────
-    "rpc.app.read.get#hero": {
-        "summary": "Get hero",
-        "description": "Permission: public; no authentication required. Returns a single hero by id via the shared CRUD read engine, 404 if not found.",
-    },
-    "rpc.app.read.list#hero": {
-        "summary": "List heroes",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of heroes via the shared CRUD read engine.",
-    },
-    "rpc.app.read.get#map": {
-        "summary": "Get map",
-        "description": "Permission: public; no authentication required. Returns a single map by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
-    },
-    "rpc.app.read.list#map": {
-        "summary": "List maps",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable, name-searchable list of maps via the shared CRUD read engine.",
-    },
-    "rpc.app.read.get#gamemode": {
-        "summary": "Get gamemode",
-        "description": "Permission: public; no authentication required. Returns a single gamemode by id with optional entity expansion via the shared CRUD read engine, 404 if not found.",
-    },
-    "rpc.app.read.list#gamemode": {
-        "summary": "List gamemodes",
-        "description": "Permission: public; no authentication required. Returns a paginated, sortable, name/slug-searchable list of gamemodes via the shared CRUD read engine.",
-    },
     "rpc.app.read.get#achievement": {
         "summary": "Get achievement",
         "description": "Permission: public; no authentication required. Returns a single achievement rule by id (with its `discipline`/`entity_id`; `entities=entity` expands the character) via the shared CRUD read engine, 404 if not found. Pooled numbers use the rule's own discipline.",
@@ -47,18 +22,14 @@ DOCS: dict[str, dict] = {
         "summary": "List achievements",
         "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.",
     },
-    # ── lookups ────────────────────────────────────────────────────────────────
-    "rpc.app.heroes.lookup": {
-        "summary": "Hero lookup",
-        "description": "Permission: public; no authentication required. Returns all heroes as id/name lookup items ordered by name (no pagination).",
+    # ── public native catalog ──────────────────────────────────────────────────
+    "rpc.app.catalog.list": {
+        "summary": "List a discipline's catalog",
+        "description": "Permission: public; no authentication required. Returns a paginated list of one discipline's characters, maps or modes (`kind`); `search`, `parent_id`, `attrs` (JSON object) and `active` filter it, active rows only unless `active=false` is passed. 404 `discipline_not_installed` for an unknown discipline, 404 `catalog_kind_not_declared` for a kind the game does not declare (League has no `mode`).",
     },
-    "rpc.app.maps.lookup": {
-        "summary": "Map lookup",
-        "description": "Permission: public; no authentication required. Returns all maps as id/name lookup items ordered by name (no pagination).",
-    },
-    "rpc.app.gamemodes.lookup": {
-        "summary": "Gamemode lookup",
-        "description": "Permission: public; no authentication required. Returns all gamemodes as id/name lookup items ordered by name (no pagination).",
+    "rpc.app.catalog.get": {
+        "summary": "Get a catalog entity",
+        "description": "Permission: public; no authentication required. Returns one entity with its parent expanded; inactive rows are readable. 404 `not_found` when the id is not a row of that discipline and kind (never an entity relabelled from another game).",
     },
     "rpc.app.catalog.legacy": {
         "summary": "Resolve an old catalog id",

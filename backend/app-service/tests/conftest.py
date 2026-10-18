@@ -175,9 +175,8 @@ def rpc() -> RpcHarness:
 
     from src.rpc import (
         achievements,
-        gamemodes,
+        catalog,
         heroes,
-        maps,
         reads_generic,
         statistics,
         users,
@@ -188,8 +187,7 @@ def rpc() -> RpcHarness:
         reads_generic,
         users,
         heroes,
-        maps,
-        gamemodes,
+        catalog,
         achievements,
         statistics,
     )

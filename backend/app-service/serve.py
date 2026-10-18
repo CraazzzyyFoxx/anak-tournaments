@@ -40,12 +40,11 @@ from src.rpc import (
     announcements,
     audit,
     binary,
+    catalog,
     catalog_aliases,
     catalog_legacy,
     disciplines,
-    gamemodes,
     heroes,
-    maps,
     metadata_admin,
     notifications,
     notifications_admin,
@@ -119,11 +118,12 @@ register_invalidation_consumer(
 )
 
 # Phase 1 — public reads.
-# hero/map/gamemode/achievement get+list via the shared CRUD read engine:
+# achievement get+list via the shared CRUD read engine:
 reads_generic.register(broker, logger)
-# bespoke reads (aggregations, lookups, users/*) + workspace reads/writes/members:
-for _mod in (users, heroes, maps, gamemodes, achievements, statistics, workspaces):
+# bespoke reads (aggregations, users/*) + workspace reads/writes/members:
+for _mod in (users, heroes, achievements, statistics, workspaces):
     _mod.register(broker, logger)
+catalog.register(broker, logger)
 catalog_legacy.register(broker, logger)
 disciplines.register(broker, logger)
 

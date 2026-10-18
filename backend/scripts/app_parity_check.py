@@ -34,6 +34,8 @@ GATEWAY = os.environ.get("GATEWAY_BASE", "http://gateway:8080").rstrip("/")
 HTTP = os.environ.get("HTTP_BASE", "http://backend:8000").rstrip("/")
 WS = os.environ.get("WORKSPACE_ID")  # optional; appended as ?workspace_id= where relevant
 PREFIX = "/api/v1/core"
+CATALOG_DISCIPLINE = os.environ.get("CATALOG_DISCIPLINE", "overwatch")  # the catalog is per discipline
+CATALOG_KINDS = ("character", "map", "mode")
 
 
 def _ws(params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -71,10 +73,9 @@ def build_paths(client: httpx.Client) -> list[tuple[str, dict[str, Any]]]:
     def add(path: str, params: dict[str, Any] | None = None) -> None:
         out.append((path, params or {}))
 
-    # Lookups + lists
-    for ent in ("heroes", "maps", "gamemodes"):
-        add(f"{PREFIX}/{ent}/lookup")
-        add(f"{PREFIX}/{ent}", {"page": 1, "per_page": 5})
+    # Native catalog lists (one discipline per kind)
+    for kind in CATALOG_KINDS:
+        add(f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/{kind}", {"page": 1, "per_page": 5})
     add(f"{PREFIX}/achievements", _ws({"page": 1, "per_page": 5}))
     add(f"{PREFIX}/workspaces")
     add(f"{PREFIX}/users", {"page": 1, "per_page": 5})
@@ -88,20 +89,20 @@ def build_paths(client: httpx.Client) -> list[tuple[str, dict[str, Any]]]:
     add(f"{PREFIX}/statistics/dashboard", _ws())
 
     # Detail endpoints (discover ids)
-    hero_id = _first_id(client, f"{PREFIX}/heroes", {"per_page": 1})
-    map_id = _first_id(client, f"{PREFIX}/maps", {"per_page": 1})
-    gm_id = _first_id(client, f"{PREFIX}/gamemodes", {"per_page": 1})
+    hero_id = _first_id(client, f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/character", {"per_page": 1})
+    map_id = _first_id(client, f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/map", {"per_page": 1})
+    gm_id = _first_id(client, f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/mode", {"per_page": 1})
     ach_id = _first_id(client, f"{PREFIX}/achievements", _ws({"per_page": 1}))
     user_id = _first_id(client, f"{PREFIX}/users", {"per_page": 1})
     ws_id = _first_id(client, f"{PREFIX}/workspaces")
 
     if hero_id:
-        add(f"{PREFIX}/heroes/{hero_id}")
+        add(f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/character/{hero_id}")
         add(f"{PREFIX}/heroes/{hero_id}/leaderboard", _ws({"per_page": 5}))
     if map_id:
-        add(f"{PREFIX}/maps/{map_id}", {"entities": "gamemode"})
+        add(f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/map/{map_id}")
     if gm_id:
-        add(f"{PREFIX}/gamemodes/{gm_id}")
+        add(f"{PREFIX}/catalog/{CATALOG_DISCIPLINE}/mode/{gm_id}")
     if ach_id:
         add(f"{PREFIX}/achievements/{ach_id}", {"entities": "hero"})
         add(f"{PREFIX}/achievements/{ach_id}/users", {"per_page": 5})

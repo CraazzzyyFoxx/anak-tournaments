@@ -1,8 +1,4 @@
-"""Bespoke hero reads (lookup + playtime + leaderboard).
-
-get/list go through the shared read engine (see read_registry); only the
-aggregations and the lookup projection live here.
-"""
+"""Bespoke hero statistics reads (playtime + leaderboard); the catalog itself is ``rpc/catalog.py``."""
 
 from __future__ import annotations
 
@@ -21,13 +17,6 @@ _SF = db.async_session_maker
 
 
 def register(broker: Any, logger: Any) -> None:
-    @broker.subscriber("rpc.app.heroes.lookup")
-    async def _lookup(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await hero_service.lookup(session)
-
-        return await c.envelope(logger, "heroes.lookup", op, session_factory=_SF)
-
     @broker.subscriber("rpc.app.heroes.playtime")
     async def _playtime(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:

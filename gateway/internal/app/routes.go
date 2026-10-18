@@ -6,7 +6,7 @@
 // app-service is served externally under /api/v1/* (FastAPI root_path), so
 // every pattern keeps that prefix verbatim — the frontend is unchanged.
 //
-// hero/map/gamemode/achievement get+list go through the shared CRUD read engine
+// achievement get+list go through the shared CRUD read engine
 // (rpc.app.read.{get,list} with Entity set, public_read=True). Everything else is
 // a bespoke rpc.app.<domain>.<method> subscriber. All reads are public (AuthNone).
 package app
@@ -17,20 +17,13 @@ import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 // surface is in AchievementsSubtreeRoutes (ServeMux can't disambiguate
 // /{id}/users vs /user/{user_id}); the achievements *list* stays here.
 var ReadRoutes = []edge.RouteSpec{
-	// --- heroes -------------------------------------------------------------
-	{Method: "GET", Pattern: "/api/v1/heroes/lookup", Queue: "rpc.app.heroes.lookup", Auth: edge.AuthNone},
+	// --- hero statistics (the catalog reads are the native /api/v1/catalog routes below) ---
 	{Method: "GET", Pattern: "/api/v1/heroes/statistics/playtime", Queue: "rpc.app.heroes.playtime", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/heroes/{hero_id}/leaderboard", Queue: "rpc.app.heroes.leaderboard", IDParam: "hero_id", AllQuery: true, Auth: edge.AuthOptional},
-	{Method: "GET", Pattern: "/api/v1/heroes/{id}", Queue: "rpc.app.read.get", Entity: "hero", Action: "get", IDParam: "id", Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/heroes", Queue: "rpc.app.read.list", Entity: "hero", Action: "list", AllQuery: true, Auth: edge.AuthNone},
-	// --- maps ---------------------------------------------------------------
-	{Method: "GET", Pattern: "/api/v1/maps/lookup", Queue: "rpc.app.maps.lookup", Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/maps/{id}", Queue: "rpc.app.read.get", Entity: "map", Action: "get", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/maps", Queue: "rpc.app.read.list", Entity: "map", Action: "list", AllQuery: true, Auth: edge.AuthNone},
-	// --- gamemodes ----------------------------------------------------------
-	{Method: "GET", Pattern: "/api/v1/gamemodes/lookup", Queue: "rpc.app.gamemodes.lookup", Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/gamemodes/{id}", Queue: "rpc.app.read.get", Entity: "gamemode", Action: "get", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/gamemodes", Queue: "rpc.app.read.list", Entity: "gamemode", Action: "list", AllQuery: true, Auth: edge.AuthNone},
+	// --- catalog: one discipline's characters/maps/modes, public, never cached (P7 §3.2). The literal `legacy`
+	// segment below is more specific than {discipline}, so ServeMux keeps the old-id resolver reachable. ---
+	{Method: "GET", Pattern: "/api/v1/catalog/{discipline}/{kind}", Queue: "rpc.app.catalog.list", Path: []string{"discipline", "kind"}, AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/catalog/{discipline}/{kind}/{id}", Queue: "rpc.app.catalog.get", IDParam: "id", Path: []string{"discipline", "kind"}, Auth: edge.AuthNone},
 	// --- catalog: an old hero/map/gamemode id -> its catalog entity (D84; removed with discipline02) ---
 	{Method: "GET", Pattern: "/api/v1/catalog/legacy/{legacy_kind}/{legacy_id}", Queue: "rpc.app.catalog.legacy", Path: []string{"legacy_kind", "legacy_id"}, Auth: edge.AuthNone},
 	// --- disciplines: installed descriptors and native metadata; AuthOptional so a hidden workspace's members may read

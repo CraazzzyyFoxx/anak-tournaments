@@ -797,7 +797,6 @@ def test_native_ow_readers_exclude_same_player_foreign_discipline(
     stats_parity_database: tuple[str, dict[str, int]],
     workspace_scoped: bool,
 ) -> None:
-    from shared.core.errors import ApiHTTPException
     from shared.models.stats.match import StatsFact
     from shared.testing.stats_parity import seed_native_sentinel
 
@@ -885,12 +884,6 @@ def test_native_ow_readers_exclude_same_player_foreign_discipline(
                 right_hero_id=ids["hero_lol"],
                 map_id=ids["map_lol"],
             ) == (None, None, None)
-            with pytest.raises(ApiHTTPException) as hero_error:
-                await heroes.get(session, ids["hero_lol"])
-            assert hero_error.value.status_code == 404
-            with pytest.raises(ApiHTTPException) as map_error:
-                await maps.get(session, ids["map_lol"], [])
-            assert map_error.value.status_code == 404
             leaderboard = await heroes.get_hero_leaderboard(
                 session,
                 ids["hero_lol"],

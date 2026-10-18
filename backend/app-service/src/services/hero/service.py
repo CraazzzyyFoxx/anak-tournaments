@@ -5,7 +5,7 @@ from shared.division_grid import DivisionGrid
 from shared.repository import CatalogEntityRepository
 from shared.schemas.role import RoleRef
 from src import models, schemas
-from src.core import errors, pagination
+from src.core import pagination
 
 from .queries import HeroQueries
 from .queries import queries as hero_queries
@@ -92,28 +92,6 @@ class HeroService:
             ],
         )
 
-    async def get(self, session: AsyncSession, id: int) -> schemas.HeroRead:
-        """Retrieve a hero by ID and convert to its Pydantic schema."""
-        hero = await self.repo.get(session, id)
-        if hero is None:
-            raise errors.ApiHTTPException(
-                status_code=404,
-                detail=[errors.ApiExc(code="not_found", msg=f"Hero {id} not found")],
-            )
-        return self.to_read(hero)
-
-    async def get_all(
-        self, session: AsyncSession, params: pagination.PaginationSortSearchParams
-    ) -> pagination.Paginated[schemas.HeroRead]:
-        """Paginated heroes — delegates to `CatalogEntityRepository.get_all`."""
-        heroes, total = await self.repo.get_all(session, params)
-        return pagination.Paginated(
-            page=params.page,
-            per_page=params.per_page,
-            total=total,
-            results=[self.to_read(hero) for hero in heroes],
-        )
-
     async def get_playtime(
         self,
         session: AsyncSession,
@@ -144,16 +122,6 @@ class HeroService:
                 for hero, playtime in paginated
             ],
         )
-
-    async def lookup(self, session: AsyncSession) -> list[schemas.LookupItem]:
-        """``(id, name)`` pairs for the admin/filter pickers, name-ordered.
-
-        Lives here rather than in `rpc/heroes.py`, which used to inline the same
-        two-column projection three times over (hero/map/gamemode) and bypass its
-        own service layer.
-        """
-        rows = await self.repo.list_lookup(session)
-        return [schemas.LookupItem(id=row.id, name=row.name) for row in rows]
 
 
 heroes = HeroService()
