@@ -159,6 +159,8 @@ class PlayerRoster:
     #: The registrant's owner-provider handles beyond the primary one, in the order
     #: given. :attr:`identity` is the primary.
     additional_handles: tuple[str, ...] = ()
+    #: ``players.user.name`` -- the unique canonical name every profile link is built from (never a game handle).
+    player_name: str | None = None
 
     @property
     def handle(self) -> str | None:

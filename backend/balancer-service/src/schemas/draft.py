@@ -285,6 +285,8 @@ class DraftPlayerRead(BaseRead):
     user_id: int | None
     #: The seat's primary handle for the tournament's identity provider; null when the registrant gave none.
     identity: PlayerIdentityRead | None
+    #: The player's canonical ``players.user.name``: what a ``/users/<name>`` profile link is built from.
+    player_name: str | None
     #: The role this player leads with, over their PLAYABLE roles. ``None`` when
     #: the balancer ranks them on no role at all -- possible mid-draft if an
     #: organizer clears their ranks. Clients must render that as "no role", not
@@ -347,6 +349,7 @@ class DraftPlayerRead(BaseRead):
             registration_id=player.registration_id,
             user_id=player.user_id,
             identity=roster.identity if roster is not None else None,
+            player_name=roster.player_name if roster is not None else None,
             primary_role=RoleRef.of(dimension, lead.role, lead.subrole) if lead is not None else None,
             is_flex=bool(roster.is_full_flex) if roster is not None else False,
             status=player.status,

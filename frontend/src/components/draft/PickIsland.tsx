@@ -95,7 +95,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
 
   const displayName = player.identity?.handle ?? `#${player.id}`;
   const available = player.status === "available";
-  const profileSlug = player.identity?.handle ? getPlayerSlug(player.identity?.handle) : null;
+  const profileSlug = player.player_name ? getPlayerSlug(player.player_name) : null;
   const headerDivision = resolveDivisionFromRank(divisionGrid, player.effective_rank);
   const myTurn = isMyTurnFor(gating, actingTeam);
   const hasAccount = player.user_id != null;

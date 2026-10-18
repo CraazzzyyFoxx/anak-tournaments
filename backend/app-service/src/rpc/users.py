@@ -156,20 +156,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             raw = str(data.get("name", ""))
             entities = c.q(data, "entities") or []
-            # A profile slug folds ``#`` to ``-``, but Riot names may carry hyphens of their own: try the
-            # suffix hyphen first, then every hyphen, before the plain (Discord / canonical) name.
-            candidates = [raw] if "#" in raw else []
-            if "#" not in raw and "-" in raw:
-                head, _, tail = raw.rpartition("-")
-                candidates += [f"{head}#{tail}", raw.replace("-", "#")]
-            for candidate in dict.fromkeys(candidates):
-                try:
-                    return await user_service.get_by_battle_tag(session, candidate, entities)
-                except HTTPException:
-                    continue
-            if "#" in raw:
-                return await user_service.get_by_battle_tag(session, raw, entities)
-            return await user_service.get_by_plain_name(session, raw, entities)
+            return await user_service.get_by_slug(session, raw, entities)
 
         return await c.envelope(logger, "users.by_name", op, session_factory=_SF)
 

@@ -76,7 +76,7 @@ function player(overrides: Partial<DraftPlayer> = {}): DraftPlayer {
     session_id: 1,
     registration_id: 70,
     user_id: null,
-    identity: { provider: "battlenet", handle: "Ana#1234" },
+    identity: { provider: "battlenet", handle: "Ana#1234" }, player_name: null,
     primary_role: { dimension: "player_role", role: "support" },
     is_flex: false,
     effective_rank: 3000,
@@ -308,6 +308,25 @@ describe("spectator", () => {
     expect(body.querySelector("[aria-label='island.queue.add']")).toBeNull();
     expect(body.querySelector("[role='radiogroup']")).toBeNull();
     expect(tile("support")?.tagName).toBe("DIV");
+  });
+
+  it("links the profile by the player's canonical name, never by the displayed game handle", async () => {
+    const { body } = await open({
+      subject: player({
+        identity: { provider: "riot", handle: "Mid#Lane" },
+        player_name: "Legacy Owner#7"
+      })
+    });
+
+    const link = body.querySelector<HTMLAnchorElement>("#pick-island-title a");
+    expect(link?.textContent).toBe("Mid#Lane");
+    expect(link?.getAttribute("href")).toBe("/users/Legacy Owner-7");
+  });
+
+  it("renders no profile link for a player without a canonical name", async () => {
+    const { body } = await open({ subject: player({ player_name: null }) });
+
+    expect(body.querySelector("#pick-island-title a")).toBeNull();
   });
 });
 

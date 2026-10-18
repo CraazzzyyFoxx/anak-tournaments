@@ -79,6 +79,7 @@ def roster(
     handle: str | None | object = _UNSET,
     display_name: str | None = None,
     player_id: int | None = None,
+    player_name: str | None = None,
     auth_user_id: int | None = None,
     workspace_member_id: int | None = None,
     subroles: Mapping[str, str] | None = None,
@@ -107,6 +108,7 @@ def roster(
         ),
         display_name=display_name,
         player_id=player_id,
+        player_name=player_name,
         auth_user_id=auth_user_id,
         workspace_member_id=workspace_member_id,
         roles=tuple(

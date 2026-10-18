@@ -90,6 +90,8 @@ export interface DraftPlayer {
   registration_id: number;
   user_id: number | null;
   identity: PlayerIdentity | null;
+  /** The player's canonical unique name: every `/users/<name>` link is built from it, never from a game handle. */
+  player_name: string | null;
   /**
    * `null` when the player has no playable role left — an organizer can strip
    * every rank mid-draft. Render that as "no role", never as a default one.

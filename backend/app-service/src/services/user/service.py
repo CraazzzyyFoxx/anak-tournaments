@@ -255,40 +255,34 @@ class UserService:
             )
         return user
 
-    async def get_by_battle_tag(self, session: AsyncSession, battle_tag: str, entities: list[str]) -> schemas.UserRead:
-        """A user by battle tag as ``UserRead``; 400 when no such user exists."""
-        user = await self.profile.find_by_battle_tag(session, battle_tag, entities)
-        if not user:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[
-                    errors.ApiExc(
-                        code="not_found",
-                        msg=f"User with battle tag {battle_tag} not found.",
-                    )
-                ],
-            )
-        return self.to_read(user, entities, visible_only=True)
+    async def get_by_slug(self, session: AsyncSession, slug: str, entities: list[str]) -> schemas.UserRead:
+        """The profile a ``/users/<slug>`` link names; 400 when nobody.
 
-    async def get_by_discord(self, session: AsyncSession, discord: str, entities: list[str]) -> schemas.UserRead:
-        """A user by Discord handle as ``UserRead``; 400 when no such user exists."""
-        user = await self.profile.get_by_discord(session, discord, entities)
-        if not user:
-            raise errors.ApiHTTPException(
-                status_code=400,
-                detail=[errors.ApiExc(code="not_found", msg=f"User with discord {discord} not found.")],
-            )
-        return self.to_read(user, entities, visible_only=True)
-
-    async def get_by_plain_name(self, session: AsyncSession, name: str, entities: list[str]) -> schemas.UserRead:
-        """A slug without a game tag: a Discord handle, else the player's canonical name (400 when neither)."""
-        user = await self.profile.get_by_discord(session, name, entities)
+        Generated links carry the player's canonical, unique ``players.user.name`` with ``#`` folded to ``-``, so
+        that name wins over everything else -- a game handle may collide with another player's name. Only when no
+        canonical name matches does an old shared link resolve through a game provider handle, then Discord.
+        Candidates: the slug as typed (a name with its own hyphens), then the suffix hyphen, then every hyphen,
+        read as ``#``.
+        """
+        candidates = [slug]
+        if "#" not in slug and "-" in slug:
+            head, _, tail = slug.rpartition("-")
+            candidates += [f"{head}#{tail}", slug.replace("-", "#")]
+        candidates = list(dict.fromkeys(candidates))
+        for candidate in candidates:
+            user = await self.profile.find_by_exact_name(session, candidate, entities)
+            if user is not None:
+                return self.to_read(user, entities, visible_only=True)
+        for candidate in candidates:
+            if "#" in candidate:
+                user = await self.profile.find_by_battle_tag(session, candidate, entities)
+                if user is not None:
+                    return self.to_read(user, entities, visible_only=True)
+        user = await self.profile.get_by_discord(session, slug, entities)
         if user is None:
-            user = await self.profile.find_by_exact_name(session, name, entities)
-        if not user:
             raise errors.ApiHTTPException(
                 status_code=400,
-                detail=[errors.ApiExc(code="not_found", msg=f"User {name} not found.")],
+                detail=[errors.ApiExc(code="not_found", msg=f"User {slug} not found.")],
             )
         return self.to_read(user, entities, visible_only=True)
 

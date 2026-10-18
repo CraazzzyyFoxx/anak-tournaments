@@ -86,3 +86,23 @@ class RiotSearchResolutionTests(IsolatedAsyncioTestCase):
         reply = await self._by_name(hyphenated.name.replace("#", "-"))
         assert reply["ok"], reply
         assert reply["data"]["id"] == hyphenated.id
+
+    async def test_canonical_name_wins_over_a_game_handle_and_handles_only_back_old_links(self) -> None:
+        marker = uuid4().hex[:6]
+        # B's canonical name has a hyphen; A's Riot handle is the same text with the tag separator.
+        canonical = models.User(name=f"Mid-Lane{marker}")
+        riot_owner = models.User(name=f"Riot Owner {marker}")
+        self.session.add_all([canonical, riot_owner])
+        await self.session.flush()
+        await social_identity_service.upsert(
+            self.session, user_id=riot_owner.id, provider="riot", username=f"Mid#Lane{marker}"
+        )
+
+        reply = await self._by_name(f"Mid-Lane{marker}")
+        assert reply["ok"], reply
+        assert reply["data"]["id"] == canonical.id, "a generated link is the canonical name, not a handle"
+
+        # An old shared link built from the Riot handle still opens its owner when no canonical name matches.
+        old = await self._by_name(f"Mid#Lane{marker}")
+        assert old["ok"], old
+        assert old["data"]["id"] == riot_owner.id

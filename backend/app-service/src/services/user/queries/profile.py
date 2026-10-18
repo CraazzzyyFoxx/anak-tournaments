@@ -160,11 +160,12 @@ class UserProfileQueries:
         return result.unique().scalar_one_or_none()
 
     async def find_by_exact_name(self, session: AsyncSession, name: str, entities: list[str]) -> models.User | None:
-        """A user by canonical (unique) ``players.user.name``, case-insensitively."""
+        """A user by canonical (unique) ``players.user.name``: the exact spelling first, else case-insensitively."""
         query = (
             sa.select(models.User)
             .options(*user_entities(entities))
             .where(sa.func.lower(models.User.name) == name.strip().lower())
+            .order_by(sa.case((models.User.name == name.strip(), 0), else_=1), models.User.id.asc())
             .limit(1)
         )
         result = await session.execute(query)

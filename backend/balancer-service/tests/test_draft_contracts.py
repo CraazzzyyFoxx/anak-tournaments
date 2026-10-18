@@ -709,6 +709,7 @@ def test_board_projects_public_answers_and_never_ships_the_rest(monkeypatch) -> 
                     120,
                     ranks={"support": 3000},
                     handle="Ana#1",
+                    player_name="Canonical Ana",
                     public_notes="prefers Ana",
                     custom_fields={"vk": "vk.com/ana", "phone": "+70000000000"},
                 )
@@ -730,6 +731,7 @@ def test_board_projects_public_answers_and_never_ships_the_rest(monkeypatch) -> 
         ("vk", "VK profile", "url", "vk.com/ana")
     ]
     assert read.identity == PlayerIdentityRead(provider="battlenet", handle="Ana#1")
+    assert read.player_name == "Canonical Ana"
     assert read.notes == "prefers Ana"
     # The organizers-only answer leaves the service in NO shape — the public
     # board carries every PUBLIC question and nothing else.

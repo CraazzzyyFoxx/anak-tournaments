@@ -436,6 +436,7 @@ class RosterEngine:
             display_name=reg.display_name,
             player_id=member.player_id if member is not None else None,
             auth_user_id=player.auth_user_id if player is not None else None,
+            player_name=player.name if player is not None else None,
             workspace_member_id=reg.workspace_member_id,
             roles=tuple(entries),
             is_full_flex=is_full_flex,

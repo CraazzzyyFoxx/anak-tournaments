@@ -29,7 +29,7 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
     session_id: 1,
     registration_id: id * 10,
     user_id: null,
-    identity: { provider: "battlenet", handle: `P${id}#1` },
+    identity: { provider: "battlenet", handle: `P${id}#1` }, player_name: null,
     status: "available",
     primary_role: { dimension: "player_role", role: "damage" },
     is_flex: false,
@@ -49,7 +49,7 @@ function makePlayer(id: number, patch: Partial<DraftPlayer> = {}): DraftPlayer {
 }
 
 const ana = makePlayer(7, {
-  identity: { provider: "battlenet", handle: "Ana#1234" },
+  identity: { provider: "battlenet", handle: "Ana#1234" }, player_name: null,
   primary_role: { dimension: "player_role", role: "support" },
   effective_rank: 3000,
   secondary_roles: [{ dimension: "player_role", role: "damage" }],

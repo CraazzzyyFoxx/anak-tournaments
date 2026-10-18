@@ -76,7 +76,7 @@ const drafted: DraftPlayer = {
   session_id: 1,
   registration_id: 70,
   user_id: null,
-  identity: { provider: "battlenet", handle: "Ana#1234" },
+  identity: { provider: "battlenet", handle: "Ana#1234" }, player_name: null,
   primary_role: { dimension: "player_role", role: "support" },
   is_flex: false,
   effective_rank: 4000,
