@@ -145,6 +145,9 @@ class Proc:
     started_at: float
     exit_code: int | None = None
     tree: list[int] = field(default_factory=list)
+    #: Set once the process and its descendants are confirmed gone: cached pids are then never acted on again
+    #: (an OS may have reused them for an unrelated process).
+    reaped: bool = False
 
     @property
     def pid(self) -> int:
@@ -647,6 +650,7 @@ class LiveStack:
         proc = self.procs[name]
         if proc.popen.poll() is None:
             proc.tree = process_tree(proc.pid)
+            proc.reaped = False
             if os.name == "nt":
                 proc.popen.send_signal(signal.CTRL_BREAK_EVENT)
             else:
@@ -655,6 +659,9 @@ class LiveStack:
                 proc.popen.wait(timeout=grace)
             except subprocess.TimeoutExpired:
                 self.kill(name)
+        elif not proc.reaped:
+            # The launcher exited by itself earlier: pids cached while it ran may belong to someone else now.
+            proc.tree = []
         self._reap_tree(proc)
         proc.exit_code = proc.popen.returncode
         self.evidence.record("exit_codes", name, proc.exit_code)
@@ -663,9 +670,13 @@ class LiveStack:
     def kill(self, name: str) -> int | None:
         """Hard-kill the process tree (no graceful shutdown): what a crashed worker looks like."""
         proc = self.procs[name]
-        tree = process_tree(proc.pid) if proc.popen.poll() is None else []
-        proc.tree = tree or proc.tree
-        if os.name == "nt":
+        launcher_alive = proc.popen.poll() is None
+        tree = process_tree(proc.pid) if launcher_alive else []
+        if launcher_alive:
+            proc.tree, proc.reaped = tree, False
+        if not launcher_alive:
+            pass  # the launcher is gone: its pid may be reused, so nothing is signalled by pid
+        elif os.name == "nt":
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True, check=False)
         else:
             for pid in reversed(tree):
@@ -685,6 +696,8 @@ class LiveStack:
         def alive(pid: int) -> bool:
             return _alive_windows(pid) if os.name == "nt" else _alive_posix(pid)
 
+        if proc.reaped:
+            return
         survivors = [pid for pid in proc.tree if pid != proc.pid and alive(pid)]
         deadline = time.monotonic() + 10
         while survivors and time.monotonic() < deadline:
@@ -701,6 +714,7 @@ class LiveStack:
             survivors = [pid for pid in survivors if alive(pid)]
         if survivors:
             raise RuntimeError(f"processes {survivors} of {proc.name} survived a forced kill")
+        proc.tree, proc.reaped = [], True
 
     def pause(self, name: str) -> None:
         """Freeze every process of the tree (SIGSTOP / NtSuspendProcess): a worker stuck inside a job."""
@@ -752,7 +766,7 @@ class LiveStack:
         problems: list[str] = []
         for name, proc in self.procs.items():
             try:
-                if proc.popen.poll() is None or any(pid != proc.pid for pid in proc.tree):
+                if not proc.reaped:
                     self.stop(name)
             except Exception as exc:  # one stuck process must not leave the database, bucket or vhost behind
                 problems.append(f"stop {name}: {exc!r}")

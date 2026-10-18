@@ -160,3 +160,28 @@ def test_teardown_continues_after_a_process_cannot_be_stopped(monkeypatch, tmp_p
         stack.close()
     assert steps == ["database", "vhost"]
     assert (tmp_path / "evidence.json").is_file()
+
+
+def test_teardown_never_signals_pids_of_a_process_it_already_reaped(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+    import os
+    import subprocess
+    import sys
+
+    from tests.live_smoke_support import Proc
+
+    configure(monkeypatch)
+    stack = LiveStack(tmp_path)
+    # A real, finished child; its (now reusable) pid and a bystander pid are cached as its descendants.
+    done = subprocess.Popen([sys.executable, "-c", "pass"])
+    done.wait()
+    bystander = os.getpid()
+    proc = Proc("done", [], str(tmp_path), done, tmp_path / "none.log", 0.0, tree=[done.pid, bystander])
+    stack.procs["done"] = proc
+    killed: list[int] = []
+    monkeypatch.setattr("tests.live_smoke_support.subprocess.run", lambda *a, **k: killed.append(a[0]))
+    monkeypatch.setattr("tests.live_smoke_support.os.kill", lambda pid, sig: killed.append(pid))
+    stack.stop("done")  # the launcher exited by itself: cached pids are discarded, never acted on
+    assert proc.reaped and proc.tree == [] and killed == []
+    proc.tree = [bystander]
+    stack.close()  # already reaped: close() must not stop it again or signal the cached pid
+    assert killed == []

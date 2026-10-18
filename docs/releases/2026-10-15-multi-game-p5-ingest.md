@@ -175,7 +175,7 @@ members when they apply.
 | 404 | `binding_target_not_found` | A `hint` names a tournament/encounter/game outside the key's workspace |
 | 404 | `ingest_job_not_found` | Unknown id, or a job of another workspace |
 | 409 | `idempotency_conflict` | Section 4 |
-| 409 | `stats_upload_scope_conflict` / `stored_document_invalid` | The same bytes collide with a raw upload job of another scope / the stored copy of an existing job is unreadable |
+| 409 | `stats_upload_scope_conflict` / `stored_document_invalid` | The same bytes collide with a raw upload job of another scope / a submit collided with an existing job whose stored envelope is missing or invalid (submit only; admin and worker paths below) |
 | 413 | `match_document_too_large` | More than 25 MiB (section 10) |
 | 415 | `unsupported_media_type` | Not `application/json` |
 | 422 | `unsupported_protocol` / `document_invalid` / `unsupported_discipline` | Wrong `protocol`, schema violations with located `issues[]`, an unregistered discipline |
@@ -360,7 +360,7 @@ Contract rulings that changed a wire, protocol or storage contract (each also do
     is assigned by the server, never by the caller, and the public API only ever accepts the bare `MatchDoc`. Only a raw
     job without a `document_ref` runs a registered decoder, and it persists `decoded`. Retries, reparses and admin bind
     preserve the producer. Provenance is never inferred from a filename, an object path or `source.kind` (no new database
-    column); an envelope that is missing or not exactly `{document, producer}` is `409 stored_document_invalid`. Raw
+    column); an envelope that is missing or not exactly `{document, producer}` fails by operation: a **submit** that collides with such a job is `409 stored_document_invalid`; an **admin bind or reparse** that loads it is `422` (the stored-document failure has no dedicated admin status mapping, so the code is the generic document failure and the job row is left as it was); and the **worker** marks the job `failed` with the structured error. Raw
     `raw_ref`/`content_hash` still identify the original bytes.
 15. **Receipt contract.** The evidence consumer takes the encounter lock, then the game lock, and writes one durable
     `encounter.room_event` (`action = match_ingested`) in the same transaction as any result change. `data` carries the
