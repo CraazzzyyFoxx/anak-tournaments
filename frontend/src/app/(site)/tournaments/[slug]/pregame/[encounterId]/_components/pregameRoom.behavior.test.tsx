@@ -50,6 +50,7 @@ const getEncounter = vi.fn();
 const getMatch = vi.fn();
 const getAllMaps = vi.fn();
 const getAllHeroes = vi.fn();
+const getMetadata = vi.fn();
 const getMyRole = vi.fn();
 const getReports = vi.fn();
 const submitReport = vi.fn();
@@ -113,6 +114,10 @@ vi.mock("@/services/catalog.service", () => ({
     list: (discipline: string, kind: string, ...rest: unknown[]) =>
       kind === "map" ? getAllMaps(discipline, kind, ...rest) : getAllHeroes(discipline, kind, ...rest)
   }
+}));
+// The room names its game's module through native metadata; only the declared classes and capabilities matter here.
+vi.mock("@/services/discipline.service", () => ({
+  default: { list: async () => [], metadata: (...args: unknown[]) => getMetadata(...args) }
 }));
 // The room now mounts `RoomChat` beside every phase. These cases are about the
 // phases, so the viewer is a spectator here (403 -> `null`) and the panel keeps
@@ -192,7 +197,7 @@ function encounter(): Encounter {
     teams: seats(),
     games: [],
     matches: [],
-    discipline: "lol",
+    discipline: "overwatch",
     tournament: { id: 3, workspace_id: 1 }
   } as unknown as Encounter;
 }
@@ -431,6 +436,10 @@ beforeEach(() => {
   getAllMaps.mockResolvedValue({ results: MAPS });
   getAllHeroes.mockResolvedValue({ results: HEROES });
   getEncounter.mockResolvedValue(encounter());
+  getMetadata.mockImplementation(async (_axis: unknown, code: string) => ({
+    discipline: { code, character_classes: ["tank", "damage", "support"], capabilities: {} },
+    roles: []
+  }));
   getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
   getReports.mockResolvedValue({ reports: [], form: undefined });
   search = new URLSearchParams();
@@ -458,6 +467,13 @@ async function settle(ticks = 3) {
       setTimeout(resolve, 0);
       await promise;
     });
+  }
+}
+
+/** The Overwatch bans board is a module slot — a lazy chunk — so wait for it to mount. */
+async function untilBans() {
+  for (let tries = 0; tries < 100 && !document.body.querySelector("[data-hero-bans]"); tries += 1) {
+    await settle(1);
   }
 }
 
@@ -598,7 +614,7 @@ describe("readiness gate", () => {
 
     expect(getAllMaps).toHaveBeenCalled();
     expect(getAllHeroes).toHaveBeenCalled();
-    for (const call of [...getAllMaps.mock.calls, ...getAllHeroes.mock.calls]) expect(call[0]).toBe("lol");
+    for (const call of [...getAllMaps.mock.calls, ...getAllHeroes.mock.calls]) expect(call[0]).toBe("overwatch");
     expect(getAllMaps.mock.calls[0][1]).toBe("map");
     expect(getAllHeroes.mock.calls[0][1]).toBe("character");
   });
@@ -1248,6 +1264,7 @@ describe("phase selection", () => {
       })
     );
     await render();
+    await untilBans();
 
     expect(document.body.textContent).toContain(ROOM.heroBans.eyebrow);
     const sides = Array.from(document.body.querySelectorAll<HTMLElement>("[data-hero-bans]"));
@@ -1306,6 +1323,7 @@ describe("phase selection", () => {
       })
     );
     await render();
+    await untilBans();
 
     // The carried ban sits in the column of the side that spent it, wearing
     // the map it was spent on rather than passing as this round's work.
@@ -1349,6 +1367,31 @@ describe("phase selection", () => {
     expect(document.body.textContent).toContain(ROOM.mapResult.report);
     expect(document.body.textContent).not.toContain(ROOM.heroBans.eyebrow);
     expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+  });
+
+  it("renders no bans board for a game whose module declares no renderer", async () => {
+    getEncounter.mockResolvedValue({ ...encounter(), discipline: "lol" } as Encounter);
+    mockStates(
+      readyState({
+        session: session({ kind: "map" }),
+        is_complete: true,
+        viewer_team_id: HOME,
+        pool: [entry({ id: 1, item_id: 21, round: 1, status: "picked", action_index: 2 })]
+      }),
+      readyState({
+        session: session({ kind: "hero" }),
+        is_complete: true,
+        ...acts([{ side: "home", itemId: 101 }]),
+        pool: [entry({ id: 3, item_id: 101, round: 1, status: "banned", picked_by_kind: "team", picked_by_team_id: HOME })]
+      })
+    );
+    await render();
+    await settle(10);
+
+    // The room still reaches the map result; the OW-only board stays out and nothing claims support.
+    expect(document.body.textContent).toContain(ROOM.mapResult.report);
+    expect(document.body.querySelector("[data-hero-bans]")).toBeNull();
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("offers the hero undo under the bans, and asks the opponent to agree", async () => {
@@ -1866,6 +1909,7 @@ describe("phase selection", () => {
       })
     );
     await render();
+    await untilBans();
 
     const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
     const text = record?.textContent ?? "";
@@ -1912,6 +1956,7 @@ describe("phase selection", () => {
       })
     );
     await render();
+    await untilBans();
 
     const record = document.body.querySelector<HTMLElement>("[data-hero-record]");
     expect(record?.textContent).toContain(ROOM.heroBans.seriesEyebrow);

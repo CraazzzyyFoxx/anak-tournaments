@@ -10,15 +10,15 @@ import {
   pickedItemsInOrder
 } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import type {
+  PregameCharacterAction,
+  PregameCharacterBoard,
+  PregameCharacterRound
+} from "@/disciplines/types";
 import { seatsBySlot } from "@/lib/encounter/seats";
 import type { Encounter, EncounterTeam } from "@/types/encounter.types";
 import type { PickBanEntry, PickBanGame, PickBanKind, PickBanState } from "@/types/tournament.types";
 
-import type {
-  PregameHeroAction,
-  PregameHeroBoard,
-  PregameHeroRound
-} from "./PregameHeroBans";
 import type { PregamePhase, PregamePhaseStatus, PregameSeriesMap } from "./PregameHeader";
 
 type ItemLookup = Record<number, PickBanItemLike | undefined>;
@@ -221,13 +221,13 @@ export function heroBoardForRound(
   heroesById: ItemLookup,
   heroName: (itemId: number) => string,
   characterClasses: readonly string[] = []
-): PregameHeroBoard {
+): PregameCharacterBoard {
   const describe = (
     itemId: number,
     action: "ban" | "protect",
     teamId: number,
     carriedFromRound: number | null
-  ): PregameHeroAction => {
+  ): PregameCharacterAction => {
     const item = heroesById[itemId];
     return {
       itemId,
@@ -240,7 +240,7 @@ export function heroBoardForRound(
     };
   };
 
-  const actions: PregameHeroAction[] = [];
+  const actions: PregameCharacterAction[] = [];
   for (const entry of carriedBanEntries(state.pool, round)) {
     // A system-resolved (roulette) ban projects `picked_by_kind: "decider"`: it
     // belongs to no captain, so it stays out of the team columns and is named
@@ -283,7 +283,7 @@ export function buildHeroRounds(
   heroesById: ItemLookup,
   heroName: (itemId: number) => string,
   characterClasses: readonly string[] = []
-): PregameHeroRound[] {
+): PregameCharacterRound[] {
   return (
     state.pool.some((entry) => entry.round != null)
       ? series.map((map) => ({

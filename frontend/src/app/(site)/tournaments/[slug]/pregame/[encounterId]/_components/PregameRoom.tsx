@@ -325,7 +325,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           viewerTeamId={viewerTeamId}
           teams={loop.teams}
           game={reportGame}
-          characterClasses={room.characterClasses}
+          metadata={room.metadata}
           heroBoard={heroBoardForRound(
             heroState,
             loop.reportRound,
@@ -368,7 +368,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           viewerTeamId={viewerTeamId}
           reportable={seriesReport}
           heroRounds={buildHeroRounds(heroState, series, room.heroesById, heroName, room.characterClasses)}
-          characterClasses={room.characterClasses}
+          metadata={room.metadata}
           header={header}
           returnTo={returnTo}
         />

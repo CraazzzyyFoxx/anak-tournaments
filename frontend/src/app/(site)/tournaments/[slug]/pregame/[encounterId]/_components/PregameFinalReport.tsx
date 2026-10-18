@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MatchReportForm, matchReportDraftKey } from "@/components/tournaments/MatchReportForm";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
+import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import type { PregameCharacterRound } from "@/disciplines/types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { Encounter } from "@/types/encounter.types";
-
-import { PregameHeroBans, type PregameHeroRound } from "./PregameHeroBans";
 
 interface PregameFinalReportProps {
   encounter: Encounter;
@@ -31,9 +32,12 @@ interface PregameFinalReportProps {
    * under, and a captain filing the report (or an organizer reading a dispute)
    * would otherwise have to reopen a grid that is already complete.
    */
-  heroRounds?: PregameHeroRound[];
-  /** The room's game's declared `character_classes`: the order a team's hero rows follow. */
-  characterClasses?: readonly string[];
+  heroRounds?: PregameCharacterRound[];
+  /**
+   * The room's game's native metadata: it names the game whose module renders the bans and orders their
+   * classes. Null while it loads (or when it failed): the bans wait for it.
+   */
+  metadata: DisciplineMetadata | null;
   header: ReactNode;
   /** Where the room hands the viewer back — the page they opened it from. */
   returnTo: string;
@@ -57,7 +61,7 @@ export function PregameFinalReport({
   viewerTeamId,
   reportable = true,
   heroRounds = [],
-  characterClasses,
+  metadata,
   header,
   returnTo
 }: Readonly<PregameFinalReportProps>) {
@@ -145,13 +149,22 @@ export function PregameFinalReport({
                       </div>
                     </div>
                   )}
-                  <PregameHeroBans
-                    board={block}
-                    characterClasses={characterClasses}
-                    teams={encounter.teams}
-                    eyebrow={null}
-                    hint={null}
-                  />
+                  {metadata ? (
+                    <DisciplineWidget
+                      discipline={metadata.discipline.code}
+                      slot="pregameCharacterBans"
+                      capabilities={metadata.discipline.capabilities}
+                      props={{
+                        encounterId: encounter.id,
+                        metadata,
+                        board: block,
+                        teams: encounter.teams,
+                        eyebrow: null,
+                        hint: null
+                      }}
+                      fallback={null}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ol>

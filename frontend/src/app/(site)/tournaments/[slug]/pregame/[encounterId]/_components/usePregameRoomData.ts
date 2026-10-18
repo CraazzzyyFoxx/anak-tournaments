@@ -17,6 +17,7 @@ import { useRealtimeStore } from "@/stores/realtime.store";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import type { Encounter } from "@/types/encounter.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
 
 export interface PregameRoomData {
@@ -33,6 +34,8 @@ export interface PregameRoomData {
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
   /** The room's game's declared `character_classes`: the order class groups are listed in. Empty until loaded. */
   characterClasses: readonly string[];
+  /** The room's game's native metadata, for its module's slots. Null until loaded (or when it failed to). */
+  metadata: DisciplineMetadata | null;
   /** Every map in the catalog, for the no-veto "which map did you play" picker. */
   mapChoices: CatalogEntityRead[];
   /** The participation the viewer captains (`EncounterTeam.id`), or null for anyone else. */
@@ -269,6 +272,7 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
     heroesById,
     itemsByKind: { map: mapsById, hero: heroesById },
     characterClasses: metadataQuery.data?.discipline.character_classes ?? [],
+    metadata: metadataQuery.data ?? null,
     mapChoices: mapsQuery.data ?? [],
     viewerTeamId: roleQuery.data?.encounter_team_id ?? null,
     readyPending: readyMutation.isPending,

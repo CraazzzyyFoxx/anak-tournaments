@@ -12,7 +12,8 @@ const overwatch: DisciplineUI = {
   slots: {
     nativeRankEditor: lazy(() => import("./ladder/OwRangePicker")),
     rankHistory: lazy(() => import("./rankHistory/RankHistory")),
-    rankMapping: lazy(() => import("./ladder/RankMappingPanel"))
+    rankMapping: lazy(() => import("./ladder/RankMappingPanel")),
+    pregameCharacterBans: lazy(() => import("./pregame/PregameCharacterBans"))
   }
 };
 

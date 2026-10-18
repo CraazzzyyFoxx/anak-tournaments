@@ -10,12 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
 import { acceptedScore, pickBanSeats } from "@/components/pick-ban/pick-ban-model";
+import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
+import type { PregameCharacterBoard } from "@/disciplines/types";
 import { duelSeats, seatTeam, type Duel } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
+import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { EncounterTeam } from "@/types/encounter.types";
 import type { PickBanGame, PickBanGameClaim } from "@/types/tournament.types";
-
-import { PregameHeroBans, type PregameHeroBoard } from "./PregameHeroBans";
 
 interface PregameMapResultProps {
   encounterId: number;
@@ -40,9 +41,12 @@ interface PregameMapResultProps {
    * here and what is left. Its `actions` are empty when the encounter runs no
    * hero phase, and the section then renders nothing at all.
    */
-  heroBoard: PregameHeroBoard;
-  /** The room's game's declared `character_classes`: the order a team's hero rows follow. */
-  characterClasses?: readonly string[];
+  heroBoard: PregameCharacterBoard;
+  /**
+   * The room's game's native metadata: it names the game whose module renders the bans and orders their
+   * classes. Null while it loads (or when it failed): the bans wait for it.
+   */
+  metadata: DisciplineMetadata | null;
   /**
    * The hero session's undo affordance, rendered under the bans it would take
    * back. Supplied as a node because the consent flow needs the room's query
@@ -87,7 +91,7 @@ export function PregameMapResult({
   teams,
   game,
   heroBoard,
-  characterClasses,
+  metadata,
   heroUndo,
   header,
   invalidateKeys,
@@ -190,11 +194,15 @@ export function PregameMapResult({
                 {/* Same width as the claim row below, so the bans and the score
                     they belong to read as one column rather than two widths. */}
                 <div className="mx-auto w-full max-w-2xl">
-                  <PregameHeroBans
-                    board={heroBoard}
-                    characterClasses={characterClasses}
-                    teams={teams}
-                  />
+                  {metadata ? (
+                    <DisciplineWidget
+                      discipline={metadata.discipline.code}
+                      slot="pregameCharacterBans"
+                      capabilities={metadata.discipline.capabilities}
+                      props={{ encounterId, metadata, board: heroBoard, teams }}
+                      fallback={null}
+                    />
+                  ) : null}
                 </div>
                 {/* Directly under the list it corrects: a wrong ban is noticed
                     HERE, reading the lobby setup, not back in the closed grid. */}

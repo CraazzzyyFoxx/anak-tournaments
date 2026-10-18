@@ -1,72 +1,22 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Ban, Check, ClipboardCopy, History, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
-import {
-  classRank,
-  lobbyCopyText,
-  type PickBanClassGroup,
-  type PickBanClassItem
-} from "@/components/pick-ban/pick-ban-model";
-import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { classRank, lobbyCopyText } from "@/components/pick-ban/pick-ban-model";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import { seatTeam, seatsBySlot } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
 import type { EncounterTeam } from "@/types/encounter.types";
 
-/** One committed action of a round's hero ban phase, resolved against the catalog. */
-export interface PregameHeroAction {
-  itemId: number;
-  /** Catalog name, or the room's `#id` fallback while it loads. */
-  name: string;
-  /** Undefined until the hero catalog resolves — the thumb falls back to initials. */
-  item: PickBanItemLike | undefined;
-  /** The character's class (`attrs.class`), only used to order a team's rows; null when the catalog knows none. */
-  group: string | null;
-  action: "ban" | "protect";
-  /** The participation (`EncounterTeam.id`) that committed it. */
-  teamId: number;
-  /**
-   * The earlier map this ban was spent on, when its `lifetime` still covers
-   * this one. Nobody acted on it here, so it is badged with its origin rather
-   * than read as a ban of this round.
-   */
-  carriedFromRound: number | null;
-}
-
-/** One hero off on a map, as the final bans list shows it. */
-export interface PregameBannedHero extends PickBanClassItem {
-  /** Undefined until the hero catalog resolves — the thumb falls back to initials. */
-  item: PickBanItemLike | undefined;
-}
-
-/** One map's hero board: who banned what, and the final bans. */
-export interface PregameHeroBoard {
-  /** Null for a flat (round-less) pool: one set of bans covered every map. */
-  round: number | null;
-  actions: PregameHeroAction[];
-  /** Every ban in force on this map, class-grouped — what the lobby disables. */
-  banned: PickBanClassGroup<PregameBannedHero>[];
-}
-
-/** One map's worth of hero actions, for replaying a finished series. */
-export interface PregameHeroRound extends PregameHeroBoard {
-  /** Null alongside a null round — there is no single map to name. */
-  mapName: string | null;
-  /** The map's catalog entry, for its still. Undefined until the catalog loads. */
-  mapItem: PickBanItemLike | undefined;
-}
-
-/** The seat's accent, as a class because it colours the team name itself (slot 1 teal, others rose). */
-const seatAccent = (slot: number) =>
-  slot === 1 ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-rose)]";
+import type { PregameCharacterAction, SlotProps } from "../../types";
 
 /**
- * The round's hero bans, on the screen where the map is played and reported.
+ * The Overwatch `pregameCharacterBans` slot: the round's hero bans, on the screen where the map is
+ * played and reported.
  *
  * The room renders one phase at a time, so the moment the hero grid closes it
  * is gone — and that is exactly when the bans are needed, because they have to
@@ -80,27 +30,14 @@ const seatAccent = (slot: number) =>
  * needs: the final bans, merged and in the game's role order, and a button
  * that puts them on the clipboard.
  */
-export function PregameHeroBans({
+export default function PregameCharacterBans({
   board,
   teams,
   eyebrow,
   hint,
-  characterClasses = []
-}: Readonly<{
-  board: PregameHeroBoard;
-  /** The discipline's declared `character_classes`: the order a team's rows follow. */
-  characterClasses?: readonly string[];
-  /** The encounter's live seats: a column each, with the source team's logo when the read carried it. */
-  teams: EncounterTeam[];
-  /**
-   * Replaces the default "bans for this map" caption. Pass `null` to drop it:
-   * the closing screen captions each row itself, with the map's own still, so
-   * a caption here would name the map twice.
-   */
-  eyebrow?: ReactNode | null;
-  /** Pass `null` to drop the lobby-setup hint: it only applies before a map is played. */
-  hint?: string | null;
-}>) {
+  metadata
+}: Readonly<SlotProps["pregameCharacterBans"]>) {
+  const characterClasses = metadata.discipline.character_classes;
   const t = useTranslations("pickBan.room");
   const tCommon = useTranslations("common");
   const [copied, setCopied] = useState(false);
@@ -207,11 +144,12 @@ function TeamBans({
   characterClasses
 }: Readonly<{
   seat: EncounterTeam;
-  actions: PregameHeroAction[];
+  actions: PregameCharacterAction[];
   characterClasses: readonly string[];
 }>) {
   const t = useTranslations("pickBan.room");
-  const accent = seatAccent(seat.slot);
+  // The seat's accent colours the team name itself (slot 1 teal, others rose).
+  const accent = seat.slot === 1 ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-rose)]";
   const ordered = [...actions].sort(
     (left, right) =>
       (left.action === "ban" ? 0 : 1) - (right.action === "ban" ? 0 : 1) ||
