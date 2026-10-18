@@ -210,7 +210,7 @@ class PolicyTests(EvidenceCase):
     logs_official = False
 
     async def test_logs_official_false_records_a_receipt_and_changes_nothing_official(self) -> None:
-        outcome = await self.deliver(self.event(extras=(self.extra("m2"),)))
+        outcome = await self.deliver(self.event())
 
         self.assertEqual("logs_disabled", outcome)
         await self.assert_untouched()
@@ -228,7 +228,29 @@ class PolicyTests(EvidenceCase):
             },
             receipt.data,
         )
-        self.assertEqual(2, len(await self.roster()), "a disabled tournament adds nobody either")
+        self.assertEqual("logs_official_off", receipt.reason)
+        self.assertEqual(2, len(await self.roster()))
+
+    async def test_logs_official_false_still_seats_a_substitute_but_decides_nothing(self) -> None:
+        # The roster is owner policy independent of ``logs_official`` (P4 seated log substitutes always).
+        async with self.Session() as s:
+            await member_rank_service.set_ranks(
+                s,
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                workspace_member_id=self.ids["m2"],
+                ranks={"tank": 2500},
+            )
+            await s.commit()
+        outcome = await self.deliver(self.event(extras=(self.extra("m2"),)))
+
+        self.assertEqual("applied_roster_only", outcome)
+        await self.assert_untouched()
+        (receipt,) = await self.receipts()
+        self.assertEqual("logs_official_off", receipt.reason)
+        (added,) = [row for row in await self.roster() if row.workspace_member_id == self.ids["m2"]]
+        self.assertTrue(added.is_substitute)
+        self.assertEqual(self.teams[0], added.encounter_team_id)
 
     async def test_a_later_toggle_does_not_replay_rejected_evidence(self) -> None:
         await self.deliver(self.event())
@@ -496,6 +518,19 @@ class RosterTests(EvidenceCase):
         self.assertEqual("result_locked", await self.deliver(self.event(2, basis=1, extras=(self.extra("m2"),))))
         self.assertEqual(3, len(await self.roster()))
 
+    async def test_a_confirmed_game_still_seats_a_new_substitute_without_touching_the_result(self) -> None:
+        self.assertEqual("accepted", await self.deliver(self.event(placements=(1, 2))))
+
+        outcome = await self.deliver(self.event(2, basis=1, placements=(2, 1), extras=(self.extra("m2"),)))
+
+        self.assertEqual("applied_roster_only", outcome)
+        game = await self.game()
+        self.assertEqual(1, game.result_version)
+        self.assertEqual(enums.EncounterGameResultSource.ADMIN_LOG, game.result_source)
+        receipt = (await self.receipts())[-1]
+        self.assertEqual("game_confirmed", receipt.reason)
+        self.assertEqual(3, len(await self.roster()))
+
     async def test_a_member_already_on_that_team_is_idempotent(self) -> None:
         async with self.Session() as s:
             participation = (await participants.active_teams(s, self.ids["e"]))[0]
@@ -690,6 +725,13 @@ class MixOwnerTests(EvidenceCase):
 
 
 class ResultInputTests(EvidenceCase):
+    async def test_an_objectiveless_games_null_placements_decide_nothing(self) -> None:
+        """Push/Clash: the decoder claims no placements for the 0:0 artifact, so no draw is ever recorded."""
+        self.assertEqual("result_incomplete", await self.deliver(self.event(placements=(None, None))))
+        (receipt,) = await self.receipts()
+        self.assertEqual("placements_missing", receipt.reason)
+        await self.assert_untouched()
+
     async def test_missing_placements_are_refused_and_nothing_is_invented(self) -> None:
         self.assertEqual("result_incomplete", await self.deliver(self.event(placements=(1, None))))
         self.assertEqual("result_incomplete", await self.deliver(self.event(2, placements=None)))

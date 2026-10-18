@@ -9,9 +9,10 @@ whatever it decided, so a rolled-back result leaves no receipt and a redelivery 
 
 Owner policy (D23) -- the only owners that can ever say yes:
 
-* **tournament** with ``logs_official = true``: an unaccepted, uncancelled game of an unconfirmed encounter takes
-  the observed placements as an ``admin_log`` result, and valid extra participants join their team as
-  encounter substitutes under the roster's own rules.
+* **tournament**, live encounter, exact bound team set: valid extra participants join their team as encounter
+  substitutes under the roster's own rules -- whatever ``logs_official`` says and whatever the game's result state
+  is (P4 always seated them; the switch is about results, D7). Separately, with ``logs_official = true`` an
+  unaccepted, uncancelled game of an unconfirmed encounter takes the observed placements as an ``admin_log`` result.
 * **mix** (host/co-host records directly) and **scrim** (specified: ``claims`` of both sides, result optional --
   a scrim container is a hidden tournament row today, with no scrim owner of its own): logs never decide anything
   there and never add roster members. Both are refused outright; there is no permissive branch for any other or
@@ -27,7 +28,8 @@ Outcomes (``apply_match_evidence`` returns exactly one; the first seven are jour
 ``stale_basis``           the game changed since the document was bound (result version or team set)
 ``result_incomplete``     placements/mandatory organizer inputs do not decide the game, or settlement refuses the
                           result (``bracket_tie``: rolled back in a savepoint); stats stays done
-``applied_roster_only``   valid extras were seated but the result could not be accepted (see above)
+``applied_roster_only``   valid extras were seated but the result was refused; the receipt's reason is the result
+                          refusal (``logs_official_off``, ``game_confirmed``, ``placements_missing``, ...)
 ``duplicate``             this revision of this evidence was already delivered (nothing written)
 ``stale_revision``        a higher revision of this evidence was already delivered (nothing written)
 ``ignored``               the encounter or game is gone (nothing written, nothing resurrected)
@@ -201,7 +203,7 @@ async def _decide(
     event: MatchIngestedEvent,
 ) -> tuple[str, str | None]:
     """``(outcome, reason)`` of one undelivered revision; stages the roster and result it decided to apply."""
-    refusal = await _owner_refusal(session, encounter) or _game_refusal(encounter, game, event)
+    refusal = await _owner_refusal(session, encounter)
     if refusal is None and not await is_encounter_live(session, encounter):
         # An unpublished preview bracket takes no result and no roster change, whoever proposes it.
         refusal = _Refusal(OWNER_POLICY_REFUSED, "encounter_preview")
@@ -211,11 +213,16 @@ async def _decide(
     refusal = _team_set_refusal(seats, event)
     if refusal is not None:
         return refusal.outcome, refusal.reason
+    # The roster is the owner's policy (tournament, live encounter, exact team set); whether the log may also decide
+    # the game is a separate question (``logs_official``, game state, basis) and never gates the substitutes.
     plan, refusal = await _plan_extras(session, encounter, event, seats)
     if refusal is not None:
         return refusal.outcome, refusal.reason
 
-    lines, refusal = await _result_lines(session, games, encounter, game, event, seats)
+    lines: list[GameResultIn] = []
+    refusal = await _result_refusal(session, encounter, game, event)
+    if refusal is None:
+        lines, refusal = await _result_lines(session, games, encounter, game, event, seats)
     for participation, snapshot in plan:
         await add_substitute(session, participation, snapshot)
     if refusal is None:
@@ -306,9 +313,17 @@ async def _owner_refusal(session: AsyncSession, encounter: Encounter) -> _Refusa
     tournament = await _tournaments.get(session, encounter.tournament_id)
     if tournament is None or tournament.workspace_id != encounter.workspace_id:
         return _Refusal(OWNER_POLICY_REFUSED, "owner_mismatch")
+    return None
+
+
+async def _result_refusal(
+    session: AsyncSession, encounter: Encounter, game: EncounterGame, event: MatchIngestedEvent
+) -> _Refusal | None:
+    """Whether the log may decide THIS game: the tournament's ``logs_official`` switch, then the game's own state."""
+    tournament = await _tournaments.get(session, encounter.tournament_id)
     if not tournament.logs_official:
         return _Refusal(LOGS_DISABLED, "logs_official_off")
-    return None
+    return _game_refusal(encounter, game, event)
 
 
 def _game_refusal(encounter: Encounter, game: EncounterGame, event: MatchIngestedEvent) -> _Refusal | None:
