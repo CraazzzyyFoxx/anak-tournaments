@@ -125,6 +125,7 @@ async def team_synergy_features(
                 sa.select(models.Tournament.id).where(
                     sa.tuple_(chrono, models.Tournament.id) < sa.tuple_(*target_key),
                     models.Tournament.is_hidden.is_(False),
+                    models.Tournament.discipline == "overwatch",
                     *workspace_scope_filter(workspace_id, workspace_ids),
                 )
             )

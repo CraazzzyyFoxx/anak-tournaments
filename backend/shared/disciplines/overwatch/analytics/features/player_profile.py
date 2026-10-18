@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.enums import LogStatsName
+from shared.domain.analytics import PERFORMANCE_MODEL
 from shared.repository.stats_queries import player_facts
 from shared.services.workspace_scope import workspace_filter
 
@@ -46,8 +47,11 @@ async def load_player_signal_profile(
             models.WorkspaceMember.id == models.Player.workspace_member_id,
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+        .join(models.AnalyticsAlgorithm, models.AnalyticsAlgorithm.id == models.AnalyticsPerformance.algorithm_id)
         .where(
             models.AnalyticsPerformance.tournament_id == tournament_id,
+            models.Tournament.discipline == "overwatch",
+            models.AnalyticsAlgorithm.name == PERFORMANCE_MODEL.algorithm_name,
             *workspace_filter(workspace_id),
         )
     )
@@ -131,7 +135,10 @@ async def load_player_signal_profile(
             models.WorkspaceMember.id == models.Player.workspace_member_id,
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
+        .join(models.AnalyticsAlgorithm, models.AnalyticsAlgorithm.id == models.AnalyticsPerformance.algorithm_id)
         .where(
+            models.Tournament.discipline == "overwatch",
+            models.AnalyticsAlgorithm.name == PERFORMANCE_MODEL.algorithm_name,
             models.AnalyticsPerformance.tournament_id <= tournament_id,
             models.AnalyticsPerformance.tournament_id >= max(1, tournament_id - history_depth),
             models.WorkspaceMember.player_id.in_(user_ids),

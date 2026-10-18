@@ -154,6 +154,7 @@ class AnalyticsGpuGateTests(TestCase):
         return asyncio.run(self.broker.handlers[subject](data, msg=None))
 
     def _create_job(self, workspace_id: int, **body) -> dict:
+        self.tournaments.owner = (workspace_id, self.tournaments.owner[1])
         return self._call(
             "rpc.analytics.create_job",
             {
@@ -293,3 +294,32 @@ class AnalyticsGpuGateTests(TestCase):
                     self._call(subject, {"identity": _identity(global_update=True), "payload": payload}),
                     "requested workspace scope",
                 )
+
+    def test_automatic_compute_for_another_workspaces_tournament_is_422_before_admission(self) -> None:
+        """A verified workspace cannot name another workspace's tournament (it would replace that workspace's rows)."""
+        for owner in ((3, "overwatch"), (3, "lol")):
+            self.tournaments.owner = owner
+            for subject, data in (
+                (
+                    "rpc.analytics.create_job",
+                    {
+                        "identity": _identity(workspace_ids=(2,)),
+                        "query": {"workspace_id": "2"},
+                        "payload": {"tournament_id": 5},
+                    },
+                ),
+                (
+                    "rpc.analytics.recalculate",
+                    {
+                        "identity": _identity(workspace_ids=(2,)),
+                        "query": {"workspace_id": "2"},
+                        "payload": {"tournament_id": 5},
+                    },
+                ),
+                (
+                    "rpc.analytics.points",
+                    {"identity": _identity(workspace_ids=(2,)), "query": {"workspace_id": "2", "tournament_id": "5"}},
+                ),
+            ):
+                with self.subTest(subject=subject, owner=owner):
+                    self._assert_refused_before_admission(self._call(subject, data), "requested workspace scope")

@@ -73,18 +73,21 @@ async def _require_verified_workspace(session: Any, workspace_id: int | None) ->
         raise HTTPException(status_code=403, detail="workspace_not_verified")
 
 
-async def _require_analytics_owner(session: Any, tournament_id: int, *, scope: Sequence[int] | None = None) -> None:
-    """Explicit model/training requests: the owning tournament's discipline must declare analytics models and
-    ``scope`` (the workspaces the request names) must contain the tournament's workspace, else 422 -- raised before
-    any job is admitted or any quota is charged. An unknown tournament is left to the job itself."""
+async def _require_analytics_owner(
+    session: Any, tournament_id: int, *, scope: Sequence[int] | None = None, models_required: bool = True
+) -> None:
+    """The tournament must belong to ``scope`` (the workspaces the request names) -- always, since a job for a
+    tournament of another workspace would recompute and replace that workspace's rows. With ``models_required``
+    (explicit model/training requests) its discipline must also declare analytics models. Either failure is a 422
+    raised before any job is admitted or any quota is charged. An unknown tournament is left to the job itself."""
     owner = await _tournaments.get_owner(session, tournament_id)
     if owner is None:
         return
     workspace_id, code = owner
-    if not supports_analytics(code):
-        raise HTTPException(status_code=422, detail=f"discipline {code!r} declares no analytics models")
     if scope is not None and workspace_id not in {int(w) for w in scope}:
         raise HTTPException(status_code=422, detail="tournament does not belong to the requested workspace scope")
+    if models_required and not supports_analytics(code):
+        raise HTTPException(status_code=422, detail=f"discipline {code!r} declares no analytics models")
 
 
 async def _require_actor(
@@ -145,16 +148,17 @@ def register(broker: Any, logger: Any) -> None:
         await _require_actor(body, workspace_id, user)
         if body.kind == JOB_KIND_COMPUTE:
             await _require_verified_workspace(session, workspace_id)
-        if body.kind == JOB_KIND_TRAIN_ML or body.algorithms:
-            # A model or training was named. Without ``algorithms`` a compute job is automatic enrichment, which
-            # the worker turns into an empty summary for a discipline with no analytics module.
-            await _require_analytics_owner(
-                session,
-                body.tournament_id,
-                scope=body.training_workspace_ids
-                if body.kind == JOB_KIND_TRAIN_ML
-                else ([workspace_id] if workspace_id is not None else None),
-            )
+        # Every admission names a tournament that must lie in the requested workspace; a named model or a training
+        # also needs a discipline with analytics models. Without ``algorithms`` a compute job is automatic
+        # enrichment, which the worker turns into an empty summary for a discipline with no analytics module.
+        await _require_analytics_owner(
+            session,
+            body.tournament_id,
+            scope=body.training_workspace_ids
+            if body.kind == JOB_KIND_TRAIN_ML
+            else ([workspace_id] if workspace_id is not None else None),
+            models_required=body.kind == JOB_KIND_TRAIN_ML or bool(body.algorithms),
+        )
         # Metered only for the callers that have their own quota operation slug;
         # create_job/points enqueue the same compute work but are not metered
         # subjects, so charging here unconditionally would bill a slug they do not

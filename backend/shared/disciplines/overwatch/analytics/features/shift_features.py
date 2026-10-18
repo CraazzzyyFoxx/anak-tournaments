@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.division_grid import DEFAULT_GRID
+from shared.domain.analytics import PERFORMANCE_MODEL
 from shared.services.division_grid.access import load_division_grids
 from shared.services.workspace_scope import workspace_scope_filter
 
@@ -81,6 +82,7 @@ async def load_player_rank_history(
         .where(
             models.Player.tournament_id <= history_max_tid,
             models.Player.is_substitution.is_(False),
+            models.Tournament.discipline == "overwatch",
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
         .order_by(models.WorkspaceMember.player_id, models.Player.role, models.Tournament.id)
@@ -139,7 +141,16 @@ async def load_performance_features(
         models.AnalyticsPerformance.local_zscore.label("performance_v2_local_zscore"),
         models.AnalyticsPerformance.local_percentile.label("performance_v2_local_percentile"),
         models.AnalyticsPerformance.local_reference_n.label("performance_v2_local_reference_n"),
-    ).where(models.AnalyticsPerformance.tournament_id.in_(tournament_ids))
+    )
+    query = (
+        query.join(models.Tournament, models.Tournament.id == models.AnalyticsPerformance.tournament_id)
+        .join(models.AnalyticsAlgorithm, models.AnalyticsAlgorithm.id == models.AnalyticsPerformance.algorithm_id)
+        .where(
+            models.AnalyticsPerformance.tournament_id.in_(tournament_ids),
+            models.Tournament.discipline == "overwatch",
+            models.AnalyticsAlgorithm.name == PERFORMANCE_MODEL.algorithm_name,
+        )
+    )
     result = await session.execute(query)
     return pd.DataFrame(result.mappings().all())
 

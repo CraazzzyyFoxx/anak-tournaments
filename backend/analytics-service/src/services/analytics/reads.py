@@ -18,7 +18,9 @@ from sqlalchemy.orm import joinedload
 from shared.core import enums, errors, pagination
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
+from shared.domain.analytics import MATCH_QUALITY_MODEL, PERFORMANCE_MODEL, STANDINGS_MODEL, ModelDeclaration
 from shared.repository import (
+    AnalyticsAlgorithmRepository,
     AnalyticsAnomalyFeedbackRepository,
     AnalyticsMatchQualityRepository,
     AnalyticsPerformanceRepository,
@@ -217,6 +219,7 @@ class AnalyticsReadFlowsService:
         player_anomalies: AnalyticsPlayerAnomalyRepository = AnalyticsPlayerAnomalyRepository(),
         feedback: AnalyticsAnomalyFeedbackRepository = AnalyticsAnomalyFeedbackRepository(),
         artifacts: MLModelArtifactRepository = MLModelArtifactRepository(),
+        algorithms: AnalyticsAlgorithmRepository = AnalyticsAlgorithmRepository(),
     ) -> None:
         self.players = players
         self.performance = performance
@@ -225,6 +228,7 @@ class AnalyticsReadFlowsService:
         self.player_anomalies = player_anomalies
         self.feedback = feedback
         self.artifacts = artifacts
+        self.algorithms = algorithms
 
     async def to_pydantic(
         self,
@@ -473,6 +477,29 @@ class AnalyticsReadFlowsService:
 
         return sorted(output, key=lambda x: (x.sum_position, x.user.name or ""))
 
+    async def _owned(
+        self,
+        session: AsyncSession,
+        tournament_id: int,
+        declaration: ModelDeclaration | None = None,
+        algorithm_id: int | None = None,
+    ) -> tuple[bool, int | None]:
+        """Whether stored rows of ``tournament_id`` may be served, and the algorithm id to restrict them to.
+
+        The tournament's discipline must declare analytics models (rows preserved from another game's model, or of a
+        tournament that does not exist, are never served), and a model read is restricted to the declared algorithm:
+        a requested ``algorithm_id`` that names another algorithm serves nothing.
+        """
+        code = await tournament_discipline(session, tournament_id)
+        if code is None or not supports_analytics(code):
+            return False, None
+        if declaration is None:
+            return True, algorithm_id
+        declared = await self.algorithms.get_id_by_name(session, declaration.algorithm_name)
+        if declared is None or (algorithm_id is not None and algorithm_id != declared):
+            return False, None
+        return True, declared
+
     async def list_performance(
         self,
         session: AsyncSession,
@@ -480,7 +507,10 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> typing.Sequence[models.AnalyticsPerformance]:
-        return await self.performance.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+        owned, declared = await self._owned(session, tournament_id, PERFORMANCE_MODEL, algorithm_id)
+        if not owned:
+            return []
+        return await self.performance.list_by_tournament(session, tournament_id, algorithm_id=declared)
 
     async def list_standings(
         self,
@@ -489,7 +519,10 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> typing.Sequence[models.AnalyticsStandingsDistribution]:
-        return await self.standings.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+        owned, declared = await self._owned(session, tournament_id, STANDINGS_MODEL, algorithm_id)
+        if not owned:
+            return []
+        return await self.standings.list_by_tournament(session, tournament_id, algorithm_id=declared)
 
     async def list_match_quality(
         self,
@@ -498,7 +531,10 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> list[schemas.MatchQualityRow]:
-        rows = await self.match_quality.list_by_tournament(session, tournament_id, algorithm_id=algorithm_id)
+        owned, declared = await self._owned(session, tournament_id, MATCH_QUALITY_MODEL, algorithm_id)
+        if not owned:
+            return []
+        rows = await self.match_quality.list_by_tournament(session, tournament_id, algorithm_id=declared)
         grouped = dict(
             await analytics_read_service.get_match_quality_anomalies(session, tournament_id, algorithm_id or 0)
         )
@@ -523,6 +559,8 @@ class AnalyticsReadFlowsService:
         player_id: int | None = None,
         kind: str | None = None,
     ) -> typing.Sequence[models.AnalyticsPlayerAnomaly]:
+        if not (await self._owned(session, tournament_id))[0]:
+            return []
         return await self.player_anomalies.list_by_tournament(session, tournament_id, player_id=player_id, kind=kind)
 
     async def list_feedback(
@@ -530,6 +568,8 @@ class AnalyticsReadFlowsService:
         session: AsyncSession,
         tournament_id: int,
     ) -> typing.Sequence[models.AnalyticsAnomalyFeedback]:
+        if not (await self._owned(session, tournament_id))[0]:
+            return []
         return await self.feedback.list_by_tournament(session, tournament_id)
 
     async def upsert_feedback(
@@ -579,11 +619,14 @@ class AnalyticsReadFlowsService:
         *,
         algorithm_id: int | None = None,
     ) -> schemas.ExplanationRow | None:
+        owned, declared = await self._owned(session, tournament_id, PERFORMANCE_MODEL, algorithm_id)
+        if not owned:
+            return None
         row = await self.performance.get_for_player(
             session,
             player_id=player_id,
             tournament_id=tournament_id,
-            algorithm_id=algorithm_id,
+            algorithm_id=declared,
         )
         if row is None or not row.contributions:
             return None
