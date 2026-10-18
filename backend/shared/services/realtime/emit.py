@@ -58,6 +58,7 @@ INVALIDATION_EVENT_TYPE = "cache.invalidated"
 
 _STAGED_KEY = "realtime_staged"
 _PENDING_KEY = "realtime_pending"
+_SAVEPOINTS_KEY = "realtime_savepoints"
 
 # asyncio keeps only a weak reference to a running task, so a fire-and-forget
 # publish whose handle nobody holds can be collected mid-flight.
@@ -219,6 +220,8 @@ def _domain_row(scope: Scope, data: DomainEvent, actor_user_id: int | None) -> W
 # reads them.
 @event.listens_for(Session, "before_commit")
 def _persist_staged(session: Session) -> None:
+    if session.in_nested_transaction():
+        return  # releasing a SAVEPOINT is not a commit: nothing may persist (or later publish) before the root commits
     staged: _Staged | None = session.info.get(_STAGED_KEY)
     if staged is None:
         return
@@ -245,6 +248,8 @@ def _persist_staged(session: Session) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _publish_staged(session: Session) -> None:
+    if session.in_nested_transaction():
+        return
     pending = session.info.pop(_PENDING_KEY, [])
     if not pending:
         return
@@ -258,14 +263,62 @@ def _publish_staged(session: Session) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
-# BOTH rollback hooks: after_rollback fires only when a DBAPI transaction was
-# actually begun, so a session that staged an event and rolled back before
-# touching the database (a validation failure between emit and the write) would
-# otherwise keep the event staged and publish it on its NEXT commit — an event
-# describing a write that never happened.
+# Rollback hooks. A SAVEPOINT release is not a commit and a SAVEPOINT rollback is not a transaction rollback: the
+# savepoint's snapshot of what was staged when it opened comes back, so only its own effects are dropped. A root
+# rollback drops everything -- through BOTH ``after_rollback`` and ``after_soft_rollback``, because the former
+# fires only when a DBAPI transaction was actually begun, so a session that staged an event and rolled back before
+# touching the database would otherwise keep it staged and publish it on its NEXT commit -- an event describing a
+# write that never happened.
+@event.listens_for(Session, "after_transaction_create")
+def _snapshot_at_savepoint(session: Session, transaction: Any) -> None:
+    """What was staged when a SAVEPOINT opened, so rolling it back drops only what it staged itself."""
+    if not transaction.nested:
+        return
+    staged: _Staged | None = session.info.get(_STAGED_KEY)
+    snapshot = (
+        None
+        if staged is None
+        else _Staged(
+            invalidations={
+                scope: (set(resources), {key: list(ids) for key, ids in entity_ids.items()})
+                for scope, (resources, entity_ids) in staged.invalidations.items()
+            },
+            domain=list(staged.domain),
+        )
+    )
+    session.info.setdefault(_SAVEPOINTS_KEY, {})[transaction] = snapshot
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _forget_savepoint(session: Session, transaction: Any) -> None:
+    if transaction.nested:
+        session.info.get(_SAVEPOINTS_KEY, {}).pop(transaction, None)
+
+
 @event.listens_for(Session, "after_rollback")
+def _drop_staged_on_rollback(session: Session) -> None:
+    # Fires for a SAVEPOINT rollback too, while that savepoint is still the session's nested transaction: put back
+    # what was staged before it opened. Only a root rollback drops everything.
+    nested = session.get_nested_transaction()
+    snapshots: dict[Any, _Staged | None] = session.info.get(_SAVEPOINTS_KEY, {})
+    if nested is not None and nested in snapshots:
+        snapshot = snapshots[nested]
+        if snapshot is None:
+            session.info.pop(_STAGED_KEY, None)
+        else:
+            session.info[_STAGED_KEY] = snapshot
+        return
+    _drop_staged(session)
+
+
 @event.listens_for(Session, "after_soft_rollback")
-def _drop_staged(session: Session, _previous_transaction: Any = None) -> None:
+def _drop_staged_on_soft_rollback(session: Session, previous_transaction: Any) -> None:
+    if previous_transaction.nested:
+        return  # a savepoint: ``_drop_staged_on_rollback`` already restored its snapshot
+    _drop_staged(session)
+
+
+def _drop_staged(session: Session) -> None:
     session.info.pop(_STAGED_KEY, None)
     session.info.pop(_PENDING_KEY, None)
 

@@ -9,9 +9,11 @@ touches a ``stats.`` table -- the match layer knows evidence only as an opaque i
 from __future__ import annotations
 
 import ast
+import asyncio
 import itertools
 import os
 import re
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -27,21 +29,25 @@ from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.room_event import EncounterRoomEvent
 from shared.models.encounter.team import EncounterTeamMember, EncounterTeamMemberRole
 from shared.models.platform.outbox import EventOutbox
+from shared.models.platform.realtime import WorkspaceEvent
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.computation import TournamentComputationJob
+from shared.models.tournament.player_role import PlayerRole
 from shared.models.tournament.stage import Stage
 from shared.models.tournament.team import Player
 from shared.models.tournament.tournament import Tournament
+from shared.repository import CatalogRoleRepository
 from shared.schemas.events import MatchIngestedEvent, MatchIngestExtraParticipant, MatchIngestPlacement
 from shared.schemas.role import RoleRef
 from shared.services.encounter import participants
 from shared.services.encounter.result import apply_result
 from shared.services.member_rank import member_rank_service
+from shared.services.realtime import Resource, Scope, emit
 from shared.tests.encounter_writer_case import EncounterWriterCase
 from src import schemas
 from src.services.admin.tournament import tournament_service
-from src.services.encounter import log_evidence, log_evidence_events
+from src.services.encounter import log_evidence, log_evidence_events, room_reconcile
 from src.services.encounter.game_correction import game_correction_service
 from src.services.encounter.games import GameResultIn, encounter_game_service
 from src.services.encounter.log_evidence import ForeignEvidenceError, apply_match_evidence
@@ -909,3 +915,147 @@ class BracketStateTests(EvidenceCase):
     async def _outbox_count(self) -> int:
         async with self.Session() as s:
             return await s.scalar(sa.select(sa.func.count()).select_from(EventOutbox))
+
+
+class RosterRoleAuthorityTests(EvidenceCase):
+    """A tournament roster row's rated assignment (root or sub-role) outranks and never yields to the observation."""
+
+    async def _rostered_as(self, code: str, *, rank: int = 1234) -> None:
+        async with self.Session() as s:
+            role = await CatalogRoleRepository().resolve(
+                s, discipline="overwatch", workspace_id=self.ids["ws"], dimension="player_role", code=code
+            )
+            player = Player(
+                tournament_id=self.ids["t"],
+                team_id=self.ids["team0"],
+                workspace_member_id=self.ids["m2"],
+                name="m2",
+                rank=rank,
+            )
+            s.add(player)
+            await s.flush()
+            s.add(PlayerRole(player_id=player.id, dimension_id=role.dimension_id, role_id=role.id))
+            await s.commit()
+
+    async def _seated_roles(self) -> list[str]:
+        async with self.Session() as s:
+            (member,) = [row for row in await self.roster() if row.workspace_member_id == self.ids["m2"]]
+            rows = (
+                await s.scalars(
+                    sa.select(EncounterTeamMemberRole).where(EncounterTeamMemberRole.team_member_id == member.id)
+                )
+            ).all()
+            return [row.role for row in rows]
+
+    async def test_a_root_assignment_wins_over_a_different_observed_role(self) -> None:
+        await self._rostered_as("support")
+
+        outcome = await self.deliver(
+            self.event(extras=(self.extra("m2", role=RoleRef(dimension="player_role", role="tank")),))
+        )
+
+        self.assertEqual("accepted", outcome)
+        self.assertEqual(["support"], await self._seated_roles())
+        (member,) = [row for row in await self.roster() if row.workspace_member_id == self.ids["m2"]]
+        self.assertEqual(1234, member.rank)
+
+    async def test_a_root_assignment_is_used_when_nothing_was_observed(self) -> None:
+        await self._rostered_as("support")
+        self.assertEqual("accepted", await self.deliver(self.event(extras=(self.extra("m2", role=None),))))
+        self.assertEqual(["support"], await self._seated_roles())
+
+    async def test_an_invalid_observed_leaf_is_refused_even_beside_a_valid_roster_role(self) -> None:
+        await self._rostered_as("support")
+
+        outcome = await self.deliver(
+            self.event(extras=(self.extra("m2", role=RoleRef(dimension="player_role", role="no_such_role")),))
+        )
+
+        self.assertEqual("owner_policy_refused", outcome)
+        (receipt,) = await self.receipts()
+        self.assertEqual("extra_role_invalid", receipt.reason)
+        self.assertEqual(2, len(await self.roster()))
+        await self.assert_untouched()
+
+    async def test_an_observed_foreign_dimension_is_refused_beside_a_valid_roster_role(self) -> None:
+        await self._rostered_as("support")
+        bad = RoleRef(dimension="hero_pool", role="tank")
+        self.assertEqual("owner_policy_refused", await self.deliver(self.event(extras=(self.extra("m2", role=bad),))))
+
+
+class SavepointSignalTests(EvidenceCase):
+    """Releasing or rolling back a SAVEPOINT is not a commit: nothing publishes before the root commit."""
+
+    @staticmethod
+    async def _settle() -> None:
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+    async def _events(self) -> int:
+        async with self.Session() as s:
+            return await s.scalar(
+                sa.select(sa.func.count())
+                .select_from(WorkspaceEvent)
+                .where(WorkspaceEvent.tournament_id == self.ids["t"])
+            )
+
+    async def test_a_released_savepoint_then_an_outer_rollback_publishes_and_persists_nothing(self) -> None:
+        emit_module = sys.modules["shared.services.realtime.emit"]
+        with (
+            patch.object(emit_module, "_flush", AsyncMock()) as flush,
+            patch.object(room_reconcile, "_reconcile_in_new_session", AsyncMock()) as reconcile,
+        ):
+            async with self.Session() as s:
+                async with s.begin_nested():
+                    await emit(s, scope=Scope.tournament(self.ids["t"]), invalidates=[Resource.TOURNAMENT_ENCOUNTERS])
+                    room_reconcile.request_room_reconcile(s, self.ids["e"])
+                await s.rollback()
+            await self._settle()
+        flush.assert_not_awaited()
+        reconcile.assert_not_awaited()
+        self.assertEqual(0, await self._events())
+
+    async def test_a_released_savepoint_publishes_only_after_the_root_commit(self) -> None:
+        emit_module = sys.modules["shared.services.realtime.emit"]
+        with (
+            patch.object(emit_module, "_flush", AsyncMock()) as flush,
+            patch.object(room_reconcile, "_reconcile_in_new_session", AsyncMock()) as reconcile,
+        ):
+            async with self.Session() as s:
+                async with s.begin_nested():
+                    await emit(s, scope=Scope.tournament(self.ids["t"]), invalidates=[Resource.TOURNAMENT_ENCOUNTERS])
+                    room_reconcile.request_room_reconcile(s, self.ids["e"])
+                await self._settle()
+                flush.assert_not_awaited()
+                reconcile.assert_not_awaited()
+                await s.commit()
+            await self._settle()
+        flush.assert_awaited_once()
+        reconcile.assert_awaited_once()
+
+    async def test_a_rolled_back_savepoint_drops_only_what_it_staged(self) -> None:
+        emit_module = sys.modules["shared.services.realtime.emit"]
+        with (
+            patch.object(emit_module, "_flush", AsyncMock()) as flush,
+            patch.object(room_reconcile, "_reconcile_in_new_session", AsyncMock()) as reconcile,
+        ):
+            async with self.Session() as s:
+                await emit(s, scope=Scope.tournament(self.ids["t"]), invalidates=[Resource.TOURNAMENT_ENCOUNTERS])
+                room_reconcile.request_room_reconcile(s, self.ids["e"])
+                try:
+                    async with s.begin_nested():
+                        await emit(
+                            s, scope=Scope.tournament(self.ids["t"]), invalidates=[Resource.TOURNAMENT_STANDINGS]
+                        )
+                        room_reconcile.request_stage_reconcile(s, 999)
+                        raise RuntimeError("savepoint refused")
+                except RuntimeError:
+                    pass
+                await s.commit()
+            await self._settle()
+        flush.assert_awaited_once()
+        (pending,) = flush.await_args.args
+        resources = {resource for _scope, _row, resources, _ids in pending for resource in resources}
+        self.assertEqual({Resource.TOURNAMENT_ENCOUNTERS}, resources)
+        reconcile.assert_awaited_once()
+        self.assertEqual(("encounter", self.ids["e"]), reconcile.await_args.args[0])

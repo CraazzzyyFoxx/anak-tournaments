@@ -58,13 +58,13 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException
 from shared.disciplines import discipline as discipline_spec
 from shared.domain.roles import UnknownRole
-from shared.models import CatalogRole
+from shared.models import CatalogRole, RoleDimension
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
 from shared.models.encounter.room_event import EncounterRoomEvent
 from shared.models.encounter.team import EncounterTeam, EncounterTeamMember
 from shared.models.tenancy.workspace import WorkspaceMember
-from shared.models.tournament.player_role import rated_role_code
+from shared.models.tournament.player_role import PlayerRole
 from shared.models.tournament.team import Player
 from shared.repository import CatalogRoleRepository, TournamentRepository
 from shared.schemas.events import MatchIngestedEvent, MatchIngestExtraParticipant
@@ -403,9 +403,19 @@ async def _snapshot(
     must be the discipline's rated dimension and resolve in this workspace.
     """
     rated = discipline_spec(encounter.discipline).rated_dimension.code
+    # The player's rated leaf, root or workspace sub-role alike (``rated_role_code`` only reports sub-roles).
+    rated_leaf = (
+        sa.select(CatalogRole.code)
+        .select_from(PlayerRole)
+        .join(CatalogRole, CatalogRole.id == PlayerRole.role_id)
+        .join(RoleDimension, sa.and_(RoleDimension.id == CatalogRole.dimension_id, RoleDimension.rated.is_(True)))
+        .where(PlayerRole.player_id == Player.id)
+        .limit(1)
+        .scalar_subquery()
+    )
     rostered = (
         await session.execute(
-            sa.select(Player.team_id, Player.rank, rated_role_code(Player.id, top=False)).where(
+            sa.select(Player.team_id, Player.rank, rated_leaf).where(
                 Player.tournament_id == encounter.tournament_id, Player.workspace_member_id == member.id
             )
         )
@@ -414,9 +424,22 @@ async def _snapshot(
         return _Refusal(OWNER_POLICY_REFUSED, "extra_member_other_team")
     own_rank, own_role = (rostered[0][1], rostered[0][2]) if rostered else (None, None)
 
+    # Every observed ref is validated on its own (rated dimension, this workspace), whichever role ends up chosen.
     observed = extra.observed_role
-    if observed is not None and observed.dimension != rated:
-        return _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
+    if observed is not None:
+        if observed.dimension != rated:
+            return _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
+        try:
+            await _roles.resolve(
+                session,
+                discipline=encounter.discipline,
+                workspace_id=encounter.workspace_id,
+                dimension=rated,
+                code=observed.role,
+            )
+        except UnknownRole:
+            return _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
+    # The roster's assignment is authoritative; the observation only fills a gap.
     code = own_role or (observed.role if observed is not None else None)
     if code is None:
         return _Refusal(OWNER_POLICY_REFUSED, "extra_role_unknown")

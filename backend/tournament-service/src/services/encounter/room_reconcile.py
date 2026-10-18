@@ -63,6 +63,7 @@ __all__ = (
 )
 
 _STAGED_KEY = "pick_ban_reconcile_staged"
+_SAVEPOINTS_KEY = "pick_ban_reconcile_savepoints"
 
 # asyncio keeps only a weak reference to a running task, so a fire-and-forget
 # reconcile whose handle nobody holds can be collected mid-flight.
@@ -132,6 +133,8 @@ def request_stage_reconcile(session: Any, stage_id: int) -> None:
 
 @event.listens_for(Session, "after_commit")
 def _run_staged(session: Session) -> None:
+    if session.in_nested_transaction():
+        return  # a SAVEPOINT release is not a commit: nothing may run before the root commit
     staged: set[tuple[str, int]] = session.info.pop(_STAGED_KEY, set())
     if not staged:
         return
@@ -149,14 +152,40 @@ def _run_staged(session: Session) -> None:
         task.add_done_callback(_background_tasks.discard)
 
 
-# BOTH rollback hooks, for the same reason ``emit``'s drop uses both:
-# after_rollback fires only when a DBAPI transaction was actually begun, so a
-# session that staged a reconcile and rolled back before touching the database
-# would otherwise keep it staged and run it on its NEXT commit.
+# Rollback hooks, split so a SAVEPOINT rollback only forgets what the savepoint staged (the snapshot taken when it
+# opened comes back) while a root rollback drops everything. ``after_rollback`` fires only when a DBAPI transaction
+# was actually begun, so both it and ``after_soft_rollback`` stay: a session that staged a reconcile and rolled back
+# before touching the database would otherwise run it on its NEXT commit.
+@event.listens_for(Session, "after_transaction_create")
+def _snapshot_at_savepoint(session: Session, transaction: Any) -> None:
+    if transaction.nested:
+        session.info.setdefault(_SAVEPOINTS_KEY, {})[transaction] = set(session.info.get(_STAGED_KEY, ()))
+
+
+@event.listens_for(Session, "after_transaction_end")
+def _forget_savepoint(session: Session, transaction: Any) -> None:
+    if transaction.nested:
+        session.info.get(_SAVEPOINTS_KEY, {}).pop(transaction, None)
+
+
 @event.listens_for(Session, "after_rollback")
-@event.listens_for(Session, "after_soft_rollback")
-def _drop_staged(session: Session, _previous_transaction: Any = None) -> None:
+def _drop_staged_on_rollback(session: Session) -> None:
+    nested = session.get_nested_transaction()
+    snapshots: dict[Any, set[tuple[str, int]]] = session.info.get(_SAVEPOINTS_KEY, {})
+    if nested is not None and nested in snapshots:
+        restored = snapshots[nested]
+        if restored:
+            session.info[_STAGED_KEY] = restored
+        else:
+            session.info.pop(_STAGED_KEY, None)
+        return
     session.info.pop(_STAGED_KEY, None)
+
+
+@event.listens_for(Session, "after_soft_rollback")
+def _drop_staged_on_soft_rollback(session: Session, previous_transaction: Any) -> None:
+    if not previous_transaction.nested:
+        session.info.pop(_STAGED_KEY, None)
 
 
 async def _reconcile_in_new_session(scope: tuple[str, int]) -> None:
