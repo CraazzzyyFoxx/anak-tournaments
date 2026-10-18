@@ -10,9 +10,8 @@ the rules engine + admin live here.
 Parity notes:
 - ``export`` returns the JSON payload as data (the HTTP route added a
   Content-Disposition filename; the frontend builds its own download).
-- HTTP validation errors used ``detail={"validation_errors": [...]}``; the shared
-  envelope flattens detail to a string, so structured validation errors arrive as
-  a string (happy paths unaffected).
+- HTTP validation errors used ``detail={"validation_errors": [...]}``; the envelope flattens a dict detail to a bare
+  word, so ``validation_failure`` puts the named problems in the message and keeps the list in ``details``.
 - ``/{rule_id}/debug-mvp`` is a dev-only endpoint not called by the frontend and
   is intentionally not migrated.
 """
@@ -77,6 +76,24 @@ _rule_repo = AchievementRuleRepository()
 _override_repo = AchievementOverrideRepository()
 _tournament_repo = TournamentRepository()
 _workspace_repo = WorkspaceRepository()
+
+
+def validation_failure(errors: Any) -> HTTPException:
+    """The 400 for a rule definition or a portable batch that failed validation.
+
+    The message names every problem (a missing entity, a foreign game) that the organizer must fix; the structured list
+    rides ``details`` for machine readers.
+    """
+
+    def line(item: Any) -> str:
+        if isinstance(item, dict):
+            return f"{item.get('slug')}: " + "; ".join(map(str, item.get("errors") or ()))
+        return str(item)
+
+    items = errors if isinstance(errors, list) else [errors]
+    exc = HTTPException(status_code=400, detail={"msg": " | ".join(line(i) for i in items), "code": "invalid_rule"})
+    exc.details = {"validation_errors": errors}  # type: ignore[attr-defined]
+    return exc
 
 
 def _path_int(data: dict, key: str) -> int:
@@ -306,7 +323,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
                     source_workspace=source_workspace,
                 )
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail={"validation_errors": exc.args[0]}) from exc
+                raise validation_failure(exc.args[0]) from exc
             await session.commit()
             return result
 
@@ -331,7 +348,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             await get_workspace_for_discipline(session, workspace_id, body.discipline)
             errors, _grain = validate_rule_definition(body.condition_tree, body.grain, discipline=body.discipline)
             if errors:
-                raise HTTPException(status_code=400, detail={"validation_errors": errors})
+                raise validation_failure(errors)
             rule = await achievement_rule_service.create_rule(
                 session, workspace_id=workspace_id, rule_data=body.model_dump()
             )
@@ -356,7 +373,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
                 next_grain = update_data.get("grain", rule.grain)
                 errors, _grain = validate_rule_definition(next_condition_tree, next_grain, discipline=rule.discipline)
                 if errors:
-                    raise HTTPException(status_code=400, detail={"validation_errors": errors})
+                    raise validation_failure(errors)
             rule = await achievement_rule_service.update_rule(
                 session,
                 rule,
@@ -619,7 +636,7 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
                     source_workspace=source_workspace,
                 )
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail={"validation_errors": exc.args[0]}) from exc
+                raise validation_failure(exc.args[0]) from exc
             result["warnings"].extend(
                 {"slug": slug, "message": f"Rule '{slug}' was not found in workspace '{source_workspace.slug}'"}
                 for slug in missing_slugs

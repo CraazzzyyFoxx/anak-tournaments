@@ -306,6 +306,16 @@ class DisciplineFilterTests(_TwoGames):
         self.assertEqual(("lol", "rarity"), (qp.discipline, qp.sort))
         self.assertIsNone(build_query_model(AchievementListQueryParams, {}).discipline)
 
+    async def test_the_rpc_list_entrypoint_serves_the_filter(self) -> None:
+        """The registry handler behind ``GET /api/v1/achievements`` (the page's actual request) with and without a game."""
+        from src.services.read_registry import _achievement_list
+
+        query = {"per_page": ["-1"], "sort": ["rarity"], "entities": ["count"]}
+        everything = await _achievement_list(self.session, {"query": query})
+        one_game = await _achievement_list(self.session, {"query": {**query, "discipline": [LOL]}})
+        self.assertEqual({OW, LOL}, {row["discipline"] for row in everything["results"]})
+        self.assertEqual({LOL}, {row["discipline"] for row in one_game["results"]})
+
 
 class RuleDetailTests(_TwoGames):
     async def test_a_rule_id_detail_uses_its_own_discipline_under_aggregate_scope(self) -> None:
