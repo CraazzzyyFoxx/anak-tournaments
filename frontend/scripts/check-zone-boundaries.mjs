@@ -35,8 +35,9 @@ const CODE = /\.(ts|tsx)$/;
 const SPEC =
   /(?:from\s*|import\s*|import\s*\(\s*|require\s*\(\s*|(?:vi|jest)\.(?:mock|doMock)\(\s*|mock\.module\(\s*)(["'])([^"']+)\1/g;
 
-/** A whole `import type …` / `export type … from` statement. */
-const TYPE_ONLY = /^[ \t]*(?:import|export)\s+type\b[^;]*?\bfrom\s*(["'])[^"']+\1;?/gm;
+/** A whole `import type X|{…}|* as X from "…"` / `export type {…}|* from "…"` statement. */
+const TYPE_ONLY =
+  /^[ \t]*(?:import\s+type\s+(?:\{[^}]*\}|\*\s+as\s+[\w$]+|[\w$]+)|export\s+type\s+(?:\{[^}]*\}|\*(?:\s+as\s+[\w$]+)?))\s*from\s*(["'])[^"']+\1;?/gm;
 
 /** Route zones, by their first path segment under src/app. */
 const ROUTE_ZONES = {
