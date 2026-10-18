@@ -1673,7 +1673,7 @@ export interface LogRetryRequest {
   expected_revision?: number;
 }
 
-/** `teams` maps every document team key to the `encounter.team` id seated in the game. */
+/** Maps every document team key to the `encounter.team` id seated in the game. */
 export interface LogBindRequest {
   encounter_game_id: number;
   teams: Record<string, number>;
