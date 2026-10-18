@@ -29,6 +29,8 @@ from shared.messaging.config import (
     UPLOAD_MATCH_LOG_QUEUE,
     ingest_dlq,
     ingest_queue,
+    ingest_replay_dlq,
+    ingest_replay_queue,
 )
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.messaging.topology import declare_dead_letter_queue
@@ -74,6 +76,8 @@ _JOBS_CHANNEL = Channel(prefetch_count=2)
 # ingest queue has a channel of its own, so one slow log stalls neither the other game's ingest nor upload_match_log,
 # process_tournament_logs and achievement_evaluate.
 _INGEST_CHANNELS = {spec.code: Channel(prefetch_count=2) for spec in SELECTED}
+# Tournament replays (a whole tournament's worth of reparses) run one at a time on a channel of their own.
+_REPLAY_CHANNELS = {spec.code: Channel(prefetch_count=1) for spec in SELECTED}
 # Deferred achievement recompute for unverified workspaces: a full-history run an operator asked for, on a workspace
 # nobody has vouched for. One at a time, so it can never crowd out the parse-driven evaluations on _JOBS_CHANNEL.
 _ACHIEVEMENT_DEFERRED_CHANNEL = Channel(prefetch_count=1)
@@ -85,6 +89,7 @@ _ACHIEVEMENT_DEFERRED_CHANNEL = Channel(prefetch_count=1)
 _OWNED_DLQS = (
     UPLOAD_MATCH_LOG_DLQ,
     *(ingest_dlq(spec.code) for spec in SELECTED),
+    *(ingest_replay_dlq(spec.code) for spec in SELECTED),
     PROCESS_TOURNAMENT_LOGS_DLQ,
     ACHIEVEMENT_EVALUATE_DLQ,
     ACHIEVEMENT_EVALUATE_DEFERRED_DLQ,
@@ -220,7 +225,10 @@ async def process_ingest_message(discipline: str, data: dict, msg: RabbitMessage
     ):
         event = ProcessIngestJobEvent.model_validate(data)
         log = logger.bind(ingest_job_id=event.ingest_job_id, discipline=discipline)
-        replay = event.reparse_expected_revision is not None
+        if event.reparse_expected_revision is not None:
+            raise ValueError(
+                f"Replay request for job {event.ingest_job_id} delivered to {queue.name}, not its replay queue"
+            )
         async with db.async_session_maker() as session:
             job_discipline = await session.scalar(
                 sa.select(models.IngestJob.discipline).where(models.IngestJob.id == event.ingest_job_id)
@@ -231,26 +239,6 @@ async def process_ingest_message(discipline: str, data: dict, msg: RabbitMessage
                 raise ValueError(
                     f"Ingest job {event.ingest_job_id} is a {job_discipline!r} job delivered to {queue.name}"
                 )
-            if replay:
-                # A done job replayed by a tournament-wide request: the revision-fenced reparse of its stored document,
-                # run only by a worker that serves the job's discipline. Stale/busy is reported per job, nothing is
-                # published to the uploader (nobody waits for it).
-                outcome = "replayed"
-                try:
-                    await reparse_authorized_job(
-                        session,
-                        job_id=event.ingest_job_id,
-                        expected_revision=event.reparse_expected_revision,
-                        s3=s3_client,
-                    )
-                except IngestRejected as exc:
-                    outcome = "refused"
-                    log.warning("Reparse of log {} refused: {}", event.ingest_job_id, exc.code)
-                except Exception:
-                    outcome = "refused"
-                    log.exception("Reparse of log {} failed", event.ingest_job_id)
-                metrics.count("stats.ingest.replayed", 1, attributes={"outcome": outcome, "discipline": discipline})
-                return
             status = await process_ingest_job(session, event.ingest_job_id, s3_client, is_raise=False)
             if status == models.IngestJobStatus.PROCESSING:
                 # Another delivery owns this claim. Acknowledge without
@@ -273,6 +261,52 @@ async def process_ingest_message(discipline: str, data: dict, msg: RabbitMessage
         metrics.count("stats.ingest.processed", 1, attributes={"status": status.value, "discipline": discipline})
 
 
+async def process_replay_message(discipline: str, data: dict, msg: RabbitMessage) -> None:
+    """The revision-fenced reparse of one DONE job from ``stats.ingest.<discipline>.replay``.
+
+    Run only by a worker serving the job's discipline; stale/busy is reported per job and acknowledged (a refusal is a
+    result, not a failure), nothing is published to the uploader. A job of another discipline is rejected to the DLQ.
+    """
+    queue = ingest_replay_queue(discipline)
+    async with observe_message_processing(queue=queue, handler="process_ingest_replay", message=msg, logger=logger):
+        event = ProcessIngestJobEvent.model_validate(data)
+        if event.reparse_expected_revision is None:
+            raise ValueError(f"Job {event.ingest_job_id} on {queue.name} carries no expected revision")
+        log = logger.bind(ingest_job_id=event.ingest_job_id, discipline=discipline)
+        async with db.async_session_maker() as session:
+            job_discipline = await session.scalar(
+                sa.select(models.IngestJob.discipline).where(models.IngestJob.id == event.ingest_job_id)
+            )
+            await session.rollback()
+            if job_discipline is not None and job_discipline != discipline:
+                raise ValueError(
+                    f"Ingest job {event.ingest_job_id} is a {job_discipline!r} job delivered to {queue.name}"
+                )
+            outcome = "replayed"
+            try:
+                await reparse_authorized_job(
+                    session,
+                    job_id=event.ingest_job_id,
+                    expected_revision=event.reparse_expected_revision,
+                    s3=s3_client,
+                )
+            except IngestRejected as exc:
+                outcome = "refused"
+                log.warning("Reparse of log {} refused: {}", event.ingest_job_id, exc.code)
+            except Exception:
+                outcome = "refused"
+                log.exception("Reparse of log {} failed", event.ingest_job_id)
+        metrics.count("stats.ingest.replayed", 1, attributes={"outcome": outcome, "discipline": discipline})
+
+
+def _replay_consumer(discipline: str):
+    async def consume(data: dict, msg: RabbitMessage) -> None:
+        await process_replay_message(discipline, data, msg)
+
+    consume.__name__ = f"process_ingest_replay_{discipline}"
+    return consume
+
+
 def _ingest_consumer(discipline: str):
     async def consume(data: dict, msg: RabbitMessage) -> None:
         await process_ingest_message(discipline, data, msg)
@@ -283,6 +317,9 @@ def _ingest_consumer(discipline: str):
 
 for _spec in SELECTED:
     broker.subscriber(ingest_queue(_spec.code), channel=_INGEST_CHANNELS[_spec.code])(_ingest_consumer(_spec.code))
+    broker.subscriber(ingest_replay_queue(_spec.code), channel=_REPLAY_CHANNELS[_spec.code])(
+        _replay_consumer(_spec.code)
+    )
 
 
 @broker.subscriber(PROCESS_TOURNAMENT_LOGS_QUEUE, channel=_JOBS_CHANNEL)
@@ -305,14 +342,14 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
                     ingest_queue(requeued.discipline),
                     logger=logger.bind(ingest_job_id=job_id),
                 )
-            # Done jobs are never re-pended: each is replayed through the discipline's own ingest queue with the revision
+            # Done jobs are never re-pended: each is replayed through the discipline's TTL-less replay queue with the revision
             # seen at selection, so a log superseded or re-replaced in the meantime reports stale instead of winning.
             # This consumer never decodes: only a worker serving the job's discipline can.
             for job_id, revision in requeued.replay.items():
                 await publish_message(
                     broker,
                     ProcessIngestJobEvent(ingest_job_id=job_id, reparse_expected_revision=revision).model_dump(),
-                    ingest_queue(requeued.discipline),
+                    ingest_replay_queue(requeued.discipline),
                     logger=logger.bind(ingest_job_id=job_id),
                 )
             logger.info(

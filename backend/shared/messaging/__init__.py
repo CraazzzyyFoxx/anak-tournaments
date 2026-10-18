@@ -43,6 +43,8 @@ from .config import (
     TOURNAMENT_STATE_CHANGED_QUEUE,
     ingest_dlq,
     ingest_queue,
+    ingest_replay_dlq,
+    ingest_replay_queue,
 )
 from .rpc import request_dict, request_rpc
 
@@ -62,6 +64,8 @@ __all__ = [
     "INGEST_QUEUE_PREFIX",
     "ingest_queue",
     "ingest_dlq",
+    "ingest_replay_queue",
+    "ingest_replay_dlq",
     "DISCORD_MEMBER_ROLES_QUEUE",
     "DISCORD_MEMBER_ROLES_DLQ",
     "DISCORD_GUILD_ROLES_QUEUE",

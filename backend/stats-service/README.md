@@ -88,6 +88,7 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | --- | --- | --- |
 | `upload_match_log` | `UploadMatchLogEvent` | Persist the original decoded bytes to a content-addressed S3 key, create/find the native ingest job, enqueue its id |
 | `stats.ingest.<discipline>` | `ProcessIngestJobEvent` | Process one authorized `ingest_job_id` of that discipline (a job of another discipline is rejected to the DLQ untouched); one queue per selected discipline, each on its own channel, prefetch 2 |
+| `stats.ingest.<discipline>.replay` | `ProcessIngestJobEvent` + `reparse_expected_revision` | Revision-fenced reparse of one DONE job asked for by a tournament-wide reprocess; **no message TTL** (a DONE job is not reaper-recoverable), own `.replay.dlq`, one at a time; declared/consumed only by workers selecting the discipline |
 | `process_tournament_logs` | `ProcessTournamentLogsEvent` | Requeue the tournament's actual native jobs and fan out one job-id event each, including imported raw references |
 | `achievement_evaluate` | `AchievementEvaluateEvent` | Run the achievement engine for a workspace |
 | `achievement_evaluate.deferred` | `AchievementEvaluateEvent` | Resumes a `queued` run an unverified workspace's manual/`rule_version_bump` recompute was parked as; own channel, prefetch 1 |
@@ -405,8 +406,8 @@ deployment slice: its schedules are Redis leader-locked, so extra replicas are s
 - **Channel isolation is load-bearing.** RPC, background jobs, match-log parsing and rank fetching
   each get their own channel/prefetch. Collapsing them means one long parse can close the channel
   every other consumer shares.
-- **DLQs.** The worker declares `upload_match_log.dlq`, `stats.ingest.<discipline>.dlq` (selected
-  disciplines), `process_tournament_logs.dlq`, `achievement_evaluate.dlq`,
+- **DLQs.** The worker declares `upload_match_log.dlq`, `stats.ingest.<discipline>.dlq` and
+  `stats.ingest.<discipline>.replay.dlq` (selected disciplines), `process_tournament_logs.dlq`, `achievement_evaluate.dlq`,
   `achievement_evaluate.deferred.dlq` and `tournament_encounter_completed.dlq`; the Overwatch module
   declares its own (`rank_fetch.dlq`, `rank_fetch_priority.dlq`, `tournament_registration_approved.dlq`,
   `tournament_registration_rank_check.dlq`) from its `start_jobs` hook. An achievement

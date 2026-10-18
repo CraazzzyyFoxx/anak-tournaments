@@ -141,6 +141,26 @@ def ingest_dlq(discipline: str) -> RabbitQueue:
     return RabbitQueue(f"{INGEST_QUEUE_PREFIX}{discipline}.dlq", durable=True)
 
 
+# Replay requests (a tournament-wide reparse of DONE jobs, carrying the revision seen at selection) get their own queue
+# WITHOUT a message TTL: a DONE job is not recoverable by the stall reaper, so an expiring request would silently drop
+# the reparse. Only a worker selecting the discipline declares and consumes it; refused/poison deliveries go to its DLQ.
+@cache
+def ingest_replay_queue(discipline: str) -> RabbitQueue:
+    return RabbitQueue(
+        f"{INGEST_QUEUE_PREFIX}{discipline}.replay",
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": "dlx",
+            "x-dead-letter-routing-key": f"{INGEST_QUEUE_PREFIX}{discipline}.replay.dlq",
+        },
+    )
+
+
+@cache
+def ingest_replay_dlq(discipline: str) -> RabbitQueue:
+    return RabbitQueue(f"{INGEST_QUEUE_PREFIX}{discipline}.replay.dlq", durable=True)
+
+
 # ============================================================================
 # Upload Match Log Queue (discord bot -> stats worker)
 # ============================================================================

@@ -80,7 +80,9 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
             )
         publish.assert_not_awaited()
 
-    async def test_done_job_replays_go_to_the_discipline_queue_with_their_revision_and_are_never_decoded_here(self):
+    async def test_done_job_replays_go_to_the_ttl_less_replay_queue_with_their_revision_and_are_never_decoded_here(
+        self,
+    ):
         publish = AsyncMock()
         reparse = AsyncMock()
         with (
@@ -101,9 +103,15 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
             (c.args[1]["ingest_job_id"], c.args[1]["reparse_expected_revision"], c.args[2].name)
             for c in publish.await_args_list
         ]
-        self.assertEqual([(501, None, "stats.ingest.overwatch"), (601, 3, "stats.ingest.overwatch")], sent)
+        self.assertEqual([(501, None, "stats.ingest.overwatch"), (601, 3, "stats.ingest.overwatch.replay")], sent)
+        replay_queue = publish.await_args_list[1].args[2]
+        # A replay outlives any backlog: DONE jobs are not reaper-recoverable, so its queue must not expire messages.
+        self.assertNotIn("x-message-ttl", replay_queue.arguments)
+        self.assertIn("x-message-ttl", publish.await_args_list[0].args[2].arguments)
+        self.assertTrue(replay_queue.durable)
+        self.assertNotIn("persist", publish.await_args_list[1].kwargs)  # publish_message defaults to persistent
 
-    async def test_the_discipline_consumer_runs_the_revision_fenced_reparse_and_reports_stale(self):
+    async def test_the_replay_consumer_runs_the_revision_fenced_reparse_and_reports_stale(self):
         msg = SimpleNamespace(headers={}, message_id=None, raw_message=None)
         session = SimpleNamespace(scalar=AsyncMock(return_value="overwatch"), rollback=AsyncMock())
         for outcome, effect in (("ok", None), ("stale", serve.IngestRejected(409, "stale_revision", "stale"))):
@@ -115,7 +123,7 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
                 patch.object(serve, "reparse_authorized_job", reparse),
                 patch.object(serve, "process_ingest_job", claim),
             ):
-                await serve.process_ingest_message(
+                await serve.process_replay_message(
                     "overwatch", {"ingest_job_id": 601, "reparse_expected_revision": 3}, msg
                 )
             reparse.assert_awaited_once_with(session, job_id=601, expected_revision=3, s3=serve.s3_client)
@@ -130,5 +138,18 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
             patch.object(serve, "reparse_authorized_job", reparse),
             self.assertRaises(ValueError),
         ):
-            await serve.process_ingest_message("lol", {"ingest_job_id": 601, "reparse_expected_revision": 3}, msg)
+            await serve.process_replay_message("lol", {"ingest_job_id": 601, "reparse_expected_revision": 3}, msg)
         reparse.assert_not_awaited()
+
+    async def test_a_replay_request_on_the_ttl_ingest_queue_is_refused_and_a_plain_one_on_replay_too(self):
+        msg = SimpleNamespace(headers={}, message_id=None, raw_message=None)
+        reparse, claim = AsyncMock(), AsyncMock()
+        with patch.object(serve, "reparse_authorized_job", reparse), patch.object(serve, "process_ingest_job", claim):
+            with self.assertRaises(ValueError):
+                await serve.process_ingest_message(
+                    "overwatch", {"ingest_job_id": 601, "reparse_expected_revision": 3}, msg
+                )
+            with self.assertRaises(ValueError):
+                await serve.process_replay_message("overwatch", {"ingest_job_id": 601}, msg)
+        reparse.assert_not_awaited()
+        claim.assert_not_awaited()

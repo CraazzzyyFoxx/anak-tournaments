@@ -23,14 +23,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.messaging.config import ingest_queue
+from shared.messaging.config import ingest_queue, ingest_replay_queue
 from shared.repository import EncounterRepository
 from src import models, schemas
 from src.core import config
 
-# The ingest queue of every discipline this deployment serves (STATS_DISCIPLINES), then the shared fanout queues.
+# The ingest and replay queues of every discipline this deployment serves (STATS_DISCIPLINES), then the shared fanout queues.
 MONITORED_QUEUES = [
     *(ingest_queue(spec.code).name for spec in config.settings.selected_disciplines),
+    *(ingest_replay_queue(spec.code).name for spec in config.settings.selected_disciplines),
     "process_tournament_logs",
     "discord_commands",
     "balancer_jobs",

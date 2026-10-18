@@ -73,6 +73,7 @@ def test_the_worker_registers_consumers_and_no_rpc_handler() -> None:
 
     assert not [subject for subject in subjects if subject.startswith("rpc.")], sorted(subjects)
     assert {"stats.ingest.overwatch", "stats.ingest.lol"} <= subjects
+    assert {"stats.ingest.overwatch.replay", "stats.ingest.lol.replay"} <= subjects
     assert {
         "upload_match_log",
         "process_tournament_logs",
@@ -100,11 +101,23 @@ def test_each_ingest_queue_gets_its_own_amqp_channel() -> None:
     }
 
     ingest = {name: channel for name, channel in channel_by_queue.items() if name.startswith("stats.ingest.")}
-    assert set(ingest) == {f"stats.ingest.{spec.code}" for spec in worker.SELECTED}
+    assert set(ingest) == {
+        f"stats.ingest.{spec.code}{suffix}" for spec in worker.SELECTED for suffix in ("", ".replay")
+    }
     assert len({id(channel) for channel in ingest.values()}) == len(ingest)
     for short_handler in ("upload_match_log", "process_tournament_logs", ACHIEVEMENT_EVALUATE_QUEUE.name):
         assert channel_by_queue[short_handler] is worker._JOBS_CHANNEL
         assert all(channel is not worker._JOBS_CHANNEL for channel in ingest.values())
+
+
+def test_the_queue_depth_monitor_lists_the_selected_ingest_and_replay_queues() -> None:
+    _import("serve_worker")
+    admin_reads = importlib.import_module("src.services.match_logs.admin_reads")
+
+    assert {"stats.ingest.overwatch", "stats.ingest.overwatch.replay", "stats.ingest.lol.replay"} <= set(
+        admin_reads.MONITORED_QUEUES
+    )
+    assert "process_match_log" not in admin_reads.MONITORED_QUEUES
 
 
 def test_only_the_selected_disciplines_get_an_ingest_consumer_and_module_jobs() -> None:
@@ -120,9 +133,10 @@ def test_only_the_selected_disciplines_get_an_ingest_consumer_and_module_jobs() 
 
     assert done.returncode == 0, done.stderr
     names, dlqs = done.stdout.strip().splitlines()[-2:]
-    assert "'stats.ingest.lol'" in names and "stats.ingest.overwatch" not in names
+    assert "'stats.ingest.lol'" in names and "'stats.ingest.lol.replay'" in names
+    assert "stats.ingest.overwatch" not in names
     assert "rank_fetch" not in names, "LoL has no rank collector"
-    assert dlqs == "['stats.ingest.lol.dlq']"
+    assert dlqs == "['stats.ingest.lol.dlq', 'stats.ingest.lol.replay.dlq']"
 
 
 @pytest.mark.parametrize("value", ["", " ", "overwatch,", ",lol", "overwatch,,lol", "overwatch,overwatch", "chess"])

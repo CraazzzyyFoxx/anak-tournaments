@@ -62,7 +62,7 @@ def test_owned_dlqs_are_durable_and_not_orphaned() -> None:
 def test_every_selected_ingest_queue_has_its_dlq_and_no_other_does() -> None:
     ingest = {dlq.name for dlq in worker._OWNED_DLQS if dlq.name.startswith("stats.ingest.")}
 
-    assert ingest == {f"stats.ingest.{spec.code}.dlq" for spec in worker.SELECTED}
+    assert ingest == {f"stats.ingest.{spec.code}{kind}.dlq" for spec in worker.SELECTED for kind in ("", ".replay")}
     assert not [dlq for dlq in worker._OWNED_DLQS if dlq.name == "process_match_log.dlq"]
 
 
@@ -99,3 +99,8 @@ def test_ingest_queue_and_dlq_follow_one_convention(code: str) -> None:
     assert queue.arguments["x-dead-letter-exchange"] == "dlx"
     assert queue.arguments["x-dead-letter-routing-key"] == dlq.name == f"stats.ingest.{code}.dlq"
     assert queue.arguments["x-message-ttl"] == 300000
+
+    replay, replay_dlq = messaging.ingest_replay_queue(code), messaging.ingest_replay_dlq(code)
+    assert replay.name == f"stats.ingest.{code}.replay" and replay.durable and replay_dlq.durable
+    assert "x-message-ttl" not in replay.arguments, "a DONE job is not reaper-recoverable: replays must not expire"
+    assert replay.arguments["x-dead-letter-routing-key"] == replay_dlq.name == f"stats.ingest.{code}.replay.dlq"
