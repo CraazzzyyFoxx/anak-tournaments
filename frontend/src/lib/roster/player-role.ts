@@ -114,7 +114,7 @@ export function playerRoleTint(role: string | null | undefined): PlayerRoleTint 
  * and are still PNGs.
  */
 export function roleImageSrc(role: PlayerRoleOption): string {
-  return role === "Flex" ? "/roles/Flex.svg" : `/roles/${role}.png`;
+  return role === "Flex" ? "/roles/Flex.svg" : `/disciplines/overwatch/roles/${role.toLowerCase()}.png`;
 }
 
 /**
