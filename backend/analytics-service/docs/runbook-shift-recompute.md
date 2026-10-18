@@ -60,4 +60,39 @@ cd backend/analytics-service && uv run python scripts/diagnose_performance_cover
 - The recompute **does not touch** the manual shift (`AnalyticsPlayer.shift`, an admin-panel field) — only `change_shift`.
 - Model rollback: mark the previously active artifact `is_active=true` (deactivate the new one) + rerun backfill.
 - Code rollback — git-revert the branch + rebuild the image.
+
+## Artifact class conversion (model move to `shared.disciplines.overwatch`) — maintenance only
+
+The four serialized classes changed their import path and the runtime has no alias, so the new image cannot read
+any old artifact until it is converted. This is an explicit two-image procedure (P9 owns the real run; P6 only proves
+it on `tests/fixtures/ml_pre_move/`). **Stop workers, training, the scheduler and every cache writer first**, keep the
+old image and the old `storage_uri` values for rollback, and use the same pinned numerical libraries
+(numpy/pandas/scikit-learn/scipy/lightgbm/xgboost/joblib) in both images — `stage` refuses a version difference.
+
+1. **Inventory (read-only).** Write `INVENTORY.json` listing *every* `analytics.ml_model_artifact` row, active **and**
+   inactive: id, algorithm id/name, `model_kind`, role/dimension ids, version, feature_version, training cutoff,
+   `is_active`, metrics, feature importance, local `file://` `storage_uri`, SHA256 + length, the expected old class and
+   the verification frames (aligned main/coarse/baseline matrices, standings matrix, shift frame — taken from real data,
+   with NaN and zero-playtime rows). An unsupported scheme, class or state, a missing file or a digest mismatch blocks
+   the whole batch; nothing is skipped.
+2. **Export in the retained OLD image** (read-only model volume; run from its service root):
+   `python scripts/convert_discipline_artifacts.py export --inventory INVENTORY.json --model-root OLD_MODEL_ROOT --output BUNDLE_DIR --old-image <digest>`.
+   Digests are proven before any parsing; only the four legacy globals may resolve; the receipt records the old
+   predictions of every estimator and wrapper.
+3. **Stage in the NEW image:**
+   `python scripts/convert_discipline_artifacts.py stage --bundle BUNDLE_DIR --output NEW_MODEL_ROOT --new-image <digest>`.
+   Writes `NEW_MODEL_ROOT/discipline06/<artifact-id>/<old-sha256>.joblib` (never over an existing file), reopens each
+   with the ordinary `joblib.load` and requires identical state and bit-identical predictions. New checksums differ
+   from the originals by design and are recorded. Any failure leaves the registry and the originals untouched
+   (`stage-failure.json` lists the staged files); retrying reuses verified outputs.
+4. **Review `BUNDLE_DIR/receipt.json`, then apply:**
+   `python scripts/convert_discipline_artifacts.py apply --receipt BUNDLE_DIR/receipt.json`.
+   One transaction locks the rows in id order, requires every registry field and the current old URI to match the
+   export, and updates **only** `storage_uri`. A mixed or unknown URI state blocks; an all-new state is an idempotent
+   success.
+5. **Rollback:** `... rollback --receipt BUNDLE_DIR/receipt.json` restores the original URI set (needs the old image
+   again to read the old bytes). Originals and converted files are never deleted.
+
+P9 gate: the real inventory must show no unsupported class/state, every referenced artifact (including historical and
+duplicate-URI rows) in the receipt, and a rehearsed apply + rollback before the new image serves traffic.
 ```

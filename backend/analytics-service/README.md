@@ -132,6 +132,19 @@ frames and the predictions of small fitted fixture estimators is
 `tests/fixtures/ml_pre_move/`; it was captured once under the pre-move code and is never
 regenerated.
 
+### Artifact class move: explicit two-image conversion
+
+`PerformanceModelV2`, `_ConstantClassifier`, `WinProbabilityModel` and `ShiftModelV2` moved into
+`shared.disciplines.overwatch.analytics.models.*`. The runtime keeps **no** old-path alias, so every
+serialized artifact (active **and** historical) is converted in a maintenance window by
+`scripts/convert_discipline_artifacts.py` (`export` → `stage` → `apply`, plus `rollback`); see
+`docs/runbook-shift-recompute.md` for the steps. Nothing is retrained or refit; originals and
+their SHA256 are never modified. The tool is covered by `tests/test_artifact_discipline_conversion.py`
+against the pre-move pickles in `tests/fixtures/ml_pre_move/`. A real deployment inventory,
+export, stage and apply belong to P9 (retained old image, same pinned numerical libraries,
+workers/training/cache writers stopped); an artifact of an unsupported class or state blocks the
+release until an explicit conversion case is implemented and reviewed.
+
 Migrations are central — there is one Alembic project at `backend/migrations/` and this
 service ships none. Entity diagrams and column-level detail:
 [`../../docs/database_erd.md`](../../docs/database_erd.md#analytics--analytics).
