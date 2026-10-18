@@ -135,14 +135,24 @@ async def seed_ingest_case(
     workspace_slug: str,
     discipline: str = "overwatch",
     players_per_team: int = 3,
+    workspace_id: int | None = None,
 ) -> IngestCase:
-    """Workspace + vocabulary + tournament + encounter with ``teams`` seats, rosters and one planned game."""
+    """Workspace + vocabulary + tournament + encounter with ``teams`` seats, rosters and one planned game.
+
+    ``workspace_id`` seeds into a workspace that already exists (e.g. one the identity service created, with real
+    roles and API keys); ``workspace_slug`` then only labels the generated rows.
+    """
     spec = DISCIPLINES[discipline]
     provider = spec.identity_provider
     tag = hashlib.sha1(workspace_slug.encode()).hexdigest()[:8]  # noqa: S324 - a label
-    workspace = models.Workspace(slug=workspace_slug, name=f"Seed {workspace_slug}", disciplines_enabled=[discipline])
-    session.add(workspace)
-    await session.flush()
+    if workspace_id is None:
+        workspace = models.Workspace(
+            slug=workspace_slug, name=f"Seed {workspace_slug}", disciplines_enabled=[discipline]
+        )
+        session.add(workspace)
+        await session.flush()
+    else:
+        workspace = await session.get_one(models.Workspace, workspace_id)
 
     map_ = models.CatalogEntity(discipline=discipline, kind="map", slug=f"map-{tag}", name=f"Map {tag}", attrs={})
     hero = models.CatalogEntity(

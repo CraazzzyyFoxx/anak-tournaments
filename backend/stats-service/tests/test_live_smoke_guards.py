@@ -1,0 +1,122 @@
+"""The live smoke's safety guards, with no database, broker or process: they run in the normal suite.
+
+``LiveStack`` must refuse a non-loopback dependency or a non-test database before it creates or drops anything, and may
+only ever delete resources whose generated names match its own patterns.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from tests.live_smoke_support import BUCKET_NAME, DB_NAME, REQUIRED, VHOST_NAME, LiveStack, redact
+
+GOOD = {
+    "P5_SMOKE_RABBITMQ_URL": "amqp://u:p@127.0.0.1:55672",
+    "P5_SMOKE_RABBITMQ_MANAGEMENT_URL": "http://127.0.0.1:55673",
+    "P5_SMOKE_REDIS_URL": "redis://127.0.0.1:56379/0",
+    "P5_SMOKE_S3_ENDPOINT_URL": "http://127.0.0.1:59000",
+    "P5_SMOKE_S3_ACCESS_KEY": "access",
+    "P5_SMOKE_S3_SECRET_KEY": "secret",
+}
+
+
+@pytest.fixture
+def ephemeral_postgres(monkeypatch):
+    for name, value in {
+        "POSTGRES_HOST": "127.0.0.1",
+        "POSTGRES_PORT": "55432",
+        "POSTGRES_DB": "anak_test",
+        "POSTGRES_USER": "postgres",
+        "POSTGRES_PASSWORD": "postgres",
+    }.items():
+        monkeypatch.setenv(name, value)
+
+
+def configure(monkeypatch, **overrides: str | None) -> None:
+    for name, value in {**GOOD, **overrides}.items():
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
+
+
+def test_a_complete_loopback_configuration_owns_generated_names(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+    configure(monkeypatch)
+    stack = LiveStack(tmp_path)
+    assert DB_NAME.fullmatch(stack.db) and VHOST_NAME.fullmatch(stack.vhost) and BUCKET_NAME.fullmatch(stack.bucket)
+    assert stack.db != "anak_test"
+    assert stack._created == {"db": False, "vhost": False, "bucket": False, "redis": False}
+
+
+@pytest.mark.parametrize("name", REQUIRED)
+def test_every_dependency_variable_is_required(monkeypatch, tmp_path, ephemeral_postgres, name) -> None:
+    configure(monkeypatch, **{name: None})
+    with pytest.raises(pytest.fail.Exception, match=name):
+        LiveStack(tmp_path / "evidence")
+    assert not (tmp_path / "evidence").exists()
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("P5_SMOKE_RABBITMQ_URL", "amqp://u:p@rabbit.example.com:5672"),
+        ("P5_SMOKE_RABBITMQ_MANAGEMENT_URL", "http://10.0.0.7:15672"),
+        ("P5_SMOKE_REDIS_URL", "redis://cache.internal:6379/0"),
+        ("P5_SMOKE_S3_ENDPOINT_URL", "https://s3.example.com"),
+    ],
+)
+def test_a_non_loopback_dependency_is_refused_before_anything_is_created(
+    monkeypatch, tmp_path, ephemeral_postgres, name, value
+) -> None:
+    configure(monkeypatch, **{name: value})
+    with pytest.raises(pytest.fail.Exception, match="loopback"):
+        LiveStack(tmp_path / "evidence")
+    assert not (tmp_path / "evidence").exists()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [{"POSTGRES_DB": "anak_prod"}, {"POSTGRES_HOST": "db.example.com"}, {"POSTGRES_PORT": "5432"}],
+)
+def test_a_database_that_is_not_the_committed_test_server_is_refused(
+    monkeypatch, tmp_path, ephemeral_postgres, overrides
+) -> None:
+    configure(monkeypatch)
+    for name, value in overrides.items():
+        monkeypatch.setenv(name, value)
+    with pytest.raises(pytest.fail.Exception):
+        LiveStack(tmp_path / "evidence")
+    assert not (tmp_path / "evidence").exists()
+
+
+def test_teardown_refuses_names_it_did_not_generate(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+    configure(monkeypatch)
+    stack = LiveStack(tmp_path)
+    for attribute, drop in (("db", stack._drop_database), ("vhost", stack._delete_vhost)):
+        original = getattr(stack, attribute)
+        setattr(stack, attribute, "anak_test" if attribute == "db" else "/")
+        with pytest.raises(AssertionError):
+            drop()
+        setattr(stack, attribute, original)
+
+
+def test_redaction_removes_keys_tokens_and_credentials() -> None:
+    text = (
+        "key owt_sk_AbC123-xyz header Bearer abc.def broker amqp://user:hunter2@127.0.0.1:5672/v "
+        "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl plain secret-value"
+    )
+    out = redact(text, ["secret-value"])
+    for leaked in ("owt_sk_AbC123", "abc.def", "hunter2", "eyJhbGci", "secret-value"):
+        assert leaked not in out
+
+
+def test_the_release_guide_example_is_a_valid_document() -> None:
+    import re
+    from pathlib import Path
+
+    from shared.schemas.match_doc import parse_match_doc
+
+    guide = Path(__file__).resolve().parents[3] / "docs" / "releases" / "2026-10-15-multi-game-p5-ingest.md"
+    example = re.search(r"```json\n(\{.*?\n\})\n```", guide.read_text(encoding="utf-8"), re.S).group(1)
+    doc = parse_match_doc(example.encode())
+    assert doc.protocol == "owt.match/1" and {p.key for p in doc.participants} == {"p1", "p2", "p3", "p7"}

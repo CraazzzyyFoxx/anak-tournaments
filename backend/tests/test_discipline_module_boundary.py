@@ -61,3 +61,14 @@ def test_import_linter_covers_every_shared_runtime_module_and_package() -> None:
     }
     # Tests intentionally exercise concrete modules. shared.testing is runtime support and stays covered.
     assert covered == (modules | packages) - {"shared.disciplines", "shared.tests"}
+
+
+def test_registry_support_contract_names_real_modules() -> None:
+    """The module-agnostic contract must keep pointing at files that exist (a rename must not orphan it)."""
+    config = configparser.ConfigParser()
+    config.read(BACKEND / ".importlinter", encoding="utf-8")
+    section = config["importlinter:contract:registry-support-modules-are-module-agnostic"]
+    for module in section["source_modules"].split():
+        assert (BACKEND / pathlib.Path(*module.split(".")).with_suffix(".py")).is_file(), module
+    forbidden = {path.name for path in DISCIPLINES_DIR.iterdir() if path.is_dir() and (path / "__init__.py").is_file()}
+    assert {m.rsplit(".", 1)[1] for m in section["forbidden_modules"].split()} == forbidden

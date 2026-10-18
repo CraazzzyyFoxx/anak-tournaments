@@ -35,3 +35,17 @@ source_modules =
 forbidden_modules =
     shared.disciplines.overwatch
     shared.disciplines.lol
+
+[importlinter:contract:registry-support-modules-are-module-agnostic]
+name = shared.disciplines support modules never import a concrete discipline module
+type = forbidden
+# Only the registry assembly (shared/disciplines/__init__.py) loads the module packages (D83, D99). The generic spec,
+# ingest protocol and job registry that the stats worker's generic ingest code reads must stay module-agnostic.
+allow_indirect_imports = True
+source_modules =
+    shared.disciplines.spec
+    shared.disciplines.ingest
+    shared.disciplines.jobs
+forbidden_modules =
+    shared.disciplines.overwatch
+    shared.disciplines.lol
