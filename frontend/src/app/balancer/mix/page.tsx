@@ -18,6 +18,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { customGameKeys, customGameService } from "@/services/custom-game.service";
@@ -59,10 +61,18 @@ export default function BalancerPickupListPage() {
   // Pinned to the period, not recomputed per render: a `since` that drifted
   // with the clock would be a new query key every render.
   const since = useMemo(() => sinceFor(period, new Date()), [period]);
+  // The scoreboard is a per-game read when one game is chosen and the workspace-wide tally under `all`;
+  // an invalid or empty choice makes no game request.
+  const browsing = useBrowsingDiscipline({ allowsAll: true });
+  const resolved = browsing.resolved;
+  const statsDiscipline = resolved?.kind === "concrete" ? resolved.code : undefined;
+  const statsEnabled = resolved?.kind === "all" || resolved?.kind === "concrete";
   const statsQueries = useQueries({
     queries: visibleWorkspaces.map((workspace) => ({
-      queryKey: customGameKeys.stats(workspace.id, since),
-      queryFn: () => customGameService.stats(workspace.id, since),
+      queryKey: customGameKeys.stats(workspace.id, since, statsDiscipline),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        customGameService.stats(workspace.id, since, statsDiscipline, { signal }),
+      enabled: statsEnabled,
       staleTime: 60_000,
     })),
   });
@@ -129,6 +139,24 @@ export default function BalancerPickupListPage() {
           />
         </div>
         <div className="flex min-w-0 w-full flex-col gap-4">
+          {browsing.disciplines && resolved ? (
+            resolved.kind === "invalid" || resolved.kind === "empty" ? (
+              <DisciplineUnavailable
+                resolved={resolved}
+                disciplines={browsing.disciplines}
+                allowsAll
+                onSelect={browsing.select}
+              />
+            ) : (
+              <DisciplineSelector
+                disciplines={browsing.disciplines}
+                value={resolved.kind === "all" ? "all" : resolved.code}
+                allowsAll
+                onSelect={browsing.select}
+                className="w-full"
+              />
+            )
+          ) : null}
           {visibleWorkspaces.map((workspace, index) => (
             <div key={workspace.id} className="min-w-0 space-y-2">
               {all ? <h2 className="text-ui font-semibold">{workspace.name}</h2> : null}

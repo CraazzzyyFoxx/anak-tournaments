@@ -80,6 +80,7 @@ class UserProfileQueries:
 
         stmt = (
             sa.select(models.SocialAccount)
+            .options(selectinload(models.SocialAccount.user))
             .where(
                 models.SocialAccount.provider.in_(GAME_PROVIDERS),
                 sa.or_(*conditions),
@@ -108,17 +109,17 @@ class UserProfileQueries:
     ) -> models.User | None:
         """A user by battle tag, with ``entities`` eager-loaded.
 
-        Matches on the normalized handle (``-`` folded to ``#``) or on the in-game name
-        part before ``#``, case-insensitively.
+        Matches the canonical player name first, then the normalized handle of any game provider, or (Battle.net
+        only) the in-game name part before ``#``, case-insensitively.
         """
-        normalized_battle_tag = battle_tag.strip().replace("-", "#")
+        normalized_battle_tag = battle_tag.strip()
         if not normalized_battle_tag:
             return None
 
         battle_tag_lower = normalized_battle_tag.lower()
         exact_user_name_match = sa.func.lower(models.User.name) == battle_tag_lower
-        # Battlenet identity now lives in players.social_account; match the full
-        # normalized handle or the in-game name part (before ``#``), case-insensitive.
+        # Game identity lives in players.social_account for every game provider; each handle is compared in
+        # its own provider's normal form. The bare in-game name is a BattleTag-only convenience.
         bnet_name_part = sa.func.lower(sa.func.split_part(models.SocialAccount.username, "#", 1))
 
         query = (
@@ -128,21 +129,42 @@ class UserProfileQueries:
                 models.SocialAccount,
                 sa.and_(
                     models.User.id == models.SocialAccount.user_id,
-                    models.SocialAccount.provider == SocialProvider.BATTLENET,
+                    models.SocialAccount.provider.in_(GAME_PROVIDERS),
                 ),
             )
             .where(
                 sa.or_(
                     exact_user_name_match,
-                    models.SocialAccount.username_normalized
-                    == normalize_social_handle(SocialProvider.BATTLENET, normalized_battle_tag),
-                    bnet_name_part == battle_tag_lower,
+                    sa.or_(
+                        *(
+                            sa.and_(
+                                models.SocialAccount.provider == provider,
+                                models.SocialAccount.username_normalized
+                                == normalize_social_handle(provider, normalized_battle_tag),
+                            )
+                            for provider in GAME_PROVIDERS
+                        )
+                    ),
+                    sa.and_(
+                        models.SocialAccount.provider == SocialProvider.BATTLENET, bnet_name_part == battle_tag_lower
+                    ),
                 )
             )
             .order_by(
                 sa.case((exact_user_name_match, 0), else_=1),
                 models.User.id.asc(),
             )
+            .limit(1)
+        )
+        result = await session.execute(query)
+        return result.unique().scalar_one_or_none()
+
+    async def find_by_exact_name(self, session: AsyncSession, name: str, entities: list[str]) -> models.User | None:
+        """A user by canonical (unique) ``players.user.name``, case-insensitively."""
+        query = (
+            sa.select(models.User)
+            .options(*user_entities(entities))
+            .where(sa.func.lower(models.User.name) == name.strip().lower())
             .limit(1)
         )
         result = await session.execute(query)

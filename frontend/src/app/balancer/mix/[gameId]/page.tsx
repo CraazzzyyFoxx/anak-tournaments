@@ -427,7 +427,11 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
           if (!openRow) return;
           patchPlayer.mutate({ workspaceMemberId: openRow.workspace_member_id, patch });
           if (rankChange) {
-            setAuthorRanks.mutate({ workspaceMemberId: openRow.workspace_member_id, ...rankChange });
+            setAuthorRanks.mutate({
+              workspaceMemberId: openRow.workspace_member_id,
+              discipline: game!.discipline,
+              ...rankChange,
+            });
           }
         }}
         onRemove={() => {

@@ -258,6 +258,7 @@ export function WorkspacePlayersSidebar({
   const saveRank = useMutation({
     mutationFn: ({ memberId, role, rank }: { memberId: number; role: string; rank: number | null }) =>
       workspacePlayerService.setRanks(workspaceId, memberId, {
+        discipline,
         scope: "workspace",
         ranks: rank == null ? {} : { [role]: rank },
         clear: rank == null ? [role] : [],

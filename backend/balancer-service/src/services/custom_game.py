@@ -675,11 +675,11 @@ class CustomGameService:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mix not found")
 
         effective = source.discipline if source is not None else discipline
-        members = dict(await self.members(session, workspace_id, ids, discipline=effective))
         workspace = await self.workspaces.get(session, workspace_id)
         if workspace is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
         assert_discipline_enabled(workspace, effective)
+        members = dict(await self.members(session, workspace_id, ids, discipline=effective))
         if not DISCIPLINES[effective].native_ladder:
             await require_event_grid(
                 session,
@@ -2916,15 +2916,16 @@ class CustomGameService:
         return list(await self.mix_rounds.list_for_custom_game(session, game.id))
 
     async def mix_stats(
-        self, session: AsyncSession, *, workspace_id: int, discipline: str, since: datetime | None
+        self, session: AsyncSession, *, workspace_id: int, discipline: str | None, since: datetime | None
     ) -> list[dict[str, Any]]:
-        """Per-member win/loss record across every ``discipline`` mix this workspace ever ran.
+        """Per-member win/loss record across this workspace's mixes: one ``discipline``'s, or every game's.
 
         Workspace-wide on purpose: the scoreboard answers "how does this person
-        do in our mixes", which no single mix can say -- but one game at a time,
-        since a role tally and an identity only mean something within a discipline.
-        Names come from the *current* roster, so a member who has since left keeps
-        their record and loses only their label -- the seats still carry their member id.
+        do in our mixes", which no single mix can say. ``discipline=None`` keeps the
+        original cross-game tally (a member's identity then is their first handle in
+        any game's provider, in installed-game order); a code narrows seats, roles and
+        identity to that game. Names come from the *current* roster, so a member who has
+        since left keeps their record and loses only their label.
         """
         rows = await self.mix_rounds.seats(session, workspace_id=workspace_id, discipline=discipline, since=since)
         seats = [
@@ -2941,12 +2942,23 @@ class CustomGameService:
         if not stats:
             return []
 
-        members = await self.load_roster(
-            session,
-            workspace_id=workspace_id,
-            provider=DISCIPLINES[discipline].identity_provider,
-            member_ids=[entry.member_id for entry in stats],
+        providers = (
+            [DISCIPLINES[discipline].identity_provider]
+            if discipline is not None
+            else list(dict.fromkeys(spec.identity_provider for spec in DISCIPLINES.values()))
         )
+        members: dict[int, RosterMember] = {}
+        for provider in providers:
+            found = await self.load_roster(
+                session,
+                workspace_id=workspace_id,
+                provider=provider,
+                member_ids=[entry.member_id for entry in stats],
+            )
+            for member_id, member in found.items():
+                known = members.get(member_id)
+                if known is None or (known.identity is None and member.identity is not None):
+                    members[member_id] = member
         return [
             {
                 "workspace_member_id": entry.member_id,

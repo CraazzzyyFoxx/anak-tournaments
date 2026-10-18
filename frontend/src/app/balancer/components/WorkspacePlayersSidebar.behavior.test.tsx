@@ -352,6 +352,7 @@ describe("WorkspacePlayersSidebar", () => {
     await flushRankWrite();
 
     expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
+      discipline: "overwatch",
       scope: "workspace",
       ranks: { tank: 1200 },
       clear: [],
@@ -378,6 +379,7 @@ describe("WorkspacePlayersSidebar", () => {
     await click(buttons[0]);
 
     expect(setRanks).toHaveBeenLastCalledWith(WORKSPACE_ID, 1, {
+      discipline: "overwatch",
       scope: "workspace",
       ranks: {},
       clear: ["tank"],

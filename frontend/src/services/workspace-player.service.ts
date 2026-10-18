@@ -255,11 +255,12 @@ export const workspacePlayerService = {
   setRanks(
     workspaceId: number,
     memberId: number,
-    input: { scope?: RankScope; ranks: Record<string, number>; clear?: string[] },
+    input: { discipline: string; scope?: RankScope; ranks: Record<string, number>; clear?: string[] },
   ): Promise<{ ranks: Record<string, number> }> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/players/${memberId}/ranks`, {
       method: "PUT",
       body: {
+        discipline: input.discipline,
         scope: input.scope ?? "workspace",
         ranks: input.ranks,
         clear: input.clear ?? [],

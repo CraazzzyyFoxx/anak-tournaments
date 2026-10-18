@@ -154,11 +154,22 @@ def register(broker: Any, logger: Any) -> None:
     @broker.subscriber("rpc.app.users.by_name")
     async def _by_name(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            name = str(data.get("name", "")).replace("-", "#")
+            raw = str(data.get("name", ""))
             entities = c.q(data, "entities") or []
-            if "#" in name:
-                return await user_service.get_by_battle_tag(session, name, entities)
-            return await user_service.get_by_discord(session, name, entities)
+            # A profile slug folds ``#`` to ``-``, but Riot names may carry hyphens of their own: try the
+            # suffix hyphen first, then every hyphen, before the plain (Discord / canonical) name.
+            candidates = [raw] if "#" in raw else []
+            if "#" not in raw and "-" in raw:
+                head, _, tail = raw.rpartition("-")
+                candidates += [f"{head}#{tail}", raw.replace("-", "#")]
+            for candidate in dict.fromkeys(candidates):
+                try:
+                    return await user_service.get_by_battle_tag(session, candidate, entities)
+                except HTTPException:
+                    continue
+            if "#" in raw:
+                return await user_service.get_by_battle_tag(session, raw, entities)
+            return await user_service.get_by_plain_name(session, raw, entities)
 
         return await c.envelope(logger, "users.by_name", op, session_factory=_SF)
 

@@ -35,6 +35,8 @@ export type PickupPlayerPatchInput = {
 
 export type PickupAuthorRanksInput = {
   workspaceMemberId: number;
+  /** The mix's own discipline, captured at submit: the book is written for that game, never the workspace default. */
+  discipline: string;
   /** Roles to write into this host's own book. */
   ranks: Record<string, number>;
   /** Roles to drop from it, falling back to the workspace rank. */
@@ -432,6 +434,7 @@ export function usePickupMix(
   const setAuthorRanks = useMutation({
     mutationFn: (input: PickupAuthorRanksInput) =>
       workspacePlayerService.setRanks(workspaceId, input.workspaceMemberId, {
+        discipline: input.discipline,
         scope: "author",
         ranks: input.ranks,
         clear: input.clear ?? [],

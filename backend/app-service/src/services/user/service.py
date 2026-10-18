@@ -280,6 +280,18 @@ class UserService:
             )
         return self.to_read(user, entities, visible_only=True)
 
+    async def get_by_plain_name(self, session: AsyncSession, name: str, entities: list[str]) -> schemas.UserRead:
+        """A slug without a game tag: a Discord handle, else the player's canonical name (400 when neither)."""
+        user = await self.profile.get_by_discord(session, name, entities)
+        if user is None:
+            user = await self.profile.find_by_exact_name(session, name, entities)
+        if not user:
+            raise errors.ApiHTTPException(
+                status_code=400,
+                detail=[errors.ApiExc(code="not_found", msg=f"User {name} not found.")],
+            )
+        return self.to_read(user, entities, visible_only=True)
+
     async def get_all(
         self, session: AsyncSession, params: pagination.PaginationSortSearchParams
     ) -> pagination.Paginated[schemas.UserRead]:
@@ -1026,9 +1038,17 @@ class UserService:
         )
 
     async def search_by_name(self, session: AsyncSession, name: str) -> list[schemas.UserSearch]:
-        """Game-handle autocomplete matches (any game identity provider) as ``UserSearch`` rows."""
-        users = await self.profile.search_by_name(session, name)
-        return [schemas.UserSearch(id=user.user_id, name=user.username) for user in users]
+        """Game-handle autocomplete matches (any game identity provider) as ``UserSearch`` rows.
+
+        ``name`` is the player's canonical, unique ``players.user.name`` -- what ``users.by_name`` resolves a
+        profile slug by -- not the matched account's handle, which another player's name could collide with.
+        Several matching accounts of one player collapse into one row.
+        """
+        accounts = await self.profile.search_by_name(session, name)
+        seen: dict[int, schemas.UserSearch] = {}
+        for account in accounts:
+            seen.setdefault(account.user_id, schemas.UserSearch(id=account.user_id, name=account.user.name))
+        return list(seen.values())
 
     async def get_read(self, session: AsyncSession, user_id: int, entities: list[str]) -> schemas.UserRead:
         """A user by ID as ``UserRead``, with ``entities`` eager-loaded."""

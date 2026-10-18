@@ -465,7 +465,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             discord_posts=discord_posts,
         )
     member_ids = [row.workspace_member_id for row in roster]
-    members = await custom_game_service.members(session, game.workspace_id, member_ids)
+    members = await custom_game_service.members(session, game.workspace_id, member_ids, discipline=game.discipline)
     roles_by_player = await custom_game_service.player_roles.roles_for_players(session, [row.id for row in roster])
     layer_rows = await custom_game_service.ranks.list_layer_rows(
         session,
@@ -1380,8 +1380,12 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace_id = _int(data, "workspace_id")
             since = _since(data)
-            discipline = await workspace_discipline(
-                session, workspace_id=workspace_id, requested=c.q1(data, "discipline")
+            raw = c.q1(data, "discipline")
+            # Absent or ``all`` is the workspace-wide scoreboard across every game; a code narrows to one.
+            discipline = (
+                None
+                if raw in (None, "", "all")
+                else await workspace_discipline(session, workspace_id=workspace_id, requested=raw)
             )
             members = await custom_game_service.mix_stats(
                 session, workspace_id=workspace_id, discipline=discipline, since=since
