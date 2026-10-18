@@ -213,7 +213,7 @@ class StandingsRunnerTests(IsolatedAsyncioTestCase):
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s")),
             ),
-            patch.object(runner, "load_artifact", lambda _uri: _StubModel()),
+            patch.object(runner, "load_artifact_or_none", lambda _uri: _StubModel()),
             patch.object(runner, "build_standings_forecast_frame", AsyncMock(return_value=forecast)),
             patch.object(runner, "tournament_module", AsyncMock(return_value=("overwatch", ow_exports))),
         )

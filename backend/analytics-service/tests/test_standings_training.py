@@ -147,7 +147,7 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s3://x")),
             ),
-            patch.object(match_quality_runner, "load_artifact", return_value=_Stub()),
+            patch.object(match_quality_runner, "load_artifact_or_none", return_value=_Stub()),
         ):
             p = await match_quality_runner._standings_win_probability(
                 self._session(), encounters, discipline="overwatch", exports=ow_exports
@@ -164,7 +164,7 @@ class MatchQualityWinProbabilityTests(IsolatedAsyncioTestCase):
                 "load_active_artifact",
                 AsyncMock(return_value=SimpleNamespace(storage_uri="s3://gone")),
             ),
-            patch.object(match_quality_runner, "load_artifact", side_effect=FileNotFoundError),
+            patch.object(match_quality_runner, "load_artifact_or_none", return_value=None),
         ):
             p = await match_quality_runner._standings_win_probability(
                 self._session(),
