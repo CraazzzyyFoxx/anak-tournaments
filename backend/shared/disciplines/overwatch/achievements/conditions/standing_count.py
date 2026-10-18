@@ -65,7 +65,9 @@ async def execute_standing_count(
         pos_fn(models.Standing.overall_position, position_value),
         standing_is_elimination(standing=models.Standing, stage=models.Stage),
         stage_is_completed(stage=models.Stage),
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         models.Player.is_substitution.is_(False),
     ]
     if is_league is not None:

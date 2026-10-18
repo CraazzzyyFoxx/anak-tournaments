@@ -63,7 +63,9 @@ async def execute_position(
 
     where_clauses = [
         op_fn(models.Standing.overall_position, value),
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         models.Player.is_substitution.is_(False),
         stage_is_completed(stage=models.Stage),
     ]
@@ -124,7 +126,9 @@ async def execute_record(
 
     where_clauses = [
         op_fn(column, value),
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         models.Player.is_substitution.is_(False),
         stage_is_completed(stage=models.Stage),
     ]

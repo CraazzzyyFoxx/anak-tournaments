@@ -16,6 +16,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(STATS_SERVICE_ROOT)):
 
 from shared.models.achievements.achievement import AchievementRule  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
+from src import schemas  # noqa: E402
 from src.services.achievement.import_export import (  # noqa: E402
     PortableAchievementRule,
     build_export_payload,
@@ -35,6 +36,7 @@ class ExportPayloadTests(TestCase):
             description_ru="RU",
             description_en="EN",
             image_url="http://cdn/assets/achievements/source-ws/alpha.webp",
+            discipline="overwatch",
             entity_id=3,
             category="overall",
             scope="global",
@@ -48,7 +50,9 @@ class ExportPayloadTests(TestCase):
 
         payload = build_export_payload(workspace, [rule])
 
-        self.assertEqual(1, payload["schema_version"])
+        self.assertEqual(2, payload["schema_version"])
+        self.assertEqual("overwatch", payload["rules"][0]["discipline"])
+        self.assertEqual(3, payload["rules"][0]["entity_id"])
         self.assertEqual({"id", "slug", "name"}, set(payload["source_workspace"]))
         self.assertEqual(
             {
@@ -57,7 +61,8 @@ class ExportPayloadTests(TestCase):
                 "description_ru",
                 "description_en",
                 "image_url",
-                "hero_id",
+                "discipline",
+                "entity_id",
                 "category",
                 "scope",
                 "grain",
@@ -138,14 +143,15 @@ class CopyImageTests(IsolatedAsyncioTestCase):
 
 class ImportRulesTests(IsolatedAsyncioTestCase):
     async def test_import_portable_rules_raises_on_validation_errors(self) -> None:
-        target_workspace = Workspace(id=10, slug="target", name="Target")
+        target_workspace = Workspace(id=10, slug="target", name="Target", disciplines_enabled=["overwatch"])
         payload = PortableAchievementRule(
             slug="broken",
             name="Broken",
             description_ru="RU",
             description_en="EN",
             image_url=None,
-            hero_id=None,
+            discipline="overwatch",
+            entity_id=None,
             category="overall",
             scope="global",
             grain="user",
@@ -170,3 +176,69 @@ class ImportRulesTests(IsolatedAsyncioTestCase):
                 )
 
         self.assertEqual([{"slug": "broken", "errors": ["invalid rule"]}], ctx.exception.args[0])
+
+
+def _portable(**overrides: object) -> dict:
+    return {
+        "slug": "alpha",
+        "name": "Alpha",
+        "description_ru": "RU",
+        "description_en": "EN",
+        "discipline": "overwatch",
+        "category": "overall",
+        "scope": "global",
+        "grain": "user",
+        "condition_tree": {},
+        **overrides,
+    }
+
+
+class WireFormatTests(TestCase):
+    """Portable v2 only; the retired v1 shape fails explicitly on every request shape that can carry it."""
+
+    def test_v2_envelope_round_trips_discipline_and_entity(self) -> None:
+        envelope = schemas.AchievementRuleExportEnvelope.model_validate(
+            {"schema_version": 2, "exported_at": "2026-10-18T00:00:00Z", "rules": [_portable(entity_id=3)]}
+        )
+        self.assertEqual(("overwatch", 3), (envelope.rules[0].discipline, envelope.rules[0].entity_id))
+
+    def test_v1_and_unknown_versions_are_explicit_errors(self) -> None:
+        for version in (1, 3, "2"):
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, "unsupported schema_version"):
+                schemas.AchievementRuleExportEnvelope.model_validate(
+                    {"schema_version": version, "exported_at": "2026-10-18T00:00:00Z", "rules": []}
+                )
+        with self.assertRaises(ValueError):  # the version is required, never defaulted
+            schemas.AchievementRuleExportEnvelope.model_validate({"exported_at": "2026-10-18T00:00:00Z", "rules": []})
+
+    def test_hero_id_is_rejected_on_every_rule_request_shape(self) -> None:
+        body = _portable(hero_id=3)
+        for model in (schemas.AchievementRulePortable, schemas.AchievementRuleCreate):
+            with self.subTest(model=model.__name__), self.assertRaisesRegex(ValueError, "hero_id is no longer"):
+                model.model_validate(body)
+        with self.assertRaisesRegex(ValueError, "hero_id is no longer"):
+            schemas.AchievementRuleUpdate.model_validate({"hero_id": 3})
+        with self.assertRaisesRegex(ValueError, "hero_id is no longer"):
+            schemas.AchievementRuleExportEnvelope.model_validate(
+                {"schema_version": 2, "exported_at": "2026-10-18T00:00:00Z", "rules": [body]}
+            )
+
+    def test_discipline_is_required_on_create_and_never_updatable(self) -> None:
+        body = _portable()
+        del body["discipline"]
+        with self.assertRaises(ValueError):
+            schemas.AchievementRuleCreate.model_validate(body)
+        with self.assertRaisesRegex(ValueError, "discipline is immutable"):
+            schemas.AchievementRuleUpdate.model_validate({"discipline": "lol"})
+        with self.assertRaises(ValueError):  # an extra field is not silently ignored either
+            schemas.AchievementRuleUpdate.model_validate({"unexpected": 1})
+
+    def test_update_distinguishes_omitted_null_and_empty(self) -> None:
+        omitted = schemas.AchievementRuleUpdate.model_validate({"name": "x"}).model_dump(exclude_unset=True)
+        cleared = schemas.AchievementRuleUpdate.model_validate({"entity_id": None, "condition_tree": {}}).model_dump(
+            exclude_unset=True
+        )
+        self.assertEqual({"name": "x"}, omitted)
+        self.assertEqual({"entity_id": None, "condition_tree": {}}, cleared)
+        with self.assertRaisesRegex(ValueError, "cannot be null"):
+            schemas.AchievementRuleUpdate.model_validate({"condition_tree": None})

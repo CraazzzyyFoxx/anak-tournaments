@@ -64,7 +64,10 @@ async def execute_tournament_winrate(
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             models.Player.is_substitution.is_(False),
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Encounter.status == EncounterStatus.COMPLETED,
         )
         .group_by(models.WorkspaceMember.player_id, models.Player.tournament_id)

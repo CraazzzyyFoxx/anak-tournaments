@@ -42,7 +42,7 @@ class RuleListFilterTests(IsolatedAsyncioTestCase):
     async def _sql(self, **overrides: Any) -> str:
         session = _FakeSession()
         params = schemas.AchievementRuleListParams.from_query_params(
-            schemas.AchievementRuleListQueryParams(page=1, per_page=15, **overrides)
+            schemas.AchievementRuleListQueryParams(page=1, per_page=15, **{"discipline": "overwatch", **overrides})
         )
         await achievement_rule_service.list_rules(session, workspace_id=3, params=params)
         self.assertEqual(len(session.statements), 2)
@@ -66,3 +66,12 @@ class RuleListFilterTests(IsolatedAsyncioTestCase):
     async def test_page_applies_limit(self) -> None:
         sql = await self._sql()
         self.assertIn("limit", sql)
+
+    async def test_discipline_filters_both_the_page_and_the_count(self) -> None:
+        sql = await self._sql(discipline="lol")
+        self.assertEqual(sql.count("achievements.rule.discipline = 'lol'"), 2)
+        self.assertNotIn("'overwatch'", sql)
+
+    async def test_discipline_is_required(self) -> None:
+        with self.assertRaises(ValueError):
+            schemas.AchievementRuleListQueryParams(page=1, per_page=15)

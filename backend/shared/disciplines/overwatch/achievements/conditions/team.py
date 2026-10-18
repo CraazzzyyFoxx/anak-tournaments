@@ -186,7 +186,10 @@ async def execute_team_players_match(
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
             *sql_filters,
         )
@@ -205,7 +208,10 @@ async def execute_team_players_match(
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
         )
         .group_by(models.Player.team_id, models.Player.tournament_id)
@@ -284,7 +290,10 @@ async def execute_team_players_match(
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
         )
     )
@@ -357,7 +366,10 @@ async def execute_captain_property(
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             models.Team.captain_id == models.WorkspaceMember.player_id,
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
             *sql_filters,
         )

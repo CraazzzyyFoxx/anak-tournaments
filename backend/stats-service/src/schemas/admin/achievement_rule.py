@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.core import pagination
 
@@ -44,7 +44,8 @@ class AchievementRuleRead(BaseModel):
     description_ru: str
     description_en: str
     image_url: str | None
-    hero_id: int | None = Field(validation_alias=AliasChoices("entity_id", "hero_id"))
+    discipline: str
+    entity_id: int | None
     category: str
     scope: str
     grain: str
@@ -57,13 +58,27 @@ class AchievementRuleRead(BaseModel):
     updated_at: datetime | None
 
 
-class AchievementRuleCreate(BaseModel):
+class _RuleWire(BaseModel):
+    """A rule on a request: strict, and the retired ``hero_id`` is an explicit error, never an alias or a drop."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_hero_id(cls, data: typing.Any) -> typing.Any:
+        if isinstance(data, dict) and "hero_id" in data:
+            raise ValueError("hero_id is no longer supported; send entity_id (rule format v2)")
+        return data
+
+
+class AchievementRuleCreate(_RuleWire):
     slug: str
     name: str
     description_ru: str
     description_en: str
     image_url: str | None = None
-    hero_id: int | None = None
+    discipline: str
+    entity_id: int | None = None
     category: str
     scope: str
     grain: str
@@ -74,13 +89,31 @@ class AchievementRuleCreate(BaseModel):
     min_tournament_id: int | None = None
 
 
-class AchievementRuleUpdate(BaseModel):
+_NOT_NULLABLE_ON_UPDATE = (
+    "slug",
+    "name",
+    "description_ru",
+    "description_en",
+    "category",
+    "scope",
+    "grain",
+    "condition_tree",
+    "depends_on",
+    "enabled",
+    "rule_version",
+)
+
+
+class AchievementRuleUpdate(_RuleWire):
+    """A partial update. Omitted means unchanged; explicit ``null`` is only meaningful for the nullable columns
+    (``image_url``, ``entity_id``, ``min_tournament_id``) and an explicit ``{}`` tree is a real, empty tree."""
+
     slug: str | None = None
     name: str | None = None
     description_ru: str | None = None
     description_en: str | None = None
     image_url: str | None = None
-    hero_id: int | None = None
+    entity_id: int | None = None
     category: str | None = None
     scope: str | None = None
     grain: str | None = None
@@ -90,14 +123,25 @@ class AchievementRuleUpdate(BaseModel):
     rule_version: int | None = None
     min_tournament_id: int | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_immutable_and_null(cls, data: typing.Any) -> typing.Any:
+        if isinstance(data, dict):
+            if "discipline" in data:
+                raise ValueError("discipline is immutable; create a new rule in the other discipline")
+            if nulls := [name for name in _NOT_NULLABLE_ON_UPDATE if name in data and data[name] is None]:
+                raise ValueError(f"{', '.join(nulls)} cannot be null")
+        return data
 
-class AchievementRulePortable(BaseModel):
+
+class AchievementRulePortable(_RuleWire):
     slug: str
     name: str
     description_ru: str
     description_en: str
     image_url: str | None = None
-    hero_id: int | None = None
+    discipline: str
+    entity_id: int | None = None
     category: str
     scope: str
     grain: str
@@ -138,10 +182,20 @@ class AchievementRuleExportWorkspace(BaseModel):
 
 
 class AchievementRuleExportEnvelope(BaseModel):
-    schema_version: int = 1
+    #: Portable format v2 (``discipline`` + ``entity_id``). v1 and its ``hero_id`` are refused, never converted.
+    schema_version: typing.Literal[2]
     exported_at: datetime
     source_workspace: AchievementRuleExportWorkspace | None = None
     rules: list[AchievementRulePortable]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _only_v2(cls, value: typing.Any) -> typing.Any:
+        if value != 2:
+            raise ValueError(
+                f"unsupported schema_version {value!r}: only 2 is accepted; re-export from a current build"
+            )
+        return value
 
 
 class AchievementImportWarning(BaseModel):
@@ -172,6 +226,7 @@ class AchievementLibraryRuleRead(BaseModel):
 
 class AchievementLibraryImportRequest(BaseModel):
     source_workspace_id: int
+    discipline: str
     slugs: list[str] = Field(default_factory=list, min_length=1)
 
 
@@ -181,6 +236,7 @@ _RULE_SORT = typing.Literal["id", "name", "slug", "category", "enabled", "scope"
 class AchievementRuleListQueryParams(pagination.PaginationSortQueryParams[_RULE_SORT]):
     per_page: int = Field(default=50, ge=-1, le=500)
     sort: _RULE_SORT = "category"
+    discipline: str
     search: str | None = None
     category: str | None = None
     enabled: bool | None = None
@@ -189,12 +245,14 @@ class AchievementRuleListQueryParams(pagination.PaginationSortQueryParams[_RULE_
 @dataclass
 class AchievementRuleListParams(pagination.PaginationSortParams):
     per_page: int = 50
+    discipline: str = field(kw_only=True)
     search: str | None = None
     category: str | None = None
     enabled: bool | None = None
 
 
 class ConditionTreeValidateRequest(BaseModel):
+    discipline: str
     condition_tree: dict
 
 
@@ -231,6 +289,7 @@ class HardResetResultRead(BaseModel):
 
 
 class EvaluateRequest(BaseModel):
+    discipline: str
     tournament_id: int | None = None
     rule_ids: list[int] | None = None
 

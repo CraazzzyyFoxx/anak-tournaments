@@ -78,11 +78,11 @@ var Routes = []edge.RouteSpec{
 // the workspace "achievement.<action>" permission is enforced in each handler.
 var AchievementAdminRoutes = []edge.RouteSpec{
 	// --- rules: literal segments first ---
-	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/condition-types", Queue: "rpc.stats.ach.condition_types", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/condition-types", Queue: "rpc.stats.ach.condition_types", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/validate", Queue: "rpc.stats.ach.validate", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/seed", Queue: "rpc.stats.ach.seed", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/reset", Queue: "rpc.stats.ach.reset", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/export", Queue: "rpc.stats.ach.export", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/seed", Queue: "rpc.stats.ach.seed", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/reset", Queue: "rpc.stats.ach.reset", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/export", Queue: "rpc.stats.ach.export", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/import", Queue: "rpc.stats.ach.import", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/runs", Queue: "rpc.stats.ach.runs", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules/evaluate", Queue: "rpc.stats.ach.evaluate", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
@@ -97,11 +97,11 @@ var AchievementAdminRoutes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules", Queue: "rpc.stats.ach.list", Path: []string{"workspace_id"}, AllQuery: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/rules", Queue: "rpc.stats.ach.create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	// --- library ---
-	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/library/workspaces", Queue: "rpc.stats.ach.lib_workspaces", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/library", Queue: "rpc.stats.ach.lib_list", Path: []string{"workspace_id"}, Query: []string{"source_workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/library/workspaces", Queue: "rpc.stats.ach.lib_workspaces", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/library", Queue: "rpc.stats.ach.lib_list", Path: []string{"workspace_id"}, Query: []string{"source_workspace_id", "discipline"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/library/import", Queue: "rpc.stats.ach.lib_import", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// --- overrides ---
-	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/overrides", Queue: "rpc.stats.ach.overrides_list", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/overrides", Queue: "rpc.stats.ach.overrides_list", Path: []string{"workspace_id"}, Query: []string{"discipline"}, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/overrides", Queue: "rpc.stats.ach.override_create", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired, Success: 201},
 	{Method: "DELETE", Pattern: "/api/v1/admin/ws/{workspace_id}/achievements/overrides/{override_id}", Queue: "rpc.stats.ach.override_delete", Path: []string{"workspace_id", "override_id"}, Auth: edge.AuthRequired, Success: 204},
 }

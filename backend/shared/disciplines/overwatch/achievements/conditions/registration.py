@@ -83,7 +83,10 @@ async def execute_registration_timing(
         .where(
             models.BalancerRegistration.deleted_at.is_(None),
             stamp_column.is_not(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
         )
     )
     if context.tournament:
@@ -135,7 +138,10 @@ async def execute_registration_flag(
         .where(
             models.BalancerRegistration.deleted_at.is_(None),
             _FLAGS[flag] == value,
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
         )
     )
     if context.tournament:

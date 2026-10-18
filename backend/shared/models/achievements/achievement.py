@@ -126,12 +126,9 @@ class AchievementRule(db.TimeStampIntegerMixin):
     description_ru: Mapped[str] = mapped_column(String())
     description_en: Mapped[str] = mapped_column(String())
     image_url: Mapped[str | None] = mapped_column(String(), nullable=True)
-    #: Which game the rule is about (D96); the entity it shows belongs to that game.
+    #: Which game the rule is about (D96); the entity it shows belongs to that game. No default: every writer names it.
     discipline: Mapped[str] = mapped_column(
-        String(32),
-        ForeignKey("catalog.discipline.code", name="fk_rule_discipline"),
-        default="overwatch",
-        server_default="overwatch",
+        String(32), ForeignKey("catalog.discipline.code", name="fk_rule_discipline")
     )
     entity_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     entity_kind: Mapped[str] = mapped_column(String(16), default="character", server_default="character")

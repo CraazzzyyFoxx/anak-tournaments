@@ -102,6 +102,7 @@ async def execute_hero_kd_best(
 
     cache_key = (
         "hero_kd_best",
+        context.discipline,
         context.workspace_id,
         context.tournament.id if context.tournament else None,
         min_time,

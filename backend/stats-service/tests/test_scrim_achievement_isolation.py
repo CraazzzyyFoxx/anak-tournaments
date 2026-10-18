@@ -56,6 +56,7 @@ runner = importlib.import_module("src.services.achievement.engine.runner")
 evaluator = importlib.import_module("shared.domain.achievements.evaluator")
 eval_context = importlib.import_module("shared.domain.achievements.context")
 achievement_catalog = importlib.import_module("shared.disciplines.overwatch.achievements.catalog")
+_grid_access = importlib.import_module("shared.services.division_grid.access")
 
 
 @compiles(JSONB, "sqlite")
@@ -144,6 +145,11 @@ SCRIM_HOME_CAPTAIN = 102
 SCRIM_AWAY_CAPTAIN = 103
 
 IS_CAPTAIN_RULE = {"type": "is_captain"}
+
+
+async def overwatch_grid(session):  # noqa: ANN001, ANN201
+    """The workspace's Overwatch division grid, as the runner resolves it for an Overwatch rule."""
+    return await _grid_access.get_effective_division_grid(session, WORKSPACE_ID, discipline="overwatch")
 
 
 class _AsyncSavepoint:
@@ -638,6 +644,7 @@ class _Fixture:
             id=rule_id,
             workspace_id=WORKSPACE_ID,
             slug=slug,
+            discipline="overwatch",
             name=slug,
             description_ru=slug,
             description_en=slug,
@@ -660,7 +667,7 @@ class _EngineTestCase(IsolatedAsyncioTestCase):
         self.db.close()
 
     async def context(self, tournament_id: int | None):  # noqa: ANN201
-        grid = await runner._resolve_grid(self.db.shim, WORKSPACE_ID, None)
+        grid = await overwatch_grid(self.db.shim)
         tournament = self.db.session.get(models.Tournament, tournament_id) if tournament_id else None
         return eval_context.EvalContext(
             workspace_id=WORKSPACE_ID,

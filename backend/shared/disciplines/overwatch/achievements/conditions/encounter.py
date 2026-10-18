@@ -127,7 +127,9 @@ async def execute_encounter_score(
     ]
 
     base_where = [
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         models.Encounter.status == "COMPLETED",
         sa.or_(*score_conditions),
     ]
@@ -233,7 +235,10 @@ async def execute_encounter_revenge(
             d1.decided,
             d2.decided,
             d1.winner_team_id != d2.winner_team_id,
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
         )
     )

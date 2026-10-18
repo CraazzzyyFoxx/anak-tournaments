@@ -96,7 +96,10 @@ async def _execute_encounter_field(
         )
         .where(
             op_fn(column, value),
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             match.c.workspace_id == context.workspace_id,
             models.Player.is_substitution.is_(False),
         )

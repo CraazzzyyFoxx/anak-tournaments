@@ -28,7 +28,9 @@ def _encounter_base_query(context: EvalContext) -> sa.Select:
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
     ).where(
         models.Encounter.status == "COMPLETED",
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         # A route is only known once its bracket is over: mid-stage an
         # "upper only" team may still drop, a lost round may still change.
         stage_is_completed(stage=models.Stage),

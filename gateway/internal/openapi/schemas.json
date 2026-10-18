@@ -6014,7 +6014,7 @@
       "summary": "Validate token"
     },
     "rpc.stats.ach.calculate": {
-      "description": "Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine across a workspace (optionally seeding the built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "description": "Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine over one discipline of a workspace (the required `discipline` must be enabled for it; optionally seeding that discipline's built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "request": {
         "array": false,
         "ref": "stats.AchievementCalculateRequest"
@@ -6026,7 +6026,7 @@
       "summary": "Run achievement calculation"
     },
     "rpc.stats.ach.calculate_tournament": {
-      "description": "Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament \u2014 the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied \u2014 and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "description": "Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament \u2014 the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied \u2014 and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament and 422 when the required `discipline` is not the tournament's. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "request": {
         "array": false,
         "ref": "stats.AchievementCalculateRequest"
@@ -6038,7 +6038,16 @@
       "summary": "Calculate tournament achievements"
     },
     "rpc.stats.ach.condition_types": {
-      "description": "Permission: workspace `achievement.read`. Returns the catalog of available achievement condition-tree leaf types with their grain.",
+      "description": "Permission: workspace `achievement.read`. Returns the catalog of achievement condition-tree leaf types the required `discipline` (query) can evaluate, with their grain; a discipline with no conditions returns an empty list.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": true,
         "ref": "stats.ConditionTypeInfo"
@@ -6046,7 +6055,7 @@
       "summary": "List condition types"
     },
     "rpc.stats.ach.create": {
-      "description": "Permission: workspace `achievement.create`. Creates a workspace achievement rule after validating its condition tree and enforcing slug uniqueness.",
+      "description": "Permission: workspace `achievement.create`. Creates a workspace achievement rule in the explicit `discipline` after validating its condition tree, its `entity_id` character and enforcing slug uniqueness (409 when the slug belongs to a rule of any discipline). The discipline is immutable afterwards; the retired `hero_id` is rejected.",
       "request": {
         "array": false,
         "ref": "stats.AchievementRuleCreate"
@@ -6062,7 +6071,7 @@
       "summary": "Delete achievement rule"
     },
     "rpc.stats.ach.evaluate": {
-      "description": "Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for selected rules and/or a tournament.",
+      "description": "Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for the required `discipline`: explicit rule ids must be that discipline's rules, absent ids select its enabled rules, an empty list selects none; the optional tournament must belong to the workspace and discipline.",
       "request": {
         "array": false,
         "ref": "stats.EvaluateRequest"
@@ -6074,7 +6083,16 @@
       "summary": "Evaluate achievement rules"
     },
     "rpc.stats.ach.export": {
-      "description": "Permission: workspace `achievement.read`. Returns a portable JSON export payload of all of a workspace's achievement rules. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "description": "Permission: workspace `achievement.read`. Returns a portable v2 JSON export payload (`discipline` + `entity_id` per rule) of a workspace's achievement rules of the required `discipline`. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "summary": "Export achievement rules"
     },
     "rpc.stats.ach.get": {
@@ -6086,15 +6104,47 @@
       "summary": "Get achievement rule"
     },
     "rpc.stats.ach.import": {
-      "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable achievement rules into a workspace and returns the import result. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable v2 achievement rules (each names its discipline) into a workspace and returns the import result. The whole batch is validated before any write: v1/`hero_id`, an unknown or foreign character, a disabled discipline or an invalid tree reject it (400/422), a slug owned by a rule of another discipline is a 409. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "request": {
+        "array": false,
+        "ref": "stats.AchievementRuleExportEnvelope"
+      },
+      "response": {
+        "array": false,
+        "ref": "stats.AchievementRuleImportResult"
+      },
       "summary": "Import achievement rules"
     },
     "rpc.stats.ach.lib_import": {
-      "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules of the required `discipline` from a source workspace's library into the target workspace, warning on missing slugs; the same all-or-nothing validation as a portable import applies. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+      "request": {
+        "array": false,
+        "ref": "stats.AchievementLibraryImportRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "stats.AchievementRuleImportResult"
+      },
       "summary": "Import library rules"
     },
     "rpc.stats.ach.lib_list": {
-      "description": "Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the achievement rules of a source workspace available for library import.",
+      "description": "Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the source workspace's achievement rules of the required `discipline` available for library import.",
+      "query_params": [
+        {
+          "name": "source_workspace_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": true,
         "ref": "stats.AchievementLibraryRuleRead"
@@ -6102,7 +6152,16 @@
       "summary": "List library rules"
     },
     "rpc.stats.ach.lib_workspaces": {
-      "description": "Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules available to import as a library.",
+      "description": "Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules of the required `discipline` available to import as a library.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": true,
         "ref": "stats.AchievementLibraryWorkspaceRead"
@@ -6110,7 +6169,7 @@
       "summary": "List library workspaces"
     },
     "rpc.stats.ach.list": {
-      "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters.",
+      "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.",
       "query_params": [
         {
           "name": "page",
@@ -6182,6 +6241,14 @@
           }
         },
         {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "title": "Discipline",
+            "type": "string"
+          }
+        },
+        {
           "name": "search",
           "required": false,
           "schema": {
@@ -6237,7 +6304,7 @@
       "summary": "List achievement rules"
     },
     "rpc.stats.ach.override_create": {
-      "description": "Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor.",
+      "description": "Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor; a tournament or match it names must belong to the rule's workspace and discipline and agree with each other.",
       "request": {
         "array": false,
         "ref": "stats.OverrideCreate"
@@ -6253,7 +6320,16 @@
       "summary": "Delete achievement override"
     },
     "rpc.stats.ach.overrides_list": {
-      "description": "Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides for a workspace.",
+      "description": "Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides of the required `discipline` for a workspace.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": true,
         "ref": "stats.OverrideRead"
@@ -6261,7 +6337,20 @@
       "summary": "List achievement overrides"
     },
     "rpc.stats.ach.reset": {
-      "description": "Permission: workspace `achievement.update`. Hard-resets a workspace by reseeding rules and clearing evaluation results, returning the new run.",
+      "description": "Permission: workspace `achievement.update`. Hard-resets one discipline of a workspace by reseeding its rules and clearing that discipline's evaluation results, returning the new run. Other disciplines' rules, results and overrides are untouched.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "stats.HardResetResultRead"
+      },
       "summary": "Reset achievement rules"
     },
     "rpc.stats.ach.rule_users": {
@@ -6277,15 +6366,28 @@
       "summary": "List evaluation runs"
     },
     "rpc.stats.ach.seed": {
-      "description": "Permission: workspace `achievement.create`. Seeds the built-in achievement rules into a workspace and returns seeded/removed counts.",
+      "description": "Permission: workspace `achievement.create`. Seeds the required `discipline`'s built-in achievement rules into a workspace and returns seeded/removed counts; other disciplines' rules are never touched, a same-slug rule of another discipline is a 409 and a discipline with no catalog is a 422, both before any write.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "stats.SeedResultRead"
+      },
       "summary": "Seed achievement rules"
     },
     "rpc.stats.ach.test": {
-      "description": "Permission: workspace `achievement.update`. Dry-runs a rule's condition tree against an optional tournament and returns the qualifying count plus a sample of results.",
+      "description": "Permission: workspace `achievement.update`. Dry-runs a rule's condition tree (in the rule's own discipline) against an optional tournament of that discipline and returns the qualifying count plus a sample of results.",
       "summary": "Test achievement rule"
     },
     "rpc.stats.ach.update": {
-      "description": "Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation when enabled.",
+      "description": "Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation. Omitted fields are unchanged, `entity_id: null` clears the character link, an explicit `{}` tree is an empty tree; `discipline` and the retired `hero_id` are rejected.",
       "request": {
         "array": false,
         "ref": "stats.AchievementRuleUpdate"
@@ -6297,7 +6399,7 @@
       "summary": "Update achievement rule"
     },
     "rpc.stats.ach.validate": {
-      "description": "Permission: workspace `achievement.read`. Validates an achievement condition tree and returns errors plus the inferred grain.",
+      "description": "Permission: workspace `achievement.read`. Validates an achievement condition tree against the required `discipline` and returns errors plus the inferred grain.",
       "request": {
         "array": false,
         "ref": "stats.ConditionTreeValidateRequest"
@@ -31288,6 +31390,10 @@
     },
     "stats.AchievementCalculateRequest": {
       "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "ensure_created": {
           "default": true,
           "title": "Ensure Created",
@@ -31321,6 +31427,9 @@
           "title": "Workspace Id"
         }
       },
+      "required": [
+        "discipline"
+      ],
       "title": "AchievementCalculateRequest",
       "type": "object"
     },
@@ -31355,6 +31464,50 @@
         "message"
       ],
       "title": "AchievementCalculateResponse",
+      "type": "object"
+    },
+    "stats.AchievementImportWarning": {
+      "properties": {
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "message"
+      ],
+      "title": "AchievementImportWarning",
+      "type": "object"
+    },
+    "stats.AchievementLibraryImportRequest": {
+      "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "slugs": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Slugs",
+          "type": "array"
+        },
+        "source_workspace_id": {
+          "title": "Source Workspace Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_workspace_id",
+        "discipline"
+      ],
+      "title": "AchievementLibraryImportRequest",
       "type": "object"
     },
     "stats.AchievementLibraryRuleRead": {
@@ -31426,6 +31579,7 @@
       "type": "object"
     },
     "stats.AchievementRuleCreate": {
+      "additionalProperties": false,
       "properties": {
         "category": {
           "title": "Category",
@@ -31451,16 +31605,16 @@
           "title": "Description Ru",
           "type": "string"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "enabled": {
           "default": true,
           "title": "Enabled",
           "type": "boolean"
         },
-        "grain": {
-          "title": "Grain",
-          "type": "string"
-        },
-        "hero_id": {
+        "entity_id": {
           "anyOf": [
             {
               "type": "integer"
@@ -31470,7 +31624,11 @@
             }
           ],
           "default": null,
-          "title": "Hero Id"
+          "title": "Entity Id"
+        },
+        "grain": {
+          "title": "Grain",
+          "type": "string"
         },
         "image_url": {
           "anyOf": [
@@ -31519,12 +31677,100 @@
         "name",
         "description_ru",
         "description_en",
+        "discipline",
         "category",
         "scope",
         "grain",
         "condition_tree"
       ],
       "title": "AchievementRuleCreate",
+      "type": "object"
+    },
+    "stats.AchievementRuleExportEnvelope": {
+      "properties": {
+        "exported_at": {
+          "format": "date-time",
+          "title": "Exported At",
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/components/schemas/stats.AchievementRulePortable"
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 2,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_workspace": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/stats.AchievementRuleExportWorkspace"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "schema_version",
+        "exported_at",
+        "rules"
+      ],
+      "title": "AchievementRuleExportEnvelope",
+      "type": "object"
+    },
+    "stats.AchievementRuleExportWorkspace": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "slug",
+        "name"
+      ],
+      "title": "AchievementRuleExportWorkspace",
+      "type": "object"
+    },
+    "stats.AchievementRuleImportResult": {
+      "properties": {
+        "created": {
+          "title": "Created",
+          "type": "integer"
+        },
+        "updated": {
+          "title": "Updated",
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/stats.AchievementImportWarning"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "created",
+        "updated"
+      ],
+      "title": "AchievementRuleImportResult",
       "type": "object"
     },
     "stats.AchievementRuleListQueryParams": {
@@ -31540,6 +31786,10 @@
           ],
           "default": null,
           "title": "Category"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
         },
         "enabled": {
           "anyOf": [
@@ -31611,7 +31861,118 @@
           "type": "string"
         }
       },
+      "required": [
+        "discipline"
+      ],
       "title": "AchievementRuleListQueryParams",
+      "type": "object"
+    },
+    "stats.AchievementRulePortable": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "condition_tree": {
+          "additionalProperties": true,
+          "title": "Condition Tree",
+          "type": "object"
+        },
+        "depends_on": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Depends On",
+          "type": "array"
+        },
+        "description_en": {
+          "title": "Description En",
+          "type": "string"
+        },
+        "description_ru": {
+          "title": "Description Ru",
+          "type": "string"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "entity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Id"
+        },
+        "grain": {
+          "title": "Grain",
+          "type": "string"
+        },
+        "image_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Url"
+        },
+        "min_tournament_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Tournament Id"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "rule_version": {
+          "default": 1,
+          "title": "Rule Version",
+          "type": "integer"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "name",
+        "description_ru",
+        "description_en",
+        "discipline",
+        "category",
+        "scope",
+        "grain",
+        "condition_tree"
+      ],
+      "title": "AchievementRulePortable",
       "type": "object"
     },
     "stats.AchievementRuleRead": {
@@ -31645,15 +32006,15 @@
           "title": "Description Ru",
           "type": "string"
         },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "enabled": {
           "title": "Enabled",
           "type": "boolean"
         },
-        "grain": {
-          "title": "Grain",
-          "type": "string"
-        },
-        "hero_id": {
+        "entity_id": {
           "anyOf": [
             {
               "type": "integer"
@@ -31662,7 +32023,11 @@
               "type": "null"
             }
           ],
-          "title": "Hero Id"
+          "title": "Entity Id"
+        },
+        "grain": {
+          "title": "Grain",
+          "type": "string"
         },
         "id": {
           "title": "Id",
@@ -31731,7 +32096,8 @@
         "description_ru",
         "description_en",
         "image_url",
-        "hero_id",
+        "discipline",
+        "entity_id",
         "category",
         "scope",
         "grain",
@@ -31747,6 +32113,8 @@
       "type": "object"
     },
     "stats.AchievementRuleUpdate": {
+      "additionalProperties": false,
+      "description": "A partial update. Omitted means unchanged; explicit ``null`` is only meaningful for the nullable columns\n(``image_url``, ``entity_id``, ``min_tournament_id``) and an explicit ``{}`` tree is a real, empty tree.",
       "properties": {
         "category": {
           "anyOf": [
@@ -31824,6 +32192,18 @@
           "default": null,
           "title": "Enabled"
         },
+        "entity_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity Id"
+        },
         "grain": {
           "anyOf": [
             {
@@ -31835,18 +32215,6 @@
           ],
           "default": null,
           "title": "Grain"
-        },
-        "hero_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Hero Id"
         },
         "image_url": {
           "anyOf": [
@@ -32110,9 +32478,14 @@
           "additionalProperties": true,
           "title": "Condition Tree",
           "type": "object"
+        },
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
         }
       },
       "required": [
+        "discipline",
         "condition_tree"
       ],
       "title": "ConditionTreeValidateRequest",
@@ -32402,6 +32775,10 @@
     },
     "stats.EvaluateRequest": {
       "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
         "rule_ids": {
           "anyOf": [
             {
@@ -32430,6 +32807,9 @@
           "title": "Tournament Id"
         }
       },
+      "required": [
+        "discipline"
+      ],
       "title": "EvaluateRequest",
       "type": "object"
     },
@@ -32640,6 +33020,33 @@
         "encounter_game_id"
       ],
       "title": "GameObservationRead",
+      "type": "object"
+    },
+    "stats.HardResetResultRead": {
+      "properties": {
+        "cleared_results": {
+          "title": "Cleared Results",
+          "type": "integer"
+        },
+        "removed": {
+          "title": "Removed",
+          "type": "integer"
+        },
+        "run": {
+          "$ref": "#/components/schemas/stats.EvaluationRunRead"
+        },
+        "seeded": {
+          "title": "Seeded",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seeded",
+        "removed",
+        "cleared_results",
+        "run"
+      ],
+      "title": "HardResetResultRead",
       "type": "object"
     },
     "stats.IngestBinding": {
@@ -34376,6 +34783,24 @@
         "role"
       ],
       "title": "RoleRef",
+      "type": "object"
+    },
+    "stats.SeedResultRead": {
+      "properties": {
+        "removed": {
+          "default": 0,
+          "title": "Removed",
+          "type": "integer"
+        },
+        "seeded": {
+          "title": "Seeded",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "seeded"
+      ],
+      "title": "SeedResultRead",
       "type": "object"
     },
     "stats.SettingRead": {

@@ -92,7 +92,10 @@ async def execute_captain_report_activity(
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
         .where(
             user_col.isnot(None),
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
         )
         .group_by(user_col, models.Encounter.tournament_id)
         .having(op_fn(count_expr, value))

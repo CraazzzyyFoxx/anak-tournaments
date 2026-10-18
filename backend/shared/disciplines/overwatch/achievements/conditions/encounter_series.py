@@ -57,7 +57,9 @@ async def execute_encounter_result(
     target_team_id = {"win": duel.winner_team_id, "loss": duel.loser_team_id}[params["outcome"]]
 
     where = [
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         models.Encounter.workspace_id == context.workspace_id,
         models.Encounter.discipline == "overwatch",
         models.WorkspaceMember.workspace_id == context.workspace_id,
@@ -159,7 +161,9 @@ async def execute_encounter_comeback(
         .join(models.Encounter, models.Encounter.id == match.c.encounter_id)
         .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
     ).where(
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         match.c.workspace_id == context.workspace_id,
         models.Encounter.status == "COMPLETED",
         duel.decided,
@@ -216,7 +220,10 @@ async def execute_encounter_comeback(
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.WorkspaceMember.workspace_id == context.workspace_id,
             models.Player.team_id.in_(winning_team_ids),
             models.Player.is_substitution.is_(False),

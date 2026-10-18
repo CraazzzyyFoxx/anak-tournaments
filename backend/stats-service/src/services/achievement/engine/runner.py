@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import sqlalchemy as sa
@@ -10,8 +11,11 @@ from loguru import logger
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.division_grid import DivisionGrid
 from shared.domain.achievements.context import EvalContext
 from shared.domain.achievements.evaluator import GrainMismatchError, evaluate
+from shared.domain.achievements.registry import get_specs
 from shared.domain.achievements.validation import GRAIN_ARITY, requires_normalized_divisions
 from shared.domain.workspace_tier import is_verified_or_trusted
 from shared.messaging.config import ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE
@@ -83,7 +87,8 @@ class AchievementEvaluationRunnerService:
             tournament_id: If set, only evaluate for this tournament.
             match_id: If set, only evaluate for this match.
             changed_tables: If set, only evaluate rules that depend on these tables.
-            rule_ids: If set, only evaluate these specific rules.
+            rule_ids: ``None`` selects every enabled rule of the trigger's discipline (every discipline for a
+                workspace-wide trigger); a list selects exactly those rules, and ``[]`` selects none.
         """
         deferred = trigger in _DEFERRABLE_TRIGGERS and not await self._may_run_inline(session, workspace_id)
         run = EvaluationRun(
@@ -157,6 +162,10 @@ class AchievementEvaluationRunnerService:
         rule_ids: list[int] | None,
     ) -> None:
         try:
+            # The selection is fixed now, from the trigger's owners and the rules that exist now: a seed, import or
+            # create that lands before the queued message is consumed cannot widen what the caller asked for.
+            trigger = await self._resolve_trigger(session, run.workspace_id, run.tournament_id, match_id)
+            rules = await _select_rules(session, run.workspace_id, trigger.discipline, rule_ids, changed_tables)
             await session.commit()
             await publish_message(
                 require_broker(),
@@ -166,7 +175,7 @@ class AchievementEvaluationRunnerService:
                     changed_tables=changed_tables or [],
                     run_id=run.id,
                     match_id=match_id,
-                    rule_ids=rule_ids,
+                    rule_ids=[rule.id for rule in rules],
                 ).model_dump(),
                 ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
                 logger=logger.bind(workspace_id=run.workspace_id, run_id=run.id),
@@ -178,6 +187,41 @@ class AchievementEvaluationRunnerService:
             logger.exception(f"Could not defer evaluation run {run.id}")
             raise
         logger.info(f"Evaluation run {run.id} deferred: workspace {run.workspace_id} is unverified")
+
+    async def _resolve_trigger(
+        self,
+        session: AsyncSession,
+        workspace_id: int,
+        tournament_id: int | None,
+        match_id: int | None,
+    ) -> _Trigger:
+        """Load the trigger's owners and verify they belong to ``workspace_id``, before any rule is selected.
+
+        A tournament (or a match) implies exactly one discipline, so a trigger that names one never selects another
+        game's rules; a trigger that names neither is workspace-wide. An owner that is missing or foreign is an error:
+        silently widening to the whole workspace would evaluate every game against one game's event.
+        """
+        tournament = None
+        discipline = None
+        if tournament_id is not None:
+            tournament = await self.tournaments_repo.get(session, tournament_id)
+            if tournament is None or tournament.workspace_id != workspace_id:
+                raise ValueError(f"tournament {tournament_id} does not belong to workspace {workspace_id}")
+            discipline = tournament.discipline
+        if match_id is not None:
+            match = await session.get(models.StatsMatch, match_id)
+            if match is None or match.workspace_id != workspace_id:
+                raise ValueError(f"match {match_id} does not belong to workspace {workspace_id}")
+            if discipline is not None and match.discipline != discipline:
+                raise ValueError(f"match {match_id} and tournament {tournament_id} belong to different disciplines")
+            if tournament_id is not None:
+                owner = await session.scalar(
+                    sa.select(models.Encounter.tournament_id).where(models.Encounter.id == match.encounter_id)
+                )
+                if owner != tournament_id:
+                    raise ValueError(f"match {match_id} is not part of tournament {tournament_id}")
+            discipline = match.discipline
+        return _Trigger(tournament=tournament, discipline=discipline)
 
     async def _execute_run(
         self,
@@ -198,14 +242,9 @@ class AchievementEvaluationRunnerService:
         tournament_id = run.tournament_id
 
         try:
-            rules = await _get_rules(session, workspace_id, rule_ids)
-
-            if changed_tables:
-                rules = _filter_by_depends_on(rules, set(changed_tables))
-
-            tournament = None
-            if tournament_id:
-                tournament = await self.tournaments_repo.get(session, tournament_id)
+            trigger = await self._resolve_trigger(session, workspace_id, tournament_id, match_id)
+            tournament = trigger.tournament
+            rules = await _select_rules(session, workspace_id, trigger.discipline, rule_ids, changed_tables)
 
             total_created = 0
             total_removed = 0
@@ -214,13 +253,10 @@ class AchievementEvaluationRunnerService:
             # rules with the identical sentence, and one entry per rule pushed
             # the real tail of the list past ``error_message``'s 1000 chars.
             failures: dict[str, list[str]] = {}
-            normalizer: DivisionGridNormalizer | None = None
-            normalizer_error: DivisionGridNormalizationError | None = None
-            grid = await _resolve_grid(session, workspace_id, tournament)
-            # ``user``-grain rules evaluate across the whole workspace even on a
-            # tournament-triggered run, so they resolve ranks against the
-            # workspace grid, not the triggering tournament's.
-            workspace_grid = grid if tournament is None else await _resolve_grid(session, workspace_id, None)
+            # One memo per discipline for the whole run: per-hero rules share one query each
+            # instead of one per rule (Sentry OWT-TOURNAMENTS-2BX / -2BZ), and rules of
+            # different games never share a grid, a normalizer or a cached result.
+            caches = _RunCaches(session, workspace_id)
 
             # One read per distinct persist slice for the whole run, instead of
             # one per rule inside its savepoint (Sentry OWT-TOURNAMENTS-2BW).
@@ -229,17 +265,14 @@ class AchievementEvaluationRunnerService:
                 for rule in rules
             }
             existing_results = await load_existing_results(session, persist_slices)
-            # One memo for the whole run: per-hero rules share one query each
-            # instead of one per rule (Sentry OWT-TOURNAMENTS-2BX / -2BZ).
-            leaf_cache: dict[tuple, object] = {}
 
             for rule in rules:
                 persist_slice = persist_slices[rule.id]
                 rule_existing = existing_results.get(rule.id, {})
                 # The trigger tournament narrows tournament/match-grain rules only.
-                # A ``user``-grain rule is evaluated workspace-wide: no tournament
-                # in its context, no ``min_tournament_id`` short-circuit, and the
-                # division normalizer whenever its tree needs one.
+                # A ``user``-grain rule is evaluated workspace-wide (within its
+                # discipline): no tournament in its context, no ``min_tournament_id``
+                # short-circuit, and the division normalizer whenever its tree needs one.
                 eval_tournament = None if AchievementGrain(rule.grain) is AchievementGrain.user else tournament
 
                 if not rule.enabled or not rule.condition_tree:
@@ -271,23 +304,28 @@ class AchievementEvaluationRunnerService:
                     rules_ok += 1
                     continue
 
+                if not get_specs(discipline=rule.discipline):
+                    # A game with no conditions can neither evaluate nor judge its rule: report it, and leave its
+                    # stored results alone instead of diffing them against an empty evaluation.
+                    logger.warning(f"Skipping rule '{rule.slug}': discipline {rule.discipline!r} has no conditions")
+                    failures.setdefault(f"discipline '{rule.discipline}' has no achievement conditions", []).append(
+                        rule.slug
+                    )
+                    continue
+
                 rule_needs_normalized_divisions = eval_tournament is None and requires_normalized_divisions(
                     rule.condition_tree, discipline=rule.discipline
                 )
-                if rule_needs_normalized_divisions and normalizer is None:
-                    if normalizer_error is None:
-                        try:
-                            normalizer = await build_workspace_division_grid_normalizer(
-                                session, workspace_id, discipline="overwatch"
-                            )
-                        except DivisionGridNormalizationError as exc:
-                            normalizer_error = exc
-                    if normalizer is None:
+                normalizer: DivisionGridNormalizer | None = None
+                if rule_needs_normalized_divisions:
+                    try:
+                        normalizer = await caches.normalizer(rule.discipline)
+                    except DivisionGridNormalizationError as exc:
                         # Incomplete division grid mappings block only the rules
                         # that read divisions across grid versions. Skip them
                         # (stored results untouched), report them on the run.
-                        logger.warning(f"Skipping rule '{rule.slug}': {normalizer_error}")
-                        failures.setdefault(str(normalizer_error), []).append(rule.slug)
+                        logger.warning(f"Skipping rule '{rule.slug}': {exc}")
+                        failures.setdefault(str(exc), []).append(rule.slug)
                         continue
 
                 try:
@@ -296,9 +334,9 @@ class AchievementEvaluationRunnerService:
                             workspace_id=workspace_id,
                             discipline=rule.discipline,
                             tournament=eval_tournament,
-                            grid=workspace_grid if eval_tournament is None else grid,
-                            normalizer=normalizer if rule_needs_normalized_divisions else None,
-                            leaf_cache=leaf_cache,
+                            grid=await caches.grid(rule.discipline, eval_tournament),
+                            normalizer=normalizer,
+                            leaf_cache=caches.leaf_cache(rule.discipline),
                         )
 
                         logger.info(f"Evaluating rule '{rule.slug}' (id={rule.id})")
@@ -423,41 +461,84 @@ async def _mark_run_failed(session: AsyncSession, run: EvaluationRun, exc: BaseE
         logger.warning(f"Could not persist failed status for evaluation run {run.id}: {bookkeeping_exc!r}")
 
 
-async def _get_rules(
+async def _select_rules(
     session: AsyncSession,
     workspace_id: int,
+    discipline: str | None,
     rule_ids: list[int] | None,
+    changed_tables: list[str] | None,
 ) -> list[AchievementRule]:
-    query = sa.select(AchievementRule).where(
-        AchievementRule.workspace_id == workspace_id,
-    )
-    if rule_ids:
-        # When specific rules requested, include disabled ones
-        # so the runner can clean up their results
-        query = query.where(AchievementRule.id.in_(rule_ids))
-    else:
-        # Bulk evaluation: only enabled rules
+    """The rules one run evaluates.
+
+    ``discipline`` is the trigger owner's game (``None`` only for a workspace-wide trigger, which spans every stored
+    rule discipline). ``rule_ids=None`` is the unrestricted selection (every *enabled* rule); ``[]`` is an empty
+    selection, never "all"; explicit ids may name disabled rules so the run can clean up their results.
+    """
+    if rule_ids is not None and not rule_ids:
+        return []
+    query = sa.select(AchievementRule).where(AchievementRule.workspace_id == workspace_id)
+    if discipline is not None:
+        query = query.where(AchievementRule.discipline == discipline)
+    if rule_ids is None:
         query = query.where(AchievementRule.enabled.is_(True))
-
-    result = await session.execute(query)
-    return list(result.scalars().all())
-
-
-def _filter_by_depends_on(
-    rules: list[AchievementRule],
-    changed_tables: set[str],
-) -> list[AchievementRule]:
-    return [r for r in rules if set(r.depends_on or []) & changed_tables]
+    else:
+        query = query.where(AchievementRule.id.in_(rule_ids))
+    rules = list((await session.execute(query.order_by(AchievementRule.id))).scalars())
+    if changed_tables:
+        rules = [r for r in rules if set(r.depends_on or []) & set(changed_tables)]
+    return rules
 
 
-async def _resolve_grid(
-    session: AsyncSession,
-    workspace_id: int,
-    tournament: models.Tournament | None,
-) -> object | None:
-    return await get_effective_division_grid(
-        session,
-        workspace_id,
-        tournament_id=tournament.id if tournament is not None else None,
-        discipline="overwatch" if tournament is None else tournament.discipline,
-    )
+@dataclass(frozen=True)
+class _Trigger:
+    """What a run's trigger rows own: the narrowing tournament and the one game it implies."""
+
+    tournament: models.Tournament | None
+    discipline: str | None
+
+
+class _RunCaches:
+    """Per-run memos, every one keyed by discipline (and the tournament scope where one applies).
+
+    A grid, a normalizer or a leaf result of one game is never handed to a rule of another, and a missing grid is
+    remembered as that discipline's failure instead of failing the rules of the others.
+    """
+
+    def __init__(self, session: AsyncSession, workspace_id: int) -> None:
+        self._session = session
+        self._workspace_id = workspace_id
+        self._leaf: dict[str, dict[tuple, object]] = {}
+        self._grids: dict[tuple[str, int | None], DivisionGrid | HTTPException] = {}
+        self._normalizers: dict[str, DivisionGridNormalizer | DivisionGridNormalizationError] = {}
+
+    def leaf_cache(self, discipline: str) -> dict[tuple, object]:
+        return self._leaf.setdefault(discipline, {})
+
+    async def grid(self, discipline: str, tournament: models.Tournament | None) -> DivisionGrid:
+        key = (discipline, tournament.id if tournament is not None else None)
+        if key not in self._grids:
+            try:
+                self._grids[key] = await get_effective_division_grid(
+                    self._session, self._workspace_id, tournament_id=key[1], discipline=discipline
+                )
+            except HTTPException as exc:
+                # ``division_grid_required``: the game has no ladder and no grid of its own. Remember it; a database
+                # error is not cached, it fails the rule that hit it.
+                self._grids[key] = exc
+        cached = self._grids[key]
+        if isinstance(cached, HTTPException):
+            raise cached
+        return cached
+
+    async def normalizer(self, discipline: str) -> DivisionGridNormalizer:
+        if discipline not in self._normalizers:
+            try:
+                self._normalizers[discipline] = await build_workspace_division_grid_normalizer(
+                    self._session, self._workspace_id, discipline=discipline
+                )
+            except DivisionGridNormalizationError as exc:
+                self._normalizers[discipline] = exc
+        cached = self._normalizers[discipline]
+        if isinstance(cached, DivisionGridNormalizationError):
+            raise cached
+        return cached

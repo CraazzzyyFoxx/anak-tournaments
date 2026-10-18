@@ -107,7 +107,7 @@ class _RunnerTestCase(IsolatedAsyncioTestCase):
         async def _publish(_broker, message, queue, **_kwargs):  # noqa: ANN001, ANN003, ANN202
             self.published.append((message, queue))
 
-        async def _get_rules(_session, _workspace_id, _rule_ids):  # noqa: ANN001, ANN202
+        async def _select_rules(_session, _workspace_id, _discipline, _rule_ids, _changed_tables):  # noqa: ANN001, ANN202
             return [_rule()]
 
         async def _evaluate(_session, _condition, _context):  # noqa: ANN001, ANN202
@@ -118,15 +118,15 @@ class _RunnerTestCase(IsolatedAsyncioTestCase):
             self.diffed.append(rule.slug)
             return SimpleNamespace(to_insert=[], to_delete=[])
 
-        async def _resolve_grid(_session, _workspace_id, _tournament):  # noqa: ANN001, ANN202
+        async def _grid(_session, _workspace_id, **_kwargs):  # noqa: ANN001, ANN003, ANN202
             return None
 
         for target, replacement in (
             ("publish_message", _publish),
-            ("_get_rules", _get_rules),
+            ("_select_rules", _select_rules),
             ("evaluate", _evaluate),
             ("diff_and_apply", _diff_and_apply),
-            ("_resolve_grid", _resolve_grid),
+            ("get_effective_division_grid", _grid),
             ("require_broker", lambda *_a, **_kw: object()),
         ):
             patcher = patch.object(runner, target, replacement)

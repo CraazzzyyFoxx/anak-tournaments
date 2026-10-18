@@ -7,6 +7,7 @@ __all__ = (
 
 
 class AchievementCalculateRequest(BaseModel):
+    discipline: str
     slugs: list[str] | None = None
     ensure_created: bool = True
     workspace_id: int | None = None

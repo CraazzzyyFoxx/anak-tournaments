@@ -59,7 +59,10 @@ async def execute_draft_pick(
         .join(models.Tournament, models.Tournament.id == models.DraftSession.tournament_id)
         .where(
             models.DraftPick.status == DraftPickStatus.COMPLETED,
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
         )
     )
     if context.tournament:
@@ -101,7 +104,12 @@ async def _captains(session: AsyncSession, context: EvalContext) -> ResultSet:
             models.WorkspaceMember.id == models.DraftTeam.captain_workspace_member_id,
         )
         .join(models.Tournament, models.Tournament.id == models.DraftSession.tournament_id)
-        .where(models.Tournament.workspace_id == context.workspace_id)
+        .where(
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            )
+        )
     )
     if context.tournament:
         query = query.where(models.DraftSession.tournament_id == context.tournament.id)

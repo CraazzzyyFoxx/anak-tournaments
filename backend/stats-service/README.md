@@ -233,6 +233,24 @@ can erase an admin decision; the two are merged only at read time, by
 `shared.services.achievement_effective` — grants union into the effective set, revokes filter out of
 it.
 
+**Every rule belongs to one discipline, and nothing writes or evaluates across that line.** The discipline is
+explicit on create, seed/reset, condition metadata, validation, manual evaluation, export/library requests and every
+portable rule (there is no default; `achievements.rule.discipline` has none since `achievement06`), is immutable once
+set, and must be enabled for the workspace. A rule's `entity_id` is a `character` of its own discipline; a missing,
+foreign or wrong-kind one is a 422, never a cleared link. `UNIQUE(workspace_id, slug)` stays the identity, so a slug
+held by another discipline's rule is a 409 that leaves that rule alone. Seeding needs the discipline's
+`achievement_catalog` (no hook: 422 before any deletion) and replaces, resets and clears results for that
+discipline only. Portable format v2 (`schema_version: 2`, `discipline`, `entity_id`) is the only accepted shape —
+v1 and `hero_id` are validation errors, not aliases — and a batch is validated whole before the first rule or image
+write.
+
+The runner resolves the trigger's owner (tournament and/or match, verified against the workspace) *before* selecting
+rules: a tournament or match trigger evaluates only its discipline's rules, a workspace-wide trigger partitions the
+stored rules by discipline, and each discipline gets its own grid, normalizer and leaf cache. `rule_ids=None` is
+the unrestricted selection (enabled rules), `[]` selects nothing, and a deferred run persists the concrete ids it
+resolved so a later seed or import cannot widen it. A rule whose discipline has no conditions, or no required grid,
+is reported on the run and its stored results are left untouched.
+
 ### Rank synchronisation
 
 Collection is bound to a linked `social_account` (a battlenet account owned by a player), never to a

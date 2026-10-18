@@ -48,7 +48,12 @@ async def execute_stage_completed(
             .label("number"),
         )
         .join(models.Tournament, models.Tournament.id == models.Stage.tournament_id)
-        .where(models.Tournament.workspace_id == context.workspace_id)
+        .where(
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            )
+        )
     )
     if context.tournament:
         numbered = numbered.where(models.Stage.tournament_id == context.tournament.id)
@@ -74,7 +79,10 @@ async def execute_stage_completed(
         .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
             sa.or_(models.Tournament.id.in_(completed_tournaments), stageless_finished),
         )

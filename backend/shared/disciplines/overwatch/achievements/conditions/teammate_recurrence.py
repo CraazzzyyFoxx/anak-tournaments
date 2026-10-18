@@ -63,7 +63,7 @@ async def execute_teammate_recurrence(
         .join(tournament, tournament.id == p1.tournament_id)
         .where(
             wm1.player_id != wm2.player_id,
-            tournament.workspace_id == context.workspace_id,
+            sa.and_(tournament.workspace_id == context.workspace_id, tournament.discipline == context.discipline),
         )
         .group_by(
             sa.func.least(wm1.player_id, wm2.player_id),

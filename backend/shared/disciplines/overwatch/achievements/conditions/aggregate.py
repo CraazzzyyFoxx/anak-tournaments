@@ -107,7 +107,10 @@ async def execute_global_winrate(
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             models.Player.is_substitution.is_(False),
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Tournament.discipline == "overwatch",
             models.Encounter.workspace_id == context.workspace_id,
             models.Encounter.discipline == "overwatch",
@@ -171,7 +174,10 @@ async def execute_distinct_count(
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .where(
                 models.Player.is_substitution.is_(False),
-                models.Tournament.workspace_id == context.workspace_id,
+                sa.and_(
+                    models.Tournament.workspace_id == context.workspace_id,
+                    models.Tournament.discipline == context.discipline,
+                ),
                 models.Tournament.discipline == "overwatch",
                 models.WorkspaceMember.workspace_id == context.workspace_id,
                 models.Player.role.isnot(None),

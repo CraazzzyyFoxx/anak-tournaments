@@ -105,24 +105,24 @@ DOCS: dict[str, dict] = {
     # ── achievement calculate ─────────────────────────────────────────────────
     "rpc.stats.ach.calculate": {
         "summary": "Run achievement calculation",
-        "description": "Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine across a workspace (optionally seeding the built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+        "description": "Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine over one discipline of a workspace (the required `discipline` must be enabled for it; optionally seeding that discipline's built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
     },
     "rpc.stats.ach.calculate_tournament": {
         "summary": "Calculate tournament achievements",
-        "description": "Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament — the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied — and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+        "description": "Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament — the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied — and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament and 422 when the required `discipline` is not the tournament's. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
     },
     # ── achievement rules admin (workspace-scoped) ────────────────────────────
     "rpc.stats.ach.condition_types": {
         "summary": "List condition types",
-        "description": "Permission: workspace `achievement.read`. Returns the catalog of available achievement condition-tree leaf types with their grain.",
+        "description": "Permission: workspace `achievement.read`. Returns the catalog of achievement condition-tree leaf types the required `discipline` (query) can evaluate, with their grain; a discipline with no conditions returns an empty list.",
     },
     "rpc.stats.ach.validate": {
         "summary": "Validate condition tree",
-        "description": "Permission: workspace `achievement.read`. Validates an achievement condition tree and returns errors plus the inferred grain.",
+        "description": "Permission: workspace `achievement.read`. Validates an achievement condition tree against the required `discipline` and returns errors plus the inferred grain.",
     },
     "rpc.stats.ach.list": {
         "summary": "List achievement rules",
-        "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters.",
+        "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules of the required `discipline` with search, category, and enabled filters.",
     },
     "rpc.stats.ach.get": {
         "summary": "Get achievement rule",
@@ -130,11 +130,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.ach.create": {
         "summary": "Create achievement rule",
-        "description": "Permission: workspace `achievement.create`. Creates a workspace achievement rule after validating its condition tree and enforcing slug uniqueness.",
+        "description": "Permission: workspace `achievement.create`. Creates a workspace achievement rule in the explicit `discipline` after validating its condition tree, its `entity_id` character and enforcing slug uniqueness (409 when the slug belongs to a rule of any discipline). The discipline is immutable afterwards; the retired `hero_id` is rejected.",
     },
     "rpc.stats.ach.update": {
         "summary": "Update achievement rule",
-        "description": "Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation when enabled.",
+        "description": "Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation. Omitted fields are unchanged, `entity_id: null` clears the character link, an explicit `{}` tree is an empty tree; `discipline` and the retired `hero_id` are rejected.",
     },
     "rpc.stats.ach.delete": {
         "summary": "Delete achievement rule",
@@ -142,23 +142,23 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.ach.seed": {
         "summary": "Seed achievement rules",
-        "description": "Permission: workspace `achievement.create`. Seeds the built-in achievement rules into a workspace and returns seeded/removed counts.",
+        "description": "Permission: workspace `achievement.create`. Seeds the required `discipline`'s built-in achievement rules into a workspace and returns seeded/removed counts; other disciplines' rules are never touched, a same-slug rule of another discipline is a 409 and a discipline with no catalog is a 422, both before any write.",
     },
     "rpc.stats.ach.reset": {
         "summary": "Reset achievement rules",
-        "description": "Permission: workspace `achievement.update`. Hard-resets a workspace by reseeding rules and clearing evaluation results, returning the new run.",
+        "description": "Permission: workspace `achievement.update`. Hard-resets one discipline of a workspace by reseeding its rules and clearing that discipline's evaluation results, returning the new run. Other disciplines' rules, results and overrides are untouched.",
     },
     "rpc.stats.ach.export": {
         "summary": "Export achievement rules",
-        "description": "Permission: workspace `achievement.read`. Returns a portable JSON export payload of all of a workspace's achievement rules. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+        "description": "Permission: workspace `achievement.read`. Returns a portable v2 JSON export payload (`discipline` + `entity_id` per rule) of a workspace's achievement rules of the required `discipline`. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
     },
     "rpc.stats.ach.import": {
         "summary": "Import achievement rules",
-        "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable achievement rules into a workspace and returns the import result. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+        "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable v2 achievement rules (each names its discipline) into a workspace and returns the import result. The whole batch is validated before any write: v1/`hero_id`, an unknown or foreign character, a disabled discipline or an invalid tree reject it (400/422), a slug owned by a rule of another discipline is a 409. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
     },
     "rpc.stats.ach.evaluate": {
         "summary": "Evaluate achievement rules",
-        "description": "Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for selected rules and/or a tournament.",
+        "description": "Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for the required `discipline`: explicit rule ids must be that discipline's rules, absent ids select its enabled rules, an empty list selects none; the optional tournament must belong to the workspace and discipline.",
     },
     "rpc.stats.ach.runs": {
         "summary": "List evaluation runs",
@@ -170,27 +170,27 @@ DOCS: dict[str, dict] = {
     },
     "rpc.stats.ach.test": {
         "summary": "Test achievement rule",
-        "description": "Permission: workspace `achievement.update`. Dry-runs a rule's condition tree against an optional tournament and returns the qualifying count plus a sample of results.",
+        "description": "Permission: workspace `achievement.update`. Dry-runs a rule's condition tree (in the rule's own discipline) against an optional tournament of that discipline and returns the qualifying count plus a sample of results.",
     },
     "rpc.stats.ach.lib_workspaces": {
         "summary": "List library workspaces",
-        "description": "Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules available to import as a library.",
+        "description": "Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules of the required `discipline` available to import as a library.",
     },
     "rpc.stats.ach.lib_list": {
         "summary": "List library rules",
-        "description": "Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the achievement rules of a source workspace available for library import.",
+        "description": "Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the source workspace's achievement rules of the required `discipline` available for library import.",
     },
     "rpc.stats.ach.lib_import": {
         "summary": "Import library rules",
-        "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
+        "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules of the required `discipline` from a source workspace's library into the target workspace, warning on missing slugs; the same all-or-nothing validation as a portable import applies. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
     },
     "rpc.stats.ach.overrides_list": {
         "summary": "List achievement overrides",
-        "description": "Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides for a workspace.",
+        "description": "Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides of the required `discipline` for a workspace.",
     },
     "rpc.stats.ach.override_create": {
         "summary": "Create achievement override",
-        "description": "Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor.",
+        "description": "Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor; a tournament or match it names must belong to the rule's workspace and discipline and agree with each other.",
     },
     "rpc.stats.ach.override_delete": {
         "summary": "Delete achievement override",

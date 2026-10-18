@@ -42,7 +42,10 @@ async def execute_is_captain(
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
             models.Team.captain_id == models.WorkspaceMember.player_id,
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
         )
     )
     if context.tournament:
@@ -95,7 +98,10 @@ async def execute_is_newcomer(
             .where(
                 models.Player.is_newcomer.is_(True),
                 models.Player.is_substitution.is_(False),
-                models.Tournament.workspace_id == context.workspace_id,
+                sa.and_(
+                    models.Tournament.workspace_id == context.workspace_id,
+                    models.Tournament.discipline == context.discipline,
+                ),
             )
             .group_by(models.WorkspaceMember.player_id)
             .having(op_fn(sa.func.count(models.Player.tournament_id.distinct()), value))
@@ -116,7 +122,10 @@ async def execute_is_newcomer(
         .where(
             models.Player.is_newcomer.is_(True),
             models.Player.is_substitution.is_(False),
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
         )
     )
     if context.tournament:
@@ -153,7 +162,10 @@ async def execute_tournament_type(
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
         )
     )
@@ -198,7 +210,9 @@ async def execute_tournament_count(
     start_before = params.get("start_before")
 
     where_clauses = [
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         models.Player.is_substitution.is_(False),
     ]
     if is_league is not None:

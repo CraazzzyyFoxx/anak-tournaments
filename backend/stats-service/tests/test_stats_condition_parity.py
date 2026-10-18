@@ -556,7 +556,8 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
                     description_ru="RU",
                     description_en="EN",
                     image_url=f"https://cdn/assets/achievements/{source_workspace.slug}/series.webp",
-                    hero_id=ids["hero"],
+                    discipline="overwatch",
+                    entity_id=ids["hero"],
                     category="match",
                     scope="match",
                     grain="user_match",
@@ -580,7 +581,7 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
                     payload,
                     slug="p4-import-new",
                     image_url=None,
-                    hero_id=None,
+                    entity_id=None,
                     condition_tree=_leaf("match_win"),
                 )
                 with patch(
@@ -652,7 +653,7 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
                 # Seeding runs real repository paths and derives dependencies on
                 # every upsert; no client arrays or seeded old-table aliases.
                 seeder = AchievementSeederService()
-                seeded, _ = await seeder.seed_workspace(session, ids["workspace"])
+                seeded, _ = await seeder.seed_workspace(session, ids["workspace"], discipline="overwatch")
                 assert seeded > 0
                 seeded_audit_count = await session.scalar(
                     sa.select(sa.func.count())
@@ -661,7 +662,7 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
                         AuditLog.action == "stats.reference_update",
                     )
                 )
-                assert (await seeder.seed_workspace(session, ids["workspace"]))[0] == seeded
+                assert (await seeder.seed_workspace(session, ids["workspace"], discipline="overwatch"))[0] == seeded
                 assert (
                     await session.scalar(
                         sa.select(sa.func.count())
@@ -690,7 +691,9 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
                 )
                 workspace.verification_status = "verified"
                 await session.flush()
-                _, _, cleared, reset_run = await seeder.hard_reset_workspace(session, ids["workspace"])
+                _, _, cleared, reset_run = await seeder.hard_reset_workspace(
+                    session, ids["workspace"], discipline="overwatch"
+                )
                 assert cleared >= 1
                 assert reset_run.status == "done", reset_run.error_message
 

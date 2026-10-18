@@ -97,9 +97,24 @@ OPERATIONS: dict[str, Op] = {
     "rpc.stats.discord_channel.get": Op(response=schemas.DiscordChannelRead),
     "rpc.stats.discord_channel.upsert": Op(request=schemas.DiscordChannelUpsert, response=schemas.DiscordChannelRead),
     # ── achievement rules admin ────────────────────────────────────────────
-    "rpc.stats.ach.condition_types": Op(response=schemas.ConditionTypeInfo, response_array=True),
+    "rpc.stats.ach.condition_types": Op(
+        response=schemas.ConditionTypeInfo,
+        response_array=True,
+        query_params=(QueryParam("discipline", required=True),),
+    ),
     "rpc.stats.ach.validate": Op(
         request=schemas.ConditionTreeValidateRequest, response=schemas.ConditionTreeValidateResponse
+    ),
+    "rpc.stats.ach.seed": Op(response=schemas.SeedResultRead, query_params=(QueryParam("discipline", required=True),)),
+    "rpc.stats.ach.reset": Op(
+        response=schemas.HardResetResultRead, query_params=(QueryParam("discipline", required=True),)
+    ),
+    "rpc.stats.ach.export": Op(query_params=(QueryParam("discipline", required=True),)),
+    "rpc.stats.ach.import": Op(
+        request=schemas.AchievementRuleExportEnvelope, response=schemas.AchievementRuleImportResult
+    ),
+    "rpc.stats.ach.lib_import": Op(
+        request=schemas.AchievementLibraryImportRequest, response=schemas.AchievementRuleImportResult
     ),
     "rpc.stats.ach.list": Op(
         response=Paginated[schemas.AchievementRuleRead],
@@ -110,8 +125,23 @@ OPERATIONS: dict[str, Op] = {
     "rpc.stats.ach.update": Op(request=schemas.AchievementRuleUpdate, response=schemas.AchievementRuleRead),
     "rpc.stats.ach.evaluate": Op(request=schemas.EvaluateRequest, response=schemas.EvaluationRunRead),
     "rpc.stats.ach.runs": Op(response=schemas.EvaluationRunRead, response_array=True),
-    "rpc.stats.ach.lib_workspaces": Op(response=schemas.AchievementLibraryWorkspaceRead, response_array=True),
-    "rpc.stats.ach.lib_list": Op(response=schemas.AchievementLibraryRuleRead, response_array=True),
-    "rpc.stats.ach.overrides_list": Op(response=schemas.OverrideRead, response_array=True),
+    "rpc.stats.ach.lib_workspaces": Op(
+        response=schemas.AchievementLibraryWorkspaceRead,
+        response_array=True,
+        query_params=(QueryParam("discipline", required=True),),
+    ),
+    "rpc.stats.ach.lib_list": Op(
+        response=schemas.AchievementLibraryRuleRead,
+        response_array=True,
+        query_params=(
+            QueryParam("source_workspace_id", "integer", required=True),
+            QueryParam("discipline", required=True),
+        ),
+    ),
+    "rpc.stats.ach.overrides_list": Op(
+        response=schemas.OverrideRead,
+        response_array=True,
+        query_params=(QueryParam("discipline", required=True),),
+    ),
     "rpc.stats.ach.override_create": Op(request=schemas.OverrideCreate, response=schemas.OverrideRead),
 }

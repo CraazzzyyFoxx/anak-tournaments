@@ -75,7 +75,9 @@ async def execute_reached_playoffs(
 
     where_clauses = [
         standing_is_elimination(standing=models.Standing, stage=models.Stage),
-        models.Tournament.workspace_id == context.workspace_id,
+        sa.and_(
+            models.Tournament.workspace_id == context.workspace_id, models.Tournament.discipline == context.discipline
+        ),
         models.Player.is_substitution.is_(False),
     ]
 

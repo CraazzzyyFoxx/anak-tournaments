@@ -54,7 +54,10 @@ async def execute_div_level(
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
         )
     )
@@ -120,7 +123,10 @@ async def execute_div_change(
         )
         .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
         .where(
-            models.Tournament.workspace_id == context.workspace_id,
+            sa.and_(
+                models.Tournament.workspace_id == context.workspace_id,
+                models.Tournament.discipline == context.discipline,
+            ),
             models.Player.is_substitution.is_(False),
         )
     ).subquery("player_lag")

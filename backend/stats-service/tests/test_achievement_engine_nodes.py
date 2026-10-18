@@ -111,7 +111,7 @@ class _NodeCase(_EngineTestCase):
 
     async def context(self, tournament_id: int | None, *, grid=None):  # noqa: ANN001, ANN201
         if grid is None:
-            grid = await _scrim.runner._resolve_grid(self.db.shim, WORKSPACE_ID, None)
+            grid = await _scrim.overwatch_grid(self.db.shim)
         tournament = self.db.session.get(models.Tournament, tournament_id) if tournament_id else None
         return eval_context.EvalContext(
             workspace_id=WORKSPACE_ID,

@@ -300,3 +300,22 @@ class RunnerSliceAndStatusTests(_EngineTestCase):
             "climb, climb-more: Missing division grid mappings to normalized base version 19: [20]",
             run.error_message,
         )
+
+    async def test_none_selects_every_enabled_rule_and_empty_selects_none(self) -> None:
+        self.db.rule(1, "captain", IS_CAPTAIN_RULE, [])
+        self.db.rule(2, "off", IS_CAPTAIN_RULE, [], enabled=False)
+        self.db.session.commit()
+        evaluated: dict[str, list[str]] = {}
+        for label, rule_ids in (("none", None), ("empty", []), ("explicit", [2])):
+            capture = _CaptureDiffer()
+            with patch.object(runner, "diff_and_apply", capture):
+                run = await runner.run_evaluation(
+                    self.db.shim,
+                    WORKSPACE_ID,
+                    EvaluationRunTrigger.parse_complete,
+                    tournament_id=REAL_TOURNAMENT_ID,
+                    rule_ids=rule_ids,
+                )
+            self.assertEqual(EvaluationRunStatus.done, run.status)
+            evaluated[label] = [slug for slug, _results, _slice in capture.calls]
+        self.assertEqual({"none": ["captain"], "empty": [], "explicit": ["off"]}, evaluated)

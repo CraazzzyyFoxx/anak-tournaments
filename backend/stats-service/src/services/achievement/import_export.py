@@ -10,14 +10,16 @@ import sqlalchemy as sa
 
 from shared.clients import S3Client
 from shared.clients.s3.upload import upload_asset
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.domain.achievements.validation import derive_depends_on, validate_rule_definition
 from shared.models.achievements.achievement import AchievementRule
-from shared.repository import AchievementRuleRepository, CatalogEntityRepository
+from shared.repository import AchievementRuleRepository
 from src import models
 
-EXPORT_SCHEMA_VERSION = 1
+#: Portable format v2: ``discipline`` + ``entity_id`` per rule. v1 (``hero_id``) is refused, never converted.
+EXPORT_SCHEMA_VERSION = 2
 
-_hero_repo = CatalogEntityRepository("character", discipline="overwatch")
 _rule_repo = AchievementRuleRepository()
 
 
@@ -28,7 +30,8 @@ class PortableAchievementRule:
     description_ru: str
     description_en: str
     image_url: str | None
-    hero_id: int | None
+    discipline: str
+    entity_id: int | None
     category: str
     scope: str
     grain: str
@@ -46,7 +49,8 @@ class PortableAchievementRule:
             description_ru=rule.description_ru,
             description_en=rule.description_en,
             image_url=rule.image_url,
-            hero_id=rule.entity_id,
+            discipline=rule.discipline,
+            entity_id=rule.entity_id,
             category=str(rule.category),
             scope=str(rule.scope),
             grain=str(rule.grain),
@@ -64,7 +68,8 @@ class PortableAchievementRule:
             "description_ru": self.description_ru,
             "description_en": self.description_en,
             "image_url": self.image_url,
-            "hero_id": self.hero_id,
+            "discipline": self.discipline,
+            "entity_id": self.entity_id,
             "category": self.category,
             "scope": self.scope,
             "grain": self.grain,
@@ -96,9 +101,13 @@ async def load_rules_for_workspace(
     session,
     workspace_id: int,
     *,
+    discipline: str | None,
     slugs: list[str] | None = None,
 ) -> list[AchievementRule]:
+    """A workspace's rules of ``discipline``; ``None`` is only for ownership checks that span every discipline."""
     query = sa.select(AchievementRule).where(AchievementRule.workspace_id == workspace_id)
+    if discipline is not None:
+        query = query.where(AchievementRule.discipline == discipline)
     if slugs is not None:
         if not slugs:
             return []
@@ -106,10 +115,6 @@ async def load_rules_for_workspace(
     query = query.order_by(AchievementRule.category, AchievementRule.slug)
     result = await session.execute(query)
     return list(result.scalars())
-
-
-async def hero_exists(session, hero_id: int) -> bool:
-    return await _hero_repo.get(session, hero_id) is not None
 
 
 def extract_s3_key_from_public_url(public_url: str | None, image_url: str | None) -> str | None:
@@ -245,7 +250,6 @@ async def copy_workspace_achievement_image(
 def _rule_data(
     payload: PortableAchievementRule,
     *,
-    hero_id: int | None,
     image_url: str | None,
 ) -> dict[str, Any]:
     return {
@@ -254,17 +258,91 @@ def _rule_data(
         "description_ru": payload.description_ru,
         "description_en": payload.description_en,
         "image_url": image_url,
-        "entity_id": hero_id,
+        "entity_id": payload.entity_id,
         "category": payload.category,
         "scope": payload.scope,
         "grain": payload.grain,
         "condition_tree": payload.condition_tree,
         # Imported declarations are not trusted; derive from the actual tree.
-        "depends_on": derive_depends_on(payload.condition_tree, discipline="overwatch"),
+        "depends_on": derive_depends_on(payload.condition_tree, discipline=payload.discipline),
         "enabled": payload.enabled,
         "rule_version": payload.rule_version,
         "min_tournament_id": payload.min_tournament_id,
     }
+
+
+async def _prevalidate(
+    session,
+    *,
+    target_workspace: models.Workspace,
+    rules: list[PortableAchievementRule],
+) -> dict[str, AchievementRule]:
+    """Everything that can reject the batch, before the first rule or image write.
+
+    Raises ``ValueError([{"slug", "errors"}, ...])`` (a 400, errors named by field) for an invalid definition, a
+    discipline the workspace has not enabled, a repeated slug or a character that is not the rule's own game's, and a
+    409 ``HTTPException`` when a payload slug already belongs to a rule of another discipline in the target. Returns the
+    target's existing rules by slug.
+    """
+    errors_by_slug: dict[str, list[str]] = {}
+
+    def reject(slug: str, message: str) -> None:
+        errors_by_slug.setdefault(slug, []).append(message)
+
+    seen: set[str] = set()
+    for payload in rules:
+        if payload.slug in seen:
+            reject(payload.slug, "slug: appears more than once in the payload")
+        seen.add(payload.slug)
+        if payload.discipline not in DISCIPLINES or payload.discipline not in target_workspace.disciplines_enabled:
+            reject(payload.slug, f"discipline: {payload.discipline!r} is not enabled for the target workspace")
+            continue
+        errors, _inferred_grain = validate_rule_definition(
+            payload.condition_tree, payload.grain, discipline=payload.discipline
+        )
+        for error in errors:
+            reject(payload.slug, error)
+
+    entity_ids = {payload.entity_id for payload in rules if payload.entity_id is not None}
+    owners = (
+        dict(
+            (
+                await session.execute(
+                    sa.select(models.CatalogEntity.id, models.CatalogEntity.discipline).where(
+                        models.CatalogEntity.id.in_(entity_ids), models.CatalogEntity.kind == "character"
+                    )
+                )
+            ).all()
+        )
+        if entity_ids
+        else {}
+    )
+    for payload in rules:
+        if payload.entity_id is not None and owners.get(payload.entity_id) != payload.discipline:
+            reject(
+                payload.slug,
+                f"entity_id: character #{payload.entity_id} does not exist in discipline {payload.discipline!r}",
+            )
+
+    if errors_by_slug:
+        raise ValueError([{"slug": slug, "errors": errors} for slug, errors in errors_by_slug.items()])
+
+    existing_rules = {
+        rule.slug: rule
+        for rule in await load_rules_for_workspace(
+            session, target_workspace.id, discipline=None, slugs=[payload.slug for payload in rules]
+        )
+    }
+    if conflicts := sorted(
+        payload.slug
+        for payload in rules
+        if payload.slug in existing_rules and existing_rules[payload.slug].discipline != payload.discipline
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Slugs already used by rules of another discipline in this workspace: {', '.join(conflicts)}",
+        )
+    return existing_rules
 
 
 async def import_portable_rules(
@@ -275,40 +353,13 @@ async def import_portable_rules(
     rules: list[PortableAchievementRule],
     source_workspace: models.Workspace | None = None,
 ) -> dict[str, Any]:
-    validation_errors: list[dict[str, Any]] = []
-    for payload in rules:
-        errors, _inferred_grain = validate_rule_definition(
-            payload.condition_tree, payload.grain, discipline="overwatch"
-        )
-        if errors:
-            validation_errors.append({"slug": payload.slug, "errors": errors})
-    if validation_errors:
-        raise ValueError(validation_errors)
-
-    existing_rules = {
-        rule.slug: rule
-        for rule in await load_rules_for_workspace(
-            session,
-            target_workspace.id,
-            slugs=[payload.slug for payload in rules],
-        )
-    }
+    existing_rules = await _prevalidate(session, target_workspace=target_workspace, rules=rules)
 
     created = 0
     updated = 0
     warnings: list[dict[str, str]] = []
 
     for payload in rules:
-        hero_id = payload.hero_id
-        if hero_id is not None and not await hero_exists(session, hero_id):
-            warnings.append(
-                {
-                    "slug": payload.slug,
-                    "message": f"Hero #{hero_id} does not exist in target environment; hero link was cleared",
-                }
-            )
-            hero_id = None
-
         next_image_url: str | None = None
         if payload.image_url:
             if source_workspace is None or s3 is None:
@@ -330,9 +381,9 @@ async def import_portable_rules(
                     warnings.append({"slug": payload.slug, "message": image_warning})
 
         existing = existing_rules.get(payload.slug)
-        data = _rule_data(payload, hero_id=hero_id, image_url=next_image_url)
+        data = _rule_data(payload, image_url=next_image_url)
         if existing is None:
-            rule = AchievementRule(workspace_id=target_workspace.id, **data)
+            rule = AchievementRule(workspace_id=target_workspace.id, discipline=payload.discipline, **data)
             await _rule_repo.create(session, rule)
             existing_rules[payload.slug] = rule
             created += 1
