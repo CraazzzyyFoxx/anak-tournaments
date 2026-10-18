@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from shared import models
 from shared.core import enums
+from shared.models.achievements.achievement import AchievementEvaluationResult, AchievementRule
 from shared.repository.roles import CatalogRoleRepository
 from shared.services.ontology import project_disciplines
 from tests.ingest_seed import IngestCase, build_document, seed_ingest_case
@@ -37,6 +38,10 @@ CASES: dict[str, tuple[str, str, int]] = {
     "lol": ("OFF", "lol", 2),
     "on_main": ("ON", "overwatch", 2),
     "on_admin": ("ON", "overwatch", 2),
+    "ach_ow": ("OFF", "overwatch", 2),
+    "ach_wait": ("OFF", "overwatch", 2),
+    "ach_failed": ("OFF", "overwatch", 2),
+    "ach_lol": ("OFF", "lol", 2),
 }
 HOME, AWAY = ("IngestH0", "IngestH1", "IngestH2"), ("IngestA0", "IngestA1", "IngestA2")
 SECOND_HERO = {"slug": "ingest-reaper", "name": "Ingest Reaper", "attrs": {"class": "damage"}}
@@ -220,6 +225,78 @@ async def seed_world(
     finally:
         await engine.dispose()
     return cases, workshop
+
+
+ACH_THRESHOLD = (
+    5  # ``build_document`` gives participant ``i`` of team ``t`` ``3 + i + t`` eliminations on the case hero
+)
+
+
+async def seed_achievement_rules(db_url: str, cases: dict[str, IngestCase]) -> dict[str, Any]:
+    """One per-hero elimination rule per Overwatch ``ach_*`` case, plus a *sentinel* of the other game.
+
+    The LoL rule deliberately reuses the Overwatch ``hero_stat`` tree and carries an award of its own: LoL declares no
+    achievement conditions, so neither a LoL trigger nor an Overwatch one may evaluate, replace or erase it.
+    """
+    engine, factory = async_session_factory(db_url)
+    try:
+        async with factory() as session:
+            rules: dict[str, int] = {}
+            for name in ("ach_ow", "ach_wait", "ach_failed"):
+                case = cases[name]
+                hero = await session.scalar(
+                    sa.select(models.CatalogEntity.id).where(
+                        models.CatalogEntity.discipline == "overwatch",
+                        models.CatalogEntity.kind == "character",
+                        models.CatalogEntity.slug == case.hero_code,
+                    )
+                )
+                rules[name] = await _add_rule(
+                    session, case, f"live-hero-elims-{name}", hero, case.hero_code, discipline="overwatch"
+                )
+            ow, lol = cases["ach_ow"], cases["ach_lol"]
+            sentinel_rule = await _add_rule(session, lol, "live-lol-sentinel", None, ow.hero_code, discipline="lol")
+            sentinel = AchievementEvaluationResult(
+                achievement_rule_id=sentinel_rule,
+                workspace_member_id=lol.member_ids[0][0],
+                tournament_id=lol.tournament_id,
+                rule_version=1,
+                evidence_json={"rule_slug": "live-lol-sentinel", "sentinel": True},
+            )
+            session.add(sentinel)
+            await session.flush()
+            sentinel_id = sentinel.id
+            await session.commit()
+    finally:
+        await engine.dispose()
+    return {"rules": rules, "lol_rule": sentinel_rule, "lol_result": sentinel_id}
+
+
+async def _add_rule(
+    session: AsyncSession, case: IngestCase, slug: str, entity_id: int | None, hero_slug: str, *, discipline: str
+) -> int:
+    rule = AchievementRule(
+        workspace_id=case.workspace_id,
+        slug=slug,
+        name=slug,
+        description_ru=slug,
+        description_en=slug,
+        discipline=discipline,
+        entity_id=entity_id,
+        category="hero",
+        scope="match",
+        grain="user_match",
+        condition_tree={
+            "type": "hero_stat",
+            "params": {"hero_slug": hero_slug, "stat": "eliminations", "op": ">=", "value": ACH_THRESHOLD},
+        },
+        depends_on=["stats.match", "stats.fact"],
+        enabled=True,
+        rule_version=1,
+    )
+    session.add(rule)
+    await session.flush()
+    return rule.id
 
 
 def document(case: IngestCase, external_id: str, **changes: Any) -> dict[str, Any]:

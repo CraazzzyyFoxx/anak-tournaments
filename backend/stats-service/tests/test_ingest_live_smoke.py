@@ -31,8 +31,8 @@ from shared.messaging.config import (
     ingest_replay_dlq,
     ingest_replay_queue,
 )
-from shared.schemas.events import ProcessIngestJobEvent
-from tests.ingest_seed import IngestCase, shuffled
+from shared.schemas.events import AchievementEvaluateEvent, ProcessIngestJobEvent
+from tests.ingest_seed import IngestCase, add_game, shuffled
 from tests.live_smoke_support import LiveStack, Response, free_port, http, wait_until
 from tests.live_smoke_world import async_session_factory, document, project_catalog, seed_world, with_unknown_identities
 from tests.test_ow_decoder_reference_capture import DIRECTORY, observe
@@ -911,11 +911,235 @@ def test_frozen_worker_leaves_rpc_responsive_and_the_queue_catches_up(live: Live
     live.stack.evidence.record("job_ids", "frozen_worker", job_id)
 
 
+# --- P6: achievement evaluation scoped to the owning discipline, driven by the real ingest events ---------------------
+
+
+def _runs(live: Live, tournament_id: int) -> list[dict]:
+    rows = live.q(
+        "SELECT id::text, status, trigger, rules_evaluated, results_created, results_removed, error_message "
+        "FROM achievements.evaluation_run WHERE tournament_id=%s ORDER BY started_at, id",
+        tournament_id,
+    )
+    keys = ("id", "status", "trigger", "rules_evaluated", "results_created", "results_removed", "error")
+    return [dict(zip(keys, row, strict=True)) for row in rows]
+
+
+def _results(live: Live, rule_id: int) -> list[dict]:
+    rows = live.q(
+        "SELECT id, workspace_member_id, tournament_id, match_id, rule_version, evidence_json "
+        "FROM achievements.evaluation_result WHERE achievement_rule_id=%s ORDER BY workspace_member_id",
+        rule_id,
+    )
+    keys = ("id", "member", "tournament", "match", "rule_version", "evidence")
+    return [dict(zip(keys, row, strict=True)) for row in rows]
+
+
+def _finished_runs(live: Live, tournament_id: int, count: int) -> list[dict]:
+    wait_until(
+        lambda: len([r for r in _runs(live, tournament_id) if r["status"] in ("done", "partial")]) >= count,
+        f"{count} finished achievement run(s) on tournament {tournament_id}",
+        timeout=90,
+    )
+    return _runs(live, tournament_id)
+
+
+def _publish_achievement_event(live: Live, event) -> None:
+    async def publish() -> None:
+        from faststream.rabbit import RabbitBroker
+
+        from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE
+
+        broker = RabbitBroker(live.stack.vhost_url)
+        await broker.start()
+        try:
+            await broker.publish(event.model_dump(), ACHIEVEMENT_EVALUATE_QUEUE.name)
+        finally:
+            await broker.stop()
+
+    asyncio.run(publish())
+
+
+def test_overwatch_ingest_awards_once_and_the_other_game_is_never_evaluated_with_it(live: Live) -> None:
+    from tests.live_smoke_world import ACH_THRESHOLD, seed_achievement_rules
+
+    ow, wait, failed, lol = (live.cases[name] for name in ("ach_ow", "ach_wait", "ach_failed", "ach_lol"))
+    seeded = asyncio.run(seed_achievement_rules(live.stack.db_url, live.cases))
+    ow_rule, wait_rule, failed_rule = (seeded["rules"][name] for name in ("ach_ow", "ach_wait", "ach_failed"))
+    lol_rule, lol_award = seeded["lol_rule"], seeded["lol_result"]
+    assert _results(live, ow_rule) == [] and _runs(live, ow.tournament_id) == []
+
+    # An awaiting-link document and a failed document write no observation: nothing can be awarded for them.
+    waiting_id = live.submit_ok("off_ok", with_unknown_identities(document(wait, "ach-wait-1")))["id"]
+    assert live.settle("off_ok", waiting_id)[0]["status"] == "awaiting_link"
+    bad = document(failed, "ach-failed-1")
+    bad["facts"].append({"team": "t1", "stat": "p6_unknown_stat", "value": 1})
+    response = live.post("off_ok", canonical(bad))
+    assert response.status == 422 and err(response) == "unknown_code", response.raw[:400]
+    assert live.settle("off_ok", response.json()["ingest_job_id"])[0]["status"] == "failed"
+    live.drain()
+
+    # The real ingest: stored observations -> the writer's success events -> achievement evaluation in the worker.
+    job_id = live.submit_ok("off_ok", document(ow, "ach-ow-1"))["id"]
+    job, _ = live.settle("off_ok", job_id)
+    assert job["status"] == "done", job
+    match = live.match(ow.game_id)
+    live.drain()
+    wait_until(lambda: len(_results(live, ow_rule)) == 3, "three awards for the Overwatch rule", timeout=90)
+    runs = _finished_runs(live, ow.tournament_id, 1)
+    assert all(r["trigger"] == "parse_complete" and r["status"] == "done" for r in runs), runs
+    expected_members = {ow.member_ids[0][2], ow.member_ids[1][1], ow.member_ids[1][2]}  # eliminations 5, 5, 6
+    assert ACH_THRESHOLD == 5
+    awards = _results(live, ow_rule)
+    assert {a["member"] for a in awards} == expected_members
+    for award in awards:
+        assert (award["tournament"], award["match"], award["rule_version"]) == (ow.tournament_id, match["id"], 1)
+        assert award["evidence"]["rule_slug"] == "live-hero-elims-ach_ow", award
+    # The same ingest wrote one observation event and the standings invalidation reached its original consumer
+    # (tournament-service turns it into a recalculation job); neither replaced the other.
+    event_types = {
+        r[0]
+        for r in live.q(
+            "SELECT DISTINCT event_type FROM public.event_outbox WHERE payload_json->>'tournament_id'=%s "
+            "OR payload_json->>'encounter_id'=%s",
+            str(ow.tournament_id),
+            str(ow.encounter_id),
+        )
+    }
+    assert {"achievement_evaluate", "match_ingested"} <= event_types, event_types
+    wait_until(
+        lambda: live.s("SELECT count(*) FROM tournament.computation_job WHERE tournament_id=%s", ow.tournament_id) >= 1,
+        "the standings recalculation job the original consumer creates",
+        timeout=60,
+    )
+    assert (live.stack.queue("tournament_standings_invalidated") or {}).get("messages", 0) == 0
+    # Awaiting-link and failed ingests awarded nothing and observed nothing.
+    for case, rule in ((wait, wait_rule), (failed, failed_rule)):
+        assert _results(live, rule) == []
+        assert live.s("SELECT count(*) FROM stats.match WHERE encounter_id=%s", case.encounter_id) == 0
+        assert all(r["results_created"] == 0 for r in _runs(live, case.tournament_id))
+
+    # Encounter completed: a best-of-3 series is decided by the organizer's second map win. The completed-encounter
+    # trigger evaluates again and converges on the same awards (same rows, no duplicates).
+    async def second_game() -> int:
+        engine, factory = async_session_factory(live.stack.db_url)
+        try:
+            async with factory() as session:
+                game_id = await add_game(session, ow)
+                await session.commit()
+                return game_id
+        finally:
+            await engine.dispose()
+
+    games = [ow.game_id, asyncio.run(second_game())]
+    before_runs = len(_runs(live, ow.tournament_id))
+    for game_id in games:
+        live.stack.run_script(
+            "_live_admin_result.py",
+            "tournament-service",
+            "__RESULT__",
+            stdin={
+                "encounter_id": ow.encounter_id,
+                "game_id": game_id,
+                "scores": {str(ow.team_ids[0]): 3, str(ow.team_ids[1]): 1},
+            },
+        )
+    live.drain()
+    assert (
+        live.s(
+            "SELECT count(*) FROM public.event_outbox WHERE event_type='encounter_completed' "
+            "AND payload_json->>'encounter_id'=%s AND status='published'",
+            str(ow.encounter_id),
+        )
+        == 1
+    )
+    _finished_runs(live, ow.tournament_id, before_runs + 1)
+    assert _results(live, ow_rule) == awards
+
+    # Redelivering the same event is idempotent: another run, zero created, zero removed, identical rows.
+    finished = len([r for r in _runs(live, ow.tournament_id) if r["status"] in ("done", "partial")])
+    event = AchievementEvaluateEvent(
+        workspace_id=ow.workspace_id,
+        tournament_id=ow.tournament_id,
+        changed_tables=["stats.match", "stats.fact", "stats.event"],
+        source_service="p6-live-smoke",
+    )
+    for _ in range(2):
+        _publish_achievement_event(live, event)
+    runs = _finished_runs(live, ow.tournament_id, finished + 2)
+    wait_until(
+        lambda: (q := live.stack.queue("achievement_evaluate") or {}).get("messages", 1) == 0
+        and q.get("messages_unacknowledged", 1) == 0,
+        "the achievement queue to go idle",
+        timeout=60,
+    )
+    runs = _runs(live, ow.tournament_id)
+    assert _results(live, ow_rule) == awards
+    # Exactly one run ever created the three awards and no run removed anything: every redelivery converged.
+    assert sum(r["results_created"] for r in runs) == 3 and sum(r["results_removed"] for r in runs) == 0, runs
+    assert all(r["status"] == "done" for r in runs), runs
+
+    # A LoL canonical ingest reaches its existing success state and evaluates only LoL's own (condition-less) rules.
+    lol_job = live.submit_ok("off_ok", document(lol, "ach-lol-1"))["id"]
+    assert live.settle("off_ok", lol_job)[0]["status"] == "done"
+    live.drain()
+    wait_until(
+        lambda: any(r["status"] == "partial" for r in _runs(live, lol.tournament_id)),
+        "the writer's achievement run on the LoL tournament",
+        timeout=90,
+    )
+    lol_runs = _finished_runs(live, lol.tournament_id, 1)
+    # The writer's event selects LoL's one rule, which cannot run (LoL declares no conditions) and is reported on the
+    # run; any other trigger on this tournament (standings) selects nothing. No run evaluates, creates or removes.
+    assert any(
+        r["status"] == "partial" and "discipline 'lol' has no achievement conditions" in (r["error"] or "")
+        for r in lol_runs
+    ), lol_runs
+    assert all(r["rules_evaluated"] == 0 and r["results_created"] == 0 and r["results_removed"] == 0 for r in lol_runs)
+    # The LoL sentinel award survives untouched, no Overwatch rule produced an award for a LoL tournament, member or
+    # match, and the Overwatch awards are exactly what they were.
+    sentinel = _results(live, lol_rule)
+    assert [s["id"] for s in sentinel] == [lol_award] and sentinel[0]["evidence"]["sentinel"] is True
+    assert (
+        live.s(
+            "SELECT count(*) FROM achievements.evaluation_result r JOIN achievements.rule u ON u.id=r.achievement_rule_id "
+            "WHERE u.discipline='overwatch' AND (r.tournament_id=%s OR r.match_id IN "
+            "(SELECT id FROM stats.match WHERE discipline='lol'))",
+            lol.tournament_id,
+        )
+        == 0
+    )
+    assert _results(live, ow_rule) == awards
+    # No Overwatch workload of any kind was addressed to the LoL tournament or its encounter.
+    assert (
+        live.s(
+            "SELECT count(*) FROM public.event_outbox WHERE (payload_json->>'tournament_id'=%s "
+            "OR payload_json->>'encounter_id'=%s) AND payload_json->>'discipline'='overwatch'",
+            str(lol.tournament_id),
+            str(lol.encounter_id),
+        )
+        == 0
+    )
+    assert (live.stack.queue("achievement_evaluate.dlq") or {}).get("messages", 0) == 0
+    live.stack.evidence.record("job_ids", "ach_ow", job_id)
+    live.stack.evidence.record("job_ids", "ach_lol", lol_job)
+    live.stack.evidence.record(
+        "observation_counts",
+        "achievements",
+        {
+            "ow_awards": len(awards),
+            "ow_runs": [(r["status"], r["results_created"], r["results_removed"]) for r in runs],
+            "lol_runs": [(r["status"], r["rules_evaluated"]) for r in lol_runs],
+            "lol_sentinel_ids": [s["id"] for s in sentinel],
+        },
+    )
+
+
 def test_nothing_unexpected_was_dead_lettered_and_every_process_exits(live: Live) -> None:
     stack = live.stack
     for slug in ("overwatch", "lol"):
         assert (stack.queue(ingest_replay_dlq(slug).name) or {}).get("messages", 0) == 0
     assert (stack.queue(MATCH_INGESTED_TOURNAMENT_DLQ.name) or {}).get("messages", 0) == 0
+    assert (stack.queue("achievement_evaluate.dlq") or {}).get("messages", 0) == 0
     assert live.s("SELECT count(*) FROM stats.ingest_job WHERE status='processing'") == 0
     stack.evidence.append("ready_checks", {"check": "final", "jobs": live.s("SELECT count(*) FROM stats.ingest_job")})
     for name in ("worker_overwatch_4", "worker_lol", "stats_rpc", "tournament", "identity", "gateway"):
