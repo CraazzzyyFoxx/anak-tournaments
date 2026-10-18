@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import pickle
 import typing
 from unittest.mock import patch
 
@@ -296,13 +297,13 @@ def test_load_artifact_or_none_distinguishes_unconverted_artifacts_from_a_broken
     )  # an estimator package missing from the image is NOT an artifact problem
     no_library.write_bytes(b"cnot_an_installed_estimator_lib\nBooster\n)\x81.")
     damaged = tmp_path / "damaged.joblib"
-    damaged.write_bytes(b"not a pickle at all")
 
     assert load_artifact_or_none(f"file://{gone.as_posix()}") is None  # missing file: quiet neutral fallback
     assert not caplog.records
     with caplog.at_level("ERROR"):
         assert load_artifact_or_none(f"file://{stale.as_posix()}") is None
-        assert load_artifact_or_none(f"file://{damaged.as_posix()}") is None
+        with patch("src.services.ml.models.base.load_artifact", side_effect=pickle.UnpicklingError("bad opcode")):
+            assert load_artifact_or_none(f"file://{damaged.as_posix()}") is None
     assert [r.levelname for r in caplog.records] == ["ERROR", "ERROR"] and all(r.exc_info for r in caplog.records)
     with pytest.raises(ModuleNotFoundError, match="not_an_installed_estimator_lib"):
         load_artifact_or_none(f"file://{no_library.as_posix()}")
@@ -314,7 +315,7 @@ def test_runners_fall_back_when_an_artifact_names_a_class_path_that_no_longer_ex
     """A pre-conversion pickle (module moved) is as unusable as a missing file: logged, neutral result, no failure."""
     url, ids = stats_parity_database
     stale = tmp_path / "stale.joblib"
-    stale.write_bytes(b"cshared.old_module_that_was_moved\nOldModel\n)\x81.")
+    stale.write_bytes(b"csrc.services.ml.models.performance_v2\nPerformanceModelV2\n)\x81.")
     with pytest.raises(ModuleNotFoundError):
         load_artifact(f"file://{stale.as_posix()}")
 
