@@ -261,13 +261,14 @@ class UserService:
         Generated links carry the player's canonical, unique ``players.user.name`` with ``#`` folded to ``-``, so
         that name wins over everything else -- a game handle may collide with another player's name. Only when no
         canonical name matches does an old shared link resolve through a game provider handle, then Discord.
-        Candidates: the slug as typed (a name with its own hyphens), then the suffix hyphen, then every hyphen,
-        read as ``#``.
+        Canonical candidates invert ``getPlayerSlug``: the ``#`` readings first (suffix hyphen, then every hyphen),
+        the literal slug last. ``Name-EUW`` and ``Name#EUW`` share one slug; the ``#`` name keeps its pre-P7
+        precedence and the hyphen twin is a known limit until slugs are made injective.
         """
         candidates = [slug]
         if "#" not in slug and "-" in slug:
             head, _, tail = slug.rpartition("-")
-            candidates += [f"{head}#{tail}", slug.replace("-", "#")]
+            candidates = [f"{head}#{tail}", slug.replace("-", "#"), slug]
         candidates = list(dict.fromkeys(candidates))
         for candidate in candidates:
             user = await self.profile.find_by_exact_name(session, candidate, entities)

@@ -106,3 +106,21 @@ class RiotSearchResolutionTests(IsolatedAsyncioTestCase):
         old = await self._by_name(f"Mid#Lane{marker}")
         assert old["ok"], old
         assert old["data"]["id"] == riot_owner.id
+
+    async def test_hash_name_keeps_precedence_over_its_hyphen_twin(self) -> None:
+        marker = uuid4().hex[:6]
+        tagged = models.User(name=f"Name{marker}#EUW")
+        twin = models.User(name=f"Name{marker}-EUW")
+        self.session.add_all([tagged, twin])
+        await self.session.flush()
+
+        reply = await self._by_name(f"Name{marker}-EUW")
+        assert reply["ok"], reply
+        assert reply["data"]["id"] == tagged.id, "the slug inverts getPlayerSlug: '#' reading first"
+
+        # Without a '#' twin the literal hyphenated name is reached.
+        await self.session.delete(tagged)
+        await self.session.flush()
+        reply = await self._by_name(f"Name{marker}-EUW")
+        assert reply["ok"], reply
+        assert reply["data"]["id"] == twin.id
