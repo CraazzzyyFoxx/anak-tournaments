@@ -92,7 +92,14 @@ export const useUserCompareData = ({
   const mapSelection = useCatalogSelection(discipline, "map", mapId, { enabled: checkSelections });
   const selections = [leftSelection, rightSelection, mapSelection];
   const selectionInvalid = selections.some((selection) => selection.status === "invalid");
+  // Statistics are shown only for selections that were CHECKED valid: pending, invalid and failed checks all withhold
+  // them, so another game's cached results never stand in while the scoped lookup is out.
   const selectionsSettled = selections.every((selection) => selection.status === "none" || selection.status === "valid");
+  const selectionError = selections.some((selection) => selection.status === "error");
+  const selectionPending = selections.some((selection) => selection.status === "loading");
+  const retrySelections = () => {
+    for (const selection of selections) if (selection.status === "error") selection.refetch();
+  };
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.selectOptions(workspaceId ?? null),
@@ -129,10 +136,9 @@ export const useUserCompareData = ({
   const rightHero = rightSelection.entity ?? undefined;
   const selectedMap = mapSelection.entity ?? undefined;
 
-  const selectedSubjectName =
-    compareQuery.data?.subject.name ?? heroCompareQuery.data?.subject.name;
-  const selectedTargetName =
-    compareQuery.data?.baseline.target_user?.name ?? heroCompareQuery.data?.target?.name;
+  const heroCompareData = selectionsSettled ? heroCompareQuery.data : undefined;
+  const selectedSubjectName = compareQuery.data?.subject.name ?? heroCompareData?.subject.name;
+  const selectedTargetName = compareQuery.data?.baseline.target_user?.name ?? heroCompareData?.target?.name;
 
   const baselineSummary = useMemo(() => {
     if (effectiveBaseline === "target_user") {
@@ -155,8 +161,8 @@ export const useUserCompareData = ({
   const rows = useMemo<CompareRow[]>(() => {
     if (isHeroScope) {
       // A conflicting selection has no results: a previous selection's data is never shown for it.
-      if (!heroCompareQuery.data || selectionInvalid) return [];
-      return heroCompareQuery.data.metrics.map((metric) => ({
+      if (!heroCompareData) return [];
+      return heroCompareData.metrics.map((metric) => ({
         key: metric.stat,
         label: getHumanizedStats(metric.stat),
         subjectValue: normalizeNumber(metric.left_value),
@@ -181,7 +187,7 @@ export const useUserCompareData = ({
       betterWorse: metric.better_worse,
       higherIsBetter: metric.higher_is_better
     }));
-  }, [isHeroScope, selectionInvalid, compareQuery.data, heroCompareQuery.data]);
+  }, [isHeroScope, compareQuery.data, heroCompareData]);
 
   const activeLoading = isHeroScope ? heroCompareQuery.isLoading : compareQuery.isLoading;
   const activeFetching = isHeroScope ? heroCompareQuery.isFetching : compareQuery.isFetching;
@@ -231,6 +237,10 @@ export const useUserCompareData = ({
     compareDisplayName,
     divisionGrid,
     /** An id in the URL that is not in the scoped discipline's catalog: show it, request and render nothing. */
-    selectionInvalid
+    selectionInvalid,
+    selectionsSettled,
+    selectionError,
+    selectionPending,
+    retrySelections
   };
 };

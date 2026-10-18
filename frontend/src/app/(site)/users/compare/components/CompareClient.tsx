@@ -10,6 +10,7 @@ import CompareFiltersPanel from "@/app/(site)/users/compare/components/CompareFi
 import CompareUnifiedTable from "@/app/(site)/users/compare/components/CompareUnifiedTable";
 import { useUserCompareSearchParams } from "@/app/(site)/users/compare/hooks/useUserCompareSearchParams";
 import { useUserCompareData } from "@/app/(site)/users/compare/hooks/useUserCompareData";
+import { Spinner } from "@/components/ui/spinner";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
@@ -43,6 +44,10 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     activeErrorMessage,
     compareDisplayName,
     selectionInvalid,
+    selectionsSettled,
+    selectionError,
+    selectionPending,
+    retrySelections,
     heroesQuery,
     mapsQuery,
     tournamentsQuery,
@@ -76,9 +81,9 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   ]);
 
   const activeData = compareParams.isHeroScope
-    ? selectionInvalid
-      ? undefined
-      : heroCompareQuery.data
+    ? selectionsSettled
+      ? heroCompareQuery.data
+      : undefined
     : compareQuery.data;
   const sampleSize = activeData?.baseline.sample_size;
   const retryActiveQuery = () => {
@@ -163,6 +168,19 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
             game: browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline ?? ""
           })}
         />
+      ) : selectionError ? (
+        <PageStateCard
+          state="error"
+          description={t("users.compare.invalidSelection.checkFailed")}
+          onAction={retrySelections}
+          actionLabel={t("common.retry")}
+        />
+      ) : selectionPending ? (
+        <CardSurface>
+          <div className="flex justify-center py-16" role="status" aria-busy="true">
+            <Spinner />
+          </div>
+        </CardSurface>
       ) : compareParams.subjectUserId ? (
         <CompareUnifiedTable
           subjectName={

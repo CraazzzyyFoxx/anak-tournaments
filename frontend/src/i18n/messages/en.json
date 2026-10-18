@@ -5523,7 +5523,8 @@
       "compareWithAllAvg": "Compare with all players avg",
       "invalidSelection": {
         "title": "That selection is not in this game",
-        "description": "The hero or map in the link does not exist in {game}. Choose again below, or switch to the game the link was made for."
+        "description": "The hero or map in the link does not exist in {game}. Choose again below, or switch to the game the link was made for.",
+        "checkFailed": "Could not check that selection against this game's catalog."
       }
     },
     "heroesCompare": {
@@ -5588,7 +5589,8 @@
       },
       "invalidHero": {
         "title": "That hero is not in this game",
-        "description": "The hero in the link does not exist in {game}. Choose another hero, or switch to the game the link was made for."
+        "description": "The hero in the link does not exist in {game}. Choose another hero, or switch to the game the link was made for.",
+        "checkFailed": "Could not check that hero against this game's catalog."
       }
     }
   },

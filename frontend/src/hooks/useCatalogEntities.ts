@@ -37,8 +37,9 @@ export function useCatalogEntity(
 ): UseQueryResult<CatalogEntityRead> {
   return useQuery({
     ...catalogDetailQueryOptions(discipline ?? "", kind, id ?? 0),
-    // A 404 is an answer (the id is not in this game), not a transient failure to retry.
-    retry: (failures, error) => !(error instanceof ApiError && error.status === 404) && failures < 2,
+    // A 404 is an answer (the id is not in this game); any other failure surfaces as an explicit error with a
+    // retry action (`useCatalogSelection().refetch`) instead of a silent wait.
+    retry: false,
     enabled: enabled && Boolean(discipline) && id != null
   });
 }
@@ -51,6 +52,8 @@ export function useCatalogEntity(
 export type CatalogSelection = {
   status: "none" | "loading" | "valid" | "invalid" | "error";
   entity: CatalogEntityRead | null;
+  /** Re-run the check (after an `error`). */
+  refetch: () => void;
 };
 
 export function useCatalogSelection(
@@ -60,8 +63,10 @@ export function useCatalogSelection(
   { enabled = true }: { enabled?: boolean } = {}
 ): CatalogSelection {
   const query = useCatalogEntity(discipline, kind, id, { enabled });
-  if (!enabled || id == null) return { status: "none", entity: null };
-  if (query.data) return { status: "valid", entity: query.data };
-  if (query.error instanceof ApiError && query.error.status === 404) return { status: "invalid", entity: null };
-  return { status: query.isError ? "error" : "loading", entity: null };
+  const refetch = () => void query.refetch();
+  if (!enabled || id == null) return { status: "none", entity: null, refetch };
+  // A cached entity of another scope never answers for this one: the key carries the discipline.
+  if (query.data) return { status: "valid", entity: query.data, refetch };
+  if (query.error instanceof ApiError && query.error.status === 404) return { status: "invalid", entity: null, refetch };
+  return { status: query.isError ? "error" : "loading", entity: null, refetch };
 }

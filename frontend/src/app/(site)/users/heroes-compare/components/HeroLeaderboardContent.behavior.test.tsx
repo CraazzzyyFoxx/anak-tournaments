@@ -62,9 +62,11 @@ async function settle(turns = 8) {
   }
 }
 
-async function mount(url: string) {
+let client: QueryClient;
+
+async function mount(url: string, keepClient = false) {
   navigation.reset(url);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  if (!keepClient) client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={messages}>
@@ -120,5 +122,62 @@ describe("hero leaderboard selection", () => {
     await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
 
     expect(mocks.leaderboard).not.toHaveBeenCalled();
+  });
+
+  describe("another game's cached results", () => {
+    const OW_ROW = {
+      rank: 1, user_id: 1, username: "ow-ranked", player_name: "ow-ranked", role: null, div: 1, team: null, team_id: null,
+      games_played: 3, playtime_seconds: 900, per10_eliminations: 10, per10_healing: 0, per10_deaths: 4,
+      per10_damage: 1, per10_final_blows: 1, per10_damage_blocked: 0, per10_solo_kills: 0, per10_obj_kills: 0,
+      per10_defensive_assists: 0, per10_offensive_assists: 0, per10_all_damage: 1, per10_damage_taken: 1,
+      per10_self_healing: 0, per10_ultimates_used: 0, per10_multikills: 0, per10_env_kills: 0, per10_crit_hits: 0,
+      avg_weapon_accuracy: 0.5, avg_crit_accuracy: 0.1, kd: 2, kda: 3
+    };
+
+    async function showOverwatchResults() {
+      mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
+      mocks.leaderboard.mockResolvedValue({ results: [OW_ROW], total: 1, page: 1, per_page: -1 });
+      await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
+      expect(container.textContent).toContain("ow-ranked");
+    }
+
+    async function switchToLol() {
+      await act(async () => {
+        navigation.push("/users/heroes-compare?hero_id=7&discipline=lol");
+      });
+      await settle();
+    }
+
+    it("shows none of it while the scoped lookup is pending, and none after it 404s", async () => {
+      await showOverwatchResults();
+      let reject!: (error: unknown) => void;
+      mocks.getEntity.mockReturnValue(new Promise((_, fail) => (reject = fail)));
+
+      await switchToLol();
+      expect(container.textContent).not.toContain("ow-ranked");
+
+      await act(async () => reject(new ApiError(404, [{ msg: "not found" }])));
+      await settle();
+      expect(container.textContent).not.toContain("ow-ranked");
+      expect(container.textContent).toContain("That hero is not in this game");
+    });
+
+    it("withholds results on a failed lookup, says so, and retries on request", async () => {
+      await showOverwatchResults();
+      mocks.getEntity.mockRejectedValue(new Error("boom"));
+
+      await switchToLol();
+      expect(container.textContent).not.toContain("ow-ranked");
+      expect(container.textContent).toContain("Could not check that hero");
+
+      const callsBefore = mocks.getEntity.mock.calls.length;
+      mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, discipline: "lol", name: "Ana" }));
+      const retry = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Retry");
+      expect(retry).toBeTruthy();
+      await act(async () => retry!.click());
+      await settle();
+      expect(mocks.getEntity.mock.calls.length).toBeGreaterThan(callsBefore);
+      expect(container.textContent).not.toContain("Could not check that hero");
+    });
   });
 });

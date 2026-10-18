@@ -67,9 +67,11 @@ async function settle(turns = 8) {
   }
 }
 
+let client: QueryClient;
+
 async function mount(url: string) {
   navigation.reset(url);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 60_000 } } });
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={messages}>
@@ -128,5 +130,60 @@ describe("compare selection", () => {
 
     expect(mocks.heroCompare).toHaveBeenCalled();
     expect(container.textContent).not.toContain("That selection is not in this game");
+  });
+
+  describe("another game's cached results", () => {
+    const OW_RESULT = {
+      metrics: [{ stat: "eliminations", left_value: 1, right_value: 2, delta: -1, delta_percent: -50, better_worse: "worse", higher_is_better: true }],
+      subject: { name: "OWSUBJECT" },
+      baseline: { sample_size: 5 },
+      target: null
+    };
+
+    async function showOverwatchResults() {
+      mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
+      mocks.heroCompare.mockResolvedValue(OW_RESULT);
+      await mount(`/users/compare?${HERO_QUERY}&discipline=overwatch`);
+      expect(container.textContent).toContain("OWSUBJECT");
+    }
+
+    async function switchToLol() {
+      await act(async () => {
+        navigation.push(`/users/compare?${HERO_QUERY}&discipline=lol`);
+      });
+      await settle();
+    }
+
+    it("shows none of it while the scoped lookup is pending, and none after it 404s", async () => {
+      await showOverwatchResults();
+      let reject!: (error: unknown) => void;
+      mocks.getEntity.mockReturnValue(new Promise((_, fail) => (reject = fail)));
+
+      await switchToLol();
+      expect(container.textContent).not.toContain("OWSUBJECT");
+
+      await act(async () => reject(new ApiError(404, [{ msg: "not found" }])));
+      await settle();
+      expect(container.textContent).not.toContain("OWSUBJECT");
+      expect(container.textContent).toContain("That selection is not in this game");
+    });
+
+    it("withholds results on a failed lookup, says so, and retries on request", async () => {
+      await showOverwatchResults();
+      mocks.getEntity.mockRejectedValue(new Error("boom"));
+
+      await switchToLol();
+      expect(container.textContent).not.toContain("OWSUBJECT");
+      expect(container.textContent).toContain("Could not check that selection");
+
+      const callsBefore = mocks.getEntity.mock.calls.length;
+      mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, discipline: "lol", name: "Ahri" }));
+      const retry = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Retry");
+      expect(retry).toBeTruthy();
+      await act(async () => retry!.click());
+      await settle();
+      expect(mocks.getEntity.mock.calls.length).toBeGreaterThan(callsBefore);
+      expect(container.textContent).not.toContain("Could not check that selection");
+    });
   });
 });

@@ -22,6 +22,7 @@ import HeroLeaderboardTable from "./HeroLeaderboardTable";
 import { heroQueryKeys } from "@/lib/heroes/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
+import { Spinner } from "@/components/ui/spinner";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
@@ -152,7 +153,10 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     updateParams(updates);
   };
 
-  const rows = leaderboardQuery.data?.results ?? [];
+  // Only a hero CHECKED valid in this game has results: the key carries no game, so a cached row set of the same id
+  // from another scope would otherwise stand in while the scoped lookup is pending, failed or refused.
+  const heroChecked = heroSelection.status === "valid";
+  const rows = heroChecked ? (leaderboardQuery.data?.results ?? []) : [];
 
   if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
     return (
@@ -177,7 +181,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
           />
         </div>
       ) : null}
-      <HeroCompareHero selectedHero={selectedHero} rows={rows} />
+      <HeroCompareHero selectedHero={heroChecked ? selectedHero : undefined} rows={rows} />
 
       <HeroLeaderboardFiltersCard
         heroId={heroId}
@@ -194,7 +198,14 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
         resetDisabled={heroId === undefined}
       />
 
-      {heroInvalid ? (
+      {heroSelection.status === "error" ? (
+        <PageStateCard
+          state="error"
+          description={t("users.heroesCompare.invalidHero.checkFailed")}
+          onAction={heroSelection.refetch}
+          actionLabel={t("common.retry")}
+        />
+      ) : heroInvalid ? (
         <PageStateCard
           state="error"
           title={t("users.heroesCompare.invalidHero.title")}
@@ -202,6 +213,10 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
             game: browsing.disciplines?.find((entry) => entry.code === discipline)?.name ?? discipline ?? ""
           })}
         />
+      ) : heroId !== undefined && !heroChecked ? (
+        <div className="flex justify-center py-16" role="status" aria-busy="true">
+          <Spinner />
+        </div>
       ) : heroId === undefined ? (
         <div className="flex flex-col items-center justify-center gap-3.5 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] py-[90px] text-center">
           <Sword aria-hidden className="h-10 w-10 text-[color:var(--aqt-fg-faint)] opacity-50" />
