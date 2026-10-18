@@ -119,3 +119,17 @@ def test_revision_chain_is_linear_after_ingest01():
     script = ScriptDirectory.from_config(Config(str(_BACKEND / "alembic.ini")))
     assert script.get_revision("achievement06").down_revision == "ingest01"
     assert len(script.get_heads()) == 1
+
+
+def test_downgrade_refuses_instead_of_restoring_the_implicit_overwatch_default():
+    import importlib.util
+
+    from shared.testing.stats_parity import _BACKEND
+
+    spec = importlib.util.spec_from_file_location(
+        "achievement06_revision", _BACKEND / "migrations/versions/achievement06_rule_discipline_default.py"
+    )
+    revision = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(revision)
+    with pytest.raises(RuntimeError, match="forward-fix-only"):
+        revision.downgrade()

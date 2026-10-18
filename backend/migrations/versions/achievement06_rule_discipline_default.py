@@ -26,4 +26,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.alter_column("rule", "discipline", schema="achievements", server_default="overwatch")
+    raise RuntimeError("achievement06 is forward-fix-only; restoring the implicit Overwatch default is not a reversal")

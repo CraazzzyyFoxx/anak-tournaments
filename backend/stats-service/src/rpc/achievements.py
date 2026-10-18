@@ -44,7 +44,6 @@ from shared.repository import (
     TournamentRepository,
     WorkspaceRepository,
 )
-from shared.repository.workspace import get_or_create_workspace_member
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
@@ -677,25 +676,17 @@ def register(broker: Any, logger: Any) -> None:  # noqa: C901 - one subscriber p
             rule = await _rule_repo.get(session, body.achievement_rule_id)
             if not rule or rule.workspace_id != workspace_id:
                 raise HTTPException(status_code=404, detail="Rule not found in workspace")
-            # The override's tournament/match are the rule's game's: another game's event can never anchor it.
-            await require_scope_refs(
+            override = await achievement_rule_service.create_rule_override(
                 session,
                 workspace_id=workspace_id,
-                discipline=rule.discipline,
-                tournament_id=body.tournament_id,
-                match_id=body.match_id,
-            )
-            member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=body.user_id)
-            override = AchievementOverride(
-                achievement_rule_id=body.achievement_rule_id,
-                workspace_member_id=member.id,
+                rule=rule,
+                user_id=body.user_id,
+                granted_by=user.id,
                 tournament_id=body.tournament_id,
                 match_id=body.match_id,
                 action=AchievementOverrideAction(body.action),
                 reason=body.reason,
-                granted_by=user.id,
             )
-            override = await achievement_rule_service.create_override(session, override)
             return schemas.OverrideRead(
                 id=override.id,
                 achievement_rule_id=override.achievement_rule_id,

@@ -19,12 +19,19 @@ from shared.core.pagination import paginated_dict
 from shared.domain.achievements.validation import derive_depends_on
 from shared.models.achievements.achievement import (
     AchievementOverride,
+    AchievementOverrideAction,
     AchievementRule,
     EvaluationRunTrigger,
 )
 from shared.repository.support import AchievementOverrideRepository, AchievementRuleRepository
+from shared.repository.workspace import get_or_create_workspace_member
 from src import schemas
-from src.services.achievement.admin_reads import require_character, require_tournament
+from src.services.achievement.admin_reads import (
+    get_workspace_for_discipline,
+    require_character,
+    require_scope_refs,
+    require_tournament,
+)
 
 from .engine.runner import AchievementEvaluationRunnerService, achievement_evaluation_runner_service
 
@@ -121,6 +128,8 @@ class AchievementRuleService:
         An omitted field is untouched; an explicit empty ``condition_tree`` replaces the tree with an empty one and an
         explicit ``entity_id: null`` clears the link.
         """
+        # A workspace can drop a discipline without deleting its rules; those rules are frozen until it is re-enabled.
+        await get_workspace_for_discipline(session, workspace_id, rule.discipline)
         if "slug" in update_data:
             await self._require_free_slug(
                 session, workspace_id=workspace_id, slug=update_data["slug"], except_rule_id=rule.id
@@ -155,6 +164,41 @@ class AchievementRuleService:
     async def delete_rule(self, session: AsyncSession, rule: AchievementRule) -> None:
         await self.rule_repo.delete(session, rule)
         await session.commit()
+
+    async def create_rule_override(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        rule: AchievementRule,
+        user_id: int,
+        granted_by: int,
+        tournament_id: int | None,
+        match_id: int | None,
+        action: AchievementOverrideAction,
+        reason: str,
+    ) -> AchievementOverride:
+        """A manual grant/revoke on ``rule``: its discipline must still be enabled for the workspace, and the
+        tournament/match it names are the rule's game's (same workspace, same discipline, agreeing)."""
+        await get_workspace_for_discipline(session, workspace_id, rule.discipline)
+        await require_scope_refs(
+            session,
+            workspace_id=workspace_id,
+            discipline=rule.discipline,
+            tournament_id=tournament_id,
+            match_id=match_id,
+        )
+        member = await get_or_create_workspace_member(session, workspace_id=workspace_id, player_id=user_id)
+        override = AchievementOverride(
+            achievement_rule_id=rule.id,
+            workspace_member_id=member.id,
+            tournament_id=tournament_id,
+            match_id=match_id,
+            action=action,
+            reason=reason,
+            granted_by=granted_by,
+        )
+        return await self.create_override(session, override)
 
     async def create_override(self, session: AsyncSession, override: AchievementOverride) -> AchievementOverride:
         await self.override_repo.create(session, override)

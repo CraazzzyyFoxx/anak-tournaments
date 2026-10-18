@@ -366,6 +366,45 @@ class RuleWritesTests(_DbCase):
             await resolve(self.session, workspace_id=self.ws.id, discipline="overwatch", rule_ids=[ow.id, lol.id])
         self.assertEqual(404, ctx.exception.status_code)
 
+    async def test_rules_of_a_disabled_discipline_are_frozen_for_update_and_override(self) -> None:
+        ow_only = await self.workspace("ow-only", enabled=("overwatch",))
+        lol_rule = await self.rule("lol-frozen", "lol", {}, ws=ow_only)
+        ow_rule = await self.rule("ow-live", "overwatch", PLAYED_ONCE, ws=ow_only)
+        member_user = models.User(name=f"{self.tag}-ovr")
+        admin = models.AuthUser(email=f"{self.tag}-ovr@example.test", username=f"{self.tag}-ovr")
+        self.session.add_all([member_user, admin])
+        await self.session.flush()
+        await self.session.commit()
+        with self.assertRaises(BaseAPIException) as ctx:
+            await achievement_rule_service.update_rule(
+                self.session,
+                lol_rule,
+                workspace_id=ow_only.id,
+                update_data={"enabled": False, "name": "x"},
+                condition_tree_changed=False,
+            )
+        self.assertEqual(422, ctx.exception.status_code)
+        self.assertEqual("lol-frozen", lol_rule.name)
+
+        def override_args(rule):  # noqa: ANN001, ANN202
+            return {
+                "workspace_id": ow_only.id,
+                "rule": rule,
+                "user_id": member_user.id,
+                "granted_by": admin.id,
+                "tournament_id": None,
+                "match_id": None,
+                "action": AchievementOverrideAction.grant,
+                "reason": "test",
+            }
+
+        with self.assertRaises(BaseAPIException) as ctx:
+            await achievement_rule_service.create_rule_override(self.session, **override_args(lol_rule))
+        self.assertEqual(422, ctx.exception.status_code)
+        self.assertEqual(0, await self.session.scalar(sa.select(sa.func.count()).select_from(AchievementOverride)))
+        granted = await achievement_rule_service.create_rule_override(self.session, **override_args(ow_rule))
+        self.assertEqual(ow_rule.id, granted.achievement_rule_id)
+
 
 class PortableTests(_DbCase):
     def _payload(self, slug: str, **overrides) -> portable.PortableAchievementRule:  # noqa: ANN003
@@ -471,6 +510,29 @@ class PortableTests(_DbCase):
             await self._import([self._payload("lol-rule", discipline="lol", condition_tree={})], ow_only)
         self.assertIn("discipline:", ctx.exception.args[0][0]["errors"][0])
         self.assertEqual(set(), await self.rule_slugs(ow_only))
+
+    async def test_min_tournament_must_be_the_targets_and_the_rules_game(self) -> None:
+        other = await self.workspace("elsewhere")
+        mine = await self.tournament(self.ws, "overwatch", "ow-cup")
+        lol_cup = await self.tournament(self.ws, "lol", "lol-cup")
+        foreign = await self.tournament(other, "overwatch", "foreign-cup")
+        await self.session.commit()
+        before = await self.rule_slugs()
+        bad = {"foreign-ws": foreign.id, "foreign-game": lol_cup.id, "invented": 987654321}
+        batch = [
+            self._payload("fresh", min_tournament_id=mine.id),
+            *(self._payload(slug, min_tournament_id=tid) for slug, tid in bad.items()),
+        ]
+        with self.assertRaises(ValueError) as ctx:
+            await self._import(batch)
+        errors = {entry["slug"]: entry["errors"] for entry in ctx.exception.args[0]}
+        self.assertEqual(set(bad), set(errors))
+        for slug in bad:
+            self.assertTrue(errors[slug][0].startswith("min_tournament_id:"), errors[slug])
+        self.assertEqual(before, await self.rule_slugs())  # nothing written, the valid sibling included
+
+        result = await self._import([self._payload("fresh", min_tournament_id=mine.id)])
+        self.assertEqual(1, result["created"])
 
 
 class SeedAndResetTests(_DbCase):

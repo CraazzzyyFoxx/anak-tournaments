@@ -324,6 +324,32 @@ async def _prevalidate(
                 f"entity_id: character #{payload.entity_id} does not exist in discipline {payload.discipline!r}",
             )
 
+    # The cutoff is a tournament of the *target* workspace and of the rule's own game: a foreign or invented id would
+    # silently empty earlier tournaments' results on the next recompute.
+    tournament_ids = {payload.min_tournament_id for payload in rules if payload.min_tournament_id is not None}
+    tournament_owners = (
+        {
+            row.id: (row.workspace_id, row.discipline)
+            for row in await session.execute(
+                sa.select(models.Tournament.id, models.Tournament.workspace_id, models.Tournament.discipline).where(
+                    models.Tournament.id.in_(tournament_ids)
+                )
+            )
+        }
+        if tournament_ids
+        else {}
+    )
+    for payload in rules:
+        if payload.min_tournament_id is not None and tournament_owners.get(payload.min_tournament_id) != (
+            target_workspace.id,
+            payload.discipline,
+        ):
+            reject(
+                payload.slug,
+                f"min_tournament_id: tournament #{payload.min_tournament_id} does not exist in the target workspace "
+                f"for discipline {payload.discipline!r}",
+            )
+
     if errors_by_slug:
         raise ValueError([{"slug": slug, "errors": errors} for slug, errors in errors_by_slug.items()])
 
