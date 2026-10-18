@@ -1,0 +1,518 @@
+"""Frozen D96 evidence the P4 feature oracle does not carry: quantile execution, standings/shift prediction frames
+and the predictions of real fitted fixture estimators.
+
+``fixtures/ml_prediction_parity.json`` was captured ONCE under the pre-move P5 analytics code (``fixtures/ml_pre_move``
+holds the provenance and the estimator state bundles); it is never regenerated from the code under test. The fixture
+estimators are real small LightGBM / XGBoost / scikit-learn objects whose learned state is loaded from
+``*.state.joblib`` (library objects and plain fields only -- no custom class); the model wrappers are rebuilt around
+that state without calling ``fit``.
+
+Database-derived families inherit P4's documented floating reduction order and compare to 1e-12 absolute; families built
+only from deterministic synthetic frames compare exactly.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import json
+import math
+import typing
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import joblib
+import lightgbm as lgb
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+from shared.division_grid import DEFAULT_GRID
+from src.core import config
+from src.services.analytics.canonical_division import canonical_division_number
+from src.services.ml.features.aggregations import build_match_features_with_strength
+from src.services.ml.features.local_performance import attach_local_performance
+from src.services.ml.features.role_kpis import COARSE_FEATURES, ROLE_KPIS, features_for_role
+from src.services.ml.features.shift_features import build_shift_feature_frame
+from src.services.ml.features.standings_features import (
+    build_standings_forecast_frame,
+    build_standings_training_frame,
+)
+from src.services.ml.inference.match_quality_runner import _match_scores
+from src.services.ml.models.anomalies import detect_sandbags, detect_smurfs, detect_throws, detect_trolls
+from src.services.ml.models.base import align_features
+from src.services.ml.models.match_quality import compute_match_quality
+from src.services.ml.models.performance_v2 import (
+    PerformanceModelV2,
+    _ConstantClassifier,
+    aggregate_to_tournament,
+    build_target,
+    impact_score_within_role,
+    stabilize_small_cohort_impact,
+)
+from src.services.ml.models.shift_v2 import SHIFT_BLEND_COLUMNS, ShiftModelV2, train_shift_v2
+from src.services.ml.models.standings_v2 import (
+    STANDINGS_FEATURE_ORDER,
+    WinProbabilityModel,
+    _feature_matrix,
+    simulate_standings,
+)
+from tests.test_stats_feature_parity import _frame, native_analytics_reader  # noqa: F401
+
+# The only place that names where the concrete Overwatch analytics code lives.
+_ow = SimpleNamespace(
+    PerformanceModelV2=PerformanceModelV2,
+    ConstantClassifier=_ConstantClassifier,
+    WinProbabilityModel=WinProbabilityModel,
+    ShiftModelV2=ShiftModelV2,
+    align_features=align_features,
+    build_target=build_target,
+    aggregate_to_tournament=aggregate_to_tournament,
+    impact_score_within_role=impact_score_within_role,
+    stabilize_small_cohort_impact=stabilize_small_cohort_impact,
+    attach_local_performance=attach_local_performance,
+    features_for_role=features_for_role,
+    feature_matrix=_feature_matrix,
+    simulate_standings=simulate_standings,
+    train_shift_v2=train_shift_v2,
+    compute_match_quality=compute_match_quality,
+    detect_smurfs=detect_smurfs,
+    detect_trolls=detect_trolls,
+    detect_sandbags=detect_sandbags,
+    detect_throws=detect_throws,
+    canonical_division_number=canonical_division_number,
+    build_match_features=build_match_features_with_strength,
+    build_shift_frame=build_shift_feature_frame,
+    build_forecast_frame=build_standings_forecast_frame,
+    build_training_frame=build_standings_training_frame,
+    match_scores=_match_scores,
+)
+
+FIXTURES = Path(__file__).parent / "fixtures"
+GOLDEN = FIXTURES / "ml_prediction_parity.json"
+STATE = FIXTURES / "ml_pre_move"
+ROLES = ("tank", "damage", "support")
+CASES = (
+    ("primary", "tournament", "workspace"),
+    ("secondary", "tournament_other", "workspace_other"),
+    ("hidden", "tournament_hidden", "workspace"),
+    ("wrong_workspace", "tournament", "workspace_other"),
+)
+
+
+# ---------------------------------------------------------------------------
+# Deterministic synthetic inputs (shared by the one-off capture and every run)
+# ---------------------------------------------------------------------------
+
+
+def synthetic_frame(seed: int, n: int, columns: typing.Iterable[str]) -> pd.DataFrame:
+    """Seeded numeric frame with NaNs, reversed column order and playtime branches."""
+    rng = np.random.default_rng(seed)
+    special = {"rank", "is_home", "is_newcomer", "won", "score_delta", "role"}
+    names = sorted({*columns, "team_avg_mu", "opp_avg_mu", "mu_gap"} - special)
+    frame = pd.DataFrame({name: rng.normal(size=n).round(6) for name in names})
+    frame["rank"] = rng.integers(1, 3000, size=n)
+    frame["is_home"] = rng.random(n) < 0.5
+    frame["is_newcomer"] = rng.random(n) < 0.3
+    frame["won"] = (rng.random(n) < 0.5).astype(int)
+    frame["score_delta"] = rng.integers(-3, 4, size=n)
+    frame["hero_time_played"] = rng.choice([0.0, np.nan, 300.0, 600.0, 900.0], size=n)
+    frame["role"] = rng.choice(["Tank", "damage", "SUPPORT"], size=n)
+    frame["player_id"] = np.arange(n)
+    frame["tournament_id"] = 1
+    mask = rng.random((n, len(names))) < 0.08
+    frame[names] = frame[names].mask(mask)
+    return frame[list(frame.columns[::-1])]
+
+
+def _every_column() -> list[str]:
+    columns: dict[str, None] = {}
+    for kpis in ROLE_KPIS.values():
+        columns.update(dict.fromkeys(kpis))
+    columns.update(dict.fromkeys(COARSE_FEATURES))
+    columns.update(dict.fromkeys(STANDINGS_FEATURE_ORDER))
+    columns.update(dict.fromkeys(SHIFT_BLEND_COLUMNS))
+    return list(columns)
+
+
+def evaluation_frame() -> pd.DataFrame:
+    """12 rows, some columns absent so ``align_features`` must insert NaN."""
+    frame = synthetic_frame(2026, 12, _every_column())
+    return frame.drop(columns=["deaths_p10", "synergy_winrate_gap"], errors="ignore")
+
+
+# ---------------------------------------------------------------------------
+# Probe predictors (observe the real aligned matrix, return deterministic numbers)
+# ---------------------------------------------------------------------------
+
+
+class _Probe:
+    def __init__(self, offset: float) -> None:
+        self.offset = offset
+        self.inputs: list[dict] = []
+
+    def _score(self, frame: pd.DataFrame) -> np.ndarray:
+        self.inputs.append(_frame(frame))
+        return np.nansum(frame.to_numpy(dtype=float), axis=1) * 0.001 + self.offset
+
+    def predict(self, frame: pd.DataFrame) -> np.ndarray:
+        return self._score(frame)
+
+    def predict_proba(self, frame: pd.DataFrame) -> np.ndarray:
+        p = np.clip(self._score(frame), 0.01, 0.99)
+        return np.column_stack([1 - p, p])
+
+
+# ---------------------------------------------------------------------------
+# Fixture model reconstruction (no fit)
+# ---------------------------------------------------------------------------
+
+
+def _fixture_state(name: str) -> dict:
+    return joblib.load(STATE / f"{name}.state.joblib")
+
+
+def _no_fit(*_a, **_k):
+    raise AssertionError("fixture estimators must never be refit")
+
+
+@contextlib.contextmanager
+def _fit_forbidden() -> typing.Iterator[None]:
+    with contextlib.ExitStack() as stack:
+        for target in (lgb.LGBMRegressor, xgb.XGBClassifier, CalibratedClassifierCV, LogisticRegression, Pipeline):
+            stack.enter_context(patch.object(target, "fit", _no_fit))
+        yield
+
+
+def load_fixture_models() -> dict[str, typing.Any]:
+    models: dict[str, typing.Any] = {}
+    for role in ROLES:
+        state = _fixture_state(f"performance_{role}")
+        kind, payload = state.pop("baseline")
+        baseline = _ow.ConstantClassifier(prior=payload) if kind == "constant" else payload
+        models[f"performance_{role}"] = _ow.PerformanceModelV2(baseline=baseline, **state)
+    models["standings"] = _ow.WinProbabilityModel(**_fixture_state("standings"))
+    for name in ("shift_default", "shift_tuned", "shift_old_missing"):
+        model = object.__new__(_ow.ShiftModelV2)
+        model.__dict__.update(_fixture_state(name))
+        models[name] = model
+    return models
+
+
+# ---------------------------------------------------------------------------
+# Output collection
+# ---------------------------------------------------------------------------
+
+
+def _role_frame(frame: pd.DataFrame, role: str) -> pd.DataFrame:
+    return frame.loc[frame["role"].str.lower() == role]
+
+
+def _quantile_execution(frame: pd.DataFrame) -> dict:
+    """Real main/quantile/coarse dispatch with probe boosters that return numbers."""
+    out = {}
+    for role in sorted(frame["role"].str.lower().unique()):
+        role_frame = _role_frame(frame, role)
+        cases = {}
+        for label, coarse_enabled in (("with_coarse", True), ("without_coarse", False)):
+            main, q10, q90, coarse = _Probe(0.0), _Probe(-0.2), _Probe(0.2), _Probe(0.05)
+            model = _ow.PerformanceModelV2(
+                role=role,
+                booster=main,
+                booster_q10=q10,
+                booster_q90=q90,
+                feature_order=list(_ow.features_for_role(role)),
+                coarse_booster=coarse if coarse_enabled else None,
+                coarse_feature_order=list(COARSE_FEATURES) if coarse_enabled else [],
+                shift_range=2.0,
+            )
+            predicted = model.predict_match(role_frame)
+            cases[label] = {
+                "main": main.inputs,
+                "q10": q10.inputs,
+                "q90": q90.inputs,
+                "coarse": coarse.inputs,
+                "predict_match": _frame(predicted),
+                "predict": _frame(model.predict(role_frame).to_frame("y_hat")),
+            }
+        out[role] = cases
+    return out
+
+
+def _fitted_performance(models: dict, frame: pd.DataFrame) -> dict:
+    """Fitted-model predictions + the runner's tournament roll-up and local/impact post-processing."""
+    out: dict[str, typing.Any] = {"per_role": {}}
+    y_hat = pd.Series(index=frame.index, dtype=float)
+    y_q10 = pd.Series(index=frame.index, dtype=float)
+    y_q90 = pd.Series(index=frame.index, dtype=float)
+    for role in ROLES:
+        model = models[f"performance_{role}"]
+        mask = frame["role"].str.lower() == role
+        if not mask.any():
+            continue
+        predicted = model.predict_match(frame[mask])
+        out["per_role"][role] = _frame(predicted)
+        y_hat.loc[mask], y_q10.loc[mask], y_q90.loc[mask] = predicted["y_hat"], predicted["y_q10"], predicted["y_q90"]
+    per_player = _ow.aggregate_to_tournament(frame, y_hat, y_q10, y_q90)
+    out["aggregate"] = _frame(per_player)
+    if per_player.empty:
+        return out
+    per_player["impact_score"] = _ow.impact_score_within_role(per_player)
+    ranks = frame.groupby("player_id", dropna=False)["rank"].first().to_dict()
+    per_player["division"] = per_player["player_id"].map(
+        lambda player_id: _ow.canonical_division_number(DEFAULT_GRID, int(ranks.get(player_id, 0) or 0))
+    )
+    per_player = _ow.attach_local_performance(per_player)
+    out["local"] = _frame(per_player)
+    out["stabilized"] = _frame(_ow.stabilize_small_cohort_impact(per_player))
+    return out
+
+
+def _matchups(frame: pd.DataFrame, p_home: np.ndarray) -> pd.DataFrame:
+    paired = frame.assign(p_home_wins=p_home).dropna(subset=["home_team_id", "away_team_id"])
+    return pd.DataFrame(
+        {
+            "home_team_id": paired["home_team_id"].astype(int).to_numpy(),
+            "away_team_id": paired["away_team_id"].astype(int).to_numpy(),
+            "p_home_wins": paired["p_home_wins"].to_numpy(),
+        }
+    )
+
+
+def _standings_outputs(models: dict, frame: pd.DataFrame) -> dict:
+    out: dict[str, typing.Any] = {"frame": _frame(frame)}
+    if frame.empty:
+        return out
+    fitted = models["standings"]
+    out["feature_matrix"] = _frame(_ow.feature_matrix(frame, fitted.feature_order))
+    probe = _Probe(0.5)
+    probe_model = _ow.WinProbabilityModel(booster=probe, baseline=None)
+    out["probe_proba"] = probe_model.predict_proba(frame).tolist()
+    out["probe_input"] = probe.inputs
+    p_home = fitted.predict_proba(frame)
+    out["fitted_proba"] = p_home.tolist()
+    out["fitted_predict"] = _frame(fitted.predict(frame).to_frame())
+    matchups = _matchups(frame, p_home)
+    if not matchups.empty:
+        teams = sorted({int(t) for t in matchups["home_team_id"].tolist() + matchups["away_team_id"].tolist()})
+        out["simulation"] = _frame(
+            _ow.simulate_standings(
+                matchups,
+                teams,
+                n_iter=300,
+                rng=np.random.default_rng(20261018),
+                prob_sharpening=1.5,
+            )
+        )
+    return out
+
+
+def _shift_outputs(models: dict, frame: pd.DataFrame) -> dict:
+    out: dict[str, typing.Any] = {"frame": _frame(frame)}
+    for name in ("shift_default", "shift_tuned", "shift_old_missing"):
+        model = models[name]
+        out[name] = {
+            "confidence": _frame(model.predict_with_confidence(frame)),
+            "predict": _frame(model.predict(frame).to_frame()),
+        }
+    return out
+
+
+def _synthetic_outputs(models: dict) -> dict:
+    frame = evaluation_frame()
+    out: dict[str, typing.Any] = {"input": _frame(frame), "quantile_execution": _quantile_execution(frame)}
+    out["fitted_performance"] = _fitted_performance(models, frame)
+    role_frame = _role_frame(frame, "damage")
+    baselines = {}
+    for role in ROLES:
+        baseline = models[f"performance_{role}"].baseline
+        baselines[role] = baseline.predict_proba(
+            frame[["team_avg_mu", "opp_avg_mu", "mu_gap"]].fillna(0.0).to_numpy()
+        ).tolist()
+    out["baselines"] = baselines
+    out["aligned_main"] = {
+        role: _frame(_ow.align_features(frame, models[f"performance_{role}"].feature_order)) for role in ROLES
+    }
+    out["standings_fitted"] = _standings_outputs(
+        models, frame.assign(home_team_id=range(12), away_team_id=range(1, 13))
+    )
+    out["shift"] = _shift_outputs(models, frame.assign(current_div=np.arange(12) % 7 + 1, grid_n_div=20))
+    trained = _ow.train_shift_v2(
+        frame.assign(current_div=np.arange(12) % 7 + 1, next_tournament_div=np.arange(12) % 5 + 1, grid_n_div=20),
+        val_df=frame.assign(current_div=3, next_tournament_div=2, grid_n_div=20),
+        w_team=0.6,
+        w_os=0.4,
+        indiv_scale_top=0.25,
+        indiv_scale_bottom=0.9,
+        indiv_clamp_top=0.8,
+        indiv_clamp_bottom=2.2,
+        dominance_gain=5.5,
+        dominance_cap=2.5,
+        placement_floor=0.1,
+        clamp_top_grid_ref=21.0,
+    )
+    out["train_shift"] = {
+        "state": _value_dict(trained.model.__dict__),
+        "metrics": trained.metrics,
+        "feature_importance": trained.feature_importance,
+    }
+    out["role_frame_rows"] = len(role_frame)
+    out["anomalies"] = _anomaly_outputs()
+    return out
+
+
+def _value_dict(values: dict) -> dict:
+    return {key: (list(value) if isinstance(value, list) else value) for key, value in values.items()}
+
+
+def _anomaly_outputs() -> dict:
+    rng = np.random.default_rng(77)
+    n = 16
+    profile = pd.DataFrame(
+        {
+            "player_id": np.arange(100, 100 + n),
+            "role": ["tank", "damage", "support", "damage"] * 4,
+            "rank": rng.integers(1, 3000, size=n).astype(float),
+            "impact_score": rng.uniform(0, 100, size=n),
+            "local_zscore": rng.normal(size=n) * 1.4,
+            "local_percentile": rng.uniform(0, 100, size=n),
+            "kd": rng.uniform(0.3, 4.0, size=n),
+            "weapon_accuracy": rng.uniform(0.2, 0.7, size=n),
+            "final_blows_p10": rng.uniform(2, 20, size=n),
+            "mvp_dominance": rng.uniform(0.2, 0.95, size=n),
+            "confidence": rng.uniform(0.2, 1.0, size=n),
+        }
+    )
+    profile["local_zscore_history"] = [
+        [float(v) for v in rng.normal(loc=0.4 if i % 3 else -1.0, size=3 + i % 2).round(3)] for i in range(n)
+    ]
+    rounds = []
+    for player, drop in ((200, True), (201, False), (202, True)):
+        for encounter in (1, 2):
+            series = np.concatenate([rng.normal(1.1, 0.2, 4), rng.normal(-1.3 if drop else 1.0, 0.2, 4)])
+            for number, value in enumerate(series, start=1):
+                rounds.append({"player_id": player, "encounter_id": encounter, "round": number, "y_perf": float(value)})
+    residuals = pd.DataFrame(rounds)
+    settings = config.settings
+    return {
+        "smurf_defaults": _ow.detect_smurfs(profile),
+        "smurf_settings": _ow.detect_smurfs(
+            profile,
+            strong_local_z_threshold=settings.smurf_strong_local_z,
+            mvp_dominance_threshold=settings.smurf_mvp_dominance,
+        ),
+        "trolls": _ow.detect_trolls(profile),
+        "sandbags": _ow.detect_sandbags(profile),
+        "throws": _ow.detect_throws(residuals),
+    }
+
+
+async def _database_outputs(session: AsyncSession, ids: dict[str, int], models: dict) -> dict:
+    out: dict[str, typing.Any] = {}
+    # A cross-database feature-cache hit is not evidence from this SQL fixture.
+    with patch.object(config.settings, "analytics_feature_cache_enabled", False):
+        for case, tournament, workspace in CASES:
+            tid, wid = ids[tournament], ids[workspace]
+            enriched = await _ow.build_match_features(session, tid, workspace_id=wid)
+            entry: dict[str, typing.Any] = {"enriched": _frame(enriched)}
+            if not enriched.empty:
+                entry["quantile_execution"] = _quantile_execution(enriched)
+                entry["fitted_performance"] = _fitted_performance(models, enriched)
+            forecast = await _ow.build_forecast_frame(session, tid, workspace_id=wid)
+            entry["forecast"] = _standings_outputs(models, forecast)
+            training = await _ow.build_training_frame(session, [tid], workspace_id=wid)
+            entry["training"] = _standings_outputs(models, training)
+            if not training.empty:
+                encounters = training.copy()
+                encounters["p_home_wins"] = models["standings"].predict_proba(encounters)
+                scores = await _ow.match_scores(session, tid)
+                entry["match_quality"] = {
+                    "scores": _frame(scores),
+                    "default": _frame(_ow.compute_match_quality(encounters, scores)),
+                    "explicit": _frame(
+                        _ow.compute_match_quality(
+                            encounters,
+                            scores,
+                            competitiveness_weight=0.2,
+                            predictability_weight=0.5,
+                            skill_balance_weight=0.3,
+                            sigma_pool=2.5,
+                        )
+                    ),
+                }
+            shift = await _ow.build_shift_frame(session, [tid], workspace_id=wid)
+            entry["shift"] = _shift_outputs(models, shift) if not shift.empty else {"frame": _frame(shift)}
+            out[case] = entry
+    return out
+
+
+async def collect_outputs(session: AsyncSession, ids: dict[str, int], models: dict) -> dict:
+    return {"synthetic": _synthetic_outputs(models), "database": await _database_outputs(session, ids, models)}
+
+
+# ---------------------------------------------------------------------------
+# Comparison
+# ---------------------------------------------------------------------------
+
+
+def _assert_equal(actual: typing.Any, expected: typing.Any, path: tuple = (), *, tolerant: bool) -> None:
+    assert type(actual) is type(expected), path
+    if isinstance(expected, dict):
+        assert actual.keys() == expected.keys(), path
+        for key in expected:
+            _assert_equal(actual[key], expected[key], (*path, key), tolerant=tolerant)
+    elif isinstance(expected, list):
+        assert len(actual) == len(expected), path
+        for index, (value, old_value) in enumerate(zip(actual, expected, strict=True)):
+            _assert_equal(value, old_value, (*path, index), tolerant=tolerant)
+    elif tolerant and isinstance(expected, float):
+        assert math.isclose(actual, expected, rel_tol=0.0, abs_tol=1e-12), path
+    else:
+        assert actual == expected, path
+
+
+def _to_json(value: typing.Any) -> typing.Any:
+    return json.loads(json.dumps(value, allow_nan=False))
+
+
+def test_ml_prediction_parity(native_analytics_reader) -> None:  # noqa: F811
+    asyncio.run(_ml_prediction_parity(native_analytics_reader))
+
+
+async def _ml_prediction_parity(native_analytics_reader) -> None:  # noqa: F811
+    import sqlalchemy as sa
+
+    url, ids, role = native_analytics_reader
+    models = load_fixture_models()
+    engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
+    try:
+        async with AsyncSession(engine) as session:
+            await session.execute(sa.text(f'SET LOCAL ROLE "{role}"'))
+            with _fit_forbidden():
+                actual = _to_json(await collect_outputs(session, ids, models))
+    finally:
+        await engine.dispose()
+    expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
+    _assert_equal(actual["synthetic"], expected["synthetic"], ("synthetic",), tolerant=False)
+    _assert_equal(actual["database"], expected["database"], ("database",), tolerant=True)
+
+
+def test_fixture_set_is_complete_and_old_shift_state_lacks_later_fields() -> None:
+    """A shift state pickled before the tuning fields existed must load and degrade to the class defaults."""
+    assert set(load_fixture_models()) == {
+        "performance_tank",
+        "performance_damage",
+        "performance_support",
+        "standings",
+        "shift_default",
+        "shift_tuned",
+        "shift_old_missing",
+    }
+    state = _fixture_state("shift_old_missing")
+    assert "indiv_scale_top" not in state and "clamp_top_grid_ref" not in state
