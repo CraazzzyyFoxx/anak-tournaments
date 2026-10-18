@@ -2,7 +2,7 @@
 
 ``EncounterCompletedEvent`` drives achievement and MVP-impact recalculation. It
 used to be emitted only by tournament-service, so a result arriving through the
-Challonge importer in parser-service silently skipped both — the same result
+Challonge importer in stats-service silently skipped both — the same result
 entered by an admin did not. The derivation lives here so neither service can
 drift from the other again.
 """

@@ -20,7 +20,7 @@ reconstruct the exact same values from the normalized tables instead:
     → ``challonge_match_mapping.challonge_match_id`` WHERE ``encounter_id = E``.
 
 Every resolver is BATCHED (one query for a whole page of ids) so callers avoid
-N+1, and is service-agnostic so both tournament-service and parser-service can
+N+1, and is service-agnostic so both tournament-service and stats-service can
 reuse it. Values are deduplicated deterministically by the mapping row's own id
 (lowest id wins) to match the legacy single-value column semantics.
 """

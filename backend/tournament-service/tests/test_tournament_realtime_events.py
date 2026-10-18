@@ -3,7 +3,7 @@
 The publisher now names WHAT went stale, never WHY. These tests pin the resource
 set each producer stages, the union that replaces the old "strongest reason
 wins" merge, and the one surviving reason->resource translation: the legacy
-``tournament.changed`` consumer, kept only until parser-service and
+``tournament.changed`` consumer, kept only until stats-service and
 balancer-service stop publishing to that exchange.
 
 Staging is inspected through ``session.info["realtime_staged"]`` because these

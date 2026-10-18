@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock
 backend_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(backend_root))
 
-from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE  # noqa: E402
+from shared.messaging.config import PROCESS_TOURNAMENT_LOGS_QUEUE  # noqa: E402
 from shared.observability import publish_message  # noqa: E402
 
 
@@ -25,13 +25,13 @@ class WorkerPublishPersistTests(IsolatedAsyncioTestCase):
     async def test_jobs_are_published_persistently_by_default(self) -> None:
         broker = AsyncMock()
 
-        await publish_message(broker, {"tournament_id": 1}, PROCESS_MATCH_LOG_QUEUE)
+        await publish_message(broker, {"tournament_id": 1}, PROCESS_TOURNAMENT_LOGS_QUEUE)
 
         self.assertIs(True, broker.publish.await_args.kwargs["persist"])
 
     async def test_caller_can_opt_out_of_persistence(self) -> None:
         broker = AsyncMock()
 
-        await publish_message(broker, {"tournament_id": 1}, PROCESS_MATCH_LOG_QUEUE, persist=False)
+        await publish_message(broker, {"tournament_id": 1}, PROCESS_TOURNAMENT_LOGS_QUEUE, persist=False)
 
         self.assertIs(False, broker.publish.await_args.kwargs["persist"])

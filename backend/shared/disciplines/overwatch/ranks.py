@@ -1,6 +1,6 @@
 """Overwatch's native rank layer (D87, spec §8.5): the newest OverFast snapshot of every Battle.net account a player
 owns, the best per role. ``overwatch_rank.*`` and the collector that fills it are the module's data and task; the
-collector still runs inside parser-service until P5 re-homes module tasks (D94)."""
+collector still runs inside stats-service until P5 re-homes module tasks (D94)."""
 
 from __future__ import annotations
 

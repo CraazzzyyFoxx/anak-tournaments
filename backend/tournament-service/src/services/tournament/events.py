@@ -132,7 +132,7 @@ async def enqueue_encounter_completed(
 ) -> None:
     """Announce a completed encounter — unless it is a scrim room.
 
-    This event has exactly one consumer: parser-service republishes it as an
+    This event has exactly one consumer: stats-service republishes it as an
     ``AchievementEvaluateEvent``. For a scrim that evaluation is verifiably
     empty — every achievement condition reaches its users through an inner join
     on ``Player`` or through native player facts, and a scrim room has neither
@@ -300,7 +300,7 @@ async def enqueue_registration_rank_check(
     session: AsyncSession,
     registration: models.BalancerRegistration,
 ) -> None:
-    """Ask parser-service to re-fetch the registrant's battle tags (the profile check)."""
+    """Ask stats-service to re-fetch the registrant's battle tags (the profile check)."""
     await enqueue_outbox_event(
         session,
         RegistrationRankCheckRequestedEvent(

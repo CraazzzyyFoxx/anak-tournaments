@@ -1,7 +1,7 @@
 """Tests for the Challonge participant/team mapping preview+apply pair.
 
 Migrated from parser-service's ``teams.challonge_preview``/``teams.create_challonge``
-(see docs/plans/2026-08-21-parser-service-oop-repositories.md's follow-up: parser's
+(see docs/plans/2026-08-21-stats-service-oop-repositories.md's follow-up: parser's
 bootstrap Challonge flows were a narrower one-shot reimplementation of what
 tournament-service's own Challonge sync engine already does -- ``preview_team_mapping``/
 ``apply_team_mapping`` reuse ``discover_sources``/``_build_team_name_index`` via the

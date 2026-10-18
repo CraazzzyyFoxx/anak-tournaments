@@ -9,15 +9,15 @@ Every service shares one PostgreSQL database, and the domain boundaries are draw
 | `public` | Workspaces, membership, division grids, settings, outbox | app-service |
 | `tournament` | Tournament structure, bracket, encounters, pick/ban, reports | tournament-service |
 | `casual` | Casual and scrim matches outside the tournament tree | tournament-service |
-| `overwatch` | Game catalog — heroes, maps, game modes | app-service / parser-service |
-| `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
-| `matches` | Parsed match logs and derived statistics | parser-service |
+| `overwatch` | Game catalog — heroes, maps, game modes | app-service / stats-service |
+| `overwatch_rank` | Overwatch rank telemetry from OverFast | stats-service |
+| `matches` | Parsed match logs and derived statistics | stats-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
-| `achievements` | Achievement rules, evaluations and manual overrides | parser-service / app-service |
+| `achievements` | Achievement rules, evaluations and manual overrides | stats-service / app-service |
 | `analytics` | Analytics signals and the ML model registry | analytics-service |
-| `log_processing` | Match-log upload and parse records | parser-service / discord-service |
+| `log_processing` | Match-log upload and parse records | stats-service / discord-service |
 | `realtime` | The event journal used for WebSocket replay | gateway (Go) |
-| `subscriptions` | Subscription providers, requirements and verdicts | tournament-service / parser-service |
+| `subscriptions` | Subscription providers, requirements and verdicts | tournament-service / stats-service |
 | `quota` | Quota plans, operation costs and overrides | every service, via `shared.quota` |
 
 The `balancer` schema is wider than its name: it holds tournament applications, balancing results and member ranks alike. A model package name does not always match its schema either — the rank models write to `overwatch_rank`, the log-ingestion models to `log_processing`.

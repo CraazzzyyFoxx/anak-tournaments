@@ -31,7 +31,7 @@ class UserRankSnapshot(db.Base):
 
     One row per battle tag, per role, per platform, written only when the poll
     finds something different from the series' last row (migration
-    ``rankdedup01``; ``parser-service`` ``changed_ranks``). The first poll of an
+    ``rankdedup01``; ``stats-service`` ``changed_ranks``). The first poll of an
     account records every role, unranked ones included, so every later
     transition -- ranked to unranked too -- has a row to be read against. A
     poll that changes nothing writes nothing; the state row's

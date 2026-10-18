@@ -1,6 +1,6 @@
 """``derive_match``: the baseline/rank-dependent facts, DB-free (the baselines read is substituted).
 
-Exact parity with the P4 backfill outputs is pinned in ``parser-service/tests/test_ow_decoder_parity.py``.
+Exact parity with the P4 backfill outputs is pinned in ``stats-service/tests/test_ow_decoder_parity.py``.
 """
 
 from __future__ import annotations

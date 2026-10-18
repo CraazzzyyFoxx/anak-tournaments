@@ -1,4 +1,4 @@
-// Rank history (OverFast) — mirrors parser-service src/schemas/rank_history.py
+// Rank history (OverFast) — mirrors stats-service src/schemas/rank_history.py
 
 import type { AqtRoleKey } from "@/lib/roster/player-role";
 

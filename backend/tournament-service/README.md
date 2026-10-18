@@ -247,7 +247,7 @@ The sweeper (`drain_outbox` in `serve.py`) runs every second and:
    Failed rows are retried forever; there is no poison-message limit.
 
 **Why it lives here.** `event_outbox` is a single global table with no per-service partition, and
-`tournament-svc` runs the only sweeper in the backend. Producers elsewhere — `parser-service`'s match
+`tournament-svc` runs the only sweeper in the backend. Producers elsewhere — `stats-service`'s match
 log flows, and the shared encounter/computation event helpers used by several services — write rows
 that this worker drains. That makes the tournament worker a hard dependency for cross-service event
 delivery: while it is down, outbox rows accumulate and *no* service's domain events are published.

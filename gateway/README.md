@@ -26,7 +26,7 @@ world.
   RPC as `data["identity"]`; WebSocket handshakes additionally validate a session JWT locally
   against the shared HS256 secret. See [Authentication](#authentication).
 - **RPC dispatch** — typed request/reply RPC over RabbitMQ to `rpc.<service>.*` workers
-  (`app`, `identity`, `tournament`, `parser`, `balancer`, `analytics`), with `reply_to` +
+  (`app`, `identity`, `tournament`, `stats`, `balancer`, `analytics`), with `reply_to` +
   `correlation_id`, an `x-deadline-ms` deadline, and a per-queue in-flight bulkhead
   (`GATEWAY_RPC_MAX_INFLIGHT`) that sheds with a 503 when a queue is saturated.
 - **Realtime hub** — a Redis→WebSocket hub at `/ws` and `/api/v1/realtime/ws`, replaying
@@ -49,7 +49,7 @@ world.
 
 ```
 internet → nginx :80 ─┬─ /api/*, /ws, /api/v1/realtime/ws, /health → gateway :8080 →
-                      │      ├─ RPC over RabbitMQ → headless workers (rpc.app.* / rpc.identity.* / rpc.tournament.* / rpc.parser.* / rpc.balancer.* / rpc.analytics.*)
+                      │      ├─ RPC over RabbitMQ → headless workers (rpc.app.* / rpc.identity.* / rpc.tournament.* / rpc.stats.* / rpc.balancer.* / rpc.analytics.*)
                       │      └─ /ws + /api/v1/realtime/ws → Redis→WebSocket hub (replay from realtime.workspace_event)
                       └─ everything else (pages, /_next/*, /bff/*, /api/health) → frontend :3000
 ```
@@ -181,7 +181,7 @@ Under `internal/`:
 | `openapi` / `apidocs` | Scalar API docs |
 | `db` | pgx Postgres pool |
 
-Per-domain route tables live under `internal/{tournament,app,parser,balancer,identity,analytics}`.
+Per-domain route tables live under `internal/{tournament,app,stats,balancer,identity,analytics}`.
 
 The gateway reads Postgres **read-only** (ACL / workspace membership, event replay,
 custom-domain resolution), uses Redis for the realtime bus + cache-invalidation + active-user

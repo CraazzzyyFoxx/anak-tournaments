@@ -44,7 +44,7 @@ class Standing(db.TimeStampIntegerMixin):
     points: Mapped[float] = mapped_column(Float)
     # The TRIMMED (median) Buchholz -- and, load-bearing beyond its value, the
     # group-vs-playoff discriminator: `buchholz IS NULL` means "playoff row" in
-    # app-service user/compare/overview queries and in parser-service achievement
+    # app-service user/compare/overview queries and in stats-service achievement
     # filters. Renaming it would touch all of those, so the untrimmed sum lives
     # in its own column instead.
     buchholz: Mapped[float | None] = mapped_column(Float, nullable=True)

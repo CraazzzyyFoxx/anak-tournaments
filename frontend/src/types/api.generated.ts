@@ -1889,7 +1889,7 @@ export interface paths {
          * Battle tag rank history
          * @description Permission: public; no authentication required. Returns a single battle tag's OverFast rank time series with granularity, date range, platform and role filters.
          *
-         *     RPC subject: `rpc.parser.rank.battle_tag_history`
+         *     RPC subject: `rpc.stats.rank.battle_tag_history`
          */
         get: operations["get__api_v1_battle_tags__id__rank_history"];
         put?: never;
@@ -4213,7 +4213,7 @@ export interface paths {
          * Current user ranks
          * @description Permission: public; no authentication required. Returns a user's current OverFast ranks for the requested platform.
          *
-         *     RPC subject: `rpc.parser.rank.user_current`
+         *     RPC subject: `rpc.stats.rank.user_current`
          */
         get: operations["get__api_v1_users__id__current_ranks"];
         put?: never;
@@ -4389,7 +4389,7 @@ export interface paths {
          * User rank history
          * @description Permission: public; no authentication required. Returns a user's OverFast rank time series with configurable granularity, date range, platform and role filters.
          *
-         *     RPC subject: `rpc.parser.rank.user_history`
+         *     RPC subject: `rpc.stats.rank.user_history`
          */
         get: operations["get__api_v1_users__id__rank_history"];
         put?: never;
@@ -4633,7 +4633,7 @@ export interface paths {
          * Run achievement calculation
          * @description Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine across a workspace (optionally seeding the built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
-         *     RPC subject: `rpc.parser.ach.calculate`
+         *     RPC subject: `rpc.stats.ach.calculate`
          */
         post: operations["post__api_v1_achievement_calculate"];
         delete?: never;
@@ -4655,7 +4655,7 @@ export interface paths {
          * Calculate tournament achievements
          * @description Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament — the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied — and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
-         *     RPC subject: `rpc.parser.ach.calculate_tournament`
+         *     RPC subject: `rpc.stats.ach.calculate_tournament`
          */
         post: operations["post__api_v1_achievement_calculate__tournament_id_"];
         delete?: never;
@@ -5661,7 +5661,7 @@ export interface paths {
          * Sync a discipline's catalog
          * @description Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync.
          *
-         *     RPC subject: `rpc.parser.catalog.sync`
+         *     RPC subject: `rpc.stats.catalog.sync`
          */
         post: operations["post__api_v1_admin_catalog_sync__discipline_"];
         delete?: never;
@@ -6447,7 +6447,7 @@ export interface paths {
          * List log processing records
          * @description Permission: `log.read` in the workspace named by the scope argument — `workspace_id`, else the tournament's, else the encounter's workspace — or global `log.read` when no scope argument is given. Lists match-log processing records filtered by tournament, encounter or workspace, plus optional status and free-text search, with pagination.
          *
-         *     RPC subject: `rpc.parser.logs.history`
+         *     RPC subject: `rpc.stats.logs.history`
          */
         get: operations["get__api_v1_admin_logs_history"];
         put?: never;
@@ -6469,7 +6469,7 @@ export interface paths {
          * Match-log queue depths
          * @description Permission: global `log.read`. Returns per-status counts of match-log processing records.
          *
-         *     RPC subject: `rpc.parser.logs.queue_status`
+         *     RPC subject: `rpc.stats.logs.queue_status`
          */
         get: operations["get__api_v1_admin_logs_queue_status"];
         put?: never;
@@ -6491,7 +6491,7 @@ export interface paths {
          * Log processing stats
          * @description Permission: `log.read` in the workspace named by the scope argument — `workspace_id`, else the tournament's, else the encounter's workspace — or global `log.read` when no scope argument is given. Returns scope-wide processing counts per status, average completed duration and the newest record timestamp for a tournament, encounter or workspace.
          *
-         *     RPC subject: `rpc.parser.logs.stats`
+         *     RPC subject: `rpc.stats.logs.stats`
          */
         get: operations["get__api_v1_admin_logs_stats"];
         put?: never;
@@ -6515,7 +6515,7 @@ export interface paths {
          * Upload match logs
          * @description Permission: workspace `log.create` in the tournament's workspace. Multipart (base64) upload of one or more log files for a tournament, storing each to S3 and enqueueing processing, with per-file errors collected. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
-         *     RPC subject: `rpc.parser.logs.upload`
+         *     RPC subject: `rpc.stats.logs.upload`
          */
         post: operations["post__api_v1_admin_logs_upload"];
         delete?: never;
@@ -6559,7 +6559,7 @@ export interface paths {
          * Retry log processing
          * @description Permission: workspace `log.update` in the record's workspace. Resets a failed or awaiting-link log record to pending, re-enqueues it for processing and returns the updated record (with its structured `error`, current `observation_revision`/`is_current_provenance` and, for an awaiting-link record, the document `teams` a bind map is keyed by), 404ing when the record does not exist. A `done` record is never replayed implicitly: 409 `reparse_required`; send `reparse=true` with the `expected_revision` the operator saw to replace its observations directly (409 `stale_revision` when another revision was written, 409 `stale_binding` once the job is no longer the game's current evidence). An optional `encounter_id` first attaches the log to that encounter of the record's tournament (404 unknown encounter, 400 another tournament's, 409 on a processed record), which is how an `encounter_ambiguous` failure is resolved.
          *
-         *     RPC subject: `rpc.parser.logs.retry`
+         *     RPC subject: `rpc.stats.logs.retry`
          */
         post: operations["post__api_v1_admin_logs__id__retry"];
         delete?: never;
@@ -6799,7 +6799,7 @@ export interface paths {
          * Trigger rank collection
          * @description Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are touched), otherwise global `rank.update`. Enqueues an OverFast rank-collection run for a user or specific battle tags and returns the enqueued count.
          *
-         *     RPC subject: `rpc.parser.rank.collect`
+         *     RPC subject: `rpc.stats.rank.collect`
          */
         post: operations["post__api_v1_admin_rank_collect"];
         delete?: never;
@@ -6821,7 +6821,7 @@ export interface paths {
          *
          *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
          *
-         *     RPC subject: `rpc.parser.rank.fetch_log`
+         *     RPC subject: `rpc.stats.rank.fetch_log`
          */
         get: operations["get__api_v1_admin_rank_fetch_log"];
         put?: never;
@@ -6845,7 +6845,7 @@ export interface paths {
          * Re-enable disabled rank collection
          * @description Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are requeued), otherwise global `rank.update`. Requeues battle tags that were auto-disabled by a transient OverFast outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to tags that previously succeeded. Returns the re-enabled count.
          *
-         *     RPC subject: `rpc.parser.rank.reenable_disabled`
+         *     RPC subject: `rpc.stats.rank.reenable_disabled`
          */
         post: operations["post__api_v1_admin_rank_reenable_disabled"];
         delete?: never;
@@ -6865,7 +6865,7 @@ export interface paths {
          * Rank collection health stats
          * @description Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Aggregated OverFast rank-collection health: battle-tag state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, and the active config.
          *
-         *     RPC subject: `rpc.parser.rank.stats`
+         *     RPC subject: `rpc.stats.rank.stats`
          */
         get: operations["get__api_v1_admin_rank_stats"];
         put?: never;
@@ -6887,7 +6887,7 @@ export interface paths {
          * User rank collection status
          * @description Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the OverFast rank-collection status for each of a user's battle tags.
          *
-         *     RPC subject: `rpc.parser.rank.user_collection`
+         *     RPC subject: `rpc.stats.rank.user_collection`
          */
         get: operations["get__api_v1_admin_rank_users__id__collection"];
         put?: never;
@@ -6909,7 +6909,7 @@ export interface paths {
          * List global settings
          * @description Permission: superuser. Returns all global key/value settings.
          *
-         *     RPC subject: `rpc.parser.settings.list`
+         *     RPC subject: `rpc.stats.settings.list`
          */
         get: operations["get__api_v1_admin_settings"];
         put?: never;
@@ -6931,14 +6931,14 @@ export interface paths {
          * Get global setting
          * @description Permission: superuser. Returns a single global setting by key.
          *
-         *     RPC subject: `rpc.parser.settings.get`
+         *     RPC subject: `rpc.stats.settings.get`
          */
         get: operations["get__api_v1_admin_settings__key_"];
         /**
          * Upsert global setting
          * @description Permission: superuser. Creates or updates a global setting by key, stamping the updating user.
          *
-         *     RPC subject: `rpc.parser.settings.upsert`
+         *     RPC subject: `rpc.stats.settings.upsert`
          */
         put: operations["put__api_v1_admin_settings__key_"];
         post?: never;
@@ -7493,7 +7493,7 @@ export interface paths {
          *
          *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
          *
-         *     RPC subject: `rpc.parser.subscription.check_log`
+         *     RPC subject: `rpc.stats.subscription.check_log`
          */
         get: operations["get__api_v1_admin_subscriptions_check_log"];
         put?: never;
@@ -7517,7 +7517,7 @@ export interface paths {
          * Trigger subscription collection
          * @description Permission: workspace `subscription.update` when `workspace_id` is given (the re-check is then limited to that workspace), otherwise global `subscription.update`. Runs a live subscription re-check for one player (optionally limited to specific providers) or sweeps every open tournament that requires a subscription, and returns the number of checks performed.
          *
-         *     RPC subject: `rpc.parser.subscription.collect`
+         *     RPC subject: `rpc.stats.subscription.collect`
          */
         post: operations["post__api_v1_admin_subscriptions_collect"];
         delete?: never;
@@ -7537,7 +7537,7 @@ export interface paths {
          * Subscription collection health stats
          * @description Permission: workspace `subscription.read` when `workspace_id` is given (aggregates are then scoped to that workspace), otherwise global `subscription.read`. Aggregated subscription-collection health: entitlement counts by state and provider, distinct-user check coverage over 24h/7d, last successful check, last-24h check-outcome mix with error rate, the number of open tournaments enforcing a subscription, and the active config.
          *
-         *     RPC subject: `rpc.parser.subscription.stats`
+         *     RPC subject: `rpc.stats.subscription.stats`
          */
         get: operations["get__api_v1_admin_subscriptions_stats"];
         put?: never;
@@ -7559,7 +7559,7 @@ export interface paths {
          * User subscription collection status
          * @description Permission: workspace `subscription.read` when `workspace_id` is given (only that workspace's entitlement is returned), otherwise global `subscription.read`. Returns the current subscription entitlement per workspace and provider for one player.
          *
-         *     RPC subject: `rpc.parser.subscription.user_collection`
+         *     RPC subject: `rpc.stats.subscription.user_collection`
          */
         get: operations["get__api_v1_admin_subscriptions_users__id__collection"];
         put?: never;
@@ -7787,7 +7787,7 @@ export interface paths {
          * Get tournament Discord channel
          * @description Permission: workspace `discord_channel.read` in the tournament's workspace. Returns the Discord channel configuration for a tournament (or null).
          *
-         *     RPC subject: `rpc.parser.discord_channel.get`
+         *     RPC subject: `rpc.stats.discord_channel.get`
          */
         get: operations["get__api_v1_admin_tournaments__id__discord_channel"];
         put?: never;
@@ -7795,14 +7795,14 @@ export interface paths {
          * Upsert tournament Discord channel
          * @description Permission: workspace `discord_channel.update` in the tournament's workspace. Creates or updates a tournament's Discord guild/channel binding.
          *
-         *     RPC subject: `rpc.parser.discord_channel.upsert`
+         *     RPC subject: `rpc.stats.discord_channel.upsert`
          */
         post: operations["post__api_v1_admin_tournaments__id__discord_channel"];
         /**
          * Delete tournament Discord channel
          * @description Permission: workspace `discord_channel.delete` in the tournament's workspace. Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured.
          *
-         *     RPC subject: `rpc.parser.discord_channel.delete`
+         *     RPC subject: `rpc.stats.discord_channel.delete`
          */
         delete: operations["delete__api_v1_admin_tournaments__id__discord_channel"];
         options?: never;
@@ -7823,7 +7823,7 @@ export interface paths {
          * Backfill Discord channel history
          * @description Permission: workspace `discord_channel.update` in the tournament's workspace. Queues a rescan of the tournament's Discord channel history — the same `process_all` command the bot runs at startup — resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous, and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment — repeat it only when logs are genuinely missing.
          *
-         *     RPC subject: `rpc.parser.discord_channel.backfill`
+         *     RPC subject: `rpc.stats.discord_channel.backfill`
          */
         post: operations["post__api_v1_admin_tournaments__id__discord_channel_backfill"];
         delete?: never;
@@ -8461,7 +8461,7 @@ export interface paths {
          * List library rules
          * @description Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the achievement rules of a source workspace available for library import.
          *
-         *     RPC subject: `rpc.parser.ach.lib_list`
+         *     RPC subject: `rpc.stats.ach.lib_list`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_library"];
         put?: never;
@@ -8485,7 +8485,7 @@ export interface paths {
          * Import library rules
          * @description Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
-         *     RPC subject: `rpc.parser.ach.lib_import`
+         *     RPC subject: `rpc.stats.ach.lib_import`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_library_import"];
         delete?: never;
@@ -8505,7 +8505,7 @@ export interface paths {
          * List library workspaces
          * @description Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules available to import as a library.
          *
-         *     RPC subject: `rpc.parser.ach.lib_workspaces`
+         *     RPC subject: `rpc.stats.ach.lib_workspaces`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_library_workspaces"];
         put?: never;
@@ -8527,7 +8527,7 @@ export interface paths {
          * List achievement overrides
          * @description Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides for a workspace.
          *
-         *     RPC subject: `rpc.parser.ach.overrides_list`
+         *     RPC subject: `rpc.stats.ach.overrides_list`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_overrides"];
         put?: never;
@@ -8535,7 +8535,7 @@ export interface paths {
          * Create achievement override
          * @description Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor.
          *
-         *     RPC subject: `rpc.parser.ach.override_create`
+         *     RPC subject: `rpc.stats.ach.override_create`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_overrides"];
         delete?: never;
@@ -8558,7 +8558,7 @@ export interface paths {
          * Delete achievement override
          * @description Permission: workspace `achievement.update`. Deletes a manual achievement override scoped to the workspace.
          *
-         *     RPC subject: `rpc.parser.ach.override_delete`
+         *     RPC subject: `rpc.stats.ach.override_delete`
          */
         delete: operations["delete__api_v1_admin_ws__workspace_id__achievements_overrides__override_id_"];
         options?: never;
@@ -8577,7 +8577,7 @@ export interface paths {
          * List achievement rules
          * @description Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters.
          *
-         *     RPC subject: `rpc.parser.ach.list`
+         *     RPC subject: `rpc.stats.ach.list`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_rules"];
         put?: never;
@@ -8585,7 +8585,7 @@ export interface paths {
          * Create achievement rule
          * @description Permission: workspace `achievement.create`. Creates a workspace achievement rule after validating its condition tree and enforcing slug uniqueness.
          *
-         *     RPC subject: `rpc.parser.ach.create`
+         *     RPC subject: `rpc.stats.ach.create`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_rules"];
         delete?: never;
@@ -8605,7 +8605,7 @@ export interface paths {
          * List condition types
          * @description Permission: workspace `achievement.read`. Returns the catalog of available achievement condition-tree leaf types with their grain.
          *
-         *     RPC subject: `rpc.parser.ach.condition_types`
+         *     RPC subject: `rpc.stats.ach.condition_types`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_rules_condition_types"];
         put?: never;
@@ -8629,7 +8629,7 @@ export interface paths {
          * Evaluate achievement rules
          * @description Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for selected rules and/or a tournament.
          *
-         *     RPC subject: `rpc.parser.ach.evaluate`
+         *     RPC subject: `rpc.stats.ach.evaluate`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_rules_evaluate"];
         delete?: never;
@@ -8649,7 +8649,7 @@ export interface paths {
          * Export achievement rules
          * @description Permission: workspace `achievement.read`. Returns a portable JSON export payload of all of a workspace's achievement rules. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
-         *     RPC subject: `rpc.parser.ach.export`
+         *     RPC subject: `rpc.stats.ach.export`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_rules_export"];
         put?: never;
@@ -8673,7 +8673,7 @@ export interface paths {
          * Import achievement rules
          * @description Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable achievement rules into a workspace and returns the import result. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
-         *     RPC subject: `rpc.parser.ach.import`
+         *     RPC subject: `rpc.stats.ach.import`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_rules_import"];
         delete?: never;
@@ -8695,7 +8695,7 @@ export interface paths {
          * Reset achievement rules
          * @description Permission: workspace `achievement.update`. Hard-resets a workspace by reseeding rules and clearing evaluation results, returning the new run.
          *
-         *     RPC subject: `rpc.parser.ach.reset`
+         *     RPC subject: `rpc.stats.ach.reset`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_rules_reset"];
         delete?: never;
@@ -8715,7 +8715,7 @@ export interface paths {
          * List evaluation runs
          * @description Permission: workspace `achievement.read`. Returns the 50 most recent achievement evaluation runs for a workspace.
          *
-         *     RPC subject: `rpc.parser.ach.runs`
+         *     RPC subject: `rpc.stats.ach.runs`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_rules_runs"];
         put?: never;
@@ -8739,7 +8739,7 @@ export interface paths {
          * Seed achievement rules
          * @description Permission: workspace `achievement.create`. Seeds the built-in achievement rules into a workspace and returns seeded/removed counts.
          *
-         *     RPC subject: `rpc.parser.ach.seed`
+         *     RPC subject: `rpc.stats.ach.seed`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_rules_seed"];
         delete?: never;
@@ -8761,7 +8761,7 @@ export interface paths {
          * Validate condition tree
          * @description Permission: workspace `achievement.read`. Validates an achievement condition tree and returns errors plus the inferred grain.
          *
-         *     RPC subject: `rpc.parser.ach.validate`
+         *     RPC subject: `rpc.stats.ach.validate`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_rules_validate"];
         delete?: never;
@@ -8781,7 +8781,7 @@ export interface paths {
          * Get achievement rule
          * @description Permission: workspace `achievement.read`. Returns a single achievement rule scoped to the workspace.
          *
-         *     RPC subject: `rpc.parser.ach.get`
+         *     RPC subject: `rpc.stats.ach.get`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_rules__rule_id_"];
         put?: never;
@@ -8790,7 +8790,7 @@ export interface paths {
          * Delete achievement rule
          * @description Permission: workspace `achievement.delete`. Deletes a workspace achievement rule and returns no content, 404ing when the rule does not exist in that workspace.
          *
-         *     RPC subject: `rpc.parser.ach.delete`
+         *     RPC subject: `rpc.stats.ach.delete`
          */
         delete: operations["delete__api_v1_admin_ws__workspace_id__achievements_rules__rule_id_"];
         options?: never;
@@ -8799,7 +8799,7 @@ export interface paths {
          * Update achievement rule
          * @description Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation when enabled.
          *
-         *     RPC subject: `rpc.parser.ach.update`
+         *     RPC subject: `rpc.stats.ach.update`
          */
         patch: operations["patch__api_v1_admin_ws__workspace_id__achievements_rules__rule_id_"];
         trace?: never;
@@ -8817,7 +8817,7 @@ export interface paths {
          * Test achievement rule
          * @description Permission: workspace `achievement.update`. Dry-runs a rule's condition tree against an optional tournament and returns the qualifying count plus a sample of results.
          *
-         *     RPC subject: `rpc.parser.ach.test`
+         *     RPC subject: `rpc.stats.ach.test`
          */
         post: operations["post__api_v1_admin_ws__workspace_id__achievements_rules__rule_id__test"];
         delete?: never;
@@ -8839,7 +8839,7 @@ export interface paths {
          *
          *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
          *
-         *     RPC subject: `rpc.parser.ach.rule_users`
+         *     RPC subject: `rpc.stats.ach.rule_users`
          */
         get: operations["get__api_v1_admin_ws__workspace_id__achievements_rules__rule_id__users"];
         put?: never;
@@ -11207,7 +11207,7 @@ export interface paths {
          * Process tournament logs
          * @description Permission: workspace `log.update` in the tournament's workspace. Enqueues reprocessing of all stored match logs for a tournament and returns an ack message — the work itself runs asynchronously on the log queue — 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.
          *
-         *     RPC subject: `rpc.parser.logs.process_tournament`
+         *     RPC subject: `rpc.stats.logs.process_tournament`
          */
         post: operations["post__api_v1_logs__id_"];
         delete?: never;
@@ -16234,7 +16234,7 @@ export interface components {
             workspace_id: number;
         };
         /** CurrentRank */
-        "parser.CurrentRank": {
+        "stats.CurrentRank": {
             /** Battle Tag */
             battle_tag: string;
             /**
@@ -16260,14 +16260,14 @@ export interface components {
             tier: number | null;
         };
         /** CurrentRanksResponse */
-        "parser.CurrentRanksResponse": {
+        "stats.CurrentRanksResponse": {
             /**
              * Generated At
              * Format: date-time
              */
             generated_at: string;
             /** Ranks */
-            ranks: components["schemas"]["parser.CurrentRank"][];
+            ranks: components["schemas"]["stats.CurrentRank"][];
             /** User Id */
             user_id: number | null;
         };
@@ -16275,7 +16275,7 @@ export interface components {
          * IngestBinding
          * @description The match this job is still the current evidence for; absent once superseded or while unbound.
          */
-        "parser.IngestBinding": {
+        "stats.IngestBinding": {
             /** Encounter Game Id */
             encounter_game_id: number;
             /** Match Id */
@@ -16284,19 +16284,19 @@ export interface components {
             revision: number;
         };
         /** IngestError */
-        "parser.IngestError": {
+        "stats.IngestError": {
             /** Code */
             code: string;
             /**
              * Issues
              * @default []
              */
-            issues: components["schemas"]["parser.IngestIssueRead"][];
+            issues: components["schemas"]["stats.IngestIssueRead"][];
             /** Message */
             message: string;
         };
         /** IngestIssueRead */
-        "parser.IngestIssueRead": {
+        "stats.IngestIssueRead": {
             /** Code */
             code: string;
             /**
@@ -16315,11 +16315,11 @@ export interface components {
             raw_name: string | null;
         };
         /** IngestJobRead */
-        "parser.IngestJobRead": {
+        "stats.IngestJobRead": {
             /** Attempts */
             attempts: number;
             /** @default null */
-            binding: components["schemas"]["parser.IngestBinding"] | null;
+            binding: components["schemas"]["stats.IngestBinding"] | null;
             /** Content Hash */
             content_hash: string | null;
             /**
@@ -16330,7 +16330,7 @@ export interface components {
             /** Discipline */
             discipline: string;
             /** @default null */
-            error: components["schemas"]["parser.IngestError"] | null;
+            error: components["schemas"]["stats.IngestError"] | null;
             /** External Id */
             external_id: string | null;
             /** Finished At */
@@ -16341,7 +16341,7 @@ export interface components {
             source_kind: string;
             /** Started At */
             started_at: string | null;
-            status: components["schemas"]["parser.IngestJobStatus"];
+            status: components["schemas"]["stats.IngestJobStatus"];
             /** Updated At */
             updated_at: string | null;
             /** Workspace Id */
@@ -16351,23 +16351,23 @@ export interface components {
          * IngestJobStatus
          * @enum {string}
          */
-        "parser.IngestJobStatus": ParserIngestJobStatus;
+        "stats.IngestJobStatus": StatsIngestJobStatus;
         /** MatchDoc */
-        "parser.MatchDoc": {
+        "stats.MatchDoc": {
             /** Discipline */
             discipline: string;
             /** Duration S */
             duration_s: number;
             /** Events */
-            events?: components["schemas"]["parser.MatchEventDoc"][];
+            events?: components["schemas"]["stats.MatchEventDoc"][];
             /** Facts */
-            facts?: components["schemas"]["parser.MatchFactDoc"][];
+            facts?: components["schemas"]["stats.MatchFactDoc"][];
             /** @default null */
-            hint: components["schemas"]["parser.MatchHint"] | null;
+            hint: components["schemas"]["stats.MatchHint"] | null;
             /** Map */
             map: string;
             /** Participants */
-            participants: components["schemas"]["parser.MatchParticipantDoc"][];
+            participants: components["schemas"]["stats.MatchParticipantDoc"][];
             /**
              * Played At
              * Format: date-time
@@ -16376,13 +16376,13 @@ export interface components {
             /** Protocol */
             protocol: string;
             /** Segments */
-            segments?: components["schemas"]["parser.MatchSegmentDoc"][];
-            source: components["schemas"]["parser.MatchSource"];
+            segments?: components["schemas"]["stats.MatchSegmentDoc"][];
+            source: components["schemas"]["stats.MatchSource"];
             /** Teams */
-            teams: components["schemas"]["parser.MatchTeamDoc"][];
+            teams: components["schemas"]["stats.MatchTeamDoc"][];
         };
         /** MatchEventDoc */
-        "parser.MatchEventDoc": {
+        "stats.MatchEventDoc": {
             /**
              * Actor
              * @default null
@@ -16428,7 +16428,7 @@ export interface components {
             type: string;
         };
         /** MatchFactDoc */
-        "parser.MatchFactDoc": {
+        "stats.MatchFactDoc": {
             /**
              * Entity
              * @default null
@@ -16458,7 +16458,7 @@ export interface components {
          * MatchHint
          * @description Candidate constraints only: never authority, never a workspace selector.
          */
-        "parser.MatchHint": {
+        "stats.MatchHint": {
             /**
              * Encounter Game Id
              * @default null
@@ -16476,24 +16476,24 @@ export interface components {
             tournament_id: number | null;
         };
         /** MatchIdentity */
-        "parser.MatchIdentity": {
+        "stats.MatchIdentity": {
             /** Id */
             id: string;
             /** Provider */
             provider: string;
         };
         /** MatchParticipantDoc */
-        "parser.MatchParticipantDoc": {
-            identity: components["schemas"]["parser.MatchIdentity"];
+        "stats.MatchParticipantDoc": {
+            identity: components["schemas"]["stats.MatchIdentity"];
             /** Key */
             key: string;
             /** @default null */
-            role: components["schemas"]["parser.RoleRef"] | null;
+            role: components["schemas"]["stats.RoleRef"] | null;
             /** Team */
             team: string;
         };
         /** MatchSegmentDoc */
-        "parser.MatchSegmentDoc": {
+        "stats.MatchSegmentDoc": {
             /** Attrs */
             attrs?: {
                 [key: string]: unknown;
@@ -16504,7 +16504,7 @@ export interface components {
             kind: string;
         };
         /** MatchSource */
-        "parser.MatchSource": {
+        "stats.MatchSource": {
             /**
              * External Id
              * @default null
@@ -16514,7 +16514,7 @@ export interface components {
             kind: string;
         };
         /** MatchTeamDoc */
-        "parser.MatchTeamDoc": {
+        "stats.MatchTeamDoc": {
             /** Key */
             key: string;
             /**
@@ -16524,7 +16524,7 @@ export interface components {
             placement: number | null;
         };
         /** RankHistoryPoint */
-        "parser.RankHistoryPoint": {
+        "stats.RankHistoryPoint": {
             /**
              * Captured At
              * Format: date-time
@@ -16542,14 +16542,14 @@ export interface components {
             tier: number | null;
         };
         /** RankHistoryResponse */
-        "parser.RankHistoryResponse": {
+        "stats.RankHistoryResponse": {
             /**
              * Generated At
              * Format: date-time
              */
             generated_at: string;
             /** Series */
-            series: components["schemas"]["parser.RankSeries"][];
+            series: components["schemas"]["stats.RankSeries"][];
             /** User Id */
             user_id: number | null;
         };
@@ -16560,10 +16560,10 @@ export interface components {
          *     The frontend pivots a list of these into either grouping: fix a battle tag
          *     and draw a line per role, or fix a role and draw a line per battle tag.
          */
-        "parser.RankSeries": {
+        "stats.RankSeries": {
             /** Battle Tag */
             battle_tag: string;
-            current: components["schemas"]["parser.RankHistoryPoint"] | null;
+            current: components["schemas"]["stats.RankHistoryPoint"] | null;
             /** Latest Captured At */
             latest_captured_at: string | null;
             /** Peak Rank Value */
@@ -16571,7 +16571,7 @@ export interface components {
             /** Platform */
             platform: string;
             /** Points */
-            points: components["schemas"]["parser.RankHistoryPoint"][];
+            points: components["schemas"]["stats.RankHistoryPoint"][];
             /** Role */
             role: string;
             /** Social Account Id */
@@ -16581,7 +16581,7 @@ export interface components {
          * RoleRef
          * @description ``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).
          */
-        "parser.RoleRef": {
+        "stats.RoleRef": {
             /** Dimension */
             dimension: string;
             /**
@@ -22245,7 +22245,7 @@ export interface components {
             user_id: number;
         };
         /** AchievementCalculateRequest */
-        "parser.AchievementCalculateRequest": {
+        "stats.AchievementCalculateRequest": {
             /**
              * Ensure Created
              * @default true
@@ -22263,7 +22263,7 @@ export interface components {
             workspace_id: number | null;
         };
         /** AchievementCalculateResponse */
-        "parser.AchievementCalculateResponse": {
+        "stats.AchievementCalculateResponse": {
             /** Executed */
             executed: string[];
             /** Message */
@@ -22272,7 +22272,7 @@ export interface components {
             tournament_id: number | null;
         };
         /** AchievementLibraryRuleRead */
-        "parser.AchievementLibraryRuleRead": {
+        "stats.AchievementLibraryRuleRead": {
             /** Category */
             category: string;
             /** Enabled */
@@ -22288,7 +22288,7 @@ export interface components {
             slug: string;
         };
         /** AchievementLibraryWorkspaceRead */
-        "parser.AchievementLibraryWorkspaceRead": {
+        "stats.AchievementLibraryWorkspaceRead": {
             /** Id */
             id: number;
             /** Name */
@@ -22299,7 +22299,7 @@ export interface components {
             slug: string;
         };
         /** AchievementRuleCreate */
-        "parser.AchievementRuleCreate": {
+        "stats.AchievementRuleCreate": {
             /** Category */
             category: string;
             /** Condition Tree */
@@ -22347,7 +22347,7 @@ export interface components {
             slug: string;
         };
         /** AchievementRuleRead */
-        "parser.AchievementRuleRead": {
+        "stats.AchievementRuleRead": {
             /** Category */
             category: string;
             /** Condition Tree */
@@ -22391,7 +22391,7 @@ export interface components {
             workspace_id: number;
         };
         /** AchievementRuleUpdate */
-        "parser.AchievementRuleUpdate": {
+        "stats.AchievementRuleUpdate": {
             /**
              * Category
              * @default null
@@ -22473,7 +22473,7 @@ export interface components {
          *     ``expected_revision`` is the operator's view of the target game: ``0`` = no observation yet, ``n`` = replace exactly
          *     revision ``n``. It is required when the target is occupied and compared again under the final lock.
          */
-        "parser.BindIngestRequest": {
+        "stats.BindIngestRequest": {
             /** Encounter Game Id */
             encounter_game_id: number;
             /**
@@ -22487,7 +22487,7 @@ export interface components {
             };
         };
         /** CollectTriggerRequest */
-        "parser.CollectTriggerRequest": {
+        "stats.CollectTriggerRequest": {
             /**
              * Social Account Ids
              * @default null
@@ -22500,12 +22500,12 @@ export interface components {
             user_id: number | null;
         };
         /** CollectTriggerResponse */
-        "parser.CollectTriggerResponse": {
+        "stats.CollectTriggerResponse": {
             /** Enqueued */
             enqueued: number;
         };
         /** CollectionStatusRead */
-        "parser.CollectionStatusRead": {
+        "stats.CollectionStatusRead": {
             /** Battle Tag */
             battle_tag: string;
             /**
@@ -22547,14 +22547,14 @@ export interface components {
             status: string | null;
         };
         /** ConditionTreeValidateRequest */
-        "parser.ConditionTreeValidateRequest": {
+        "stats.ConditionTreeValidateRequest": {
             /** Condition Tree */
             condition_tree: {
                 [key: string]: unknown;
             };
         };
         /** ConditionTreeValidateResponse */
-        "parser.ConditionTreeValidateResponse": {
+        "stats.ConditionTreeValidateResponse": {
             /** Errors */
             errors: string[];
             /**
@@ -22566,7 +22566,7 @@ export interface components {
             valid: boolean;
         };
         /** ConditionTypeInfo */
-        "parser.ConditionTypeInfo": {
+        "stats.ConditionTypeInfo": {
             /** Depends On */
             depends_on?: string[];
             /** Description */
@@ -22594,7 +22594,7 @@ export interface components {
          * DiscordChannelRead
          * @description Schema for reading a tournament Discord sync channel.
          */
-        "parser.DiscordChannelRead": {
+        "stats.DiscordChannelRead": {
             /** Channel Id */
             channel_id: string;
             /** Channel Name */
@@ -22615,7 +22615,7 @@ export interface components {
          *     here: it belongs to the workspace (``Workspace.discord_guild_id``) and was
          *     duplicated into every tournament row while being read by nobody.
          */
-        "parser.DiscordChannelUpsert": {
+        "stats.DiscordChannelUpsert": {
             /** Channel Id */
             channel_id: string;
             /**
@@ -22630,7 +22630,7 @@ export interface components {
             is_active: boolean;
         };
         /** EvaluateRequest */
-        "parser.EvaluateRequest": {
+        "stats.EvaluateRequest": {
             /**
              * Rule Ids
              * @default null
@@ -22643,7 +22643,7 @@ export interface components {
             tournament_id: number | null;
         };
         /** EvaluationRunRead */
-        "parser.EvaluationRunRead": {
+        "stats.EvaluationRunRead": {
             /** Error Message */
             error_message: string | null;
             /** Finished At */
@@ -22671,7 +22671,7 @@ export interface components {
             workspace_id: number;
         };
         /** FetchLogRead */
-        "parser.FetchLogRead": {
+        "stats.FetchLogRead": {
             /** Battle Tag */
             battle_tag: string;
             /**
@@ -22704,7 +22704,7 @@ export interface components {
          *     Unoccupied: ``match_id``/``ingest_job_id`` null and ``revision`` 0. ``is_historical`` marks an observation that
          *     has no job or came from a historical import: it can never be replaced by a bind or reparse.
          */
-        "parser.GameObservationRead": {
+        "stats.GameObservationRead": {
             /** Encounter Game Id */
             encounter_game_id: number;
             /**
@@ -22732,7 +22732,7 @@ export interface components {
          * IngestTeamKey
          * @description A document team in canonical order, so an operator UI can build the bind team map for an awaiting job.
          */
-        "parser.IngestTeamKey": {
+        "stats.IngestTeamKey": {
             /** Key */
             key: string;
             /**
@@ -22744,14 +22744,14 @@ export interface components {
             source_position: number;
         };
         /** LogHistoryResponse */
-        "parser.LogHistoryResponse": {
+        "stats.LogHistoryResponse": {
             /** Items */
-            items: components["schemas"]["parser.LogRecordRead"][];
+            items: components["schemas"]["stats.LogRecordRead"][];
             /** Total */
             total: number;
         };
         /** LogRecordRead */
-        "parser.LogRecordRead": {
+        "stats.LogRecordRead": {
             /** Attached Encounter Game Id */
             attached_encounter_game_id: number | null;
             /** Attached Encounter Id */
@@ -22769,7 +22769,7 @@ export interface components {
              */
             created_at: string;
             /** @default null */
-            error: components["schemas"]["parser.IngestError"] | null;
+            error: components["schemas"]["stats.IngestError"] | null;
             /** Error Message */
             error_message: string | null;
             /** Filename */
@@ -22790,7 +22790,7 @@ export interface components {
             observation_revision: number | null;
             /** Raw Available */
             raw_available: boolean;
-            raw_status: components["schemas"]["parser.RawSourceStatus"];
+            raw_status: components["schemas"]["stats.RawSourceStatus"];
             /** Source */
             source: string;
             /** Started At */
@@ -22801,7 +22801,7 @@ export interface components {
              * Teams
              * @default []
              */
-            teams: components["schemas"]["parser.IngestTeamKey"][];
+            teams: components["schemas"]["stats.IngestTeamKey"][];
             /** Tournament Id */
             tournament_id: number | null;
             /** Tournament Name */
@@ -22810,7 +22810,7 @@ export interface components {
             uploader_name: string | null;
         };
         /** LogRetryRequest */
-        "parser.LogRetryRequest": {
+        "stats.LogRetryRequest": {
             /**
              * Encounter Game Id
              * @default null
@@ -22839,7 +22839,7 @@ export interface components {
          *     The admin console used to derive these from the page it happened to be
          *     showing, so "Failed: 0" only ever meant "none on this page".
          */
-        "parser.LogStatsRead": {
+        "stats.LogStatsRead": {
             /** Avg Duration Seconds */
             avg_duration_seconds: number | null;
             /** Awaiting Link */
@@ -22858,14 +22858,14 @@ export interface components {
             total: number;
         };
         /** LogUploadError */
-        "parser.LogUploadError": {
+        "stats.LogUploadError": {
             /** Error */
             error: string;
             /** Filename */
             filename: string | null;
         };
         /** LogUploadItem */
-        "parser.LogUploadItem": {
+        "stats.LogUploadItem": {
             /** Attached Encounter Id */
             attached_encounter_id: number | null;
             /** Filename */
@@ -22874,14 +22874,14 @@ export interface components {
             record_id: number;
         };
         /** LogUploadResponse */
-        "parser.LogUploadResponse": {
+        "stats.LogUploadResponse": {
             /** Errors */
-            errors: components["schemas"]["parser.LogUploadError"][];
+            errors: components["schemas"]["stats.LogUploadError"][];
             /** Uploaded */
-            uploaded: components["schemas"]["parser.LogUploadItem"][];
+            uploaded: components["schemas"]["stats.LogUploadItem"][];
         };
         /** OverrideCreate */
-        "parser.OverrideCreate": {
+        "stats.OverrideCreate": {
             /** Achievement Rule Id */
             achievement_rule_id: number;
             /** Action */
@@ -22902,7 +22902,7 @@ export interface components {
             user_id: number;
         };
         /** OverrideRead */
-        "parser.OverrideRead": {
+        "stats.OverrideRead": {
             /** Achievement Rule Id */
             achievement_rule_id: number;
             /** Action */
@@ -22926,18 +22926,18 @@ export interface components {
             user_id: number;
         };
         /** Paginated[AchievementRuleRead] */
-        "parser.Paginated_AchievementRuleRead_": {
+        "stats.Paginated_AchievementRuleRead_": {
             /** Page */
             page: number;
             /** Per Page */
             per_page: number;
             /** Results */
-            results: components["schemas"]["parser.AchievementRuleRead"][];
+            results: components["schemas"]["stats.AchievementRuleRead"][];
             /** Total */
             total: number;
         };
         /** QueueDepth */
-        "parser.QueueDepth": {
+        "stats.QueueDepth": {
             /** Consumers */
             consumers: number;
             /** Messages Ready */
@@ -22956,8 +22956,8 @@ export interface components {
          * RankCollectionStats
          * @description Aggregated collection health for the admin dashboard.
          */
-        "parser.RankCollectionStats": {
-            by_status: components["schemas"]["parser.RankStatusCounts"];
+        "stats.RankCollectionStats": {
+            by_status: components["schemas"]["stats.RankStatusCounts"];
             /** Coverage 24H */
             coverage_24h: number;
             /** Coverage 7D */
@@ -22966,7 +22966,7 @@ export interface components {
             enabled: boolean;
             /** Error Rate 24H */
             error_rate_24h: number;
-            fetch_24h: components["schemas"]["parser.RankStatusCounts"];
+            fetch_24h: components["schemas"]["stats.RankStatusCounts"];
             /** Fetch 24H Total */
             fetch_24h_total: number;
             /** Interval Seconds */
@@ -23009,7 +23009,7 @@ export interface components {
          *
          *     ``extra="ignore"`` so an unexpected status string can never break the read.
          */
-        "parser.RankStatusCounts": {
+        "stats.RankStatusCounts": {
             /**
              * Disabled
              * @default 0
@@ -23050,9 +23050,9 @@ export interface components {
          * RawSourceStatus
          * @enum {string}
          */
-        "parser.RawSourceStatus": ParserRawSourceStatus;
+        "stats.RawSourceStatus": StatsRawSourceStatus;
         /** ReenableDisabledRequest */
-        "parser.ReenableDisabledRequest": {
+        "stats.ReenableDisabledRequest": {
             /**
              * Only Previously Succeeded
              * @default false
@@ -23060,12 +23060,12 @@ export interface components {
             only_previously_succeeded: boolean;
         };
         /** ReenableDisabledResponse */
-        "parser.ReenableDisabledResponse": {
+        "stats.ReenableDisabledResponse": {
             /** Reenabled */
             reenabled: number;
         };
         /** SettingRead */
-        "parser.SettingRead": {
+        "stats.SettingRead": {
             /** Description */
             description: string | null;
             /** Key */
@@ -23080,7 +23080,7 @@ export interface components {
             };
         };
         /** SettingUpsert */
-        "parser.SettingUpsert": {
+        "stats.SettingUpsert": {
             /**
              * Description
              * @default null
@@ -23095,9 +23095,9 @@ export interface components {
          * SortOrder
          * @enum {string}
          */
-        "parser.SortOrder": ParserSortOrder;
+        "stats.SortOrder": StatsSortOrder;
         /** SubscriptionCheckLogRead */
-        "parser.SubscriptionCheckLogRead": {
+        "stats.SubscriptionCheckLogRead": {
             /**
              * Auth User Id
              * @default null
@@ -23158,7 +23158,7 @@ export interface components {
             workspace_id: number | null;
         };
         /** SubscriptionCollectTriggerRequest */
-        "parser.SubscriptionCollectTriggerRequest": {
+        "stats.SubscriptionCollectTriggerRequest": {
             /**
              * Providers
              * @default null
@@ -23171,7 +23171,7 @@ export interface components {
             user_id: number | null;
         };
         /** SubscriptionCollectTriggerResponse */
-        "parser.SubscriptionCollectTriggerResponse": {
+        "stats.SubscriptionCollectTriggerResponse": {
             /** Checked */
             checked: number;
         };
@@ -23179,7 +23179,7 @@ export interface components {
          * SubscriptionCollectionStats
          * @description Aggregated collection health for the admin dashboard.
          */
-        "parser.SubscriptionCollectionStats": {
+        "stats.SubscriptionCollectionStats": {
             /** Active Tournaments */
             active_tournaments: number;
             /** Batch Size */
@@ -23188,8 +23188,8 @@ export interface components {
             by_provider: {
                 [key: string]: number;
             };
-            by_state: components["schemas"]["parser.SubscriptionStateCounts"];
-            checks_24h: components["schemas"]["parser.SubscriptionStateCounts"];
+            by_state: components["schemas"]["stats.SubscriptionStateCounts"];
+            checks_24h: components["schemas"]["stats.SubscriptionStateCounts"];
             /** Checks 24H Total */
             checks_24h_total: number;
             /** Coverage 24H */
@@ -23219,7 +23219,7 @@ export interface components {
          *
          *     ``extra="ignore"`` so an unexpected state string can never break the read.
          */
-        "parser.SubscriptionStateCounts": {
+        "stats.SubscriptionStateCounts": {
             /**
              * Active
              * @default 0
@@ -23245,7 +23245,7 @@ export interface components {
          * SubscriptionUserCollectionRead
          * @description One (workspace, provider) entitlement for a player.
          */
-        "parser.SubscriptionUserCollectionRead": {
+        "stats.SubscriptionUserCollectionRead": {
             /**
              * Checked At
              * @default null
@@ -35270,7 +35270,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.RankHistoryResponse"];
+                    "application/json": components["schemas"]["stats.RankHistoryResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -40696,7 +40696,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.IngestJobRead"];
+                    "application/json": components["schemas"]["stats.IngestJobRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -40766,7 +40766,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.MatchDoc"];
+                "application/json": components["schemas"]["stats.MatchDoc"];
             };
         };
         responses: {
@@ -40776,7 +40776,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.IngestJobRead"];
+                    "application/json": components["schemas"]["stats.IngestJobRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -43294,7 +43294,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.CurrentRanksResponse"];
+                    "application/json": components["schemas"]["stats.CurrentRanksResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43831,7 +43831,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.RankHistoryResponse"];
+                    "application/json": components["schemas"]["stats.RankHistoryResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -44499,7 +44499,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.AchievementCalculateRequest"];
+                "application/json": components["schemas"]["stats.AchievementCalculateRequest"];
             };
         };
         responses: {
@@ -44509,7 +44509,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.AchievementCalculateResponse"];
+                    "application/json": components["schemas"]["stats.AchievementCalculateResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -44581,7 +44581,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.AchievementCalculateRequest"];
+                "application/json": components["schemas"]["stats.AchievementCalculateRequest"];
             };
         };
         responses: {
@@ -44591,7 +44591,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.AchievementCalculateResponse"];
+                    "application/json": components["schemas"]["stats.AchievementCalculateResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -51637,7 +51637,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.GameObservationRead"];
+                    "application/json": components["schemas"]["stats.GameObservationRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -51721,7 +51721,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.LogHistoryResponse"];
+                    "application/json": components["schemas"]["stats.LogHistoryResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -51797,7 +51797,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.QueueDepth"][];
+                    "application/json": components["schemas"]["stats.QueueDepth"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -51877,7 +51877,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.LogStatsRead"];
+                    "application/json": components["schemas"]["stats.LogStatsRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -51953,7 +51953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.LogUploadResponse"];
+                    "application/json": components["schemas"]["stats.LogUploadResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -52025,7 +52025,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.BindIngestRequest"];
+                "application/json": components["schemas"]["stats.BindIngestRequest"];
             };
         };
         responses: {
@@ -52035,7 +52035,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.IngestJobRead"];
+                    "application/json": components["schemas"]["stats.IngestJobRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -52107,7 +52107,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.LogRetryRequest"];
+                "application/json": components["schemas"]["stats.LogRetryRequest"];
             };
         };
         responses: {
@@ -52117,7 +52117,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.LogRecordRead"];
+                    "application/json": components["schemas"]["stats.LogRecordRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53153,7 +53153,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.CollectTriggerRequest"];
+                "application/json": components["schemas"]["stats.CollectTriggerRequest"];
             };
         };
         responses: {
@@ -53163,7 +53163,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.CollectTriggerResponse"];
+                    "application/json": components["schemas"]["stats.CollectTriggerResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53239,7 +53239,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.FetchLogRead"][];
+                    "application/json": components["schemas"]["stats.FetchLogRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53311,7 +53311,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.ReenableDisabledRequest"];
+                "application/json": components["schemas"]["stats.ReenableDisabledRequest"];
             };
         };
         responses: {
@@ -53321,7 +53321,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.ReenableDisabledResponse"];
+                    "application/json": components["schemas"]["stats.ReenableDisabledResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53399,7 +53399,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.RankCollectionStats"];
+                    "application/json": components["schemas"]["stats.RankCollectionStats"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53479,7 +53479,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.CollectionStatusRead"][];
+                    "application/json": components["schemas"]["stats.CollectionStatusRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53555,7 +53555,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.SettingRead"][];
+                    "application/json": components["schemas"]["stats.SettingRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53633,7 +53633,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.SettingRead"];
+                    "application/json": components["schemas"]["stats.SettingRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -53705,7 +53705,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.SettingUpsert"];
+                "application/json": components["schemas"]["stats.SettingUpsert"];
             };
         };
         responses: {
@@ -53715,7 +53715,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.SettingRead"];
+                    "application/json": components["schemas"]["stats.SettingRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -56175,7 +56175,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.SubscriptionCheckLogRead"][];
+                    "application/json": components["schemas"]["stats.SubscriptionCheckLogRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -56247,7 +56247,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.SubscriptionCollectTriggerRequest"];
+                "application/json": components["schemas"]["stats.SubscriptionCollectTriggerRequest"];
             };
         };
         responses: {
@@ -56257,7 +56257,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.SubscriptionCollectTriggerResponse"];
+                    "application/json": components["schemas"]["stats.SubscriptionCollectTriggerResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -56335,7 +56335,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.SubscriptionCollectionStats"];
+                    "application/json": components["schemas"]["stats.SubscriptionCollectionStats"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -56415,7 +56415,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.SubscriptionUserCollectionRead"][];
+                    "application/json": components["schemas"]["stats.SubscriptionUserCollectionRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -57521,7 +57521,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.DiscordChannelRead"];
+                    "application/json": components["schemas"]["stats.DiscordChannelRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -57593,7 +57593,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.DiscordChannelUpsert"];
+                "application/json": components["schemas"]["stats.DiscordChannelUpsert"];
             };
         };
         responses: {
@@ -57603,7 +57603,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.DiscordChannelRead"];
+                    "application/json": components["schemas"]["stats.DiscordChannelRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -60704,7 +60704,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.AchievementLibraryRuleRead"][];
+                    "application/json": components["schemas"]["stats.AchievementLibraryRuleRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -60864,7 +60864,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.AchievementLibraryWorkspaceRead"][];
+                    "application/json": components["schemas"]["stats.AchievementLibraryWorkspaceRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -60942,7 +60942,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.OverrideRead"][];
+                    "application/json": components["schemas"]["stats.OverrideRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61014,7 +61014,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.OverrideCreate"];
+                "application/json": components["schemas"]["stats.OverrideCreate"];
             };
         };
         responses: {
@@ -61024,7 +61024,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.OverrideRead"];
+                    "application/json": components["schemas"]["stats.OverrideRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61170,7 +61170,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1AdminWsWorkspace_idAchievementsRulesGetParametersQuerySort;
-                order?: components["schemas"]["parser.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 search?: string | null;
                 category?: string | null;
                 enabled?: boolean | null;
@@ -61189,7 +61189,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.Paginated_AchievementRuleRead_"];
+                    "application/json": components["schemas"]["stats.Paginated_AchievementRuleRead_"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61261,7 +61261,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.AchievementRuleCreate"];
+                "application/json": components["schemas"]["stats.AchievementRuleCreate"];
             };
         };
         responses: {
@@ -61271,7 +61271,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.AchievementRuleRead"];
+                    "application/json": components["schemas"]["stats.AchievementRuleRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61349,7 +61349,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.ConditionTypeInfo"][];
+                    "application/json": components["schemas"]["stats.ConditionTypeInfo"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61421,7 +61421,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.EvaluateRequest"];
+                "application/json": components["schemas"]["stats.EvaluateRequest"];
             };
         };
         responses: {
@@ -61431,7 +61431,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.EvaluationRunRead"];
+                    "application/json": components["schemas"]["stats.EvaluationRunRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61747,7 +61747,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.EvaluationRunRead"][];
+                    "application/json": components["schemas"]["stats.EvaluationRunRead"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61897,7 +61897,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.ConditionTreeValidateRequest"];
+                "application/json": components["schemas"]["stats.ConditionTreeValidateRequest"];
             };
         };
         responses: {
@@ -61907,7 +61907,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.ConditionTreeValidateResponse"];
+                    "application/json": components["schemas"]["stats.ConditionTreeValidateResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61986,7 +61986,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.AchievementRuleRead"];
+                    "application/json": components["schemas"]["stats.AchievementRuleRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -62136,7 +62136,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["parser.AchievementRuleUpdate"];
+                "application/json": components["schemas"]["stats.AchievementRuleUpdate"];
             };
         };
         responses: {
@@ -62146,7 +62146,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["parser.AchievementRuleRead"];
+                    "application/json": components["schemas"]["stats.AchievementRuleRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -74245,7 +74245,7 @@ export enum IdentityTokenPayloadCredential_type {
     api_key = "api_key",
     discord = "discord"
 }
-export enum ParserIngestJobStatus {
+export enum StatsIngestJobStatus {
     pending = "pending",
     processing = "processing",
     awaiting_link = "awaiting_link",
@@ -74564,13 +74564,13 @@ export enum BalancerWorkspaceRankerUpsertVariant {
     reference = "reference",
     corrected = "corrected"
 }
-export enum ParserRawSourceStatus {
+export enum StatsRawSourceStatus {
     available = "available",
     missing = "missing",
     conflict = "conflict",
     unverified = "unverified"
 }
-export enum ParserSortOrder {
+export enum StatsSortOrder {
     asc = "asc",
     desc = "desc"
 }

@@ -1,9 +1,9 @@
-"""Shared tournament utility functions used by both parser-service and
+"""Shared tournament utility functions used by both stats-service and
 app-service (Phase E consolidation).
 
 Eliminates the duplication of ``sort_matches`` and ``_completed_encounters``
-between parser-service/services/standings/service.py,
-parser-service/services/standings/flows.py and
+between stats-service/services/standings/service.py,
+stats-service/services/standings/flows.py and
 app-service/services/standings/flows.py.
 """
 

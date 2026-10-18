@@ -759,10 +759,10 @@ class AdminService {
   /**
    * Uses the same backend sync engine as the Integrations tab's "Import"
    * button (`challongeImport`): both used to hit independently-maintained
-   * copies of the Challonge sync logic (parser-service vs tournament-service),
+   * copies of the Challonge sync logic (stats-service vs tournament-service),
    * which had drifted -- tournament-service's copy tracks pick-ban session
    * resets on team changes and cache-invalidation reasoning that
-   * parser-service's never had. Consolidated onto tournament-service's route.
+   * stats-service's never had. Consolidated onto tournament-service's route.
    */
   async syncEncountersFromChallonge(tournamentId: number): Promise<Record<string, unknown>> {
     const response = await apiFetch(`/api/v1/admin/challonge/sync/import/${tournamentId}`, {

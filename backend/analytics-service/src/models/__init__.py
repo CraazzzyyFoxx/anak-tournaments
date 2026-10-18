@@ -1,5 +1,5 @@
 # Import all ORM models from the shared library.
-# Mirrors parser-service/src/models/__init__.py so that v1 analytics code that
+# Mirrors stats-service/src/models/__init__.py so that v1 analytics code that
 # does ``from src import models; models.Tournament`` keeps working unchanged.
 from shared.models.achievements.achievement import *
 from shared.models.analytics.analytics import *

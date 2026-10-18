@@ -8,14 +8,6 @@ class Settings(BaseServiceSettings):
     # Discord Bot
     discord_token: str
 
-    # Parser Service
-    parser_url: str
-
-    # Service-to-service auth
-    service_client_id: str
-    service_client_secret: str
-    service_token_skew_seconds: int = 30
-
     # Redis: the realtime rail's publish transport, wired in main.py via
     # configure_realtime(). Required — without it emit() drops every event.
     redis_url: RedisDsn

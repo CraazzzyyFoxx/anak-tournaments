@@ -30,10 +30,15 @@ NativeRanks = Callable[["AsyncSession", Sequence[int]], Awaitable[dict[int, dict
 #: The handler validates its own payload and authorizes the caller; it returns what the RPC envelope serializes.
 CollectionHandler = Callable[["AsyncSession", "AuthUser | None", dict[str, Any]], Awaitable[object]]
 
+#: ``configure_runtime(broker, *, session_factory, redis)``: give the module's collection handlers the process wiring
+#: (DB sessions, Redis, broker) in a process that registers no consumers and starts no schedule (the RPC process).
+ConfigureRuntime = Callable[..., None]
+
 #: ``register_jobs(broker, *, session_factory, redis, logger)``: bind the module's consumers on the worker broker.
 RegisterJobs = Callable[..., None]
 
-#: ``start_jobs(*, session_factory, redis, logger)``: start the module's schedules and clients, once the broker is up.
+#: ``start_jobs(*, session_factory, redis, logger)``: declare the module's dead-letter queues, start its schedules and
+#: clients, once the broker is connected.
 StartJobs = Callable[..., Awaitable[None]]
 
 #: ``stop_jobs()``: the call itself stops the module's schedules; awaiting the result releases its clients. The worker
@@ -44,6 +49,7 @@ __all__ = (
     "CATALOG_KINDS",
     "CatalogSync",
     "CollectionHandler",
+    "ConfigureRuntime",
     "DimensionSpec",
     "DisciplineSpec",
     "EventTypeSpec",
@@ -184,9 +190,11 @@ class DisciplineSpec:
     #: Projected SMALLINT dictionaries; historical definitions are deactivated, never deleted.
     stat_defs: tuple[StatDefSpec, ...] = ()
     event_types: tuple[EventTypeSpec, ...] = ()
-    #: Worker lifecycle hooks (optional plain callables): ``register_jobs`` binds consumers on the worker's broker,
-    #: ``start_jobs`` starts schedules and clients, ``stop_jobs`` stops them. A worker runs only the selected
+    #: Process lifecycle hooks (optional plain callables): ``configure_runtime`` wires the collection handlers (every
+    #: process serving them), ``register_jobs`` binds consumers on the worker's broker, ``start_jobs`` declares the
+    #: module's dead-letter queues and starts schedules and clients, ``stop_jobs`` stops them. A worker runs only the selected
     #: disciplines' hooks, so a game without background jobs (LoL) triggers none.
+    configure_runtime: ConfigureRuntime | None = field(default=None, compare=False)
     register_jobs: RegisterJobs | None = field(default=None, compare=False)
     start_jobs: StartJobs | None = field(default=None, compare=False)
     stop_jobs: StopJobs | None = field(default=None, compare=False)

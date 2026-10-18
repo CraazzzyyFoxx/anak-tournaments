@@ -2,7 +2,7 @@
 
 Consolidates two byte-identical copies of this query pair — one in
 ``balancer-service/src/services/user.py``, one in
-``parser-service/src/services/user/service.py`` — that existed solely to keep the
+``stats-service/src/services/user/service.py`` — that existed solely to keep the
 team writer off an N+1 fan of per-player lookups. Both are now thin re-exports of
 this module.
 """

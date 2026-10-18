@@ -158,7 +158,7 @@ class FfaStageStandingsTests(TestCase):
 
         standings = standings_service._build_ffa_stage_standings(_tournament(), stage, item, [], GAMES)
 
-        # ``buchholz IS NULL`` is how app-service and parser-service spot a
+        # ``buchholz IS NULL`` is how app-service and stats-service spot a
         # playoff row; an ffa league is a group stage, so 0.0, never NULL.
         self.assertEqual([0.0] * 4, [row.buchholz for row in standings])
         self.assertEqual([None] * 4, [row.full_buchholz for row in standings])

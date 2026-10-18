@@ -14,7 +14,7 @@ dev-dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["shared", "app-service", "identity-service", "discord-service", "parser-service", "balancer-service", "tournament-service", "analytics-service", "stream-service"]
+members = ["shared", "app-service", "identity-service", "discord-service", "stats-service", "balancer-service", "tournament-service", "analytics-service", "stream-service"]
 
 [tool.uv.sources]
 shared = { workspace = true }
@@ -35,7 +35,7 @@ root = [
     ".",
     "app-service",
     "identity-service",
-    "parser-service",
+    "stats-service",
     "tournament-service",
     "balancer-service",
     "discord-service",
@@ -46,7 +46,7 @@ extra-paths = [
     ".",
     "app-service",
     "identity-service",
-    "parser-service",
+    "stats-service",
     "tournament-service",
     "balancer-service",
     "discord-service",
@@ -112,4 +112,3 @@ omit = [
 
 [tool.coverage.report]
 show_missing = false
-

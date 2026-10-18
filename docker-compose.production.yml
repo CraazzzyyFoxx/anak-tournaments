@@ -210,8 +210,8 @@ services:
   # app-service is headless: served by app-svc (rpc.app.*) behind the gateway.
   # The former HTTP `backend` service was decommissioned.
 
-  # parser-service HTTP decommissioned: parser is now a headless FastStream worker
-  # (parser-svc below), serving its domains as typed RPC behind the gateway.
+  # stats-service (formerly parser-service) is two headless FastStream processes from one image: stats-svc serves
+  # its domains as typed RPC behind the gateway, stats-worker runs every consumer and schedule.
   # The bot uploads logs over RabbitMQ; the SSE log monitor moved to the WS hub.
 
   # realtime-service decommissioned: WebSockets are now served by the Go gateway
@@ -335,25 +335,25 @@ services:
   # analytics-svc (rpc.analytics.* reads + job-control) behind the gateway; heavy ML
   # compute stays in analytics-worker (job queues).
 
-  parser-svc:
-    image: ghcr.io/craazzzyyfoxx/owt-parser:${IMAGE_TAG:-latest}
+  stats-svc:
+    image: ghcr.io/craazzzyyfoxx/owt-stats:${IMAGE_TAG:-latest}
     logging: *log-rotate
     deploy:
       resources:
         limits:
-          cpus: '1.000'
-          memory: 512M
+          cpus: '0.500'
+          memory: 256M
         reservations:
           cpus: '0.10'
           memory: 128M
     build:
       context: ./backend
       args:
-        APP_PATH: parser
-    command: faststream run serve:app
+        APP_PATH: stats
+    command: faststream run serve_rpc:app
     env_file:
       - ./backend/env/common.env
-      - ./backend/env/parser.env
+      - ./backend/env/stats.env
     environment:
       - TRACING_ENABLED=${TRACING_ENABLED:-true}
       - OTLP_ENDPOINT=http://alloy:4317
@@ -376,11 +376,65 @@ services:
       proxy:
         condition: service_healthy
     volumes:
-      - ./logs/parser-svc:/logs
+      - ./logs/stats-svc:/logs
     networks:
       - app-network
+    # /health answers 200 only once the broker connection is up and every consumer of the process runs.
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: always
+
+  stats-worker:
+    image: ghcr.io/craazzzyyfoxx/owt-stats:${IMAGE_TAG:-latest}
+    logging: *log-rotate
+    deploy:
+      resources:
+        limits:
+          cpus: '1.000'
+          memory: 512M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+    build:
+      context: ./backend
+      args:
+        APP_PATH: stats
+    command: faststream run serve_worker:app
+    env_file:
+      - ./backend/env/common.env
+      - ./backend/env/stats.env
+    environment:
+      - TRACING_ENABLED=${TRACING_ENABLED:-true}
+      - OTLP_ENDPOINT=http://alloy:4317
+      - OTEL_TRACES_SAMPLER=parentbased_traceidratio
+      - OTEL_TRACES_SAMPLER_ARG=0.1
+      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
+      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
+      - WORKER_METRICS_PORT=9100
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      # OverFast runs on this host (/root/overfast-api behind the host HAProxy). Its public
+      # name resolves to a front on another box; pin it here so rank and catalog calls stay
+      # local. TLS still checks the real certificate.
+      - "overfast.craazzzyyfoxx.me:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      proxy:
+        condition: service_healthy
+    volumes:
+      - ./logs/stats-worker:/logs
+    networks:
+      - app-network
+    # /health answers 200 only once the broker connection is up and every consumer of the process runs.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9100/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3

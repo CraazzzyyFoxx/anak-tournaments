@@ -19,7 +19,7 @@ dependencies = [
     "orjson>=3.10.14",
     "pandas>=2.3.3",
     # ML stack (Phase 1+) — kept here so Docker builds for analytics-service
-    # install them; not consumed by parser-service.
+    # install them; not consumed by stats-service.
     "scikit-learn>=1.5",
     "lightgbm>=4.3",
     # CPU-only build: same `xgboost` module, a 5.6 MiB wheel instead of the

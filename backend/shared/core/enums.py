@@ -524,7 +524,7 @@ class RouteTag(StrEnum):
 
     app-service, tournament-service, and balancer-service defined this exact
     14-member enum three times (copy-pasted, byte-identical). Services with a
-    genuinely different tag set (parser-service, analytics-service) keep their
+    genuinely different tag set (stats-service, analytics-service) keep their
     own local ``RouteTag`` — only the identical one lives here.
     """
 

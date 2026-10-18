@@ -454,9 +454,9 @@ class AnalyticsService:
     async def get_teams_with_players(self, session: AsyncSession, tournament_id: int) -> typing.Sequence[models.Team]:
         """Return teams of a tournament with players and player users eagerly loaded.
 
-        Inlined replacement for parser-service ``team_service.get_by_tournament(
+        Inlined replacement for stats-service ``team_service.get_by_tournament(
         session, tid, ["players", "players.user"])`` so analytics-service does not
-        depend on parser-service internals.
+        depend on stats-service internals.
         """
         return await self.teams.list_by_tournament(
             session,

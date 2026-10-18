@@ -17,7 +17,7 @@ changed" -- for two reasons:
   per changed patron would buy nothing.
 
 Both writers of entitlements reach it through the resolver -- tournament-service
-(registration / check-in gates, code redemption) and parser-service (the
+(registration / check-in gates, code redemption) and stats-service (the
 scheduled collector and the admin re-check) -- which is why this lives in
 ``shared`` rather than beside either one.
 """

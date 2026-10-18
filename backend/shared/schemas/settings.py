@@ -100,7 +100,7 @@ class StreamCollectionConfig(BaseModel):
 
 
 #: Identity of the built-in OverFast division+tier -> rank_value table (see
-#: ``parser-service``'s ``overwatch_rank.mapping``). Bumped whenever that table
+#: ``stats-service``'s ``overwatch_rank.mapping``). Bumped whenever that table
 #: is rebased: a bare ``rank_value`` is ambiguous across versions (2500 was
 #: Platinum 5 under v1, Emerald 5 under v2), so the version stamped on each
 #: snapshot is what makes a backfill possible.

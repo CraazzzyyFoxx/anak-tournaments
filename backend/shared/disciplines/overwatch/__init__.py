@@ -57,6 +57,12 @@ _COLLECTION_HANDLERS = (
 )
 
 
+def _configure_runtime(broker: Any, *, session_factory: Any, redis: Any) -> None:
+    from shared.disciplines.overwatch.collector import runtime
+
+    runtime.configure(session_factory=session_factory, redis=redis, broker=broker)
+
+
 def _register_jobs(broker: Any, *, session_factory: Any, redis: Any, logger: Any) -> None:
     # Imported on call, like the catalog sync: the collector pulls in the broker, an HTTP client and the scheduler.
     from shared.disciplines.overwatch.collector.jobs import register_jobs
@@ -148,6 +154,7 @@ SPEC = DisciplineSpec(
     identity_provider=SocialProvider.BATTLENET,
     stat_defs=STAT_DEFS,
     event_types=EVENT_TYPES,
+    configure_runtime=_configure_runtime,
     register_jobs=_register_jobs,
     start_jobs=_start_jobs,
     stop_jobs=_stop_jobs,

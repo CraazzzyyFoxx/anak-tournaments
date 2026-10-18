@@ -32,7 +32,7 @@ def processor(monkeypatch, waiter, *, contents=(b"first bytes",)):
     monkeypatch.setattr(module, "optional_broker", lambda: object())
     instance = module.AttachmentProcessor(
         client=SimpleNamespace(),
-        parser_clients=SimpleNamespace(create=AsyncMock(side_effect=client)),
+        attachment_clients=SimpleNamespace(create=client),
         result_waiter=waiter,
     )
     attachment = SimpleNamespace(filename="same.log", url="https://example.test/log", content_type="text/plain")

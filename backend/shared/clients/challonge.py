@@ -1,6 +1,6 @@
 """Async Challonge API v1 client.
 
-tournament-service and parser-service each carried their own byte-for-byte
+tournament-service and stats-service each carried their own byte-for-byte
 copy of this ~150-line wrapper (client construction, ``_check_response``, and
 the six read/write methods) — and only tournament-service's copy had been
 patched with slug validation (``_validate_slug``/``_SLUG_RE``) on

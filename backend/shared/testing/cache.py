@@ -1,7 +1,7 @@
 """Unified cashews cache setup for tests.
 
 The cashews ``cache`` singleton is process-global with no default backend --
-every entrypoint (each service's ``serve.py``) calls its own
+every entrypoint (each service's ``serve*.py``) calls its own
 ``configure_cache()`` before any subscriber runs, or a cache read/write/
 invalidation raises ``NotConfiguredError``. Tests that import cache-touching
 code must configure the same singleton in-process.
@@ -19,7 +19,7 @@ from cashews import cache
 
 #: Union of every prefix any service's ``configure_cache()`` registers --
 #: see ``CACHE_PREFIXES``/``CACHE_LOCK_PREFIX``/``CACHE_PING_PREFIXES`` in
-#: app-service/balancer-service/parser-service/tournament-service's
+#: app-service/balancer-service/stats-service/tournament-service's
 #: ``src/core/caching.py``. Configuring the full union up front means a test
 #: importing any service's cache-decorated code never hits an unrouted
 #: prefix, regardless of which subset that particular service registers.

@@ -2,7 +2,7 @@
 
 Structure only. Everything here is decidable from the document alone: shapes, bounds, local uniqueness and references
 between its own parts. Whether a map/stat/event/role/provider/hint exists *for this workspace and discipline* is the
-semantic validator's job (``parser-service`` ``services/ingest/validation.py``); nothing here touches a database.
+semantic validator's job (``stats-service`` ``services/ingest/validation.py``); nothing here touches a database.
 
 Every object forbids unknown fields. ``segments[].attrs``, ``events[].data`` and ``facts`` values are the deliberate
 extension points: JSON objects / finite numbers, checked recursively. Identifiers are preserved exactly (no strip, no

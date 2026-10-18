@@ -87,7 +87,7 @@ class OutboxTests(IsolatedAsyncioTestCase):
             home_team_id=1,
             away_team_id=2,
             winner_team_id=1,
-            source_service="parser-service",
+            source_service="stats-service",
         )
 
         row = await enqueue_outbox_event(

@@ -11,7 +11,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 )
@@ -44,7 +44,7 @@ func splitQueue(routes []edge.RouteSpec, queue string) (matched, rest []edge.Rou
 // classification mirrors the route-table grouping: reads + public/captain
 // writes + self-service auth go to the public spec; everything admin-gated
 // (admin CRUD, RBAC, integrations, metadata, job control) goes to the admin
-// spec. parser.Routes mixes public rank reads with admin endpoints, so it is
+// spec. stats.Routes mixes public rank reads with admin endpoints, so it is
 // split by auth mode.
 func Groups() (public, admin []openapi.Group) {
 	// The audit feed is served off the metadata-admin table (that table is
@@ -64,9 +64,9 @@ func Groups() (public, admin []openapi.Group) {
 		{Tag: "Balancer & Draft", Description: "Balancer config, draft spectating reads, balance jobs.",
 			Routes: concat(balancer.PublicRoutes, balancer.DraftReadRoutes, balancer.JobRoutes, balancer.DraftRoutes, balancer.BinaryPublicDocRoutes)},
 		{Tag: "Ranks", Description: "OverFast rank history (public reads).",
-			Routes: openapi.PublicOnly(parser.Routes)},
+			Routes: openapi.PublicOnly(stats.Routes)},
 		{Tag: "Match Ingest", Description: "Submit one canonical owt.match/1 match document with a workspace API key (stats.ingest scope) and poll its ingest job.",
-			Routes: parser.IngestDocRoutes},
+			Routes: stats.IngestDocRoutes},
 		{Tag: "Auth", Description: "Authentication, sessions, profile, OAuth, API keys, player linking.",
 			Routes: identity.PublicDocRoutes},
 		{Tag: "Notifications", Description: "Personal notification inbox + the site-wide announcement banner.",
@@ -85,8 +85,8 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: app.UsersAdminRoutes},
 		{Tag: "Admin: Files & Assets", Description: "Workspace icons, assets, match-log download, user avatar & CSV import.",
 			Routes: app.BinaryDocRoutes},
-		{Tag: "Admin: Parser & Achievements", Description: "Match-log/rank admin, OverFast sync, settings, achievement engine + rules.",
-			Routes: concat(openapi.AuthedOnly(parser.Routes), parser.AchievementAdminRoutes, parser.BinaryDocRoutes)},
+		{Tag: "Admin: Stats & Achievements", Description: "Match-log/rank admin, OverFast sync, settings, achievement engine + rules.",
+			Routes: concat(openapi.AuthedOnly(stats.Routes), stats.AchievementAdminRoutes, stats.BinaryDocRoutes)},
 		{Tag: "Admin: Balancer", Description: "Workspace/tournament balancer config + teams import.",
 			Routes: concat(balancer.AdminRoutes, balancer.RosterRoutes, balancer.BinaryAdminDocRoutes)},
 		{Tag: "Admin: Analytics", Description: "Analytics mutations & compute job control.",

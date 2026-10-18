@@ -9,15 +9,15 @@
 | `public` | Воркспейсы, участники, сетки дивизионов, настройки, аутбокс | app-service |
 | `tournament` | Структура турнира, сетка, встречи, pick/ban, отчёты | tournament-service |
 | `casual` | Казуальные матчи и скримы вне турнирного дерева | tournament-service |
-| `overwatch` | Каталог игры — герои, карты, режимы | app-service / parser-service |
-| `overwatch_rank` | Телеметрия рангов Overwatch из OverFast | parser-service |
-| `matches` | Разобранные логи матчей и производная статистика | parser-service |
+| `overwatch` | Каталог игры — герои, карты, режимы | app-service / stats-service |
+| `overwatch_rank` | Телеметрия рангов Overwatch из OverFast | stats-service |
+| `matches` | Разобранные логи матчей и производная статистика | stats-service |
 | `balancer` | Регистрация, балансировка, живой драфт, ранги участников | balancer-service |
-| `achievements` | Правила достижений, вычисления и ручные правки | parser-service / app-service |
+| `achievements` | Правила достижений, вычисления и ручные правки | stats-service / app-service |
 | `analytics` | Аналитические сигналы и реестр ML-моделей | analytics-service |
-| `log_processing` | Записи о загрузке и разборе логов | parser-service / discord-service |
+| `log_processing` | Записи о загрузке и разборе логов | stats-service / discord-service |
 | `realtime` | Журнал событий для доигрывания по WebSocket | шлюз (Go) |
-| `subscriptions` | Провайдеры подписок, требования и вердикты | tournament-service / parser-service |
+| `subscriptions` | Провайдеры подписок, требования и вердикты | tournament-service / stats-service |
 | `quota` | Планы квот, стоимость операций и переопределения | все сервисы, через `shared.quota` |
 
 Схема `balancer` шире своего названия: в ней живут и заявки на турнир, и результаты балансировки, и ранги участников. Имя пакета моделей тоже не всегда совпадает со схемой — например, модели рангов пишут в `overwatch_rank`, а модели загрузки логов — в `log_processing`.

@@ -78,7 +78,7 @@ class S3Client:
         ``s3_*`` fields ``BaseServiceSettings`` declares.
 
         This 5-kwarg construction was copy-pasted at every S3-using call site
-        (app-service, identity-service, parser-service, tournament-service, plus
+        (app-service, identity-service, stats-service, tournament-service, plus
         two of ``backend/scripts/``'s standalone migration scripts) — one line
         replaces it everywhere.
         """
@@ -193,7 +193,7 @@ class S3Client:
                 response = await client.list_objects_v2(**kwargs)
                 # Skip legacy zero-byte "folder marker" keys ("logs/90/"): they
                 # are not objects any caller wants, and the tournament sweep
-                # (parser-service/serve.py) fans every listed key out as a log.
+                # (stats-service/serve_worker.py) fans every listed key out as a log.
                 keys.extend(obj["Key"] for obj in response.get("Contents", []) if not obj["Key"].endswith("/"))
                 if not response.get("IsTruncated"):
                     break

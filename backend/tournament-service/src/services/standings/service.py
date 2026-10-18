@@ -904,7 +904,7 @@ def _build_ffa_stage_standings(
             draw=0,
             lose=0,
             points=team.points,
-            # Not a Buchholz: app-service and parser-service read ``buchholz IS
+            # Not a Buchholz: app-service and stats-service read ``buchholz IS
             # NULL`` as "playoff row" (Standing.buchholz). An ffa league is a
             # group stage, so its rows must read as group rows.
             buchholz=0.0,

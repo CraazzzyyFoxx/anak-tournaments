@@ -1,4 +1,4 @@
-"""Downloads Discord log-file attachments, hands them to the parser over
+"""Downloads Discord log-file attachments, hands them to stats-service over
 RabbitMQ, and reflects the outcome back onto the originating message via
 reactions/replies.
 """
@@ -24,7 +24,7 @@ from src.feedback import (
 )
 from src.interactions.emoji import registry
 from src.result_waiter import ResultWaiter
-from src.services.parser_client import ParserClientFactory
+from src.services.attachment_client import AttachmentClientFactory
 
 _LOG_FILE_SUFFIXES = (".txt", ".log", ".json")
 
@@ -44,11 +44,11 @@ class AttachmentProcessor:
         self,
         *,
         client: discord.Client,
-        parser_clients: ParserClientFactory,
+        attachment_clients: AttachmentClientFactory,
         result_waiter: ResultWaiter,
     ) -> None:
         self._client = client
-        self._parser_clients = parser_clients
+        self._attachment_clients = attachment_clients
         self._result_waiter = result_waiter
         self._processing_messages: set[int] = set()
 
@@ -76,12 +76,12 @@ class AttachmentProcessor:
         """
         try:
             logger.info(f"📥 Downloading {attachment.filename} for tournament {tournament_id}")
-            async with await self._parser_clients.create(destination="discord") as http_client:
+            async with self._attachment_clients.create() as http_client:
                 # Download file from Discord
                 response = await http_client.get(attachment.url)
                 response.raise_for_status()
 
-            # Hash identity is decided from the downloaded bytes by the parser;
+            # Hash identity is decided from the downloaded bytes by stats-service;
             # a display filename is never proof that an upload was processed.
             broker = optional_broker()
             if broker is None:

@@ -12,7 +12,7 @@ would reach into every other workspace's history. **Reads** are workspace
 grantable instead: ``admin_list`` takes ``workspace_id`` as both the
 authorization scope and the row filter (``_scope``), so a workspace owner's
 ``admin.*`` lists their own roster's identities and nothing else. Same shape as
-the rank/subscription collection admin, see ``parser-service/src/rpc/rank.py``.
+the rank/subscription collection admin, see ``stats-service/src/rpc/rank.py``.
 Social identities are managed by **superusers only**
 (add/update/verify/delete/set_primary); their per-workspace/global display
 **visibility** is a lighter capability gated on ``user.read`` — the

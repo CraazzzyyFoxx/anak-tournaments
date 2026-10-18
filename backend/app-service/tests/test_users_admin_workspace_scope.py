@@ -12,7 +12,7 @@ The line drawn now, and pinned here:
 
 * **read** (``admin_list``) is workspace-grantable. ``workspace_id`` is both the
   authorization scope and the row filter, the same shape as the rank/subscription
-  collection admin (``parser-service/src/rpc/rank.py``) -- so a scoped holder
+  collection admin (``stats-service/src/rpc/rank.py``) -- so a scoped holder
   sees their own roster and cannot widen the read to the platform-wide registry
   by dropping the param;
 * **writes to the global identity** (create/update/delete, avatar) still demand

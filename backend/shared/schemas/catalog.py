@@ -1,4 +1,4 @@
-"""Catalog read models shared by app-service, parser-service, and tournament-service.
+"""Catalog read models shared by app-service, stats-service, and tournament-service.
 
 ``HeroRead``/``MapRead``/``GamemodeRead`` and the hero playtime/stats/leaderboard
 parameter shapes used to be copy-pasted into each of those three services'
@@ -9,7 +9,7 @@ Same consolidation as ``shared/schemas/base.py``; see its docstring.
 
 Deliberate omission: ``aliases``. Only app-service serves it (the admin catalog
 editor), and ``MapRead`` is embedded in ``EncounterRead.map`` in both
-parser-service and tournament-service, so declaring ``aliases`` here would widen
+stats-service and tournament-service, so declaring ``aliases`` here would widen
 two unrelated public payloads. app-service subclasses these three models to add
 it.
 

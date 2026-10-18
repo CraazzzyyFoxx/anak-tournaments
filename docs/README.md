@@ -50,7 +50,7 @@ Individual services document their own RPC surface and scheduled work:
 [`app-service`](../backend/app-service/README.md),
 [`identity-service`](../backend/identity-service/README.md),
 [`tournament-service`](../backend/tournament-service/README.md),
-[`parser-service`](../backend/parser-service/README.md),
+[`stats-service`](../backend/stats-service/README.md),
 [`balancer-service`](../backend/balancer-service/README.md)
 (and its native solvers, [`balancer_native`](../backend/balancer-service/README.md#native-solver)),
 [`analytics-service`](../backend/analytics-service/README.md),

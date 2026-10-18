@@ -6013,103 +6013,103 @@
       },
       "summary": "Validate token"
     },
-    "rpc.parser.ach.calculate": {
+    "rpc.stats.ach.calculate": {
       "description": "Permission: workspace `achievement.update` in the payload's `workspace_id`. Runs the achievement condition-tree engine across a workspace (optionally seeding the built-in rules first and scoping the run to given slugs) and returns the slugs actually evaluated, rejecting unknown slugs and a missing workspace_id with 400. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "request": {
         "array": false,
-        "ref": "parser.AchievementCalculateRequest"
+        "ref": "stats.AchievementCalculateRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.AchievementCalculateResponse"
+        "ref": "stats.AchievementCalculateResponse"
       },
       "summary": "Run achievement calculation"
     },
-    "rpc.parser.ach.calculate_tournament": {
+    "rpc.stats.ach.calculate_tournament": {
       "description": "Permission: workspace `achievement.update` in the tournament's workspace. Runs the achievement engine for a single tournament \u2014 the workspace is taken from the tournament unless an explicitly matching workspace_id is supplied \u2014 and returns the tournament id plus the slugs evaluated, 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "request": {
         "array": false,
-        "ref": "parser.AchievementCalculateRequest"
+        "ref": "stats.AchievementCalculateRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.AchievementCalculateResponse"
+        "ref": "stats.AchievementCalculateResponse"
       },
       "summary": "Calculate tournament achievements"
     },
-    "rpc.parser.ach.condition_types": {
+    "rpc.stats.ach.condition_types": {
       "description": "Permission: workspace `achievement.read`. Returns the catalog of available achievement condition-tree leaf types with their grain.",
       "response": {
         "array": true,
-        "ref": "parser.ConditionTypeInfo"
+        "ref": "stats.ConditionTypeInfo"
       },
       "summary": "List condition types"
     },
-    "rpc.parser.ach.create": {
+    "rpc.stats.ach.create": {
       "description": "Permission: workspace `achievement.create`. Creates a workspace achievement rule after validating its condition tree and enforcing slug uniqueness.",
       "request": {
         "array": false,
-        "ref": "parser.AchievementRuleCreate"
+        "ref": "stats.AchievementRuleCreate"
       },
       "response": {
         "array": false,
-        "ref": "parser.AchievementRuleRead"
+        "ref": "stats.AchievementRuleRead"
       },
       "summary": "Create achievement rule"
     },
-    "rpc.parser.ach.delete": {
+    "rpc.stats.ach.delete": {
       "description": "Permission: workspace `achievement.delete`. Deletes a workspace achievement rule and returns no content, 404ing when the rule does not exist in that workspace.",
       "summary": "Delete achievement rule"
     },
-    "rpc.parser.ach.evaluate": {
+    "rpc.stats.ach.evaluate": {
       "description": "Permission: workspace `achievement.update`. Triggers a manual achievement evaluation run for selected rules and/or a tournament.",
       "request": {
         "array": false,
-        "ref": "parser.EvaluateRequest"
+        "ref": "stats.EvaluateRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.EvaluationRunRead"
+        "ref": "stats.EvaluationRunRead"
       },
       "summary": "Evaluate achievement rules"
     },
-    "rpc.parser.ach.export": {
+    "rpc.stats.ach.export": {
       "description": "Permission: workspace `achievement.read`. Returns a portable JSON export payload of all of a workspace's achievement rules. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "summary": "Export achievement rules"
     },
-    "rpc.parser.ach.get": {
+    "rpc.stats.ach.get": {
       "description": "Permission: workspace `achievement.read`. Returns a single achievement rule scoped to the workspace.",
       "response": {
         "array": false,
-        "ref": "parser.AchievementRuleRead"
+        "ref": "stats.AchievementRuleRead"
       },
       "summary": "Get achievement rule"
     },
-    "rpc.parser.ach.import": {
+    "rpc.stats.ach.import": {
       "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace when one is named. Imports portable achievement rules into a workspace and returns the import result. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "summary": "Import achievement rules"
     },
-    "rpc.parser.ach.lib_import": {
+    "rpc.stats.ach.lib_import": {
       "description": "Permission: workspace `achievement.create` in the target workspace, plus membership of (or superuser over) the source workspace. Imports selected achievement rules from a source workspace's library into the target workspace, warning on missing slugs. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "summary": "Import library rules"
     },
-    "rpc.parser.ach.lib_list": {
+    "rpc.stats.ach.lib_list": {
       "description": "Permission: workspace `achievement.read` in the target workspace, plus membership of (or superuser over) the source workspace. Lists the achievement rules of a source workspace available for library import.",
       "response": {
         "array": true,
-        "ref": "parser.AchievementLibraryRuleRead"
+        "ref": "stats.AchievementLibraryRuleRead"
       },
       "summary": "List library rules"
     },
-    "rpc.parser.ach.lib_workspaces": {
+    "rpc.stats.ach.lib_workspaces": {
       "description": "Permission: workspace `achievement.read`. Lists other workspaces (visible to the caller) that have achievement rules available to import as a library.",
       "response": {
         "array": true,
-        "ref": "parser.AchievementLibraryWorkspaceRead"
+        "ref": "stats.AchievementLibraryWorkspaceRead"
       },
       "summary": "List library workspaces"
     },
-    "rpc.parser.ach.list": {
+    "rpc.stats.ach.list": {
       "description": "Permission: workspace `achievement.read`. Pages a workspace's achievement rules with search, category, and enabled filters.",
       "query_params": [
         {
@@ -6177,7 +6177,7 @@
           "name": "order",
           "required": false,
           "schema": {
-            "$ref": "#/components/schemas/parser.SortOrder",
+            "$ref": "#/components/schemas/stats.SortOrder",
             "default": "asc"
           }
         },
@@ -6232,119 +6232,159 @@
       ],
       "response": {
         "array": false,
-        "ref": "parser.Paginated_AchievementRuleRead_"
+        "ref": "stats.Paginated_AchievementRuleRead_"
       },
       "summary": "List achievement rules"
     },
-    "rpc.parser.ach.override_create": {
+    "rpc.stats.ach.override_create": {
       "description": "Permission: workspace `achievement.update`. Creates a manual achievement override (grant or revoke) for a user on a rule, stamped with the granting actor.",
       "request": {
         "array": false,
-        "ref": "parser.OverrideCreate"
+        "ref": "stats.OverrideCreate"
       },
       "response": {
         "array": false,
-        "ref": "parser.OverrideRead"
+        "ref": "stats.OverrideRead"
       },
       "summary": "Create achievement override"
     },
-    "rpc.parser.ach.override_delete": {
+    "rpc.stats.ach.override_delete": {
       "description": "Permission: workspace `achievement.update`. Deletes a manual achievement override scoped to the workspace.",
       "summary": "Delete achievement override"
     },
-    "rpc.parser.ach.overrides_list": {
+    "rpc.stats.ach.overrides_list": {
       "description": "Permission: workspace `achievement.read`. Lists manual grant/revoke achievement overrides for a workspace.",
       "response": {
         "array": true,
-        "ref": "parser.OverrideRead"
+        "ref": "stats.OverrideRead"
       },
       "summary": "List achievement overrides"
     },
-    "rpc.parser.ach.reset": {
+    "rpc.stats.ach.reset": {
       "description": "Permission: workspace `achievement.update`. Hard-resets a workspace by reseeding rules and clearing evaluation results, returning the new run.",
       "summary": "Reset achievement rules"
     },
-    "rpc.parser.ach.rule_users": {
+    "rpc.stats.ach.rule_users": {
       "description": "Permission: workspace `achievement.read`. Returns a paginated, sortable list of users who earned a rule's achievement with counts and first-qualified timestamps.",
       "summary": "List rule's qualifying users"
     },
-    "rpc.parser.ach.runs": {
+    "rpc.stats.ach.runs": {
       "description": "Permission: workspace `achievement.read`. Returns the 50 most recent achievement evaluation runs for a workspace.",
       "response": {
         "array": true,
-        "ref": "parser.EvaluationRunRead"
+        "ref": "stats.EvaluationRunRead"
       },
       "summary": "List evaluation runs"
     },
-    "rpc.parser.ach.seed": {
+    "rpc.stats.ach.seed": {
       "description": "Permission: workspace `achievement.create`. Seeds the built-in achievement rules into a workspace and returns seeded/removed counts.",
       "summary": "Seed achievement rules"
     },
-    "rpc.parser.ach.test": {
+    "rpc.stats.ach.test": {
       "description": "Permission: workspace `achievement.update`. Dry-runs a rule's condition tree against an optional tournament and returns the qualifying count plus a sample of results.",
       "summary": "Test achievement rule"
     },
-    "rpc.parser.ach.update": {
+    "rpc.stats.ach.update": {
       "description": "Permission: workspace `achievement.update`. Updates an achievement rule, revalidating and bumping its version on condition-tree change and re-running evaluation when enabled.",
       "request": {
         "array": false,
-        "ref": "parser.AchievementRuleUpdate"
+        "ref": "stats.AchievementRuleUpdate"
       },
       "response": {
         "array": false,
-        "ref": "parser.AchievementRuleRead"
+        "ref": "stats.AchievementRuleRead"
       },
       "summary": "Update achievement rule"
     },
-    "rpc.parser.ach.validate": {
+    "rpc.stats.ach.validate": {
       "description": "Permission: workspace `achievement.read`. Validates an achievement condition tree and returns errors plus the inferred grain.",
       "request": {
         "array": false,
-        "ref": "parser.ConditionTreeValidateRequest"
+        "ref": "stats.ConditionTreeValidateRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.ConditionTreeValidateResponse"
+        "ref": "stats.ConditionTreeValidateResponse"
       },
       "summary": "Validate condition tree"
     },
-    "rpc.parser.catalog.sync": {
+    "rpc.stats.catalog.sync": {
       "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync.",
       "summary": "Sync a discipline's catalog"
     },
-    "rpc.parser.discord_channel.backfill": {
+    "rpc.stats.discord_channel.backfill": {
       "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Queues a rescan of the tournament's Discord channel history \u2014 the same `process_all` command the bot runs at startup \u2014 resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous, and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment \u2014 repeat it only when logs are genuinely missing.",
       "summary": "Backfill Discord channel history"
     },
-    "rpc.parser.discord_channel.delete": {
+    "rpc.stats.discord_channel.delete": {
       "description": "Permission: workspace `discord_channel.delete` in the tournament's workspace. Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured.",
       "summary": "Delete tournament Discord channel"
     },
-    "rpc.parser.discord_channel.get": {
+    "rpc.stats.discord_channel.get": {
       "description": "Permission: workspace `discord_channel.read` in the tournament's workspace. Returns the Discord channel configuration for a tournament (or null).",
       "response": {
         "array": false,
-        "ref": "parser.DiscordChannelRead"
+        "ref": "stats.DiscordChannelRead"
       },
       "summary": "Get tournament Discord channel"
     },
-    "rpc.parser.discord_channel.upsert": {
+    "rpc.stats.discord_channel.upsert": {
       "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Creates or updates a tournament's Discord guild/channel binding.",
       "request": {
         "array": false,
-        "ref": "parser.DiscordChannelUpsert"
+        "ref": "stats.DiscordChannelUpsert"
       },
       "response": {
         "array": false,
-        "ref": "parser.DiscordChannelRead"
+        "ref": "stats.DiscordChannelRead"
       },
       "summary": "Upsert tournament Discord channel"
     },
-    "rpc.parser.impact.recompute_baselines": {
+    "rpc.stats.impact.recompute_baselines": {
       "description": "Permission: superuser. Rebuilds the native Overwatch baselines used for MVP-impact scoring (`stats.stat_baseline`) for the active formula version, aggregating a mean/standard deviation per (role id, rank bucket, stat code) from whole-match player facts across workspaces. Returns the row count and formula version. Each run atomically replaces that discipline/version's rows and aborts rather than wiping them when aggregation yields nothing. Repeated runs are safe but scan the historical facts and clear the 10-minute baseline cache.",
       "summary": "Recompute impact baselines"
     },
-    "rpc.parser.logs.history": {
+    "rpc.stats.ingest.bind": {
+      "description": "Permission: workspace `log.update` in the job's workspace. Binds an `awaiting_link` (or `failed`) job's stored document or raw source to `encounter_game_id` with the operator's complete `teams` map (`document team key -> encounter.team id`, a bijection onto the game's participating teams; a participant contradicting the chosen team is refused, zero overlap is allowed) and publishes it in the same transaction, returning the committed job. The client never sends the document. When the target game already has an observation `expected_revision` is required (`0` = none, `n` = replace exactly revision `n`) and is compared again under the final lock: 409 `stale_revision` / `expected_revision_required`. A `done` job is replayed only by retry with `reparse=true`; a busy job answers 409 `ingest_busy`. Refusals roll back and leave the job as it was: 404 `binding_target_not_found`, 409 `binding_mismatch` / `identity_conflict`, 422 `invalid_team_map`.",
+      "request": {
+        "array": false,
+        "ref": "stats.BindIngestRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "stats.IngestJobRead"
+      },
+      "summary": "Bind an unlinked ingest job to a game"
+    },
+    "rpc.stats.ingest.game_observation": {
+      "description": "Permission: workspace `log.read` in the game's workspace (404 `binding_target_not_found` for an unknown game). Returns the target game's authoritative current observation `{encounter_game_id, match_id, revision, ingest_job_id, is_historical}`; an unoccupied game answers `match_id`/`ingest_job_id` null and `revision` 0. `is_historical` marks an observation without a job or from a historical import, which no bind or reparse can replace. `revision` is what a bind's `expected_revision` must equal.",
+      "response": {
+        "array": false,
+        "ref": "stats.GameObservationRead"
+      },
+      "summary": "Read a game's current observation"
+    },
+    "rpc.stats.ingest.get": {
+      "description": "Permission: same workspace API key and `stats.ingest` scope as submit. Returns the job's actual status, attempts, timestamps, structured error `{code,message,issues}` and, only while the job is still the current evidence of a match, its binding `{encounter_game_id,match_id,revision}`. A job of another workspace is indistinguishable from an absent one (404 `ingest_job_not_found`).",
+      "response": {
+        "array": false,
+        "ref": "stats.IngestJobRead"
+      },
+      "summary": "Read a canonical ingest job"
+    },
+    "rpc.stats.ingest.submit": {
+      "description": "Permission: a workspace API key whose `stats.ingest` scope is backed by the owner's effective `stats.ingest` permission; sessions, service tokens and owner privilege alone are refused (403 `api_key_required` / `scope_required`). The request body is the bare `owt.match/1` document (Content-Type `application/json`, up to 25 MiB); the workspace is always the key's own. Idempotent per `(source.kind, source.external_id)` when an external id is present, otherwise per the SHA-256 of the exact request bytes: the same bytes return the existing job, changed bytes or discipline under one external id answer 409 `idempotency_conflict`. Answers 202 with the job while it is `pending`/`processing`, and 200 with the actual job when it already finished (`done`, `awaiting_link`, `failed`; a failed duplicate is never retried implicitly). A structurally valid document whose codes do not resolve is persisted as a failed job with diagnostics and answers 422 with `ingest_job_id`; malformed JSON answers 400, a non-JSON content type 415, an oversized body 413.",
+      "request": {
+        "array": false,
+        "ref": "stats.MatchDoc"
+      },
+      "response": {
+        "array": false,
+        "ref": "stats.IngestJobRead"
+      },
+      "summary": "Submit a canonical match document"
+    },
+    "rpc.stats.logs.history": {
       "description": "Permission: `log.read` in the workspace named by the scope argument \u2014 `workspace_id`, else the tournament's, else the encounter's workspace \u2014 or global `log.read` when no scope argument is given. Lists match-log processing records filtered by tournament, encounter or workspace, plus optional status and free-text search, with pagination.",
       "query_params": [
         {
@@ -6399,35 +6439,35 @@
       ],
       "response": {
         "array": false,
-        "ref": "parser.LogHistoryResponse"
+        "ref": "stats.LogHistoryResponse"
       },
       "summary": "List log processing records"
     },
-    "rpc.parser.logs.process_tournament": {
+    "rpc.stats.logs.process_tournament": {
       "description": "Permission: workspace `log.update` in the tournament's workspace. Enqueues reprocessing of all stored match logs for a tournament and returns an ack message \u2014 the work itself runs asynchronously on the log queue \u2014 404ing on an unknown tournament. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "summary": "Process tournament logs"
     },
-    "rpc.parser.logs.queue_status": {
+    "rpc.stats.logs.queue_status": {
       "description": "Permission: global `log.read`. Returns per-status counts of match-log processing records.",
       "response": {
         "array": true,
-        "ref": "parser.QueueDepth"
+        "ref": "stats.QueueDepth"
       },
       "summary": "Match-log queue depths"
     },
-    "rpc.parser.logs.retry": {
+    "rpc.stats.logs.retry": {
       "description": "Permission: workspace `log.update` in the record's workspace. Resets a failed or awaiting-link log record to pending, re-enqueues it for processing and returns the updated record (with its structured `error`, current `observation_revision`/`is_current_provenance` and, for an awaiting-link record, the document `teams` a bind map is keyed by), 404ing when the record does not exist. A `done` record is never replayed implicitly: 409 `reparse_required`; send `reparse=true` with the `expected_revision` the operator saw to replace its observations directly (409 `stale_revision` when another revision was written, 409 `stale_binding` once the job is no longer the game's current evidence). An optional `encounter_id` first attaches the log to that encounter of the record's tournament (404 unknown encounter, 400 another tournament's, 409 on a processed record), which is how an `encounter_ambiguous` failure is resolved.",
       "request": {
         "array": false,
-        "ref": "parser.LogRetryRequest"
+        "ref": "stats.LogRetryRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.LogRecordRead"
+        "ref": "stats.LogRecordRead"
       },
       "summary": "Retry log processing"
     },
-    "rpc.parser.logs.stats": {
+    "rpc.stats.logs.stats": {
       "description": "Permission: `log.read` in the workspace named by the scope argument \u2014 `workspace_id`, else the tournament's, else the encounter's workspace \u2014 or global `log.read` when no scope argument is given. Returns scope-wide processing counts per status, average completed duration and the newest record timestamp for a tournament, encounter or workspace.",
       "query_params": [
         {
@@ -6454,19 +6494,19 @@
       ],
       "response": {
         "array": false,
-        "ref": "parser.LogStatsRead"
+        "ref": "stats.LogStatsRead"
       },
       "summary": "Log processing stats"
     },
-    "rpc.parser.logs.upload": {
+    "rpc.stats.logs.upload": {
       "description": "Permission: workspace `log.create` in the tournament's workspace. Multipart (base64) upload of one or more log files for a tournament, storing each to S3 and enqueueing processing, with per-file errors collected. Metered: over quota the call answers 429 with `code=rate_limited` and the exceeded limit in `details.limit_name`.",
       "response": {
         "array": false,
-        "ref": "parser.LogUploadResponse"
+        "ref": "stats.LogUploadResponse"
       },
       "summary": "Upload match logs"
     },
-    "rpc.parser.rank.battle_tag_history": {
+    "rpc.stats.rank.battle_tag_history": {
       "description": "Permission: public; no authentication required. Returns a single battle tag's OverFast rank time series with granularity, date range, platform and role filters.",
       "query_params": [
         {
@@ -6507,59 +6547,59 @@
       ],
       "response": {
         "array": false,
-        "ref": "parser.RankHistoryResponse"
+        "ref": "stats.RankHistoryResponse"
       },
       "summary": "Battle tag rank history"
     },
-    "rpc.parser.rank.collect": {
+    "rpc.stats.rank.collect": {
       "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are touched), otherwise global `rank.update`. Enqueues an OverFast rank-collection run for a user or specific battle tags and returns the enqueued count.",
       "request": {
         "array": false,
-        "ref": "parser.CollectTriggerRequest"
+        "ref": "stats.CollectTriggerRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.CollectTriggerResponse"
+        "ref": "stats.CollectTriggerResponse"
       },
       "summary": "Trigger rank collection"
     },
-    "rpc.parser.rank.fetch_log": {
+    "rpc.stats.rank.fetch_log": {
       "description": "Permission: workspace `rank.read` when `workspace_id` is given (rows are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Lists OverFast rank-collection fetch-log entries filtered by status, source and cursor.",
       "response": {
         "array": true,
-        "ref": "parser.FetchLogRead"
+        "ref": "stats.FetchLogRead"
       },
       "summary": "Rank fetch log"
     },
-    "rpc.parser.rank.reenable_disabled": {
+    "rpc.stats.rank.reenable_disabled": {
       "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are requeued), otherwise global `rank.update`. Requeues battle tags that were auto-disabled by a transient OverFast outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to tags that previously succeeded. Returns the re-enabled count.",
       "request": {
         "array": false,
-        "ref": "parser.ReenableDisabledRequest"
+        "ref": "stats.ReenableDisabledRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.ReenableDisabledResponse"
+        "ref": "stats.ReenableDisabledResponse"
       },
       "summary": "Re-enable disabled rank collection"
     },
-    "rpc.parser.rank.stats": {
+    "rpc.stats.rank.stats": {
       "description": "Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Aggregated OverFast rank-collection health: battle-tag state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, and the active config.",
       "response": {
         "array": false,
-        "ref": "parser.RankCollectionStats"
+        "ref": "stats.RankCollectionStats"
       },
       "summary": "Rank collection health stats"
     },
-    "rpc.parser.rank.user_collection": {
+    "rpc.stats.rank.user_collection": {
       "description": "Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the OverFast rank-collection status for each of a user's battle tags.",
       "response": {
         "array": true,
-        "ref": "parser.CollectionStatusRead"
+        "ref": "stats.CollectionStatusRead"
       },
       "summary": "User rank collection status"
     },
-    "rpc.parser.rank.user_current": {
+    "rpc.stats.rank.user_current": {
       "description": "Permission: public; no authentication required. Returns a user's current OverFast ranks for the requested platform.",
       "query_params": [
         {
@@ -6572,11 +6612,11 @@
       ],
       "response": {
         "array": false,
-        "ref": "parser.CurrentRanksResponse"
+        "ref": "stats.CurrentRanksResponse"
       },
       "summary": "Current user ranks"
     },
-    "rpc.parser.rank.user_history": {
+    "rpc.stats.rank.user_history": {
       "description": "Permission: public; no authentication required. Returns a user's OverFast rank time series with configurable granularity, date range, platform and role filters.",
       "query_params": [
         {
@@ -6624,113 +6664,73 @@
       ],
       "response": {
         "array": false,
-        "ref": "parser.RankHistoryResponse"
+        "ref": "stats.RankHistoryResponse"
       },
       "summary": "User rank history"
     },
-    "rpc.parser.settings.get": {
+    "rpc.stats.settings.get": {
       "description": "Permission: superuser. Returns a single global setting by key.",
       "response": {
         "array": false,
-        "ref": "parser.SettingRead"
+        "ref": "stats.SettingRead"
       },
       "summary": "Get global setting"
     },
-    "rpc.parser.settings.list": {
+    "rpc.stats.settings.list": {
       "description": "Permission: superuser. Returns all global key/value settings.",
       "response": {
         "array": true,
-        "ref": "parser.SettingRead"
+        "ref": "stats.SettingRead"
       },
       "summary": "List global settings"
     },
-    "rpc.parser.settings.upsert": {
+    "rpc.stats.settings.upsert": {
       "description": "Permission: superuser. Creates or updates a global setting by key, stamping the updating user.",
       "request": {
         "array": false,
-        "ref": "parser.SettingUpsert"
+        "ref": "stats.SettingUpsert"
       },
       "response": {
         "array": false,
-        "ref": "parser.SettingRead"
+        "ref": "stats.SettingRead"
       },
       "summary": "Upsert global setting"
     },
-    "rpc.parser.subscription.check_log": {
+    "rpc.stats.subscription.check_log": {
       "description": "Permission: workspace `subscription.read` when `workspace_id` is given (rows are then scoped to that workspace), otherwise global `subscription.read`. Lists append-only subscription check-log entries (the collection history) filtered by state, source, provider, auth user and cursor.",
       "response": {
         "array": true,
-        "ref": "parser.SubscriptionCheckLogRead"
+        "ref": "stats.SubscriptionCheckLogRead"
       },
       "summary": "Subscription check log"
     },
-    "rpc.parser.subscription.collect": {
+    "rpc.stats.subscription.collect": {
       "description": "Permission: workspace `subscription.update` when `workspace_id` is given (the re-check is then limited to that workspace), otherwise global `subscription.update`. Runs a live subscription re-check for one player (optionally limited to specific providers) or sweeps every open tournament that requires a subscription, and returns the number of checks performed.",
       "request": {
         "array": false,
-        "ref": "parser.SubscriptionCollectTriggerRequest"
+        "ref": "stats.SubscriptionCollectTriggerRequest"
       },
       "response": {
         "array": false,
-        "ref": "parser.SubscriptionCollectTriggerResponse"
+        "ref": "stats.SubscriptionCollectTriggerResponse"
       },
       "summary": "Trigger subscription collection"
     },
-    "rpc.parser.subscription.stats": {
+    "rpc.stats.subscription.stats": {
       "description": "Permission: workspace `subscription.read` when `workspace_id` is given (aggregates are then scoped to that workspace), otherwise global `subscription.read`. Aggregated subscription-collection health: entitlement counts by state and provider, distinct-user check coverage over 24h/7d, last successful check, last-24h check-outcome mix with error rate, the number of open tournaments enforcing a subscription, and the active config.",
       "response": {
         "array": false,
-        "ref": "parser.SubscriptionCollectionStats"
+        "ref": "stats.SubscriptionCollectionStats"
       },
       "summary": "Subscription collection health stats"
     },
-    "rpc.parser.subscription.user_collection": {
+    "rpc.stats.subscription.user_collection": {
       "description": "Permission: workspace `subscription.read` when `workspace_id` is given (only that workspace's entitlement is returned), otherwise global `subscription.read`. Returns the current subscription entitlement per workspace and provider for one player.",
       "response": {
         "array": true,
-        "ref": "parser.SubscriptionUserCollectionRead"
+        "ref": "stats.SubscriptionUserCollectionRead"
       },
       "summary": "User subscription collection status"
-    },
-    "rpc.stats.ingest.bind": {
-      "description": "Permission: workspace `log.update` in the job's workspace. Binds an `awaiting_link` (or `failed`) job's stored document or raw source to `encounter_game_id` with the operator's complete `teams` map (`document team key -> encounter.team id`, a bijection onto the game's participating teams; a participant contradicting the chosen team is refused, zero overlap is allowed) and publishes it in the same transaction, returning the committed job. The client never sends the document. When the target game already has an observation `expected_revision` is required (`0` = none, `n` = replace exactly revision `n`) and is compared again under the final lock: 409 `stale_revision` / `expected_revision_required`. A `done` job is replayed only by retry with `reparse=true`; a busy job answers 409 `ingest_busy`. Refusals roll back and leave the job as it was: 404 `binding_target_not_found`, 409 `binding_mismatch` / `identity_conflict`, 422 `invalid_team_map`.",
-      "request": {
-        "array": false,
-        "ref": "parser.BindIngestRequest"
-      },
-      "response": {
-        "array": false,
-        "ref": "parser.IngestJobRead"
-      },
-      "summary": "Bind an unlinked ingest job to a game"
-    },
-    "rpc.stats.ingest.game_observation": {
-      "description": "Permission: workspace `log.read` in the game's workspace (404 `binding_target_not_found` for an unknown game). Returns the target game's authoritative current observation `{encounter_game_id, match_id, revision, ingest_job_id, is_historical}`; an unoccupied game answers `match_id`/`ingest_job_id` null and `revision` 0. `is_historical` marks an observation without a job or from a historical import, which no bind or reparse can replace. `revision` is what a bind's `expected_revision` must equal.",
-      "response": {
-        "array": false,
-        "ref": "parser.GameObservationRead"
-      },
-      "summary": "Read a game's current observation"
-    },
-    "rpc.stats.ingest.get": {
-      "description": "Permission: same workspace API key and `stats.ingest` scope as submit. Returns the job's actual status, attempts, timestamps, structured error `{code,message,issues}` and, only while the job is still the current evidence of a match, its binding `{encounter_game_id,match_id,revision}`. A job of another workspace is indistinguishable from an absent one (404 `ingest_job_not_found`).",
-      "response": {
-        "array": false,
-        "ref": "parser.IngestJobRead"
-      },
-      "summary": "Read a canonical ingest job"
-    },
-    "rpc.stats.ingest.submit": {
-      "description": "Permission: a workspace API key whose `stats.ingest` scope is backed by the owner's effective `stats.ingest` permission; sessions, service tokens and owner privilege alone are refused (403 `api_key_required` / `scope_required`). The request body is the bare `owt.match/1` document (Content-Type `application/json`, up to 25 MiB); the workspace is always the key's own. Idempotent per `(source.kind, source.external_id)` when an external id is present, otherwise per the SHA-256 of the exact request bytes: the same bytes return the existing job, changed bytes or discipline under one external id answer 409 `idempotency_conflict`. Answers 202 with the job while it is `pending`/`processing`, and 200 with the actual job when it already finished (`done`, `awaiting_link`, `failed`; a failed duplicate is never retried implicitly). A structurally valid document whose codes do not resolve is persisted as a failed job with diagnostics and answers 422 with `ingest_job_id`; malformed JSON answers 400, a non-JSON content type 415, an oversized body 413.",
-      "request": {
-        "array": false,
-        "ref": "parser.MatchDoc"
-      },
-      "response": {
-        "array": false,
-        "ref": "parser.IngestJobRead"
-      },
-      "summary": "Submit a canonical match document"
     },
     "rpc.stream.health": {
       "description": "Permission: global `stream.read`. Outcome of the last Twitch live-status poll tick next to the config that produced it: status, when it ran, how many tournaments and channels it covered, how many channels were live, and Twitch's remaining rate-limit budget. Exists because the tick swallows every Helix failure by design so an outage cannot kill the scheduler \u2014 without this a poller rejected by Twitch is indistinguishable from a working one. A null status means no tick has been recorded yet, which is not the same as a recorded failure. The grant is global rather than workspace-scoped because there is one poller for the whole platform, so the numbers carry no workspace dimension and a workspace-scoped grant is not enough.",
@@ -31286,7 +31286,7 @@
       "title": "WorkspaceMembership",
       "type": "object"
     },
-    "parser.AchievementCalculateRequest": {
+    "stats.AchievementCalculateRequest": {
       "properties": {
         "ensure_created": {
           "default": true,
@@ -31324,7 +31324,7 @@
       "title": "AchievementCalculateRequest",
       "type": "object"
     },
-    "parser.AchievementCalculateResponse": {
+    "stats.AchievementCalculateResponse": {
       "properties": {
         "executed": {
           "items": {
@@ -31357,7 +31357,7 @@
       "title": "AchievementCalculateResponse",
       "type": "object"
     },
-    "parser.AchievementLibraryRuleRead": {
+    "stats.AchievementLibraryRuleRead": {
       "properties": {
         "category": {
           "title": "Category",
@@ -31397,7 +31397,7 @@
       "title": "AchievementLibraryRuleRead",
       "type": "object"
     },
-    "parser.AchievementLibraryWorkspaceRead": {
+    "stats.AchievementLibraryWorkspaceRead": {
       "properties": {
         "id": {
           "title": "Id",
@@ -31425,7 +31425,7 @@
       "title": "AchievementLibraryWorkspaceRead",
       "type": "object"
     },
-    "parser.AchievementRuleCreate": {
+    "stats.AchievementRuleCreate": {
       "properties": {
         "category": {
           "title": "Category",
@@ -31527,7 +31527,7 @@
       "title": "AchievementRuleCreate",
       "type": "object"
     },
-    "parser.AchievementRuleListQueryParams": {
+    "stats.AchievementRuleListQueryParams": {
       "properties": {
         "category": {
           "anyOf": [
@@ -31566,7 +31566,7 @@
           "type": "boolean"
         },
         "order": {
-          "$ref": "#/components/schemas/parser.SortOrder",
+          "$ref": "#/components/schemas/stats.SortOrder",
           "default": "asc"
         },
         "page": {
@@ -31614,7 +31614,7 @@
       "title": "AchievementRuleListQueryParams",
       "type": "object"
     },
-    "parser.AchievementRuleRead": {
+    "stats.AchievementRuleRead": {
       "properties": {
         "category": {
           "title": "Category",
@@ -31746,7 +31746,7 @@
       "title": "AchievementRuleRead",
       "type": "object"
     },
-    "parser.AchievementRuleUpdate": {
+    "stats.AchievementRuleUpdate": {
       "properties": {
         "category": {
           "anyOf": [
@@ -31924,7 +31924,7 @@
       "title": "AchievementRuleUpdate",
       "type": "object"
     },
-    "parser.BindIngestRequest": {
+    "stats.BindIngestRequest": {
       "additionalProperties": false,
       "description": "An operator's complete team map for one stored document: ``document team key -> encounter.team id``.\n\nThe document itself is never part of the request: bind retries the job's stored canonical document or raw source.\n``expected_revision`` is the operator's view of the target game: ``0`` = no observation yet, ``n`` = replace exactly\nrevision ``n``. It is required when the target is occupied and compared again under the final lock.",
       "properties": {
@@ -31967,7 +31967,7 @@
       "title": "BindIngestRequest",
       "type": "object"
     },
-    "parser.CollectTriggerRequest": {
+    "stats.CollectTriggerRequest": {
       "properties": {
         "social_account_ids": {
           "anyOf": [
@@ -32000,7 +32000,7 @@
       "title": "CollectTriggerRequest",
       "type": "object"
     },
-    "parser.CollectTriggerResponse": {
+    "stats.CollectTriggerResponse": {
       "properties": {
         "enqueued": {
           "title": "Enqueued",
@@ -32013,7 +32013,7 @@
       "title": "CollectTriggerResponse",
       "type": "object"
     },
-    "parser.CollectionStatusRead": {
+    "stats.CollectionStatusRead": {
       "properties": {
         "battle_tag": {
           "title": "Battle Tag",
@@ -32104,7 +32104,7 @@
       "title": "CollectionStatusRead",
       "type": "object"
     },
-    "parser.ConditionTreeValidateRequest": {
+    "stats.ConditionTreeValidateRequest": {
       "properties": {
         "condition_tree": {
           "additionalProperties": true,
@@ -32118,7 +32118,7 @@
       "title": "ConditionTreeValidateRequest",
       "type": "object"
     },
-    "parser.ConditionTreeValidateResponse": {
+    "stats.ConditionTreeValidateResponse": {
       "properties": {
         "errors": {
           "items": {
@@ -32151,7 +32151,7 @@
       "title": "ConditionTreeValidateResponse",
       "type": "object"
     },
-    "parser.ConditionTypeInfo": {
+    "stats.ConditionTypeInfo": {
       "properties": {
         "depends_on": {
           "items": {
@@ -32207,7 +32207,7 @@
       "title": "ConditionTypeInfo",
       "type": "object"
     },
-    "parser.CurrentRank": {
+    "stats.CurrentRank": {
       "properties": {
         "battle_tag": {
           "title": "Battle Tag",
@@ -32294,7 +32294,7 @@
       "title": "CurrentRank",
       "type": "object"
     },
-    "parser.CurrentRanksResponse": {
+    "stats.CurrentRanksResponse": {
       "properties": {
         "generated_at": {
           "format": "date-time",
@@ -32303,7 +32303,7 @@
         },
         "ranks": {
           "items": {
-            "$ref": "#/components/schemas/parser.CurrentRank"
+            "$ref": "#/components/schemas/stats.CurrentRank"
           },
           "title": "Ranks",
           "type": "array"
@@ -32328,7 +32328,7 @@
       "title": "CurrentRanksResponse",
       "type": "object"
     },
-    "parser.DiscordChannelRead": {
+    "stats.DiscordChannelRead": {
       "description": "Schema for reading a tournament Discord sync channel.",
       "properties": {
         "channel_id": {
@@ -32369,7 +32369,7 @@
       "title": "DiscordChannelRead",
       "type": "object"
     },
-    "parser.DiscordChannelUpsert": {
+    "stats.DiscordChannelUpsert": {
       "description": "Schema for creating or updating a tournament Discord sync channel.\n\nchannel_id is a Discord snowflake (64-bit integer), accepted as a string to\navoid JavaScript float64 precision loss on the client side. The guild is not\nhere: it belongs to the workspace (``Workspace.discord_guild_id``) and was\nduplicated into every tournament row while being read by nobody.",
       "properties": {
         "channel_id": {
@@ -32400,7 +32400,7 @@
       "title": "DiscordChannelUpsert",
       "type": "object"
     },
-    "parser.EvaluateRequest": {
+    "stats.EvaluateRequest": {
       "properties": {
         "rule_ids": {
           "anyOf": [
@@ -32433,7 +32433,7 @@
       "title": "EvaluateRequest",
       "type": "object"
     },
-    "parser.EvaluationRunRead": {
+    "stats.EvaluationRunRead": {
       "properties": {
         "error_message": {
           "anyOf": [
@@ -32519,7 +32519,7 @@
       "title": "EvaluationRunRead",
       "type": "object"
     },
-    "parser.FetchLogRead": {
+    "stats.FetchLogRead": {
       "properties": {
         "battle_tag": {
           "title": "Battle Tag",
@@ -32594,7 +32594,7 @@
       "title": "FetchLogRead",
       "type": "object"
     },
-    "parser.GameObservationRead": {
+    "stats.GameObservationRead": {
       "description": "The authoritative current observation of one game: what a bind's ``expected_revision`` must equal.\n\nUnoccupied: ``match_id``/``ingest_job_id`` null and ``revision`` 0. ``is_historical`` marks an observation that\nhas no job or came from a historical import: it can never be replaced by a bind or reparse.",
       "properties": {
         "encounter_game_id": {
@@ -32642,7 +32642,7 @@
       "title": "GameObservationRead",
       "type": "object"
     },
-    "parser.IngestBinding": {
+    "stats.IngestBinding": {
       "description": "The match this job is still the current evidence for; absent once superseded or while unbound.",
       "properties": {
         "encounter_game_id": {
@@ -32666,7 +32666,7 @@
       "title": "IngestBinding",
       "type": "object"
     },
-    "parser.IngestError": {
+    "stats.IngestError": {
       "properties": {
         "code": {
           "title": "Code",
@@ -32675,7 +32675,7 @@
         "issues": {
           "default": [],
           "items": {
-            "$ref": "#/components/schemas/parser.IngestIssueRead"
+            "$ref": "#/components/schemas/stats.IngestIssueRead"
           },
           "title": "Issues",
           "type": "array"
@@ -32692,7 +32692,7 @@
       "title": "IngestError",
       "type": "object"
     },
-    "parser.IngestIssueRead": {
+    "stats.IngestIssueRead": {
       "properties": {
         "code": {
           "title": "Code",
@@ -32749,7 +32749,7 @@
       "title": "IngestIssueRead",
       "type": "object"
     },
-    "parser.IngestJobRead": {
+    "stats.IngestJobRead": {
       "properties": {
         "attempts": {
           "title": "Attempts",
@@ -32758,7 +32758,7 @@
         "binding": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/parser.IngestBinding"
+              "$ref": "#/components/schemas/stats.IngestBinding"
             },
             {
               "type": "null"
@@ -32789,7 +32789,7 @@
         "error": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/parser.IngestError"
+              "$ref": "#/components/schemas/stats.IngestError"
             },
             {
               "type": "null"
@@ -32841,7 +32841,7 @@
           "title": "Started At"
         },
         "status": {
-          "$ref": "#/components/schemas/parser.IngestJobStatus"
+          "$ref": "#/components/schemas/stats.IngestJobStatus"
         },
         "updated_at": {
           "anyOf": [
@@ -32877,7 +32877,7 @@
       "title": "IngestJobRead",
       "type": "object"
     },
-    "parser.IngestJobStatus": {
+    "stats.IngestJobStatus": {
       "enum": [
         "pending",
         "processing",
@@ -32888,7 +32888,7 @@
       "title": "IngestJobStatus",
       "type": "string"
     },
-    "parser.IngestTeamKey": {
+    "stats.IngestTeamKey": {
       "description": "A document team in canonical order, so an operator UI can build the bind team map for an awaiting job.",
       "properties": {
         "key": {
@@ -32915,11 +32915,11 @@
       "title": "IngestTeamKey",
       "type": "object"
     },
-    "parser.LogHistoryResponse": {
+    "stats.LogHistoryResponse": {
       "properties": {
         "items": {
           "items": {
-            "$ref": "#/components/schemas/parser.LogRecordRead"
+            "$ref": "#/components/schemas/stats.LogRecordRead"
           },
           "title": "Items",
           "type": "array"
@@ -32936,7 +32936,7 @@
       "title": "LogHistoryResponse",
       "type": "object"
     },
-    "parser.LogRecordRead": {
+    "stats.LogRecordRead": {
       "properties": {
         "attached_encounter_game_id": {
           "anyOf": [
@@ -32984,7 +32984,7 @@
         "error": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/parser.IngestError"
+              "$ref": "#/components/schemas/stats.IngestError"
             },
             {
               "type": "null"
@@ -33045,7 +33045,7 @@
           "type": "boolean"
         },
         "raw_status": {
-          "$ref": "#/components/schemas/parser.RawSourceStatus"
+          "$ref": "#/components/schemas/stats.RawSourceStatus"
         },
         "source": {
           "title": "Source",
@@ -33070,7 +33070,7 @@
         "teams": {
           "default": [],
           "items": {
-            "$ref": "#/components/schemas/parser.IngestTeamKey"
+            "$ref": "#/components/schemas/stats.IngestTeamKey"
           },
           "title": "Teams",
           "type": "array"
@@ -33130,7 +33130,7 @@
       "title": "LogRecordRead",
       "type": "object"
     },
-    "parser.LogRetryRequest": {
+    "stats.LogRetryRequest": {
       "properties": {
         "encounter_game_id": {
           "anyOf": [
@@ -33177,7 +33177,7 @@
       "title": "LogRetryRequest",
       "type": "object"
     },
-    "parser.LogStatsRead": {
+    "stats.LogStatsRead": {
       "description": "Scope-wide processing aggregate, computed in one SQL round trip.\n\nThe admin console used to derive these from the page it happened to be\nshowing, so \"Failed: 0\" only ever meant \"none on this page\".",
       "properties": {
         "avg_duration_seconds": {
@@ -33241,7 +33241,7 @@
       "title": "LogStatsRead",
       "type": "object"
     },
-    "parser.LogUploadError": {
+    "stats.LogUploadError": {
       "properties": {
         "error": {
           "title": "Error",
@@ -33266,7 +33266,7 @@
       "title": "LogUploadError",
       "type": "object"
     },
-    "parser.LogUploadItem": {
+    "stats.LogUploadItem": {
       "properties": {
         "attached_encounter_id": {
           "anyOf": [
@@ -33296,18 +33296,18 @@
       "title": "LogUploadItem",
       "type": "object"
     },
-    "parser.LogUploadResponse": {
+    "stats.LogUploadResponse": {
       "properties": {
         "errors": {
           "items": {
-            "$ref": "#/components/schemas/parser.LogUploadError"
+            "$ref": "#/components/schemas/stats.LogUploadError"
           },
           "title": "Errors",
           "type": "array"
         },
         "uploaded": {
           "items": {
-            "$ref": "#/components/schemas/parser.LogUploadItem"
+            "$ref": "#/components/schemas/stats.LogUploadItem"
           },
           "title": "Uploaded",
           "type": "array"
@@ -33320,7 +33320,7 @@
       "title": "LogUploadResponse",
       "type": "object"
     },
-    "parser.MatchDoc": {
+    "stats.MatchDoc": {
       "additionalProperties": false,
       "properties": {
         "discipline": {
@@ -33336,14 +33336,14 @@
         },
         "events": {
           "items": {
-            "$ref": "#/components/schemas/parser.MatchEventDoc"
+            "$ref": "#/components/schemas/stats.MatchEventDoc"
           },
           "title": "Events",
           "type": "array"
         },
         "facts": {
           "items": {
-            "$ref": "#/components/schemas/parser.MatchFactDoc"
+            "$ref": "#/components/schemas/stats.MatchFactDoc"
           },
           "title": "Facts",
           "type": "array"
@@ -33351,7 +33351,7 @@
         "hint": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/parser.MatchHint"
+              "$ref": "#/components/schemas/stats.MatchHint"
             },
             {
               "type": "null"
@@ -33367,7 +33367,7 @@
         },
         "participants": {
           "items": {
-            "$ref": "#/components/schemas/parser.MatchParticipantDoc"
+            "$ref": "#/components/schemas/stats.MatchParticipantDoc"
           },
           "title": "Participants",
           "type": "array"
@@ -33383,17 +33383,17 @@
         },
         "segments": {
           "items": {
-            "$ref": "#/components/schemas/parser.MatchSegmentDoc"
+            "$ref": "#/components/schemas/stats.MatchSegmentDoc"
           },
           "title": "Segments",
           "type": "array"
         },
         "source": {
-          "$ref": "#/components/schemas/parser.MatchSource"
+          "$ref": "#/components/schemas/stats.MatchSource"
         },
         "teams": {
           "items": {
-            "$ref": "#/components/schemas/parser.MatchTeamDoc"
+            "$ref": "#/components/schemas/stats.MatchTeamDoc"
           },
           "minItems": 1,
           "title": "Teams",
@@ -33413,7 +33413,7 @@
       "title": "MatchDoc",
       "type": "object"
     },
-    "parser.MatchEventDoc": {
+    "stats.MatchEventDoc": {
       "additionalProperties": false,
       "properties": {
         "actor": {
@@ -33531,7 +33531,7 @@
       "title": "MatchEventDoc",
       "type": "object"
     },
-    "parser.MatchFactDoc": {
+    "stats.MatchFactDoc": {
       "additionalProperties": false,
       "properties": {
         "entity": {
@@ -33601,7 +33601,7 @@
       "title": "MatchFactDoc",
       "type": "object"
     },
-    "parser.MatchHint": {
+    "stats.MatchHint": {
       "additionalProperties": false,
       "description": "Candidate constraints only: never authority, never a workspace selector.",
       "properties": {
@@ -33651,7 +33651,7 @@
       "title": "MatchHint",
       "type": "object"
     },
-    "parser.MatchIdentity": {
+    "stats.MatchIdentity": {
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -33674,11 +33674,11 @@
       "title": "MatchIdentity",
       "type": "object"
     },
-    "parser.MatchParticipantDoc": {
+    "stats.MatchParticipantDoc": {
       "additionalProperties": false,
       "properties": {
         "identity": {
-          "$ref": "#/components/schemas/parser.MatchIdentity"
+          "$ref": "#/components/schemas/stats.MatchIdentity"
         },
         "key": {
           "maxLength": 64,
@@ -33689,7 +33689,7 @@
         "role": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/parser.RoleRef"
+              "$ref": "#/components/schemas/stats.RoleRef"
             },
             {
               "type": "null"
@@ -33712,7 +33712,7 @@
       "title": "MatchParticipantDoc",
       "type": "object"
     },
-    "parser.MatchSegmentDoc": {
+    "stats.MatchSegmentDoc": {
       "additionalProperties": false,
       "properties": {
         "attrs": {
@@ -33740,7 +33740,7 @@
       "title": "MatchSegmentDoc",
       "type": "object"
     },
-    "parser.MatchSource": {
+    "stats.MatchSource": {
       "additionalProperties": false,
       "properties": {
         "external_id": {
@@ -33770,7 +33770,7 @@
       "title": "MatchSource",
       "type": "object"
     },
-    "parser.MatchTeamDoc": {
+    "stats.MatchTeamDoc": {
       "additionalProperties": false,
       "properties": {
         "key": {
@@ -33799,7 +33799,7 @@
       "title": "MatchTeamDoc",
       "type": "object"
     },
-    "parser.OverrideCreate": {
+    "stats.OverrideCreate": {
       "properties": {
         "achievement_rule_id": {
           "title": "Achievement Rule Id",
@@ -33851,7 +33851,7 @@
       "title": "OverrideCreate",
       "type": "object"
     },
-    "parser.OverrideRead": {
+    "stats.OverrideRead": {
       "properties": {
         "achievement_rule_id": {
           "title": "Achievement Rule Id",
@@ -33919,7 +33919,7 @@
       "title": "OverrideRead",
       "type": "object"
     },
-    "parser.Paginated_AchievementRuleRead_": {
+    "stats.Paginated_AchievementRuleRead_": {
       "properties": {
         "page": {
           "title": "Page",
@@ -33931,7 +33931,7 @@
         },
         "results": {
           "items": {
-            "$ref": "#/components/schemas/parser.AchievementRuleRead"
+            "$ref": "#/components/schemas/stats.AchievementRuleRead"
           },
           "title": "Results",
           "type": "array"
@@ -33950,7 +33950,7 @@
       "title": "Paginated[AchievementRuleRead]",
       "type": "object"
     },
-    "parser.QueueDepth": {
+    "stats.QueueDepth": {
       "properties": {
         "consumers": {
           "title": "Consumers",
@@ -33983,11 +33983,11 @@
       "title": "QueueDepth",
       "type": "object"
     },
-    "parser.RankCollectionStats": {
+    "stats.RankCollectionStats": {
       "description": "Aggregated collection health for the admin dashboard.",
       "properties": {
         "by_status": {
-          "$ref": "#/components/schemas/parser.RankStatusCounts"
+          "$ref": "#/components/schemas/stats.RankStatusCounts"
         },
         "coverage_24h": {
           "title": "Coverage 24H",
@@ -34006,7 +34006,7 @@
           "type": "number"
         },
         "fetch_24h": {
-          "$ref": "#/components/schemas/parser.RankStatusCounts"
+          "$ref": "#/components/schemas/stats.RankStatusCounts"
         },
         "fetch_24h_total": {
           "title": "Fetch 24H Total",
@@ -34093,7 +34093,7 @@
       "title": "RankCollectionStats",
       "type": "object"
     },
-    "parser.RankHistoryPoint": {
+    "stats.RankHistoryPoint": {
       "properties": {
         "captured_at": {
           "format": "date-time",
@@ -34160,7 +34160,7 @@
       "title": "RankHistoryPoint",
       "type": "object"
     },
-    "parser.RankHistoryResponse": {
+    "stats.RankHistoryResponse": {
       "properties": {
         "generated_at": {
           "format": "date-time",
@@ -34169,7 +34169,7 @@
         },
         "series": {
           "items": {
-            "$ref": "#/components/schemas/parser.RankSeries"
+            "$ref": "#/components/schemas/stats.RankSeries"
           },
           "title": "Series",
           "type": "array"
@@ -34194,7 +34194,7 @@
       "title": "RankHistoryResponse",
       "type": "object"
     },
-    "parser.RankSeries": {
+    "stats.RankSeries": {
       "description": "One time series for a (battle_tag, role, platform) tuple.\n\nThe frontend pivots a list of these into either grouping: fix a battle tag\nand draw a line per role, or fix a role and draw a line per battle tag.",
       "properties": {
         "battle_tag": {
@@ -34204,7 +34204,7 @@
         "current": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/parser.RankHistoryPoint"
+              "$ref": "#/components/schemas/stats.RankHistoryPoint"
             },
             {
               "type": "null"
@@ -34240,7 +34240,7 @@
         },
         "points": {
           "items": {
-            "$ref": "#/components/schemas/parser.RankHistoryPoint"
+            "$ref": "#/components/schemas/stats.RankHistoryPoint"
           },
           "title": "Points",
           "type": "array"
@@ -34267,7 +34267,7 @@
       "title": "RankSeries",
       "type": "object"
     },
-    "parser.RankStatusCounts": {
+    "stats.RankStatusCounts": {
       "description": "Count per RankCollectionStatus. Statuses absent in a source read stay 0.\n\n``extra=\"ignore\"`` so an unexpected status string can never break the read.",
       "properties": {
         "disabled": {
@@ -34309,7 +34309,7 @@
       "title": "RankStatusCounts",
       "type": "object"
     },
-    "parser.RawSourceStatus": {
+    "stats.RawSourceStatus": {
       "enum": [
         "available",
         "missing",
@@ -34319,7 +34319,7 @@
       "title": "RawSourceStatus",
       "type": "string"
     },
-    "parser.ReenableDisabledRequest": {
+    "stats.ReenableDisabledRequest": {
       "properties": {
         "only_previously_succeeded": {
           "default": false,
@@ -34330,7 +34330,7 @@
       "title": "ReenableDisabledRequest",
       "type": "object"
     },
-    "parser.ReenableDisabledResponse": {
+    "stats.ReenableDisabledResponse": {
       "properties": {
         "reenabled": {
           "title": "Reenabled",
@@ -34343,7 +34343,7 @@
       "title": "ReenableDisabledResponse",
       "type": "object"
     },
-    "parser.RoleRef": {
+    "stats.RoleRef": {
       "description": "``role`` is the leaf an assignment names (D86); ``parent`` is derived and ignored on input (Deviation 3).",
       "properties": {
         "dimension": {
@@ -34378,7 +34378,7 @@
       "title": "RoleRef",
       "type": "object"
     },
-    "parser.SettingRead": {
+    "stats.SettingRead": {
       "properties": {
         "description": {
           "anyOf": [
@@ -34434,7 +34434,7 @@
       "title": "SettingRead",
       "type": "object"
     },
-    "parser.SettingUpsert": {
+    "stats.SettingUpsert": {
       "properties": {
         "description": {
           "anyOf": [
@@ -34460,7 +34460,7 @@
       "title": "SettingUpsert",
       "type": "object"
     },
-    "parser.SortOrder": {
+    "stats.SortOrder": {
       "enum": [
         "asc",
         "desc"
@@ -34468,7 +34468,7 @@
       "title": "SortOrder",
       "type": "string"
     },
-    "parser.SubscriptionCheckLogRead": {
+    "stats.SubscriptionCheckLogRead": {
       "properties": {
         "auth_user_id": {
           "anyOf": [
@@ -34610,7 +34610,7 @@
       "title": "SubscriptionCheckLogRead",
       "type": "object"
     },
-    "parser.SubscriptionCollectTriggerRequest": {
+    "stats.SubscriptionCollectTriggerRequest": {
       "properties": {
         "providers": {
           "anyOf": [
@@ -34643,7 +34643,7 @@
       "title": "SubscriptionCollectTriggerRequest",
       "type": "object"
     },
-    "parser.SubscriptionCollectTriggerResponse": {
+    "stats.SubscriptionCollectTriggerResponse": {
       "properties": {
         "checked": {
           "title": "Checked",
@@ -34656,7 +34656,7 @@
       "title": "SubscriptionCollectTriggerResponse",
       "type": "object"
     },
-    "parser.SubscriptionCollectionStats": {
+    "stats.SubscriptionCollectionStats": {
       "description": "Aggregated collection health for the admin dashboard.",
       "properties": {
         "active_tournaments": {
@@ -34675,10 +34675,10 @@
           "type": "object"
         },
         "by_state": {
-          "$ref": "#/components/schemas/parser.SubscriptionStateCounts"
+          "$ref": "#/components/schemas/stats.SubscriptionStateCounts"
         },
         "checks_24h": {
-          "$ref": "#/components/schemas/parser.SubscriptionStateCounts"
+          "$ref": "#/components/schemas/stats.SubscriptionStateCounts"
         },
         "checks_24h_total": {
           "title": "Checks 24H Total",
@@ -34762,7 +34762,7 @@
       "title": "SubscriptionCollectionStats",
       "type": "object"
     },
-    "parser.SubscriptionStateCounts": {
+    "stats.SubscriptionStateCounts": {
       "description": "Count per ``SubscriptionCheckState``. States absent in a source read stay 0.\n\n``extra=\"ignore\"`` so an unexpected state string can never break the read.",
       "properties": {
         "active": {
@@ -34789,7 +34789,7 @@
       "title": "SubscriptionStateCounts",
       "type": "object"
     },
-    "parser.SubscriptionUserCollectionRead": {
+    "stats.SubscriptionUserCollectionRead": {
       "description": "One (workspace, provider) entitlement for a player.",
       "properties": {
         "checked_at": {

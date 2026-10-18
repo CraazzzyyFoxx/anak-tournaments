@@ -36,7 +36,8 @@ flowchart TB
       APP["app-svc"]
       ID["identity-svc"]
       TOUR["tournament-svc"]
-      PARSE["parser-svc"]
+      PARSE["stats-svc (RPC)"]
+      STATSW["stats-worker (ingest, rank, schedules)"]
       BAL["balancer-svc"]
       ANARPC["analytics-svc (RPC)"]
       ANAW["analytics-worker (ML compute)"]
@@ -56,7 +57,7 @@ flowchart TB
     Nginx -- "pages, /bff/*, /_next/*" --> FE
     FE -- "SSR + route handlers" --> GW
     GW -- "rpc.<svc>.<method>" --> MQ
-    MQ --> APP & ID & TOUR & PARSE & BAL & ANARPC & STREAM
+    MQ --> APP & ID & TOUR & PARSE & STATSW & BAL & ANARPC & STREAM
     GW -- "read-only: ACL, replay, custom domains" --> PG
     GW -- "realtime bus + cache invalidation + active users" --> RD
     Workers --> PG
@@ -67,6 +68,7 @@ flowchart TB
     ID --> S3
     TOUR --> S3
     PARSE --> S3
+    STATSW --> S3
     MQ --> ANAW
     MQ --> DISC
 ```
@@ -99,7 +101,7 @@ entirely by RabbitMQ; the only one that runs as a plain process rather than an R
    - validates JWTs locally with the shared HS256 secret; for RBAC-gated routes it
      revalidates and enriches the principal via `rpc.identity.validate_token`;
    - dispatches typed REST routes to workers as **RabbitMQ request/reply RPC**
-     (`rpc.app.*`, `rpc.identity.*`, `rpc.tournament.*`, `rpc.parser.*`, `rpc.balancer.*`,
+     (`rpc.app.*`, `rpc.identity.*`, `rpc.tournament.*`, `rpc.stats.*`, `rpc.balancer.*`,
      `rpc.analytics.*`), carrying an `x-deadline-ms` budget;
    - serves `/api/v1/realtime/ws` (and the legacy `/ws`, `/api/realtime/ws`) from an in-process
      **Redis → WebSocket hub**, replaying missed events from `realtime.workspace_event`;
@@ -143,7 +145,7 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   superuser no bypass — an operator's blanket read right over workspace data is not a licence
   to watch one person's inbox arrive.
 - **Discord ingest.** The bot uploads match-log attachments as base64 to
-  `UPLOAD_MATCH_LOG_QUEUE`; parser results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
+  `UPLOAD_MATCH_LOG_QUEUE`; stats results return over a fanout `MATCH_LOG_RESULT_EXCHANGE`
   (per-replica exclusive queue) correlated by `ResultWaiter`.
 
 ## 4. Components
@@ -154,7 +156,7 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 | [`app-service`](../backend/app-service/README.md) | RPC worker | Core read/data API (tournaments, players, teams, heroes, maps, matches, stats), workspace/user/metadata admin, binary assets, cache |
 | [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, Discord OAuth, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
 | [`tournament-service`](../backend/tournament-service/README.md) | RPC worker + scheduler | Tournament lifecycle, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, outbox sweeper |
-| [`parser-service`](../backend/parser-service/README.md) | RPC worker + scheduler | Match-log ingestion/parsing, OverFast rank fetch, achievement evaluation, MVP-impact backfill |
+| [`stats-service`](../backend/stats-service/README.md) | RPC process (`stats-svc`) + worker (`stats-worker`), one image | Canonical match ingest and match-log parsing (`stats.ingest.<discipline>`), OverFast rank fetch, achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](../backend/balancer-service/README.md) | RPC worker | Genetic team balancing (native Rust `tournament_balancer`) + live draft + draft clock |
 | [`analytics-service`](../backend/analytics-service/README.md) | 2 workers | `analytics-svc` (RPC reads/mutations/job-control) + `analytics-worker` (heavy ML: v1 OpenSkill shifts, v2 ML pipeline) |
 | [`stream-service`](../backend/stream-service/README.md) | RPC worker + scheduler | Tournament stream live-status: Twitch Helix poll tick (app token), public `rpc.stream.*` reads. Owns no Postgres schema — live state is Redis-only |
@@ -211,9 +213,9 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   `shared.disciplines` registry: supported kinds and labels ("Hero", "Champion"), character classes,
   sides, catalog sync, `native_ranks`, `native_ladder` and `identity_provider`. Overwatch declares
   its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares no native layer/ladder
-  and uses `riot`. P1's catalog sources are OverFast and Data Dragon; the collector process remains
-  in parser-service until P5. These declarations are not the complete LoL gameplay vertical.
-  Parser-service dispatches `rpc.parser.catalog.sync` to the module;
+  and uses `riot`. P1's catalog sources are OverFast and Data Dragon; the OverFast collector runs as
+  the Overwatch module's jobs inside `stats-worker`. These declarations are not the complete LoL gameplay vertical.
+  Stats-service dispatches `rpc.stats.catalog.sync` to the module;
   app-service provides generic admin CRUD by discipline and kind on `rpc.app.catalog.admin_*`.
   `catalog.alias_miss` is the unresolved-name worklist, keyed by `(discipline, kind, raw_name)`.
   `catalog.entity_legacy` maps old hero/map/gamemode ids to the new ids for migration reconciliation

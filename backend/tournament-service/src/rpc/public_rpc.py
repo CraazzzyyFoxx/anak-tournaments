@@ -887,7 +887,7 @@ def register(broker: Any, logger: Any) -> None:
 
         No body: the client refetches its registration, whose admission then
         carries the fresh subscription verdict (the profile one follows once
-        parser-service has fetched the tags).
+        stats-service has fetched the tags).
         """
 
         async def op(session: Any) -> Any:

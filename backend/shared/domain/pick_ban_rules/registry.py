@@ -1,7 +1,7 @@
 """Condition leaves, constraint specs and the tree evaluator.
 
 Same shape as the achievements condition registry
-(``parser-service/.../engine/conditions``): a decorator registers an evaluator
+(``stats-service/.../engine/conditions``): a decorator registers an evaluator
 together with its contract, and the contract is what the constructor UI renders
 forms from. Unlike achievements the params are TYPED (:class:`ParamSpec`), so
 the frontend generates the right widget without a hardcoded table.

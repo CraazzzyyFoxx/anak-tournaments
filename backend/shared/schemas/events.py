@@ -130,7 +130,7 @@ class DiscordCard(BaseModel):
 class DiscordCommandEvent(BaseEvent):
     """Event for triggering Discord bot commands.
 
-    Published by: parser-service (``process_all``), balancer-service and
+    Published by: stats-service (``process_all``), balancer-service and
     app-service notification delivery (everything that sends, through
     ``shared.services.discord_messages``)
     Consumed by: discord-service
@@ -253,13 +253,13 @@ class PickupMixChangedEvent(BaseEvent):
 
 
 class ProcessIngestJobEvent(BaseEvent):
-    """Event for processing a single match log file.
+    """Event for processing one ingest job.
 
-    Published by: parser-service
-    Consumed by: parser-service (background worker)
+    Published by: stats-service (outbox, reaper, retry, tournament fanout) onto ``stats.ingest.<discipline>``
+    Consumed by: stats-service worker selecting that discipline, which refuses a job of another discipline.
     """
 
-    event_type: str = Field(default="process_match_log", frozen=True)
+    event_type: str = Field(default="process_ingest_job", frozen=True)
     ingest_job_id: int = Field(..., gt=0, description="Authorized stats.ingest_job ID")
 
 
@@ -268,7 +268,7 @@ class UploadMatchLogEvent(BaseEvent):
 
     Published by: discord-service (bot upload, replacing the former direct
     ``POST http://parser:8002/logs/{id}/upload`` HTTP call).
-    Consumed by: parser-service worker, which stores the log to S3, creates or
+    Consumed by: stats-service worker, which stores the log to S3, creates or
     reuses its native ingest job, then publishes a ``ProcessIngestJobEvent``.
 
     The file bytes ride in ``content_b64`` (base64). Keep logs reasonably sized:
@@ -288,7 +288,7 @@ class UploadMatchLogEvent(BaseEvent):
 class MatchLogProcessedEvent(BaseEvent):
     """Result of processing a single match log, sent back to the uploader.
 
-    Published by: parser-service (worker, after process_match_log finishes)
+    Published by: stats-service (worker, after the ingest job finishes)
     Consumed by: discord-service (resolves the pending upload future)
 
     Broadcast over a fanout exchange so every discord-service replica receives a
@@ -316,8 +316,8 @@ class MatchLogProcessedEvent(BaseEvent):
 class ProcessTournamentLogsEvent(BaseEvent):
     """Event for processing all logs for a tournament.
 
-    Published by: parser-service
-    Consumed by: parser-service (background worker)
+    Published by: stats-service
+    Consumed by: stats-service (background worker)
     """
 
     event_type: str = Field(default="process_tournament_logs", frozen=True)
@@ -440,7 +440,7 @@ class RegistrationApprovedEvent(BaseEvent):
 class RegistrationRankCheckRequestedEvent(RegistrationApprovedEvent):
     """The registrant asked to re-check their profile from their own card.
 
-    Same payload as the approval event, so parser-service runs the same rank check
+    Same payload as the approval event, so stats-service runs the same rank check
     for it; a distinct type and routing key so it is never read as an approval.
     """
 
@@ -526,9 +526,9 @@ class AnalyticsInferRequest(BaseEvent):
 class FetchRankEvent(BaseEvent):
     """Event to fetch one battle tag's competitive rank from OverFast.
 
-    Published by: parser-service scheduler (``source="scheduled"``) and the
+    Published by: stats-service scheduler (``source="scheduled"``) and the
     registration hook (``source="registration"``, via the priority queue).
-    Consumed by: parser-service worker.
+    Consumed by: stats-service worker.
     """
 
     event_type: str = Field(default="fetch_rank", frozen=True)
@@ -544,9 +544,9 @@ class FetchRankEvent(BaseEvent):
 class AchievementEvaluateEvent(BaseEvent):
     """Event for triggering achievement evaluation after parsing.
 
-    Published by: parser-service (after match/tournament processing, and when a
+    Published by: stats-service (after match/tournament processing, and when a
     manual/rule_version_bump run for an unverified workspace is deferred)
-    Consumed by: parser-service (achievement engine)
+    Consumed by: stats-service (achievement engine)
     """
 
     event_type: str = Field(default="achievement_evaluate", frozen=True)

@@ -1,6 +1,6 @@
 """Per-action validation of ``DiscordCommandEvent``.
 
-The model is the contract between three publishers (parser-service's
+The model is the contract between three publishers (stats-service's
 ``process_all`` backfill, balancer-service's mix posts, app-service's
 notifications) and the single discord-service consumer. Every message the bot
 sends is one Components V2 card, so the per-action rules are about which ids

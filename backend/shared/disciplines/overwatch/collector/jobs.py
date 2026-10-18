@@ -5,7 +5,7 @@ never imports this module.
 
 Topology: the scheduler publishes one ``FetchRankEvent`` per due battle tag; the consumers perform the HTTP call.
 The rank-fetch queues get their own channel prefetch (OverFast-protective); the registration consumers ride the broker's
-default channel. Their dead-letter queues are declared by the worker (``serve._OWNED_DLQS``).
+default channel. Their dead-letter queues are declared by ``start_jobs`` (the module owns them).
 """
 
 from collections.abc import Awaitable
@@ -15,16 +15,30 @@ from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared.messaging.config import (
+    RANK_FETCH_DLQ,
+    RANK_FETCH_PRIORITY_DLQ,
     RANK_FETCH_PRIORITY_QUEUE,
     RANK_FETCH_QUEUE,
     TOURNAMENT_EVENTS_EXCHANGE,
+    TOURNAMENT_REGISTRATION_APPROVED_DLQ,
     TOURNAMENT_REGISTRATION_APPROVED_QUEUE,
+    TOURNAMENT_REGISTRATION_RANK_CHECK_DLQ,
     TOURNAMENT_REGISTRATION_RANK_CHECK_QUEUE,
 )
+from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import observe_message_processing
+from shared.observability.broker import require_broker
 
 from . import runtime, scheduler, tasks
 from .settings import settings
+
+#: Every queue ``register_jobs`` consumes dead-letters; nothing else would declare or bind these.
+OWNED_DLQS = (
+    RANK_FETCH_DLQ,
+    RANK_FETCH_PRIORITY_DLQ,
+    TOURNAMENT_REGISTRATION_APPROVED_DLQ,
+    TOURNAMENT_REGISTRATION_RANK_CHECK_DLQ,
+)
 
 
 def register_jobs(broker: Any, *, session_factory: Any, redis: Any, logger: Any) -> None:
@@ -69,6 +83,9 @@ def register_jobs(broker: Any, *, session_factory: Any, redis: Any, logger: Any)
 
 async def start_jobs(*, session_factory: Any, redis: Any, logger: Any) -> None:
     runtime.configure(session_factory=session_factory, redis=redis)
+    broker = require_broker(runtime.broker())
+    for dlq in OWNED_DLQS:
+        await declare_dead_letter_queue(broker, dlq)
     await tasks.rank_client.start()
     # Periodic OverFast rank collection trigger (Redis leader-locked across worker replicas, admin-settings-gated —
     # no-ops while collection is disabled).

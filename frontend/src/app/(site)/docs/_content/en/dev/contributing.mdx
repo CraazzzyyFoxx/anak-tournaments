@@ -7,7 +7,7 @@ How the repository is laid out, how to run the platform locally, which checks a 
 | `frontend/` | The Next.js application: public site, admin, tools |
 | `gateway/` | The Go gateway — the single HTTP and WebSocket entry point |
 | `backend/shared/` | The shared kernel: ORM models, repositories, RBAC, tenancy, messaging, observability |
-| `backend/*-service/` | Headless domain workers: app, identity, tournament, parser, balancer, analytics, stream, discord |
+| `backend/*-service/` | Headless domain workers: app, identity, tournament, stats, balancer, analytics, stream, discord |
 | `backend/migrations/` | One Alembic project for the whole database |
 | `backend/env/` | Environment templates (`*.env.example`), one per service |
 | `nginx/` | The internal HTTP edge in front of the gateway |

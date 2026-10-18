@@ -1,6 +1,6 @@
 """Challonge API response shapes.
 
-Byte-identical between tournament-service and parser-service (both integrate
+Byte-identical between tournament-service and stats-service (both integrate
 with Challonge for bracket sync); single source of truth here.
 """
 

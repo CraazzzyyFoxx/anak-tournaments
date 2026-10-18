@@ -152,5 +152,5 @@ def require_int(data: dict, key: str) -> int:
 
 
 # ``paginated_dump`` lives in the shared kernel now (app-service and
-# parser-service list handlers repeated the same key-enumeration bug); re-exported
+# stats-service list handlers repeated the same key-enumeration bug); re-exported
 # here so the identity handlers keep importing it off ``_common``.

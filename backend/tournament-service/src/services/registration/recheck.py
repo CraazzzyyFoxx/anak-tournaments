@@ -56,7 +56,7 @@ async def recheck_registration(session: AsyncSession, registration: Any, *, auth
 
     Subscriptions are resolved live right here (``force_refresh``), so the next
     read of the registration already carries the new verdict. The profile check
-    is a rank fetch parser-service runs off the outbox event, so it lands a little
+    is a rank fetch stats-service runs off the outbox event, so it lands a little
     later.
     """
     form = await _common_service.get_registration_form(session, registration.tournament_id)

@@ -1,6 +1,6 @@
 """APScheduler trigger for the Twitch live-status poll tick.
 
-Mirrors ``parser-service/src/services/subscription_collection/scheduler.py``.
+Mirrors ``stats-service/src/services/subscription_collection/scheduler.py``.
 
 The job fires on a short fixed heartbeat and decides *inside* the tick whether the
 configured ``interval_seconds`` has elapsed, rather than being registered at that

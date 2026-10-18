@@ -15,7 +15,7 @@ One PostgreSQL database, one SQLAlchemy metadata (`backend/shared`). Domain boun
 | `tournament-svc` | Tournament lifecycle, registration, brackets, results, pick-ban, scrims, outbox sweeper |
 | `balancer-svc` | NSGA-II / mix balance, live draft, custom games |
 | `identity-svc` | JWT, OAuth, RBAC, hostnames, API keys, player linking |
-| `parser-svc` | Match logs, impact/MVP, achievements, OverFast ranks |
+| `stats-svc` | Match logs, impact/MVP, achievements, OverFast ranks |
 | `analytics-svc` | OpenSkill / linear / ML shifts |
 | `app-svc` | Public reads: players, stats, catalogs, assets |
 | `stream-svc` | Twitch live status (Redis only, no Postgres schema) |
@@ -397,7 +397,7 @@ Ingest (upload / gateway base64 / Discord): strict UTF-8, no path traversal, S3 
 
 Dedup: `(tournament_id, filename, content_hash)` — identical bytes skipped. Same filename pending/failed → reuse, `attempts=0`.
 
-Impact (pure, `parser-service/src/domain/match_logs/impact.py`):
+Impact (pure, `stats-service/src/domain/match_logs/impact.py`):
 
 - A fight starts on round change or a gap > 15s.
 - FirstPick / FirstDeath from fight boundaries.
@@ -496,8 +496,8 @@ Duplicates only what the UI needs instantly; comments cite the server symbol:
 | Mix rotation | `balancer-service/src/domain/mix_rotation.py` |
 | RBAC | `backend/shared/rbac/catalog.py`, `backend/shared/models/identity/auth_user.py` |
 | Visibility | `backend/shared/services/tournament/visibility.py` |
-| Impact | `parser-service/src/domain/match_logs/impact.py` |
-| Achievements | `parser-service/src/services/achievement/engine/`, `backend/shared/services/achievement_effective.py` |
+| Impact | `stats-service/src/domain/match_logs/impact.py` |
+| Achievements | `stats-service/src/services/achievement/engine/`, `backend/shared/services/achievement_effective.py` |
 | Standings | `tournament-service/src/services/standings/service.py` |
 | Match row | `backend/shared/models/matches/match.py` |
 

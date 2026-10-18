@@ -3,9 +3,9 @@
 ``core/workspace.py`` was copy-pasted into four services with growing
 divergence: app-service and tournament-service carried a byte-identical
 ~190-line copy (``resolve_workspace_context``, ``_JOIN_PATHS``,
-``apply_workspace_filter``, ...); parser-service kept a trimmed subset; and
+``apply_workspace_filter``, ...); stats-service kept a trimmed subset; and
 analytics-service's own module said outright "Mirrors
-parser-service/src/core/workspace.py — kept locally so v1 analytics code
+stats-service/src/core/workspace.py — kept locally so v1 analytics code
 ... keeps working". Every service's ``src.models.Tournament`` (etc.) is the
 same class object as ``shared.models.tournament.tournament.Tournament`` (each
 service's ``src/models/__init__.py`` only re-exports ``shared.models.*``), so

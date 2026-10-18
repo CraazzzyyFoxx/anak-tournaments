@@ -1,7 +1,7 @@
 # Discord Service (discord-worker)
 
 The Discord side of the platform: a [discord.py](https://discordpy.readthedocs.io/) bot that watches
-tournament channels for match-log attachments, hands them to the parser, and answers guild/member
+tournament channels for match-log attachments, hands them to stats-service, and answers guild/member
 lookups other services need. It exists as its own process because a Discord gateway session is
 stateful and single-tenant — one persistent WebSocket per bot token, carrying the message-content and
 members intents — and that connection cannot be shared with or restarted alongside a stateless RPC
@@ -25,7 +25,7 @@ named RabbitMQ queues (`discord_commands`, `discord_member_roles`, `discord_guil
 ## Responsibilities
 
 - **Match-log intake from Discord.** Turns qualifying attachments in watched tournament channels
-  into upload requests. It downloads the actual bytes; parser-service owns workspace/content-hash
+  into upload requests. It downloads the actual bytes; stats-service owns workspace/content-hash
   deduplication, so a reused filename never hides changed content.
 - **Upload feedback.** Displays the matching result's `done`, `failed` or `awaiting_link` state
   and error text. It never queries a latest-by-filename record to invent a verdict.
@@ -45,14 +45,14 @@ the only outbound RPCs are the ones a card button makes (see *User-facing surfac
 
 | Queue / exchange | Direction | Purpose |
 | --- | --- | --- |
-| `discord_commands` | consumes | `DiscordCommandEvent` — `process_all` (rescan every channel of a tournament), `process_message` (re-ingest one message), `post_message` (one Components V2 `card` to a channel, with the PNG it shows when `card.image_url` is `attachment://<file>`), `send_dm` (one card to one user), `edit_message` (show the row's card — the command names the row and carries none itself; one is rejected) and `delete_message` (remove the message). The four message actions carry `message_ref`, the `discord_message` row the platform claimed for that message: the bot resolves *where* the message is from that row and writes back what Discord answered, so no publisher ever handles a Discord message id and one delete path serves DMs and channel posts alike. Every message is a card; there is no plain content or embed path. `allow_mentions=true` lets the users a card `<@id>`-mentions be pinged — never `@everyone` or a role; `false` (the default) and every DM ping nobody. A Discord refusal other than a missing channel/user or a closed DM (a 400 on the payload, an outage outlasting discord.py's own retries) is rejected to the DLQ with status `discord_error`, never requeued — and the row says `failed` with the reason either way. Published by parser-service's `rpc.discord_channel.backfill`, balancer-service's mix posts, live signup edits and post deletions, and app-service's notification delivery. |
+| `discord_commands` | consumes | `DiscordCommandEvent` — `process_all` (rescan every channel of a tournament), `process_message` (re-ingest one message), `post_message` (one Components V2 `card` to a channel, with the PNG it shows when `card.image_url` is `attachment://<file>`), `send_dm` (one card to one user), `edit_message` (show the row's card — the command names the row and carries none itself; one is rejected) and `delete_message` (remove the message). The four message actions carry `message_ref`, the `discord_message` row the platform claimed for that message: the bot resolves *where* the message is from that row and writes back what Discord answered, so no publisher ever handles a Discord message id and one delete path serves DMs and channel posts alike. Every message is a card; there is no plain content or embed path. `allow_mentions=true` lets the users a card `<@id>`-mentions be pinged — never `@everyone` or a role; `false` (the default) and every DM ping nobody. A Discord refusal other than a missing channel/user or a closed DM (a 400 on the payload, an outage outlasting discord.py's own retries) is rejected to the DLQ with status `discord_error`, never requeued — and the row says `failed` with the reason either way. Published by stats-service's `rpc.discord_channel.backfill`, balancer-service's mix posts, live signup edits and post deletions, and app-service's notification delivery. |
 | `rpc.identity.discord_identity` | requests | The linked account's identity payload for a clicking Discord user (`not_found` = not linked). A successful answer is cached for 30 s (see *Operational notes*). |
 | action subjects | requests | `rpc.tournament.regteam_accept` / `regteam_decline` / `reg_pub_check_in` / `reg_pub_get_me`, `rpc.app.notification_preferences_update`, `rpc.balancer.custom.self_*` — each called with that identity, exactly as the gateway would for the same person on the site. |
 | `discord_member_roles` | consumes, replies | Role ids held by a set of users in a guild. Called by the shared Discord-role subscription strategy (`shared/services/subscriptions/strategies.py`, 5 s timeout). |
 | `discord_guild_roles` | consumes, replies | The guild's role list. |
 | `discord_guild_channels` | consumes, replies | The guild's text channels. |
 | `discord_guild_info` | consumes, replies | Guild name, icon, member count, connectivity. |
-| `upload_match_log` | publishes | `UploadMatchLogEvent` carrying the log bytes base64-encoded, consumed by parser-service. |
+| `upload_match_log` | publishes | `UploadMatchLogEvent` carrying the log bytes base64-encoded, consumed by stats-service. |
 | `match_log.result` (fanout exchange) | consumes | `MatchLogProcessedEvent`, the parse verdict for one uploaded file. |
 
 The four `discord_*` request/reply queues are durable, dead-letter to `dlx` with a `<name>.dlq`
@@ -67,7 +67,7 @@ gateway cache has not yet seen the guild.
 `AttachmentProcessor` downloads the attachment through the egress proxy and creates an upload
 event with `correlation_id = event_id`. When waiting for feedback it registers that correlation
 with `ResultWaiter` **before** publishing the base64 bytes to `upload_match_log`, then waits for
-up to 120 s. The parser preserves the id through its job-id processing event and the result body
+up to 120 s. stats-service preserves the id through its job-id processing event and the result body
 and broker metadata. A result arriving during publish is retained until the wait consumes it.
 Publish failure, timeout and cancellation clean up the registration.
 
@@ -215,7 +215,7 @@ Run from `backend/discord-service` with the service env (REST only, safe beside 
 - Application emoji are re-read from Discord every 10 minutes (and once in `setup_hook`), so an
   upload by the `discord-emoji` job shows up without a restart.
 - On `on_ready`, the last 500 messages of every monitored channel are rescanned concurrently and
-  qualifying attachments are uploaded fire-and-forget; the parser deduplicates their actual bytes.
+  qualifying attachments are uploaded fire-and-forget; stats-service deduplicates their actual bytes.
 - `GatewayWatchdog` (`discord.ext.tasks.loop`, every 30 s) proves the gateway session is alive — see
   *Operational notes*.
 
@@ -234,7 +234,7 @@ None. This service does not write to the transactional outbox.
 It owns no schema. Everything it touches belongs to another service's domain, and there are no
 migrations here — the single Alembic project lives at `backend/migrations/`.
 
-Reads `stats.discord_channel` for the watched-channel map, written by parser-service's admin
+Reads `stats.discord_channel` for the watched-channel map, written by stats-service's admin
 `rpc.discord_channel.*` methods. Match-log jobs and failure details are not read by the bot:
 upload outcomes arrive through the correlated result event. See
 [`../../docs/database_erd.md`](../../docs/database_erd.md).
@@ -258,7 +258,7 @@ the page showing a mix refetches when its post lands, fails or disappears.
 
 Writes, only through the shared subscription resolver during a membership resync:
 `subscriptions.entitlement` (upsert of the verdict) and `subscriptions.check_log` (append-only attempt
-log). Same rows tournament-service and parser-service write; this service is an extra writer, not the
+log). Same rows tournament-service and stats-service write; this service is an extra writer, not the
 owner.
 
 ## Dependencies
@@ -271,9 +271,8 @@ owner.
 - **PostgreSQL** — the tables above, always through `shared.repository`; no ad hoc SQLAlchemy in this
   service.
 - **Redis** — the `subscription.updated` realtime signal and the subscription-resolver caches.
-- **parser-service** — over the broker only. It is never called over HTTP.
-- **identity-service** — over the gateway, for the machine-to-machine service token (below), and over
-  the broker for `rpc.identity.discord_identity` when a card button is pressed.
+- **stats-service** — over the broker only. It is never called over HTTP.
+- **identity-service** — over the broker for `rpc.identity.discord_identity` when a card button is pressed.
 - **tournament-service, app-service, balancer-service** — over the broker only, for the card actions
   and `/mix`.
 
@@ -288,10 +287,6 @@ actually changes behaviour:
   realtime cache.
 - `PROXY_TYPE` / `PROXY_IP` / `PROXY_PORT` / `PROXY_USERNAME` / `PROXY_PASSWORD` — egress proxy for all
   Discord traffic, both the gateway connection and attachment downloads.
-- `AUTH_SERVICE_URL`, `SERVICE_CLIENT_ID`, `SERVICE_CLIENT_SECRET`, `SERVICE_TOKEN_SKEW_SECONDS` —
-  service authentication, below.
-- `PARSER_URL` — base URL for the parser HTTP client. Retained by `ParserClientFactory`; see the
-  operational note on the unexercised internal path.
 - `PUBLIC_SITE_URL` — from `common.env`; where button replies link back to (link Discord, notification
   settings). The same value app-service renders the cards' own links from.
 - `GATEWAY_HEARTBEAT_PATH` — where the watchdog records a live gateway session and where the
@@ -303,19 +298,10 @@ actually changes behaviour:
 
 ### Service authentication
 
-`ServiceTokenClient` exchanges `SERVICE_CLIENT_ID` / `SERVICE_CLIENT_SECRET` for a service access token
-by POSTing `{AUTH_SERVICE_URL}/service/token`. In production `AUTH_SERVICE_URL` is
-`http://gateway:8080/api/auth`, so the call lands on the Go gateway, which forwards it as an RPC to
-`rpc.identity.service_token` on identity-service — the token path never talks to identity directly.
-
-The token identifies the *process*, not a user: its claims are `sub=discord-service`, `type=service`,
-`iss=auth-service`, `aud=internal`, and whatever scope list identity has configured for this client id
-in `SERVICE_SCOPES`. It carries no user id, no workspace, and no RBAC role, so it authorises nothing a
-user could do — it only proves to another internal service that the caller is this bot. Acting *for* a
-user is a separate, narrower path: the card actions above, for linked accounts only, with that user's
-own identity payload. Lifetime is short (5 minutes by default on the identity side); the client caches
-it and refreshes `SERVICE_TOKEN_SKEW_SECONDS` early, under a lock so concurrent callers share one round
-trip instead of each minting a token.
+This service holds no service credential: nothing in it calls another service over HTTP, so there is no
+service token to mint (identity-service's `SERVICE_CLIENTS` has no discord entry). Acting *for* a user
+is the narrow path: the card actions above, for linked accounts only, with that user's own identity
+payload.
 
 ## Running
 
@@ -408,14 +394,12 @@ nothing outside the standard library, so it cannot report a configuration proble
   whose `card_json` is empty (posted before the column existed) or unreadable is logged and skipped.
 - **Upload timeout.** A parse result that does not arrive within 120 s leaves the message marked as
   timed out even if the parse later succeeds. The upload itself is not retried.
-- **Idempotency belongs to parser-service.** Identical bytes deduplicate within their workspace;
+- **Idempotency belongs to stats-service.** Identical bytes deduplicate within their workspace;
   different bytes under the same filename create different jobs. Reuploading identical bytes
   preserves the existing job's outcome and retry budget; an administrator explicitly retries
   failed or awaiting-link jobs. Filenames and tournament ids are never result rendezvous keys.
 - **History rescan cost.** Startup and every `process_all` walk up to 500 messages per channel, all
   channels concurrently, each attachment costing one Discord CDN download through the proxy.
-- **The internal HTTP path to parser is currently unexercised.** `ParserClientFactory.create()` only
-  attaches the service token when called with `destination="internal"`, and the sole call site passes
-  `destination="discord"` (the CDN download). Since match-log upload moved to the broker, nothing in
-  this service mints a service token at runtime; `PARSER_URL` and the credentials are configured for a
-  path that no longer runs.
+- **Attachment download is the only HTTP client.** `AttachmentClientFactory` (`services/attachment_client.py`)
+  builds the `httpx` client that fetches a log from Discord's CDN through the egress proxy; the bytes
+  reach stats-service over RabbitMQ (`UploadMatchLogEvent`).

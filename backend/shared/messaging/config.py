@@ -1,5 +1,7 @@
 """RabbitMQ queue and exchange configurations with dead letter support."""
 
+from functools import cache
+
 from faststream.rabbit import ExchangeType, RabbitExchange, RabbitQueue
 
 # Dead Letter Exchange (DLX)
@@ -112,28 +114,37 @@ DISCORD_VOICE_MOVE_DLQ = RabbitQueue(
 )
 
 # ============================================================================
-# Process Match Log Queue
+# Ingest queues (one per discipline)
 # ============================================================================
+# `stats.ingest.<discipline code>` carries ProcessIngestJobEvent for that discipline's jobs; a stats worker consumes
+# only the disciplines it selected (STATS_DISCIPLINES). Every producer (outbox, reaper, retry, tournament fanout) names
+# the queue through ingest_queue(job.discipline).
 
-PROCESS_MATCH_LOG_QUEUE = RabbitQueue(
-    "process_match_log",
-    durable=True,
-    arguments={
-        "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "process_match_log.dlq",
-        "x-message-ttl": 300000,  # 5 minutes
-    },
-)
+INGEST_QUEUE_PREFIX = "stats.ingest."
 
-PROCESS_MATCH_LOG_DLQ = RabbitQueue(
-    "process_match_log.dlq",
-    durable=True,
-)
+
+@cache
+def ingest_queue(discipline: str) -> RabbitQueue:
+    return RabbitQueue(
+        f"{INGEST_QUEUE_PREFIX}{discipline}",
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": "dlx",
+            "x-dead-letter-routing-key": f"{INGEST_QUEUE_PREFIX}{discipline}.dlq",
+            "x-message-ttl": 300000,  # 5 minutes
+        },
+    )
+
+
+@cache
+def ingest_dlq(discipline: str) -> RabbitQueue:
+    return RabbitQueue(f"{INGEST_QUEUE_PREFIX}{discipline}.dlq", durable=True)
+
 
 # ============================================================================
-# Upload Match Log Queue (discord bot -> parser worker)
+# Upload Match Log Queue (discord bot -> stats worker)
 # ============================================================================
-# Carries the raw log bytes (base64) so the bot no longer calls parser over HTTP.
+# Carries the raw log bytes (base64) so the bot never calls stats-service over HTTP.
 # The worker stores the file + record, then publishes a ProcessIngestJobEvent.
 
 UPLOAD_MATCH_LOG_QUEUE = RabbitQueue(
@@ -152,7 +163,7 @@ UPLOAD_MATCH_LOG_DLQ = RabbitQueue(
 )
 
 # ============================================================================
-# Match Log Result (parser worker -> discord)
+# Match Log Result (stats worker -> discord)
 # ============================================================================
 # Fanout so every discord-service replica receives every result; the replica
 # holding the pending upload future resolves it and the rest no-op. This mirrors

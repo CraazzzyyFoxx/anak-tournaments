@@ -21,11 +21,11 @@ directory; each service still keeps its own `pyproject.toml` as a workspace memb
 | [`app-service`](./app-service/README.md) | `app-svc` | RPC worker | Core public read/data API + workspace/user/metadata admin + binary assets |
 | [`identity-service`](./identity-service/README.md) | `identity-svc` | RPC worker | AuthN/AuthZ: JWT, Discord OAuth, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
 | [`tournament-service`](./tournament-service/README.md) | `tournament-svc` | RPC + scheduler | Tournament lifecycle: CRUD, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine; runs the outbox sweeper |
-| [`parser-service`](./parser-service/README.md) | `parser-svc` | RPC + scheduler | Match-log ingestion/parsing, OverFast rank fetch (leader-locked), achievement evaluation, MVP-impact backfill |
+| [`stats-service`](./stats-service/README.md) | `stats-svc` | RPC + scheduler | Match-log ingestion/parsing, OverFast rank fetch (leader-locked), achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](./balancer-service/README.md) | `balancer-svc` | RPC worker | Genetic team balancing + live draft; heavy solve in native Rust `tournament_balancer` (NSGA multi-objective) |
 | [`analytics-service`](./analytics-service/README.md) | `analytics-svc` + `analytics-worker` | RPC worker + compute worker | Post-tournament analytics, split into two processes: `analytics-svc` (light RPC reads/mutations/job-control) and `analytics-worker` (heavy ML: LightGBM/XGBoost + Bayesian + Monte Carlo) |
 | [`stream-service`](./stream-service/README.md) | `stream-svc` | RPC + scheduler | Tournament stream live-status: Twitch Helix `GET /streams` poll tick under an app token (leader-locked, admin-settings-gated) + public `rpc.stream.*` reads. Owns no Postgres schema — live state lives in Redis under a TTL |
-| [`discord-service`](./discord-service/README.md) | `discord-worker` | Bot | discord.py bot: watches tournament channels, uploads match-log attachments to the parser over RabbitMQ, delivers notifications, FastStream consumer |
+| [`discord-service`](./discord-service/README.md) | `discord-worker` | Bot | discord.py bot: watches tournament channels, uploads match-log attachments to stats-service over RabbitMQ, delivers notifications, FastStream consumer |
 | [`shared`](./shared/README.md) | — | Library | Single-source ORM + cross-service kernel; not a running service |
 
 All workers start with `faststream run serve:app` (analytics has both `serve_rpc:app` and `serve:app`;

@@ -5,7 +5,7 @@ admin-visible signal that any of this existed was ``Encounter.has_logs: bool``,
 so «did this log actually produce the maps it should have» had no answer short of
 opening the public match page one encounter at a time.
 
-``LogRecordRef`` is declared here rather than reused from parser-service's
+``LogRecordRef`` is declared here rather than reused from stats-service's
 ``LogRecordRead``: that schema belongs to another service and carries the log
 console's own fields (tournament/encounter names, uploader name). This one is the
 provenance block of a match, and it is deliberately thin — the log console

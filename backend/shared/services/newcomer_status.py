@@ -1,8 +1,8 @@
 """Chronologically-correct "has this identity played before" resolution.
 
 Replaces 3 independent, order-of-*import*-dependent computations
-(balancer-service ``services/team.py``, parser-service ``services/team/flows.py``,
-parser-service ``services/match_logs/flows.py``) that used "does a ``Player`` row
+(balancer-service ``services/team.py``, stats-service ``services/team/flows.py``,
+stats-service ``services/match_logs/flows.py``) that used "does a ``Player`` row
 for this identity already exist in the DB right now" -- which freezes wrong the
 moment historical data is imported out of chronological order.
 

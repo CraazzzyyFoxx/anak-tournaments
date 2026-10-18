@@ -20,7 +20,7 @@
             "path": "backend/discord-service"
         },
         {
-            "path": "backend/parser-service"
+            "path": "backend/stats-service"
         },
         {
             "path": "backend/balancer-service"
@@ -55,7 +55,7 @@
                     "backend",
                     "backend/app-service",
                     "backend/identity-service",
-                    "backend/parser-service",
+                    "backend/stats-service",
                     "backend/tournament-service",
                     "backend/balancer-service",
                     "backend/discord-service",

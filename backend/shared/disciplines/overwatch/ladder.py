@@ -6,7 +6,7 @@ two names each division answers to. Every consumer derives from it:
 
 - :mod:`shared.division_grid` builds ``DEFAULT_GRID`` from the registry's ``fallback_ladder()``;
 - ``tournament-service`` seeds a new grid's first version from ``DisciplineSpec.native_ladder``;
-- ``parser-service``'s OverFast division table reads ``native_division``/``native_tier`` off the same rows;
+- ``stats-service``'s OverFast division table reads ``native_division``/``native_tier`` off the same rows;
 - the frontend mirrors this table in ``frontend/src/lib/divisions/ow-ladder.ts``, pinned
   by the parity test described there (it cannot import Python, and the default
   grid has to be available synchronously during SSR).

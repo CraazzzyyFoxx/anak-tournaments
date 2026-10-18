@@ -3,7 +3,7 @@ Workspace filtering utilities for SQLAlchemy queries.
 
 Re-exports ``shared.services.workspace_scope`` — the single source of truth
 for every service's workspace-filtering helpers. This module used to say
-"Mirrors parser-service/src/core/workspace.py — kept locally so v1 analytics
+"Mirrors stats-service/src/core/workspace.py — kept locally so v1 analytics
 code ... keeps working"; that mirroring is now resolved by importing the one
 canonical implementation instead of a second copy.
 """

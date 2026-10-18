@@ -143,13 +143,13 @@ See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for all wi
 `tournament_changed_app_service`, bound to the `tournament.changed` topic exchange on
 `tournament.changed.*` (`shared/messaging/config.py`). Tournament-service publishes onto that
 exchange through the transactional outbox whenever public tournament data changes, and
-parser-service does the same when a match log lands; app-service and tournament-service each hold
+stats-service does the same when a match log lands; app-service and tournament-service each hold
 their own durable queue on it, so both see every event.
 
 On each event (`src/services/tournament_events.py`) this worker:
 
 1. skips `reason == "bracket_changed"` — nothing it caches depends on bracket shape, which makes
-   parser-service's match-log event a no-op here;
+   stats-service's match-log event a no-op here;
 2. `delete_match`es the affected Redis read-cache patterns: `*tournaments/{id}*`, every user-scoped
    flow key (the event does not name the users a tournament touched), the users-overview id order,
    and the per-workspace achievement-rarity aggregate;

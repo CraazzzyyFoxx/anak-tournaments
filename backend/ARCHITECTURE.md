@@ -8,13 +8,13 @@ which layer new code belongs in.
 
 It is not a proposal. It is a description of the pattern `identity-service` has followed
 since it was written, that `app-service` (2026-08-20), `balancer-service` (2026-08-21),
-`parser-service` (2026-08-21), `tournament-service` (2026-08-22) and
+`stats-service` (2026-08-21), `tournament-service` (2026-08-22) and
 `analytics-service` (2026-08-24) were converted to. Every new domain, in every service,
 follows it. Case studies with before/after numbers are archived (Graphiti, or
 `git show 50b83c88f537:<path>`):
 `docs/plans/2026-08-20-app-service-oop-repositories.md`,
 `docs/plans/2026-08-21-balancer-service-oop-repositories.md`,
-`docs/plans/2026-08-21-parser-service-oop-repositories.md`,
+`docs/plans/2026-08-21-stats-service-oop-repositories.md`,
 `docs/plans/2026-08-22-tournament-service-oop-repositories.md` and
 `docs/plans/2026-08-24-analytics-service-oop-repositories.md`.
 
@@ -84,13 +84,13 @@ challonge_client = ChallongeClient.from_settings(config.settings)
 Callers import the instance and call its real bound methods directly —
 `challonge_client.fetch_tournament(...)`. **Do not** rebind its methods as module-level names
 (`fetch_tournament = challonge_client.fetch_tournament`, `fetch_participants = ...`, one line
-per method): that was `parser-service`'s original shape for this exact file
+per method): that was `stats-service`'s original shape for this exact file
 (`services/challonge/service.py`, converted 2026-08-21), and it bought nothing over exposing
 the instance itself — one indirection that reads like a `service.py` (misleading: no
 orchestration lives there) for the price of an `__all__` entry updated by hand every time the
 wrapped client grows a method. Nothing in this document flagged that shape as wrong at the
 time — it matched an identical pre-existing file in `tournament-service`, so it was carried
-forward as "established precedent" during the parser-service conversion instead of being
+forward as "established precedent" during the stats-service conversion instead of being
 questioned. That second copy is gone too: `tournament-service`'s
 `services/challonge/service.py` was deleted on 2026-08-22 in favour of
 `src/clients/challonge.py`, so no instance of the shape survives — which is the point of
@@ -100,12 +100,12 @@ Two placement traps this avoids:
 
 1. Do not put it under `src/services/<domain>/` when the "domain" is nothing but a client —
    that misleads a reader into expecting orchestration/session-handling that isn't there
-   (parser-service's `services/challonge/service.py` did this).
+   (stats-service's `services/challonge/service.py` did this).
 2. Do not put it under `src/rpc/` (e.g. a `rpc/_clients.py` grab-bag of process-global clients)
    if any `services/` code needs to import it — a service reaching into the transport package
    inverts the `rpc → services` dependency direction. `app-service`'s original `rpc/_clients.py`
    moved to `core/clients.py` for exactly this reason (§2.5 of
-   `docs/plans/2026-08-20-app-service-oop-repositories.md`), and `parser-service`'s did the same
+   `docs/plans/2026-08-20-app-service-oop-repositories.md`), and `stats-service`'s did the same
    once `services/subscription_collection/scheduler.py` started importing `realtime_redis` from
    it. Both live in `core/clients.py` now; a new `rpc/_clients.py` is the mistake this names.
 

@@ -110,7 +110,7 @@ flowchart TB
 | `identity-service` | `auth.user`, OAuth, RBAC, self-service / admin player link, signup provisioning of `players.user` |
 | `app-service` | CRUD for `players.user` and social accounts, CSV import, user merge, `workspace.add_member` |
 | `tournament-service` | `ensure_player_identity`, `get_or_create_workspace_member` on registration, tournament rank resolution |
-| `parser-service` | Creating / reusing `players.user` from match logs, anchoring the roster through `workspace_member` |
+| `stats-service` | Creating / reusing `players.user` from match logs, anchoring the roster through `workspace_member` |
 | `balancer-service` | Workspace roster, `member_rank`, custom games |
 
 One PostgreSQL, one SQLAlchemy metadata. Schemas: `auth`, `players`, `public` (`workspace` / `workspace_member`), `balancer`.
@@ -592,7 +592,7 @@ Result: one `auth.user`, one `players.user`, one `workspace_member`, the `player
 
 ```mermaid
 sequenceDiagram
-  participant Parser as parser-svc
+  participant Parser as stats-svc
   participant PU as players.user virtual
   participant SA as social_account
   actor H as Same person

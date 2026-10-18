@@ -63,14 +63,14 @@ Alembic head: **`discipline01c`** (120 revisions in `backend/migrations/versions
 | `overwatch` | Legacy catalog, read and written by no service and mapped by no model; retained until the gated `discipline02` | — (no service) |
 | `catalog` | Disciplines (`overwatch`, `lol`), entities, role dimensions/module roles/workspace sub-roles, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin/ontology projection), parser-service (entity sync/misses); migration seeds the initial projection |
 | `roster` | Workspace team-format templates, tournament-owned copies and frozen mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
-| `overwatch_rank` | Overwatch rank telemetry from OverFast | parser-service |
-| `stats` | Native parsed matches, observed participants/facts/events, ingestion jobs, baselines and Discord channels | parser-service / analytics-service / app-service / discord-service |
+| `overwatch_rank` | Overwatch rank telemetry from OverFast | stats-service |
+| `stats` | Native parsed matches, observed participants/facts/events, ingestion jobs, baselines and Discord channels | stats-service / analytics-service / app-service / discord-service |
 | `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
-| `achievements` | Achievement rules, evaluations and overrides | parser-service / app-service |
+| `achievements` | Achievement rules, evaluations and overrides | stats-service / app-service |
 | `analytics` | Analytics signals and ML model registry | analytics-service |
 | `matches`, `log_processing` | Retained legacy statistics/ingestion transfer source; no runtime ORM or service access after P4 | — (release-gated removal) |
 | `realtime` | Realtime event journal used for WebSocket replay | gateway (Go) |
-| `subscriptions` | Subscription providers, requirements and entitlements | tournament-service / parser-service |
+| `subscriptions` | Subscription providers, requirements and entitlements | tournament-service / stats-service |
 | `quota` | Per-principal quota plans, operation costs and overrides | every service, via `shared.quota` |
 
 The hubs almost every domain converges on:
@@ -594,7 +594,7 @@ Overwatch logs resolve canonical names or `aliases` (a JSONB array) within that 
 The OverFast module sync adds hero aliases from all 13 Blizzard locales; map and mode aliases
 are admin-maintained because their endpoints have no locale parameter. The LoL module sync
 uses Data Dragon's latest published champion and map catalog. Both dispatch through
-`rpc.parser.catalog.sync`, preserve existing names and `attrs`, and fill a source parent only
+`rpc.stats.catalog.sync`, preserve existing names and `attrs`, and fill a source parent only
 where the stored `parent_id` is null. Mirrored images live under
 `assets/<discipline>/<kind>/<slug>.<ext>` and existing bucket images survive a sync. Rows missing
 from a later sync are not deleted or deactivated.

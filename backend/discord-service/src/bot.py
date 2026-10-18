@@ -22,15 +22,15 @@ from src.interactions.dispatcher import ActionDispatcher
 from src.interactions.emoji import registry as emoji_registry
 from src.rabbit.gateway import DiscordRabbitGateway
 from src.result_waiter import ResultWaiter
+from src.services.attachment_client import AttachmentClientFactory
 from src.services.attachment_processor import AttachmentProcessor
 from src.services.channel_registry import ChannelRegistry
 from src.services.directory import DiscordDirectoryService
-from src.services.parser_client import ParserClientFactory
 from src.services.subscription_sync import MemberSubscriptionSyncService
 from src.services.voice import VoiceMover
 from src.watchdog import GatewayWatchdog
 
-# Seconds before giving up on a parser processing result for an uploaded log.
+# Seconds before giving up on a stats-service processing result for an uploaded log.
 _PROCESSING_RESULT_TIMEOUT = 120
 
 
@@ -61,7 +61,7 @@ class LogCollectorBot(commands.Bot):
         self.result_waiter = ResultWaiter(timeout=_PROCESSING_RESULT_TIMEOUT)
         self.attachment_processor = AttachmentProcessor(
             client=self,
-            parser_clients=ParserClientFactory(settings),
+            attachment_clients=AttachmentClientFactory(settings),
             result_waiter=self.result_waiter,
         )
         self.directory = DiscordDirectoryService(self)

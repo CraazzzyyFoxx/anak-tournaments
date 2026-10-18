@@ -1,11 +1,11 @@
 .PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
 	prod-build prod-pull prod-migrate prod-discord-emoji prod-up prod-down prod-logs prod-scale prod-small prod-medium prod-large migrate discord-emoji test clean \
 	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
-	app-logs identity-logs parser-logs frontend-logs discord-logs balancer-logs stream-logs \
-	app-restart identity-restart parser-restart frontend-restart \
+	app-logs identity-logs stats-logs frontend-logs discord-logs balancer-logs stream-logs \
+	app-restart identity-restart stats-restart frontend-restart \
 	monitoring-up monitoring-down monitoring-logs monitoring-ps \
 	backup-up backup-down backup-logs backup-run backup-ls cleanup-run \
-	app-rebuild identity-rebuild parser-rebuild frontend-rebuild \
+	app-rebuild identity-rebuild stats-rebuild frontend-rebuild \
 	loadtest loadtest-ui
 
 COMPOSE = docker compose
@@ -211,8 +211,8 @@ app-logs:
 identity-logs:
 	$(COMPOSE) logs -f identity-svc
 
-parser-logs:
-	$(COMPOSE) logs -f parser-svc
+stats-logs:
+	$(COMPOSE) logs -f stats-svc stats-worker
 
 frontend-logs:
 	$(COMPOSE) logs -f frontend
@@ -232,8 +232,8 @@ app-restart:
 identity-restart:
 	$(COMPOSE) restart identity-svc
 
-parser-restart:
-	$(COMPOSE) restart parser-svc
+stats-restart:
+	$(COMPOSE) restart stats-svc stats-worker
 
 frontend-restart:
 	$(COMPOSE) restart frontend
@@ -244,8 +244,8 @@ app-rebuild:
 identity-rebuild:
 	$(COMPOSE) up -d --build --wait identity-svc
 
-parser-rebuild:
-	$(COMPOSE) up -d --build --wait parser-svc
+stats-rebuild:
+	$(COMPOSE) up -d --build --wait stats-svc stats-worker
 
 frontend-rebuild:
 	$(COMPOSE) stop frontend && $(COMPOSE) rm -f frontend

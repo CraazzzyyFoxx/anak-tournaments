@@ -76,7 +76,7 @@ func (h *fanoutHandler) WithGroup(name string) slog.Handler {
 //
 // Client-disconnect errors are the same story from the RPC side: every
 // `log.Error("rpc failed", "err", ...)` site (edge/dispatch, app/balancer/
-// identity/parser binary handlers, ws) reports a context.Canceled the moment a
+// identity/stats binary handlers, ws) reports a context.Canceled the moment a
 // browser navigates away mid-request. Nothing is broken and nothing is
 // actionable, but each distinct queue name opens its own Sentry group.
 //

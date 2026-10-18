@@ -7,7 +7,7 @@
     "shared",
     "app-service",
     "identity-service",
-    "parser-service",
+    "stats-service",
     "tournament-service",
     "discord-service",
     "balancer-service",

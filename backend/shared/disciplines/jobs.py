@@ -10,7 +10,14 @@ from typing import Any
 
 from shared.disciplines.spec import DisciplineSpec
 
-__all__ = ("register_jobs", "start_jobs", "stop_jobs")
+__all__ = ("configure_runtime", "register_jobs", "start_jobs", "stop_jobs")
+
+
+def configure_runtime(specs: Iterable[DisciplineSpec], broker: Any, *, session_factory: Any, redis: Any) -> None:
+    """Wire the collection handlers of ``specs`` without registering a consumer or starting a schedule."""
+    for spec in specs:
+        if spec.configure_runtime is not None:
+            spec.configure_runtime(broker, session_factory=session_factory, redis=redis)
 
 
 def register_jobs(

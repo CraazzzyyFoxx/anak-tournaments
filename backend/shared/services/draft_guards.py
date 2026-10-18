@@ -1,7 +1,7 @@
 """Guards protecting tournament write-paths from conflicting draft state.
 
 Shared by the duplicated admin update paths in tournament-service and
-parser-service (mid-extraction write-path, CG-O6).
+stats-service (mid-extraction write-path, CG-O6).
 """
 
 from __future__ import annotations

@@ -130,9 +130,9 @@ jobs:
           - image: owt-tournament
             context: ./backend
             build-args: APP_PATH=tournament
-          - image: owt-parser
+          - image: owt-stats
             context: ./backend
-            build-args: APP_PATH=parser
+            build-args: APP_PATH=stats
           - image: owt-balancer
             context: ./backend
             build-args: APP_PATH=balancer

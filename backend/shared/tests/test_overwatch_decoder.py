@@ -1,6 +1,6 @@
 """The Workshop CSV decoder: grammar, boundaries, resolution and placements. Pure: no database, no service.
 
-Numeric parity with the P4 parser is pinned against the frozen capture in ``parser-service/tests/test_ow_decoder_parity.py``.
+Numeric parity with the P4 parser is pinned against the frozen capture in ``stats-service/tests/test_ow_decoder_parity.py``.
 """
 
 from __future__ import annotations

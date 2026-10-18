@@ -97,7 +97,7 @@ class RegistrationStatusResourceTests(TestCase):
 
 class SubscriptionResourceTests(TestCase):
     def test_every_sub_subject_uses_the_subscription_resource(self) -> None:
-        """Matches ``parser-service``'s own ``subscription.read``/``update`` gate
+        """Matches ``stats-service``'s own ``subscription.read``/``update`` gate
         on the same Twitch-subscription-verification feature area."""
         subjects = [
             "rpc.tournament.sub_config_list",

@@ -40,7 +40,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/metrics"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/observability"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/principal"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/ratelimit"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/replay"
@@ -300,24 +300,24 @@ func run() error {
 	analyticsEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	analyticsEdge.Register(mux, analytics.ReadRoutes)
 	analyticsEdge.Register(mux, analytics.WriteRoutes)
-	// parser-service domains folded into /api/v1 (match-log, OverFast rank,
+	// stats-service domains folded into /api/v1 (match-log, OverFast rank,
 	// achievement engine + rules admin, metadata sync, settings, discord-channel,
 	// bootstrap importers), served as typed RPC.
-	parserEdge := edge.New(rpcClient, logger, resolver.Resolve)
-	parserEdge.Register(mux, parser.Routes)
+	statsEdge := edge.New(rpcClient, logger, resolver.Resolve)
+	statsEdge.Register(mux, stats.Routes)
 	// Multipart match-log upload (files[] -> base64 RPC body) the JSON dispatcher
 	// can't handle.
-	parserBinary := parser.NewBinary(rpcClient, resolver.Resolve, logger)
-	mux.HandleFunc("POST /api/v1/admin/logs/upload", parserBinary.AdminLogsUpload)
+	statsBinary := stats.NewBinary(rpcClient, resolver.Resolve, logger)
+	mux.HandleFunc("POST /api/v1/admin/logs/upload", statsBinary.AdminLogsUpload)
 	// Canonical match ingestion (workspace API key): raw-body relay for the document POST so its bytes are hashed
 	// exactly as sent, plus the job read through the generic dispatcher.
-	parserEdge.Register(mux, parser.IngestRoutes)
-	mux.HandleFunc("POST /api/v1/stats/matches", parser.NewIngest(rpcClient, resolver.Resolve, logger).Submit)
+	statsEdge.Register(mux, stats.IngestRoutes)
+	mux.HandleFunc("POST /api/v1/stats/matches", stats.NewIngest(rpcClient, resolver.Resolve, logger).Submit)
 	// Achievement rule/library/override admin: ambiguous patterns under ServeMux
 	// (rules/export vs rules/{rule_id}) -> ordered subtree matcher. Mounted at the
 	// shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes there
 	// are more specific and win, so the two coexist.
-	mux.Handle("/api/v1/admin/ws/", parserEdge.Subtree(parser.AchievementAdminRoutes))
+	mux.Handle("/api/v1/admin/ws/", statsEdge.Subtree(stats.AchievementAdminRoutes))
 	// app-service: typed RPC public reads.
 	// hero/map/gamemode/achievement get+list use the shared CRUD read engine.
 	// Home-page aggregates and /users/[slug] profile reads go through the same

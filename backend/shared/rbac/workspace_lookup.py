@@ -2,9 +2,9 @@
 
 ``core/auth.py`` reimplemented the identical set of "resolve this entity's
 owning workspace, 404 if missing, then check the caller's permission in that
-workspace" getters in tournament-service, parser-service, and
+workspace" getters in tournament-service, stats-service, and
 analytics-service — the last two were a **byte-for-byte identical file**
-(parser-service's docstring even survived, unedited, inside analytics-service).
+(stats-service's docstring even survived, unedited, inside analytics-service).
 balancer-service overlaps on the tournament/registration getters while adding
 its own token-based user resolution and balance/draft-specific lookups, which
 stay local. This module is the single source of truth for the shared subset;

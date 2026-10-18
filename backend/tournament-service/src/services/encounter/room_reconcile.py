@@ -14,7 +14,7 @@ room by being looked at any more. Three things heal it instead:
 * a one-second DUE-ROOM tick, for the only change nothing writes: a step's
   timer running out;
 * a one-minute BACKSTOP sweep, for writes that happen in another service
-  entirely (parser-service finalizing a map, app-service CRUD) and so never
+  entirely (stats-service finalizing a map, app-service CRUD) and so never
   reach this process's commit hooks.
 
 The trigger stages onto the session exactly the way ``shared.services.realtime.
@@ -326,7 +326,7 @@ async def reconcile_due_rooms() -> None:
 async def reconcile_stalled_rooms() -> None:
     """Every minute: catch up rooms whose last mover was another service.
 
-    parser-service finalizing a map and app-service's encounter CRUD commit in
+    stats-service finalizing a map and app-service's encounter CRUD commit in
     their own processes, so no commit hook here ever sees them. The sweep is
     bounded to encounters that can still be played -- every slot seated, a live
     tournament, a non-terminal status, a published stage (or none) -- and every

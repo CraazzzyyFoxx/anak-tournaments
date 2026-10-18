@@ -2,12 +2,12 @@
 
 Consolidates two near-duplicate implementations of ``bulk_create_from_balancer``
 (``balancer-service/src/services/team.py`` and
-``parser-service/src/services/team/flows.py``), which had drifted apart on four
+``stats-service/src/services/team/flows.py``), which had drifted apart on four
 axes. Each divergence is now an explicit parameter rather than an accident of
 which service you happened to call:
 
 ======================  ==========================  ==========================
-Axis                    balancer-service            parser-service
+Axis                    balancer-service            stats-service
 ======================  ==========================  ==========================
 Unresolvable tag        skipped the player           raised 400 ``not_found``
 Unknown slot code       returned ``None``            raised 400
@@ -88,7 +88,7 @@ def resolve_slot_role(role: str | None, *, discipline_code: str, on_unresolved: 
 class MaterializationMember:
     """One roster slot to be written as a ``tournament.player`` row.
 
-    Identity is either resolved from ``battle_tag`` (balancer/draft/parser
+    Identity is either resolved from ``battle_tag`` (balancer/draft/stats
     imports) or supplied pre-resolved as ``workspace_member_id`` (registered
     teams, whose members are already anchored — no tag lookup, and the
     silently-skipped-player failure mode is unreachable).

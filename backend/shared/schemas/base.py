@@ -2,7 +2,7 @@
 
 Identical ``BaseRead``/``LookupItem``/``Score`` definitions used to be
 copy-pasted verbatim into app-service, tournament-service, balancer-service,
-parser-service, and stream-service. They carry no per-service behavior, so
+stats-service, and stream-service. They carry no per-service behavior, so
 there is exactly one definition here; each service's local ``schemas/base.py``
 re-exports the subset it needs.
 

@@ -1,7 +1,7 @@
 """RabbitMQ publishing + worker handler for OverFast rank fetches.
 
 Topology: the scheduler (FastAPI process) publishes one ``FetchRankEvent`` per
-due battle tag; the worker (serve.py) consumes and performs the HTTP call. Redis
+due battle tag; the worker (serve_worker.py) consumes and performs the HTTP call. Redis
 provides per-tag enqueue/in-flight dedup, a global per-minute ceiling (over it, a
 tag is deferred past the window rather than fetched) and a 429 cooldown so a
 fleet of workers can't overrun the self-hosted OverFast instance.

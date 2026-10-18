@@ -114,8 +114,8 @@ operation is a configuration change. `balancer.job` is seeded by
 | `balancer.balance_ranks_export` | 3 | Rewrites tournament player ranks from a saved balance |
 | `balancer.teams_import` | 2 | Imports a multi-MB team payload and rewrites the roster |
 | `balancer.teams_export` | 2 | Materializes every complete registered team |
-| `parser.logs.upload` | 1 | Stores an uploaded match log and queues its parse |
-| `parser.logs.process_tournament` | 5 | Re-parses every log of one tournament |
+| `stats.logs.upload` | 1 | Stores an uploaded match log, or accepts one canonical `POST /api/v1/stats/matches` document, and queues its ingest |
+| `stats.logs.process_tournament` | 5 | Re-parses every log of one tournament |
 | `parser.ach.import` | 5 | Imports portable achievement rules |
 | `parser.ach.export` | 2 | Exports achievement rules |
 | `parser.ach.lib_import` | 5 | Imports the achievement library |
@@ -134,6 +134,13 @@ operation is a configuration change. `balancer.job` is seeded by
 
 On the seeded 100 heavy units per key per day (§4) that is roughly 100 balancer jobs, or 20 Challonge
 imports, or 10 model trainings — and any mix of them draws on the same pool.
+
+`stats.logs.upload` and `stats.logs.process_tournament` were `parser.logs.upload` and `parser.logs.process_tournament`
+before the stats-service rename; migration `ingest01` renames the `quota.operation` rows in place, with their costs
+unchanged. Usage counters are keyed by principal and day, never by operation code, so spend already recorded keeps
+counting after the rename and the release needs no counter migration or reset. A canonical document submit
+(`POST /api/v1/stats/matches`) is charged as one `stats.logs.upload` item sized by its encoded body. (The
+`parser.ach.*` achievement operations keep their codes.)
 
 An operation can also be disabled outright, in which case every call to it is refused regardless of
 budget. Metered operations that do not appear above cost one request token and nothing else.
@@ -364,4 +371,3 @@ uncounted, as for the per-key bucket.
 
 Cost: one Redis script per counted request (the per-key bucket already paid one; the workspace key
 rides in the same call) and one cached Postgres lookup per workspace per minute per replica.
-

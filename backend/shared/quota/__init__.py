@@ -8,7 +8,7 @@ which one did.
 
 A call site passes facts it already holds and never a number::
 
-    await quota.charge(user, "parser.logs.upload", workspace_id=ws, item_count=len(files))
+    await quota.charge(user, "stats.logs.upload", workspace_id=ws, item_count=len(files))
 
     lease = await quota.lease(user, "balancer.job", workspace_id=ws, ttl_seconds=ttl)
     try:

@@ -723,7 +723,7 @@ async def resolve_workspace_member_id(
     resolved from the tournament they are joining — or ``None`` if
     ``tournament_id`` names no tournament.
 
-    ``tournament-service`` (admin player CRUD) and ``parser-service`` (roster
+    ``tournament-service`` (admin player CRUD) and ``stats-service`` (roster
     import) each derived this identically — workspace from tournament, then
     ``get_or_create_workspace_member`` — and each raises its own not-found
     error on ``None``, so that part stays with the caller rather than here.

@@ -169,7 +169,7 @@ export function formatCloseness(value: number | null | undefined): string | null
 // Per-map stats arrive as `Record<round, Record<LogStatsName, number>>` with
 // round `0` = whole map. To describe a SERIES we fold every map's round-0 row
 // into one synthetic round-0 row per player, then re-derive the ratio stats
-// with the parser's own formulas (`parser-service` →
+// with the parser's own formulas (`stats-service` →
 // `_calculate_and_add_derived_stats`) instead of averaging per-map ratios,
 // which would weight a 3-minute map the same as a 12-minute one.
 
@@ -214,7 +214,7 @@ const ADDITIVE_STATS: readonly LogStatsName[] = [
 const MAX_STATS: readonly LogStatsName[] = [LogStatsName.MultikillBest];
 
 /**
- * Ratio stats recomputed from the summed numerator/denominator. `parser-service`
+ * Ratio stats recomputed from the summed numerator/denominator. `stats-service`
  * divides by `denominator.replace(0, 1)`, so a zero denominator yields the bare
  * numerator — mirrored here so a series row and a map row agree.
  */
@@ -262,7 +262,7 @@ function readStat(row: StatRow, name: LogStatsName): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-/** `parser-service` divides by `denominator.replace(0, 1)`. */
+/** `stats-service` divides by `denominator.replace(0, 1)`. */
 function ratio(numerator: number, denominator: number): number {
   return numerator / (denominator === 0 ? 1 : denominator);
 }

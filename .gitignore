@@ -2,7 +2,6 @@
 .idea/
 .vscode/
 /app/.idea
-/parser/.idea
 
 # Python
 .mypy_cache/

@@ -124,7 +124,7 @@ class AdminTeamService:
         """Resolve the ``workspace_member`` anchor for a roster player being created.
 
         Delegates to the shared core (workspace from tournament, then an
-        idempotent get-or-create) that ``parser-service``'s roster import derives
+        idempotent get-or-create) that ``stats-service``'s roster import derives
         this identically from; only the not-found error differs per service, which
         is why it stays here rather than in the shared helper.
         """

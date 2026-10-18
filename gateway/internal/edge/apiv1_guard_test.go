@@ -12,7 +12,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/balancer"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/parser"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 )
@@ -81,13 +81,13 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, app.NotificationAdminRoutes)
 	d.Register(mux, app.NotificationUserAdminRoutes)
 	mux.Handle("/api/v1/achievements/", d.Subtree(app.AchievementsSubtreeRoutes))
-	// parser domains folded into /api/v1. The achievement-rule admin subtree mounts
+	// stats domains folded into /api/v1. The achievement-rule admin subtree mounts
 	// at the shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes
 	// there are more specific and win, so registering both must not panic. The
 	// discord-channel routes share /api/v1/admin/tournaments/{id}/... with the
 	// tournament admin routes (distinct leaves).
-	d.Register(mux, parser.Routes)
-	mux.Handle("/api/v1/admin/ws/", d.Subtree(parser.AchievementAdminRoutes))
+	d.Register(mux, stats.Routes)
+	mux.Handle("/api/v1/admin/ws/", d.Subtree(stats.AchievementAdminRoutes))
 	// Binary/multipart handlers (registering them must not conflict with the
 	// workspace member routes or the get-by-id routes).
 	anonymous := func(*http.Request) (map[string]any, bool, error) { return nil, false, nil }
@@ -98,7 +98,7 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	mux.HandleFunc("DELETE /api/v1/assets/{asset_type}/{slug}", bin.AssetDelete)
 	mux.HandleFunc("GET /api/v1/matches/{match_id}/log", bin.MatchLog)
 	mux.HandleFunc("POST /api/v1/admin/users/{id}/avatar", bin.UserAvatarUpload)
-	pbin := parser.NewBinary(errCaller{}, func(*http.Request) (map[string]any, bool, error) { return nil, false, nil },
+	pbin := stats.NewBinary(errCaller{}, func(*http.Request) (map[string]any, bool, error) { return nil, false, nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	mux.HandleFunc("POST /api/v1/admin/logs/upload", pbin.AdminLogsUpload)
 	// balancer-worker: public config + admin balance/config + draft + jobs.
@@ -370,7 +370,7 @@ func TestApiBalancer_MigratedRoutesHitDispatcher(t *testing.T) {
 	}
 }
 
-// TestApiV1_MigratedReadsHitDispatcher asserts the migrated app + parser read
+// TestApiV1_MigratedReadsHitDispatcher asserts the migrated app + stats read
 // patterns win over the 404 guard (ServeMux specificity) and reach the typed
 // dispatcher. With the stub RPC caller the dispatcher returns 504 (or 401 for
 // auth'd routes), so a migrated path yields an empty X-Route (typed handler) —
@@ -408,7 +408,7 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 		"/api/v1/workspaces",
 		"/api/v1/workspaces/5",
 		"/api/v1/matches/9/log",
-		// parser-service (was /api/parser), folded into /api/v1
+		// stats-service (was /api/parser), folded into /api/v1
 		"/api/v1/users/5/rank-history",
 		"/api/v1/users/5/current-ranks",
 		"/api/v1/battle-tags/5/rank-history",
