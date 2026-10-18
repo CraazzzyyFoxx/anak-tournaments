@@ -86,7 +86,7 @@ player-facing subset see [`../frontend/src/i18n/GLOSSARY.md`](../frontend/src/i1
 | **Map veto / pick-ban** | The pick and ban sequence that reduces a pool to the maps actually played, driven by a `map_veto_config`. |
 | **Reserve map** | The map held back for a tie. |
 | **Match log** | An Overwatch log file uploaded by an organizer or through the Discord bot, parsed by `parser-service` into matches, per-round statistics, kill feed, and assists. |
-| **Ingest job** | `stats.ingest_job`: actual content hash, exact stored raw reference, optional binding hints and parse lifecycle. `awaiting_link` means valid input still lacks an accepted game binding; it is not a completed match. |
+| **Ingest job** | `stats.ingest_job`: actual content hash, exact stored raw reference, optional binding hints and parse lifecycle. `awaiting_link` means valid input still lacks an accepted game binding (no unique game proven by the participants' rosters); it is not a completed match and wrote nothing. An administrator binds it with a complete team map, or replays a `done` job with an explicit reparse that names the observation revision seen. |
 | **Stat fact / event** | `stats.fact` stores numeric observations at their native member/team/entity/segment grain using discipline-qualified stat definitions. `stats.event` preserves event order, duplicates and nullable endpoints using discipline-qualified event types. |
 | **Cutover receipt** | Immutable complete owner-state proof captured with writers drained. Later native changes require validated before/after audit chains and release review; unexplained changes block legacy deletion. |
 | **Playtime** | Time a player spent on a hero, reported as a share of the match. |

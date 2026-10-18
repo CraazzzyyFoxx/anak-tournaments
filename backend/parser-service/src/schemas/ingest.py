@@ -3,12 +3,46 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from shared.models import IngestJobStatus
 
-__all__ = ("IngestBinding", "IngestError", "IngestIssueRead", "IngestJobRead")
+__all__ = (
+    "BindIngestRequest",
+    "IngestBinding",
+    "IngestError",
+    "IngestIssueRead",
+    "IngestJobRead",
+    "IngestTeamKey",
+)
+
+
+class BindIngestRequest(BaseModel):
+    """An operator's complete team map for one stored document: ``document team key -> encounter.team id``.
+
+    The document itself is never part of the request: bind retries the job's stored canonical document or raw source.
+    ``expected_revision`` is the operator's view of the target game: ``0`` = no observation yet, ``n`` = replace exactly
+    revision ``n``. It is required when the target is occupied and compared again under the final lock.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    encounter_game_id: Annotated[int, Field(strict=True, gt=0)]
+    teams: Annotated[
+        dict[Annotated[str, StringConstraints(min_length=1, max_length=64)], Annotated[int, Field(strict=True, gt=0)]],
+        Field(min_length=1),
+    ]
+    expected_revision: Annotated[int, Field(strict=True, ge=0)] | None = None
+
+
+class IngestTeamKey(BaseModel):
+    """A document team in canonical order, so an operator UI can build the bind team map for an awaiting job."""
+
+    key: str
+    source_position: int
+    participants: list[str] = []
 
 
 class IngestIssueRead(BaseModel):

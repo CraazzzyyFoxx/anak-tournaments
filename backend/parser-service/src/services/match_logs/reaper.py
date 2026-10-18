@@ -1,6 +1,6 @@
 """Stall recovery for match-log processing.
 
-``process_match_log`` carries ``x-message-ttl=300000``, so a ``ProcessMatchLogEvent``
+``process_match_log`` carries ``x-message-ttl=300000``, so a ``ProcessIngestJobEvent``
 that isn't consumed within five minutes is dead-lettered — and nothing looks at
 the native ingest job again. A batch upload larger than the worker chews in
 five minutes, a worker restart, or a publish that failed after the row committed

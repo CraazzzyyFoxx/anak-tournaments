@@ -12,6 +12,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from shared.models import RawSourceStatus
+from src.schemas.ingest import IngestError, IngestTeamKey
 
 __all__ = (
     "QueueDepth",
@@ -37,6 +38,10 @@ class LogRetryRequest(BaseModel):
     # Binding hint for awaiting_link. Omitted = keep the current attachment.
     encounter_id: int | None = None
     encounter_game_id: int | None = None
+    # A done job is replayed only by an explicit reparse that names the observation revision the operator saw;
+    # a stale revision answers 409 ``stale_revision``.
+    reparse: bool = False
+    expected_revision: int | None = None
 
 
 class LogRecordRead(BaseModel):
@@ -52,12 +57,22 @@ class LogRecordRead(BaseModel):
     raw_status: RawSourceStatus
     raw_available: bool
     uploader_name: str | None
+    # The human message of ``error`` (or the historical text itself).
     error_message: str | None
+    # Structured failure/awaiting explanation of a canonical job; historical text reads as code ``historical``.
+    error: IngestError | None = None
     # Times the record entered processing; >1 means the stall reaper requeued it.
     attempts: int = 0
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    # Revision of the observation this job is currently the evidence for; ``None`` while it is not (unbound,
+    # awaiting link, failed or superseded). Bulk reparse sends it back as ``expected_revision``.
+    observation_revision: int | None = None
+    # ``True`` while this job is the current provenance of its game's observation.
+    is_current_provenance: bool = False
+    # Document teams in canonical order, for an ``awaiting_link`` job only (the bind team map is keyed by these).
+    teams: list[IngestTeamKey] = []
 
     model_config = {"from_attributes": True}
 

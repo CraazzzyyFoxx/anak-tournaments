@@ -16,6 +16,7 @@ OPERATIONS: dict[str, Op] = {
     # ── canonical match ingest: the public request is the bare owt.match/1 document ─
     "rpc.stats.ingest.submit": Op(request=MatchDoc, response=schemas.IngestJobRead),
     "rpc.stats.ingest.get": Op(response=schemas.IngestJobRead),
+    "rpc.stats.ingest.bind": Op(request=schemas.BindIngestRequest, response=schemas.IngestJobRead),
     # ── match-log admin ────────────────────────────────────────────────────
     "rpc.parser.logs.queue_status": Op(response=schemas.QueueDepth, response_array=True),
     "rpc.parser.logs.history": Op(

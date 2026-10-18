@@ -22,18 +22,18 @@ os.environ["DEBUG"] = "true"
 
 result_events = importlib.import_module("src.services.match_logs.result_events")
 
-from shared.schemas.events import ProcessMatchLogEvent
+from shared.schemas.events import ProcessIngestJobEvent
 
 
 class PublishMatchLogResultTests(IsolatedAsyncioTestCase):
     def test_processing_payload_requires_native_job_id(self) -> None:
-        event = ProcessMatchLogEvent(ingest_job_id=7, correlation_id="upload-7")
+        event = ProcessIngestJobEvent(ingest_job_id=7, correlation_id="upload-7")
         self.assertEqual(7, event.ingest_job_id)
         self.assertNotIn("filename", event.model_dump())
         self.assertNotIn("tournament_id", event.model_dump())
         for payload in ({"tournament_id": 1, "filename": "old.log"}, {"ingest_job_id": 0}):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
-                ProcessMatchLogEvent.model_validate(payload)
+                ProcessIngestJobEvent.model_validate(payload)
 
     def test_only_prejob_failure_can_omit_job_id(self) -> None:
         for status in ("done", "awaiting_link"):

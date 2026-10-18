@@ -30,7 +30,7 @@ class TournamentLogsFanoutTests(IsolatedAsyncioTestCase):
                 serve.log_records_service, "requeue_tournament", AsyncMock(return_value=[501, 502])
             ) as requeue,
             patch.object(serve, "publish_message", publish),
-            patch.object(serve.logs_flows, "process_match_log", AsyncMock()) as parse,
+            patch.object(serve, "process_ingest_job", AsyncMock()) as parse,
         ):
             await serve.process_tournament_log(
                 {"tournament_id": 42}, SimpleNamespace(headers={}, message_id=None, raw_message=None)

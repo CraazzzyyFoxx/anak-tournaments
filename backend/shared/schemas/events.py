@@ -252,7 +252,7 @@ class PickupMixChangedEvent(BaseEvent):
     change: str = Field(..., description="What changed (roster, member, rank, close...), diagnostic only")
 
 
-class ProcessMatchLogEvent(BaseEvent):
+class ProcessIngestJobEvent(BaseEvent):
     """Event for processing a single match log file.
 
     Published by: parser-service
@@ -269,7 +269,7 @@ class UploadMatchLogEvent(BaseEvent):
     Published by: discord-service (bot upload, replacing the former direct
     ``POST http://parser:8002/logs/{id}/upload`` HTTP call).
     Consumed by: parser-service worker, which stores the log to S3, creates or
-    reuses its native ingest job, then publishes a ``ProcessMatchLogEvent``.
+    reuses its native ingest job, then publishes a ``ProcessIngestJobEvent``.
 
     The file bytes ride in ``content_b64`` (base64). Keep logs reasonably sized:
     the message must fit RabbitMQ's frame/size limits.

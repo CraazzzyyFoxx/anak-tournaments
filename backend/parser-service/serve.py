@@ -45,7 +45,7 @@ from shared.quota import configure as configure_quota
 from shared.schemas.events import (
     AchievementEvaluateEvent,
     EncounterCompletedEvent,
-    ProcessMatchLogEvent,
+    ProcessIngestJobEvent,
     ProcessTournamentLogsEvent,
     UploadMatchLogEvent,
 )
@@ -80,6 +80,8 @@ from src.services.achievement.engine.consumer import (
     handle_achievement_evaluate,
     handle_achievement_evaluate_deferred,
 )
+from src.services.ingest.jobs import decode_error
+from src.services.ingest.process import process_ingest_job
 from src.services.match_logs import flows as logs_flows
 from src.services.match_logs import reaper as logs_reaper
 from src.services.match_logs import retention as logs_retention
@@ -207,7 +209,7 @@ async def start_worker() -> None:
     await discipline_jobs.start_jobs(
         _JOB_DISCIPLINES, session_factory=db.async_session_maker, redis=realtime_redis, logger=logger
     )
-    # Requeue match-log records the queue dropped (expired ProcessMatchLogEvent,
+    # Requeue match-log records the queue dropped (expired ProcessIngestJobEvent,
     # worker killed mid-parse) through the outbox. Redis leader-locked across worker replicas.
     logs_reaper.start_scheduler(redis=realtime_redis)
     # Drop failed match logs (S3 object + record) past their retention window.
@@ -277,7 +279,7 @@ async def process_upload_match_log(data: dict, msg: RabbitMessage) -> None:
                 job_id = job.id
             await publish_message(
                 broker,
-                ProcessMatchLogEvent(
+                ProcessIngestJobEvent(
                     ingest_job_id=job_id,
                     correlation_id=event.correlation_id,
                 ).model_dump(),
@@ -313,32 +315,28 @@ async def process_match_log_async(data: dict, msg: RabbitMessage) -> None:
         message=msg,
         logger=logger,
     ):
-        event = ProcessMatchLogEvent.model_validate(data)
+        event = ProcessIngestJobEvent.model_validate(data)
         log = logger.bind(ingest_job_id=event.ingest_job_id)
         async with db.async_session_maker() as session:
-            if await session.scalar(
-                sa.select(models.IngestJob.document_ref).where(models.IngestJob.id == event.ingest_job_id)
-            ):
-                # A canonical document job: the P4 log parser must never claim it. It stays pending (the reaper
-                # keeps re-requesting it) until the canonical ingest consumer exists.
-                log.info("Canonical ingest job left pending for the ingest worker")
-                return
-            status = await logs_flows.process_match_log(session, event.ingest_job_id, s3_client, is_raise=False)
+            status = await process_ingest_job(session, event.ingest_job_id, s3_client, is_raise=False)
             if status == models.IngestJobStatus.PROCESSING:
                 # Another delivery owns this claim. Acknowledge without
                 # resolving its uploader's waiter or changing the job outcome.
                 return
             job = await IngestJobRepository().get(session, event.ingest_job_id, populate_existing=True)
-            await publish_match_log_result(
-                broker,
-                job.hint_tournament_id,
-                job.filename,
-                status.value,
-                ingest_job_id=job.id,
-                correlation_id=event.correlation_id,
-                error_message=job.error_message,
-                logger=log,
-            )
+            if job.hint_tournament_id is not None or event.correlation_id is not None:
+                # A canonical API job has neither: nobody waits for it, the client polls the job.
+                error = decode_error(job.error_message)
+                await publish_match_log_result(
+                    broker,
+                    job.hint_tournament_id,
+                    job.filename,
+                    status.value,
+                    ingest_job_id=job.id,
+                    correlation_id=event.correlation_id,
+                    error_message=error.message if error else None,
+                    logger=log,
+                )
         metrics.count("parser.match_log.processed", 1, attributes={"status": status.value})
 
 
@@ -358,7 +356,7 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
             for job_id in job_ids:
                 await publish_message(
                     broker,
-                    ProcessMatchLogEvent(ingest_job_id=job_id).model_dump(),
+                    ProcessIngestJobEvent(ingest_job_id=job_id).model_dump(),
                     PROCESS_MATCH_LOG_QUEUE,
                     logger=logger.bind(ingest_job_id=job_id),
                 )

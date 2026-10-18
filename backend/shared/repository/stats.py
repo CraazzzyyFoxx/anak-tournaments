@@ -454,6 +454,11 @@ class StatsMatchRepository:
             query = query.with_for_update(of=match)
         return (await session.scalars(query)).one_or_none()
 
+    async def add(self, session: AsyncSession, match: models.StatsMatch) -> models.StatsMatch:
+        """Stage a new observation header; the caller flushes it inside its own transaction."""
+        session.add(match)
+        return match
+
     async def replace_observations(
         self,
         session: AsyncSession,

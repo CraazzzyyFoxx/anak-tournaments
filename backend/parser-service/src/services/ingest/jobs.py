@@ -30,7 +30,7 @@ from shared.models import AuthUser
 from shared.repository.catalog import CatalogAliasMissRepository
 from shared.repository.stats import IngestJobRepository
 from shared.rpc.identity import credential_type
-from shared.schemas.events import ProcessMatchLogEvent
+from shared.schemas.events import ProcessIngestJobEvent
 from shared.schemas.match_doc import MAX_MATCH_DOC_BYTES, IngestIssue, MatchDoc, MatchDocError, parse_match_doc
 from src.schemas.ingest import IngestBinding, IngestError, IngestJobRead
 from src.services.ingest.validation import DocumentRejected, validate_document
@@ -40,6 +40,7 @@ from src.services.match_logs.realtime import emit_logs_updated
 
 __all__ = (
     "INGEST_SCOPE",
+    "SEMANTIC_CODES",
     "Claim",
     "IngestRejected",
     "Producer",
@@ -51,7 +52,9 @@ __all__ = (
     "get_ingest_job",
     "is_current_claim",
     "load_document",
+    "lock_object",
     "provenance_classifier",
+    "read_job",
     "require_ingest_principal",
     "store_document",
     "submit_document",
@@ -228,7 +231,7 @@ def decode_error(stored: str | None) -> IngestError | None:
 # -- reads -----------------------------------------------------------------------------------------------------
 
 
-async def _read(session: AsyncSession, job_id: int, workspace_id: int) -> IngestJobRead:
+async def read_job(session: AsyncSession, job_id: int, workspace_id: int) -> IngestJobRead:
     """One committed-state snapshot of a workspace's job; a foreign or absent id is the same 404."""
     job = (
         await session.scalars(
@@ -276,7 +279,7 @@ async def _read(session: AsyncSession, job_id: int, workspace_id: int) -> Ingest
 
 async def get_ingest_job(session: AsyncSession, *, job_id: int, user: AuthUser) -> IngestJobRead:
     principal = require_ingest_principal(user)
-    return await _read(session, job_id, principal.workspace_id)
+    return await read_job(session, job_id, principal.workspace_id)
 
 
 # -- submit ----------------------------------------------------------------------------------------------------
@@ -298,14 +301,14 @@ def _parse_rejection(exc: MatchDocError) -> IngestRejected:
     return IngestRejected(422, "document_invalid", "The document does not match owt.match/1", issues=exc.issues)
 
 
-_SEMANTIC_CODES = {"unresolved_references": "unknown_code", "unknown_identity_provider": "document_invalid"}
+SEMANTIC_CODES = {"unresolved_references": "unknown_code", "unknown_identity_provider": "document_invalid"}
 
 
 async def enqueue_ingest_request(session: AsyncSession, job_id: int, *, correlation_id: str | None = None) -> None:
     """Stage the work request on the transaction that made the job (or reset it) pending."""
     await enqueue_outbox_event(
         session,
-        ProcessMatchLogEvent(ingest_job_id=job_id, correlation_id=correlation_id, source_service="parser-service"),
+        ProcessIngestJobEvent(ingest_job_id=job_id, correlation_id=correlation_id, source_service="parser-service"),
         exchange="",
         routing_key=PROCESS_MATCH_LOG_QUEUE.name,
     )
@@ -315,7 +318,7 @@ async def _uploader_id(session: AsyncSession, user: AuthUser) -> int | None:
     return await session.scalar(sa.select(models.User.id).where(models.User.auth_user_id == user.id))
 
 
-async def _lock_object(session: AsyncSession, ref: str) -> None:
+async def lock_object(session: AsyncSession, ref: str) -> None:
     # The retention sweep takes the same per-object lock, so it cannot delete bytes between this PUT and the job
     # insert that makes them reachable.
     await session.execute(sa.text("SELECT pg_advisory_xact_lock(hashtext(:key))"), {"key": f"stats.raw:{ref}"})
@@ -362,8 +365,8 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
         # Both object locks are taken before either PUT and held through commit, raw first, then the document:
         # the retention sweep takes them in the same order, so it cannot delete an object a new job will reference.
         document_ref, _ = envelope_for(workspace_id, doc, "canonical")
-        await _lock_object(session, raw_ref)
-        await _lock_object(session, document_ref)
+        await lock_object(session, raw_ref)
+        await lock_object(session, document_ref)
         try:
             if not await s3.put_object(raw_ref, raw):
                 raise _unavailable("Raw document storage is unavailable")
@@ -400,7 +403,7 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
                 job,
                 models.IngestJobStatus.FAILED,
                 error_message=encode_error(
-                    _SEMANTIC_CODES.get(failure.code, "document_invalid"),
+                    SEMANTIC_CODES.get(failure.code, "document_invalid"),
                     "The document references unknown codes or an unsupported identity provider",
                     failure.issues,
                 ),
@@ -417,12 +420,12 @@ async def submit_document(session: AsyncSession, *, raw: bytes, user: AuthUser, 
     if failed_here:
         raise IngestRejected(
             422,
-            _SEMANTIC_CODES.get(failure.code, "document_invalid"),
+            SEMANTIC_CODES.get(failure.code, "document_invalid"),
             "The document references unknown codes or an unsupported identity provider",
             issues=failure.issues,
             ingest_job_id=job_id,
         )
-    return await _read(session, job_id, workspace_id)
+    return await read_job(session, job_id, workspace_id)
 
 
 # -- claim fencing ---------------------------------------------------------------------------------------------
@@ -481,8 +484,6 @@ async def finish_claim(
     if not is_current_claim(job, claim):
         await session.rollback()
         return False
-    if document_ref is not None:
-        job.document_ref = document_ref
-    await log_records_service.transition(session, job, status, error_message=error_message)
+    await log_records_service.transition(session, job, status, error_message=error_message, document_ref=document_ref)
     await session.commit()
     return True

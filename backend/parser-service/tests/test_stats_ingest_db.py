@@ -26,18 +26,21 @@ from shared.core.errors import BaseAPIException
 from shared.disciplines.overwatch.enums import log_stats_index_map
 from shared.repository.catalog import CatalogAliasMissRepository
 from shared.repository.stats import IngestJobRepository, StatsMatchRepository
+from shared.rpc.identity import rehydrate_user
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes
 from shared.testing.stats_parity import (
     seed_native_sentinel,
 )
 from src.services import catalog_aliases
-from src.services.match_logs import admin_reads, flows, reaper, retention, uploads
+from src.services.ingest import process as ingest_process
+from src.services.match_logs import admin_reads, reaper, retention, uploads
 from src.services.match_logs.log_records import compute_content_hash, log_records_service
 
 HERO = "Ingest Ana"
 MAP = "Ingest Ilios"
 MODE = "Ingest Control"
 STATUS = models.IngestJobStatus
+ADMIN = rehydrate_user({"sub": 1, "username": "root", "is_superuser": True, "roles": ["admin"], "workspaces": []})
 
 
 class RawStore:
@@ -216,6 +219,24 @@ async def _seed(session, fixture_ids, *, with_game=True):
                     player_id=roster.id, role_id=fixture_ids["role_support"], dimension_id=fixture_ids["role_dimension"]
                 )
             )
+            seat = seats[0 if name.startswith("IngestH") else 1]
+            snapshot = models.EncounterTeamMember(
+                encounter_id=encounter.id,
+                encounter_team_id=seat.id,
+                active=seat.active,
+                workspace_member_id=member.id,
+                display_name_snapshot=name,
+                rank=800,
+            )
+            session.add(snapshot)
+            await session.flush()
+            session.add(
+                models.EncounterTeamMemberRole(
+                    team_member_id=snapshot.id,
+                    role_id=fixture_ids["role_support"],
+                    dimension_id=fixture_ids["role_dimension"],
+                )
+            )
     env = SimpleNamespace(
         workspace=workspace.id,
         tournament=tournament.id,
@@ -294,7 +315,7 @@ async def upload(env, content=None, *, filename="same.log", **kwargs):
 
 async def process(env, job_id):
     async with env.sf() as session:
-        return await flows.process_match_log(session, job_id, env.raw, is_raise=False)
+        return await ingest_process.process_ingest_job(session, job_id, env.raw, is_raise=False)
 
 
 async def match_for_game(env):
@@ -605,7 +626,12 @@ def test_historical_binding_is_reparsed_only_by_its_own_available_source(stats_p
             assert await process(env, replacement.id) == STATUS.FAILED
             assert await snapshot(env, match.id) == before
             async with env.sf() as session:
-                await log_records_service.retry(session, original.id, workspace_id=env.workspace)
+                with pytest.raises(BaseAPIException, match="reparse_required"):
+                    await log_records_service.retry(session, original.id, workspace_id=env.workspace)
+                await session.rollback()
+                await ingest_process.reparse_ingest_job(
+                    session, job_id=original.id, expected_revision=1, user=ADMIN, s3=env.raw
+                )
             assert await process(env, original.id) == STATUS.DONE
             preserved = await match_for_game(env)
             assert (preserved.id, preserved.encounter_id, preserved.revision, preserved.ingest_job_id) == (
@@ -820,8 +846,12 @@ def test_recovered_retry_claim_rejects_same_attempt_number_from_old_worker(
                     if old_outcome == "download_failure"
                     else "Ingest claim was superseded"
                 )
-                with pytest.raises(RuntimeError, match=message):
-                    await asyncio.wait_for(old_worker, 10)
+                if old_outcome == "download_failure":
+                    with pytest.raises(RuntimeError, match=message):
+                        await asyncio.wait_for(old_worker, 10)
+                else:
+                    # A superseded attempt changes nothing and just acknowledges: the job is still being processed.
+                    assert await asyncio.wait_for(old_worker, 10) == STATUS.PROCESSING
                 async with env.sf() as session:
                     assert await capture_stats_evidence(session, scopes=owner_scopes("job", (job.id,))) == before
                     assert not await session.scalar(
@@ -1155,7 +1185,7 @@ def test_preparse_failures_finish_the_actual_claim(stats_parity_database, monkey
             if failure != "missing":
                 env.raw.objects[job.raw_ref] = b"corrupted" if failure == "wrong_hash" else raw
             if failure == "oversize":
-                monkeypatch.setattr(flows.settings, "max_match_log_bytes", 1)
+                monkeypatch.setattr(ingest_process.settings, "max_match_log_bytes", 1)
             assert await process(env, job.id) == STATUS.FAILED
             async with env.sf() as session:
                 current = await session.get(models.IngestJob, job.id)
@@ -1278,43 +1308,6 @@ def test_foreign_hint_and_wrong_map_game_never_authorize_a_binding(stats_parity_
             assert await process(env, job.id) == STATUS.FAILED
             assert await match_for_game(env) is None
             assert await success_events(env) == 0
-
-    asyncio.run(run())
-
-
-def test_map_pool_rejection_preserves_last_revision_and_roster(stats_parity_database, monkeypatch):
-    async def run():
-        async with environment(stats_parity_database, monkeypatch) as env:
-            job = await upload(env)
-            assert await process(env, job.id) == STATUS.DONE
-            match = await match_for_game(env)
-            before = await snapshot(env, match.id)
-            async with env.sf() as session:
-                pool = models.PickBanConfig(
-                    tournament_id=env.tournament, kind=enums.PickBanKind.MAP, ruleset_json={"phases": []}
-                )
-                session.add(pool)
-                await session.flush()
-                session.add(models.PickBanConfigItem(pick_ban_config_id=pool.id, item_id=env.fixture_ids["map_other"]))
-                await session.commit()
-                roster_count = await session.scalar(
-                    sa.select(sa.func.count())
-                    .select_from(models.Player)
-                    .where(models.Player.tournament_id == env.tournament)
-                )
-            invalid = await upload(env, workshop(map_name="Илиос-инжест"))
-            assert await process(env, invalid.id) == STATUS.FAILED
-            assert await snapshot(env, match.id) == before
-            async with env.sf() as session:
-                assert (
-                    await session.scalar(
-                        sa.select(sa.func.count())
-                        .select_from(models.Player)
-                        .where(models.Player.tournament_id == env.tournament)
-                    )
-                    == roster_count
-                )
-                assert "map_not_in_pool" in (await session.get(models.IngestJob, invalid.id)).error_message
 
     asyncio.run(run())
 

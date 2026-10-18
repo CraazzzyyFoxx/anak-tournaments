@@ -6416,7 +6416,7 @@
       "summary": "Match-log queue depths"
     },
     "rpc.parser.logs.retry": {
-      "description": "Permission: workspace `log.update` in the record's workspace. Resets a failed/processed log record to pending, re-enqueues it for processing and returns the updated record, 404ing when the record does not exist. An optional `encounter_id` first attaches the log to that encounter of the record's tournament (404 unknown encounter, 400 another tournament's, 409 on a processed record), which is how an `encounter_ambiguous` failure is resolved.",
+      "description": "Permission: workspace `log.update` in the record's workspace. Resets a failed or awaiting-link log record to pending, re-enqueues it for processing and returns the updated record (with its structured `error`, current `observation_revision`/`is_current_provenance` and, for an awaiting-link record, the document `teams` a bind map is keyed by), 404ing when the record does not exist. A `done` record is never replayed implicitly: 409 `reparse_required`; send `reparse=true` with the `expected_revision` the operator saw to replace its observations directly (409 `stale_revision` when another revision was written, 409 `stale_binding` once the job is no longer the game's current evidence). An optional `encounter_id` first attaches the log to that encounter of the record's tournament (404 unknown encounter, 400 another tournament's, 409 on a processed record), which is how an `encounter_ambiguous` failure is resolved.",
       "request": {
         "array": false,
         "ref": "parser.LogRetryRequest"
@@ -6691,6 +6691,18 @@
         "ref": "parser.SubscriptionUserCollectionRead"
       },
       "summary": "User subscription collection status"
+    },
+    "rpc.stats.ingest.bind": {
+      "description": "Permission: workspace `log.update` in the job's workspace. Binds an `awaiting_link` (or `failed`) job's stored document or raw source to `encounter_game_id` with the operator's complete `teams` map (`document team key -> encounter.team id`, a bijection onto the game's participating teams; a participant contradicting the chosen team is refused, zero overlap is allowed) and publishes it in the same transaction, returning the committed job. The client never sends the document. When the target game already has an observation `expected_revision` is required (`0` = none, `n` = replace exactly revision `n`) and is compared again under the final lock: 409 `stale_revision` / `expected_revision_required`. A `done` job is replayed only by retry with `reparse=true`; a busy job answers 409 `ingest_busy`. Refusals roll back and leave the job as it was: 404 `binding_target_not_found`, 409 `binding_mismatch` / `identity_conflict`, 422 `invalid_team_map`.",
+      "request": {
+        "array": false,
+        "ref": "parser.BindIngestRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "parser.IngestJobRead"
+      },
+      "summary": "Bind an unlinked ingest job to a game"
     },
     "rpc.stats.ingest.get": {
       "description": "Permission: same workspace API key and `stats.ingest` scope as submit. Returns the job's actual status, attempts, timestamps, structured error `{code,message,issues}` and, only while the job is still the current evidence of a match, its binding `{encounter_game_id,match_id,revision}`. A job of another workspace is indistinguishable from an absent one (404 `ingest_job_not_found`).",
@@ -31904,6 +31916,49 @@
       "title": "AchievementRuleUpdate",
       "type": "object"
     },
+    "parser.BindIngestRequest": {
+      "additionalProperties": false,
+      "description": "An operator's complete team map for one stored document: ``document team key -> encounter.team id``.\n\nThe document itself is never part of the request: bind retries the job's stored canonical document or raw source.\n``expected_revision`` is the operator's view of the target game: ``0`` = no observation yet, ``n`` = replace exactly\nrevision ``n``. It is required when the target is occupied and compared again under the final lock.",
+      "properties": {
+        "encounter_game_id": {
+          "exclusiveMinimum": 0,
+          "title": "Encounter Game Id",
+          "type": "integer"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Revision"
+        },
+        "teams": {
+          "additionalProperties": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "maxLength": 64,
+            "minLength": 1
+          },
+          "title": "Teams",
+          "type": "object"
+        }
+      },
+      "required": [
+        "encounter_game_id",
+        "teams"
+      ],
+      "title": "BindIngestRequest",
+      "type": "object"
+    },
     "parser.CollectTriggerRequest": {
       "properties": {
         "social_account_ids": {
@@ -32777,6 +32832,33 @@
       "title": "IngestJobStatus",
       "type": "string"
     },
+    "parser.IngestTeamKey": {
+      "description": "A document team in canonical order, so an operator UI can build the bind team map for an awaiting job.",
+      "properties": {
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "participants": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Participants",
+          "type": "array"
+        },
+        "source_position": {
+          "title": "Source Position",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "key",
+        "source_position"
+      ],
+      "title": "IngestTeamKey",
+      "type": "object"
+    },
     "parser.LogHistoryResponse": {
       "properties": {
         "items": {
@@ -32843,6 +32925,17 @@
           "title": "Created At",
           "type": "string"
         },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/parser.IngestError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "error_message": {
           "anyOf": [
             {
@@ -32874,6 +32967,23 @@
           "title": "Id",
           "type": "integer"
         },
+        "is_current_provenance": {
+          "default": false,
+          "title": "Is Current Provenance",
+          "type": "boolean"
+        },
+        "observation_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observation Revision"
+        },
         "raw_available": {
           "title": "Raw Available",
           "type": "boolean"
@@ -32900,6 +33010,14 @@
         "status": {
           "title": "Status",
           "type": "string"
+        },
+        "teams": {
+          "default": [],
+          "items": {
+            "$ref": "#/components/schemas/parser.IngestTeamKey"
+          },
+          "title": "Teams",
+          "type": "array"
         },
         "tournament_id": {
           "anyOf": [
@@ -32981,6 +33099,23 @@
           ],
           "default": null,
           "title": "Encounter Id"
+        },
+        "expected_revision": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Revision"
+        },
+        "reparse": {
+          "default": false,
+          "title": "Reparse",
+          "type": "boolean"
         }
       },
       "title": "LogRetryRequest",

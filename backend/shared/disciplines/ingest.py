@@ -69,12 +69,20 @@ class BoundParticipant:
 
 @dataclass(frozen=True, slots=True)
 class BoundMatch:
-    """The binding ``derive_match`` reads: owner, game and every participant by document key."""
+    """The binding ``derive_match`` reads: owner, game, team seats and every participant by document key.
+
+    ``team_ids`` maps each document team key to its ``encounter.team`` id; ``participants`` (member ids, filled once
+    identities are materialized) is empty while the binding is still only a candidate.
+    """
 
     workspace_id: int
     encounter_id: int
     encounter_game_id: int
     participants: Mapping[str, BoundParticipant]
+    discipline: str = ""
+    team_ids: Mapping[str, int] = field(default_factory=dict)
+    #: ``encounter.game.result_version`` read under the game lock the evidence is published under.
+    basis_game_result_version: int = 0
 
 
 class DecodeError(ValueError):

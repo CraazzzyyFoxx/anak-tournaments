@@ -11,11 +11,16 @@ import binascii
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
+from sqlalchemy import select
 
 from shared.schemas.match_doc import MAX_MATCH_DOC_BYTES
+from shared.services.audit import record_admin_audit
+from src import models
 from src.core import clients as _clients
 from src.core import db
+from src.schemas.ingest import BindIngestRequest
 from src.services.ingest import jobs
+from src.services.ingest.process import bind_ingest_job
 
 from . import _common as c
 
@@ -55,3 +60,35 @@ def register(broker: Any, logger: Any) -> None:
             return await jobs.get_ingest_job(session, job_id=c.require_id(data), user=user)
 
         return await c.envelope(logger, "ingest.get", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.stats.ingest.bind")
+    async def _bind(data: dict, msg: RabbitMessage) -> dict:
+        # POST /admin/logs/{id}/bind -- admin ``log.update`` in the job's workspace (checked by the service).
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            job_id = c.require_id(data)
+            try:
+                request = BindIngestRequest.model_validate(c.payload(data))
+            except ValueError as exc:
+                raise jobs.IngestRejected(422, "invalid_request", "The bind request is invalid") from exc
+            workspace_id = await session.scalar(
+                select(models.IngestJob.workspace_id).where(models.IngestJob.id == job_id)
+            )
+            if workspace_id is not None and user.has_workspace_permission(workspace_id, "log", "update"):
+                await record_admin_audit(
+                    session,
+                    action="match_log.bind",
+                    actor=user,
+                    data=data,
+                    workspace_id=workspace_id,
+                    entity_type="match_log",
+                    entity_id=job_id,
+                    after={
+                        "encounter_game_id": request.encounter_game_id,
+                        "expected_revision": request.expected_revision,
+                    },
+                )
+            return await bind_ingest_job(session, job_id=job_id, request=request, user=user, s3=_clients.s3_client)
+
+        return await c.envelope(logger, "ingest.bind", op, session_factory=_SF)

@@ -54,7 +54,8 @@ RPC namespace: `rpc.parser.*` (single namespace, registered in `src/rpc/`).
 
 | Method group | Surface |
 | --- | --- |
-| `rpc.parser.logs.*` | Match-log admin: queue depths, processing history and stats, upload, retry, whole-tournament reprocess |
+| `rpc.parser.logs.*` | Match-log admin: queue depths, processing history and stats (with each job's structured error, observation revision, current-provenance flag and, while awaiting link, its document teams), upload, retry (`reparse` + `expected_revision` for a done log), whole-tournament reprocess |
+| `rpc.stats.ingest.*` | Canonical ingest: `submit`/`get` (workspace API key with `stats.ingest`) and the admin `bind` of an awaiting-link job to a game with the operator's team map |
 | `rpc.parser.rank.*` | Public rank reads (user/battle-tag history, current ranks) plus collection admin: health stats, fetch log, trigger collection, re-enable auto-disabled tags |
 | `rpc.parser.ach.*` | Achievement rules CRUD, condition-type catalog and tree validation, seed/reset, export/import and cross-workspace library import, evaluation trigger and runs, rule test/dry-run, qualifying-user list, manual overrides |
 | `rpc.parser.subscription.*` | Subscription collection admin: health stats, check log, per-user entitlement, trigger a re-check or a sweep |
@@ -71,7 +72,7 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | Queue | Event | Effect |
 | --- | --- | --- |
 | `upload_match_log` | `UploadMatchLogEvent` | Persist the original decoded bytes to a content-addressed S3 key, create/find the native ingest job, enqueue its id |
-| `process_match_log` | `ProcessMatchLogEvent` | Process one authorized `ingest_job_id`; own channel, prefetch 2 |
+| `process_match_log` | `ProcessIngestJobEvent` | Process one authorized `ingest_job_id`; own channel, prefetch 2 |
 | `process_tournament_logs` | `ProcessTournamentLogsEvent` | Requeue the tournament's actual native jobs and fan out one job-id event each, including imported raw references |
 | `achievement_evaluate` | `AchievementEvaluateEvent` | Run the achievement engine for a workspace |
 | `achievement_evaluate.deferred` | `AchievementEvaluateEvent` | Resumes a `queued` run an unverified workspace's manual/`rule_version_bump` recompute was parked as; own channel, prefetch 1 |
@@ -105,7 +106,7 @@ take `upload_match_log`, `process_tournament_logs` and `achievement_evaluate` do
    jobs and objects. A same-workspace hash with conflicting discipline/tournament intent returns
    `stats_upload_scope_conflict` (409); invalid owner/game hints return
    `stats_upload_hint_conflict` (422). Different workspaces never deduplicate together.
-4. **Enqueue and claim.** `ProcessMatchLogEvent` carries only `ingest_job_id` plus common event
+4. **Enqueue and claim.** `ProcessIngestJobEvent` carries only `ingest_job_id` plus common event
    metadata. Processing uses that row's authorized `raw_ref`, checks the stored hash, and commits
    the `processing` claim/attempt before parsing. Ownership is the exact saved
    `(attempts, started_at)` pair, checked before observations, completion and failure writes;
@@ -113,25 +114,52 @@ take `upload_match_log`, `process_tournament_logs` and `achievement_evaluate` do
    A delivery finding an active claim acknowledges without parsing or publishing a terminal
    result. Duplicate terminal delivery returns the persisted state. Bulk processing enumerates
    native jobs, never guessed S3 filenames.
-5. **Bind before replacement.** The parser resolves teams, map and map-pool restrictions, then
-   locks the owning encounter and an existing noncancelled game. Workspace, discipline, map and
-   the game's exact two historical participants must agree; inactive historical participation
-   does not disappear. Zero or multiple matching games persist `awaiting_link`, with no
-   observation writes or parse-success achievement event. No newest-game heuristic or invented
-   game is used. An administrator can retry with `encounter_id` and `encounter_game_id`; omitted
-   hints are retained and a previously linked log cannot be reassigned.
-6. **Write atomically.** Native player/fact/event/segment rows use workspace-member and
-   encounter-team ids, with observed `source_position` independent of live slots. All scope,
-   vocabulary and participant constraints are validated before deleting the old children.
-   Reparse keeps the match id, replaces its observations and increments its revision once.
-   Score facts do not overwrite accepted live-game scores or `result_version`. Observation
-   replacement, score derivation, invalidation/achievement outbox rows, the `done` transition and
-   sealed `stats.reparse`/`stats.job_transition` evidence share one commit.
-7. **Failure and result.** Decode, validation or write failures first roll back the observation
-   transaction, then mark the matching claim `failed` separately, preserving the previous
-   successful revision. `awaiting_link` is neither success nor failure. After commit the worker
-   broadcasts the actual state in `MatchLogProcessedEvent`, with its job id and error text.
-   Only a failure before job creation has a null `ingest_job_id`; result delivery is best-effort.
+5. **Bind before replacement.** `ingest/process.py` loads the job's stored document envelope
+   (`{document, producer}`); a raw job without one is decoded by the discipline module's
+   `INGESTORS[(discipline, source_kind)]` (unknown pair: `unsupported_ingestor`) and gets a
+   `decoded` envelope. The document is validated against the workspace vocabulary, then
+   `ingest/identity.py` looks its participants up **read-only** (provider-constrained exact handle;
+   a decoded Workshop name also matches the part before `#`; several players behind one identity
+   narrow to the workspace's own, else `identity_conflict`) and `ingest/binding.py` searches
+   non-cancelled games of the workspace/discipline on the document's map. A document team is
+   tied to a seat only by identity: every known participant rostered on that one seat and no
+   other, at least one, and the teams map one-to-one onto the game's participating teams (inactive
+   historical seats count). A unique fitting game is the binding whether or not it already has an
+   observation; several fitting games, or none, persist `awaiting_link` with the document, a
+   structured explanation and **zero** writes (no virtual identity, anchor, observation or success
+   event). A hint only narrows candidates: a hinted game the participants contradict (or that
+   plays another map) fails with `binding_mismatch`, never a binding.
+6. **Write atomically.** Final lock order is encounter, game, job, existing `stats.match`; the
+   claim token, roster evidence and map are checked again under them. Only then are virtual
+   players (`auth_user_id` NULL, no visibility row) and observation anchors created
+   (`insert_observation_members`: no revival, roles or ranks; an anchor of a player with an auth
+   account is born soft-removed so the log grants no access), the discipline's `derive_match`
+   runs (decoded input only; a canonical document persists exactly what it supplied) and
+   `writer.write_observations` replaces children via `replace_observations` and increments the
+   revision once. Match team rows keep the document's array order as `source_position`. The
+   `match.ingested` outbox event (`match.ingested:{match_id}:{revision}`: placements and the
+   participants the bound roster lacks, observed roles as dimension/role codes), the tournament
+   invalidations, the `done` transition and the two disjoint evidence records
+   (`stats.reparse` for the match, `stats.job_transition` for the job) share one commit. The
+   header (id, workspace, discipline, game, map) is never rebound.
+7. **Failure and result.** Decode, validation or write failures roll back the observation
+   transaction, then mark the matching claim `failed` in a separate fenced transition with a
+   structured `{code, message, issues}` error (`error_message` holds that JSON; historical text
+   reads as code `historical`), preserving the previous revision. A superseded claim changes
+   nothing. After commit the worker broadcasts the actual state in `MatchLogProcessedEvent` (only
+   for jobs somebody waits on: a tournament hint or a correlation id).
+8. **Admin bind and reparse.** `POST /api/v1/admin/logs/{id}/bind` (`rpc.stats.ingest.bind`,
+   workspace `log.update`) takes the operator's complete team map
+   (`document team key -> encounter.team id`) and an optional `expected_revision` (`0` none,
+   `n` that revision; required when the target is occupied). It never carries the document: the
+   job's stored document is validated, bound and published by the same writer in **one**
+   transaction that also claims the job, so no broker delivery competes and a refusal
+   (`stale_revision`, `binding_mismatch`, `identity_conflict`, `invalid_team_map`, `ingest_busy`)
+   leaves the parked job exactly as it was. Retry of a `done` log is refused
+   (`reparse_required`); `retry` with `reparse=true` and the `expected_revision` the operator saw
+   replays it directly with its original team mapping (document keys joined to the match's
+   `source_position`): a canonical job reloads its document, a decoded one decodes its raw bytes
+   anew. A job no longer the game's current provenance answers `stale_binding`.
 
 **Correlation.** Discord sets `correlation_id` to the upload event's `event_id`, registers its
 future **before** publishing, and carries the same value through processing and result events

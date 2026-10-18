@@ -71,11 +71,15 @@ class LogRecordsService:
         error_message: str | None = None,
         reset_attempts: bool = False,
         now: datetime | None = None,
+        document_ref: str | None = None,
     ) -> None:
         scopes = owner_scopes("job", (job.id,))
         before = await capture_stats_evidence(session, scopes=scopes)
         moment = now or datetime.now(UTC)
         job.status = status
+        if document_ref is not None:
+            # Set after the before-capture so the audit chain's before state is the committed one.
+            job.document_ref = document_ref
         job.updated_at = moment
         job.error_message = error_message[:ERROR_MESSAGE_LIMIT] if error_message else None
         if reset_attempts:
@@ -173,6 +177,9 @@ class LogRecordsService:
             raise BaseAPIException(status_code=404, detail="Ingest job not found")
         if job.status == models.IngestJobStatus.PROCESSING:
             raise BaseAPIException(status_code=409, detail="Ingest job is already processing")
+        if job.status == models.IngestJobStatus.DONE:
+            # Observations are replaced only by an explicit reparse that names the revision the operator saw.
+            raise BaseAPIException(status_code=409, detail="reparse_required: a done log needs an explicit reparse")
         linked = await reparse_observation(session, job)
         next_encounter = encounter_id if encounter_id is not None else job.hint_encounter_id
         next_game = (

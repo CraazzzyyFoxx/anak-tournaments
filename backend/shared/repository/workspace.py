@@ -626,6 +626,34 @@ async def insert_missing_workspace_members(
     return created
 
 
+async def insert_observation_members(session: AsyncSession, pairs: Sequence[tuple[int, int]]) -> None:
+    """Anchor observations to (workspace, player) pairs without conferring any membership.
+
+    New anchors are created by :func:`insert_missing_workspace_members` (no revival, no role, no commit). A player
+    with an auth account is read as a *member* wherever a ``workspace_member`` row has ``removed_at IS NULL`` (token
+    memberships, hidden-workspace visibility), so such an anchor is born soft-removed: it anchors the observation and
+    leaves the player's access exactly as it was. Joining the workspace stays an explicit decision that revives it.
+    A player without an auth account has nobody to grant anything to and keeps an ordinary active anchor.
+    """
+    created = await insert_missing_workspace_members(session, pairs)
+    if not created:
+        return
+    linked = set(
+        await session.scalars(
+            sa.select(models.User.id).where(
+                models.User.id.in_({player_id for _, player_id in created}), models.User.auth_user_id.is_not(None)
+            )
+        )
+    )
+    retire = [member_id for (_, player_id), member_id in created.items() if player_id in linked]
+    if retire:
+        await session.execute(
+            sa.update(models.WorkspaceMember)
+            .where(models.WorkspaceMember.id.in_(retire))
+            .values(removed_at=sa.func.now())
+        )
+
+
 async def get_or_create_workspace_member(
     session: AsyncSession,
     *,

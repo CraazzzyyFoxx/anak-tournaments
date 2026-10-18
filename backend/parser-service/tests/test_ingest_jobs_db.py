@@ -594,7 +594,7 @@ def test_object_locks_are_held_before_any_object_is_written(ingest_database):
         document_ref, _ = jobs.envelope_for(env.ws["A"], MatchDoc.model_validate(doc), "canonical")
         async with env.sf() as retention_session:
             # The retention sweep holds the envelope's object lock while it decides whether to delete it.
-            await jobs._lock_object(retention_session, document_ref)
+            await jobs.lock_object(retention_session, document_ref)
             task = asyncio.create_task(submit(env, doc))
             await asyncio.sleep(1.0)
             assert not task.done() and env.s3.objects == {}  # nothing was PUT while the lock is held

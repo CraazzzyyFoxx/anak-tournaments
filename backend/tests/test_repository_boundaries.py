@@ -44,12 +44,6 @@ APPROVED_DIRECT_WRITE_FILES = {
     "analytics-service/src/services/ml/inference/player_anomaly_runner.py",
     "analytics-service/src/services/ml/inference/runner.py",
     "parser-service/src/services/achievement/engine/runner.py",
-    # Bulk executemany ingest, not CRUD: one parsed match log yields thousands
-    # of kill-feed/event rows, and a per-row repository create would turn a
-    # single INSERT..VALUES into a round trip each. Generic over the model on
-    # purpose -- the caller passes whichever log table the parsed frame belongs
-    # to.
-    "parser-service/src/services/match_logs/flows.py",
     "shared/messaging/outbox.py",
     "shared/rbac/bootstrap.py",
     "shared/services/bracket/advancement.py",

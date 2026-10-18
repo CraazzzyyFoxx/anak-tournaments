@@ -27,17 +27,19 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.messaging.config import PROCESS_MATCH_LOG_QUEUE, PROCESS_TOURNAMENT_LOGS_QUEUE
 from shared.models import IngestJobStatus
 from shared.observability import publish_message
-from shared.schemas.events import ProcessMatchLogEvent, ProcessTournamentLogsEvent
+from shared.schemas.events import ProcessIngestJobEvent, ProcessTournamentLogsEvent
 from shared.services.audit import record_admin_audit
 from src import models, schemas
 from src.core import auth, db
 from src.core import clients as _clients
 from src.core.config import settings
+from src.services.ingest.process import reparse_ingest_job
 from src.services.match_logs import uploads as upload_service
 from src.services.match_logs.admin_reads import (
     _fetch_queue_depths,
     _record_to_dict,
     _validate_attached_encounter,
+    document_teams,
     history_query,
     history_scope_conditions,
     history_search_condition,
@@ -144,7 +146,9 @@ def register(broker: Any, logger: Any) -> None:
                 .limit(limit)
                 .offset(offset)
             )
-            items = [_record_to_dict(*row) for row in result.all()]
+            rows = result.all()
+            teams = await document_teams(_clients.s3_client, [row[0] for row in rows])
+            items = [{**_record_to_dict(*row), "teams": teams.get(row[0].id, [])} for row in rows]
             return {"items": items, "total": int(total or 0)}
 
         return await c.envelope(logger, "logs.history", op, session_factory=_SF)
@@ -216,6 +220,36 @@ def register(broker: Any, logger: Any) -> None:
             await auth._require_workspace_permission(user, workspace_id=workspace_id, resource="log", action="update")
             body = schemas.LogRetryRequest.model_validate(c.payload(data))
 
+            if body.reparse:
+                # A done log is replayed only by this explicit branch, under the revision the operator saw.
+                if body.expected_revision is None or body.expected_revision < 1:
+                    raise HTTPException(
+                        status_code=422, detail="reparse requires expected_revision (the revision seen)"
+                    )
+                if body.encounter_id is not None or body.encounter_game_id is not None:
+                    raise HTTPException(status_code=422, detail="reparse cannot re-attach a log")
+                await record_admin_audit(
+                    session,
+                    action="match_log.reparse",
+                    actor=user,
+                    data=data,
+                    workspace_id=workspace_id,
+                    entity_type="match_log",
+                    entity_id=record_id,
+                    after={"expected_revision": body.expected_revision},
+                )
+                await reparse_ingest_job(
+                    session,
+                    job_id=record_id,
+                    expected_revision=body.expected_revision,
+                    user=user,
+                    s3=_clients.s3_client,
+                )
+                row = (await session.execute(history_query().where(models.IngestJob.id == record_id))).one()
+                return schemas.LogRecordRead.model_validate(_record_to_dict(*row))
+            if body.expected_revision is not None:
+                raise HTTPException(status_code=422, detail="expected_revision is only valid with reparse")
+
             await record_admin_audit(
                 session,
                 action="match_log.retry",
@@ -233,7 +267,7 @@ def register(broker: Any, logger: Any) -> None:
                 encounter_id=body.encounter_id,
                 encounter_game_id=body.encounter_game_id,
             )
-            event = ProcessMatchLogEvent(ingest_job_id=record.id)
+            event = ProcessIngestJobEvent(ingest_job_id=record.id)
             await publish_message(broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
 
             row = (await session.execute(history_query().where(models.IngestJob.id == record.id))).one()
@@ -323,7 +357,7 @@ def register(broker: Any, logger: Any) -> None:
                         uploader_id=uploader_id,
                         attached_encounter_id=attached_encounter_id,
                     )
-                    event = ProcessMatchLogEvent(ingest_job_id=record.id)
+                    event = ProcessIngestJobEvent(ingest_job_id=record.id)
                     await publish_message(broker, event.model_dump(), PROCESS_MATCH_LOG_QUEUE, logger=logger)
                     uploaded.append(
                         schemas.LogUploadItem(
