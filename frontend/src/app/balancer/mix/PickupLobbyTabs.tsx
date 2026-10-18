@@ -5,14 +5,14 @@ import { useTranslations } from "next-intl";
 import { CAPTION_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { cn } from "@/lib/utils";
 import type { CustomGameLobby } from "@/services/custom-game.service";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 type PickupLobbyTabsProps = {
   /** The mix's lobbies, ordered by `lobby_index`. One of them renders nothing. */
   lobbies: CustomGameLobby[];
   activeLobby: number;
   /** The OW catalogue, so a tab can name the map its lobby is about to play. */
-  maps: MapRead[];
+  maps: CatalogEntityRead[];
   onSelect: (lobbyIndex: number) => void;
 };
 
@@ -98,7 +98,7 @@ export function PickupLobbyTabs({
 function LobbyStatus({
   lobby,
   maps
-}: Readonly<{ lobby: CustomGameLobby; maps: MapRead[] }>) {
+}: Readonly<{ lobby: CustomGameLobby; maps: CatalogEntityRead[] }>) {
   const t = useTranslations("mixes.lobbies");
   const parts: string[] = [];
   if (lobby.balanced_at == null) {

@@ -272,7 +272,7 @@ function HeroesTab({
  */
 function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: string }>) {
   const t = useTranslations();
-  const mapPool = useTournamentMapPool(tournament.id);
+  const mapPool = useTournamentMapPool(tournament.id, tournament.discipline);
   // The matches section's own all-encounters-with-maps entry, not the bracket's
   // `tournamentQueryKeys.encounters`: the bracket asks for no `matches` entity,
   // so counting map plays out of it would depend on which screen mounted first.
@@ -393,9 +393,9 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
                             data-map-mode
                             className="flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-muted)]"
                           >
-                            {map.gamemode?.image_path ? (
+                            {map.parent?.image_path ? (
                               <Image
-                                src={map.gamemode.image_path}
+                                src={map.parent.image_path}
                                 alt=""
                                 width={12}
                                 height={12}

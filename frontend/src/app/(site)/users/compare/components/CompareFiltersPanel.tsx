@@ -15,8 +15,7 @@ import SearchableImageSelect, {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DivisionCombobox } from "@/components/DivisionCombobox";
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
-import { Hero } from "@/types/hero.types";
-import { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Tournament } from "@/types/tournament.types";
 import { UserRoleType } from "@/types/user.types";
 
@@ -38,8 +37,8 @@ interface CompareFiltersPanelProps {
   targetNameLoading?: boolean;
   /** The grid the backend reads div_min/div_max against. */
   divisionGrid: DivisionGridLike;
-  heroes: Hero[];
-  maps: MapRead[];
+  heroes: CatalogEntityRead[];
+  maps: CatalogEntityRead[];
   tournaments: Tournament[];
   isHeroesLoading: boolean;
   isHeroesError: boolean;

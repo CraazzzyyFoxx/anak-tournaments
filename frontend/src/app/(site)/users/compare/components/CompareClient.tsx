@@ -10,11 +10,19 @@ import CompareFiltersPanel from "@/app/(site)/users/compare/components/CompareFi
 import CompareUnifiedTable from "@/app/(site)/users/compare/components/CompareUnifiedTable";
 import { useUserCompareSearchParams } from "@/app/(site)/users/compare/hooks/useUserCompareSearchParams";
 import { useUserCompareData } from "@/app/(site)/users/compare/hooks/useUserCompareData";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import type { StatsScope } from "@/lib/site/stats-scope";
+
+const colorOf = (entity: { attrs: Record<string, unknown> } | undefined) =>
+  typeof entity?.attrs.color === "string" ? entity.attrs.color : undefined;
+const imageOf = (entity: { image_path: string | null } | undefined) => entity?.image_path ?? undefined;
 
 const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
   const t = useTranslations();
   const compareParams = useUserCompareSearchParams();
+  const browsing = useBrowsingDiscipline({ allowsAll: false });
+  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
 
   const {
     compareQuery,
@@ -49,7 +57,8 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     leftHeroId: compareParams.leftHeroId,
     rightHeroId: compareParams.rightHeroId,
     mapId: compareParams.mapId,
-    scope
+    scope,
+    discipline
   });
 
   useEffect(() => {
@@ -70,8 +79,31 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     void (compareParams.isHeroScope ? heroCompareQuery.refetch() : compareQuery.refetch());
   };
 
+  if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
+    return (
+      <div className="aqt-player space-y-3.5">
+        <DisciplineUnavailable
+          resolved={browsing.resolved}
+          disciplines={browsing.disciplines ?? []}
+          allowsAll={false}
+          onSelect={browsing.select}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="aqt-player space-y-3.5">
+      {browsing.disciplines ? (
+        <div className="flex justify-end">
+          <DisciplineSelector
+            disciplines={browsing.disciplines}
+            value={discipline ?? undefined}
+            allowsAll={false}
+            onSelect={browsing.select}
+          />
+        </div>
+      ) : null}
       <ComparePageHero
         hasSubject={compareParams.subjectUserId !== undefined}
         hasData={activeData !== undefined}
@@ -136,8 +168,8 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
               heroCompareQuery.data?.subject_hero?.name ??
               leftHero?.name ??
               t("users.compare.allHeroes"),
-            imagePath: heroCompareQuery.data?.subject_hero?.image_path ?? leftHero?.image_path,
-            dominantColor: heroCompareQuery.data?.subject_hero?.color ?? leftHero?.color,
+            imagePath: heroCompareQuery.data?.subject_hero?.image_path ?? imageOf(leftHero),
+            dominantColor: heroCompareQuery.data?.subject_hero?.color ?? colorOf(leftHero),
             playtimeSeconds: heroCompareQuery.data?.left_playtime_seconds ?? 0,
             playtimeLabel: t("users.compare.playtime")
           }}
@@ -146,8 +178,8 @@ const PageContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
               heroCompareQuery.data?.target_hero?.name ??
               rightHero?.name ??
               t("users.compare.allHeroes"),
-            imagePath: heroCompareQuery.data?.target_hero?.image_path ?? rightHero?.image_path,
-            dominantColor: heroCompareQuery.data?.target_hero?.color ?? rightHero?.color,
+            imagePath: heroCompareQuery.data?.target_hero?.image_path ?? imageOf(rightHero),
+            dominantColor: heroCompareQuery.data?.target_hero?.color ?? colorOf(rightHero),
             playtimeSeconds: heroCompareQuery.data?.right_playtime_seconds ?? 0,
             playtimeLabel: t("users.compare.avgPlaytime")
           }}

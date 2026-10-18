@@ -24,9 +24,9 @@ vi.mock("@/services/admin.service", () => ({
   }
 }));
 
-// The map chip's options come from the global map catalogue.
-vi.mock("@/services/map.service", () => ({
-  default: { lookup: (...args: unknown[]) => mapsLookup(...args) }
+// The map chip's options come from the browsing game's native map catalogue.
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: (...args: unknown[]) => mapsLookup(...args) }
 }));
 
 vi.mock("@/services/tournament.service", () => ({
@@ -204,17 +204,19 @@ describe("ParsedMatchesBrowser", () => {
     listAdminMatches.mockReset();
     listAdminMatches.mockResolvedValue(pageOf([row()]));
     mapsLookup.mockReset();
-    mapsLookup.mockResolvedValue([
-      { id: 5, name: "Ilios" },
-      { id: 6, name: "Nepal" }
-    ]);
+    mapsLookup.mockResolvedValue({
+      results: [
+        { id: 5, name: "Ilios" },
+        { id: 6, name: "Nepal" }
+      ]
+    });
     replace.mockClear();
     window.history.replaceState(null, "", "/admin/matches");
     document.body.innerHTML = "";
   });
 
   it("renders each parsed map through the shared admin table", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => bodyText(container).includes("Ilios"), "the parsed map row");
 
     // The house browser, not a hand-rolled list: a real table with a toolbar.
@@ -227,7 +229,7 @@ describe("ParsedMatchesBrowser", () => {
 
   it("scopes the request to the workspace and pins the tournament when given", async () => {
     await mount(() => (
-      <ParsedMatchesBrowser tournamentId={9} workspaceId={4} tournamentName="Spring Cup" />
+      <ParsedMatchesBrowser tournamentId={9} discipline="overwatch" workspaceId={4} tournamentName="Spring Cup" />
     ));
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
@@ -240,7 +242,7 @@ describe("ParsedMatchesBrowser", () => {
   });
 
   it("maps the no-raw-log chip to the one filter a status cannot express", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     // `unlinked_only` is a second query param, so `log_status` cannot carry it.
@@ -260,7 +262,7 @@ describe("ParsedMatchesBrowser", () => {
     { status: "awaiting_link", label: "Awaiting link" }
   ] as const)("renders and filters the $status provenance status", async ({ status, label }) => {
     listAdminMatches.mockResolvedValue(pageOf([row({ log_record: record({ status }) })]));
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     await waitFor(() => container.textContent?.includes(status), "the provenance status");
@@ -272,7 +274,7 @@ describe("ParsedMatchesBrowser", () => {
   });
 
   it("sends a map picked from the catalogue as map_id", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     await waitFor(() => listAdminMatches.mock.calls.length > 0, "the list request");
 
     await pickChip(container, "Map", "Nepal");
@@ -284,7 +286,7 @@ describe("ParsedMatchesBrowser", () => {
   it("returns to the first page when a chip narrows the result set", async () => {
     // Two pages' worth, so the pager renders and page 2 is reachable.
     listAdminMatches.mockResolvedValue(pageOf([row()], 60));
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     const second = await waitFor(
       () => container.querySelector('[aria-label="Page 2"]'),
       "the second page button"
@@ -301,7 +303,7 @@ describe("ParsedMatchesBrowser", () => {
 
   it("keeps maps without raw logs available for inspection", async () => {
     listAdminMatches.mockResolvedValue(pageOf([row({ time: null, log_name: null, log_record: null })]));
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     const first = await waitFor(() => dataRows(container)[0], "the parsed map row");
     expect(first.textContent).toContain("Ilios");
     expect(first.textContent).toContain("2 – 1");
@@ -310,7 +312,7 @@ describe("ParsedMatchesBrowser", () => {
   });
 
   it("opens the inspector for the clicked row and records it in the URL", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     const first = await waitFor(() => dataRows(container)[0], "the first data row");
     expect(container.querySelector('[data-testid="detail"]')).toBeNull();
 
@@ -322,7 +324,7 @@ describe("ParsedMatchesBrowser", () => {
 
   it("restores the open row from ?id= on load", async () => {
     window.history.replaceState(null, "", "/admin/matches?id=1");
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={4} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
 
     // The inspector is the row detail surface, so a deep link opens it.
     const detail = await waitFor(
@@ -333,7 +335,7 @@ describe("ParsedMatchesBrowser", () => {
   });
 
   it("asks for nothing until a workspace is chosen", async () => {
-    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} workspaceId={null} />);
+    const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={null} />);
 
     expect(listAdminMatches).not.toHaveBeenCalled();
     expect(container.textContent).toContain("scoped to a workspace");

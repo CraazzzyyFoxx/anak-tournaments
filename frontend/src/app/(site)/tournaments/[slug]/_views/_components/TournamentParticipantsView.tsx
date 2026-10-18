@@ -183,7 +183,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
 
   const divisionGrid = useDivisionGrid(tournament.discipline);
   const [needsHeroes, setNeedsHeroes] = useState(false);
-  const heroesMap = useHeroesMap({ enabled: needsHeroes });
+  const heroesMap = useHeroesMap(tournament.discipline, { enabled: needsHeroes });
 
   // A team column is blank on every row of a solo tournament, so the roster data
   // is what decides whether it belongs in the default set — `RegistrationForm`

@@ -16,7 +16,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import type { ConditionNode } from "@/types/achievement.types";
 
 /**
@@ -618,17 +618,17 @@ function heroSlugs(node: unknown, found: Set<string> = new Set()): Set<string> {
 }
 
 /**
- * The describer bound to the current locale and the hero catalogue.
+ * The describer bound to the current locale and the character catalogue of the rule's own game.
  *
- * `tree` is only used to decide whether the hero catalogue is worth fetching;
+ * `tree` is only used to decide whether the catalogue is worth fetching;
  * the returned functions work on any node.
  */
-export function useConditionText(tree?: unknown) {
+export function useConditionText(tree: unknown, discipline: string) {
   const translate = useTranslations();
   const t = translate as unknown as ConditionTranslator;
 
   const needsHeroes = useMemo(() => heroSlugs(tree).size > 0, [tree]);
-  const { data: heroes } = useHeroesCatalog({ enabled: needsHeroes });
+  const { data: heroes } = useCatalogEntities(discipline, "character", { enabled: needsHeroes });
 
   const heroName = useCallback(
     (slug: string) => heroes?.find((hero) => hero.slug === slug)?.name ?? humanize(slug),

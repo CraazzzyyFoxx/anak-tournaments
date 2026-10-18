@@ -10,7 +10,8 @@ import {
   type ReactNode,
 } from "react";
 
-import type { Hero } from "@/types/hero.types";
+import { catalogEntity } from "@/test/catalog";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RolesParams } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
 
@@ -104,21 +105,16 @@ for (const [key, value] of Object.entries({
 const { createRoot } = await import("react-dom/client");
 const RoleStep = (await import("./RoleStep")).default;
 
-const HEROES: Hero[] = [
+const HEROES: CatalogEntityRead[] = [
   ["reinhardt", "tank"],
   ["dva", "tank"],
   ["genji", "damage"],
   ["ashe", "damage"],
   ["ana", "support"],
   ["kiriko", "support"],
-].map(([slug, role], index) => ({
-  id: index + 1,
-  slug,
-  name: slug,
-  role,
-  type: role,
-  image_path: `/heroes/${slug}.png`,
-}) as unknown as Hero);
+].map(([slug, role], index) =>
+  catalogEntity({ id: index + 1, slug, name: slug, attrs: { class: role }, image_path: `/heroes/${slug}.png` })
+);
 
 const CATALOG: SubroleCatalog = {
   tank: [{ slug: "main-tank", label: "Main tank" }],

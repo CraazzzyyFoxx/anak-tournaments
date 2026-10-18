@@ -28,7 +28,7 @@ import {
   type ReportCustomFieldDefinition
 } from "@/types/encounter.types";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 export interface MatchReportFormProps {
   encounter: Encounter;
@@ -199,7 +199,7 @@ export function MatchReportForm({
     queryKey: encounterQueryKeys.mapPickBanState(encounter.id),
     queryFn: () => pickBanService.getPickBanState("map", encounter.id)
   });
-  const mapsQuery = useMapsCatalog();
+  const mapsQuery = useCatalogEntities(encounter.discipline, "map");
 
   // The per-tournament field config rides the reports envelope. While it is in
   // flight we render the documented defaults rather than an empty form, so the

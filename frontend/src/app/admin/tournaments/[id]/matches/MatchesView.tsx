@@ -10,6 +10,8 @@ import { tabFallback, useHubTournamentQuery } from "../hubQueries";
 export interface MatchesViewScope {
   workspaceId: number | null;
   tournamentName: string;
+  /** The tournament's own game (owner scope). */
+  discipline: string;
 }
 
 /**
@@ -55,5 +57,5 @@ export function MatchesView({
     );
   }
 
-  return <>{children({ workspaceId, tournamentName: tournament.name })}</>;
+  return <>{children({ workspaceId, tournamentName: tournament.name, discipline: tournament.discipline })}</>;
 }

@@ -42,7 +42,7 @@ interface ConditionFlowEditorProps {
 export function ConditionFlowEditor({ value, onChange, readOnly, discipline }: Readonly<ConditionFlowEditorProps>) {
   const t = useTranslations("adminAchievements");
   const tPalette = useTranslations("adminAchievements.palette");
-  const { leafLabel, leafLine } = useConditionText(value);
+  const { leafLabel, leafLine } = useConditionText(value, discipline);
   const labels = useMemo(() => ({
     outlineTitle: t("condition.treeOutline"),
     outlineGroup: (path: string, op: string) =>

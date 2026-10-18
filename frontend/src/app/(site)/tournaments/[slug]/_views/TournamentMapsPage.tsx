@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import styles from "../TournamentDetail.module.css";
 import { MapCard } from "../_components/MapCard";
@@ -27,17 +27,17 @@ const EYEBROW =
 const LABEL =
   "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
-type Gamemode = NonNullable<MapRead["gamemode"]>;
+type Gamemode = CatalogEntityRead;
 
 /** The one game mode every map here plays, or `null` when they disagree. */
-function singleGamemode(maps: readonly MapRead[]): Gamemode | null {
-  const first = maps[0]?.gamemode ?? null;
+function singleGamemode(maps: readonly CatalogEntityRead[]): Gamemode | null {
+  const first = maps[0]?.parent ?? null;
   if (first === null) return null;
-  return maps.every((map) => map.gamemode?.id === first.id) ? first : null;
+  return maps.every((map) => map.parent?.id === first.id) ? first : null;
 }
 
 /** Every map of a pool-mode round, in mode order. */
-function roundPoolMaps(round: MapPoolScopeView): MapRead[] {
+function roundPoolMaps(round: MapPoolScopeView): CatalogEntityRead[] {
   return round.pool.byGamemode.flatMap((group) => group.maps);
 }
 
@@ -65,11 +65,12 @@ function ModeIcon({ gamemode }: Readonly<{ gamemode: Gamemode | null }>) {
  * before the tournament starts, and Statistics is locked until it does.
  */
 export default function TournamentMapsPage({
-  tournamentId
-}: Readonly<{ tournamentId: number; slug: string }>) {
+  tournamentId,
+  discipline
+}: Readonly<{ tournamentId: number; slug: string; discipline: string }>) {
   const t = useTranslations();
   const { searchParams, setParams } = useQueryParams();
-  const mapPool = useTournamentMapPool(tournamentId);
+  const mapPool = useTournamentMapPool(tournamentId, discipline);
 
   // `useTournamentMapPool` exposes no `data`, so "has something to show" is
   // derived: an errored first read leaves the pool empty, and passing that
@@ -155,9 +156,9 @@ export default function TournamentMapsPage({
                 {pool.byGamemode.map((group) => (
                   <div key={group.gamemode}>
                     <h3 className={cn(LABEL, "mb-2 flex items-center gap-1.5")}>
-                      {group.maps[0]?.gamemode?.image_path ? (
+                      {group.maps[0]?.parent?.image_path ? (
                         <Image
-                          src={group.maps[0].gamemode.image_path}
+                          src={group.maps[0].parent.image_path}
                           alt=""
                           width={14}
                           height={14}

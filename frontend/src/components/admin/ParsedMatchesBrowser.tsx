@@ -19,11 +19,10 @@ import {
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
-import mapService from "@/services/map.service";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
 import { EmptyNote } from "@/components/kit/EmptyNote";
-import { mapQueryKeys } from "@/lib/maps/query-keys";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 
 const PAGE_SIZE = 25;
@@ -64,11 +63,14 @@ const LOG_STATUS_OPTIONS: readonly { value: LogProcessingStatus; label: LogProce
  */
 export function ParsedMatchesBrowser({
   tournamentId,
+  discipline,
   workspaceId,
   tournamentName
 }: Readonly<{
   /** `null` = every tournament in the workspace. */
   tournamentId: number | null;
+  /** The game whose maps the filter offers: the pinned tournament's, else the browsing choice; `null` = none yet. */
+  discipline: string | null;
   workspaceId: number | null;
   /** Names the pinned chip inside a hub; the chip reads `#id` without it. */
   tournamentName?: string | null;
@@ -86,14 +88,9 @@ export function ParsedMatchesBrowser({
   );
   const scopeTournamentId = tournamentId ?? chipTournamentId;
 
-  // Map options come from the global catalogue, not from the page of rows: the
+  // Map options come from the game's catalogue, not from the page of rows: the
   // filter has to offer maps that this page happens not to show.
-  const mapsQuery = useQuery({
-    queryKey: mapQueryKeys.lookup(),
-    queryFn: () => mapService.lookup(),
-    staleTime: 5 * 60 * 1000,
-    enabled: workspaceId != null
-  });
+  const mapsQuery = useCatalogEntities(discipline, "map", { enabled: workspaceId != null });
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.list(),

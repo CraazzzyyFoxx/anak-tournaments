@@ -44,8 +44,8 @@ vi.mock("@/services/pickBan.service", () => ({
   }
 }));
 
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: () => Promise.resolve({ results: [] }) }
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: () => Promise.resolve({ results: [] }) }
 }));
 
 vi.mock("@/lib/notify", () => ({

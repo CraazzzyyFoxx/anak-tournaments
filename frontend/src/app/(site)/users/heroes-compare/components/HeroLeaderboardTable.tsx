@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { Sword } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Hero, HeroLeaderboardEntry } from "@/types/hero.types";
+import { HeroLeaderboardEntry } from "@/types/hero.types";
+import { characterClass } from "@/lib/catalog/attrs";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import HeroImage from "@/components/hero/HeroImage";
 import { heroVariantFromRole } from "@/lib/roster/player-role";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +25,7 @@ const HEAD_CELL =
   "border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.008)] px-3.5 pb-3 pt-3.5 align-bottom";
 
 interface HeroLeaderboardTableProps {
-  selectedHero: Hero | undefined;
+  selectedHero: CatalogEntityRead | undefined;
   selectedTournamentName: string | undefined;
   tournamentId: number | undefined;
   rows: HeroLeaderboardEntry[];
@@ -50,7 +52,7 @@ const HeroLeaderboardTable = ({
 }: HeroLeaderboardTableProps) => {
   const t = useTranslations();
   const [hoveredUserId, setHoveredUserId] = useState<number | null>(null);
-  const variant = heroVariantFromRole(selectedHero?.type ?? selectedHero?.role);
+  const variant = heroVariantFromRole(characterClass(selectedHero));
 
   // One bar scale per column, computed over the whole roster (not per row), so
   // the scale is independent of the shared sort order.
@@ -107,7 +109,7 @@ const HeroLeaderboardTable = ({
                   background: `color-mix(in srgb, var(--aqt-${variant}) 15%, transparent)`,
                 }}
               >
-                {selectedHero.type ?? selectedHero.role}
+                {characterClass(selectedHero)}
               </span>
             )}
           </div>

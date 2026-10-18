@@ -27,6 +27,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import { catalogEntity, catalogMap, catalogMode } from "@/test/catalog";
 import type { PickBanConfig, PickBanRuleset, Stage } from "@/types/tournament.types";
 
 import PreGameSettingsPage from "./page";
@@ -72,12 +73,12 @@ vi.mock("@/services/pickBan.service", () => ({
   }
 }));
 
-vi.mock("@/services/hero.service", () => ({
-  default: { getAll: (...args: unknown[]) => getHeroes(...args) }
-}));
-
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getMaps(...args) }
+// One native catalog read serves both kinds; the editor asks for its tournament's own game.
+vi.mock("@/services/catalog.service", () => ({
+  default: {
+    list: (discipline: string, kind: string, ...rest: unknown[]) =>
+      kind === "map" ? getMaps(discipline, kind, ...rest) : getHeroes(discipline, kind, ...rest)
+  }
 }));
 
 vi.mock("@/lib/notify", () => ({
@@ -136,30 +137,28 @@ vi.mock("next/link", () => ({
   })
 }));
 
-const HEROES = ["Tracer", "Genji", "Reinhardt", "Ana", "Lucio", "Sombra"].map((name, index) => ({
-  id: index + 1,
-  name,
-  slug: name.toLowerCase(),
-  image_path: `/heroes/${index + 1}.png`,
-  type: "Damage",
-  role: "damage"
-}));
+const HEROES = ["Tracer", "Genji", "Reinhardt", "Ana", "Lucio", "Sombra"].map((name, index) =>
+  catalogEntity({
+    id: index + 1,
+    name,
+    slug: name.toLowerCase(),
+    image_path: `/heroes/${index + 1}.png`,
+    attrs: { class: "damage" }
+  })
+);
 
-const MAPS = ["Busan", "King's Row", "Ilios", "Hollywood"].map((name, index) => ({
-  id: index + 1,
-  name,
-  image_path: `/maps/${index + 1}.png`,
-  gamemode: { name: index % 2 === 0 ? "Control" : "Hybrid" },
-  in_competitive: true
-}));
+const MAPS = ["Busan", "King's Row", "Ilios", "Hollywood"].map((name, index) =>
+  catalogMap(index + 1, catalogMode(50 + (index % 2), index % 2 === 0 ? "Control" : "Hybrid"), {
+    name,
+    image_path: `/maps/${index + 1}.png`
+  })
+);
 // A brawl-only map, never offered in a ranked pool.
-const OFF_ROTATION_MAP = {
-  id: 99,
+const OFF_ROTATION_MAP = catalogMap(99, catalogMode(52, "Elimination"), {
   name: "Junkenstein's Revenge",
   image_path: "/maps/99.png",
-  gamemode: { name: "Elimination" },
-  in_competitive: false
-};
+  attrs: { in_competitive: false }
+});
 
 const STAGES = [
   {
@@ -379,7 +378,7 @@ async function mount({
   getHeroes.mockResolvedValue({ results: HEROES });
   getMaps.mockResolvedValue({ results: maps });
   getStages.mockResolvedValue(stages);
-  getTournament.mockResolvedValue({ id: 84, workspace_id: 3, team_formation: "balancer" });
+  getTournament.mockResolvedValue({ id: 84, workspace_id: 3, team_formation: "balancer", discipline: "lol" });
   getEncounters.mockResolvedValue({ results: encounters });
 
   search = new URL(url, "http://localhost").search;
@@ -606,6 +605,7 @@ describe("Settings › Pre-game phase — URL is the state", () => {
     await mount({ url: "?scope=tournament&kind=map&step=pool" });
 
     expect(getMaps).toHaveBeenCalledTimes(1);
+    expect(getMaps.mock.calls[0].slice(0, 2)).toEqual(["lol", "map"]);
     expect(getHeroes).not.toHaveBeenCalled();
 
     await click(only("Add maps"));

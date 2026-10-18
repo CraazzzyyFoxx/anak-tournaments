@@ -9,18 +9,18 @@ import {
   answerSearchText,
   answerText,
 } from "@/lib/forms/answers";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { getPlayerSlug } from "@/lib/player";
 
 import { RolesCell, SmurfTagsCell, TopHeroesCell } from "./participantsCells";
 import type { ColumnDefinition } from "./participantsColumns.model";
 
-export const EMPTY_HEROES_MAP: Map<string, Hero> = new Map();
+export const EMPTY_HEROES_MAP: Map<string, CatalogEntityChip> = new Map();
 
 /** Per-table values the built-in cells need, hoisted out of the row render. */
 export interface BuiltInRenderContext {
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
   grid?: DivisionGrid | null;
   showRanks?: boolean;
 }

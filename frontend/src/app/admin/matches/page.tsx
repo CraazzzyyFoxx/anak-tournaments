@@ -8,6 +8,8 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -21,7 +23,29 @@ type MatchesView = (typeof VIEWS)[number];
  * dropped, because a row id or a `status` means a different thing in each view
  * and carrying it over would filter the next view by nonsense.
  */
-const SHARED_SCOPE_PARAMS = ["tournament", "stage", "group"] as const;
+const SHARED_SCOPE_PARAMS = ["tournament", "stage", "group", "discipline"] as const;
+
+/**
+ * The workspace-wide parsed maps: a concrete-browsing view, because its map filter lists one game's catalogue. The
+ * other four views are game-agnostic lists and never resolve a game.
+ */
+function WorkspaceParsedMatches({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
+  const { disciplines, resolved, select } = useBrowsingDiscipline({ allowsAll: false });
+  if (resolved?.kind === "invalid" || resolved?.kind === "empty") {
+    return <DisciplineUnavailable resolved={resolved} disciplines={disciplines ?? []} allowsAll={false} onSelect={select} />;
+  }
+  const discipline = resolved?.kind === "concrete" ? resolved.code : null;
+  return (
+    <div className="space-y-4">
+      {disciplines ? (
+        <div className="flex justify-end">
+          <DisciplineSelector disciplines={disciplines} value={discipline ?? undefined} allowsAll={false} onSelect={select} />
+        </div>
+      ) : null}
+      <ParsedMatchesBrowser tournamentId={null} discipline={discipline} workspaceId={workspaceId} />
+    </div>
+  );
+}
 
 const fallback = (
   <div className="space-y-4">
@@ -138,7 +162,7 @@ export default function AdminMatchesPage() {
         />
       ) : null}
       {view === "parsed" ? (
-        <ParsedMatchesBrowser tournamentId={null} workspaceId={workspaceId} />
+        <WorkspaceParsedMatches workspaceId={workspaceId} />
       ) : null}
       {view === "logs" ? (
         <TournamentLogsTab

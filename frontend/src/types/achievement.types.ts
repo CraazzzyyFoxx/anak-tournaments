@@ -1,6 +1,6 @@
 import { Score } from "./encounter.types";
 import { User } from "@/types/user.types";
-import type { CatalogEntityRead } from "@/types/admin.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 export type AchievementCategory = "overall" | "hero" | "division" | "team" | "standing" | "match";
 type AchievementScope = "global" | "tournament" | "match";

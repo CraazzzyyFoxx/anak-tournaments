@@ -26,9 +26,12 @@ const RuleBuilder = dynamic(
  * read-only, under the sentences: the structure, not just the prose. Includes
  * the screen-reader outline and fullscreen.
  */
-export default function AchievementConditionFlow({ tree }: Readonly<{ tree: ConditionNode }>) {
+export default function AchievementConditionFlow({
+  tree,
+  discipline
+}: Readonly<{ tree: ConditionNode; discipline: string }>) {
   const t = useTranslations();
-  const { leafLabel, leafLine } = useConditionText(tree);
+  const { leafLabel, leafLine } = useConditionText(tree, discipline);
 
   const labels = useMemo(
     () => ({

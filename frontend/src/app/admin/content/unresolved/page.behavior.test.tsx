@@ -26,9 +26,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const getCatalogAliasMisses = vi.fn();
 const attachCatalogAlias = vi.fn();
 const dismissCatalogAliasMiss = vi.fn();
-const getHeroes = vi.fn();
-const getMaps = vi.fn();
-const getGamemodes = vi.fn();
+const listCatalogEntities = vi.fn();
 
 let superuser = true;
 
@@ -36,15 +34,19 @@ vi.mock("next-intl", async () => {
   const importedMessages = await import("@/i18n/messages/en.json");
   const messages = importedMessages.default ?? importedMessages;
   return {
-    useTranslations: (namespace: string) => (key: string, values?: Record<string, unknown>) => {
-      let value: unknown = messages;
-      for (const part of `${namespace}.${key}`.split(".")) {
-        if (value == null) return key;
-        value = (value as Record<string, unknown>)[part];
-      }
-      return typeof value === "string"
-        ? value.replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? `{${name}}`))
-        : key;
+    useTranslations: (namespace: string) => {
+      const lookup = (key: string) => {
+        let value: unknown = messages;
+        for (const part of `${namespace}.${key}`.split(".")) {
+          if (value == null) return undefined;
+          value = (value as Record<string, unknown>)[part];
+        }
+        return typeof value === "string" ? value : undefined;
+      };
+      const t = (key: string, values?: Record<string, unknown>) =>
+        lookup(key)?.replace(/\{(\w+)\}/g, (_, name) => String(values?.[name] ?? `{${name}}`)) ?? key;
+      t.has = (key: string) => lookup(key) !== undefined;
+      return t;
     }
   };
 });
@@ -59,9 +61,15 @@ vi.mock("@/services/admin.service", () => ({
     getCatalogAliasMisses: (...args: unknown[]) => getCatalogAliasMisses(...args),
     attachCatalogAlias: (...args: unknown[]) => attachCatalogAlias(...args),
     dismissCatalogAliasMiss: (...args: unknown[]) => dismissCatalogAliasMiss(...args),
-    getHeroes: (...args: unknown[]) => getHeroes(...args),
-    getMaps: (...args: unknown[]) => getMaps(...args),
-    getGamemodes: (...args: unknown[]) => getGamemodes(...args)
+    listCatalogEntities: (...args: unknown[]) => listCatalogEntities(...args)
+  }
+}));
+vi.mock("@/services/discipline.service", () => ({
+  default: {
+    list: async () => [
+      { code: "overwatch", name: "Overwatch", enabled: true, kinds: { character: "Hero", map: "Map", mode: "Mode" } },
+      { code: "lol", name: "League of Legends", enabled: true, kinds: { character: "Champion", map: "Map" } }
+    ]
   }
 }));
 vi.mock("@/lib/notify", () => ({
@@ -101,6 +109,7 @@ const NONENTITY: CatalogAliasMissRead[] = [
 ];
 
 const mounted: { root: Root; container: HTMLElement }[] = [];
+let client: QueryClient;
 
 async function settle(turns = 8, delayMs = 0) {
   for (let turn = 0; turn < turns; turn += 1) {
@@ -141,7 +150,7 @@ async function mount(search = "") {
   window.history.replaceState(null, "", `/admin/content/unresolved${search}`);
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const root = createRoot(container);
   mounted.push({ root, container });
   await act(async () => {
@@ -190,13 +199,18 @@ beforeEach(() => {
     .mockResolvedValue({ results: [MISS], total: 1, page: 1, per_page: 25 });
   attachCatalogAlias.mockReset().mockResolvedValue(undefined);
   dismissCatalogAliasMiss.mockReset().mockResolvedValue(undefined);
-  getHeroes.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: 200 });
-  getGamemodes.mockReset().mockResolvedValue({ results: [], total: 0, page: 1, per_page: 200 });
-  getMaps.mockReset().mockResolvedValue({
-    results: [{ id: 12, name: "Ilios", gamemode: null }],
-    total: 1,
-    page: 1,
-    per_page: 200
+  // Targets are read per (discipline, kind) of the miss itself.
+  listCatalogEntities.mockReset().mockImplementation(async (discipline: string, kind: string) => {
+    const results =
+      discipline === "overwatch" && kind === "map"
+        ? [{ id: 12, name: "Ilios", parent: { id: 3, name: "Control" } }]
+        : discipline === "lol" && kind === "character"
+          ? [
+              { id: 501, name: "Ahri", parent: null },
+              { id: 502, name: "Zed", parent: null }
+            ]
+          : [];
+    return { results, total: results.length, page: 1, per_page: -1 };
   });
 });
 
@@ -275,7 +289,7 @@ describe("admin Game content › Unresolved names", () => {
     expect(button("Attach")).toBeUndefined();
     expect(Array.from(document.querySelectorAll("button")).filter((b) => b.textContent?.trim() === "Dismiss")).toHaveLength(3);
     expect(container.textContent).toContain("dismiss only");
-    expect(getHeroes).toHaveBeenCalled();
+    expect(listCatalogEntities).not.toHaveBeenCalled();
   });
 
   it("dismisses a nonentity miss without creating an alias", async () => {
@@ -288,7 +302,7 @@ describe("admin Game content › Unresolved names", () => {
     expect(attachCatalogAlias).not.toHaveBeenCalled();
   });
 
-  it("offers no attach target for an entity miss of a discipline whose catalogue the page does not load", async () => {
+  it("loads attach targets by the miss's own discipline and kind, never another game's", async () => {
     getCatalogAliasMisses.mockResolvedValue({
       results: [{ ...MISS, id: 9, discipline: "lol", kind: "character", raw_name: "Ahri2" }],
       total: 1,
@@ -298,9 +312,31 @@ describe("admin Game content › Unresolved names", () => {
     const container = await mount();
 
     expect(container.textContent).toContain("lol");
-    expect(container.querySelector('[aria-label^="Pick a"]')).toBeNull();
-    expect(button("Attach")).toBeUndefined();
-    expect(button("Dismiss")).toBeDefined();
+    expect(listCatalogEntities.mock.calls.map((call) => call.slice(0, 2))).toEqual([["lol", "character"]]);
+    // The game's own word for the kind: a League miss asks for a champion.
+    expect(container.querySelector('[aria-label="Pick a champion…"]')).not.toBeNull();
+  });
+
+  it("attaches a League of Legends alias to the champion picked, and refreshes only that game's characters", async () => {
+    getCatalogAliasMisses.mockResolvedValue({
+      results: [{ ...MISS, id: 9, discipline: "lol", kind: "character", raw_name: "Ahri2" }],
+      total: 1,
+      page: 1,
+      per_page: 25
+    });
+    const container = await mount();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+
+    await click(container.querySelector('[aria-label="Pick a champion…"]'));
+    await click(commandItem("Ahri"));
+    await click(button("Attach"));
+
+    expect(attachCatalogAlias).toHaveBeenCalledWith({ entity_id: 501, alias: "Ahri2" });
+    // The miss's own game and kind — not the page's view, and not another game's characters.
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    expect(keys).toContain(JSON.stringify(["catalog", "lol", "character"]));
+    expect(keys.some((key) => key.includes("overwatch"))).toBe(false);
+    expect(keys).not.toContain(JSON.stringify(["catalog", "lol", "map"]));
   });
 
   it("links the last ingest job to its hinted tournament", async () => {

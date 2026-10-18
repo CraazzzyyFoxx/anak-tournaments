@@ -11099,9 +11099,9 @@
   "adminWorkspace": {
     "content": {
       "tabs": {
-        "heroes": "Heroes",
+        "heroes": "Characters",
         "maps": "Maps",
-        "gamemodes": "Gamemodes",
+        "gamemodes": "Modes",
         "unresolved": "Unresolved names"
       },
       "header": "Game content",
@@ -11112,9 +11112,7 @@
         "name": "Name",
         "icon": "Icon",
         "image": "Image",
-        "gamemode": "Gamemode",
         "modePool": "Mode Pool",
-        "role": "Role",
         "aliases": "Aliases",
         "type": "Type",
         "discipline": "Game",
@@ -11122,83 +11120,26 @@
         "timesSeen": "Times seen",
         "lastSeen": "Last seen",
         "lastLog": "Last log",
-        "attachTo": "Attach to"
+        "attachTo": "Attach to",
+        "class": "Class",
+        "active": "Active"
       },
       "actions": {
-        "editHero": "Edit hero",
-        "deleteHero": "Delete hero",
-        "editMap": "Edit map",
-        "deleteMap": "Delete map",
-        "editGamemode": "Edit gamemode",
-        "deleteGamemode": "Delete gamemode",
         "delete": "Delete",
         "attach": "Attach",
-        "dismiss": "Dismiss"
+        "dismiss": "Dismiss",
+        "edit": "Edit {kind}",
+        "deleteKind": "Delete {kind}"
       },
       "catalog": {
-        "hero": {
-          "search": "Search heroes…",
-          "empty": "No heroes yet. Use “Create hero” to add the first one.",
-          "create": "Create hero",
-          "sync": "Sync heroes from game",
-          "edit": "Edit hero",
-          "createTitle": "Create hero",
-          "updateTitle": "Edit hero",
-          "descriptionCreate": "Create a new hero in the game",
-          "descriptionUpdate": "Update hero information",
-          "updating": "Updating hero…",
-          "creating": "Creating hero…",
-          "namePlaceholder": "Hero name",
-          "iconUrl": "Hero icon URL",
-          "iconLink": "Direct link to the hero portrait.",
-          "roleRequired": "Role *",
-          "selectRole": "Select role",
-          "color": "Color",
-          "pickColor": "Pick hero color",
-          "pickColorWithValue": "Pick hero color {color}",
-          "aliasesHelp": "One alias per line — names as they appear in match logs. The hero sync fills these from every Blizzard locale; manual entries survive it.",
-          "deleteTitle": "Delete hero",
-          "deleteDescription": "“{name}” will be permanently removed from the hero catalogue. This cannot be undone."
-        },
         "map": {
-          "search": "Search maps…",
-          "empty": "No maps yet. Use “Create map” to add the first one.",
-          "create": "Create map",
-          "sync": "Sync maps from game",
-          "edit": "Edit map",
-          "createTitle": "Create map",
-          "updateTitle": "Edit map",
-          "descriptionCreate": "Create a new map in the game",
-          "descriptionUpdate": "Update map information",
-          "updating": "Updating map…",
-          "creating": "Creating map…",
-          "namePlaceholder": "Map name",
-          "gamemodeRequired": "Gamemode *",
-          "selectGamemode": "Select gamemode",
           "competitiveMap": "Competitive map (in the competitive pool)",
-          "deleteTitle": "Delete map",
-          "deleteDescription": "“{name}” will be permanently removed from the map catalogue. This cannot be undone."
-        },
-        "gamemode": {
-          "search": "Search gamemodes…",
-          "empty": "No gamemodes yet. Use “Create gamemode” to add the first one.",
-          "create": "Create gamemode",
-          "sync": "Sync gamemodes from game",
-          "edit": "Edit gamemode",
-          "createTitle": "Create gamemode",
-          "updateTitle": "Edit gamemode",
-          "descriptionCreate": "Create a new gamemode in the game",
-          "descriptionUpdate": "Update gamemode information",
-          "updating": "Updating gamemode…",
-          "creating": "Creating gamemode…",
-          "namePlaceholder": "Gamemode name",
-          "deleteTitle": "Delete gamemode",
-          "deleteDescription": "“{name}” will be permanently removed. Reassign any maps still using it first, otherwise the delete will fail."
+          "modeRequired": "{kind} *",
+          "selectMode": "Select {kind}"
         },
         "unknown": "Unknown",
         "competitive": "Competitive",
         "casual": "Casual",
-        "heroEntity": "Hero",
         "kinds": {
           "character": "Character",
           "map": "Map",
@@ -11219,21 +11160,56 @@
         "hideError": "Could not hide the miss",
         "noResolved": "No unresolved names recorded. Everything received so far resolved.",
         "nothing": "Nothing in the queue. Everything received so far resolved.",
-        "mobileSummary": "{entity} · seen {count}× · last {date}"
+        "mobileSummary": "{entity} · seen {count}× · last {date}",
+        "entity": {
+          "search": "Search by name…",
+          "empty": "No entries yet. Use “Create {kind}” to add the first one, or sync the game catalog.",
+          "create": "Create {kind}",
+          "sync": "Sync {game} catalog",
+          "createTitle": "Create {kind}",
+          "updateTitle": "Edit {kind}",
+          "descriptionCreate": "A new catalog entry of the type “{kind}”.",
+          "descriptionUpdate": "Update this catalog entry (“{kind}”).",
+          "updating": "Saving…",
+          "creating": "Creating…",
+          "namePlaceholder": "{kind} name",
+          "imageUrl": "{kind} image URL",
+          "deleteTitle": "Delete {kind}",
+          "deleteDescription": "“{name}” will be permanently removed from the catalog. This cannot be undone."
+        },
+        "character": {
+          "classRequired": "Class *",
+          "selectClass": "Select class",
+          "color": "Color",
+          "pickColor": "Pick color",
+          "pickColorWithValue": "Pick color {color}",
+          "iconLink": "Direct link to the portrait image."
+        },
+        "unavailableTitle": "{game} has no {kind} catalog",
+        "unavailable": "{game} does not use this kind of content, so there is nothing to list or create here.",
+        "active": "Active",
+        "inactive": "Inactive",
+        "targetsError": "Could not load the entries to attach the name to."
       },
       "heroRoles": {
         "tank": "Tank",
         "damage": "Damage",
-        "support": "Support"
+        "support": "Support",
+        "Assassin": "Assassin",
+        "Fighter": "Fighter",
+        "Mage": "Mage",
+        "Marksman": "Marksman",
+        "Support": "Support",
+        "Tank": "Tank"
       },
       "formError": "Check the {entity} details and try again.",
       "linkEntity": "link",
       "filters": {
-        "role": "Role",
-        "gamemode": "Gamemode",
         "modePool": "Mode pool",
         "type": "Type",
-        "includeResolved": "Include resolved"
+        "includeResolved": "Include resolved",
+        "class": "Class",
+        "mode": "Mode"
       },
       "fields": {
         "name": "Name *",
@@ -11241,7 +11217,8 @@
         "aliasesHelp": "One alias per line — names as they appear in match logs.",
         "registrationOpened": "Registration opened",
         "checkInOpened": "Check-in opened",
-        "encounterScheduled": "Match scheduled"
+        "encounterScheduled": "Match scheduled",
+        "activeHelp": "Active (offered in pickers and reports)"
       }
     },
     "assetPreview": {
@@ -12398,9 +12375,7 @@
       "balancerStatuses": "Balancer statuses",
       "subRoles": "Sub-roles",
       "subscriptions": "Subscriptions",
-      "heroes": "Heroes",
       "maps": "Maps",
-      "gamemodes": "Gamemodes",
       "unresolvedNames": "Unresolved names",
       "dashboardDescription": "Operations overview, live issues, and priority actions.",
       "tournamentsDescription": "Manage tournament lifecycle, stages, and schedules.",
@@ -12417,7 +12392,9 @@
       "workspacesDescription": "Manage workspaces and their settings.",
       "announcementsDescription": "Notices for this workspace, and the platform-wide banner every visitor sees.",
       "notificationsDescription": "System notifications this workspace produced — invites, decisions, disputes — and the retire that takes one out of every inbox.",
-      "auditLogDescription": "Who changed what, and when — roles, API keys, tournaments, workspace settings."
+      "auditLogDescription": "Who changed what, and when — roles, API keys, tournaments, workspace settings.",
+      "characters": "Characters",
+      "modes": "Modes"
     },
     "commandPalette": {
       "search": "Search admin pages",
@@ -13090,6 +13067,17 @@
       "excludedDescription": "Manually removed from the balancer pool after being added.",
       "balancerIncompleteDescription": "Registration needs rank or role fixes.",
       "readyDescription": "Registration is ready for balancer."
+    }
+  },
+  "disciplineKinds": {
+    "overwatch": {
+      "character": "Hero",
+      "map": "Map",
+      "mode": "Mode"
+    },
+    "lol": {
+      "character": "Champion",
+      "map": "Map"
     }
   }
 }

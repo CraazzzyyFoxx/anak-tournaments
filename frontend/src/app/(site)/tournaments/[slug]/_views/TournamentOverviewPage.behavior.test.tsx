@@ -20,7 +20,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { Encounter, EncounterTeam } from "@/types/encounter.types";
-import type { MapRead } from "@/types/map.types";
+import { catalogMap, catalogMode } from "@/test/catalog";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { Registration, RegistrationListResponse } from "@/types/registration.types";
 import type { Team } from "@/types/team.types";
 import type { TournamentLink } from "@/types/stream.types";
@@ -70,8 +71,8 @@ vi.mock("@/services/hero.service", () => ({
 vi.mock("@/services/pickBan.service", () => ({
   default: { listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args) }
 }));
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: (...args: unknown[]) => getAllMaps(...args) }
 }));
 vi.mock("@/services/stream.service", () => ({
   default: { getTournamentStreams: (...args: unknown[]) => getTournamentStreams(...args) }
@@ -370,51 +371,15 @@ function regList(
   };
 }
 
-const GAMEMODE = {
-  id: 1,
-  created_at: new Date(0),
-  updated_at: null,
-  name: "Control",
-  image_path: "/modes/control.png",
-  slug: "control",
-  description: "",
-  aliases: []
-};
+const GAMEMODE = { ...catalogMode(1, "Control"), image_path: "/modes/control.png" };
 
-const MAPS: MapRead[] = [
-  {
-    id: 41,
-    created_at: new Date(0),
-    updated_at: null,
-    name: "Ilios",
-    image_path: "/maps/ilios.png",
-    gamemode_id: 1,
-    in_competitive: true,
-    aliases: [],
-    gamemode: GAMEMODE
-  },
-  {
-    id: 42,
-    created_at: new Date(0),
-    updated_at: null,
-    name: "Busan",
-    image_path: "/maps/busan.png",
-    gamemode_id: 1,
-    in_competitive: true,
-    aliases: [],
-    gamemode: GAMEMODE
-  },
-  {
-    id: 43,
-    created_at: new Date(0),
-    updated_at: null,
+const MAPS: CatalogEntityRead[] = [
+  catalogMap(41, GAMEMODE, { name: "Ilios", image_path: "/maps/ilios.png" }),
+  catalogMap(42, GAMEMODE, { name: "Busan", image_path: "/maps/busan.png" }),
+  catalogMap(43, { ...catalogMode(2, "Hybrid"), image_path: "/modes/hybrid.png" }, {
     name: "King's Row",
-    image_path: "/maps/kings-row.png",
-    gamemode_id: 2,
-    in_competitive: true,
-    aliases: [],
-    gamemode: { ...GAMEMODE, id: 2, name: "Hybrid", slug: "hybrid" }
-  }
+    image_path: "/maps/kings-row.png"
+  })
 ];
 
 const POOL_CONFIG: PickBanConfig = {

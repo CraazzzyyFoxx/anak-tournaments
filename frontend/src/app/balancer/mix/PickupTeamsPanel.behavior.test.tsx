@@ -32,7 +32,8 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CustomGame, CustomGameLobby, CustomGameMatch } from "@/services/custom-game.service";
-import type { MapRead } from "@/types/map.types";
+import { catalogMap, catalogMode } from "@/test/catalog";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { PickupTeamsPanel } from "./PickupTeamsPanel";
 
@@ -133,24 +134,14 @@ const SETTINGS = {
   workspace_discord_channel_id: null,
 };
 
-const CONTROL = { id: 1, name: "Control", slug: "control", image_path: "", description: "", aliases: [] };
-const HYBRID = { id: 2, name: "Hybrid", slug: "hybrid", image_path: "", description: "", aliases: [] };
+const CONTROL = catalogMode(1, "Control");
+const HYBRID = catalogMode(2, "Hybrid");
 
-function mapRead(id: number, name: string, gamemode: typeof CONTROL): MapRead {
-  return {
-    id,
-    created_at: new Date(0),
-    updated_at: null,
-    name,
-    image_path: "",
-    gamemode_id: gamemode.id,
-    in_competitive: true,
-    aliases: [],
-    gamemode,
-  };
-}
-
-const CATALOGUE = [mapRead(5, "King's Row", HYBRID), mapRead(6, "Ilios", CONTROL), mapRead(7, "Busan", CONTROL)];
+const CATALOGUE = [
+  catalogMap(5, HYBRID, { name: "King's Row" }),
+  catalogMap(6, CONTROL, { name: "Ilios" }),
+  catalogMap(7, CONTROL, { name: "Busan" })
+];
 
 /** One row of the mix's `lobbies[]` — the four columns that moved off `custom_game`. */
 function lobbyRow(overrides: Partial<CustomGameLobby> = {}): CustomGameLobby {
@@ -233,7 +224,7 @@ type PanelOptions = {
   lobbyIndex?: number;
   hasMix?: boolean;
   omitSwapSeats?: boolean;
-  maps?: MapRead[];
+  maps?: CatalogEntityRead[];
   matches?: CustomGameMatch[];
   undoingMatchId?: number | null;
   omitUndoMatch?: boolean;

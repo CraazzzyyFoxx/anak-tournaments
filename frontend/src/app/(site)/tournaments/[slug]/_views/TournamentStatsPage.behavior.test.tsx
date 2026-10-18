@@ -24,7 +24,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import type { Encounter, Match } from "@/types/encounter.types";
-import type { MapRead } from "@/types/map.types";
+import { catalogMap, catalogMode } from "@/test/catalog";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { PickBanConfig, Stage, Tournament } from "@/types/tournament.types";
 
 import TournamentStatsPage, { buildMapPlayedCounts } from "./TournamentStatsPage";
@@ -52,8 +53,8 @@ vi.mock("@/services/encounter.service", () => ({
 vi.mock("@/services/pickBan.service", () => ({
   default: { listPublicConfigs: (...args: unknown[]) => listPublicConfigs(...args) }
 }));
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
+vi.mock("@/services/catalog.service", () => ({
+  default: { list: (...args: unknown[]) => getAllMaps(...args) }
 }));
 vi.mock("@/services/tournament.service", () => ({
   default: { getStages: (...args: unknown[]) => getStages(...args) }
@@ -151,27 +152,11 @@ function makeTournament(): Tournament {
   };
 }
 
-function map(id: number, name: string, gamemode: string, gamemodeId: number): MapRead {
-  return {
-    id,
-    created_at: new Date("2025-01-01T00:00:00Z"),
-    updated_at: null,
+function map(id: number, name: string, gamemode: string, gamemodeId: number): CatalogEntityRead {
+  return catalogMap(id, { ...catalogMode(gamemodeId, gamemode), image_path: `/gamemodes/${gamemodeId}.jpg` }, {
     name,
-    image_path: `/maps/${id}.jpg`,
-    gamemode_id: gamemodeId,
-    in_competitive: true,
-    aliases: [],
-    gamemode: {
-      id: gamemodeId,
-      created_at: new Date("2025-01-01T00:00:00Z"),
-      updated_at: null,
-      name: gamemode,
-      image_path: `/gamemodes/${gamemodeId}.jpg`,
-      slug: gamemode.toLowerCase(),
-      description: "",
-      aliases: []
-    }
-  };
+    image_path: `/maps/${id}.jpg`
+  });
 }
 
 /**
@@ -182,7 +167,7 @@ const KINGS_ROW = map(45, "King's Row", "Hybrid", 2);
 const ILIOS = map(37, "Ilios", "Control", 1);
 /** In the pool, never picked. Note ② is about this row existing. */
 const SURAVASA = map(91, "Suravasa", "Flashpoint", 4);
-const MAPS: MapRead[] = [KINGS_ROW, ILIOS, SURAVASA];
+const MAPS: CatalogEntityRead[] = [KINGS_ROW, ILIOS, SURAVASA];
 
 function config(overrides: Partial<PickBanConfig>): PickBanConfig {
   return {

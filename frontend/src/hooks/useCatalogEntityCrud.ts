@@ -1,19 +1,22 @@
 import { useState } from "react";
-import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
-import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { invalidateCatalogSync } from "@/lib/catalog/invalidate";
+import { catalogQueryKeys, type CatalogScope } from "@/lib/catalog/query-keys";
 import { hasUnsavedChanges } from "@/lib/form-change";
+import type { CatalogKind } from "@/types/catalog.types";
 
 interface CatalogEntityService<TEntity, TCreate, TUpdate> {
-  create: (data: TCreate) => Promise<TEntity>;
-  update: (id: number, data: TUpdate) => Promise<TEntity>;
-  delete: (id: number) => Promise<void>;
-  sync: () => Promise<unknown>;
+  create: (discipline: string, kind: CatalogKind, data: TCreate) => Promise<TEntity>;
+  update: (discipline: string, kind: CatalogKind, id: number, data: TUpdate) => Promise<TEntity>;
+  delete: (discipline: string, kind: CatalogKind, id: number) => Promise<void>;
+  /** Pulls the whole discipline (every kind) from the module's source. */
+  sync: (discipline: string) => Promise<unknown>;
 }
 
 interface UseCatalogEntityCrudOptions<TEntity, TCreate, TUpdate> {
-  /** Invalidated on CRUD success; sync refreshes every catalog kind. Pass the same key the list uses. */
-  queryKey: QueryKey;
+  discipline: string;
+  kind: CatalogKind;
   /** Key order matters: `hasUnsavedChanges` compares JSON, so `getForm` below
    *  must list the same fields in the same order or every dialog opens dirty. */
   emptyForm: TCreate;
@@ -21,15 +24,28 @@ interface UseCatalogEntityCrudOptions<TEntity, TCreate, TUpdate> {
   service: CatalogEntityService<TEntity, TCreate, TUpdate>;
 }
 
+/** The discipline and kind a mutation was submitted for: fixed at submit, so a later switch cannot redirect it. */
+interface Submitted extends CatalogScope {
+  kind: CatalogKind;
+}
+
+const invalidateKind = (client: QueryClient, { discipline, kind }: Submitted) =>
+  client.invalidateQueries({ queryKey: catalogQueryKeys.kind({ discipline }, kind) });
+
 /**
- * Create/edit/delete/sync state and mutations shared by the game-catalogue
- * admin pages (maps, heroes, gamemodes): same dialog-as-create-and-edit
- * pattern, same invalidate-on-success mutations, same dirty-check. Pages keep
- * their own columns and form fields — only this boilerplate lives here
- * instead of being copy-pasted three times.
+ * Create/edit/delete/sync state and mutations shared by the game-catalogue admin
+ * pages (characters, maps, modes of the selected discipline): same
+ * dialog-as-create-and-edit pattern, same invalidate-on-success mutations, same
+ * dirty-check. Pages keep their own columns and form fields — only this
+ * boilerplate lives here instead of being copy-pasted three times.
+ *
+ * Create, edit and delete drop that kind's caches; sync drops the whole discipline (it pulls every kind) plus its
+ * statistic families. Each invalidates the discipline it was submitted for, even if the page has switched games
+ * by the time the request settles.
  */
 export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TUpdate>({
-  queryKey,
+  discipline,
+  kind,
   emptyForm,
   getForm,
   service,
@@ -40,8 +56,6 @@ export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TU
   const [deletingEntity, setDeletingEntity] = useState<TEntity | null>(null);
   const [formData, setFormData] = useState<TCreate | TUpdate>({ ...emptyForm });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey });
-
   const closeForm = () => {
     setCreateDialogOpen(false);
     setEditingEntity(null);
@@ -49,39 +63,38 @@ export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TU
   };
 
   const createMutation = useMutation({
-    mutationFn: (data: TCreate) => service.create(data),
-    onSuccess: () => {
-      invalidate();
+    mutationFn: ({ scope, data }: { scope: Submitted; data: TCreate }) =>
+      service.create(scope.discipline, scope.kind, data),
+    onSuccess: (_entity, { scope }) => {
+      invalidateKind(queryClient, scope);
       closeForm();
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: TUpdate }) => service.update(id, data),
-    onSuccess: () => {
-      invalidate();
+    mutationFn: ({ scope, id, data }: { scope: Submitted; id: number; data: TUpdate }) =>
+      service.update(scope.discipline, scope.kind, id, data),
+    onSuccess: (_entity, { scope }) => {
+      invalidateKind(queryClient, scope);
       closeForm();
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => service.delete(id),
-    onSuccess: () => {
-      invalidate();
+    mutationFn: ({ scope, id }: { scope: Submitted; id: number }) =>
+      service.delete(scope.discipline, scope.kind, id),
+    onSuccess: (_result, { scope }) => {
+      invalidateKind(queryClient, scope);
       setDeletingEntity(null);
     },
   });
 
   const syncMutation = useMutation({
-    mutationFn: () => service.sync(),
-    onSuccess: async () => {
-      await Promise.all(
-        ["heroes", "maps", "gamemodes"].map((entity) =>
-          queryClient.invalidateQueries({ queryKey: adminQueryKeys.contentEntity(entity) })
-        )
-      );
-    },
+    mutationFn: ({ scope }: { scope: Submitted }) => service.sync(scope.discipline),
+    onSuccess: (_result, { scope }) => invalidateCatalogSync(queryClient, scope.discipline),
   });
+
+  const submitted = (): Submitted => ({ discipline, kind });
 
   const openCreate = () => {
     createMutation.reset();
@@ -99,9 +112,9 @@ export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TU
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingEntity) {
-      updateMutation.mutate({ id: editingEntity.id, data: formData as TUpdate });
+      updateMutation.mutate({ scope: submitted(), id: editingEntity.id, data: formData as TUpdate });
     } else {
-      createMutation.mutate(formData as TCreate);
+      createMutation.mutate({ scope: submitted(), data: formData as TCreate });
     }
   };
 
@@ -124,5 +137,8 @@ export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TU
     updateMutation,
     deleteMutation,
     syncMutation,
+    /** Each captures the discipline and kind of the render that called it. */
+    deleteEntity: (id: number) => deleteMutation.mutate({ scope: submitted(), id }),
+    sync: () => syncMutation.mutate({ scope: submitted() }),
   };
 }

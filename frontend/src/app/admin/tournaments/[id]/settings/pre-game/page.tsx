@@ -40,8 +40,7 @@ import {
   type PreGameScope,
   type PreGameStep
 } from "./pre-game-scope";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 export default function PreGameSettingsPage() {
   return (
@@ -49,8 +48,12 @@ export default function PreGameSettingsPage() {
       section="pre-game"
       description={useTranslations("adminTournament.screenDescriptions")("preGame")}
     >
-      {({ tournamentId, workspaceId }) => (
-        <PreGamePhase tournamentId={tournamentId} workspaceId={workspaceId} />
+      {({ tournamentId, workspaceId, tournament }) => (
+        <PreGamePhase
+          tournamentId={tournamentId}
+          workspaceId={workspaceId}
+          discipline={tournament.discipline}
+        />
       )}
     </SettingsSectionPage>
   );
@@ -58,8 +61,9 @@ export default function PreGameSettingsPage() {
 
 function PreGamePhase({
   tournamentId,
-  workspaceId
-}: Readonly<{ tournamentId: number; workspaceId: number }>) {
+  workspaceId,
+  discipline
+}: Readonly<{ tournamentId: number; workspaceId: number; discipline: string }>) {
   const t = useTranslations("pickBan.admin");
   const queryClient = useQueryClient();
   const { canAccessPermission } = usePermissions();
@@ -91,27 +95,27 @@ function PreGamePhase({
   });
   const configs = useMemo(() => configsQuery.data?.configs ?? [], [configsQuery.data]);
 
-  // One catalogue query per kind, both gated on the kind on screen.
-  const mapsQuery = useMapsCatalog({ withGamemode: true, enabled: kind === "map" });
-  const heroesQuery = useHeroesCatalog({ enabled: kind === "hero" });
+  // One catalogue query per kind of the tournament's own game, both gated on the kind on screen.
+  const mapsQuery = useCatalogEntities(discipline, "map", { enabled: kind === "map" });
+  const heroesQuery = useCatalogEntities(discipline, "character", { enabled: kind === "hero" });
 
   const catalogue = useMemo<CatalogueItem[]>(() => {
     if (kind === "map") {
       // Off-rotation maps (a retired brawl-only map) are not something an
       // organizer bans or picks in a ranked series.
       return (mapsQuery.data ?? [])
-        .filter((map) => map.in_competitive !== false)
+        .filter((map) => map.attrs.in_competitive !== false)
         .map((map) => ({
           id: map.id,
           name: map.name,
-          group: map.gamemode?.name ?? null,
+          group: map.parent?.name ?? null,
           imageSrc: map.image_path ?? null
         }));
     }
     return (heroesQuery.data ?? []).map((hero) => ({
       id: hero.id,
       name: hero.name,
-      group: hero.type ?? hero.role ?? null,
+      group: typeof hero.attrs.class === "string" ? hero.attrs.class : null,
       imageSrc: hero.image_path ?? null
     }));
   }, [kind, mapsQuery.data, heroesQuery.data]);

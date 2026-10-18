@@ -3,7 +3,7 @@ import { getEncounterWinner } from "@/lib/encounter/status";
 import { normalizePlayerRole } from "@/lib/roster/player-role";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { Encounter } from "@/types/encounter.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import type { Registration } from "@/types/registration.types";
 import type { Player, Team } from "@/types/team.types";
 
@@ -87,8 +87,8 @@ export function buildRecords(encounters: Encounter[]): Map<number, TeamRecord> {
 export function declaredHeroes(
   player: Player,
   registration: Registration | undefined,
-  heroesMap: Map<string, Hero>
-): Hero[] {
+  heroesMap: Map<string, CatalogEntityChip>
+): CatalogEntityChip[] {
   if (!registration) return [];
   const roles = registration.roles ?? [];
   const wanted = player.role ? normalizePlayerRole(roleOf(player.role)) : "Flex";
@@ -100,6 +100,6 @@ export function declaredHeroes(
     .slice(0, 3)
     .map(
       (slug) =>
-        heroesMap.get(slug) ?? ({ name: slug, slug, image_path: "", role: wanted } as Hero)
+        heroesMap.get(slug) ?? { name: slug, slug, image_path: null, attrs: { class: wanted } }
     );
 }

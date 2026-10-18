@@ -47,7 +47,8 @@ import SubscriptionRuleNotice from "./SubscriptionRuleNotice";
 import { defaultRoleAnswer, rolesParams } from "./fields/RolesField";
 import { registrationRenderers } from "./registrationRenderers";
 import { fromRoleSelections, toRoleSelections } from "./types";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
 
 /**
  * The non-schema half of an organizer's edit: the site account this row is
@@ -346,7 +347,15 @@ export default function RegistrationSchemaForm({
 
   const rolesField = allFields(schema).find((field) => field.key === "roles");
   const topHeroesEnabled = rolesField ? rolesParams(rolesField).top_heroes.enabled : false;
-  const heroesQuery = useHeroesCatalog({ enabled: topHeroesEnabled });
+  // The picker lists the characters of the tournament's own game; the form read carries no discipline, so the
+  // tournament (cache-shared with the public pages) names it. Nothing is requested until it has.
+  const tournamentQuery = useQuery({
+    ...tournamentOverviewQueryOptions(tournamentId),
+    enabled: topHeroesEnabled
+  });
+  const heroesQuery = useCatalogEntities(tournamentQuery.data?.discipline, "character", {
+    enabled: topHeroesEnabled
+  });
 
   // Public mode only: the endpoint answers for the CALLER, so it is meaningless
   // while an organizer edits somebody else's registration.

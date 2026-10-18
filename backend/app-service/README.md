@@ -76,10 +76,12 @@ convention is defined in `shared/rpc/openapi.py` and must match the gateway's lo
 `OPERATIONS`/`DOCS` key therefore means "generic engine, this entity"; a bare subject means a
 bespoke handler.
 
-The public hero/map/gamemode surface remains Overwatch-only: its serializers project `character`
-to a hero (`attrs.class` → `type`), `map` to a map (`parent_id` → `gamemode_id`), and `mode` to a
-gamemode. All ids are new `catalog.entity` ids; `/api/v1/maps` sorts by `parent_id`, while the
-per-user map statistics wire still accepts `gamemode_id` and translates it internally.
+The public catalog is native: `GET /api/v1/catalog/{discipline}/{kind}[/{id}]` (kinds `character`,
+`map`, `mode`) returns `CatalogEntityRead` rows of that one discipline, active rows by default; a kind
+the game does not declare is `404 catalog_kind_not_declared`. The old `/api/v1/{heroes,maps,gamemodes}`
+list/detail/lookup routes are gone; `/api/v1/heroes/…` statistics routes remain until their slice moves
+them. All ids are `catalog.entity` ids; the per-user map statistics wire still accepts `gamemode_id`
+and translates it internally.
 
 Statistics readers use native `stats.fact`/`stats.stat_def` queries with an explicit Overwatch
 discipline and workspace-member ownership. Historical observations survive membership removal.

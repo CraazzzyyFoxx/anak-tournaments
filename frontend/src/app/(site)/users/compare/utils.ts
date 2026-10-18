@@ -1,4 +1,4 @@
-import { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { PLAYER_ROLE_LABEL_KEY } from "@/lib/roster/player-role";
 import { UserRoleType } from "@/types/user.types";
 import { CompareScope } from "@/app/(site)/users/compare/types";
@@ -71,8 +71,8 @@ export const formatPercent = (value: number | null | undefined): string => {
   return `${value.toFixed(2)}%`;
 };
 
-export const getMapIconSrc = (map?: MapRead | null): string | null => {
-  const candidate = map?.image_path || map?.gamemode?.image_path;
+export const getMapIconSrc = (map?: CatalogEntityRead | null): string | null => {
+  const candidate = map?.image_path || map?.parent?.image_path;
   if (!candidate) return null;
   if (candidate.trim().length === 0) return null;
   return candidate;

@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveHost } from "@/lib/site/host";
 import { internalApiOrigin } from "@/lib/api/routes";
-import { legacyCatalogSearch, type LegacyKind } from "@/lib/catalog/legacy-redirect";
+import {
+  legacyCatalogSearch,
+  type LegacyKind,
+  type LegacyResolution
+} from "@/lib/catalog/legacy-redirect";
 
 // Small bounded TTL cache: the host->workspace map is tiny and rarely changes.
 const CACHE_TTL_MS = 60_000;
 const CACHE_MAX = 1000;
 const cache = new Map<string, { id: number | null; at: number }>();
-const legacyCache = new Map<string, { id: number | null; at: number }>();
+const legacyCache = new Map<string, { id: LegacyResolution | null; at: number }>();
 
 function setCache<V>(store: Map<string, { id: V; at: number }>, key: string, id: V, at: number): void {
   // Rough FIFO eviction: Map preserves insertion order, so the first key is oldest.
@@ -48,8 +52,14 @@ async function resolveWorkspace(origin: string, host: string): Promise<Lookup> {
   }
 }
 
-/** An old catalog id's new id, or `null` (a new id, an unknown one, or the API unreachable). Removed with discipline02. */
-async function resolveLegacy(origin: string, kind: LegacyKind, id: string): Promise<number | null> {
+const CATALOG_KINDS: readonly string[] = ["character", "map", "mode"];
+
+/**
+ * What an old catalog id became (new id, its discipline and kind), or `null` (a new id, an unknown one, or the API
+ * unreachable). The discipline travels with the id through the TTL cache so the redirect can open the entity in its
+ * own game. Removed with discipline02.
+ */
+async function resolveLegacy(origin: string, kind: LegacyKind, id: string): Promise<LegacyResolution | null> {
   const key = `${kind}:${id}`;
   const now = Date.now();
   const cached = legacyCache.get(key);
@@ -59,9 +69,14 @@ async function resolveLegacy(origin: string, kind: LegacyKind, id: string): Prom
     const res = await fetch(`${base}/api/v1/catalog/legacy/${kind}/${id}`, { headers: { accept: "application/json" } });
     if (!res.ok && res.status !== 404) return null;
     const data = res.ok ? await res.json() : null;
-    const entityId = typeof data?.entity_id === "number" ? data.entity_id : null;
-    setCache(legacyCache, key, entityId, now);
-    return entityId;
+    const resolution: LegacyResolution | null =
+      typeof data?.entity_id === "number" &&
+      typeof data?.discipline === "string" &&
+      CATALOG_KINDS.includes(data?.kind)
+        ? { entityId: data.entity_id, discipline: data.discipline, kind: data.kind }
+        : null;
+    setCache(legacyCache, key, resolution, now);
+    return resolution;
   } catch {
     return null;
   }

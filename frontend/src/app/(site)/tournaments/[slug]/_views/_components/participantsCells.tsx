@@ -17,7 +17,7 @@ import { normalizePlayerRole, playerRoleSlotCode, type PlayerRoleSlotCode } from
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { RegistrationRole } from "@/types/registration.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import { HeroStrip } from "@/components/hero/HeroImage";
 import { useTranslations } from "next-intl";
 import { formatSubroleSlug } from "@/lib/roster/roles";
@@ -94,8 +94,10 @@ export function RolesCell({
   );
 }
 
-function getCanonicalRole(hero: Hero): Exclude<PlayerRoleSlotCode, "flex"> {
-  const slotCode = playerRoleSlotCode(normalizePlayerRole(hero.type || hero.role));
+function getCanonicalRole(hero: CatalogEntityChip): Exclude<PlayerRoleSlotCode, "flex"> {
+  const slotCode = playerRoleSlotCode(
+    normalizePlayerRole(typeof hero.attrs.class === "string" ? hero.attrs.class : null)
+  );
   return slotCode === "flex" ? "damage" : slotCode;
 }
 
@@ -115,7 +117,7 @@ export function TopHeroesCell({
    * once per row, so a per-row query observer and map rebuild is exactly the
    * cost this prop removes.
    */
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
 }>) {
   const sortedRoles = useMemo(() => {
     if (!roles) return [];
@@ -128,7 +130,7 @@ export function TopHeroesCell({
 
   const topHeroesList = useMemo(() => {
     const uniqueHeroSlugs = new Set<string>();
-    const list: Hero[] = [];
+    const list: CatalogEntityChip[] = [];
 
     for (const r of sortedRoles) {
       if (r.top_heroes) {
@@ -141,12 +143,7 @@ export function TopHeroesCell({
               list.push(heroObj);
             } else {
               // Fallback
-              list.push({
-                name: slug,
-                slug,
-                image_path: "",
-                role: roleOf(r.role),
-              } as any);
+              list.push({ name: slug, slug, image_path: null, attrs: { class: roleOf(r.role) } });
             }
           }
         }
@@ -156,7 +153,7 @@ export function TopHeroesCell({
   }, [sortedRoles, heroesMap]);
 
   const heroesByRole = useMemo(() => {
-    const groups: Record<Exclude<PlayerRoleSlotCode, "flex">, Hero[]> = {
+    const groups: Record<Exclude<PlayerRoleSlotCode, "flex">, CatalogEntityChip[]> = {
       tank: [],
       damage: [],
       support: [],

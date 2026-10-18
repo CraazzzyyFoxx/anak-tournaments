@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ColumnDef } from "@tanstack/react-table";
 import { Check, CheckCircle, EyeOff } from "lucide-react";
-import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { DataTable } from "@/components/data-table";
@@ -15,44 +15,30 @@ import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import SearchableImageSelect, {
-  type SearchableImageOption,
-} from "@/components/ui/searchable-image-select";
+import SearchableImageSelect from "@/components/ui/searchable-image-select";
+import { useDisciplines } from "@/hooks/useDisciplineMetadata";
+import { useKindLabel } from "@/hooks/useKindLabel";
 import { usePermissions } from "@/hooks/usePermissions";
+import { catalogQueryKeys } from "@/lib/catalog/query-keys";
+import { WHOLE_CATALOG } from "@/lib/catalog/query-options";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
-import type { CatalogAliasMissKind, CatalogAliasMissRead, CatalogKind } from "@/types/admin.types";
+import type { CatalogAliasMissKind, CatalogAliasMissRead } from "@/types/admin.types";
+import type { CatalogKind } from "@/types/catalog.types";
 import { Spinner } from "@/components/ui/spinner";
 
 import { MISS_QUEUE_KEY } from "../miss-queue";
-import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 const MISS_KINDS: CatalogAliasMissKind[] = ["character", "map", "mode", "stat", "event", "role"];
 
 /**
- * Query-key root of the admin list each entity kind feeds. Attaching an alias
- * changes that list, so its cache has to go along with the miss queue's.
+ * Only a `character|map|mode` miss names a catalog entity an alias can be attached to — and its targets are that
+ * miss's OWN discipline's rows of its kind. Stat, event and role misses name codes a game module declares: dismiss
+ * is their only action, never an alias or a new definition.
  */
-const ENTITY_LIST_KEYS: Record<CatalogKind, string> = {
-  character: "heroes",
-  map: "maps",
-  mode: "gamemodes",
-};
-
-/**
- * Only an entity miss of the discipline whose catalogue the content pickers load can be attached. Stat, event and
- * role misses name codes a game module declares: dismiss is their only action, never an alias or a new definition.
- * ponytail: the pickers are Overwatch's until P7 makes the content pages discipline-driven.
- */
-const ATTACH_DISCIPLINE = "overwatch";
-
 function attachableKind(miss: CatalogAliasMissRead): CatalogKind | null {
-  const entityKind = miss.kind === "character" || miss.kind === "map" || miss.kind === "mode" ? miss.kind : null;
-  return entityKind !== null && miss.discipline === ATTACH_DISCIPLINE ? entityKind : null;
+  return miss.kind === "character" || miss.kind === "map" || miss.kind === "mode" ? miss.kind : null;
 }
-
-/** One page holds every catalog entity we have — ~45 maps, ~50 heroes, 7 modes. */
-const ENTITY_PAGE_SIZE = 200;
 
 function formatSeenAt(format: DateFormatter, value: string): string {
   return format.dateTime(new Date(value), {
@@ -61,6 +47,58 @@ function formatSeenAt(format: DateFormatter, value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * The row's target picker: the entities of the miss's discipline and kind, loaded when the row renders and shared by
+ * every row that names the same game and kind. Rendered twice — in the "Attach to" column and, below `md`, inside
+ * the card — because without it the Attach button on a phone would be permanently disabled with no way to arm it.
+ */
+function MissTargetPicker({
+  miss,
+  kind,
+  value,
+  onChange,
+  disabled,
+}: Readonly<{
+  miss: CatalogAliasMissRead;
+  kind: CatalogKind;
+  value: number | undefined;
+  onChange: (entityId: number | undefined) => void;
+  disabled: boolean;
+}>) {
+  const t = useTranslations("adminWorkspace.content");
+  const labelOf = useKindLabel();
+  const disciplines = useDisciplines("all");
+  const targets = useQuery({
+    queryKey: catalogQueryKeys.adminList({ discipline: miss.discipline }, kind, WHOLE_CATALOG),
+    queryFn: ({ signal }) => adminService.listCatalogEntities(miss.discipline, kind, WHOLE_CATALOG, { signal }),
+  });
+  const descriptor = disciplines.data?.find((discipline) => discipline.code === miss.discipline);
+  const kindLabel = (descriptor ? labelOf(descriptor, kind) : t(`catalog.kinds.${kind}`)).toLowerCase();
+
+  // The mode disambiguates the handful of maps that share a name across modes, which is exactly the pair the
+  // parser resolves.
+  const options = (targets.data?.results ?? []).map((entity) => ({
+    value: String(entity.id),
+    label: entity.parent ? `${entity.name} — ${entity.parent.name}` : entity.name,
+  }));
+
+  if (targets.isError) {
+    return <span className="text-xs text-muted-foreground">{t("catalog.targetsError")}</span>;
+  }
+  return (
+    <SearchableImageSelect
+      value={value?.toString()}
+      onValueChange={(next) => onChange(next === undefined ? undefined : Number(next))}
+      options={options}
+      placeholder={t("catalog.pickEntity", { entity: kindLabel })}
+      searchPlaceholder={t("catalog.search")}
+      isLoading={targets.isLoading}
+      disabled={targets.isLoading || disabled}
+      triggerClassName="h-9"
+    />
+  );
 }
 
 /**
@@ -99,46 +137,6 @@ export default function UnresolvedNamesAdminPage() {
   const kindFilter = String(filters.values.type ?? "") as CatalogAliasMissKind | "";
   const includeResolved = filters.values.resolved === true;
 
-  const [heroesQuery, mapsQuery, gamemodesQuery] = useQueries({
-    queries: [
-      {
-        queryKey: adminQueryKeys.contentAliasTargets("heroes"),
-        queryFn: () => adminService.getHeroes({ per_page: ENTITY_PAGE_SIZE }),
-      },
-      {
-        queryKey: adminQueryKeys.contentAliasTargets("maps"),
-        queryFn: () => adminService.getMaps({ per_page: ENTITY_PAGE_SIZE }),
-      },
-      {
-        queryKey: adminQueryKeys.contentAliasTargets("gamemodes"),
-        queryFn: () => adminService.getGamemodes({ per_page: ENTITY_PAGE_SIZE }),
-      },
-    ],
-  });
-
-  const entityOptions: Record<CatalogKind, SearchableImageOption[]> = {
-    character: (heroesQuery.data?.results ?? []).map((hero) => ({
-      value: String(hero.id),
-      label: hero.name,
-    })),
-    // The gamemode disambiguates the handful of maps that share a name across
-    // modes, which is exactly the pair the parser resolves.
-    map: (mapsQuery.data?.results ?? []).map((map) => ({
-      value: String(map.id),
-      label: map.gamemode ? `${map.name} — ${map.gamemode.name}` : map.name,
-    })),
-    mode: (gamemodesQuery.data?.results ?? []).map((gamemode) => ({
-      value: String(gamemode.id),
-      label: gamemode.name,
-    })),
-  };
-
-  const entityLoading: Record<CatalogKind, boolean> = {
-    character: heroesQuery.isLoading,
-    map: mapsQuery.isLoading,
-    mode: gamemodesQuery.isLoading,
-  };
-
   // Also refreshes the tab badge: it hangs off the same key root.
   const invalidateQueue = () => {
     queryClient.invalidateQueries({ queryKey: MISS_QUEUE_KEY });
@@ -163,9 +161,9 @@ export default function UnresolvedNamesAdminPage() {
       notify.success(t("catalog.attached", { name: miss.raw_name, entity: t(`catalog.kinds.${miss.kind}`).toLowerCase() }));
       invalidateQueue();
       if (kind !== null) {
-        // The alias now lives on the entity, so its admin list is stale too.
-        queryClient.invalidateQueries({ queryKey: adminQueryKeys.contentEntity(ENTITY_LIST_KEYS[kind]) });
-        queryClient.invalidateQueries({ queryKey: [ENTITY_LIST_KEYS[kind]] });
+        // The alias now lives on the entity, so every cached read of that game's kind (public and admin) is stale.
+        // The miss's own discipline and kind, captured with the submit, never the page's current view.
+        queryClient.invalidateQueries({ queryKey: catalogQueryKeys.kind({ discipline: miss.discipline }, kind) });
       }
       forgetTarget(miss.id);
     },
@@ -186,11 +184,6 @@ export default function UnresolvedNamesAdminPage() {
     (attachMutation.isPending && attachMutation.variables?.miss.id === missId) ||
     (dismissMutation.isPending && dismissMutation.variables?.id === missId);
 
-  /**
-   * The row's target picker. Rendered twice — in the "Attach to" column and,
-   * below `md`, inside the card — because without it the Attach button on a
-   * phone would be permanently disabled with no way to arm it.
-   */
   const targetPicker = (miss: CatalogAliasMissRead) => {
     if (!isSuperuser) {
       return null;
@@ -204,25 +197,22 @@ export default function UnresolvedNamesAdminPage() {
     }
 
     return (
-      <SearchableImageSelect
-        value={targets.get(miss.id)?.toString()}
-        onValueChange={(next) => {
+      <MissTargetPicker
+        miss={miss}
+        kind={kind}
+        value={targets.get(miss.id)}
+        onChange={(entityId) => {
           setTargets((previous) => {
             const updated = new Map(previous);
-            if (next === undefined) {
+            if (entityId === undefined) {
               updated.delete(miss.id);
             } else {
-              updated.set(miss.id, Number(next));
+              updated.set(miss.id, entityId);
             }
             return updated;
           });
         }}
-        options={entityOptions[kind]}
-        placeholder={t("catalog.pickEntity", { entity: t(`catalog.kinds.${kind}`).toLowerCase() })}
-        searchPlaceholder={t("catalog.search")}
-        isLoading={entityLoading[kind]}
-        disabled={entityLoading[kind] || isBusy(miss.id)}
-        triggerClassName="h-9"
+        disabled={isBusy(miss.id)}
       />
     );
   };

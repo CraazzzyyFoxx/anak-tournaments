@@ -18,7 +18,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CustomGameLobby } from "@/services/custom-game.service";
-import type { MapRead } from "@/types/map.types";
+import { catalogMap, catalogMode } from "@/test/catalog";
 
 import { PickupLobbyTabs } from "./PickupLobbyTabs";
 
@@ -39,23 +39,9 @@ vi.mock("next-intl", () => ({
 
 const onSelect = vi.fn();
 
-const CONTROL = { id: 1, name: "Control", slug: "control", image_path: "", description: "", aliases: [] };
+const CONTROL = catalogMode(1, "Control");
 
-function mapRead(id: number, name: string): MapRead {
-  return {
-    id,
-    created_at: new Date(0),
-    updated_at: null,
-    name,
-    image_path: "",
-    gamemode_id: CONTROL.id,
-    in_competitive: true,
-    aliases: [],
-    gamemode: CONTROL,
-  };
-}
-
-const CATALOGUE = [mapRead(6, "Ilios"), mapRead(7, "Busan")];
+const CATALOGUE = [catalogMap(6, CONTROL, { name: "Ilios" }), catalogMap(7, CONTROL, { name: "Busan" })];
 
 function lobbyRow(overrides: Partial<CustomGameLobby> = {}): CustomGameLobby {
   return {

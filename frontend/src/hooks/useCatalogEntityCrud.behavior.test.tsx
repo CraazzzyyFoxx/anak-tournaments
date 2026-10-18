@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { catalogQueryKeys } from "@/lib/catalog/query-keys";
+import type { CatalogKind } from "@/types/catalog.types";
 
 import { useCatalogEntityCrud } from "./useCatalogEntityCrud";
 
@@ -24,57 +27,77 @@ interface Actions {
   sync: () => Promise<unknown>;
 }
 
+const LOL = { discipline: "lol" };
+const OW = { discipline: "overwatch" };
 const KEYS = {
-  heroes: ["admin", "heroes", 1],
-  maps: ["admin", "maps", 1],
-  gamemodes: ["admin", "gamemodes", 1],
-  options: ["admin", "gamemodes", "options"],
-  unrelated: ["admin", "settings"]
+  lolMap: catalogQueryKeys.adminList(LOL, "map", {}),
+  lolMapPublic: catalogQueryKeys.list(LOL, "map", {}),
+  lolCharacter: catalogQueryKeys.adminList(LOL, "character", {}),
+  owMap: catalogQueryKeys.adminList(OW, "map", {}),
+  lolStats: ["character-stats", 7, "lol", "all"] as const,
+  owStats: ["character-stats", 7, "overwatch", "all"] as const,
+  unrelated: ["admin", "settings"] as const
 };
 
 let client: QueryClient;
 let container: HTMLDivElement;
 let root: Root;
 let actions: Actions;
-let modes: Entity[];
+let release: (() => void) | null;
+const synced: string[] = [];
 
-function Catalog() {
+function Catalog({ discipline, kind }: Readonly<{ discipline: string; kind: CatalogKind }>) {
   const crud = useCatalogEntityCrud<Entity, Form, Form>({
-    queryKey: ["admin", "maps"],
+    discipline,
+    kind,
     emptyForm: { name: "" },
     getForm: (entity) => ({ name: entity?.name ?? "" }),
     service: {
-      create: async (form) => ({ id: 2, ...form }),
-      update: async (id, form) => ({ id, ...form }),
+      // Held open until the test releases it, so the view can change games while the request is in flight.
+      create: async (_d, _k, form) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return { id: 2, ...form };
+      },
+      update: async (_d, _k, id, form) => ({ id, ...form }),
       delete: async () => undefined,
-      sync: async () => {
-        modes = [...modes, { id: 2, name: "New mode" }];
+      sync: async (d) => {
+        synced.push(d);
       }
     }
   });
   useEffect(() => {
     actions = {
-      create: () => crud.createMutation.mutateAsync({ name: "Ilios" }),
-      update: () => crud.updateMutation.mutateAsync({ id: 1, data: { name: "Ilios" } }),
-      delete: () => crud.deleteMutation.mutateAsync(1),
-      sync: () => crud.syncMutation.mutateAsync()
+      create: () => crud.createMutation.mutateAsync({ scope: { discipline, kind }, data: { name: "Ilios" } }),
+      update: () => crud.updateMutation.mutateAsync({ scope: { discipline, kind }, id: 1, data: { name: "Ilios" } }),
+      delete: () => crud.deleteMutation.mutateAsync({ scope: { discipline, kind }, id: 1 }),
+      sync: () => crud.syncMutation.mutateAsync({ scope: { discipline, kind } })
     };
   });
-  const { data = [] } = useQuery({ queryKey: KEYS.options, queryFn: async () => modes });
-  return <output>{data.map((mode) => mode.name).join(", ")}</output>;
+  return null;
 }
 
+const render = (discipline: string, kind: CatalogKind = "map") =>
+  act(async () => {
+    root.render(
+      <QueryClientProvider client={client}>
+        <Catalog discipline={discipline} kind={kind} />
+      </QueryClientProvider>
+    );
+  });
+
+const invalidated = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated === true;
+
 beforeEach(async () => {
-  modes = [{ id: 1, name: "Control" }];
+  synced.length = 0;
+  release = null;
   client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
   for (const key of Object.values(KEYS)) client.setQueryData(key, []);
-  client.setQueryData(KEYS.options, modes);
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => {
-    root.render(<QueryClientProvider client={client}><Catalog /></QueryClientProvider>);
-  });
+  await render("lol");
 });
 
 afterEach(async () => {
@@ -84,29 +107,36 @@ afterEach(async () => {
 });
 
 describe("catalog mutation invalidation", () => {
-  it("syncs every catalog prefix and refreshes the mounted mode options", async () => {
-    expect(container.textContent).toBe("Control");
+  it("syncs the whole discipline (every kind, public and admin) and its statistic families, not another game's", async () => {
     await act(async () => {
       await actions.sync();
-      const { promise, resolve } = Promise.withResolvers<void>();
-      setTimeout(resolve, 0);
-      await promise;
     });
-    for (const key of [KEYS.heroes, KEYS.maps, KEYS.gamemodes]) {
-      expect(client.getQueryState(key)?.isInvalidated).toBe(true);
-    }
-    expect(container.textContent).toBe("Control, New mode");
-    expect(client.getQueryState(KEYS.unrelated)?.isInvalidated).toBe(false);
+    expect(synced).toEqual(["lol"]);
+    for (const key of [KEYS.lolMap, KEYS.lolMapPublic, KEYS.lolCharacter, KEYS.lolStats]) expect(invalidated(key)).toBe(true);
+    for (const key of [KEYS.owMap, KEYS.owStats, KEYS.unrelated]) expect(invalidated(key)).toBe(false);
   });
 
-  it.each(["create", "update", "delete"] as const)("keeps %s invalidation entity-specific", async (operation) => {
+  it.each(["update", "delete"] as const)("keeps %s invalidation to that game's kind", async (operation) => {
     await act(async () => {
       await actions[operation]();
     });
-    expect(client.getQueryState(KEYS.maps)?.isInvalidated).toBe(true);
-    for (const key of [KEYS.heroes, KEYS.gamemodes, KEYS.options, KEYS.unrelated]) {
-      expect(client.getQueryState(key)?.isInvalidated).toBe(false);
-    }
-    expect(container.textContent).toBe("Control");
+    expect(invalidated(KEYS.lolMap)).toBe(true);
+    expect(invalidated(KEYS.lolMapPublic)).toBe(true);
+    for (const key of [KEYS.lolCharacter, KEYS.owMap, KEYS.lolStats, KEYS.unrelated]) expect(invalidated(key)).toBe(false);
+  });
+
+  it("invalidates the game and kind a create was submitted for, even if the view changed before it settled", async () => {
+    let pending: Promise<Entity> | undefined;
+    await act(async () => {
+      pending = actions.create();
+    });
+    await render("overwatch", "character");
+    await act(async () => {
+      release?.();
+      await pending;
+    });
+    expect(invalidated(KEYS.lolMap)).toBe(true);
+    expect(invalidated(KEYS.owMap)).toBe(false);
+    expect(invalidated(KEYS.lolCharacter)).toBe(false);
   });
 });

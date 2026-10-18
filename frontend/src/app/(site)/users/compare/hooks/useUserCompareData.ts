@@ -18,8 +18,7 @@ import {
   shouldLoadHeroCatalogs
 } from "@/app/(site)/users/compare/hooks/compare-query-options";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDefaultDivisionGrid, getDivisionLabel } from "@/lib/divisions/grid";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -37,6 +36,8 @@ interface UseUserCompareDataParams {
   rightHeroId?: number;
   mapId?: number;
   scope: StatsScope;
+  /** The resolved browsing game; `null` while unresolved or invalid — no catalog is read then. */
+  discipline: string | null;
 }
 
 export const useUserCompareData = ({
@@ -51,7 +52,8 @@ export const useUserCompareData = ({
   leftHeroId,
   rightHeroId,
   mapId,
-  scope
+  scope,
+  discipline
 }: UseUserCompareDataParams) => {
   const t = useTranslations();
 
@@ -78,8 +80,10 @@ export const useUserCompareData = ({
     })
   );
 
-  const heroesQuery = useHeroesCatalog({ enabled: shouldLoadHeroCatalogs(isHeroScope) });
-  const mapsQuery = useMapsCatalog({ enabled: shouldLoadHeroCatalogs(isHeroScope) });
+  const heroesQuery = useCatalogEntities(discipline, "character", {
+    enabled: shouldLoadHeroCatalogs(isHeroScope)
+  });
+  const mapsQuery = useCatalogEntities(discipline, "map", { enabled: shouldLoadHeroCatalogs(isHeroScope) });
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.selectOptions(workspaceId ?? null),

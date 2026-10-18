@@ -21,7 +21,10 @@ import HeroLeaderboardFiltersCard from "./HeroLeaderboardFiltersCard";
 import HeroLeaderboardTable from "./HeroLeaderboardTable";
 import { heroQueryKeys } from "@/lib/heroes/query-keys";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useBrowsingDiscipline } from "@/hooks/useBrowsingDiscipline";
+import { DisciplineSelector, DisciplineUnavailable } from "@/components/workspace/DisciplineSelector";
+import { characterClass } from "@/lib/catalog/attrs";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -48,7 +51,9 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     router.replace(`${pathname}?${params.toString()}`);
   };
 
-  const heroesQuery = useHeroesCatalog();
+  const browsing = useBrowsingDiscipline({ allowsAll: false });
+  const discipline = browsing.resolved?.kind === "concrete" ? browsing.resolved.code : null;
+  const heroesQuery = useCatalogEntities(discipline, "character");
 
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const pickerWorkspaceId = scope === "all" ? "all" : currentWorkspaceId;
@@ -89,7 +94,7 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
     [tournamentsQuery.data, tournamentId]
   );
 
-  const heroRole = selectedHero?.type ?? selectedHero?.role ?? undefined;
+  const heroRole = characterClass(selectedHero);
   const defaultKeys = useMemo(() => getDefaultColumnKeys(heroRole), [heroRole]);
 
   // Memoized so the table's per-column bar scales and its memoized rows stay
@@ -148,8 +153,29 @@ const HeroLeaderboardContent = ({ scope }: Readonly<{ scope: StatsScope }>) => {
 
   const rows = leaderboardQuery.data?.results ?? [];
 
+  if (browsing.resolved?.kind === "invalid" || browsing.resolved?.kind === "empty") {
+    return (
+      <DisciplineUnavailable
+        resolved={browsing.resolved}
+        disciplines={browsing.disciplines ?? []}
+        allowsAll={false}
+        onSelect={browsing.select}
+      />
+    );
+  }
+
   return (
     <div className="space-y-[22px]">
+      {browsing.disciplines ? (
+        <div className="flex justify-end">
+          <DisciplineSelector
+            disciplines={browsing.disciplines}
+            value={discipline ?? undefined}
+            allowsAll={false}
+            onSelect={browsing.select}
+          />
+        </div>
+      ) : null}
       <HeroCompareHero selectedHero={selectedHero} rows={rows} />
 
       <HeroLeaderboardFiltersCard

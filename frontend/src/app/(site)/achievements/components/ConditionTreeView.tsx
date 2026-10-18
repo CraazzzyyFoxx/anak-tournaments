@@ -50,8 +50,11 @@ function SentenceItem({ sentence }: Readonly<{ sentence: ConditionSentence }>) {
  * `condition-text` folds them into the sentence, with hero and stat names
  * resolved, and the admin viewer reads the same text.
  */
-export default function ConditionTreeView({ tree }: Readonly<{ tree: ConditionNode }>) {
-  const { describe } = useConditionText(tree);
+export default function ConditionTreeView({
+  tree,
+  discipline
+}: Readonly<{ tree: ConditionNode; discipline: string }>) {
+  const { describe } = useConditionText(tree, discipline);
 
   return (
     <ul className="flex flex-col gap-1.5">

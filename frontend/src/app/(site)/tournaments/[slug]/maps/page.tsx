@@ -1,6 +1,6 @@
 import TournamentTabBoundary from "../_prefetch";
 import TournamentMapsPage from "../_views/TournamentMapsPage";
-import { mapsCatalogQueryOptions } from "@/lib/maps/catalog-query";
+import { catalogListQueryOptions } from "@/lib/catalog/query-options";
 import {
   mapPoolConfigsQueryOptions,
   mapPoolStagesQueryOptions
@@ -27,12 +27,17 @@ export default async function TournamentMapsRoutePage({
         await Promise.all([
           queryClient.prefetchQuery(mapPoolConfigsQueryOptions(overview.id)),
           queryClient.prefetchQuery(mapPoolStagesQueryOptions(overview.id)),
-          queryClient.prefetchQuery(mapsCatalogQueryOptions({ withGamemode: true }))
+          queryClient.prefetchQuery(catalogListQueryOptions(overview.discipline, "map"))
         ]);
       }}
     >
       {(overview) => (
-        <TournamentMapsPage key={overview.id} tournamentId={overview.id} slug={slug} />
+        <TournamentMapsPage
+          key={overview.id}
+          tournamentId={overview.id}
+          slug={slug}
+          discipline={overview.discipline}
+        />
       )}
     </TournamentTabBoundary>
   );

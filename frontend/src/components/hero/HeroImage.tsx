@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { Hero } from "@/types/hero.types";
 import { cn } from "@/lib/utils";
 import { AvatarStack } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -20,7 +19,21 @@ const SIZE_PX: Record<HeroImageSize, number> = {
 const resolveHeroPx = (size: HeroImageSize | number): number =>
   typeof size === "number" ? size : SIZE_PX[size];
 
-type HeroLike = Pick<Hero, "name" | "image_path" | "role"> & { type?: string; color?: string };
+/**
+ * What a portrait reads. Embedded statistics DTOs still carry the legacy `Hero` (`role`/`type`); catalog rows carry
+ * the game's class in `attrs.class`. The accent is display only — never a player's assigned role.
+ */
+type HeroLike = {
+  name: string;
+  image_path: string | null;
+  role?: string;
+  type?: string;
+  color?: string;
+  attrs?: Record<string, unknown>;
+};
+
+const accentRole = (hero: HeroLike) =>
+  hero.type ?? hero.role ?? (typeof hero.attrs?.class === "string" ? hero.attrs.class : undefined);
 
 interface HeroImageProps {
   hero: HeroLike;
@@ -54,11 +67,12 @@ interface HeroImageProps {
  */
 const HeroImage = ({ hero, size = "md", className, title, rounded = "full", popover }: HeroImageProps) => {
   const px = resolveHeroPx(size);
-  const variant = heroVariantFromRole(hero.type ?? hero.role);
+  const variant = heroVariantFromRole(accentRole(hero));
   const radiusClass = rounded === "full" ? "rounded-full" : "rounded-md";
   // Keyed by src so a row recycled onto another hero re-tries its portrait.
   const [brokenSrc, setBrokenSrc] = React.useState<string | null>(null);
-  const showImage = Boolean(hero.image_path) && brokenSrc !== hero.image_path;
+  const imageSrc = hero.image_path || null;
+  const showImage = imageSrc !== null && brokenSrc !== imageSrc;
 
   const avatar = (
     <span
@@ -69,13 +83,13 @@ const HeroImage = ({ hero, size = "md", className, title, rounded = "full", popo
       {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={hero.image_path}
+          src={imageSrc}
           alt={hero.name}
           width={px}
           height={px}
           loading="lazy"
           decoding="async"
-          onError={() => setBrokenSrc(hero.image_path)}
+          onError={() => setBrokenSrc(imageSrc)}
           className={cn("h-full w-full select-none object-contain", radiusClass)}
         />
       ) : (

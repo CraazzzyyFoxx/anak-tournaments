@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-type Call = { path: string; options?: { method?: string; query?: Record<string, unknown>; body?: unknown } };
+type Call = { path: string; options?: { method?: string; query?: Record<string, unknown>; body?: unknown; signal?: AbortSignal } };
 
 const calls: Call[] = [];
 let reply: unknown = {};
@@ -14,20 +14,6 @@ vi.mock("@/lib/api/fetch", () => ({
 
 const { default: adminService } = await import("@/services/admin.service");
 
-const ENTITY = {
-  id: 901,
-  created_at: "2026-10-14T00:00:00Z",
-  updated_at: null,
-  discipline: "overwatch",
-  slug: "ana",
-  name: "Ana",
-  image_path: "https://s3/ana.png",
-  parent_id: null,
-  aliases: ["Ана"],
-  active: true,
-  parent: null
-};
-
 describe("adminService on the generic catalog", () => {
   beforeEach(() => {
     calls.length = 0;
@@ -35,27 +21,38 @@ describe("adminService on the generic catalog", () => {
 
   it("syncs a whole discipline at once", async () => {
     reply = { success: true };
-    const result = await adminService.syncCatalog("overwatch");
-    expect(calls[0]).toEqual({ path: "/api/v1/admin/catalog-sync/overwatch", options: { method: "POST" } });
+    const result = await adminService.syncCatalog("lol");
+    expect(calls[0]).toEqual({ path: "/api/v1/admin/catalog-sync/lol", options: { method: "POST" } });
     expect(result).toEqual({ success: true });
   });
 
-  it("lists heroes as overwatch characters and filters the role through attrs", async () => {
-    reply = { results: [{ ...ENTITY, kind: "character", attrs: { class: "support", color: "#718ab3" } }], total: 1, page: 1, per_page: 50 };
-    const page = await adminService.getHeroes({ role: "Support", sort: "role" });
-    expect(calls[0].path).toBe("/api/v1/admin/catalog/overwatch/character");
-    expect(calls[0].options?.query).toEqual({ attrs: JSON.stringify({ class: "support" }) });
-    expect(page.results[0]).toMatchObject({ id: 901, type: "Support", role: "Support", color: "#718ab3", aliases: ["Ана"] });
+  it("lists one discipline's kind and sends attrs filters as a JSON object", async () => {
+    reply = { results: [], total: 0, page: 1, per_page: 25 };
+    const signal = new AbortController().signal;
+    await adminService.listCatalogEntities(
+      "lol",
+      "character",
+      { page: 2, per_page: 25, search: "ah", attrs: { class: "mage" } },
+      { signal }
+    );
+    expect(calls[0].path).toBe("/api/v1/admin/catalog/lol/character");
+    expect(calls[0].options?.query).toEqual({ page: 2, per_page: 25, search: "ah", attrs: JSON.stringify({ class: "mage" }) });
+    expect(calls[0].options?.signal).toBe(signal);
   });
 
-  it("creates a map under its mode with the competitive flag in attrs", async () => {
-    reply = { ...ENTITY, kind: "map", parent_id: 7, attrs: { in_competitive: false }, parent: { id: 7, slug: "push", name: "Push" } };
-    const created = await adminService.createMap({ name: "Ilios", gamemode_id: 7, in_competitive: false, aliases: [] });
-    expect(calls[0]).toEqual({
-      path: "/api/v1/admin/catalog/overwatch/map",
-      options: { method: "POST", body: { name: "Ilios", parent_id: 7, aliases: [], attrs: { in_competitive: false } } }
-    });
-    expect(created).toMatchObject({ gamemode_id: 7, in_competitive: false, gamemode: { id: 7, name: "Push" } });
+  it("creates, updates and deletes by discipline, kind and id with the body untouched", async () => {
+    reply = { id: 7 };
+    await adminService.createCatalogEntity("overwatch", "map", { name: "Ilios", parent_id: 3, attrs: { in_competitive: false } });
+    await adminService.updateCatalogEntity("lol", "character", 901, { attrs: { color: "#fff" } });
+    await adminService.deleteCatalogEntity("overwatch", "mode", 4);
+    expect(calls).toEqual([
+      {
+        path: "/api/v1/admin/catalog/overwatch/map",
+        options: { method: "POST", body: { name: "Ilios", parent_id: 3, attrs: { in_competitive: false } } }
+      },
+      { path: "/api/v1/admin/catalog/lol/character/901", options: { method: "PATCH", body: { attrs: { color: "#fff" } } } },
+      { path: "/api/v1/admin/catalog/overwatch/mode/4", options: { method: "DELETE" } }
+    ]);
   });
 
   it("returns the queue exactly as the API sends it, whatever the discipline or kind", async () => {
@@ -83,19 +80,6 @@ describe("adminService on the generic catalog", () => {
     expect(calls[0]).toEqual({
       path: "/api/v1/admin/catalog-aliases/attach",
       options: { method: "POST", body: { entity_id: 901, alias: "Ана" } }
-    });
-  });
-
-  it.each([
-    [{ color: "#ffffff" }, { color: "#ffffff" }],
-    [{ role: "Tank" }, { class: "tank" }],
-    [{ role: "Support", color: "#718ab3" }, { class: "support", color: "#718ab3" }]
-  ])("sends partial hero attrs independently for %j", async (input, attrs) => {
-    reply = { ...ENTITY, kind: "character", attrs: { class: "support", color: "#718ab3" } };
-    await adminService.updateHero(901, input);
-    expect(calls[0]).toEqual({
-      path: "/api/v1/admin/catalog/overwatch/character/901",
-      options: { method: "PATCH", body: { attrs } }
     });
   });
 });

@@ -1,14 +1,14 @@
 "use client";
 
-import Image from "next/image";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 
 import { ROLE_ACCENTS } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 interface HeroPickerBlockProps {
   /** Heroes to offer — pre-filtered to the role's class. */
-  heroes: Hero[];
+  heroes: CatalogEntityRead[];
   /** Selected hero slugs in priority order (1 = top pick). */
   selected: string[];
   /** Maximum number of heroes selectable. */
@@ -66,13 +66,7 @@ export function HeroPickerBlock({ heroes, selected, max, roleCode, onChange }: R
             )}
           >
             <span className="block size-full overflow-hidden rounded-[7px]">
-              <Image
-                src={hero.image_path}
-                alt={hero.name}
-                width={36}
-                height={36}
-                className="size-full object-contain"
-              />
+              <CatalogEntityImage entity={hero} size={36} rounded="lg" className="border-0" />
             </span>
             {isSelected && (
               <span className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-[color:var(--aqt-teal)] text-label font-bold leading-none tabular-nums text-[color:var(--aqt-bg)] shadow">

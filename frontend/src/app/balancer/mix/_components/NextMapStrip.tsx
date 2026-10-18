@@ -14,7 +14,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { CustomGameMatch } from "@/services/custom-game.service";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 /**
  * The map the next match is on, and how a host gets one: roll it (inside one
@@ -37,7 +37,7 @@ export function NextMapStrip({
 }: Readonly<{
   /** This lobby's own `next_map_id`, not the mix's -- the mix has none. */
   nextMapId: number | null;
-  maps: MapRead[];
+  maps: CatalogEntityRead[];
   matches: CustomGameMatch[];
   canWrite: boolean;
   saving: boolean;
@@ -90,8 +90,8 @@ export function NextMapStrip({
           >
             {nextMap?.name ?? "Not rolled yet"}
           </span>
-          {nextMap?.gamemode ? (
-            <span className={CAPTION_CLASS}>{nextMap.gamemode.name}</span>
+          {nextMap?.parent ? (
+            <span className={CAPTION_CLASS}>{nextMap.parent.name}</span>
           ) : null}
         </div>
       </div>

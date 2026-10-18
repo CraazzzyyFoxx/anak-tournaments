@@ -23,7 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useNodeCapture } from "@/hooks/useNodeCapture";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameLobby, CustomGameMatch } from "@/services/custom-game.service";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Spinner } from "@/components/ui/spinner";
 
 import { MatchHistoryList } from "./_components/MatchHistoryList";
@@ -74,8 +74,8 @@ type PickupTeamsPanelProps = {
   undoingMatchId?: number | null;
   /** Omitted -- the history renders read-only, matching a page that offers no undo. */
   onUndoMatch?: (matchId: number) => void;
-  /** The OW map catalogue with its gamemodes -- the roll pool and the manual picker. */
-  maps: MapRead[];
+  /** The mix game's map catalogue, each map with its mode as `parent` -- the roll pool and the manual picker. */
+  maps: CatalogEntityRead[];
   settingNextMap: boolean;
   /** Rolled or hand-picked; `null` clears. Persisted per lobby server-side. */
   onNextMapChange: (mapId: number | null) => void;

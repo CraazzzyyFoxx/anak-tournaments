@@ -13,7 +13,7 @@ import TeamName from "@/components/TeamName";
 import { sortTeamPlayers } from "@/lib/player";
 import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import type { Registration } from "@/types/registration.types";
 import type { Team } from "@/types/team.types";
 import type { Tournament } from "@/types/tournament.types";
@@ -46,7 +46,7 @@ export const TeamListRow = ({
   needle: string;
   showGroup: boolean;
   registrationsByUser: Map<number, Registration>;
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
 }) => {
   const t = useTranslations();
   const format = useFormatter();

@@ -3,7 +3,7 @@
 import { useCallback, useId, useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { ColumnDef } from "@tanstack/react-table";
-import { Pencil, Trash2 } from "lucide-react";
+import { CircleCheck, CircleSlash, Pencil, Trash2 } from "lucide-react";
 
 import { DataTable, columnMeta, createKebabColumn } from "@/components/data-table";
 import { AssetPreview } from "@/components/admin/AssetPreview";
@@ -11,9 +11,12 @@ import { CatalogAliasesField, CatalogNameField } from "@/components/admin/Catalo
 import { CatalogToolbarActions, entityFormError, onEntityDialogClose } from "@/components/admin/CatalogToolbarActions";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
+import { StatusIcon } from "@/components/admin/StatusIcon";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -24,72 +27,84 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import adminService from "@/services/admin.service";
-import type { Hero } from "@/types/hero.types";
-import type { HeroCreateInput, HeroUpdateInput } from "@/types/admin.types";
+import type { CatalogEntityRead, CatalogEntityWrite } from "@/types/catalog.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCatalogEntityCrud } from "@/hooks/useCatalogEntityCrud";
-import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { catalogQueryKeys } from "@/lib/catalog/query-keys";
+import { catalogSort } from "@/lib/catalog/sort";
 
-const HERO_ROLES = ["Tank", "Damage", "Support"];
+import { CatalogKindGuard, type CatalogKindContext } from "../_components/ContentDiscipline";
+
 /**
- * Overwatch blue: the form default, the color-picker fallback and the hex hint.
+ * Neutral blue: the form default, the color-picker fallback and the hex hint.
  *
- * Exempt from the design-token rule: `color` is a persisted hero column the
+ * Exempt from the design-token rule: `color` is a persisted character attribute the
  * admin edits, so this literal is the initial *value* of a data field and is
  * also what `<input type="color">` requires — not chrome this page paints with.
  */
-const DEFAULT_HERO_COLOR = "#3b82f6";
-// Key order matters: `hasUnsavedChanges` compares JSON, so `getHeroForm` below
-// must list the shared fields in the same order or every dialog opens dirty.
-const emptyHeroForm: HeroCreateInput = {
-  name: "",
-  role: "Damage",
-  color: DEFAULT_HERO_COLOR,
-  aliases: [],
-};
+const DEFAULT_COLOR = "#3b82f6";
 
-/** The backend sends `type`; `role` is the legacy field kept for older payloads. */
-function getHeroRoleValue(hero: Hero): string {
-  return hero.type || hero.role || emptyHeroForm.role;
+interface CharacterForm {
+  name: string;
+  /** The module's character class (`attrs.class`); empty when the game declares none. */
+  class: string;
+  color: string;
+  image_path: string;
+  aliases: string[];
+  active: boolean;
 }
 
-function getHeroForm(hero: Hero | null): HeroCreateInput | HeroUpdateInput {
-  if (!hero) {
-    return { ...emptyHeroForm };
-  }
+// Key order matters: `hasUnsavedChanges` compares JSON, so `getCharacterForm` below
+// must list the same fields in the same order or every dialog opens dirty.
+const emptyForm = (classes: readonly string[]): CharacterForm => ({
+  name: "",
+  class: classes[0] ?? "",
+  color: DEFAULT_COLOR,
+  image_path: "",
+  aliases: [],
+  active: true,
+});
 
+function getCharacterForm(classes: readonly string[], entity: CatalogEntityRead | null): CharacterForm {
+  if (!entity) return emptyForm(classes);
   return {
-    name: hero.name,
-    role: getHeroRoleValue(hero),
-    color: hero.color,
-    image_path: hero.image_path,
-    aliases: hero.aliases ?? [],
+    name: entity.name,
+    class: typeof entity.attrs.class === "string" ? entity.attrs.class : (classes[0] ?? ""),
+    color: typeof entity.attrs.color === "string" ? entity.attrs.color : DEFAULT_COLOR,
+    image_path: entity.image_path ?? "",
+    aliases: entity.aliases ?? [],
+    active: entity.active,
   };
 }
 
-/** Hero roles as the catalog stores them; anything else is shown as is. */
-const HERO_ROLE_MESSAGE_KEYS = {
-  Tank: "heroRoles.tank",
-  Damage: "heroRoles.damage",
-  Support: "heroRoles.support"
-} as const;
+/** Attrs merge on update: send only what this game's character form owns. */
+function toWrite(classes: readonly string[], form: CharacterForm): CatalogEntityWrite {
+  return {
+    name: form.name,
+    image_path: form.image_path || null,
+    aliases: form.aliases,
+    active: form.active,
+    attrs: { ...(classes.length > 0 && { class: form.class }), color: form.color },
+  };
+}
 
-export default function HeroesAdminPage() {
+export default function CharactersAdminPage() {
+  return <CatalogKindGuard kind="character">{(context) => <CharactersTable {...context} />}</CatalogKindGuard>;
+}
+
+function CharactersTable({ descriptor, discipline, kind, kindLabel }: Readonly<CatalogKindContext>) {
   const t = useTranslations("adminWorkspace.content");
-  const roleLabel = useCallback(
-    (role: string) => {
-      const key = HERO_ROLE_MESSAGE_KEYS[role as keyof typeof HERO_ROLE_MESSAGE_KEYS];
-      return key ? t(key) : role;
-    },
+  const classes = descriptor.character_classes;
+  const classLabel = useCallback(
+    (code: string) => (t.has(`heroRoles.${code}` as never) ? t(`heroRoles.${code}` as never) : code),
     [t]
   );
   const { isSuperuser } = usePermissions();
   const formId = useId();
   const nameFieldId = `${formId}-name`;
   const imageFieldId = `${formId}-image`;
-  const roleFieldId = `${formId}-role`;
+  const classFieldId = `${formId}-class`;
   const colorFieldId = `${formId}-color`;
   const colorPickerId = `${formId}-color-picker`;
   const aliasesFieldId = `${formId}-aliases`;
@@ -97,9 +112,9 @@ export default function HeroesAdminPage() {
   const {
     formData,
     setFormData,
-    editingEntity: editingHero,
-    deletingEntity: deletingHero,
-    setDeletingEntity: setDeletingHero,
+    editingEntity,
+    deletingEntity,
+    setDeletingEntity,
     isDialogOpen,
     closeForm,
     openCreate,
@@ -109,34 +124,37 @@ export default function HeroesAdminPage() {
     createMutation,
     updateMutation,
     deleteMutation,
+    deleteEntity,
     syncMutation,
-  } = useCatalogEntityCrud<Hero, HeroCreateInput, HeroUpdateInput>({
-    queryKey: adminQueryKeys.contentEntity("heroes"),
-    emptyForm: emptyHeroForm,
-    getForm: getHeroForm,
+    sync,
+  } = useCatalogEntityCrud<CatalogEntityRead, CharacterForm, CharacterForm>({
+    discipline,
+    kind,
+    emptyForm: emptyForm(classes),
+    getForm: (entity) => getCharacterForm(classes, entity),
     service: {
-      create: (data) => adminService.createHero(data),
-      update: (id, data) => adminService.updateHero(id, data),
-      delete: (id) => adminService.deleteHero(id),
-      sync: () => adminService.syncCatalog("overwatch"),
+      create: (d, k, data) => adminService.createCatalogEntity(d, k, toWrite(classes, data)),
+      update: (d, k, id, data) => adminService.updateCatalogEntity(d, k, id, toWrite(classes, data)),
+      delete: (d, k, id) => adminService.deleteCatalogEntity(d, k, id),
+      sync: (d) => adminService.syncCatalog(d),
     },
   });
 
   const filterDefs = useMemo<FilterDef[]>(
     () => [
       {
-        key: "role",
-        label: t("filters.role"),
+        key: "class",
+        label: t("filters.class"),
         kind: "single",
-        options: HERO_ROLES.map((role) => ({ value: role, label: roleLabel(role) })),
+        options: classes.map((code) => ({ value: code, label: classLabel(code) })),
       },
     ],
-    [roleLabel, t]
+    [classes, classLabel, t]
   );
   const filters = useFilters(filterDefs);
-  const roleFilter = String(filters.values.role ?? "");
+  const classFilter = String(filters.values.class ?? "");
 
-  const columns: ColumnDef<Hero>[] = [
+  const columns: ColumnDef<CatalogEntityRead>[] = [
     {
       accessorKey: "id",
       header: t("columns.id"),
@@ -147,14 +165,14 @@ export default function HeroesAdminPage() {
       id: "icon",
       header: t("columns.icon"),
       size: 52,
-      meta: columnMeta<Hero>({ align: "center" }),
+      meta: columnMeta<CatalogEntityRead>({ align: "center" }),
       cell: ({ row }) => {
-        const hero = row.original;
+        const entity = row.original;
         return (
           <AssetPreview
-            imagePath={hero.image_path}
-            name={hero.name}
-            assetLabel={t("catalog.hero.iconUrl")}
+            imagePath={entity.image_path}
+            name={entity.name}
+            assetLabel={t("catalog.entity.imageUrl", { kind: kindLabel })}
             shape="circle"
             className="mx-auto h-10 w-10"
           />
@@ -166,87 +184,113 @@ export default function HeroesAdminPage() {
       header: t("columns.name"),
       size: 132,
       cell: ({ row }) => {
-        const hero = row.original;
+        const entity = row.original;
+        const color = typeof entity.attrs.color === "string" ? entity.attrs.color : null;
         return (
           <div className="flex items-center gap-2">
-            {hero.color && (
+            {color && (
               <div
                 role="img"
-                aria-label={t("catalog.hero.pickColorWithValue", { color: hero.color })}
-                title={hero.color}
+                aria-label={t("catalog.character.pickColorWithValue", { color })}
+                title={color}
                 className="h-4 w-4 rounded-full border border-border"
-                style={{ backgroundColor: hero.color }}
+                style={{ backgroundColor: color }}
               />
             )}
-            <span>{hero.name}</span>
+            <span>{entity.name}</span>
           </div>
         );
       },
     },
+    ...(classes.length > 0
+      ? [
+          {
+            id: "class",
+            header: t("columns.class"),
+            size: 80,
+            enableSorting: false,
+            cell: ({ row }) => {
+              const code = row.original.attrs.class;
+              return typeof code === "string" ? (
+                <Badge variant="outline">{classLabel(code)}</Badge>
+              ) : (
+                <span className="text-sm text-muted-foreground">{t("catalog.unknown")}</span>
+              );
+            },
+          } satisfies ColumnDef<CatalogEntityRead>,
+        ]
+      : []),
     {
-      id: "role",
-      header: t("columns.role"),
-      size: 48,
-      meta: columnMeta<Hero>({ align: "center" }),
-      cell: ({ row }) => {
-        const role = getHeroRoleValue(row.original);
-        return (
-          <div title={roleLabel(role)}>
-            <PlayerRoleIcon role={role} size={22} decorative />
-            <span className="sr-only">{roleLabel(role)}</span>
-          </div>
-        );
-      },
+      accessorKey: "active",
+      header: t("columns.active"),
+      size: 72,
+      enableSorting: false,
+      meta: columnMeta<CatalogEntityRead>({ align: "center" }),
+      cell: ({ row }) =>
+        row.original.active ? (
+          <StatusIcon icon={CircleCheck} label={t("catalog.active")} variant="success" />
+        ) : (
+          <StatusIcon icon={CircleSlash} label={t("catalog.inactive")} variant="muted" />
+        ),
     },
-    createAliasesColumn<Hero>((hero) => hero.aliases, t("columns.aliases")),
-    createKebabColumn<Hero>(
-      (hero) => [
+    createAliasesColumn<CatalogEntityRead>((entity) => entity.aliases, t("columns.aliases")),
+    createKebabColumn<CatalogEntityRead>(
+      (entity) => [
         {
-          label: t("actions.editHero"),
+          label: t("actions.edit", { kind: kindLabel }),
           icon: Pencil,
           hidden: !isSuperuser,
-          onSelect: () => openEdit(hero),
+          onSelect: () => openEdit(entity),
         },
         {
-          label: t("actions.deleteHero"),
+          label: t("actions.deleteKind", { kind: kindLabel }),
           icon: Trash2,
           destructive: true,
           hidden: !isSuperuser,
-          onSelect: () => setDeletingHero(hero),
+          onSelect: () => setDeletingEntity(entity),
         },
       ],
-      { rowLabel: (hero) => hero.name }
+      { rowLabel: (entity) => entity.name }
     ),
   ];
 
   return (
     <>
       <DataTable
-        queryKey={(page, search, pageSize, sortField, sortDir) => ["admin", "heroes", page, search, pageSize, sortField, sortDir, roleFilter]}
-        queryFn={(page, search, pageSize, sortField, sortDir) =>
-          adminService.getHeroes({
+        queryKey={(page, search, pageSize, sortField, sortDir) =>
+          catalogQueryKeys.adminList({ discipline }, kind, {
             page,
-            search,
             per_page: pageSize,
-            role: roleFilter || undefined,
-            sort: sortField ?? undefined,
+            search,
+            sort: catalogSort(sortField),
             order: sortDir,
+            ...(classFilter && { attrs: { class: classFilter } }),
+          })
+        }
+        queryFn={(page, search, pageSize, sortField, sortDir) =>
+          adminService.listCatalogEntities(discipline, kind, {
+            page,
+            per_page: pageSize,
+            search,
+            sort: catalogSort(sortField),
+            order: sortDir,
+            ...(classFilter && { attrs: { class: classFilter } }),
           })
         }
         columns={columns}
-        searchPlaceholder={t("catalog.hero.search")}
+        searchPlaceholder={t("catalog.entity.search", { kind: kindLabel })}
         filterKey={filters.filterKey}
-        toolbar={<FilterBar defs={filterDefs} filters={filters} />}
-        emptyMessage={t("catalog.hero.empty")}
+        toolbar={classes.length > 0 ? <FilterBar defs={filterDefs} filters={filters} /> : undefined}
+        emptyMessage={t("catalog.entity.empty", { kind: kindLabel })}
         onRowDoubleClick={isSuperuser ? (row) => openEdit(row.original) : undefined}
         actions={
           <CatalogToolbarActions
             canSync={isSuperuser}
             isSyncing={syncMutation.isPending}
-            onSync={() => syncMutation.mutate()}
-            syncLabel={t("catalog.hero.sync")}
+            onSync={sync}
+            syncLabel={t("catalog.entity.sync", { game: descriptor.name })}
             onCreate={openCreate}
-            createLabel={t("catalog.hero.create")}
+            createLabel={t("catalog.entity.create", { kind: kindLabel })}
           />
         }
       />
@@ -255,14 +299,22 @@ export default function HeroesAdminPage() {
       <EntityFormDialog
         open={isDialogOpen}
         onOpenChange={onEntityDialogClose(closeForm)}
-        title={editingHero ? t("catalog.hero.updateTitle") : t("catalog.hero.createTitle")}
-        description={editingHero ? t("catalog.hero.descriptionUpdate") : t("catalog.hero.descriptionCreate")}
+        title={
+          editingEntity
+            ? t("catalog.entity.updateTitle", { kind: kindLabel })
+            : t("catalog.entity.createTitle", { kind: kindLabel })
+        }
+        description={
+          editingEntity
+            ? t("catalog.entity.descriptionUpdate", { kind: kindLabel })
+            : t("catalog.entity.descriptionCreate", { kind: kindLabel })
+        }
         onSubmit={handleSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
-        submittingLabel={editingHero ? t("catalog.hero.updating") : t("catalog.hero.creating")}
+        submittingLabel={editingEntity ? t("catalog.entity.updating") : t("catalog.entity.creating")}
         errorMessage={entityFormError(
-          "hero",
-          !!editingHero,
+          kindLabel,
+          !!editingEntity,
           updateMutation.error,
           createMutation.error,
           (key, values) => t(key, values)
@@ -274,16 +326,16 @@ export default function HeroesAdminPage() {
             id={nameFieldId}
             value={formData.name}
             onChange={(name) => setFormData({ ...formData, name })}
-            placeholder={t("catalog.hero.namePlaceholder")}
+            placeholder={t("catalog.entity.namePlaceholder", { kind: kindLabel })}
           />
 
           <div className="space-y-2">
-            <Label htmlFor={imageFieldId}>{t("catalog.hero.iconUrl")}</Label>
+            <Label htmlFor={imageFieldId}>{t("catalog.entity.imageUrl", { kind: kindLabel })}</Label>
             <div className="flex items-center gap-3">
               <AssetPreview
                 imagePath={formData.image_path}
-                name={formData.name || t("catalog.heroEntity")}
-                assetLabel={t("catalog.hero.iconUrl")}
+                name={formData.name || kindLabel}
+                assetLabel={t("catalog.entity.imageUrl", { kind: kindLabel })}
                 shape="circle"
                 className="h-10 w-10 shrink-0"
               />
@@ -295,44 +347,38 @@ export default function HeroesAdminPage() {
                 className="flex-1"
               />
             </div>
-            <p className="text-xs text-muted-foreground">{t("catalog.hero.iconLink")}</p>
+            <p className="text-xs text-muted-foreground">{t("catalog.character.iconLink")}</p>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor={roleFieldId}>{t("catalog.hero.roleRequired")}</Label>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 bg-muted/20">
-                <PlayerRoleIcon role={formData.role || emptyHeroForm.role} size={20} />
-              </div>
+          {classes.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor={classFieldId}>{t("catalog.character.classRequired")}</Label>
               <Select
-                value={formData.role}
-                onValueChange={(value) => setFormData({ ...formData, role: value })}
+                value={formData.class}
+                onValueChange={(value) => setFormData({ ...formData, class: value })}
               >
-                <SelectTrigger id={roleFieldId} className="flex-1">
-                  <SelectValue placeholder={t("catalog.hero.selectRole")} />
+                <SelectTrigger id={classFieldId}>
+                  <SelectValue placeholder={t("catalog.character.selectClass")} />
                 </SelectTrigger>
                 <SelectContent>
-                  {HERO_ROLES.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      <div className="flex items-center gap-2">
-                        <PlayerRoleIcon role={role} size={16} decorative />
-                        <span>{roleLabel(role)}</span>
-                      </div>
+                  {classes.map((code) => (
+                    <SelectItem key={code} value={code}>
+                      {classLabel(code)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          )}
 
           <div className="space-y-2">
-            <Label htmlFor={colorFieldId}>{t("catalog.hero.color")}</Label>
+            <Label htmlFor={colorFieldId}>{t("catalog.character.color")}</Label>
             <div className="flex items-center gap-2">
               <Input
                 id={colorPickerId}
-                aria-label={t("catalog.hero.pickColor")}
+                aria-label={t("catalog.character.pickColor")}
                 type="color"
-                value={formData.color || DEFAULT_HERO_COLOR}
+                value={formData.color || DEFAULT_COLOR}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
                 className="h-10 w-14 shrink-0 cursor-pointer p-1"
               />
@@ -341,7 +387,7 @@ export default function HeroesAdminPage() {
                 type="text"
                 value={formData.color || ""}
                 onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                placeholder={DEFAULT_HERO_COLOR}
+                placeholder={DEFAULT_COLOR}
                 className="flex-1 font-mono"
               />
             </div>
@@ -352,25 +398,32 @@ export default function HeroesAdminPage() {
             aliases={formData.aliases}
             onChange={(aliases) => setFormData({ ...formData, aliases })}
             placeholder={"Ана\nアナ"}
-            helperText={
-              <>
-              {t("catalog.hero.aliasesHelp")}
-              </>
-            }
+            helperText={t("fields.aliasesHelp")}
           />
+
+          <div className="flex items-center gap-2 pt-2">
+            <Checkbox
+              id={`${formId}-active`}
+              checked={formData.active}
+              onCheckedChange={(checked) => setFormData({ ...formData, active: Boolean(checked) })}
+            />
+            <Label htmlFor={`${formId}-active`} className="cursor-pointer font-medium text-sm">
+              {t("fields.activeHelp")}
+            </Label>
+          </div>
         </div>
       </EntityFormDialog>
 
       {/* Delete Confirmation */}
-      {deletingHero && (
+      {deletingEntity && (
         <ConfirmDialog
-          open={!!deletingHero}
-          onOpenChange={(open) => !open && setDeletingHero(null)}
-          onConfirm={() => deleteMutation.mutate(deletingHero.id)}
+          open={!!deletingEntity}
+          onOpenChange={(open) => !open && setDeletingEntity(null)}
+          onConfirm={() => deleteEntity(deletingEntity.id)}
           pending={deleteMutation.isPending}
           intent={{
-            title: t("catalog.hero.deleteTitle"),
-            description: t("catalog.hero.deleteDescription", { name: deletingHero.name }),
+            title: t("catalog.entity.deleteTitle", { kind: kindLabel }),
+            description: t("catalog.entity.deleteDescription", { name: deletingEntity.name }),
             confirmLabel: t("actions.delete"),
             tone: "danger",
           }}

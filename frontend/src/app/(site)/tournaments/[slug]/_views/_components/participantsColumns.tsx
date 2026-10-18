@@ -5,7 +5,7 @@ import { Crown } from "lucide-react";
 import type { RegistrationForm } from "@/types/registration.types";
 import { answerSearchText } from "@/lib/forms/answers";
 import { identityMaxCount, isBuiltinKey } from "@/lib/forms/builtin-keys";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 
 import {
   AdmissionStatusBadge,
@@ -60,7 +60,7 @@ export function buildParticipantColumns(
   form: RegistrationForm | null,
   t: Translator,
   grid?: DivisionGrid | null,
-  heroesMap?: Map<string, Hero>,
+  heroesMap?: Map<string, CatalogEntityChip>,
   /** Whether the loaded roster actually carries teams. There is no team flag on
    *  `RegistrationForm`, so the data itself is the only per-tournament signal;
    *  without it the column is not built at all. */

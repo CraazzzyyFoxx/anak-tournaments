@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { ROLE_ACCENTS, getRoleIconName, type RoleCode } from "@/lib/roster/roles";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { SubroleOption } from "@/types/registration.types";
 
 import type { RolePriority, RoleSelection } from "../types";
@@ -29,7 +29,7 @@ export interface RoleMatrixRowProps {
   selection: RoleSelection;
   subroleOptions: readonly SubroleOption[];
   /** Heroes offered for this row — always filtered to the role's own class. */
-  heroes: Hero[];
+  heroes: CatalogEntityRead[];
   topHeroesEnabled: boolean;
   maxHeroes: number;
   /** Hidden in the forced-flex mode, where every role is main by definition. */

@@ -18,8 +18,7 @@ vi.mock("@/hooks/useRealtimeTopic", () => ({
     if (topic) subscriptions.set(topic, { event, subscribed });
   }
 }));
-vi.mock("@/hooks/useMapsCatalog", () => ({ useMapsCatalog: () => ({ data: [] }) }));
-vi.mock("@/hooks/useHeroesCatalog", () => ({ useHeroesCatalog: () => ({ data: [] }) }));
+vi.mock("@/hooks/useCatalogEntities", () => ({ useCatalogEntities: () => ({ data: [] }) }));
 vi.mock("@/services/captain.service", () => ({ default: { getMyRole: async () => ({ side: null }) } }));
 vi.mock("@/services/pickBan.service", () => ({
   default: { getPickBanState: (...args: unknown[]) => getState(...args), markReady: async () => undefined }

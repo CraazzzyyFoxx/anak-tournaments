@@ -30,8 +30,7 @@ import {
   type PickBanValidationIssue
 } from "@/lib/tournament/pick-ban-config";
 import { Spinner } from "@/components/ui/spinner";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 /**
  * A room's hand-authored pick-ban rules.
@@ -225,10 +224,13 @@ function ItemPicker({
 }
 
 export function ScrimPoolEditor({
+  discipline,
   pool,
   disabled,
   onChange
 }: Readonly<{
+  /** The game whose maps and characters the room's rules draw on. */
+  discipline: string;
   pool: ScrimPoolDraft;
   disabled?: boolean;
   onChange: (next: ScrimPoolDraft) => void;
@@ -236,16 +238,16 @@ export function ScrimPoolEditor({
   const t = useTranslations("scrims.pool");
   const ids = useId();
 
-  const mapsQuery = useMapsCatalog({ withGamemode: true });
+  const mapsQuery = useCatalogEntities(discipline, "map");
   // Only fetched once hero bans are switched on: a map-only room never pays for it.
-  const heroesQuery = useHeroesCatalog({ enabled: pool.hero != null });
+  const heroesQuery = useCatalogEntities(discipline, "character", { enabled: pool.hero != null });
 
   const mapOptions = useMemo<ItemOption[]>(
     () =>
       (mapsQuery.data ?? [])
         // Off-rotation maps are not something a scrim vetoes; the organizer's
         // editor holds the same line.
-        .filter((map) => map.in_competitive !== false)
+        .filter((map) => map.attrs.in_competitive !== false)
         .map((map) => ({ id: map.id, name: map.name })),
     [mapsQuery.data]
   );

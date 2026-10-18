@@ -29,8 +29,8 @@ const AchievementConditionsCard = ({ achievement }: Props) => {
 
   return (
     <CardSurface title={t("achievements.conditionText.title")}>
-      <ConditionTreeView tree={achievement.condition_tree} />
-      <AchievementConditionFlow tree={achievement.condition_tree} />
+      <ConditionTreeView tree={achievement.condition_tree} discipline={achievement.discipline} />
+      <AchievementConditionFlow tree={achievement.condition_tree} discipline={achievement.discipline} />
     </CardSurface>
   );
 };

@@ -115,10 +115,6 @@ export const adminQueryKeys = {
   playerSubRolesPublic: (workspaceId: KeyPart) => ["player-sub-roles", workspaceId] as const,
   /** The parser's unresolved log names, and the badge counting them. */
   catalogAliasMisses: () => ["admin", "catalog-alias-misses"] as const,
-  /** One catalogue entity's list: `heroes`, `maps` or `gamemodes`. */
-  contentEntity: (entity: KeyPart) => ["admin", entity] as const,
-  /** The alias-resolution picker for one catalogue entity. */
-  contentAliasTargets: (entity: KeyPart) => ["admin", entity, "alias-targets"] as const,
   /** The parser console, mounted workspace-wide rather than per tournament. */
   workspaceLogHistory: (workspaceId: KeyPart) =>
     ["admin", "workspace", workspaceId, "log-history"] as const,

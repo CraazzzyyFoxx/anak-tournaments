@@ -16,7 +16,7 @@ the matching old application images, not running `alembic downgrade`.
 Deploy backend services, gateway schemas and frontend together. External clients must move with them.
 
 1. **Every catalog id changes.** Hero, map and gamemode responses and embeddings now carry new catalog
-   ids, including `/api/v1/heroes/{id}`, `/maps/{id}`, `/gamemodes/{id}`,
+   ids, including `/api/v1/catalog/{discipline}/{kind}/{id}`,
    `/heroes/{hero_id}/leaderboard`, `hero_id`, `left_hero_id`, `right_hero_id`, `map_id`, `gamemode_id`
    filters, pick-ban items, registration top heroes and achievement links. Do not reuse a stored legacy
    id as a new id. Until `discipline02`,
@@ -31,11 +31,11 @@ Deploy backend services, gateway schemas and frontend together. External clients
 4. **Alias worklist changes.** `entity_type` (`hero|map|gamemode`) becomes `discipline` plus `kind`
    (`character|map|mode`); `last_log_record_id` becomes `last_ingest_job_id`. Attach uses
    `{entity_id, alias}` with the new entity id.
-5. **Map list sorting changes.** `/api/v1/maps` uses sort key `parent_id`, not `gamemode_id`.
+5. **Map list sorting changes.** `/api/v1/catalog/{discipline}/map` uses sort key `parent_id`, not `gamemode_id`.
    The existing user-map statistics sort key `gamemode_id` is unchanged.
-6. **Public lists stay Overwatch-only.** `/api/v1/heroes`, `/maps`, `/gamemodes` and their `/lookup`
-   operations do not expose the LoL catalog. Existing hero/map/gamemode response shapes are preserved;
-   their ids are not.
+6. **Public catalog is native and per game.** `/api/v1/heroes`, `/maps`, `/gamemodes` and their
+   `/lookup` operations are removed; `GET /api/v1/catalog/{discipline}/{kind}[/{id}]` serves every
+   discipline's characters, maps and modes in one `CatalogEntityRead` shape (a map's mode is `parent`).
 
 Admin deletion of a referenced entity now returns **409 `Catalog entity is in use`**, not 500.
 Legacy mappings, encounter games and child entities can prevent deletion; use `active: false` to

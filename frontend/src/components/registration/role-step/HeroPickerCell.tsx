@@ -1,13 +1,13 @@
 "use client";
 
-import Image from "next/image";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { HeroPickerBlock } from "./HeroPickerBlock";
 
@@ -18,7 +18,7 @@ interface HeroPickerCellProps {
   roleCode: string;
   roleLabel: string;
   /** Heroes to offer — pre-filtered to the role's class. */
-  heroes: Hero[];
+  heroes: CatalogEntityRead[];
   selected: string[];
   max: number;
   onChange: (slugs: string[]) => void;
@@ -50,7 +50,7 @@ export function HeroPickerCell({
   const preview = selected
     .slice(0, PREVIEW_LIMIT)
     .map((slug) => heroes.find((hero) => hero.slug === slug))
-    .filter((hero): hero is Hero => hero !== undefined);
+    .filter((hero): hero is CatalogEntityRead => hero !== undefined);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -80,13 +80,7 @@ export function HeroPickerCell({
                   key={hero.slug}
                   className="block size-6 overflow-hidden rounded-md border border-[color:var(--aqt-border-2)]"
                 >
-                  <Image
-                    src={hero.image_path}
-                    alt=""
-                    width={24}
-                    height={24}
-                    className="size-full object-contain"
-                  />
+                  <CatalogEntityImage entity={hero} size={24} rounded="lg" decorative className="border-0" />
                 </span>
               ))}
             </span>

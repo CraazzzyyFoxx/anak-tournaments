@@ -2,6 +2,7 @@
 
 import type { CaptainReport, RawSourceStatus, ReplayCode } from "@/types/encounter.types";
 import type { RoleRef } from "@/lib/roster/role-ref";
+import type { CatalogKind } from "@/types/catalog.types";
 
 // ─── Global Settings (parser.*) ───────────────────────────────────────────────
 
@@ -1248,60 +1249,6 @@ export interface SocialVisibilityInput {
   visible: boolean;
 }
 
-// ─── Hero ────────────────────────────────────────────────────────────────────
-
-export interface HeroCreateInput {
-  name: string;
-  role: string;
-  color?: string;
-  image_path?: string;
-  aliases?: string[];
-}
-
-export interface HeroUpdateInput {
-  name?: string;
-  role?: string;
-  color?: string;
-  image_path?: string;
-  aliases?: string[];
-}
-
-// ─── Gamemode ────────────────────────────────────────────────────────────────
-
-export interface Gamemode {
-  id: number;
-  created_at: Date;
-  updated_at?: Date | null;
-  name: string;
-  aliases: string[];
-}
-
-export interface GamemodeCreateInput {
-  name: string;
-  aliases?: string[];
-}
-
-export interface GamemodeUpdateInput {
-  name?: string;
-  aliases?: string[];
-}
-
-// ─── Map ─────────────────────────────────────────────────────────────────────
-
-export interface MapCreateInput {
-  name: string;
-  gamemode_id: number;
-  in_competitive?: boolean;
-  aliases?: string[];
-}
-
-export interface MapUpdateInput {
-  name?: string;
-  gamemode_id?: number;
-  in_competitive?: boolean;
-  aliases?: string[];
-}
-
 // ─── Catalog aliases ─────────────────────────────────────────────────────────
 
 /** `character|map|mode` are catalog entities an alias can name; `stat|event|role` are undeclared module codes. */
@@ -1336,42 +1283,6 @@ export interface CatalogAliasMissQuery {
 export interface CatalogAliasAttachInput {
   entity_id: number;
   alias: string;
-}
-
-// ─── Game catalog (generic admin CRUD) ───────────────────────────────────────
-
-export type CatalogKind = "character" | "map" | "mode";
-
-export interface CatalogEntityParentRead {
-  id: number;
-  slug: string;
-  name: string;
-}
-
-export interface CatalogEntityRead {
-  id: number;
-  created_at: string;
-  updated_at: string | null;
-  discipline: string;
-  kind: CatalogKind;
-  slug: string;
-  name: string;
-  image_path: string | null;
-  parent_id: number | null;
-  attrs: Record<string, unknown>;
-  aliases: string[];
-  active: boolean;
-  parent: CatalogEntityParentRead | null;
-}
-
-export interface CatalogEntityWrite {
-  name?: string;
-  slug?: string;
-  image_path?: string | null;
-  parent_id?: number | null;
-  attrs?: Record<string, unknown>;
-  aliases?: string[];
-  active?: boolean;
 }
 
 // ─── Achievement Rule Engine ──────────────────────────────────────────────────

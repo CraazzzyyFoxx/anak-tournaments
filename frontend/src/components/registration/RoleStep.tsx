@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import FlexIcon from "@/components/icons/FlexIcon";
+import { characterClass } from "@/lib/catalog/attrs";
 import { cn } from "@/lib/utils";
 import {
   REGISTRATION_TO_CANONICAL,
@@ -12,7 +13,7 @@ import {
   type RoleCode,
 } from "@/lib/roster/roles";
 import type { RolesParams } from "@/types/forms.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RoleInput, SubroleCatalog } from "@/types/registration.types";
 
 import {
@@ -38,7 +39,7 @@ interface RoleStepProps {
   /** Field-level role error, shown once above the matrix. */
   error?: string | null;
   hideHelperText?: boolean;
-  allHeroes: Hero[];
+  allHeroes: CatalogEntityRead[];
   /**
    * Restrict the matrix to ONE role, permanently `main`.
    *
@@ -112,7 +113,7 @@ export default function RoleStep({
    * offered cannot be deselected — the registrant would be stuck with a hero the
    * backend rejects as soon as they stop being flex.
    */
-  const heroesForRole = (roleCode: string): Hero[] => {
+  const heroesForRole = (roleCode: string): CatalogEntityRead[] => {
     const canonical = REGISTRATION_TO_CANONICAL[roleCode as RoleCode];
     if (!canonical) {
       return allHeroes;
@@ -120,7 +121,7 @@ export default function RoleStep({
     const selected = selections[roleCode as RoleCode].topHeroes;
     return allHeroes.filter(
       (hero) =>
-        (hero.role || hero.type || "").toLowerCase() === canonical || selected.includes(hero.slug),
+        (characterClass(hero) ?? "").toLowerCase() === canonical || selected.includes(hero.slug),
     );
   };
 

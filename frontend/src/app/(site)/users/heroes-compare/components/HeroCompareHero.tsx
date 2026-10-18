@@ -5,7 +5,9 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Hero, HeroLeaderboardEntry } from "@/types/hero.types";
+import { HeroLeaderboardEntry } from "@/types/hero.types";
+import { characterClass } from "@/lib/catalog/attrs";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import { heroVariantFromRole } from "@/lib/roster/player-role";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
 import { cn } from "@/lib/utils";
@@ -23,7 +25,7 @@ interface SummaryStat {
 }
 
 interface HeroCompareHeroProps {
-  selectedHero: Hero | undefined;
+  selectedHero: CatalogEntityRead | undefined;
   rows: HeroLeaderboardEntry[];
 }
 
@@ -31,7 +33,7 @@ const HeroCompareHero = ({ selectedHero, rows }: HeroCompareHeroProps) => {
   const t = useTranslations();
 
   const stats = useMemo<SummaryStat[]>(() => {
-    const variant = heroVariantFromRole(selectedHero?.type ?? selectedHero?.role);
+    const variant = heroVariantFromRole(characterClass(selectedHero));
     const sigKey =
       variant === "support"
         ? "per10_healing"
@@ -46,7 +48,7 @@ const HeroCompareHero = ({ selectedHero, rows }: HeroCompareHeroProps) => {
           : t("users.heroesCompare.hero.damage");
     const sigDef = COL[sigKey];
     const kdDef = COL.kd;
-    const roleLabel = selectedHero?.type ?? selectedHero?.role ?? "—";
+    const roleLabel = characterClass(selectedHero) ?? "—";
 
     const topSig = rows.length
       ? rows.reduce((best, r) => (sigDef.getValue(r) > sigDef.getValue(best) ? r : best))

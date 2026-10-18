@@ -68,6 +68,12 @@ type PoolSource = "copy" | "custom";
 
 const POOL_SOURCES: PoolSource[] = ["copy", "custom"];
 
+/**
+ * The game a new room is created for. `ScrimService.create` opens Overwatch rooms only (it asserts that discipline
+ * is enabled and stamps it on the room), so the custom pool is drawn from that game's catalog.
+ */
+const SCRIM_DISCIPLINE = "overwatch";
+
 export function ScrimCreateDialog({
   workspaceId: scopedWorkspaceId,
   workspaces
@@ -381,6 +387,7 @@ export function ScrimCreateDialog({
               </div>
             ) : (
               <ScrimPoolEditor
+                discipline={SCRIM_DISCIPLINE}
                 pool={pool}
                 disabled={createMutation.isPending}
                 onChange={setPool}

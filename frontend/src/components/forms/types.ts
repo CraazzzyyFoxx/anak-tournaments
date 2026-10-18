@@ -14,7 +14,7 @@ import type { ComponentType } from "react";
 import type { Translate } from "@/lib/forms/form-errors";
 import type { RoleCode } from "@/lib/roster/roles";
 import type { FormField } from "@/types/forms.types";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { SubroleCatalog, SubscriptionStatus } from "@/types/registration.types";
 import type { SocialAccount } from "@/types/user.types";
 
@@ -30,7 +30,7 @@ export interface FieldRendererContext {
   accounts: SocialAccount[];
   subroleCatalog: SubroleCatalog;
   /** Roster for the top-heroes pickers; empty until the query resolves. */
-  heroes: Hero[];
+  heroes: CatalogEntityRead[];
   lockedRole: RoleCode | null;
   /**
    * The roles the `roles` answer declares, injected by `SchemaForm`. Optional:

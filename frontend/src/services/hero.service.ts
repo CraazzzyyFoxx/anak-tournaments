@@ -1,39 +1,10 @@
-import { Hero, HeroLeaderboardEntry, HeroPlaytime } from "@/types/hero.types";
-import { LookupItem, PaginatedResponse } from "@/types/pagination.types";
+import { HeroLeaderboardEntry, HeroPlaytime } from "@/types/hero.types";
+import { PaginatedResponse } from "@/types/pagination.types";
 import { LogStatsName } from "@/types/stats.types";
 import { apiFetch } from "@/lib/api/fetch";
 import { scopeQuery, type StatsScope } from "@/lib/site/stats-scope";
 
 export default class heroService {
-  static async lookup(): Promise<LookupItem[]> {
-    return apiFetch("/api/v1/heroes/lookup").then((res) => res.json());
-  }
-
-  static async getAll({
-    page = 1,
-    perPage = -1,
-    sort = "name",
-    order = "asc",
-    query
-  }: {
-    page?: number;
-    perPage?: number;
-    sort?: "id" | "name" | "slug";
-    order?: "asc" | "desc";
-    query?: string;
-  } = {}): Promise<PaginatedResponse<Hero>> {
-    return apiFetch("/api/v1/heroes", {
-      query: {
-        page,
-        per_page: perPage,
-        sort,
-        order,
-        query,
-        fields: ["name"]
-      }
-    }).then((res) => res.json());
-  }
-
   static async getHeroPlaytime(
     page: number = 1,
     perPage: number = 10,

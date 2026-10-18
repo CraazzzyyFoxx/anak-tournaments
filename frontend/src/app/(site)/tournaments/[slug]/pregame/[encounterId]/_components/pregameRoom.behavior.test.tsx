@@ -107,11 +107,12 @@ vi.mock("@/services/encounter.service", () => ({
     getMatch: (...args: unknown[]) => getMatch(...args)
   }
 }));
-vi.mock("@/services/map.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllMaps(...args) }
-}));
-vi.mock("@/services/hero.service", () => ({
-  default: { getAll: (...args: unknown[]) => getAllHeroes(...args) }
+// One native catalog read serves both kinds; the room asks for its encounter's own game.
+vi.mock("@/services/catalog.service", () => ({
+  default: {
+    list: (discipline: string, kind: string, ...rest: unknown[]) =>
+      kind === "map" ? getAllMaps(discipline, kind, ...rest) : getAllHeroes(discipline, kind, ...rest)
+  }
 }));
 // The room now mounts `RoomChat` beside every phase. These cases are about the
 // phases, so the viewer is a spectator here (403 -> `null`) and the panel keeps
@@ -192,6 +193,7 @@ function encounter(): Encounter {
     teams: seats(),
     games: [],
     matches: [],
+    discipline: "lol",
     tournament: { id: 3, workspace_id: 1 }
   } as unknown as Encounter;
 }
@@ -588,6 +590,18 @@ describe("readiness gate", () => {
     // Nothing pretends to be loading: this state only clears when a human in
     // another browser confirms, so a shimmer would never resolve.
     expect(document.body.querySelector(".animate-pulse")).toBeNull();
+  });
+
+  it("reads the maps and characters of the encounter's own game, never a default one", async () => {
+    getMyRole.mockResolvedValue({ encounter_team_id: HOME, slot: 1 });
+    mockStates(unavailableState("not_ready", { [HOME]: true, [AWAY]: false }), unavailableState("not_configured"));
+    await render();
+
+    expect(getAllMaps).toHaveBeenCalled();
+    expect(getAllHeroes).toHaveBeenCalled();
+    for (const call of [...getAllMaps.mock.calls, ...getAllHeroes.mock.calls]) expect(call[0]).toBe("lol");
+    expect(getAllMaps.mock.calls[0][1]).toBe("map");
+    expect(getAllHeroes.mock.calls[0][1]).toBe("character");
   });
 });
 

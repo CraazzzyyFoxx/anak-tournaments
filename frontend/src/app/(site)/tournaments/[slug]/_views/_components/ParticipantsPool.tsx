@@ -14,7 +14,7 @@ import { resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { isRoleSlotCode, orderSlotCodes, ROSTER_SLOT_CODES } from "@/lib/roster/shape";
 import type { RosterShape } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
-import type { Hero } from "@/types/hero.types";
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import type { Registration, RegistrationRole } from "@/types/registration.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { getPlayerSlug } from "@/lib/player";
@@ -87,7 +87,7 @@ export interface ParticipantsPoolProps {
   /** Drives which role columns exist; `null` falls back to the declared roles. */
   rosterShape: RosterShape | null;
   divisionGrid: DivisionGrid;
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
   search: string;
   division: number | null;
   /** Clears search + division for the filtered-empty state. */
@@ -126,12 +126,12 @@ export function poolDivisionOptions(
 }
 
 /** Heroes for one role, resolved through the catalogue with a slug fallback. */
-function topHeroes(role: RegistrationRole, heroesMap: Map<string, Hero>, limit: number): Hero[] {
-  const heroes: Hero[] = [];
+function topHeroes(role: RegistrationRole, heroesMap: Map<string, CatalogEntityChip>, limit: number): CatalogEntityChip[] {
+  const heroes: CatalogEntityChip[] = [];
   for (const slug of role.top_heroes ?? []) {
     if (!slug || heroes.length >= limit) continue;
     const hero = heroesMap.get(slug);
-    heroes.push(hero ?? ({ name: slug, slug, image_path: "", role: roleOf(role.role) } as Hero));
+    heroes.push(hero ?? { name: slug, slug, image_path: null, attrs: { class: roleOf(role.role) } });
   }
   return heroes;
 }
@@ -146,7 +146,7 @@ function PoolRow({
 }: Readonly<{
   entry: PoolEntry;
   position: number;
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
   divisionGrid: DivisionGrid;
   showDivision: boolean;
   showHeroes: boolean;
@@ -265,7 +265,7 @@ function RoleColumn({
 }: Readonly<{
   role: string;
   entries: PoolEntry[];
-  heroesMap: Map<string, Hero>;
+  heroesMap: Map<string, CatalogEntityChip>;
   divisionGrid: DivisionGrid;
   showDivision: boolean;
 }>) {

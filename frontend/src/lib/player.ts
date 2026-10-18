@@ -1,3 +1,4 @@
+import type { CatalogEntityChip } from "@/types/catalog.types";
 import { Hero } from "@/types/hero.types";
 import { User, UserProfile } from "@/types/user.types";
 import { roleOf, subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
@@ -25,8 +26,8 @@ export interface TeamRosterPlayer extends SortableRosterPlayer {
   user_id?: number;
   /** Average MVP placement across the player's matches (1 = MVP/best). */
   avg_mvp?: number | null;
-  /** Player's top signature heroes (same shape as per-match `heroes`). */
-  heroes?: Hero[];
+  /** Player's top signature heroes: per-match `Hero` rows, or catalog entries for a declared pick. */
+  heroes?: Array<Hero | CatalogEntityChip>;
 }
 
 type PlayerRoleInfo = {

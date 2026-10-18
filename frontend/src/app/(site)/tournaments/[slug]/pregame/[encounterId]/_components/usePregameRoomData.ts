@@ -10,13 +10,12 @@ import pickBanService from "@/services/pickBan.service";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { notify } from "@/lib/notify";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
-import { useHeroesCatalog } from "@/hooks/useHeroesCatalog";
-import { useMapsCatalog } from "@/hooks/useMapsCatalog";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { createTrailingCoalescer, type Coalescer } from "@/lib/realtime/coalesce";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import type { Encounter } from "@/types/encounter.types";
-import type { MapRead } from "@/types/map.types";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
 
 export interface PregameRoomData {
@@ -32,7 +31,7 @@ export interface PregameRoomData {
   heroesById: Record<number, PickBanItemLike | undefined>;
   itemsByKind: Record<PickBanKind, Record<number, PickBanItemLike | undefined>>;
   /** Every map in the catalog, for the no-veto "which map did you play" picker. */
-  mapChoices: MapRead[];
+  mapChoices: CatalogEntityRead[];
   /** The participation the viewer captains (`EncounterTeam.id`), or null for anyone else. */
   viewerTeamId: number | null;
   readyPending: boolean;
@@ -114,8 +113,10 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
     queryFn: () => encounterService.getEncounter(encounterId),
     enabled
   });
-  const mapsQuery = useMapsCatalog();
-  const heroesQuery = useHeroesCatalog();
+  // The room's own game: the encounter names it, and nothing is read until it has loaded.
+  const discipline = encounterQuery.data?.discipline ?? null;
+  const mapsQuery = useCatalogEntities(discipline, "map");
+  const heroesQuery = useCatalogEntities(discipline, "character");
   // `build_unavailable_state` reports `viewer_team_id: null` regardless of
   // identity (there is no session yet to resolve a participation against), so the
   // readiness gate's "you're a captain" check needs its own read.
