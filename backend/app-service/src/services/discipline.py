@@ -46,17 +46,19 @@ def _not_found() -> BaseAPIException:
 
 
 def _scope(raw: str | None) -> int | None:
-    """``None`` for the global view, else a workspace id; anything else is a 422 the client can branch on."""
+    """``None`` for the global view, else a workspace id; a non-integer, non-``all`` value is a 422."""
     if raw is None or raw == _ALL:
         return None
-    digits = raw.lstrip("0")
-    # ``catalog``/``workspace`` ids are BigInteger: anything longer or larger can never name a workspace row.
-    if not (raw.isascii() and raw.isdigit()) or len(digits) > 19 or int(digits or "0") > _MAX_ID:
+    if not (raw.isascii() and raw.isdigit()):
         raise ApiHTTPException(
             status_code=422,
             detail=[ApiExc(code="invalid_workspace_id", msg="workspace_id must be a workspace id or 'all'")],
         )
-    return int(digits or "0")  # 0 is no workspace: the unknown-workspace 404 below
+    digits = raw.lstrip("0")
+    # Ids are BigInteger: a longer or larger integer can never name a workspace row, so it reads as the unknown
+    # workspace (0 -> the 404 below), never as a malformed value. The length guard keeps ``int`` off absurd inputs.
+    value = int(digits or "0") if len(digits) <= 19 else 0
+    return value if value <= _MAX_ID else 0
 
 
 async def _visible_workspace(session: AsyncSession, workspace_id: int, viewer: AuthUser | None) -> models.Workspace:

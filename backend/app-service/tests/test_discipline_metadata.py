@@ -183,20 +183,30 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         both = await self.workspace("both", enabled=("overwatch", "lol"))
         self.assertTrue(all(row["enabled"] for row in (await self.list(both.id))["data"]))
 
-    async def test_a_malformed_scope_is_422_invalid_workspace_id_and_an_unknown_one_is_404(self) -> None:
+    async def test_a_non_integer_scope_is_422_and_any_unknown_integer_is_the_404(self) -> None:
         for call in (self.list, lambda scope: self.metadata("overwatch", scope)):
             for scope in ("abc", "-3", "1.5", "ALL", " 7"):
                 reply = await call(scope)
                 self.assertFalse(reply["ok"], scope)
                 self.assertEqual("unprocessable", reply["error"]["code"])
                 self.assertEqual("invalid_workspace_id", reply["error"]["details"]["fields"][0]["code"])
-            for scope in ("2000000000", "1000000000", "0", "00", "0000", str(2**63 - 1)):
+            # Digit-only values are integers: unknown (including beyond BigInteger) is the 404, never a 422.
+            for scope in (
+                "2000000000",
+                "1000000000",
+                "0",
+                "00",
+                "0000",
+                str(2**63 - 1),
+                str(2**63),
+                "9" * 40,
+                "1" + "0" * 5000,
+            ):
                 reply = await call(scope)
-                self.assertEqual("not_found", reply["error"]["code"], scope)
+                self.assertEqual("not_found", reply["error"]["code"], scope[:12])
                 self.assertEqual("Workspace not found", reply["error"]["message"])
-            for scope in (str(2**63), "9" * 40, "1" + "0" * 5000):  # beyond BigInteger: never an id
+            for scope in ("٣", "1" + "٠" * 20):  # non-ASCII digits are not integers
                 reply = await call(scope)
-                self.assertEqual("unprocessable", reply["error"]["code"], scope[:12])
                 self.assertEqual("invalid_workspace_id", reply["error"]["details"]["fields"][0]["code"])
 
     async def test_any_bigint_id_and_its_leading_zero_forms_reach_the_real_visibility_check(self) -> None:
