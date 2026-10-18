@@ -45,7 +45,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import (
@@ -58,15 +57,19 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException
 from shared.disciplines import discipline as discipline_spec
 from shared.domain.roles import UnknownRole
-from shared.models import CatalogRole, RoleDimension
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
-from shared.models.encounter.room_event import EncounterRoomEvent
-from shared.models.encounter.team import EncounterTeam, EncounterTeamMember
+from shared.models.encounter.team import EncounterTeam
 from shared.models.tenancy.workspace import WorkspaceMember
-from shared.models.tournament.player_role import PlayerRole
-from shared.models.tournament.team import Player
-from shared.repository import CatalogRoleRepository, TournamentRepository
+from shared.repository import (
+    CatalogRoleRepository,
+    EncounterRepository,
+    EncounterRoomEventRepository,
+    EncounterTeamMemberRepository,
+    PlayerRepository,
+    TournamentRepository,
+    WorkspaceMemberRepository,
+)
 from shared.schemas.events import MatchIngestedEvent, MatchIngestExtraParticipant
 from shared.services.bracket.usability import is_encounter_live
 from shared.services.division_grid.access import get_effective_division_grid
@@ -122,7 +125,12 @@ class ForeignEvidenceError(ValueError):
 
 
 _tournaments = TournamentRepository()
+_encounters = EncounterRepository()
+_players = PlayerRepository()
 _roles = CatalogRoleRepository()
+_members = WorkspaceMemberRepository()
+_team_members = EncounterTeamMemberRepository()
+_room_events = EncounterRoomEventRepository()
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,13 +151,8 @@ async def apply_match_evidence(
 
     The caller commits once, after this returns, and acknowledges the delivery only after that commit.
     """
-    # Not ``EncounterRepository``: its select is tournament-owned only, and a mix round needs its refusal receipt.
-    encounter = await session.scalar(
-        sa.select(Encounter)
-        .where(Encounter.id == event.encounter_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    )
+    # Any owner, not ``get_for_update``: a mix round is no tournament encounter yet needs its refusal receipt.
+    encounter = await _encounters.get_any_owner_for_update(session, event.encounter_id)
     if encounter is None:
         return IGNORED
     # A foreign event is malformed, not a policy decision: it must reach the dead-letter queue before it can write
@@ -286,17 +289,9 @@ async def _delivered(session: AsyncSession, encounter_id: int, game_id: int, evi
     Deliberately not ``RoomHistoryService.list_history``: that read is capped at 500 newest rows for display, and
     a busy room would push an old receipt out of the window and let a stale revision through.
     """
-    data = EncounterRoomEvent.data
-    rows = (
-        await session.execute(
-            sa.select(data["revision"].as_integer(), data["event_id"].as_string()).where(
-                EncounterRoomEvent.encounter_id == encounter_id,
-                EncounterRoomEvent.action == RECEIPT_ACTION,
-                data["game_id"].as_integer() == game_id,
-                data["evidence_id"].as_integer() == evidence_id,
-            )
-        )
-    ).all()
+    rows = await _room_events.receipts_for_evidence(
+        session, encounter_id, action=RECEIPT_ACTION, game_id=game_id, evidence_id=evidence_id
+    )
     return _Delivered(
         revisions=frozenset(revision for revision, _ in rows if revision is not None),
         event_ids=frozenset(event_id for _, event_id in rows if event_id is not None),
@@ -365,18 +360,12 @@ async def _plan_extras(
                 return [], _Refusal(OWNER_POLICY_REFUSED, "extra_member_contradiction")
             continue  # the same member listed twice for one team
         claimed[extra.workspace_member_id] = participation.id
-        member = await session.get(WorkspaceMember, extra.workspace_member_id)
+        member = await _members.get(session, extra.workspace_member_id)
         if member is None or member.workspace_id != encounter.workspace_id:
             return [], _Refusal(OWNER_POLICY_REFUSED, "extra_member_foreign")
         if member.removed_at is not None:
             return [], _Refusal(OWNER_POLICY_REFUSED, "extra_member_removed")
-        seated_on = await session.scalar(
-            sa.select(EncounterTeamMember.encounter_team_id).where(
-                EncounterTeamMember.encounter_id == encounter.id,
-                EncounterTeamMember.workspace_member_id == member.id,
-                EncounterTeamMember.active.is_(True),
-            )
-        )
+        seated_on = await _team_members.active_team_id(session, encounter.id, member.id)
         if seated_on == participation.id:
             continue
         if seated_on is not None:
@@ -403,23 +392,7 @@ async def _snapshot(
     must be the discipline's rated dimension and resolve in this workspace.
     """
     rated = discipline_spec(encounter.discipline).rated_dimension.code
-    # The player's rated leaf, root or workspace sub-role alike (``rated_role_code`` only reports sub-roles).
-    rated_leaf = (
-        sa.select(CatalogRole.code)
-        .select_from(PlayerRole)
-        .join(CatalogRole, CatalogRole.id == PlayerRole.role_id)
-        .join(RoleDimension, sa.and_(RoleDimension.id == CatalogRole.dimension_id, RoleDimension.rated.is_(True)))
-        .where(PlayerRole.player_id == Player.id)
-        .limit(1)
-        .scalar_subquery()
-    )
-    rostered = (
-        await session.execute(
-            sa.select(Player.team_id, Player.rank, rated_leaf).where(
-                Player.tournament_id == encounter.tournament_id, Player.workspace_member_id == member.id
-            )
-        )
-    ).all()
+    rostered = await _players.rated_roster_rows(session, encounter.tournament_id, member.id)
     if any(team_id != participation.team_id for team_id, _, _ in rostered):
         return _Refusal(OWNER_POLICY_REFUSED, "extra_member_other_team")
     own_rank, own_role = (rostered[0][1], rostered[0][2]) if rostered else (None, None)
@@ -454,7 +427,7 @@ async def _snapshot(
     if rank is None:
         top = leaf.code
         if leaf.parent_role_id is not None:
-            top = await session.scalar(sa.select(CatalogRole.code).where(CatalogRole.id == leaf.parent_role_id))
+            top = (await _roles.get(session, leaf.parent_role_id)).code
         grid = await get_effective_division_grid(
             session, encounter.workspace_id, encounter.tournament_id, discipline=encounter.discipline
         )

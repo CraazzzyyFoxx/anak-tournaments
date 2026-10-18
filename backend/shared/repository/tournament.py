@@ -338,6 +338,35 @@ class PlayerRepository(BaseRepository[models.Player]):
         result = await session.execute(query)
         return result.unique().scalars().first()
 
+    async def rated_roster_rows(
+        self, session: AsyncSession, tournament_id: int, workspace_member_id: int
+    ) -> Sequence[tuple[int | None, int | None, str | None]]:
+        """``(team_id, rank, rated role code)`` of this member's roster rows in a tournament.
+
+        The rated leaf is the player's rated-dimension role, root or workspace sub-role alike
+        (``rated_role_code`` only reports sub-roles).
+        """
+        rated_leaf = (
+            sa.select(models.CatalogRole.code)
+            .select_from(models.PlayerRole)
+            .join(models.CatalogRole, models.CatalogRole.id == models.PlayerRole.role_id)
+            .join(
+                models.RoleDimension,
+                sa.and_(
+                    models.RoleDimension.id == models.CatalogRole.dimension_id, models.RoleDimension.rated.is_(True)
+                ),
+            )
+            .where(models.PlayerRole.player_id == models.Player.id)
+            .limit(1)
+            .scalar_subquery()
+        )
+        result = await session.execute(
+            sa.select(models.Player.team_id, models.Player.rank, rated_leaf).where(
+                models.Player.tournament_id == tournament_id, models.Player.workspace_member_id == workspace_member_id
+            )
+        )
+        return result.tuples().all()
+
     async def list_by_team(self, session: AsyncSession, team_id: int) -> Sequence[models.Player]:
         result = await session.execute(
             sa.select(models.Player).where(models.Player.team_id == team_id).order_by(models.Player.id.asc())
@@ -428,6 +457,18 @@ class EncounterRepository(BaseRepository[models.Encounter]):
             .execution_options(populate_existing=True)
         )
         result = await session.execute(query)
+        return result.unique().scalars().first()
+
+    async def get_any_owner_for_update(self, session: AsyncSession, encounter_id: int) -> models.Encounter | None:
+        """``get_for_update`` without the tournament-owned predicate: a mix round is no tournament encounter, but
+        a consumer that must leave it a refusal receipt still locks it first."""
+        result = await session.execute(
+            super()
+            .select()
+            .where(models.Encounter.id == encounter_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         return result.unique().scalars().first()
 
     async def get_by_challonge_id(

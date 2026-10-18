@@ -267,6 +267,16 @@ class EncounterTeamMemberRepository(BaseRepository[models.EncounterTeamMember]):
     def __init__(self) -> None:
         super().__init__(models.EncounterTeamMember)
 
+    async def active_team_id(self, session: AsyncSession, encounter_id: int, workspace_member_id: int) -> int | None:
+        """The live participation this member is seated on in this encounter, if any."""
+        return await session.scalar(
+            sa.select(models.EncounterTeamMember.encounter_team_id).where(
+                models.EncounterTeamMember.encounter_id == encounter_id,
+                models.EncounterTeamMember.workspace_member_id == workspace_member_id,
+                models.EncounterTeamMember.active.is_(True),
+            )
+        )
+
 
 class EncounterTeamMemberRoleRepository(BaseRepository[models.EncounterTeamMemberRole]):
     """``encounter.team_member_role`` — a roster member's roles, per dimension."""
@@ -372,6 +382,25 @@ class EncounterRoomEventRepository(BaseRepository[models.EncounterRoomEvent]):
             .where(self.model.encounter_id == encounter_id)
             .order_by(self.model.created_at.desc(), self.model.id.desc())
             .limit(limit)
+        )
+        return result.tuples().all()
+
+    async def receipts_for_evidence(
+        self, session: AsyncSession, encounter_id: int, *, action: str, game_id: int, evidence_id: int
+    ) -> Sequence[tuple[int | None, str | None]]:
+        """``(revision, event_id)`` of every ``action`` receipt of this evidence on this game.
+
+        A direct, unbounded read of the scoped journal -- deliberately not ``list_with_actor``, whose newest-N
+        window would let a busy room push an old receipt out and a stale revision through.
+        """
+        data = self.model.data
+        result = await session.execute(
+            sa.select(data["revision"].as_integer(), data["event_id"].as_string()).where(
+                self.model.encounter_id == encounter_id,
+                self.model.action == action,
+                data["game_id"].as_integer() == game_id,
+                data["evidence_id"].as_integer() == evidence_id,
+            )
         )
         return result.tuples().all()
 
