@@ -62,9 +62,13 @@ _ANSWER_FIELDS: dict[str, str] = {
 _EMPTY_IS_NULL = frozenset({"custom_fields_json"})
 
 
-def label(registration: models.BalancerRegistration) -> str | None:
-    """Snapshot name for the row, so the feed stays readable after a delete."""
-    identity = registration.primary_game_identity()
+def label(registration: models.BalancerRegistration, *, provider: str) -> str | None:
+    """Snapshot name for the row, so the feed stays readable after a delete.
+
+    ``provider`` is the owning tournament's identity provider: the handle named is
+    that game's, never another game's.
+    """
+    identity = registration.primary_game_identity(provider=provider)
     return registration.display_name or (identity.handle if identity is not None else None)
 
 

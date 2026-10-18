@@ -70,6 +70,7 @@ def serialize_registration(
     registration: models.BalancerRegistration,
     *,
     workspace_id: int,
+    provider: str,
     status_meta_map: dict[str, dict[str, StatusMeta]] | None = None,
     ow_ranks_for_user: dict[str, int] | None = None,
     admission: AdmissionRead | None = None,
@@ -102,7 +103,9 @@ def serialize_registration(
         workspace_id=workspace_id,
         user_id=workspace_member.player_id if workspace_member is not None else None,
         display_name=registration.display_name,
-        primary_handle=(identity.handle if (identity := registration.primary_game_identity()) else None),
+        primary_handle=(
+            identity.handle if (identity := registration.primary_game_identity(provider=provider)) else None
+        ),
         source="google_sheets" if binding is not None else "manual",
         source_record_key=binding.source_record_key if binding is not None else None,
         answers=answer_service.answers_of(registration),

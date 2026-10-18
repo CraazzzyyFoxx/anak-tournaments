@@ -108,6 +108,9 @@ def test_single_role_registration_is_not_flex() -> None:
         is_full_flex=False,
     )
 
-    assert serializers.serialize_registration(registration, workspace_id=1, roster=roster).is_flex is False
+    assert (
+        serializers.serialize_registration(registration, workspace_id=1, provider="battlenet", roster=roster).is_flex
+        is False
+    )
     # No roster resolved: same predicate as the write path, over declared-active rows.
-    assert serializers.serialize_registration(registration, workspace_id=1).is_flex is False
+    assert serializers.serialize_registration(registration, workspace_id=1, provider="battlenet").is_flex is False

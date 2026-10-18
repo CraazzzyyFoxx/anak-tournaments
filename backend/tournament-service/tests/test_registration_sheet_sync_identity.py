@@ -55,6 +55,7 @@ from shared.models.registration.registration import (  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from src import models  # noqa: E402
+from tests._lol_grid import seed_lol_grid  # noqa: E402
 
 _WORKSPACE_ID = 1
 _MEMBER_ID = 501
@@ -138,14 +139,14 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         with (
             patch.object(
                 reg_service.registration_service,
-                "_find_user_by_game_handles",
-                AsyncMock(return_value=(existing_user, SocialProvider.BATTLENET)),
+                "_find_user_by_handles",
+                AsyncMock(return_value=(existing_user, "Existing#111")),
             ),
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 7)
@@ -170,12 +171,12 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         find_mock = AsyncMock()
 
         with (
-            patch.object(reg_service.registration_service, "_find_user_by_game_handles", find_mock),
+            patch.object(reg_service.registration_service, "_find_user_by_handles", find_mock),
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 5)
@@ -189,12 +190,12 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service.registration_service, "_find_user_by_game_handles", AsyncMock(return_value=None)),
+            patch.object(reg_service.registration_service, "_find_user_by_handles", AsyncMock(return_value=None)),
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 999)
@@ -211,12 +212,12 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         session = _identity_session()
 
         with (
-            patch.object(reg_service.registration_service, "_find_user_by_game_handles", AsyncMock(return_value=None)),
+            patch.object(reg_service.registration_service, "_find_user_by_handles", AsyncMock(return_value=None)),
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 999)
@@ -232,15 +233,15 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
             patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
             patch.object(
                 reg_service.registration_service,
-                "_find_user_by_game_handles",
-                AsyncMock(return_value=(owned_user, SocialProvider.BATTLENET)),
+                "_find_user_by_handles",
+                AsyncMock(return_value=None),  # nobody ELSE holds the handle
             ),
             patch.object(reg_service.registration_service, "_move_game_identity", AsyncMock()) as move_mock,
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, auth_user_id=42, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, auth_user_id=42, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 7)
@@ -261,22 +262,22 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
             patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=owned_user)),
             patch.object(
                 reg_service.registration_service,
-                "_find_user_by_game_handles",
-                AsyncMock(return_value=(shadow_user, SocialProvider.BATTLENET)),
+                "_find_user_by_handles",
+                AsyncMock(return_value=(shadow_user, "Shadow#222")),
             ),
             patch.object(reg_service.registration_service, "_move_game_identity", AsyncMock()) as move_mock,
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, auth_user_id=42, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, auth_user_id=42, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 7)
         member_mock.assert_awaited_once_with(session, workspace_id=_WORKSPACE_ID, player_id=7)
         self.assertEqual(registration.workspace_member_id, _MEMBER_ID)
         move_mock.assert_awaited_once_with(
-            session, provider=SocialProvider.BATTLENET, shadow=shadow_user, target=owned_user
+            session, provider=SocialProvider.BATTLENET, shadow=shadow_user, target=owned_user, handle="Shadow#222"
         )
 
     async def test_shadow_only_no_account_unchanged(self) -> None:
@@ -293,15 +294,15 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
             ) as owned_mock,
             patch.object(
                 reg_service.registration_service,
-                "_find_user_by_game_handles",
-                AsyncMock(return_value=(shadow_user, SocialProvider.BATTLENET)),
+                "_find_user_by_handles",
+                AsyncMock(return_value=(shadow_user, "ShadowOnly#333")),
             ),
             patch.object(reg_service.registration_service, "_move_game_identity", AsyncMock()) as move_mock,
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, auth_user_id=None, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, auth_user_id=None, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 21)
@@ -318,12 +319,12 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
 
         with (
             patch.object(reg_service.registration_service, "_find_owned_user", AsyncMock(return_value=None)),
-            patch.object(reg_service.registration_service, "_find_user_by_game_handles", AsyncMock(return_value=None)),
+            patch.object(reg_service.registration_service, "_find_user_by_handles", AsyncMock(return_value=None)),
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, auth_user_id=99, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, auth_user_id=99, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 999)
@@ -342,14 +343,14 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
         with (
             patch.object(
                 reg_service.registration_service,
-                "_find_user_by_game_handles",
-                AsyncMock(return_value=(existing_user, SocialProvider.BATTLENET)),
+                "_find_user_by_handles",
+                AsyncMock(return_value=(existing_user, "SmurfRow#555")),
             ),
             patch.object(reg_service.registration_service, "_ensure_social_accounts", AsyncMock()),
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()),
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, workspace_id=_WORKSPACE_ID
             )
 
         self.assertEqual(resolved, 7)
@@ -367,7 +368,7 @@ class EnsurePlayerIdentitySemanticsTests(IsolatedAsyncioTestCase):
             patch.object(reg_service, "get_or_create_workspace_member", _member_anchor_patch()) as member_mock,
         ):
             resolved = await reg_service.registration_service.ensure_player_identity(
-                session, registration, workspace_id=_WORKSPACE_ID
+                session, registration, provider=SocialProvider.BATTLENET, workspace_id=_WORKSPACE_ID
             )
 
         self.assertIsNone(resolved)
@@ -407,24 +408,36 @@ _ATOMIC_MAPPING = {
 }
 
 
-async def _seed_feed(session: Any) -> dict[str, int]:
+async def _seed_feed(
+    session: Any,
+    *,
+    discipline: str = "overwatch",
+    schema: FormSchema = _ATOMIC_SCHEMA,
+    mapping: dict[str, Any] = _ATOMIC_MAPPING,
+) -> dict[str, int]:
     suffix = uuid.uuid4().hex[:12]
-    workspace = Workspace(slug=f"sheetatomic-{suffix}", name=f"Sheet atomic {suffix}")
+    workspace = Workspace(
+        slug=f"sheetatomic-{suffix}", name=f"Sheet atomic {suffix}", disciplines_enabled=["overwatch", "lol"]
+    )
     session.add(workspace)
     await session.flush()
     tournament = Tournament(
         workspace_id=workspace.id,
         name=f"Sheet atomic {suffix}",
         slug=f"sheetatomic-{suffix}",
+        discipline=discipline,
         status=enums.TournamentStatus.REGISTRATION,
     )
     session.add(tournament)
     await session.flush()
+    if discipline == "lol":
+        tournament.division_grid_version_id = await seed_lol_grid(session, workspace_id=workspace.id, suffix=suffix)
+        await session.flush()
     form = BalancerRegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
     session.add(form)
     await session.flush()
     form.current_version = BalancerRegistrationFormVersion(
-        form_id=form.id, number=1, schema_json=_ATOMIC_SCHEMA.model_dump(mode="json")
+        form_id=form.id, number=1, schema_json=schema.model_dump(mode="json")
     )
     await session.flush()
     session.add(
@@ -432,7 +445,7 @@ async def _seed_feed(session: Any) -> dict[str, int]:
             tournament_id=tournament.id,
             source_url="http://sheet.example/atomic",
             sheet_id="sheet-atomic",
-            mapping_config_json=_ATOMIC_MAPPING,
+            mapping_config_json=mapping,
         )
     )
     await session.commit()
@@ -489,6 +502,129 @@ def test_a_row_whose_answers_do_not_validate_is_skipped_whole(db_session, monkey
             ("battlenet", "Good#2222"),
             ("discord", "gooddiscord"),
         ]
+
+        await db_session.execute(sa.delete(Workspace).where(Workspace.id == seeded["workspace_id"]))
+        await db_session.commit()
+
+    asyncio.run(_run())
+
+
+_LOL_SCHEMA = FormSchema(
+    sections=[
+        FormSection(
+            key="accounts",
+            fields=[
+                FormField(key="identity_riot", kind="builtin", required=True),
+                FormField(key="identity_battlenet", kind="builtin"),
+            ],
+        )
+    ]
+)
+_LOL_HEADERS = ["Riot ID", "BattleTag"]
+_LOL_MAPPING = {
+    "targets": {
+        "identity_riot": {"mode": "columns", "columns": ["Riot ID"], "parser": "battle_tag_list"},
+        "identity_battlenet": {"mode": "columns", "columns": ["BattleTag"], "parser": "battle_tag_list"},
+    }
+}
+
+
+def test_a_lol_sheet_row_is_keyed_named_and_anchored_by_the_riot_id(db_session, monkeypatch) -> None:
+    """A League tournament's sheet row carrying BOTH handles: the Riot ID is the row's
+    identity (key, registration match, player name, serialized handle); the BattleTag is
+    an extra profile handle, never the identity. A re-sync matches the same registration."""
+
+    async def _run() -> None:
+        seeded = await _seed_feed(db_session, discipline="lol", schema=_LOL_SCHEMA, mapping=_LOL_MAPPING)
+
+        async def _fetch(*_args, **_kwargs):
+            return [_LOL_HEADERS, ["Faker#KR1", "Stray#9999"]]
+
+        monkeypatch.setattr(reg_admin, "fetch_google_sheet_rows", _fetch)
+
+        first = await reg_admin.sheet_sync_service.sync_google_sheet_feed(db_session, seeded["tournament_id"])
+        again = await reg_admin.sheet_sync_service.sync_google_sheet_feed(db_session, seeded["tournament_id"])
+
+        assert (first.created, first.updated) == (1, 0)
+        assert (again.created, again.updated) == (0, 1)
+
+        registration = (
+            (
+                await db_session.execute(
+                    sa.select(models.BalancerRegistration)
+                    .where(models.BalancerRegistration.tournament_id == seeded["tournament_id"])
+                    .options(
+                        selectinload(models.BalancerRegistration.identities),
+                        selectinload(models.BalancerRegistration.workspace_member).selectinload(
+                            models.WorkspaceMember.player
+                        ),
+                        selectinload(models.BalancerRegistration.google_sheet_binding),
+                    )
+                )
+            )
+            .unique()
+            .scalar_one()
+        )
+        assert registration.primary_game_identity(provider=SocialProvider.RIOT).handle == "Faker#KR1"
+        assert registration.display_name == "Faker#KR1"
+        assert registration.google_sheet_binding.source_record_key == normalize_social_handle(
+            SocialProvider.RIOT, "Faker#KR1"
+        )
+        # The anchored player is named after the Riot ID and carries both accounts.
+        player = registration.workspace_member.player
+        assert player.name == "Faker#KR1"
+        accounts = {
+            (account.provider, account.username_normalized)
+            for account in (
+                await db_session.execute(
+                    sa.select(models.SocialAccount).where(models.SocialAccount.user_id == player.id)
+                )
+            )
+            .scalars()
+            .all()
+        }
+        assert accounts == {
+            (SocialProvider.RIOT, normalize_social_handle(SocialProvider.RIOT, "Faker#KR1")),
+            (SocialProvider.BATTLENET, normalize_social_handle(SocialProvider.BATTLENET, "Stray#9999")),
+        }
+
+        await db_session.execute(sa.delete(Workspace).where(Workspace.id == seeded["workspace_id"]))
+        await db_session.commit()
+
+    asyncio.run(_run())
+
+
+def test_a_lol_row_with_only_a_battletag_is_not_identified_by_it(db_session, monkeypatch) -> None:
+    """The Riot ID is required by the League form, and a BattleTag alone must not become
+    the row's key or create a player: the row is skipped, nothing is written."""
+
+    async def _run() -> None:
+        seeded = await _seed_feed(db_session, discipline="lol", schema=_LOL_SCHEMA, mapping=_LOL_MAPPING)
+
+        async def _fetch(*_args, **_kwargs):
+            return [_LOL_HEADERS, ["", "OnlyBattle#1234"]]
+
+        monkeypatch.setattr(reg_admin, "fetch_google_sheet_rows", _fetch)
+
+        result = await reg_admin.sheet_sync_service.sync_google_sheet_feed(db_session, seeded["tournament_id"])
+
+        assert result.created == 0
+        count = await db_session.scalar(
+            sa.select(sa.func.count())
+            .select_from(models.BalancerRegistration)
+            .where(models.BalancerRegistration.tournament_id == seeded["tournament_id"])
+        )
+        assert count == 0
+        assert (
+            await db_session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.SocialAccount)
+                .where(
+                    models.SocialAccount.username_normalized == normalize_social_handle("battlenet", "OnlyBattle#1234")
+                )
+            )
+            == 0
+        )
 
         await db_session.execute(sa.delete(Workspace).where(Workspace.id == seeded["workspace_id"]))
         await db_session.commit()

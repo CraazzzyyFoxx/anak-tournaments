@@ -52,6 +52,7 @@ from faststream.rabbit.annotations import RabbitMessage
 
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import identity_provider
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.roster import roster_engine
 from src import models, schemas
@@ -188,6 +189,18 @@ def _touches_roles(body: schemas.BalancerRegistrationUpdateRequest) -> bool:
     return body.roles is not None or "roles" in body.answers or body.pin is not None or body.clear_pin
 
 
+async def _owner_provider(session: Any, registration: Any) -> str:
+    """The owning tournament's identity provider, the one game this registration's identity is read for.
+
+    Read off the loaded ``tournament`` when the row carries it; an async session cannot
+    lazy-load it, so a row loaded without it costs one lookup.
+    """
+    tournament = registration.__dict__.get("tournament")
+    if tournament is None:
+        tournament = await reg_common._common_service.ensure_tournament_exists(session, registration.tournament_id)
+    return identity_provider(tournament.discipline)
+
+
 async def _registration_response(session: Any, ctx: _Ctx, registration: Any) -> Any:
     """The response every per-registration admin mutation returns.
 
@@ -210,6 +223,7 @@ async def _registration_response(session: Any, ctx: _Ctx, registration: Any) -> 
         serialize_registration(
             registration,
             workspace_id=ctx.ws_id,
+            provider=await _owner_provider(session, registration),
             status_meta_map=status_meta_map,
             roster=rosters.get(registration.id),
         )
@@ -240,7 +254,7 @@ async def _stage_transition(
         workspace_id=ctx.ws_id,
         data=data,
         entity_id=ctx.id,
-        entity_label=reg_audit.label(current),
+        entity_label=reg_audit.label(current, provider=await _owner_provider(session, current)),
         before={field: getattr(current, field) for field in after},
         after=after,
     )
@@ -838,6 +852,7 @@ def register(broker: Any, logger: Any) -> None:
                         serialize_registration(
                             registration,
                             workspace_id=ctx.ws_id,
+                            provider=identity_provider(tournament.discipline),
                             status_meta_map=status_meta_map,
                             ow_ranks_for_user=ow_ranks.get(registration.id),
                             admission=chips.admission,
@@ -878,7 +893,8 @@ def register(broker: Any, logger: Any) -> None:
             # trade-off as shared.rpc.crud's service-backed create). Ceiling: a
             # crash between the two commits loses the trail, never the other way
             # round.
-            primary_identity = registration.primary_game_identity()
+            provider = await _owner_provider(session, registration)
+            primary_identity = registration.primary_game_identity(provider=provider)
             await reg_audit.audit_service.stage(
                 session,
                 action="registration.create",
@@ -886,7 +902,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ctx.ws_id,
                 data=data,
                 entity_id=registration.id,
-                entity_label=reg_audit.label(registration),
+                entity_label=reg_audit.label(registration, provider=provider),
                 after={
                     "primary_handle": primary_identity.handle if primary_identity else None,
                     "status": registration.status,
@@ -923,7 +939,7 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=ctx.ws_id,
                     data=data,
                     entity_id=ctx.id,
-                    entity_label=reg_audit.label(current),
+                    entity_label=reg_audit.label(current, provider=await _owner_provider(session, current)),
                     before=before,
                     after=after,
                 )
@@ -996,7 +1012,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ctx.ws_id,
                 data=data,
                 entity_id=ctx.id,
-                entity_label=reg_audit.label(current),
+                entity_label=reg_audit.label(current, provider=await _owner_provider(session, current)),
                 before={
                     "balancer_status": current.balancer_status,
                     "exclude_reason": current.exclude_reason,
@@ -1054,7 +1070,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=ctx.ws_id,
                 data=data,
                 entity_id=ctx.id,
-                entity_label=reg_audit.label(current),
+                entity_label=reg_audit.label(current, provider=await _owner_provider(session, current)),
                 before={"status": current.status, "balancer_status": current.balancer_status},
             )
             tournament_id = current.tournament_id

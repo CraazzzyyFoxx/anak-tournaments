@@ -692,7 +692,7 @@ def install_team_actions(cls: type) -> None:
             await self.registration_repo.create(session, registration)
             await session.flush()
             await self.registrations.ensure_player_identity(
-                session, registration, auth_user_id=None, workspace_id=dest_probe.workspace_id
+                session, registration, provider=provider, auth_user_id=None, workspace_id=dest_probe.workspace_id
             )
         dest = await _place_onto(
             self,

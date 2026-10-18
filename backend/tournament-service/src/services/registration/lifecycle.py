@@ -304,7 +304,8 @@ class RegistrationLifecycleService:
         answer_service.apply(
             registration, values, schema=schema, hero_catalog=hero_catalog, catalog_roles=catalog_roles
         )
-        primary_identity = registration.primary_game_identity()
+        provider = identity_provider(tournament.discipline)
+        primary_identity = registration.primary_game_identity(provider=provider)
         registration.display_name = display_name or (primary_identity.handle if primary_identity else None)
         if roles:
             replace_registration_roles(
@@ -324,7 +325,7 @@ class RegistrationLifecycleService:
         # layer is read through. Gating this on ``auth_user_id`` left admin-created
         # rows with no ``workspace_member``, hence no canon to inherit.
         await self.registrations.ensure_player_identity(
-            session, registration, auth_user_id=auth_user_id, workspace_id=workspace_id
+            session, registration, provider=provider, auth_user_id=auth_user_id, workspace_id=workspace_id
         )
         if auto_managed:
             # Resolved only now: the member anchor above is what the inherited rank
@@ -394,7 +395,9 @@ class RegistrationLifecycleService:
         if form is not None:
             registration.form_version_id = form.current_version_id
         if display_name is not None:
-            primary_identity = registration.primary_game_identity()
+            primary_identity = registration.primary_game_identity(
+                provider=identity_provider(registration.tournament.discipline)
+            )
             registration.display_name = display_name or (primary_identity.handle if primary_identity else None)
         if admin_notes is not None:
             registration.admin_notes = admin_notes
@@ -449,7 +452,11 @@ class RegistrationLifecycleService:
         # Same reason as create_manual_registration: the anchor must not depend on
         # whoever is editing being signed in as the registrant.
         await self.registrations.ensure_player_identity(
-            session, registration, auth_user_id=auth_user_id, workspace_id=workspace_id
+            session,
+            registration,
+            provider=identity_provider(registration.tournament.discipline),
+            auth_user_id=auth_user_id,
+            workspace_id=workspace_id,
         )
         if roles is not None or unpin:
             sync_included_balancer_status(registration, await resolve_roster(session, registration))

@@ -239,6 +239,9 @@ def _reg_to_read(
     reg: models.BalancerRegistration,
     *,
     workspace_id: int,
+    #: The owning tournament's identity provider (``identity_provider(discipline)``):
+    #: the only game whose primary handle this read may name.
+    provider: str,
     status_meta_map: dict[str, dict[str, dict[str, object]]] | None = None,
     show_ranks: bool = False,
     admission: AdmissionRead | None = None,
@@ -339,7 +342,7 @@ def _reg_to_read(
         # API shape preserved: user_id stays in the payload, derived from the
         # workspace_member anchor (callers eager-load it; see helper).
         user_id=_registration_player_id(reg),
-        primary_handle=(identity.handle if (identity := reg.primary_game_identity()) else None),
+        primary_handle=(identity.handle if (identity := reg.primary_game_identity(provider=provider)) else None),
         answers=answers,
         roles=roles,
         form_version_id=reg.form_version_id,

@@ -506,7 +506,7 @@ flowchart LR
 5. The registration is anchored on the `workspace_member`. Registration ranks live in `registration_role.rank_value` (empty = inherit the canon/OW).
 6. Commit. A "this member already has a live registration in this tournament" collision hits the unique index → 409.
 
-Without a battle_tag, `ensure_player_identity` may return `None` (except when anchoring an owned player). In that case the `player` role auto-enroll is skipped.
+Without a handle for the tournament's identity provider, `ensure_player_identity` may return `None` (except when anchoring an owned player). In that case the `player` role auto-enroll is skipped.
 
 ### 7.2. An admin adds a member
 
@@ -526,8 +526,8 @@ The signature still takes an `auth_user_id`. Internally:
 
 There is no player session. `ensure_player_identity` is called with `auth_user_id=None`:
 
-- dedup by normalized battletag;
-- otherwise a new virtual `players.user(name=battle_tag)`;
+- dedup by the normalized handle of the tournament's identity provider;
+- otherwise a new virtual `players.user(name=<primary handle>)`;
 - anchor a `workspace_member`;
 - on a member collision inside the same tournament (main + smurf) the anchor is **skipped** with a warning — one broken row does not fail the whole sync (`defer_member_collision_to_db=False`).
 
@@ -538,18 +538,30 @@ The parser and admin player CRUD use `resolve_workspace_member_id(tournament_id,
 Source: `backend/tournament-service/src/services/registration/service.py`.
 
 ```
+provider = identity_provider(tournament.discipline)   # the OWNING game's provider
 1. registration.workspace_member_id is already set
      → that player_id. Do not replay.
 2. The registering auth_user already has a players.user
      → take it.
-     If ANOTHER virtual player owns this battletag
-       → _move_battle_tag_identity (battlenet social rows only).
-         The virtual player's stats/achievements do NOT move.
-3. Otherwise find a player by battletag (historical dedup).
-4. Otherwise create User(name=battle_tag, auth_user_id=?).
-Then upsert the battlenet social account for the main + smurfs.
+     If ANOTHER player owns one of this registration's `provider` handles
+       → _move_game_identity — only with ownership proof: the shadow has no auth
+         account AND the registering player already holds that very handle
+         verified with a provider subject (OAuth). Then just the shadow's
+         unverified duplicate of that one handle is dropped.
+         Anything else → 409 `game_identity_conflict` and nothing is written
+         (the admin user-merge is the path). Stats/achievements never move.
+3. Otherwise find a player by a `provider` handle (primary first, then extras).
+4. Otherwise create User(name=<primary `provider` handle>, auth_user_id=?).
+Then upsert every handle of the registration: the `provider` ones, and other
+providers' handles only when no OTHER player owns that normalized handle
+(skipped with a warning, never moved).
 Then anchor the workspace_member if it is not the right one yet.
 ```
+
+Another game's handle never finds, creates or names a player: a registration with
+no `provider` handle and no owned player resolves to `None`. `primary_game_identity(provider=...)`
+is likewise the primary of that provider only — a League tournament never names its
+rows after a BattleTag.
 
 `known_handles` is the sheet-sync cache: if the anchor exists and every tag is already known for this player, **zero** queries (`session.get` hits the identity map). Do not replace it with a repository get.
 

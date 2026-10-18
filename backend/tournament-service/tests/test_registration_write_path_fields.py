@@ -287,6 +287,8 @@ class TestSelfUpdateAppliesAnswers(IsolatedAsyncioTestCase):
             self._registration(), {"identity_battlenet": ["Player#1234"]}, ensure_player_identity=ensured
         )
         ensured.assert_awaited_once()
+        # The owner provider is the tournament's (an open Overwatch tournament here), threaded explicitly.
+        assert ensured.await_args.kwargs["provider"] == "battlenet"
 
     async def test_custom_answers_merge_with_the_stored_ones(self) -> None:
         """A PATCH names only the questions it changes; replacing wholesale would

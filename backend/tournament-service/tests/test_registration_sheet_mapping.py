@@ -280,7 +280,9 @@ def test_suggest_mapping_matches_english_and_russian_headers():
     russian = ["Отметка времени", "Ваш Battle Tag", "Укажите вашу роль", "Смурф аккаунты"]
     english = ["Timestamp", "Your Battle Tag", "Your role", "Smurf accounts"]
     for headers in (russian, english):
-        mapping = sheet_parsing.suggest_mapping_from_headers(headers, role_codes=ROLE_CODES, schema=FULL_SCHEMA)
+        mapping = sheet_parsing.suggest_mapping_from_headers(
+            headers, role_codes=ROLE_CODES, schema=FULL_SCHEMA, provider="battlenet"
+        )
         targets = mapping["targets"]
         # Main and smurf columns are now ONE multi-column target, main first.
         assert targets["identity_battlenet"]["mode"] == "columns"
@@ -291,14 +293,18 @@ def test_suggest_mapping_matches_english_and_russian_headers():
 
 
 def test_suggest_disabled_targets_present_as_hints():
-    mapping = sheet_parsing.suggest_mapping_from_headers(["Random column"], role_codes=ROLE_CODES, schema=FULL_SCHEMA)
+    mapping = sheet_parsing.suggest_mapping_from_headers(
+        ["Random column"], role_codes=ROLE_CODES, schema=FULL_SCHEMA, provider="battlenet"
+    )
     # Unmatched targets remain present but disabled (hints, not mappings).
     assert mapping["targets"]["identity_battlenet"]["mode"] == "disabled"
 
 
 def test_suggest_mapping_matches_custom_field_label_case_insensitively():
     schema = _schema(FormField(key="favorite_map", label="Favorite Map", kind="text"))
-    mapping = sheet_parsing.suggest_mapping_from_headers(["FAVORITE MAP"], role_codes=ROLE_CODES, schema=schema)
+    mapping = sheet_parsing.suggest_mapping_from_headers(
+        ["FAVORITE MAP"], role_codes=ROLE_CODES, schema=schema, provider="battlenet"
+    )
     assert mapping["targets"]["custom_fields.favorite_map"]["mode"] == "columns"
 
 
@@ -328,7 +334,9 @@ def test_sheet_game_handles_use_the_target_provider_and_keep_distinct_match_keys
         target = f"identity_{provider}"
         schema = _schema(FormField(key=target, kind="builtin"))
         specs = catalog.target_spec_map(schema, role_codes=ROLE_CODES)
-        mapping = sheet_parsing.suggest_mapping_from_headers([header], schema=schema, role_codes=ROLE_CODES)
+        mapping = sheet_parsing.suggest_mapping_from_headers(
+            [header], schema=schema, role_codes=ROLE_CODES, provider=provider
+        )
         mapping["targets"]["source_record_key"] = {"mode": "disabled"}
         assert catalog.validate_mapping_config(mapping, target_specs=specs, header_keys=[header]) == []
         result = sheet_parsing.parse_sheet_row_detailed(
@@ -339,6 +347,7 @@ def test_sheet_game_handles_use_the_target_provider_and_keep_distinct_match_keys
             grid=_grid(),
             role_codes=ROLE_CODES,
             schema=schema,
+            provider=provider,
         )
         assert result.errors == []
         assert result.fields["answers"][target] == handles
@@ -360,10 +369,47 @@ def test_explicit_sheet_record_keys_keep_their_existing_normalization():
         grid=_grid(),
         role_codes=ROLE_CODES,
         schema=schema,
+        provider="riot",
     )
     assert result.errors == []
     assert result.fields["source_record_key"] == "myrecord1"
     assert result.fields["answers"]["identity_riot"] == ["Hide On Bush#KR1"]
+
+
+def test_a_row_is_identified_by_the_owner_providers_handle_only():
+    """A row carrying a Riot ID and a BattleTag is keyed, named and primary-handled by the
+    OWNING provider; the other game's handle stays an answer, never the identity. With the
+    owner's handle blank there is no identity at all."""
+    schema = _schema(
+        FormField(key="identity_riot", kind="builtin"), FormField(key="identity_battlenet", kind="builtin")
+    )
+    mapping = {
+        "targets": {
+            "identity_riot": {"mode": "columns", "columns": ["Riot ID"], "parser": "battle_tag_list"},
+            "identity_battlenet": {"mode": "columns", "columns": ["BattleTag"], "parser": "battle_tag_list"},
+        }
+    }
+
+    def parse(provider: str, row: list[str]):
+        return sheet_parsing.parse_sheet_row_detailed(
+            headers=["Riot ID", "BattleTag"],
+            row=row,
+            mapping_config=mapping,
+            value_mapping=None,
+            grid=_grid(),
+            role_codes=ROLE_CODES,
+            schema=schema,
+            provider=provider,
+        )
+
+    both = ["Hide On Bush#KR1", "Player#1234"]
+    riot = parse("riot", both).fields
+    battlenet = parse("battlenet", both).fields
+    assert (riot["source_record_key"], riot["display_name"]) == ("hide on bush#kr1", "Hide On Bush#KR1")
+    assert (battlenet["source_record_key"], battlenet["display_name"]) == ("player#1234", "Player#1234")
+    assert riot["answers"]["identity_battlenet"] == ["Player#1234"]
+    assert battlenet["answers"]["identity_riot"] == ["Hide On Bush#KR1"]
+    assert parse("riot", ["", "Player#1234"]).fields is None
 
 
 def test_division_value_mapping_returns_configured_rank():
@@ -401,6 +447,7 @@ def test_parse_sheet_row_writes_custom_fields():
         value_mapping=None,
         grid=_grid(),
         schema=schema,
+        provider="battlenet",
     )
     assert result.fields is not None
     # Every identity answer is a list of handles, primary first.
@@ -427,6 +474,7 @@ def test_parse_sheet_row_omits_unmapped_custom_fields():
         value_mapping=None,
         grid=_grid(),
         schema=schema,
+        provider="battlenet",
     )
     assert result.fields is not None
     assert result.fields["answers"] == {"identity_battlenet": ["Player#1111"]}
@@ -452,6 +500,7 @@ def test_parse_sheet_row_collects_custom_field_error():
         value_mapping=None,
         grid=_grid(),
         schema=schema,
+        provider="battlenet",
     )
     assert result.fields is not None
     assert any(e["target"] == "custom_fields.age" for e in result.errors)
@@ -469,6 +518,7 @@ def test_parse_sheet_row_skip_without_identity_returns_none_fields():
         value_mapping=None,
         grid=_grid(),
         schema=FULL_SCHEMA,
+        provider="battlenet",
     )
     assert result.fields is None
 

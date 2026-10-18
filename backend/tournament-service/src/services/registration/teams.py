@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.core.errors import ApiExc, ApiHTTPException
-from shared.core.social import GAME_PROVIDERS
+from shared.disciplines import identity_provider
 from shared.domain.invite_token import generate_invite_token, hash_invite_token
 from shared.domain.roster_shape import RosterShape, RosterShapeError
 from shared.domain.team_roster import RosterMember, RosterOccupancy
@@ -809,6 +809,7 @@ class RegistrationTeamService:
         tags = await self._handles_by_account(
             session,
             tournament_id=team.tournament_id,
+            provider=await self._owner_provider(session, team.tournament_id),
             auth_user_ids={r.target_auth_user_id for r in rows if r.target_auth_user_id is not None},
         )
         now = datetime.now(UTC)
@@ -1083,7 +1084,7 @@ class RegistrationTeamService:
             existing.is_substitute = bool(invite.is_substitute)
             await session.flush()
             registration_id = existing.id
-            existing_identity = existing.primary_game_identity()
+            existing_identity = existing.primary_game_identity(provider=identity_provider(tournament.discipline))
             responder_name = (existing_identity.handle if existing_identity else None) or auth_user.username
         else:
             read = await self.registrations.submit_public_registration(
@@ -1163,7 +1164,10 @@ class RegistrationTeamService:
             # exactly this. Accepting gets it for free off the registration it
             # just wrote; declining has to read it.
             tags = await self._handles_by_account(
-                session, tournament_id=team_row.tournament_id, auth_user_ids={auth_user.id}
+                session,
+                tournament_id=team_row.tournament_id,
+                provider=await self._owner_provider(session, team_row.tournament_id),
+                auth_user_ids={auth_user.id},
             )
             await self._notify_invite_answered(
                 session,
@@ -1404,6 +1408,7 @@ class RegistrationTeamService:
         Roles ride along because the captain is filling a specific slot; a list of bare
         names would make them open every profile to find a tank.
         """
+        provider = await self._owner_provider(session, tournament_id)
         rows = await session.scalars(
             self.registration_repo.select()
             .where(*_free_agent_clause(tournament_id))
@@ -1416,7 +1421,9 @@ class RegistrationTeamService:
         return [
             RegistrationFreeAgentRead(
                 registration_id=row.id,
-                primary_handle=(identity.handle if (identity := row.primary_game_identity()) else None),
+                primary_handle=(
+                    identity.handle if (identity := row.primary_game_identity(provider=provider)) else None
+                ),
                 # Primary first: it is the role they actually want, and the captain
                 # scanning for one reads the first chip.
                 roles=[entry.role_ref for entry in sorted(row.roles, key=lambda r: not r.is_primary)],
@@ -1567,6 +1574,7 @@ class RegistrationTeamService:
         tournament = await self.tournament_repo.get(session, team.tournament_id)
         if tournament is None:
             raise _fail(404, "tournament_not_found", "Tournament not found")
+        provider = identity_provider(tournament.discipline)
         shape = await self._resolve_shape(session, tournament)
         max_substitutes = await self._max_substitutes(session, team.tournament_id)
         occupancy = await self._occupancy(session, team, shape, max_substitutes=max_substitutes)
@@ -1576,7 +1584,9 @@ class RegistrationTeamService:
             RegistrationTeamMemberRead(
                 registration_id=registration.id,
                 display_name=registration.display_name,
-                primary_handle=(identity.handle if (identity := registration.primary_game_identity()) else None),
+                primary_handle=(
+                    identity.handle if (identity := registration.primary_game_identity(provider=provider)) else None
+                ),
                 slot_code=registration.team_slot_code,
                 is_substitute=bool(registration.is_substitute),
                 is_captain=registration.id == team.captain_registration_id,
@@ -1592,6 +1602,7 @@ class RegistrationTeamService:
             tags = await self._handles_by_account(
                 session,
                 tournament_id=team.tournament_id,
+                provider=provider,
                 auth_user_ids={i.target_auth_user_id for i in pending if i.target_auth_user_id is not None},
             )
             invites = [
@@ -1643,11 +1654,19 @@ class RegistrationTeamService:
             subscription_covered=team_subscription_is_current(team),
         )
 
+    async def _owner_provider(self, session: AsyncSession, tournament_id: int) -> str:
+        """The tournament's identity provider: the one game whose handle names its players."""
+        tournament = await self.tournament_repo.get(session, tournament_id)
+        if tournament is None:
+            raise _fail(404, "tournament_not_found", "Tournament not found")
+        return identity_provider(tournament.discipline)
+
     async def _handles_by_account(
         self,
         session: AsyncSession,
         *,
         tournament_id: int,
+        provider: str,
         auth_user_ids: set[int],
     ) -> dict[int, str]:
         """Primary game handles for the accounts a team's pending invites address.
@@ -1680,7 +1699,7 @@ class RegistrationTeamService:
             .where(
                 models.BalancerRegistration.tournament_id == tournament_id,
                 models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistrationIdentity.provider.in_(GAME_PROVIDERS),
+                models.BalancerRegistrationIdentity.provider == provider,
                 models.BalancerRegistrationIdentity.position == 0,
                 models.User.auth_user_id.in_(sorted(auth_user_ids)),
             )

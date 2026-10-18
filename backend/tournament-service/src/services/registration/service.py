@@ -14,8 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.balancer_registration_statuses import get_status_metas_map
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import GAME_PROVIDERS, normalize_social_handle
+from shared.disciplines import identity_provider as discipline_identity_provider
 from shared.domain.forms import (
     ErrorCode,
     FieldError,
@@ -85,24 +87,7 @@ _FORM_VERSION_STALE = "The registration form changed; reload and try again."
 
 _LOCKED_ANSWER = "This answer cannot be changed after submitting; ask an organizer."
 
-
-def _ordered_identities(
-    registration: models.BalancerRegistration,
-) -> list[models.BalancerRegistrationIdentity]:
-    """A registration's identity rows, GAME providers first in catalog order.
-
-    The relationship is ordered by provider NAME, which is alphabetical chance,
-    not the precedence the player lookup needs: the first game handle in this
-    list is the one a new player is named after.
-    """
-    return sorted(
-        registration.identities,
-        key=lambda row: (
-            GAME_PROVIDERS.index(row.provider) if row.provider in GAME_PROVIDERS else len(GAME_PROVIDERS),
-            row.provider,
-            row.position,
-        ),
-    )
+_GAME_IDENTITY_CONFLICT = "This game handle already belongs to another player; ask an organizer to merge them."
 
 
 def _require_current_schema(
@@ -247,20 +232,23 @@ class RegistrationService:
         )
         return result.scalar_one_or_none()
 
-    async def _find_user_by_handle(self, session: AsyncSession, *, provider: str, handle: str) -> models.User | None:
-        user_id = await social_identity_service.find_player_id_by_handle(session, provider=provider, username=handle)
-        if user_id is None:
-            return None
-        return await self.user_repo.get(session, user_id)
-
-    async def _find_user_by_game_handles(
-        self, session: AsyncSession, handles: Sequence[tuple[str, str]]
+    async def _find_user_by_handles(
+        self,
+        session: AsyncSession,
+        *,
+        provider: str,
+        handles: Sequence[str],
+        exclude_player_id: int | None = None,
     ) -> tuple[models.User, str] | None:
-        """The first player owning one of ``handles``, with the provider it matched on."""
-        for provider, handle in handles:
-            user = await self._find_user_by_handle(session, provider=provider, handle=handle)
-            if user is not None:
-                return user, provider
+        """The first player (other than ``exclude_player_id``) owning one of ``handles``
+        (all ``provider``'s), with the handle it matched on."""
+        for handle in handles:
+            holders = await self.social_account_repo.find_players_by_handle(
+                session, provider=provider, username_normalized=normalize_social_handle(provider, handle)
+            )
+            holder = next((user for user in holders if user.id != exclude_player_id), None)
+            if holder is not None:
+                return holder, handle
         return None
 
     async def _find_owned_user(self, session: AsyncSession, auth_user_id: int | None) -> models.User | None:
@@ -276,49 +264,45 @@ class RegistrationService:
         provider: str,
         shadow: models.User,
         target: models.User,
+        handle: str,
     ) -> None:
-        """Move ``shadow``'s ``provider`` social accounts onto ``target``.
+        """Collapse ``shadow``'s duplicate of ``handle`` into the auth-owned ``target`` — or refuse.
 
-        This is NOT a full user merge (achievements/match stats/registration history
-        stay attributed to ``shadow``'s id — see ``ensure_player_identity`` docstring
-        for why a full audited merge is out of scope here). It only resolves the
-        narrow collision ``ensure_player_identity`` cares about: two distinct
-        ``players.user`` rows both claiming the same game handle. Moving the
-        handle(s) means future lookups (registration, log import, CSV import) all
-        converge on ``target`` instead of re-splitting the identity. Idempotent;
-        flushes only, caller commits.
+        A submitted handle is not authority to take another player's accounts. The
+        collapse is allowed only with ownership proof: the shadow has no auth
+        account, and ``target`` already holds this very handle as a VERIFIED,
+        provider-subject-backed account (OAuth proved it is theirs). Then only the
+        shadow's unverified duplicate of that one handle is dropped. Anything else
+        raises ``409 game_identity_conflict`` before any write: auth linkage,
+        verified flags, provider subjects, stats and the shadow's other accounts
+        never move — the admin user-merge is the path for those.
+
+        When ``target`` already holds the handle there is nothing to take, so
+        nothing happens. Flushes only; caller commits.
         """
-        accounts = await social_identity_service.list_for_player(session, shadow.id, providers=[provider])
-        for account in accounts:
-            existing = await social_identity_service.find_by_handle(
-                session, provider=provider, username=account.username, user_id=target.id
-            )
-            if existing is not None:
-                # Target already owns this exact handle — drop the shadow's duplicate.
-                await self.social_account_repo.delete(session, account)
-            else:
-                account.user_id = target.id
-                account.is_primary = False
-        await session.flush()
-        # Ordered by creation, not by ``SocialAccountRepository.list_by_user``'s
-        # (provider, is_primary desc, id): the oldest account is the one promoted
-        # to primary below, and that repository ordering would pick a different row.
-        rows = (
-            (
-                await session.execute(
-                    self.social_account_repo.select()
-                    .where(models.SocialAccount.user_id == target.id, models.SocialAccount.provider == provider)
-                    .order_by(models.SocialAccount.created_at, models.SocialAccount.id)
-                )
-            )
-            .scalars()
-            .all()
+        proof = await social_identity_service.find_by_handle(
+            session, provider=provider, username=handle, user_id=target.id
         )
-        if rows and not any(row.is_primary for row in rows):
-            rows[0].is_primary = True
+        if proof is not None and not proof.is_verified:
+            return
+        duplicate = await social_identity_service.find_by_handle(
+            session, provider=provider, username=handle, user_id=shadow.id
+        )
+        if (
+            shadow.auth_user_id is not None
+            or proof is None
+            or proof.provider_user_id is None
+            or duplicate is None
+            or duplicate.is_verified
+        ):
+            raise ApiHTTPException(
+                409,
+                [ApiExc(msg=_GAME_IDENTITY_CONFLICT, code="game_identity_conflict", field=identity_key(provider))],
+            )
+        await social_identity_service.delete(session, account_id=duplicate.id, user_id=shadow.id)
         await session.flush()
         logger.warning(
-            "Collapsed colliding shadow player's game identity onto account-owned player; "
+            "Dropped a colliding shadow player's duplicate of an OAuth-verified game handle; "
             "historical stats/achievements remain attributed to the shadow player id and are "
             "NOT reassigned — run the admin user-merge tool to fully consolidate if needed",
             provider=provider,
@@ -397,6 +381,7 @@ class RegistrationService:
         session: AsyncSession,
         registration: models.BalancerRegistration,
         *,
+        provider: str,
         auth_user_id: int | None = None,
         workspace_id: int | None = None,
         known_handles: set[tuple[int, str, str]] | None = None,
@@ -404,11 +389,18 @@ class RegistrationService:
     ) -> int | None:
         """Find-or-create the domain player (players.user) for a registration's identities.
 
+        ``provider`` is the OWNING tournament's identity provider
+        (``identity_provider(tournament.discipline)``): the one game whose handle
+        says which player this is. Another game's handle on the same registration
+        never finds, creates or names a player.
+
         Anchors the registration on that player's ``workspace_member`` row
         (``registration.workspace_member_id`` — the row's ONLY identity column
         since dbarch02 dropped ``user_id``) and upserts a ``social_account`` for
-        EVERY handle the registration carries: all providers, primary and extras.
-        This is what lets first-time registrants — who aren't yet in the analytics
+        every handle the registration carries: the owner provider's primary and
+        extras, and every other provider's handle unless ANOTHER player already
+        owns that normalized handle (skipped with a warning, never moved). This
+        is what lets first-time registrants — who aren't yet in the analytics
         system — be picked up by rank collection / the open-profile gate, and what
         keeps the player's profile showing the socials they just typed into the
         form. Dedup is by the normalized handle (case-insensitive), so a later
@@ -417,10 +409,8 @@ class RegistrationService:
         player id (``players.user.id`` == the member's ``player_id``). Flushes
         only; caller commits.
 
-        Only GAME identities (``shared.core.social.GAME_PROVIDERS``)
-        find or create a player: a discord or boosty handle says nothing
-        about which player this is, so a registration carrying only those and no
-        authenticated account resolves to no player at all.
+        A registration with no owner-provider handle and no authenticated account
+        resolves to no player at all.
 
         ``registration.identities`` must be eager-loaded (or freshly written in
         this session) — it is read directly here, as everywhere else in async code.
@@ -447,17 +437,15 @@ class RegistrationService:
            set, e.g. by a prior save) is respected as-is — the member's
            ``player_id`` is the player.
         2. Else, if the registering auth account already owns a player
-           (``players.user.auth_user_id``), that player is reused — the game handle
-           is attached to it rather than find-or-create-by-handle. If a *different*
-           shadow player (no auth link) already owns one of those game handles, its
-           identity for that provider is collapsed onto the account-owned player
-           (see ``_move_game_identity``) rather than silently leaving the handle
-           split across two player rows. This is an identity-only collapse, not a
-           full user merge: non-identity data (stats, achievements, past
-           registrations) stays on the shadow player id.
-        3. Else, the first player owning any game handle of this registration
-           (primary of each game provider in catalog order, then the extras).
-        4. Else, create a new bare player named after the primary game handle
+           (``players.user.auth_user_id``), that player is reused — the owner
+           handle is attached to it rather than find-or-create-by-handle. If a
+           *different* shadow player (no auth link) already owns that handle, it
+           collapses onto the account-owned player ONLY with ownership proof (see
+           ``_move_game_identity``); otherwise ``409 game_identity_conflict`` and
+           nothing is written.
+        3. Else, the first player owning any owner-provider handle of this
+           registration (primary first, then the extras).
+        4. Else, create a new bare player named after the primary owner handle
            (linked to the auth account when present).
 
         ``known_handles`` is an optional bulk-prefetched cache of
@@ -482,15 +470,19 @@ class RegistrationService:
             linked_member = await session.get(models.WorkspaceMember, registration.workspace_member_id)
         linked_player_id = linked_member.player_id if linked_member is not None else None
 
-        handles = [(row.provider, row.handle) for row in _ordered_identities(registration) if row.handle]
-        game_handles = [(provider, handle) for provider, handle in handles if provider in GAME_PROVIDERS]
+        # Owner handles primary first; every other handle keeps the relationship order.
+        rows = [row for row in registration.identities if row.handle]
+        owner_handles = [row.handle for row in sorted(rows, key=lambda row: row.position) if row.provider == provider]
+        handles = [(provider, handle) for handle in owner_handles] + [
+            (row.provider, row.handle) for row in rows if row.provider != provider
+        ]
 
-        if not game_handles:
+        if not owner_handles:
             if linked_player_id is not None:
                 player_id = linked_player_id
             else:
-                # No game identity on the form: the only player we can still anchor
-                # is the registering account's own (preserves the pre-dbarch02
+                # No owner-provider identity on the form: the only player we can still
+                # anchor is the registering account's own (preserves the pre-dbarch02
                 # behavior where the pre-resolved player id was linked directly).
                 owned = await self._find_owned_user(session, auth_user_id)
                 if owned is None:
@@ -506,11 +498,11 @@ class RegistrationService:
             await self._ensure_social_accounts(session, player_id, handles, known_handles=known_handles)
             return player_id
 
-        def _handle_key(player_id: int, provider: str, handle: str) -> tuple[int, str, str]:
-            return (player_id, provider, normalize_social_handle(provider, handle))
-
         if linked_player_id is not None and known_handles is not None:
-            keys = [_handle_key(linked_player_id, provider, handle) for provider, handle in handles]
+            keys = [
+                (linked_player_id, row_provider, normalize_social_handle(row_provider, handle))
+                for row_provider, handle in handles
+            ]
             if all(key in known_handles for key in keys):
                 return linked_player_id
 
@@ -523,17 +515,21 @@ class RegistrationService:
             owned = await self._find_owned_user(session, auth_user_id)
             if owned is not None:
                 user = owned
-                found = await self._find_user_by_game_handles(session, game_handles)
-                if found is not None and found[0].id != owned.id:
-                    shadow, provider = found
-                    await self._move_game_identity(session, provider=provider, shadow=shadow, target=owned)
+                found = await self._find_user_by_handles(
+                    session, provider=provider, handles=owner_handles, exclude_player_id=owned.id
+                )
+                if found is not None:
+                    shadow, matched_handle = found
+                    await self._move_game_identity(
+                        session, provider=provider, shadow=shadow, target=owned, handle=matched_handle
+                    )
 
         if user is None:
-            found = await self._find_user_by_game_handles(session, game_handles)
+            found = await self._find_user_by_handles(session, provider=provider, handles=owner_handles)
             user = found[0] if found is not None else None
 
         if user is None:
-            user = await self.user_repo.create(session, models.User(name=game_handles[0][1], auth_user_id=auth_user_id))
+            user = await self.user_repo.create(session, models.User(name=owner_handles[0], auth_user_id=auth_user_id))
 
         await self._ensure_social_accounts(session, user.id, handles, known_handles=known_handles)
 
@@ -559,14 +555,28 @@ class RegistrationService:
 
         Idempotent on (player, provider, normalized handle); seeds global
         visibility, so a handle the registrant typed into the form shows up on
-        their profile without a second "export" step.
+        their profile without a second "export" step. A handle another player
+        already owns (and this one does not) is skipped, never moved: a form
+        naming two different people must not pool them onto one profile.
         """
         for provider, handle in handles:
+            normalized = normalize_social_handle(provider, handle)
             if known_handles is not None:
-                key = (player_id, provider, normalize_social_handle(provider, handle))
+                key = (player_id, provider, normalized)
                 if key in known_handles:
                     continue
                 known_handles.add(key)
+            owners = await self.social_account_repo.find_players_by_handle(
+                session, provider=provider, username_normalized=normalized
+            )
+            if owners and player_id not in {owner.id for owner in owners}:
+                logger.warning(
+                    "Registration handle is owned by another player; not attaching it to the resolved player",
+                    provider=provider,
+                    player_id=player_id,
+                    owner_player_ids=sorted(owner.id for owner in owners),
+                )
+                continue
             await social_identity_service.upsert(session, user_id=player_id, provider=provider, username=handle)
 
     async def create_registration(
@@ -634,7 +644,8 @@ class RegistrationService:
         answer_service.apply(
             registration, values, schema=schema, hero_catalog=hero_catalog, catalog_roles=catalog_roles
         )
-        primary_identity = registration.primary_game_identity()
+        provider = discipline_identity_provider(tournament.discipline)
+        primary_identity = registration.primary_game_identity(provider=provider)
         registration.display_name = primary_identity.handle if primary_identity is not None else None
         registration = await self.registration_repo.create(session, registration)
         # Provision the domain player identity so first-time registrants are picked
@@ -651,6 +662,7 @@ class RegistrationService:
         player_id = await self.ensure_player_identity(
             session,
             registration,
+            provider=provider,
             auth_user_id=auth_user_id,
             workspace_id=workspace_id,
             defer_member_collision_to_db=True,
@@ -767,7 +779,12 @@ class RegistrationService:
         if any(identity_provider(key) for key in values):
             # A handle the registrant just added belongs on their profile now,
             # same as on submit; an anchored row keeps its player.
-            await self.ensure_player_identity(session, registration, workspace_id=tournament.workspace_id)
+            await self.ensure_player_identity(
+                session,
+                registration,
+                provider=discipline_identity_provider(tournament.discipline),
+                workspace_id=tournament.workspace_id,
+            )
         await self._registration_changed(session, registration)
         await session.commit()
         return await self._reload_for_read(session, registration)
@@ -983,6 +1000,7 @@ class RegistrationService:
         return _reg_to_read(
             registration,
             workspace_id=workspace_id,
+            provider=discipline_identity_provider(tournament.discipline),
             status_meta_map=status_meta_map,
             show_ranks=form.show_ranks,
             roster=rosters.get(registration.id),
@@ -1203,12 +1221,14 @@ class RegistrationService:
         # the payload is cached per tournament with no viewer in its key.
         public_keys_for = registration_public_keys(form)
         current_version_id = form.current_version_id if form is not None else None
+        provider = discipline_identity_provider(tournament.discipline)
         registrations_read = []
         for r in registrations:
             chips = AdmissionChips.of(admissions.get(r.id))
             read = _reg_to_read(
                 r,
                 workspace_id=workspace_id,
+                provider=provider,
                 status_meta_map=status_meta_map,
                 show_ranks=show_ranks,
                 admission=chips.admission,

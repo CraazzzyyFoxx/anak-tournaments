@@ -43,6 +43,7 @@ from shared.balancer_registration_statuses import get_status_metas_map
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import identity_provider
 from shared.domain.forms import schema_from_form
 from shared.rpc.identity import rehydrate_user
 from shared.services.admission import AdmissionStage
@@ -707,6 +708,7 @@ def register(broker: Any, logger: Any) -> None:
                 _reg_to_read(
                     reg,
                     workspace_id=workspace_id,
+                    provider=identity_provider(reg.tournament.discipline),
                     status_meta_map=status_meta_map,
                     show_ranks=show_ranks,
                     admission=chips.admission,
@@ -741,6 +743,7 @@ def register(broker: Any, logger: Any) -> None:
             if reg is None:
                 raise HTTPException(status_code=404, detail="No registration found")
 
+            provider = identity_provider(reg.tournament.discipline)
             schema = reg_service._require_current_schema(form, body.form_version_id)
             hero_catalog, _ = await _resolve_top_heroes_config(session, form)
             values = await answer_service.validate(
@@ -769,7 +772,7 @@ def register(broker: Any, logger: Any) -> None:
                     workspace_id=form.workspace_id,
                     data=data,
                     entity_id=reg.id,
-                    entity_label=reg_audit.label(reg),
+                    entity_label=reg_audit.label(reg, provider=provider),
                     source="player",
                     before=before,
                     after=after,
@@ -790,6 +793,7 @@ def register(broker: Any, logger: Any) -> None:
                 _reg_to_read(
                     updated,
                     workspace_id=form.workspace_id,
+                    provider=provider,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks,
                     roster=(await _public_rosters(session, [updated])).get(updated.id),
@@ -853,6 +857,7 @@ def register(broker: Any, logger: Any) -> None:
             )
 
             form = await reg_common._common_service.get_registration_form(session, tournament_id)
+            provider = identity_provider(reg.tournament.discipline)
 
             # check_in_registration commits internally.
             checked_in = await reg_service.registration_service.check_in_registration(
@@ -867,6 +872,7 @@ def register(broker: Any, logger: Any) -> None:
                 _reg_to_read(
                     checked_in,
                     workspace_id=workspace_id,
+                    provider=provider,
                     status_meta_map=status_meta_map,
                     show_ranks=form.show_ranks if form else False,
                     roster=(await _public_rosters(session, [checked_in])).get(checked_in.id),

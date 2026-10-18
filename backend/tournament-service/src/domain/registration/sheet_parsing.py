@@ -248,6 +248,7 @@ def suggest_mapping_from_headers(
     *,
     schema: FormSchema | None = None,
     role_codes: tuple[str, ...],
+    provider: str,
 ) -> dict[str, Any]:
     """Suggest a starting mapping by matching headers against target aliases.
 
@@ -281,8 +282,8 @@ def suggest_mapping_from_headers(
 
     # The game-handle column also seeds the dedup key and the display name, matching
     # the legacy behavior where a single column drives all three identity fields.
-    game_key = identity_key(GAME_PROVIDERS[0]) if GAME_PROVIDERS else None
-    game_config = targets.get(game_key) if game_key else None
+    game_key = identity_key(provider)
+    game_config = targets.get(game_key)
     if game_config and game_config.get("mode") == "columns" and game_config.get("columns"):
         column = game_config["columns"][0]
         targets["source_record_key"] = {"mode": "columns", "columns": [column], "parser": "battle_tag"}
@@ -397,6 +398,7 @@ def parse_sheet_row_detailed(
     value_mapping: dict[str, Any] | None,
     grid: DivisionGrid,
     role_codes: tuple[str, ...],
+    provider: str,
     schema: FormSchema | None = None,
     subrole_catalog: dict[str, list[dict[str, str]]] | None = None,
 ) -> ParsedRowResult:
@@ -418,7 +420,9 @@ def parse_sheet_row_detailed(
     coercion) so a single bad cell never aborts the whole row. Returns
     ``fields=None`` when the row produces no identity key (caller skips it).
     """
-    effective_mapping = mapping_config or suggest_mapping_from_headers(headers, schema=schema, role_codes=role_codes)
+    effective_mapping = mapping_config or suggest_mapping_from_headers(
+        headers, schema=schema, role_codes=role_codes, provider=provider
+    )
     targets = effective_mapping.get("targets") or {}
     row_json = row_to_json(headers, row)
     effective_value_mapping = {**build_default_value_mapping(), **(value_mapping or {})}
@@ -460,33 +464,30 @@ def parse_sheet_row_detailed(
     answers: dict[str, Any] = {key: flat_values.get(key) for key in ANSWER_TARGET_KEYS if key in mapped}
     # Every identity answer is a LIST of handles, primary first -- a sheet column
     # parsed as a single string still has to arrive as one.
-    for provider in IDENTITY_PROVIDERS:
-        key = identity_key(provider)
+    for identity in IDENTITY_PROVIDERS:
+        key = identity_key(identity)
         if key not in answers:
             continue
         raw = answers[key]
         handles = [handle for handle in (raw if isinstance(raw, list) else [raw]) if handle]
-        if not handles and provider in GAME_PROVIDERS:
+        if not handles and identity in GAME_PROVIDERS:
             # The one answer a sheet may never blank: it is this row's own identity
             # and the key every re-sync matches on.
             answers.pop(key)
             continue
         answers[key] = handles
 
-    primary_identity = next(
-        ((provider, handles[0]) for provider in GAME_PROVIDERS if (handles := answers.get(identity_key(provider)))),
-        None,
-    )
-    primary_handle = primary_identity[1] if primary_identity else None
+    # The OWNING tournament's provider only: another game's handle on the row is an
+    # extra profile handle, never the row's identity or its source key.
+    primary_handle = next(iter(answers.get(identity_key(provider)) or []), None)
     source_record_key = flat_values.get("source_record_key")
     if isinstance(source_record_key, str):
         source_record_key = normalize_battle_tag_key(source_record_key) or source_record_key.strip()
-    if not source_record_key and primary_identity:
-        provider, handle = primary_identity
+    if not source_record_key and primary_handle:
         source_record_key = (
-            normalize_battle_tag_key(handle)
+            normalize_battle_tag_key(primary_handle)
             if provider == SocialProvider.BATTLENET
-            else normalize_social_handle(provider, handle)
+            else normalize_social_handle(provider, primary_handle)
         )
     if not source_record_key:
         return ParsedRowResult(fields=None, errors=errors, warnings=warnings)

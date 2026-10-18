@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -34,6 +35,9 @@ os.environ["DEBUG"] = "true"
 
 registration_admin = importlib.import_module("src.rpc.registration_admin")
 helpers = importlib.import_module("src.rpc._helpers")
+audit = importlib.import_module("src.services.registration.audit")
+
+from shared.models.registration.registration import BalancerRegistration  # noqa: E402
 
 WORKSPACE_ID = 1
 REGISTRATION_ID = 55
@@ -116,9 +120,10 @@ def _registration(**overrides: Any) -> SimpleNamespace:
     base: dict[str, Any] = {
         "id": REGISTRATION_ID,
         "tournament_id": 3,
+        # Loaded by ``get_registration_by_id``; the admin handlers read the owner provider off it.
+        "tournament": SimpleNamespace(discipline="overwatch"),
         "display_name": "Ferz",
         "identities": identities,
-        "primary_game_identity": lambda: next((row for row in identities if row.provider == "battlenet"), None),
         "stream_pov": False,
         "public_notes": None,
         "organizer_notes": None,
@@ -131,7 +136,10 @@ def _registration(**overrides: Any) -> SimpleNamespace:
         "roles": [_role("damage", 30)],
     }
     base.update(overrides)
-    return SimpleNamespace(**base)
+    registration = SimpleNamespace(**base)
+    # The model's own algorithm, run against the stub's rows.
+    registration.primary_game_identity = partial(BalancerRegistration.primary_game_identity, registration)
+    return registration
 
 
 def _update_payload(**overrides: Any) -> dict[str, Any]:
@@ -456,3 +464,27 @@ class RegistrationAuditTests(IsolatedAsyncioTestCase):
         self.assertEqual([1, 2, 9], row.after_json["registration_ids"])
         # Trailing commit: see test_row_is_staged_before_the_service_commits.
         self.assertEqual(["audit", "service", "commit"], trace)
+
+
+class LabelOwnerProviderTests(IsolatedAsyncioTestCase):
+    """The feed's snapshot name is the OWNING game's handle, never another game's."""
+
+    def _unnamed(self) -> SimpleNamespace:
+        return _registration(
+            display_name=None,
+            identities=[_identity("battlenet", "Ferz#2100"), _identity("riot", "Ferz#EUW")],
+        )
+
+    def test_a_game_picks_its_own_handle_when_the_row_has_no_display_name(self):
+        registration = self._unnamed()
+
+        self.assertEqual("Ferz#2100", audit.label(registration, provider="battlenet"))
+        self.assertEqual("Ferz#EUW", audit.label(registration, provider="riot"))
+
+    def test_a_missing_owner_handle_is_unnamed_not_another_games_handle(self):
+        registration = _registration(display_name=None)  # battlenet + discord only
+
+        self.assertIsNone(audit.label(registration, provider="riot"))
+
+    def test_a_display_name_always_wins(self):
+        self.assertEqual("Ferz", audit.label(_registration(), provider="riot"))

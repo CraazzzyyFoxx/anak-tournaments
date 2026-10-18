@@ -31,7 +31,7 @@ from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core import http_status as status
 from shared.core.errors import ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.social import GAME_PROVIDERS, normalize_social_handle
+from shared.core.social import normalize_social_handle
 from shared.disciplines import DISCIPLINES, identity_provider
 from shared.domain.forms import FormSchema, default_schema, identity_key, schema_from_form
 from shared.domain.roster import FlexRoleMode, flex_role_mode_from_schema
@@ -84,17 +84,14 @@ logger = logging.getLogger(__name__)
 SYNC_ERROR_SAMPLE_LIMIT = 20
 
 
-def _primary_game_handle_key(answers: Mapping[str, Any]) -> str | None:
-    """Normalized PRIMARY game handle of an answer document, or ``None``.
+def _primary_game_handle_key(answers: Mapping[str, Any], provider: str) -> str | None:
+    """Normalized PRIMARY handle of an answer document for the owning ``provider``, or ``None``.
 
     The key sheet rows are matched against: a registration is the same person as
-    a sheet row when their first game handle agrees.
+    a sheet row when their primary handle for the tournament's game agrees.
     """
-    for provider in GAME_PROVIDERS:
-        handles = answers.get(identity_key(provider)) or []
-        if handles:
-            return normalize_social_handle(provider, handles[0])
-    return None
+    handles = answers.get(identity_key(provider)) or []
+    return normalize_social_handle(provider, handles[0]) if handles else None
 
 
 async def fetch_google_sheet_rows(
@@ -394,7 +391,13 @@ class SheetSyncService:
         schema = await self._registration_schema(session, tournament_id)
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
         role_codes = tuple(role.code for role in DISCIPLINES[tournament.discipline].rated_dimension.roles)
-        return feed, headers, suggest_mapping_from_headers(headers, schema=schema, role_codes=role_codes)
+        return (
+            feed,
+            headers,
+            suggest_mapping_from_headers(
+                headers, schema=schema, role_codes=role_codes, provider=identity_provider(tournament.discipline)
+            ),
+        )
 
     async def get_mapping_catalog(
         self,
@@ -447,11 +450,12 @@ class SheetSyncService:
         effective_mapping = mapping_config_json or (feed.mapping_config_json if feed else None)
         effective_value_mapping = value_mapping_json or (feed.value_mapping_json if feed else None)
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
+        provider = identity_provider(tournament.discipline)
         subrole_catalog = await resolve_subrole_catalog(
             session, tournament.workspace_id, discipline=tournament.discipline
         )
 
-        known_source_keys, known_handle_keys = await self._existing_match_keys(session, tournament_id, feed)
+        known_source_keys, known_handle_keys = await self._existing_match_keys(session, tournament_id, feed, provider)
 
         preview_rows: list[dict[str, Any]] = []
         create_count = 0
@@ -467,10 +471,11 @@ class SheetSyncService:
                 schema=schema,
                 subrole_catalog=subrole_catalog,
                 role_codes=tuple(subrole_catalog),
+                provider=provider,
             )
             fields = result.fields
             source_record_key = fields.get("source_record_key") if fields else None
-            handle_key = _primary_game_handle_key((fields or {}).get("answers") or {})
+            handle_key = _primary_game_handle_key((fields or {}).get("answers") or {}, provider)
             disposition = classify_row_disposition(
                 source_record_key,
                 handle_key,
@@ -512,6 +517,7 @@ class SheetSyncService:
         session: AsyncSession,
         tournament_id: int,
         feed: models.BalancerRegistrationGoogleSheetFeed | None,
+        provider: str,
     ) -> tuple[set[str], set[str]]:
         """Existing source-record keys (bound rows) and primary game handle keys."""
         handle_result = await session.execute(
@@ -523,7 +529,7 @@ class SheetSyncService:
             .where(
                 models.BalancerRegistration.tournament_id == tournament_id,
                 models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistrationIdentity.provider.in_(GAME_PROVIDERS),
+                models.BalancerRegistrationIdentity.provider == provider,
                 models.BalancerRegistrationIdentity.position == 0,
             )
         )
@@ -610,7 +616,8 @@ class SheetSyncService:
         # identity -- instead of writing nothing at all. Same fallback as
         # ``_registration_schema``, spelled out because the sync needs the form
         # row itself for ``current_version_id``.
-        schema = schema_from_form(form) or default_schema(identity_provider(tournament.discipline))
+        provider = identity_provider(tournament.discipline)
+        schema = schema_from_form(form) or default_schema(provider)
         # The sheet sync is the one role-write path that never read the form. In a
         # non-optional flex mode a sheet row must land with the same role set as any
         # other, so the mode is resolved once per sync rather than per row.
@@ -625,7 +632,7 @@ class SheetSyncService:
             rows = await fetch_google_sheet_rows(feed.source_url, sheet_id=feed.sheet_id, gid=feed.gid)
             headers = rows[0]
             mapping_config = feed.mapping_config_json or suggest_mapping_from_headers(
-                headers, schema=schema, role_codes=role_codes
+                headers, schema=schema, role_codes=role_codes, provider=provider
             )
             value_mapping = feed.value_mapping_json or build_default_value_mapping()
             subrole_catalog = await resolve_subrole_catalog(
@@ -645,6 +652,7 @@ class SheetSyncService:
                     schema=schema,
                     subrole_catalog=subrole_catalog,
                     role_codes=role_codes,
+                    provider=provider,
                 )
                 for entry in result.errors:
                     if len(row_errors) < SYNC_ERROR_SAMPLE_LIMIT:
@@ -699,7 +707,7 @@ class SheetSyncService:
             )
             registrations_by_handle: dict[str, models.BalancerRegistration] = {}
             for reg_row in reuse_rows.scalars().all():
-                identity = reg_row.primary_game_identity()
+                identity = reg_row.primary_game_identity(provider=provider)
                 if identity is not None:
                     registrations_by_handle.setdefault(identity.handle_normalized, reg_row)
 
@@ -752,7 +760,7 @@ class SheetSyncService:
                 registration = binding.registration if binding else None
 
                 if registration is None:
-                    handle_key = _primary_game_handle_key(values)
+                    handle_key = _primary_game_handle_key(values, provider)
                     if handle_key:
                         registration = registrations_by_handle.get(handle_key)
 
@@ -779,7 +787,7 @@ class SheetSyncService:
                         mode=mode,
                     )
                     await self.registration_repo.create(session, registration)
-                    new_identity = registration.primary_game_identity()
+                    new_identity = registration.primary_game_identity(provider=provider)
                     if new_identity is not None:
                         registrations_by_handle.setdefault(new_identity.handle_normalized, registration)
                     created += 1
@@ -811,6 +819,7 @@ class SheetSyncService:
                 await registration_service.ensure_player_identity(
                     session,
                     registration,
+                    provider=provider,
                     workspace_id=tournament.workspace_id,
                     known_handles=known_handles,
                 )

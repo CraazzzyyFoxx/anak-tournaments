@@ -23,7 +23,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import ColumnElement
 
 from shared.core import db, enums
-from shared.core.social import GAME_PROVIDERS
 from shared.models.catalog.role import CatalogRole, leaf_code
 from shared.schemas.role import RoleRef
 
@@ -381,11 +380,11 @@ class BalancerRegistration(db.TimeStampIntegerMixin):
     def primary_handle(self, provider: str) -> str | None:
         return next((row.handle for row in self.identities if row.provider == provider and row.position == 0), None)
 
-    def primary_game_identity(self) -> BalancerRegistrationIdentity | None:
-        """The primary handle of the first game provider (catalog order) this
-        registration carries: its identity for sheet keys, rosters and lookups."""
-        primaries = {row.provider: row for row in self.identities if row.position == 0}
-        return next((primaries[p] for p in GAME_PROVIDERS if p in primaries), None)
+    def primary_game_identity(self, *, provider: str) -> BalancerRegistrationIdentity | None:
+        """The primary handle this registration carries for ``provider`` (the owning
+        tournament's identity provider): its identity for sheet keys, rosters and
+        lookups. Never another provider's handle."""
+        return next((row for row in self.identities if row.provider == provider and row.position == 0), None)
 
 
 class BalancerRegistrationIdentity(db.TimeStampIntegerMixin):
