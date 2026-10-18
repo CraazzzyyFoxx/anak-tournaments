@@ -173,6 +173,20 @@ describe("TeamRosterEditor", () => {
     expect(getPlayerSubRoles).not.toHaveBeenCalled();
   });
 
+  it("keeps the roster visible when player.read denies only the child-role catalog", async () => {
+    getPlayerSubRoles.mockRejectedValue(Object.assign(new Error("Forbidden"), { status: 403 }));
+    const scope = await mount();
+    expect(rankFields(scope)).toHaveLength(4);
+    expect(rankFields(scope).every(field => !field.disabled)).toBe(true);
+    expect(rankFields(scope)[0].getAttribute("aria-label")).toBe("Rank of Rein");
+    expect(rankFields(scope)[0].value).toBe("3300");
+    const message = scope.querySelector<HTMLParagraphElement>('p[role="status"]')!;
+    expect(message.textContent).toBe("Could not load the owner's child roles.");
+    const subRoleControls = [...scope.querySelectorAll<HTMLButtonElement>('button[aria-label^="Sub-role of "]')];
+    expect(subRoleControls).toHaveLength(4);
+    expect(subRoleControls.every(control => control.disabled && control.getAttribute("aria-describedby") === message.id)).toBe(true);
+  });
+
   it("orders the roster by role and nests a substitute under the slot it covers", async () => {
     const scope = await mount();
 

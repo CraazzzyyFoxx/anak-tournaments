@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState, type KeyboardEvent } from "react";
+import { Fragment, useId, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, Check, Sparkles, Trash2, UserPlus, X } from "lucide-react";
@@ -221,7 +221,8 @@ function SubRoleSelect({
   options,
   onChange,
   label,
-  disabled
+  disabled,
+  describedBy
 }: Readonly<{
   value: string;
   options: Array<{ slug: string; label: string }>;
@@ -229,6 +230,7 @@ function SubRoleSelect({
   /** Field name, e.g. `Sub-role of Nickname`. */
   label: string;
   disabled?: boolean;
+  describedBy?: string;
 }>) {
   const t = useTranslations("adminPeople.roster");
   // A saved sub-role missing from the catalog (renamed, deactivated) still needs
@@ -245,7 +247,7 @@ function SubRoleSelect({
       onValueChange={(next) => onChange(next === NO_SUB_ROLE ? "" : next)}
       disabled={disabled}
     >
-      <SelectTrigger aria-label={[label, selectedLabel].join(": ")} className="h-8 w-[9.5rem] px-2">
+      <SelectTrigger aria-label={[label, selectedLabel].join(": ")} aria-describedby={describedBy} className="h-8 w-[9.5rem] px-2">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -315,6 +317,7 @@ export function TeamRosterEditor({
 }: Readonly<TeamRosterEditorProps>) {
   const t = useTranslations("adminPeople.roster");
   const roleT = useTranslations("common.roleOntology");
+  const subRoleErrorId = useId();
   const queryClient = useQueryClient();
   const tableStyles = getAdminDetailTableStyles("compact");
   const [draft, setDraft] = useState<RosterDraft | null>(null);
@@ -454,7 +457,8 @@ export function TeamRosterEditor({
         <SubRoleSelect
           value={draft.subRole}
           options={subRoleOptionsFor(draft.role)}
-          disabled={subRoleCatalogRole(draft.role) == null}
+          disabled={subRolesQuery.isError || subRoleCatalogRole(draft.role) == null}
+          describedBy={subRolesQuery.isError ? subRoleErrorId : undefined}
           label={t("subRoleOf")}
           onChange={(subRole) =>
             setDraft((current) => (current ? { ...current, subRole } : current))
@@ -493,11 +497,9 @@ export function TeamRosterEditor({
   if (!discipline || workspaceId === null) {
     return <PageStateCard state="error" title={roleT("ownerScopeError")} />;
   }
-  if (subRolesQuery.isError) {
-    return <PageStateCard state="error" title={roleT("roleLoadError")} onAction={() => void subRolesQuery.refetch()} />;
-  }
   return (
     <div className="space-y-3">
+      {subRolesQuery.isError && <p id={subRoleErrorId} role="status" className="text-sm text-muted-foreground">{roleT("roleLoadError")}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm tabular-nums text-muted-foreground">
           {players.length
@@ -601,7 +603,8 @@ export function TeamRosterEditor({
                       value={subRoleOf(player.role) ?? ""}
                       options={subRoleOptionsFor(roleOf(player.role))}
                       label={t("subRoleOfPlayer", { name: player.name })}
-                      disabled={!canUpdatePlayer || subRoleCatalogRole(roleOf(player.role)) == null}
+                      disabled={subRolesQuery.isError || !canUpdatePlayer || subRoleCatalogRole(roleOf(player.role)) == null}
+                      describedBy={subRolesQuery.isError ? subRoleErrorId : undefined}
                       onChange={(subRole) => patch(player, { role: toRoleRef(roleOf(player.role), subRole, player.role?.dimension ?? "player_role") })}
                     />
                   </TableCell>
