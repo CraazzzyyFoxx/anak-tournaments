@@ -280,13 +280,15 @@ def suggest_mapping_from_headers(
         columns = found if spec.multi_column else [found[0]]
         targets[spec.key] = {"mode": "columns", "columns": columns, "parser": spec.default_parser}
 
-    # The game-handle column also seeds the dedup key and the display name, matching
-    # the legacy behavior where a single column drives all three identity fields.
-    game_key = identity_key(provider)
-    game_config = targets.get(game_key)
+    # The game-handle column also seeds the display name. For BattleNet it seeds the dedup
+    # key too (legacy behavior); any other provider's key is inferred from its normalized
+    # primary handle at parse time, because ``battle_tag`` parsing would strip the internal
+    # spaces a Riot name may carry (``Foo Bar#123`` != ``FooBar#123``).
+    game_config = targets.get(identity_key(provider))
     if game_config and game_config.get("mode") == "columns" and game_config.get("columns"):
         column = game_config["columns"][0]
-        targets["source_record_key"] = {"mode": "columns", "columns": [column], "parser": "battle_tag"}
+        if provider == SocialProvider.BATTLENET:
+            targets["source_record_key"] = {"mode": "columns", "columns": [column], "parser": "battle_tag"}
         if targets.get("display_name", {}).get("mode") != "columns":
             targets["display_name"] = {"mode": "columns", "columns": [column], "parser": "string"}
 

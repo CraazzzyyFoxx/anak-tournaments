@@ -277,20 +277,20 @@ class RegistrationService:
         verified flags, provider subjects, stats and the shadow's other accounts
         never move — the admin user-merge is the path for those.
 
-        When ``target`` already holds the handle there is nothing to take, so
-        nothing happens. Flushes only; caller commits.
+        A target that holds the handle only as a self-declared (unverified) account proves
+        nothing against another player's account, so it is refused the same way.
+        Flushes only; caller commits.
         """
         proof = await social_identity_service.find_by_handle(
             session, provider=provider, username=handle, user_id=target.id
         )
-        if proof is not None and not proof.is_verified:
-            return
         duplicate = await social_identity_service.find_by_handle(
             session, provider=provider, username=handle, user_id=shadow.id
         )
         if (
             shadow.auth_user_id is not None
             or proof is None
+            or not proof.is_verified
             or proof.provider_user_id is None
             or duplicate is None
             or duplicate.is_verified

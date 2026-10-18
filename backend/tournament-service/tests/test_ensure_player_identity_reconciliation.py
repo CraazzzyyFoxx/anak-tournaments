@@ -244,6 +244,40 @@ def test_verified_handle_drops_only_the_shadows_duplicate() -> None:
     assert owned_state == (True, subject)
 
 
+def test_a_self_declared_duplicate_on_the_registrant_is_no_proof_against_another_players_account() -> None:
+    """The registrant's own player holds the handle only as an UNVERIFIED (self-declared) account while
+    a shadow player holds it too: nothing proves which is theirs — 409, and neither side is touched."""
+    suffix = uuid.uuid4().hex[:10]
+
+    async def _run():
+        async with _db_sessions() as session_maker:
+            battle_tag = f"SelfDecl{suffix}#999"
+
+            async with session_maker() as session:
+                auth_user = await _make_auth_user(session, suffix)
+                owned_player = await _make_player(session, f"owned{suffix}", auth_user_id=auth_user.id)
+                shadow_player = await _make_player(session, f"shadow{suffix}")
+                await _account(session, user_id=owned_player.id, handle=battle_tag)
+                await _account(session, user_id=shadow_player.id, handle=battle_tag)
+                await session.commit()
+                auth_user_id = auth_user.id
+                owned_id, shadow_id = owned_player.id, shadow_player.id
+
+            async with session_maker() as session:
+                with pytest.raises(ApiHTTPException) as refused:
+                    await _ensure(
+                        session, _registration(battlenet=[battle_tag]), provider=BATTLENET, auth_user_id=auth_user_id
+                    )
+                await session.rollback()
+
+            async with session_maker() as session:
+                return refused.value, owned_id, shadow_id, await _owners(session, BATTLENET, battle_tag)
+
+    refused, owned_id, shadow_id, owners = asyncio.run(_run())
+    assert (refused.status_code, refused.detail[0]["code"]) == (409, "game_identity_conflict")
+    assert owners == sorted([owned_id, shadow_id])
+
+
 def test_auth_linked_player_holding_the_handle_is_never_collapsed() -> None:
     """Case (b''): even with proof on the registering account, a holder that has its OWN
     auth account is a real person — refused, never merged by a form submission."""

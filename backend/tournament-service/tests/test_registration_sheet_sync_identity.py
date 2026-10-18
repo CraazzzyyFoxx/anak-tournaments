@@ -413,7 +413,7 @@ async def _seed_feed(
     *,
     discipline: str = "overwatch",
     schema: FormSchema = _ATOMIC_SCHEMA,
-    mapping: dict[str, Any] = _ATOMIC_MAPPING,
+    mapping: dict[str, Any] | None = _ATOMIC_MAPPING,
 ) -> dict[str, int]:
     suffix = uuid.uuid4().hex[:12]
     workspace = Workspace(
@@ -625,6 +625,43 @@ def test_a_lol_row_with_only_a_battletag_is_not_identified_by_it(db_session, mon
             )
             == 0
         )
+
+        await db_session.execute(sa.delete(Workspace).where(Workspace.id == seeded["workspace_id"]))
+        await db_session.commit()
+
+    asyncio.run(_run())
+
+
+def test_the_suggested_lol_mapping_keeps_riot_ids_that_differ_only_by_a_space_apart(db_session, monkeypatch) -> None:
+    """No saved mapping: the sync uses the suggested one. ``Foo Bar#123`` and ``FooBar#123`` are two
+    people, so the automatically inferred keys must keep the internal space (Riot normalization),
+    not collapse into one dictionary slot; a re-sync updates both, creating nothing."""
+
+    async def _run() -> None:
+        seeded = await _seed_feed(db_session, discipline="lol", schema=_LOL_SCHEMA, mapping=None)
+
+        async def _fetch(*_args, **_kwargs):
+            return [["Riot ID"], ["Foo Bar#123"], ["FooBar#123"]]
+
+        monkeypatch.setattr(reg_admin, "fetch_google_sheet_rows", _fetch)
+
+        first = await reg_admin.sheet_sync_service.sync_google_sheet_feed(db_session, seeded["tournament_id"])
+        again = await reg_admin.sheet_sync_service.sync_google_sheet_feed(db_session, seeded["tournament_id"])
+
+        assert (first.created, first.updated) == (2, 0)
+        assert (again.created, again.updated) == (0, 2)
+        keys = (
+            await db_session.scalars(
+                sa.select(models.BalancerRegistrationGoogleSheetBinding.source_record_key)
+                .join(
+                    models.BalancerRegistrationGoogleSheetFeed,
+                    models.BalancerRegistrationGoogleSheetFeed.id
+                    == models.BalancerRegistrationGoogleSheetBinding.feed_id,
+                )
+                .where(models.BalancerRegistrationGoogleSheetFeed.tournament_id == seeded["tournament_id"])
+            )
+        ).all()
+        assert sorted(keys) == ["foo bar#123", "foobar#123"]
 
         await db_session.execute(sa.delete(Workspace).where(Workspace.id == seeded["workspace_id"]))
         await db_session.commit()
