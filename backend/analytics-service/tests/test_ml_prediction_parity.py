@@ -7,8 +7,8 @@ estimators are real small LightGBM / XGBoost / scikit-learn objects whose learne
 ``*.state.joblib`` (library objects and plain fields only -- no custom class); the model wrappers are rebuilt around
 that state without calling ``fit``.
 
-Database-derived families inherit P4's documented floating reduction order and compare to 1e-12 absolute; families built
-only from deterministic synthetic frames compare exactly.
+Everything compares bit-for-bit except the OpenSkill-mu reduction cells P4 documents (1e-12 absolute, by explicit path
+in ``_assert_equal``).
 """
 
 from __future__ import annotations
@@ -449,18 +449,53 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int], models: di
 # ---------------------------------------------------------------------------
 
 
-def _assert_equal(actual: typing.Any, expected: typing.Any, path: tuple = (), *, tolerant: bool) -> None:
+# P4's ruling (``test_stats_feature_parity._REDUCTIONS``): only the floating reduction cells of the enriched match frame
+# (the OpenSkill-mu averages and their gap, whose summation order depends on the query plan) may differ by 1e-12 absolute.
+# Everything else - identities, orientation, raw stats, every other frame, every aligned matrix column, every prediction
+# and simulation - is compared bit-for-bit. The approximation is granted by explicit path, never by a flag: the enriched
+# frame itself and the aligned inputs that carry those same columns to the main/q10/q90/coarse boosters.
+_MU_REDUCTION_COLUMNS = frozenset(
+    {"team_avg_mu", "team_max_mu", "team_min_mu", "opp_avg_mu", "opp_max_mu", "opp_min_mu", "mu_gap"}
+)
+_BOOSTER_INPUTS = frozenset({"main", "q10", "q90", "coarse"})
+
+
+def _is_frame(value: typing.Any) -> bool:
+    return isinstance(value, dict) and {"columns", "dtypes", "index", "rows"} <= value.keys()
+
+
+def _reduction_frame(path: tuple) -> bool:
+    """A frame whose mu columns carry P4's documented reduction order (DB-derived enriched data only)."""
+    if not path or path[0] != "database":
+        return False
+    names = [part for part in path if isinstance(part, str)]
+    return names[-1] == "enriched" or (names[-1] in _BOOSTER_INPUTS and "quantile_execution" in names)
+
+
+def _assert_equal(actual: typing.Any, expected: typing.Any, path: tuple = ()) -> None:
     assert type(actual) is type(expected), path
-    if isinstance(expected, dict):
+    if _is_frame(expected):
+        assert actual.keys() == expected.keys(), path
+        for key in expected.keys() - {"rows"}:
+            _assert_equal(actual[key], expected[key], (*path, key))
+        assert len(actual["rows"]) == len(expected["rows"]), path
+        approximate = _MU_REDUCTION_COLUMNS if _reduction_frame(path) else frozenset()
+        for number, (row, old_row) in enumerate(zip(actual["rows"], expected["rows"], strict=True)):
+            assert len(row) == len(old_row) == len(expected["columns"]), path
+            for column, value, old_value in zip(expected["columns"], row, old_row, strict=True):
+                cell = (*path, "rows", number, column)
+                if column in approximate and type(value) is float and type(old_value) is float:
+                    assert math.isclose(value, old_value, rel_tol=0.0, abs_tol=1e-12), cell
+                else:
+                    _assert_equal(value, old_value, cell)
+    elif isinstance(expected, dict):
         assert actual.keys() == expected.keys(), path
         for key in expected:
-            _assert_equal(actual[key], expected[key], (*path, key), tolerant=tolerant)
+            _assert_equal(actual[key], expected[key], (*path, key))
     elif isinstance(expected, list):
         assert len(actual) == len(expected), path
         for index, (value, old_value) in enumerate(zip(actual, expected, strict=True)):
-            _assert_equal(value, old_value, (*path, index), tolerant=tolerant)
-    elif tolerant and isinstance(expected, float):
-        assert math.isclose(actual, expected, rel_tol=0.0, abs_tol=1e-12), path
+            _assert_equal(value, old_value, (*path, index))
     else:
         assert actual == expected, path
 
@@ -485,8 +520,8 @@ async def _ml_prediction_parity(native_analytics_reader) -> None:  # noqa: F811
     finally:
         await engine.dispose()
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    _assert_equal(actual["synthetic"], expected["synthetic"], ("synthetic",), tolerant=False)
-    _assert_equal(actual["database"], expected["database"], ("database",), tolerant=True)
+    _assert_equal(actual["synthetic"], expected["synthetic"], ("synthetic",))
+    _assert_equal(actual["database"], expected["database"], ("database",))
 
 
 def test_fixture_set_is_complete_and_old_shift_state_lacks_later_fields() -> None:
@@ -528,4 +563,4 @@ def test_foreign_discipline_rows_do_not_change_overwatch_outputs(stats_parity_da
             await async_engine.dispose()
 
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    _assert_equal(asyncio.run(run()), expected["database"], ("database",), tolerant=True)
+    _assert_equal(asyncio.run(run()), expected["database"], ("database",))
