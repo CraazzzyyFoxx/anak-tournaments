@@ -48,6 +48,8 @@ class DecodeContext:
     characters: Mapping[str, str] = field(default_factory=dict)
     #: ``(mode name or alias, map name or alias)`` -> canonical map code; a log names both.
     maps: Mapping[tuple[str, str], str] = field(default_factory=dict)
+    #: Pairs naming more than one map (an alias or name shared inside a mode): refused, never resolved to the first.
+    ambiguous_maps: frozenset[tuple[str, str]] = frozenset()
     #: Character code -> catalog ``attrs``, in catalog id order (the order the formulas have always summed in).
     attrs: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
 

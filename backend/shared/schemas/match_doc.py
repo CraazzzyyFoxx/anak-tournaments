@@ -321,8 +321,6 @@ class MatchDoc(_Strict):
             natural.add(key)
         for index, event in enumerate(self.events):
             at = ("events", index)
-            if event.t > self.duration_s:
-                issues.append(((*at, "t"), "event_after_end", "t exceeds duration_s"))
             segment((*at, "segment"), event.segment)
             for role, person, team in (
                 ("actor", event.actor, event.actor_team),

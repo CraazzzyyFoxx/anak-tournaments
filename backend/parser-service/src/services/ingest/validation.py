@@ -261,8 +261,9 @@ async def validate_document(
     """Resolve every code of ``doc`` for ``workspace_id``; raise :class:`DocumentRejected` with all findings.
 
     ``producer="canonical"`` (a caller-authored document) also enforces each known provider's handle grammar at
-    ``participants[i].identity.id``; ``"decoded"`` documents (server-authored from raw logs) carry bare in-game names
-    and skip that grammar. Everything else is identical.
+    ``participants[i].identity.id`` and that no event is later than ``duration_s``; ``"decoded"`` documents
+    (server-authored from raw logs) carry bare in-game names and the log's own timeline and skip both. Everything
+    else is identical.
 
     Reads run under ``no_autoflush``: pending state of the caller's session is never flushed by validation.
     """
@@ -298,6 +299,12 @@ async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc, pro
                 "invalid_identity",
                 "identity id is not a valid handle for the provider",
             )
+    if producer == "canonical":
+        # A caller-authored timeline must end with the match. A raw log keeps what it recorded (D96: preserve the
+        # observations and duration P4 persisted), so this is a producer rule, not a structural one.
+        for index, event in enumerate(doc.events):
+            if event.t > doc.duration_s:
+                found.add(["events", index, "t"], "event_after_end", "t exceeds duration_s")
 
     refs = _references(doc)
     wanted: dict[str, set[str]] = {kind: set() for kind in ("map", "character", "stat", "event")}
@@ -316,7 +323,8 @@ async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc, pro
     if found.issues:
         codes = {issue.code for issue in found.issues}
         code = next(
-            (c for c in ("unknown_identity_provider", "invalid_identity") if c in codes), "unresolved_references"
+            (c for c in ("unknown_identity_provider", "invalid_identity", "event_after_end") if c in codes),
+            "unresolved_references",
         )
         raise DocumentRejected(code, found.issues)
     return ValidatedDocument(

@@ -5,6 +5,7 @@ Numeric parity with the P4 parser is pinned against the frozen capture in ``pars
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 
 import pytest
@@ -14,6 +15,7 @@ from shared.core.enums import LogStatsName
 from shared.disciplines import DISCIPLINES, INGESTORS
 from shared.disciplines.ingest import DecodeContext, DecodeError, assemble_ingestors
 from shared.disciplines.overwatch import ingest
+from shared.disciplines.overwatch import settings as ow_settings
 from shared.disciplines.overwatch.enums import log_stats_index_map
 from shared.disciplines.spec import DisciplineSpec
 from shared.schemas.match_doc import MatchDocError, MatchSource
@@ -133,11 +135,37 @@ def test_unfinishable_logs_are_refused_with_a_stable_code(raw, code):
     assert caught.value.code == code
 
 
-def test_line_cap_refuses_before_a_dataframe_is_built(monkeypatch):
-    monkeypatch.setattr(ingest, "MAX_LOG_LINES", 3)
+@pytest.fixture
+def fresh_settings():
+    ow_settings.settings.cache_clear()
+    yield
+    ow_settings.settings.cache_clear()
+
+
+def test_line_cap_refuses_before_a_dataframe_is_built(monkeypatch, fresh_settings):
+    monkeypatch.setenv("MAX_MATCH_LOG_LINES", "3")
     with pytest.raises(DecodeError) as caught:
         ingest.decode(log(), CTX)
     assert caught.value.code == "match_log_too_large"
+
+
+def test_line_cap_honours_a_dotenv_file_like_every_service_setting(monkeypatch, tmp_path, fresh_settings):
+    monkeypatch.delenv("MAX_MATCH_LOG_LINES", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert ingest.decode(log(), CTX).map == "ilios"  # default cap: accepted
+    ow_settings.settings.cache_clear()
+    (tmp_path / ".env").write_text("MAX_MATCH_LOG_LINES=3\n", encoding="utf-8")
+    with pytest.raises(DecodeError) as caught:
+        ingest.decode(log(), CTX)
+    assert caught.value.code == "match_log_too_large"
+    assert ow_settings.settings().max_match_log_lines == 3
+
+
+def test_a_pair_naming_several_maps_is_refused_not_resolved_to_the_first():
+    ambiguous = dataclasses.replace(CTX, ambiguous_maps=frozenset({("Control", "Ilios")}))
+    with pytest.raises(DecodeError) as caught:
+        ingest.decode(log(), ambiguous)
+    assert caught.value.code == "ambiguous_map" and caught.value.misses() == {}
 
 
 def test_a_participant_without_a_declared_team_or_on_both_teams_is_a_hard_error():
@@ -202,11 +230,15 @@ def test_played_at_is_the_first_timestamp_or_the_producers_receipt_time():
     assert ingest.decode(log().decode().replace(STAMP, "0").encode(), CTX).played_at == RECEIVED
 
 
+def test_events_after_the_match_end_are_kept_as_p4_kept_them():
+    doc = ingest.decode(log(row("offensive_assist", 500, "Home", "A", "Ana")), CTX)
+    assert doc.duration_s == 100.0
+    assert [(e.type, e.t) for e in doc.events] == [("offensive_assist", 500.0)]
+
+
 def test_a_structurally_invalid_result_is_reported_not_returned():
-    # An event after the match end cannot be represented: the canonical document refuses it.
-    with pytest.raises(MatchDocError) as caught:
-        ingest.decode(log(row("offensive_assist", 500, "Home", "A", "Ana")), CTX)
-    assert caught.value.issues[0].code == "event_after_end"
+    with pytest.raises(MatchDocError):
+        ingest._validated({"protocol": "wrong"})
 
 
 def test_registry_declares_the_workshop_producers_and_never_a_catch_all():

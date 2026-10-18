@@ -349,8 +349,10 @@ def test_event_time_and_references():
     raw["events"][0]["t"] = math.inf
     py_only(raw, ["events", 0, "t"])
     raw = doc()
-    raw["events"][0]["t"] = 60.5
-    only(raw, ["events", 0, "t"], "event_after_end")
+    raw["events"][0]["t"] = 60.5  # past duration_s: structurally fine, a canonical-producer rule in validate_document
+    parsed = parse_match_doc(json.dumps(raw).encode())
+    assert parsed.events[0].t == 60.5
+    assert MatchDoc.model_validate(json.loads(parsed.model_dump_json())) == parsed
     raw = doc()
     raw["events"][0]["t"] = 60
     assert parse_match_doc(json.dumps(raw).encode()).events[0].t == 60

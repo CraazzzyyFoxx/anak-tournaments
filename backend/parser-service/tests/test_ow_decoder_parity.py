@@ -153,9 +153,13 @@ def bind(doc: MatchDoc, item: dict) -> BoundMatch:
     return BoundMatch(workspace_id=1, encounter_id=2, encounter_game_id=3, participants=seats)
 
 
-def test_base_case_decodes_to_the_frozen_p4_observations():
-    doc = ingest.decode((DIRECTORY / "workshop.csv").read_bytes(), CTX)
+def test_base_case_derives_to_the_frozen_p4_observations(monkeypatch):
+    """No baselines were seeded for the base capture: derivation still ranks performance, adds nothing else."""
+    decoded = ingest.decode((DIRECTORY / "workshop.csv").read_bytes(), CTX)
+    monkeypatch.setattr(baselines, "get_active", AsyncMock(return_value=None))
+    doc = asyncio.run(ingest.derive_match(SimpleNamespace(), decoded, bind(decoded, {"users": [], "ranks": {}})))
     assert_matches(doc, json.loads((DIRECTORY / "expected.json").read_bytes()))
+    assert {f.stat for f in doc.facts} - {f.stat for f in decoded.facts} == {"performance"}
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
@@ -167,14 +171,30 @@ def test_extra_cases_decode_and_derive_to_the_frozen_p4_observations(name, monke
 
     expected = json.loads((DIRECTORY / item["expected"]["file"]).read_bytes())
     assert_matches(doc, expected)
-    # The decoder alone never carries the three baseline-dependent facts; derivation adds exactly them.
-    derived = {"impact_points", "impact_rank", "overperformance_score"}
+    # The decoder alone never carries the baseline/user-id dependent facts; derivation adds exactly them.
+    derived = {"performance", "impact_points", "impact_rank", "overperformance_score"}
     assert not [f for f in decoded.facts if f.stat in derived]
     assert {f.stat for f in doc.facts} - {f.stat for f in decoded.facts} == derived
 
 
-def test_the_comparison_distinguishes_signed_zero_and_the_last_ulp():
-    doc = ingest.decode((DIRECTORY / "workshop.csv").read_bytes(), CTX)
+def test_ties_in_the_performance_rank_follow_user_ids_not_log_order(monkeypatch):
+    """Home players join as H2, H1, H0 yet tie on every stat: P4 ranked them by user id (H0 first)."""
+    item = CASES["performance_ties"]
+    decoded = ingest.decode((DIRECTORY / item["raw"]["file"]).read_bytes(), CTX)
+    assert [p.key for p in decoded.participants][:3] == ["IngestH2", "IngestH1", "IngestH0"]
+    assert not [f for f in decoded.facts if f.stat == "performance"]  # only binding knows user ids
+    monkeypatch.setattr(baselines, "get_active", AsyncMock(return_value=baseline_set()))
+    doc = asyncio.run(ingest.derive_match(SimpleNamespace(), decoded, bind(decoded, item)))
+    ranks = {f.participant: f.value for f in doc.facts if f.stat == "performance" and f.segment == 1}
+    assert ranks["IngestH0"] < ranks["IngestH1"] < ranks["IngestH2"]
+    # A decoded event after the recorded match end is kept, as P4 kept it.
+    assert any(e.t > decoded.duration_s for e in decoded.events)
+
+
+def test_the_comparison_distinguishes_signed_zero_and_the_last_ulp(monkeypatch):
+    decoded = ingest.decode((DIRECTORY / "workshop.csv").read_bytes(), CTX)
+    monkeypatch.setattr(baselines, "get_active", AsyncMock(return_value=None))
+    doc = asyncio.run(ingest.derive_match(SimpleNamespace(), decoded, bind(decoded, {"users": [], "ranks": {}})))
     expected = json.loads((DIRECTORY / "expected.json").read_bytes())
     expected["facts"][0]["bits"] = "8000000000000000"  # -0.0 where 0.0/3.0 was captured
     with pytest.raises(AssertionError):

@@ -142,3 +142,21 @@ def test_a_participant_the_core_did_not_bind_is_refused(monkeypatch):
     partial = BoundMatch(workspace_id=1, encounter_id=2, encounter_game_id=3, participants={})
     with pytest.raises(ValueError, match="not bound"):
         derive(document(), monkeypatch, baselines_value=baseline_set(), bound=partial)
+
+
+def test_performance_ties_break_by_user_id_even_without_baselines(monkeypatch):
+    # Keys b, a tie on points; the core bound b to the LOWER user id, so b ranks first (P4 ordered pivots by user id).
+    tied = document(fact("a", "performance_points", 10.0), fact("b", "performance_points", 10.0))
+    bound = binding(
+        a=BoundParticipant(member_id=1, user_id=202, encounter_team_id=10, rank=800, role="damage"),
+        b=BoundParticipant(member_id=2, user_id=201, encounter_team_id=20, rank=800, role="damage"),
+    )
+    out = derive(tied, monkeypatch, baselines_value=None, bound=bound)
+    assert derived(out, "performance") == {"b": 1.0, "a": 2.0}
+    swapped = derive(tied, monkeypatch, baselines_value=None)  # default binding: a=101 < b=102
+    assert derived(swapped, "performance") == {"a": 1.0, "b": 2.0}
+
+
+def test_performance_is_ranked_per_segment_by_points_first(monkeypatch):
+    doc = document(fact("a", "performance_points", 5.0), fact("b", "performance_points", 9.0))
+    assert derived(derive(doc, monkeypatch, baselines_value=None), "performance") == {"b": 1.0, "a": 2.0}

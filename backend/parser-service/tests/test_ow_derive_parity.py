@@ -124,7 +124,21 @@ def test_derive_match_equals_the_frozen_p4_derived_objects(stats_parity_database
         }
         assert golden, "the frozen golden holds impact objects for this match"
         _assert_exact(dict(sorted(actual.items())), dict(sorted(golden.items())))
-        # Everything the document carried before derivation is untouched.
-        assert [f for f in derived.facts if f.stat not in BASELINE_DEPENDENT] == list(document.facts)
+
+        # The performance rank is recomputed after binding: points descending within a segment, ties by user id (the
+        # fixture's stored `performance` facts are synthetic, so the oracle is that rule applied to the points).
+        def rank(facts):
+            return sorted(((f.participant, f.segment, f.value) for f in facts if f.stat == "performance"), key=repr)
+
+        points = [(f.segment, -f.value, int(f.participant)) for f in document.facts if f.stat == "performance_points"]
+        by_segment: dict[int, list] = {}
+        for segment, _negative, user in sorted(points):
+            by_segment.setdefault(segment, []).append(user)
+        oracle = [(str(u), s, float(i)) for s, users in by_segment.items() for i, u in enumerate(users, 1)]
+        assert rank(derived.facts) == sorted(oracle, key=repr) != []
+        replaced = {*BASELINE_DEPENDENT, "performance"}
+        assert [f for f in derived.facts if f.stat not in replaced] == [
+            f for f in document.facts if f.stat not in replaced
+        ]
 
     asyncio.run(run())

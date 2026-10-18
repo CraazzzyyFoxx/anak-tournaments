@@ -516,6 +516,23 @@ def test_handle_grammar_is_enforced_for_canonical_producers_only():
     run(case)
 
 
+def test_a_timeline_past_the_end_is_refused_for_canonical_producers_only():
+    async def case(env, session):
+        raw = copy.deepcopy(DOC)
+        raw["events"][1]["t"] = 60.5
+        late = MatchDoc.model_validate(raw)
+        for kwargs in ({}, {"producer": "canonical"}):
+            error = await rejected_with(session, env.wa, late, **kwargs)
+            assert error.code == "event_after_end"
+            assert paths(error) == [(["events", 1, "t"], "event_after_end")]
+        # A raw log keeps its own timeline and duration (P4 persisted such logs); the envelope round-trips.
+        validated = await validate_document(session, workspace_id=env.wa, doc=late, producer="decoded")
+        assert validated.doc.events[1].t == 60.5 and validated.doc.duration_s == 60
+        assert MatchDoc.model_validate(json.loads(validated.doc.model_dump_json())) == validated.doc
+
+    run(case)
+
+
 async def rejected_with(session, workspace_id, document, **kwargs) -> DocumentRejected:
     with pytest.raises(DocumentRejected) as caught:
         await validate_document(session, workspace_id=workspace_id, doc=document, **kwargs)

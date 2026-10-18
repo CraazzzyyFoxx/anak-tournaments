@@ -6,19 +6,18 @@ creates no alias, player or row: a hero it cannot resolve is handed on under its
 validator reports every miss, and an unresolvable map/mode raises ``DecodeError`` carrying both misses.
 
 ``derive_match`` adds the facts that need what only binding knows -- the active baselines and each seat's registration
-rank: ``impact_points``, ``overperformance_score`` and ``impact_rank``. It runs on decoded documents only; a producer's
+rank: ``impact_points``, ``overperformance_score`` and ``impact_rank`` -- and the ``performance`` rank, whose ties break by user id. It runs on decoded documents only; a producer's
 own document is never derived twice.
 
-Numerics are the P4 pandas pipeline unchanged. Participants are numbered in the order the document lists them, heroes
-in catalog id order, so every reduction sums in the order it always did; ties in a rank break by that participant order
-(``derive_match``: by user id, exactly as before).
+Numerics are the P4 pandas pipeline unchanged. Participants are numbered in the order the document lists them and
+heroes in catalog id order, so every reduction sums in the order it always did; every rank (performance, impact) is
+computed in ``derive_match``, where ties break by user id exactly as before.
 """
 
 from __future__ import annotations
 
 import asyncio
 import csv
-import os
 from collections.abc import Callable
 from datetime import datetime
 
@@ -34,12 +33,10 @@ from shared.disciplines.overwatch import PLAYER_ROLE, baselines, impact
 from shared.disciplines.overwatch.enums import LogEventType, log_stats_index_map
 from shared.disciplines.overwatch.event_models import KillEvent, MatchEventRow, PlayerStatRow
 from shared.disciplines.overwatch.impact_backfill import _pivot, _rank_by_impact
+from shared.disciplines.overwatch.settings import settings
 from shared.schemas.match_doc import IngestIssue, MatchDoc, MatchDocError
 
-__all__ = ("MAX_LOG_LINES", "decode", "derive_match", "placements")
-
-#: Cap on rows before a DataFrame is built: an adversarial log would otherwise be parsed in full.
-MAX_LOG_LINES = int(os.environ.get("MAX_MATCH_LOG_LINES", 500_000))
+__all__ = ("decode", "derive_match", "placements")
 
 _COLUMNS = ["event_type", "time", "data", "round_number"]
 _LOG_EVENT_TYPE_BY_VALUE = {member.value: member for member in LogEventType}
@@ -62,7 +59,13 @@ _TEAMED_EVENTS = frozenset(
 _RAW_STATS = frozenset(stat.value for stat in log_stats_index_map)
 _STAT_BY_CODE = {stat.value: stat for stat in LogStatsName}
 _DERIVED_AFTER_BINDING = frozenset(
-    stat.value for stat in (LogStatsName.ImpactPoints, LogStatsName.ImpactRank, LogStatsName.OverperformanceScore)
+    stat.value
+    for stat in (
+        LogStatsName.Performance,
+        LogStatsName.ImpactPoints,
+        LogStatsName.ImpactRank,
+        LogStatsName.OverperformanceScore,
+    )
 )
 _HOME, _AWAY = "home", "away"
 
@@ -81,8 +84,9 @@ class _Log:
         self._by_type = {} if self.df.empty else dict(iter(self.df.groupby("event_type", sort=False)))
 
     def _parse(self, lines: list[str]) -> pd.DataFrame:
-        if len(lines) > MAX_LOG_LINES:
-            raise DecodeError("match_log_too_large", f"Match log exceeds the maximum of {MAX_LOG_LINES} lines")
+        cap = settings().max_match_log_lines
+        if len(lines) > cap:
+            raise DecodeError("match_log_too_large", f"Match log exceeds the maximum of {cap} lines")
         valid_lines = [line for line in lines if line.strip()]
         if not valid_lines:
             logger.warning(f"Match log {self.label} has no valid lines.")
@@ -240,7 +244,10 @@ Emit = Callable[[LogStatsName, int, int, int | None, float], None]
 
 
 def _derived(df: pd.DataFrame, emit: Emit, *, mvp: bool) -> None:
-    """KD/KDA/... for a pivot (and performance for the player-level ones); adds its columns to ``df`` as before."""
+    """KD/KDA/... for a pivot (and performance points for the player-level ones); adds its columns to ``df``.
+
+    The ``performance`` rank is not emitted here: ties break by user id (P4), which only binding knows.
+    """
     for stat_col in (
         LogStatsName.Eliminations,
         LogStatsName.Deaths,
@@ -287,9 +294,6 @@ def _derived(df: pd.DataFrame, emit: Emit, *, mvp: bool) -> None:
             + df[LogStatsName.DamageBlocked] * 0.1
         )
         emit_column("PerformancePoints", LogStatsName.PerformancePoints, df)
-        ranked = df.sort_values(by=["round", "PerformancePoints"], ascending=[True, False])
-        ranked["Performance"] = ranked.groupby("round").cumcount() + 1
-        emit_column("Performance", LogStatsName.Performance, ranked)
 
 
 def _stat_rows(log: _Log, pid_of: dict[str, int], heroes: _Heroes) -> pd.DataFrame:
@@ -411,6 +415,8 @@ def decode(raw: bytes, ctx: DecodeContext) -> MatchDoc:
     teams = log.teams()
     start = log.start()
     gamemode, map_name = start[1], start[0]
+    if (gamemode, map_name) in ctx.ambiguous_maps:
+        raise DecodeError("ambiguous_map", f"Map {map_name!r} / mode {gamemode!r} matches more than one catalog map")
     map_code = ctx.maps.get((gamemode, map_name))
     if map_code is None:
         raise DecodeError(
@@ -519,28 +525,52 @@ def _validated(document: dict) -> MatchDoc:
 
 
 async def derive_match(session, doc: MatchDoc, binding: BoundMatch) -> MatchDoc:  # noqa: ANN001
-    """Add ``impact_points``/``overperformance_score``/``impact_rank``, replacing any the document already carries."""
+    """Add ``performance``, ``impact_points``, ``overperformance_score`` and ``impact_rank`` (replacing any present)."""
     baseline_set = await baselines.get_active(session, discipline=doc.discipline)
     return await asyncio.to_thread(_derive, doc, binding, baseline_set)
 
 
 def _derive(doc: MatchDoc, binding: BoundMatch, baseline_set: impact.BaselineSet | None) -> MatchDoc:
     kept = [fact for fact in doc.facts if fact.stat not in _DERIVED_AFTER_BINDING]
-    derived: list[dict] = []
-    if baseline_set is None:
-        logger.warning(f"Impact baselines missing for {doc.discipline} -- skipping impact stats")
-    else:
-        derived = _impact_facts(doc, kept, binding, baseline_set)
-    return _validated(
-        {**doc.model_dump(), "facts": [fact.model_dump() for fact in kept] + derived},
-    )
-
-
-def _impact_facts(doc: MatchDoc, kept: list, binding: BoundMatch, baseline_set: impact.BaselineSet) -> list[dict]:
     try:
         user_of = {key: binding.participants[key].user_id for key in {f.participant for f in kept if f.participant}}
     except KeyError as exc:
         raise ValueError(f"participant {exc.args[0]!r} is not bound") from None
+    derived = _performance_facts(kept, user_of)
+    if baseline_set is None:
+        logger.warning(f"Impact baselines missing for {doc.discipline} -- skipping impact stats")
+    else:
+        derived += _impact_facts(doc, kept, user_of, binding, baseline_set)
+    return _validated({**doc.model_dump(), "facts": [fact.model_dump() for fact in kept] + derived})
+
+
+def _performance_facts(kept: list, user_of: dict[str, int]) -> list[dict]:
+    """Rank each segment's players by performance points; equal points keep user-id order, as P4's pivots did."""
+    rows = [
+        (user_of[fact.participant], fact.segment, fact.value)
+        for fact in kept
+        if fact.stat == LogStatsName.PerformancePoints.value and fact.participant is not None and fact.entity is None
+    ]
+    if not rows:
+        return []
+    frame = pd.DataFrame(rows, columns=["player_id", "round", "PerformancePoints"]).sort_values(["player_id", "round"])
+    ranked = frame.sort_values(by=["round", "PerformancePoints"], ascending=[True, False])
+    ranked["Performance"] = ranked.groupby("round").cumcount() + 1
+    key_of = {user: key for key, user in user_of.items()}
+    return [
+        {
+            "participant": key_of[int(row["player_id"])],
+            "stat": LogStatsName.Performance.value,
+            "value": float(row["Performance"]),
+            "segment": int(row["round"]),
+        }
+        for row in ranked.to_dict(orient="records")
+    ]
+
+
+def _impact_facts(
+    doc: MatchDoc, kept: list, user_of: dict[str, int], binding: BoundMatch, baseline_set: impact.BaselineSet
+) -> list[dict]:
     key_of = {user: key for key, user in user_of.items()}
 
     cells = [

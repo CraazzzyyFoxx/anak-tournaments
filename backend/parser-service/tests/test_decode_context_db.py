@@ -70,6 +70,14 @@ def test_names_aliases_modes_and_activity_resolve_with_the_p4_precedence(stats_p
                             parent_id=escort.id,
                             aliases=["Близнец"],
                         ),
+                        entity(
+                            discipline="overwatch",
+                            kind="map",
+                            slug="ctx-c",
+                            name="Twin Three",
+                            parent_id=escort.id,
+                            aliases=["Близнец"],
+                        ),
                     ]
                 )
                 await session.flush()
@@ -92,8 +100,10 @@ def test_names_aliases_modes_and_activity_resolve_with_the_p4_precedence(stats_p
                 assert order.index("ctx-rival") < order.index("ctx-ana")
                 assert ctx.maps[("CtxControl", "Twin")] == "ctx-a"
                 assert ctx.maps[("КонтрольCtx", "Близнец")] == "ctx-a"
-                assert ctx.maps[("CtxEscort", "Близнец")] == "ctx-b"  # one alias, two modes: the mode picks the map
-                assert ("CtxEscort", "Twin") not in ctx.maps
+                # Two escort maps share that alias: refused for the pair, never resolved to the lower id.
+                assert ("CtxEscort", "Близнец") in ctx.ambiguous_maps and ("CtxEscort", "Близнец") not in ctx.maps
+                assert ctx.maps[("CtxEscort", "Twin Two")] == "ctx-b"
+                assert ("CtxControl", "Близнец") not in ctx.ambiguous_maps
                 await session.rollback()
         finally:
             await engine.dispose()
