@@ -33,7 +33,7 @@ from shared.messaging.config import (
     ingest_replay_queue,
 )
 from shared.messaging.outbox import enqueue_outbox_event
-from shared.messaging.topology import declare_dead_letter_queue
+from shared.messaging.topology import declare_dead_letter_queue, declare_replay_queues, publish_required
 from shared.observability import metrics, observe_message_processing, publish_message
 from shared.schemas.events import (
     AchievementEvaluateEvent,
@@ -345,12 +345,15 @@ async def process_tournament_log(data: dict, msg: RabbitMessage) -> None:
             # Done jobs are never re-pended: each is replayed through the discipline's TTL-less replay queue with the revision
             # seen at selection, so a log superseded or re-replaced in the meantime reports stale instead of winning.
             # This consumer never decodes: only a worker serving the job's discipline can.
+            if requeued.replay:
+                # The destination may not exist yet (no worker of that discipline has started on a fresh broker), and an
+                # unroutable publish must fail this request rather than drop the reparses.
+                await declare_replay_queues(broker, requeued.discipline)
             for job_id, revision in requeued.replay.items():
-                await publish_message(
+                await publish_required(
                     broker,
-                    ProcessIngestJobEvent(ingest_job_id=job_id, reparse_expected_revision=revision).model_dump(),
                     ingest_replay_queue(requeued.discipline),
-                    logger=logger.bind(ingest_job_id=job_id),
+                    ProcessIngestJobEvent(ingest_job_id=job_id, reparse_expected_revision=revision).model_dump_json(),
                 )
             logger.info(
                 "Tournament {} logs: {} queued, {} replays requested",
