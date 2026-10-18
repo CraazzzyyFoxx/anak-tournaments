@@ -251,6 +251,16 @@ the unrestricted selection (enabled rules), `[]` selects nothing, and a deferred
 resolved so a later seed or import cannot widen it. A rule whose discipline has no conditions, or no required grid,
 is reported on the run and its stored results are left untouched.
 
+**Verified live (opt-in, `RUN_P5_LIVE_SMOKE=1`, P5's real-process stack).** `test_ingest_live_smoke.py` seeds one rule per
+Overwatch case plus a LoL *sentinel* rule and award, then asserts on native rows: an Overwatch ingest reaches `done`, the
+writer's `AchievementEvaluateEvent` (through the outbox) makes the worker award exactly the three qualifying members once
+(evidence carries the rule slug, run `parse_complete`); the standings invalidation still reaches its original
+tournament-service consumer (a computation job exists); completing the best-of-3 encounter evaluates again and converges;
+redelivering the same event twice creates and removes nothing; awaiting-link and failed ingests award and observe
+nothing; a LoL ingest reaches `done` and its run only reports that LoL has no conditions — the sentinel survives and no
+Overwatch award, run or event touches the LoL tournament. Analytics is a separate process and is covered by
+`analytics-service/tests/test_discipline_runtime_smoke.py`.
+
 ### Rank synchronisation
 
 Collection is bound to a linked `social_account` (a battlenet account owned by a player), never to a

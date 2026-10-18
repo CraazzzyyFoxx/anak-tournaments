@@ -136,7 +136,7 @@ CREATE TABLE achievements.rule (
 	description_ru VARCHAR NOT NULL,
 	description_en VARCHAR NOT NULL,
 	image_url VARCHAR,
-	discipline VARCHAR(32) DEFAULT 'overwatch' NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
 	entity_id BIGINT,
 	entity_kind VARCHAR(16) DEFAULT 'character' NOT NULL,
 	category VARCHAR NOT NULL,

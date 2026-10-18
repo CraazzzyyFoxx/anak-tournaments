@@ -145,6 +145,15 @@ export, stage and apply belong to P9 (retained old image, same pinned numerical 
 workers/training/cache writers stopped); an artifact of an unsupported class or state blocks the
 release until an explicit conversion case is implemented and reviewed.
 
+`tests/test_discipline_runtime_smoke.py` runs the whole chain once on a scratch PostgreSQL clone: export under the
+archived pre-move source, stage, `apply`, then the runtime's own registry selection and `run_for_tournament`
+(performance, shift, standings, anomalies, match quality and its standings loader) as a non-owner role with no USAGE on
+the retained legacy schemas. Every frozen D96 receipt is reproduced bit-for-bit by the registry-loaded models, every
+table written equals the one written from an independently assembled registry (the unseeded Monte Carlo
+`standings_distribution` agrees only statistically), LoL resolves to no artifact, no module (`UnsupportedAnalytics`) and
+no read or write, and `rollback` restores the original URI set. This is fixture proof only; production artifacts are
+never described as converted until P9 has run the procedure on its real inventory.
+
 Migrations are central — there is one Alembic project at `backend/migrations/` and this
 service ships none. Entity diagrams and column-level detail:
 [`../../docs/database_erd.md`](../../docs/database_erd.md#analytics--analytics).

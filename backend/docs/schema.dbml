@@ -222,7 +222,7 @@ Table achievements.rule {
   description_ru VARCHAR [not null]
   description_en VARCHAR [not null]
   image_url VARCHAR
-  discipline VARCHAR(32) [not null, default: `overwatch`]
+  discipline VARCHAR(32) [not null]
   entity_id bigint
   entity_kind VARCHAR(16) [not null, default: `character`]
   category VARCHAR [not null]

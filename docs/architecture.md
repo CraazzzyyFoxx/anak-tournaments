@@ -164,6 +164,15 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 | [`shared`](../backend/shared/README.md) | library | Single-source ORM + cross-service kernel (models, repository, services, rpc, messaging, tenancy, rbac, observability, clients) |
 | [`frontend`](../frontend/README.md) | Next.js | User-facing app + white-label multidomain |
 
+**Achievements and analytics by discipline (P6).** The condition registry, evaluator and portable format are a shared
+kernel (`shared/domain/achievements`, `shared/domain/analytics`) that reaches a game only through
+`shared.disciplines` lazy hooks: Overwatch registers its conditions and owns its models
+(`shared/disciplines/overwatch/{achievements,analytics}`); LoL declares neither, so it has no conditions, no models and
+no fallback to Overwatch's. Every rule carries an immutable `discipline` (no column default since `achievement06`), the
+achievement wire is `discipline` + `entity_id` (portable format v2), and a tournament/match event evaluates only its own
+game's rules. Analytics resolves the module, rated role ids and declared algorithm from the tournament's discipline.
+Details: [P6 release note](./releases/2026-10-18-multi-game-p6-achievements-analytics.md).
+
 ## 5. Data model & multitenancy
 
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
