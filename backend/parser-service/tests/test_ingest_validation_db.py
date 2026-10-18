@@ -464,3 +464,32 @@ def test_all_six_kinds_persist_reopen_and_count_while_other_values_are_refused()
                 )
 
     run(case)
+
+
+def test_validation_never_flushes_the_callers_pending_state():
+    async def case(env, session):
+        pending = models.CatalogEntity(
+            discipline="overwatch", kind="character", slug="pending-hero", name="Pending hero", attrs={}
+        )
+        session.add(pending)
+        raw = copy.deepcopy(DOC)
+        raw["events"][0]["entity"] = "pending-hero"
+        error = await rejected(session, env.wa, MatchDoc.model_validate(raw))
+        # Had the read autoflushed, the pending hero would exist and resolve.
+        assert error.misses() == {"character": ("pending-hero",)}
+        assert sa.inspect(pending).pending and pending in session.new
+        await validate_document(session, workspace_id=env.wa, doc=doc())
+        assert sa.inspect(pending).pending
+
+    run(case)
+
+
+def test_a_huge_number_of_distinct_codes_is_a_rejection_not_a_driver_error():
+    async def case(env, session):
+        raw = copy.deepcopy(DOC)
+        raw["facts"] = [{"participant": "a", "stat": f"s{i}", "value": 1, "entity": f"e{i}"} for i in range(40_000)]
+        error = await rejected(session, env.wa, MatchDoc.model_validate(raw))
+        assert error.code == "unresolved_references"
+        assert len(error.issues) <= 200 and set(error.misses()) == {"stat", "character"}
+
+    run(case)

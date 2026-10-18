@@ -21,6 +21,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
@@ -116,13 +117,18 @@ def _references(doc: MatchDoc) -> list[tuple[str, str, list[str | int]]]:
     return refs
 
 
+def _any(codes: set[str]):
+    """One array bind however many codes (a long list as ``IN (...)`` would exceed the driver's bind limit)."""
+    return sa.any_(sa.literal(sorted(codes), type_=postgresql.ARRAY(sa.String)))
+
+
 async def _entities(session: AsyncSession, discipline: str, codes: Mapping[str, set[str]]) -> dict[str, dict[str, int]]:
     entity = models.CatalogEntity
     rows = await session.execute(
         sa.select(entity.kind, entity.slug, entity.id).where(
             entity.discipline == discipline,
             entity.active.is_(True),
-            sa.or_(*(sa.and_(entity.kind == kind, entity.slug.in_(codes[kind])) for kind in ("map", "character"))),
+            sa.or_(*(sa.and_(entity.kind == kind, entity.slug == _any(codes[kind])) for kind in ("map", "character"))),
         )
     )
     found: dict[str, dict[str, int]] = {"map": {}, "character": {}}
@@ -134,7 +140,7 @@ async def _entities(session: AsyncSession, discipline: str, codes: Mapping[str, 
 async def _definitions(session: AsyncSession, model: type, discipline: str, codes: set[str]) -> dict[str, int]:
     rows = await session.execute(
         sa.select(model.code, model.id).where(
-            model.discipline == discipline, model.active.is_(True), model.code.in_(codes)
+            model.discipline == discipline, model.active.is_(True), model.code == _any(codes)
         )
     )
     return dict(rows.tuples().all())
@@ -244,7 +250,15 @@ async def _hints(session: AsyncSession, doc: MatchDoc, workspace_id: int, found:
 
 
 async def validate_document(session: AsyncSession, *, workspace_id: int, doc: MatchDoc) -> ValidatedDocument:
-    """Resolve every code of ``doc`` for ``workspace_id``; raise :class:`DocumentRejected` with all findings."""
+    """Resolve every code of ``doc`` for ``workspace_id``; raise :class:`DocumentRejected` with all findings.
+
+    Reads run under ``no_autoflush``: pending state of the caller's session is never flushed by validation.
+    """
+    with session.no_autoflush:
+        return await _validate(session, workspace_id, doc)
+
+
+async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc) -> ValidatedDocument:
     spec = DISCIPLINES.get(doc.discipline)
     registered = await session.scalar(sa.select(models.Discipline.code).where(models.Discipline.code == doc.discipline))
     if spec is None or registered is None:

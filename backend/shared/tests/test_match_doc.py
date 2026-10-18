@@ -206,7 +206,7 @@ def test_tied_placements_are_allowed():
 
 def test_participant_references_and_duplicates():
     raw = doc()
-    raw["participants"].append({"key": "b", "team": "beta", "identity": {"provider": "battlenet", "id": "Other#1"}})
+    raw["participants"].append({"key": "b", "team": "beta", "identity": {"provider": "battlenet", "id": "Other#9999"}})
     only(raw, ["participants", 2, "key"], "duplicate_participant_key")
     raw = doc()
     raw["participants"][1]["team"] = "gamma"
@@ -454,3 +454,25 @@ def test_issue_count_is_bounded():
     with pytest.raises(MatchDocError) as caught:
         parse_match_doc(json.dumps(raw).encode())
     assert len(caught.value.issues) == 200
+
+
+def test_known_provider_handle_syntax_is_enforced_at_the_identity_id_path():
+    for bad in ("Player", "Ana#12", "a#1234", "Ana#Smith"):
+        raw = doc()
+        raw["participants"][0]["identity"]["id"] = bad
+        only(raw, ["participants", 0, "identity", "id"], "invalid_identity")
+
+
+def test_unknown_provider_syntax_is_left_to_semantic_validation():
+    raw = doc()
+    raw["participants"][0]["identity"] = {"provider": "someplatform", "id": "anything goes"}
+    assert parse_match_doc(json.dumps(raw).encode()).participants[0].identity.provider == "someplatform"
+
+
+def test_duplicate_key_detection_is_linear_in_object_size():
+    import time
+
+    body = ",".join(f'"k{i}":1' for i in range(200_000))
+    started = time.perf_counter()
+    only(("{" + body + ',"k7":2}').encode(), [], "duplicate_key")
+    assert time.perf_counter() - started < 5

@@ -31,7 +31,7 @@ from pydantic import (
 )
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
-from shared.core.social import normalize_social_handle
+from shared.core.social import matches_handle_pattern, normalize_social_handle
 from shared.schemas.role import RoleRef
 
 __all__ = (
@@ -191,6 +191,11 @@ class MatchIdentity(_Strict):
     def _normalizes(self) -> MatchIdentity:
         if not normalize_social_handle(self.provider, self.id):
             _fail("MatchIdentity", [(("id",), "blank_identity", "identity id must not normalize to empty")])
+        # Known providers carry a handle grammar; unknown ones are the semantic layer's to refuse.
+        if not matches_handle_pattern(self.provider, self.id):
+            _fail(
+                "MatchIdentity", [(("id",), "invalid_identity", "identity id is not a valid handle for the provider")]
+            )
         return self
 
 
@@ -353,10 +358,12 @@ class _DuplicateKey(Exception):
 
 
 def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    keys = [key for key, _ in pairs]
-    if len(set(keys)) != len(keys):
-        raise _DuplicateKey(next(key for key in keys if keys.count(key) > 1))
-    return dict(pairs)
+    seen: dict[str, Any] = {}
+    for key, value in pairs:  # single pass: linear however many keys a hostile object carries
+        if key in seen:
+            raise _DuplicateKey(key)
+        seen[key] = value
+    return seen
 
 
 def _no_constant(name: str) -> Any:
