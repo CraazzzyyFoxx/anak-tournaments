@@ -148,6 +148,13 @@ class Proc:
     #: Set once the process and its descendants are confirmed gone: cached pids are then never acted on again
     #: (an OS may have reused them for an unrelated process).
     reaped: bool = False
+    #: pid -> creation identity captured with the tree: a pid is only ever signalled or declared gone by identity.
+    identities: dict[int, int | None] = field(default_factory=dict)
+
+    def snapshot(self) -> list[int]:
+        self.tree = process_tree(self.pid)
+        self.identities = {pid: process_identity(pid) for pid in self.tree}
+        return self.tree
 
     @property
     def pid(self) -> int:
@@ -168,6 +175,32 @@ def _alive_windows(pid: int) -> bool:
         return bool(ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
     finally:
         ctypes.windll.kernel32.CloseHandle(handle)
+
+
+def process_identity(pid: int) -> int | None:
+    """The process's creation time (Windows FILETIME / Linux start ticks): with the pid it identifies one process.
+
+    ``None`` when it cannot be read (no such process, or no /proc): the caller must then treat the pid as unverifiable.
+    """
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return None
+        try:
+            created, other = wintypes.FILETIME(), [wintypes.FILETIME() for _ in range(3)]
+            if not ctypes.windll.kernel32.GetProcessTimes(handle, ctypes.byref(created), *map(ctypes.byref, other)):
+                return None
+            return (created.dwHighDateTime << 32) | created.dwLowDateTime
+        finally:
+            ctypes.windll.kernel32.CloseHandle(handle)
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        return int(stat.rsplit(")", 1)[1].split()[19])  # field 22: starttime, after the parenthesised comm
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def _alive_posix(pid: int) -> bool:
@@ -616,7 +649,7 @@ class LiveStack:
             return predicate()
 
         result = wait_until(check, f"{name}: {what}", timeout=timeout)
-        proc.tree = process_tree(proc.pid)
+        proc.snapshot()
         self.evidence.record("process_pids", name, proc.tree)
         self.evidence.append(
             "ready_checks",
@@ -649,7 +682,7 @@ class LiveStack:
         """Ask the process (and its whole group) to stop; anything left after ``grace`` is killed."""
         proc = self.procs[name]
         if proc.popen.poll() is None:
-            proc.tree = process_tree(proc.pid)
+            proc.snapshot()
             proc.reaped = False
             if os.name == "nt":
                 proc.popen.send_signal(signal.CTRL_BREAK_EVENT)
@@ -659,9 +692,6 @@ class LiveStack:
                 proc.popen.wait(timeout=grace)
             except subprocess.TimeoutExpired:
                 self.kill(name)
-        elif not proc.reaped:
-            # The launcher exited by itself earlier: pids cached while it ran may belong to someone else now.
-            proc.tree = []
         self._reap_tree(proc)
         proc.exit_code = proc.popen.returncode
         self.evidence.record("exit_codes", name, proc.exit_code)
@@ -671,9 +701,9 @@ class LiveStack:
         """Hard-kill the process tree (no graceful shutdown): what a crashed worker looks like."""
         proc = self.procs[name]
         launcher_alive = proc.popen.poll() is None
-        tree = process_tree(proc.pid) if launcher_alive else []
+        tree = proc.snapshot() if launcher_alive else []
         if launcher_alive:
-            proc.tree, proc.reaped = tree, False
+            proc.reaped = False
         if not launcher_alive:
             pass  # the launcher is gone: its pid may be reused, so nothing is signalled by pid
         elif os.name == "nt":
@@ -690,20 +720,31 @@ class LiveStack:
     def _reap_tree(self, proc: Proc) -> None:
         """A launcher can exit before the interpreter it spawned: nothing of a stopped process may keep running.
 
-        Survivors get a short grace, then are force-killed; one that still lives is an error.
+        Only a pid whose creation identity still matches the one recorded with the tree counts as ours: a different
+        identity means the pid was reused (it is gone and is never signalled). A live pid whose identity cannot be
+        verified is neither killed nor declared gone: it is reported as a teardown failure. Verified survivors get a
+        short grace, then are force-killed; one that still lives is an error too.
         """
 
         def alive(pid: int) -> bool:
             return _alive_windows(pid) if os.name == "nt" else _alive_posix(pid)
 
+        def ours(pid: int) -> bool:
+            expected = proc.identities.get(pid)
+            return expected is not None and process_identity(pid) == expected
+
         if proc.reaped:
             return
-        survivors = [pid for pid in proc.tree if pid != proc.pid and alive(pid)]
+        live = [pid for pid in proc.tree if pid != proc.pid and alive(pid)]
+        unverifiable = [pid for pid in live if proc.identities.get(pid) is None or process_identity(pid) is None]
+        survivors = [pid for pid in live if pid not in unverifiable and ours(pid)]
         deadline = time.monotonic() + 10
         while survivors and time.monotonic() < deadline:
             time.sleep(0.25)
-            survivors = [pid for pid in survivors if alive(pid)]
+            survivors = [pid for pid in survivors if alive(pid) and ours(pid)]
         for pid in survivors:
+            if not ours(pid):
+                continue
             if os.name == "nt":
                 subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
             else:
@@ -711,16 +752,18 @@ class LiveStack:
         deadline = time.monotonic() + 10
         while survivors and time.monotonic() < deadline:
             time.sleep(0.25)
-            survivors = [pid for pid in survivors if alive(pid)]
-        if survivors:
-            raise RuntimeError(f"processes {survivors} of {proc.name} survived a forced kill")
-        proc.tree, proc.reaped = [], True
+            survivors = [pid for pid in survivors if alive(pid) and ours(pid)]
+        if survivors or unverifiable:
+            raise RuntimeError(
+                f"{proc.name}: verified processes {survivors} survived a forced kill; "
+                f"processes {unverifiable} are alive but their identity cannot be verified (left untouched)"
+            )
+        proc.tree, proc.identities, proc.reaped = [], {}, True
 
     def pause(self, name: str) -> None:
         """Freeze every process of the tree (SIGSTOP / NtSuspendProcess): a worker stuck inside a job."""
         proc = self.procs[name]
-        proc.tree = process_tree(proc.pid)
-        for pid in proc.tree:
+        for pid in proc.snapshot():
             if os.name == "nt":
                 _suspend_windows(pid, True)
             else:

@@ -360,7 +360,7 @@ Contract rulings that changed a wire, protocol or storage contract (each also do
     is assigned by the server, never by the caller, and the public API only ever accepts the bare `MatchDoc`. Only a raw
     job without a `document_ref` runs a registered decoder, and it persists `decoded`. Retries, reparses and admin bind
     preserve the producer. Provenance is never inferred from a filename, an object path or `source.kind` (no new database
-    column); an envelope that is missing or not exactly `{document, producer}` fails by operation: a **submit** that collides with such a job is `409 stored_document_invalid`; an **admin bind or reparse** that loads it is `422` (the stored-document failure has no dedicated admin status mapping, so the code is the generic document failure and the job row is left as it was); and the **worker** marks the job `failed` with the structured error. Raw
+    column); an envelope that is missing or not exactly `{document, producer}` fails by operation: a **submit** that collides with such a job is `409 stored_document_invalid`; an **admin bind or reparse** that loads it is `422` with code `stored_document_invalid` (the stored-document failure has no dedicated admin status mapping, so the status falls back to 422; the code is not `document_invalid`; the job row is left as it was); and the **worker** marks the job `failed` with the structured error. Raw
     `raw_ref`/`content_hash` still identify the original bytes.
 15. **Receipt contract.** The evidence consumer takes the encounter lock, then the game lock, and writes one durable
     `encounter.room_event` (`action = match_ingested`) in the same transaction as any result change. `data` carries the

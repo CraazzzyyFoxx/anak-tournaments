@@ -162,26 +162,84 @@ def test_teardown_continues_after_a_process_cannot_be_stopped(monkeypatch, tmp_p
     assert (tmp_path / "evidence.json").is_file()
 
 
-def test_teardown_never_signals_pids_of_a_process_it_already_reaped(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+def _alive(pid: int) -> bool:
     import os
+
+    from tests.live_smoke_support import _alive_posix, _alive_windows
+
+    return _alive_windows(pid) if os.name == "nt" else _alive_posix(pid)
+
+
+def _orphan():
+    """A launcher that exits while the process it spawned keeps running; returns (finished launcher, child pid)."""
     import subprocess
     import sys
 
-    from tests.live_smoke_support import Proc
+    script = "import subprocess,sys;c=subprocess.Popen([sys.executable,'-c','import time;time.sleep(120)']);print(c.pid,flush=True)"
+    parent = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True)
+    pid = int(parent.stdout.readline())
+    parent.wait()
+    return parent, pid
 
+
+def _force_kill(pid: int) -> None:
+    import os
+    import signal
+    import subprocess
+
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
+    elif _alive(pid):
+        os.kill(pid, signal.SIGKILL)
+
+
+def _owned_orphan(tmp_path, stack):
+    from tests.live_smoke_support import Proc, process_identity
+
+    parent, pid = _orphan()
+    proc = Proc("orphan", [], str(tmp_path), parent, tmp_path / "none.log", 0.0, tree=[parent.pid, pid])
+    proc.identities = {parent.pid: None, pid: process_identity(pid)}
+    stack.procs["orphan"] = proc
+    return proc, pid
+
+
+def test_a_descendant_that_outlives_its_launcher_is_verified_then_killed(
+    monkeypatch, tmp_path, ephemeral_postgres
+) -> None:
     configure(monkeypatch)
     stack = LiveStack(tmp_path)
-    # A real, finished child; its (now reusable) pid and a bystander pid are cached as its descendants.
-    done = subprocess.Popen([sys.executable, "-c", "pass"])
-    done.wait()
-    bystander = os.getpid()
-    proc = Proc("done", [], str(tmp_path), done, tmp_path / "none.log", 0.0, tree=[done.pid, bystander])
-    stack.procs["done"] = proc
-    killed: list[int] = []
-    monkeypatch.setattr("tests.live_smoke_support.subprocess.run", lambda *a, **k: killed.append(a[0]))
-    monkeypatch.setattr("tests.live_smoke_support.os.kill", lambda pid, sig: killed.append(pid))
-    stack.stop("done")  # the launcher exited by itself: cached pids are discarded, never acted on
-    assert proc.reaped and proc.tree == [] and killed == []
-    proc.tree = [bystander]
-    stack.close()  # already reaped: close() must not stop it again or signal the cached pid
-    assert killed == []
+    proc, pid = _owned_orphan(tmp_path, stack)
+    try:
+        assert _alive(pid)
+        stack.stop("orphan")
+        assert not _alive(pid) and proc.reaped and proc.tree == []
+    finally:
+        _force_kill(pid)
+
+
+def test_a_pid_whose_identity_changed_is_gone_and_never_signalled(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+    configure(monkeypatch)
+    stack = LiveStack(tmp_path)
+    proc, pid = _owned_orphan(tmp_path, stack)
+    try:
+        proc.identities[pid] += 1  # the recorded process is gone; this pid now belongs to someone else
+        stack.stop("orphan")
+        assert _alive(pid) and proc.reaped
+    finally:
+        _force_kill(pid)
+
+
+def test_an_unverifiable_live_descendant_is_reported_and_left_alone(monkeypatch, tmp_path, ephemeral_postgres) -> None:
+    configure(monkeypatch)
+    stack = LiveStack(tmp_path)
+    proc, pid = _owned_orphan(tmp_path, stack)
+    try:
+        proc.identities[pid] = None
+        with pytest.raises(RuntimeError, match="cannot be verified"):
+            stack.stop("orphan")
+        assert _alive(pid) and not proc.reaped
+        with pytest.raises(pytest.fail.Exception, match="orphan"):
+            stack.close()  # still tears down and writes its evidence, and names the unverifiable process
+        assert (tmp_path / "evidence.json").is_file() and _alive(pid)
+    finally:
+        _force_kill(pid)
