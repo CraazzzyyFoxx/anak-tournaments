@@ -82,6 +82,25 @@
      "sha256": "bac46d8fe0527c12883e5ddd1d7525c7743b91f6f9649296e2a09213e6fbc336"
     },
     "users": []
+   },
+   "performance_ties": {
+    "counts": {
+     "events": 18,
+     "facts": 1622,
+     "players": 7
+    },
+    "expected": {
+     "file": "cases/performance_ties.expected.json",
+     "sha256": "87b0bdf30aacb8cfcdfbae1adef6c4c8232538c550f181a95efd479c2c3097b8"
+    },
+    "ranks": {},
+    "raw": {
+     "bytes": 4114,
+     "file": "cases/performance_ties.csv",
+     "sha256": "97f5bb8e29ab12a6c0ce8a26f1a3d82bd517b428872c53d5a0ecfa6392e20d5d"
+    },
+    "users": [],
+    "source_head": "74c17977b6c29116d3ec19361de7f749d24168dc"
    }
   },
   "second_catalog_hero": {

@@ -60,6 +60,9 @@ EXTRA_CASES = {
     },
     "impact": {"raw": "workshop.csv", "users": [], "ranks": {"IngestA0": 1200, "IngestH0": 500, "IngestH1": 950}},
     "no_killfeed": {"raw": "cases/no_killfeed.csv", "users": [], "ranks": {"IngestA1": 1200, "IngestH2": 600}},
+    #: Home players join in reverse account-creation order and tie on every stat (P4 broke the tie by user id); an
+    #: event is recorded after the match_end time.
+    "performance_ties": {"raw": "cases/performance_ties.csv", "users": [], "ranks": {}},
 }
 #: Per-10-minute (mean, std) of the capture cohort per impact stat; roles/buckets scale them so no cell is constant.
 _BASELINE_SCALE = {
