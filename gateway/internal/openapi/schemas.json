@@ -8444,6 +8444,22 @@
             "default": null,
             "title": "Slot Count"
           }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
+          }
         }
       ],
       "response": {
@@ -9127,6 +9143,22 @@
             ],
             "default": null,
             "title": "Slot Count"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
           }
         }
       ],
@@ -26124,6 +26156,17 @@
           "default": null,
           "title": "Notes"
         },
+        "player_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Player Name"
+        },
         "primary_role": {
           "anyOf": [
             {
@@ -26206,6 +26249,7 @@
         "registration_id",
         "user_id",
         "identity",
+        "player_name",
         "primary_role",
         "is_flex",
         "status",
@@ -43203,6 +43247,18 @@
           ],
           "default": null,
           "title": "Closeness Min"
+        },
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
         },
         "entities": {
           "items": {

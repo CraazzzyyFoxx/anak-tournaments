@@ -15053,6 +15053,8 @@ export interface components {
              * @default null
              */
             notes: string | null;
+            /** Player Name */
+            player_name: string | null;
             primary_role: components["schemas"]["balancer.RoleRef"] | null;
             /** Registration Id */
             registration_id: number;
@@ -36052,6 +36054,7 @@ export interface operations {
                 closeness_max?: number | null;
                 scope?: PathsApiV1EncountersGetParametersQueryScope;
                 slot_count?: number | null;
+                discipline?: string | null;
             };
             header?: never;
             path?: never;
@@ -36129,6 +36132,7 @@ export interface operations {
                 closeness_max?: number | null;
                 scope?: PathsApiV1EncountersOverviewGetParametersQueryScope;
                 slot_count?: number | null;
+                discipline?: string | null;
             };
             header?: never;
             path?: never;
